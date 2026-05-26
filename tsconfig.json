@@ -1,0 +1,41 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/branding"
+    },
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./packages/help-center"
+    },
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/analytics"
+    },
+    {
+      "path": "./packages/observability"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/web"
+    },
+    {
+      "path": "./apps/customer-mobile"
+    },
+    {
+      "path": "./apps/provider-mobile"
+    },
+    {
+      "path": "./apps/crew-mobile"
+    }
+  ]
+}

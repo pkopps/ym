@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "YardMatch Crew",
+    "slug": "yardmatch-crew",
+    "scheme": "yardmatch-crew",
+    "version": "0.1.0",
+    "orientation": "default",
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}

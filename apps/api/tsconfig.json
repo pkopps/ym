@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "composite": true
+  },
+  "references": [
+    {
+      "path": "../../packages/analytics"
+    },
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/domain"
+    },
+    {
+      "path": "../../packages/observability"
+    }
+  ],
+  "include": [
+    "src/**/*.ts"
+  ]
+}

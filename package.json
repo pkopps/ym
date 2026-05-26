@@ -1,0 +1,32 @@
+{
+  "name": "yardmatch-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "next dev apps/web",
+    "dev:customer-mobile": "npm --workspace @yardmatch/customer-mobile run dev",
+    "dev:provider-mobile": "npm --workspace @yardmatch/provider-mobile run dev",
+    "dev:crew-mobile": "npm --workspace @yardmatch/crew-mobile run dev",
+    "dev:api": "tsx apps/api/src/index.ts",
+    "build:web": "next build apps/web",
+    "build:customer-mobile": "npm --workspace @yardmatch/customer-mobile run export",
+    "build:provider-mobile": "npm --workspace @yardmatch/provider-mobile run export",
+    "build:crew-mobile": "npm --workspace @yardmatch/crew-mobile run export",
+    "build:api": "tsc -p apps/api/tsconfig.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "eslint": "*",
+    "tsx": "*",
+    "turbo": "*",
+    "typescript": "*"
+  }
+}

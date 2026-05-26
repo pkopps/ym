@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": [
+      "react",
+      "react-native"
+    ],
+    "composite": true,
+    "outDir": "dist"
+  },
+  "references": [
+    {
+      "path": "../../packages/branding"
+    },
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/help-center"
+    },
+    {
+      "path": "../../packages/observability"
+    },
+    {
+      "path": "../../packages/ui"
+    }
+  ],
+  "include": [
+    "App.tsx",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ]
+}

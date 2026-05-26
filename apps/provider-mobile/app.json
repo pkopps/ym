@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "YardMatch Provider",
+    "slug": "yardmatch-provider",
+    "scheme": "yardmatch-provider",
+    "version": "0.1.0",
+    "orientation": "default",
+    "assetBundlePatterns": [
+      "**/*"
+    ]
+  }
+}

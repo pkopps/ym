@@ -1,0 +1,22 @@
+{
+  "name": "@yardmatch/provider-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo/AppEntry",
+  "scripts": {
+    "dev": "expo start",
+    "export": "expo export",
+    "ios": "expo run:ios",
+    "android": "expo run:android"
+  },
+  "dependencies": {
+    "@yardmatch/branding": "0.1.0",
+    "@yardmatch/contracts": "0.1.0",
+    "@yardmatch/help-center": "0.1.0",
+    "@yardmatch/observability": "0.1.0",
+    "@yardmatch/ui": "0.1.0",
+    "expo": "~55.0.23",
+    "react": "19.2.0",
+    "react-native": "0.83.6"
+  }
+}

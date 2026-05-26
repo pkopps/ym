@@ -1,0 +1,29 @@
+export class MarketplaceTelemetryEventCatalog {
+  public static readonly customerRegistered = "customer_registered";
+  public static readonly customerPropertyAdded = "customer_property_added";
+  public static readonly customerDefaultPropertyChanged = "customer_default_property_changed";
+  public static readonly providerRegistered = "provider_registered";
+  public static readonly providerSettingsUpdated = "provider_settings_updated";
+  public static readonly providerSponsorshipUpdated = "provider_sponsorship_updated";
+  public static readonly crewMemberRegistered = "crew_member_registered";
+  public static readonly providerSearchPerformed = "provider_search_performed";
+  public static readonly providerMatchReturned = "provider_match_returned";
+  public static readonly providerReviewSubmitted = "provider_review_submitted";
+  public static readonly reviewInviteScheduled = "review_invite_scheduled";
+  public static readonly reviewInviteSent = "review_invite_sent";
+  public static readonly instantQuoteGenerated = "instant_quote_generated";
+  public static readonly instantQuoteNeedsFollowUp = "instant_quote_needs_follow_up";
+  public static readonly bookingRequested = "booking_requested";
+  public static readonly bookingAddressChanged = "booking_address_changed";
+  public static readonly bookingAddressChangePendingReview = "booking_address_change_pending_review";
+  public static readonly bookingAddressChangeBlocked = "booking_address_change_blocked";
+  public static readonly bookingConfirmed = "booking_confirmed";
+  public static readonly bookingCompleted = "booking_completed";
+  public static readonly paymentAuthorized = "payment_authorized";
+  public static readonly paymentCaptured = "payment_captured";
+  public static readonly refundRequested = "refund_requested";
+  public static readonly refundCompleted = "refund_completed";
+  public static readonly supportTicketOpened = "support_ticket_opened";
+  public static readonly sessionHeartbeat = "session_heartbeat";
+  public static readonly pageViewed = "page_viewed";
+}

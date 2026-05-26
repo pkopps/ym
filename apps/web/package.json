@@ -1,0 +1,19 @@
+{
+  "name": "@yardmatch/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build"
+  },
+  "dependencies": {
+    "@yardmatch/branding": "0.1.0",
+    "@yardmatch/contracts": "0.1.0",
+    "@yardmatch/help-center": "0.1.0",
+    "@yardmatch/observability": "0.1.0",
+    "@yardmatch/ui": "0.1.0",
+    "next": "*",
+    "react": "*",
+    "react-dom": "*"
+  }
+}
