@@ -27,20 +27,20 @@ const productColumns = [
     title: "Operations",
     items: [
       {
-        href: "/provider",
+        href: "/provider/management",
         title: "Schedule management",
         body: "Keep routes, calendars, and service areas aligned."
+      },
+      {
+        href: "/provider/payments",
+        title: "Crew payouts",
+        body: "Pay crew members post-service and manage funding cards."
       },
       {
         href: "/crew",
         title: "Crew hiring",
         body: "Find workers when demand outgrows your current team."
       },
-      {
-        href: "/crew",
-        title: "Supply and demand balancing",
-        body: "Match crew availability to rising bookings before routes fall behind."
-      }
     ]
   },
   {
@@ -57,7 +57,7 @@ const productColumns = [
         body: "Stack nearby work and reduce wasted drive time."
       },
       {
-        href: "/provider",
+        href: "/provider/management",
         title: "Map-based property sizing",
         body: "Estimate property size from address context to help price jobs faster."
       }
@@ -77,9 +77,14 @@ const marketplaceLinks = [
     body: "Bring in crew members through the same marketplace."
   },
   {
-    href: "/provider",
+    href: "/provider/management",
     title: "Manage booked work",
     body: "Handle schedules, crews, and follow-through from one place."
+  },
+  {
+    href: "/provider/payments",
+    title: "Pay your crew",
+    body: "Fund completed jobs and control default cards for payout runs."
   },
   {
     href: "/provider",

@@ -75,6 +75,51 @@ export interface CrewAssignment {
   expectedEarnings: string;
 }
 
+export interface ProviderManagedJob {
+  id: string;
+  clientName: string;
+  serviceLabel: string;
+  isoDate: string;
+  dateLabel: string;
+  dayLabel: string;
+  monthLabel: string;
+  timeLabel: string;
+  addressLine: string;
+  distanceMiles: number;
+  propertySizeLabel: string;
+  estimatedLaborHours: number;
+  requiredCrewMembers: number;
+  assignedCrewMembers: string[];
+  quoteLabel: string;
+  notes: string;
+}
+
+export interface ProviderCrewMemberSnapshot {
+  name: string;
+  roleLabel: string;
+  availabilityLabel: string;
+}
+
+export interface ProviderPaymentMethod {
+  id: string;
+  brand: "amex" | "mastercard" | "visa";
+  last4: string;
+  expiryLabel: string;
+  cardholderName: string;
+  billingLabel: string;
+  isDefault: boolean;
+}
+
+export interface ProviderCrewPayout {
+  id: string;
+  crewMemberName: string;
+  jobLabel: string;
+  serviceDateLabel: string;
+  addressLine: string;
+  amountLabel: string;
+  status: "ready" | "scheduled" | "paid";
+}
+
 function buildAvatarDataUrl(initials: string, background: string, accent: string): string {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
@@ -365,6 +410,187 @@ export const crewAssignmentHistory: CrewAssignment[] = [
     equipmentLabel: "Mowers, trimmers, and blower provided",
     plannedHours: 8,
     expectedEarnings: "$168"
+  }
+];
+
+export const providerCrewMemberSnapshots: ProviderCrewMemberSnapshot[] = [
+  {
+    name: "Ariana Fields",
+    roleLabel: "Crew lead",
+    availabilityLabel: "Available on Mon, Tue, Thu"
+  },
+  {
+    name: "Malik Turner",
+    roleLabel: "Route technician",
+    availabilityLabel: "Available on Mon through Fri"
+  },
+  {
+    name: "Luis Ortega",
+    roleLabel: "Bed and cleanup lead",
+    availabilityLabel: "Available on Tue, Wed, Fri"
+  },
+  {
+    name: "Zoe Campbell",
+    roleLabel: "Crew helper",
+    availabilityLabel: "Available on Mon, Wed, Sat"
+  },
+  {
+    name: "Jordan Price",
+    roleLabel: "Seasonal cleanup specialist",
+    availabilityLabel: "Available on Thu, Fri, Sat"
+  }
+];
+
+export const providerPaymentMethods: ProviderPaymentMethod[] = [
+  {
+    id: "card-1",
+    brand: "visa",
+    last4: "2048",
+    expiryLabel: "08/28",
+    cardholderName: "GreenStride Lawn Co.",
+    billingLabel: "Primary business card",
+    isDefault: true
+  },
+  {
+    id: "card-2",
+    brand: "mastercard",
+    last4: "9124",
+    expiryLabel: "11/27",
+    cardholderName: "GreenStride Lawn Co.",
+    billingLabel: "Equipment and overflow funding",
+    isDefault: false
+  }
+];
+
+export const providerCrewPayouts: ProviderCrewPayout[] = [
+  {
+    id: "payout-1",
+    crewMemberName: "Ariana Fields",
+    jobLabel: "Bennett Residence - Weekly mow, edge, and blow",
+    serviceDateLabel: "May 27, 2026",
+    addressLine: "1482 Ashland City Hwy, Nashville, TN 37218",
+    amountLabel: "$145",
+    status: "ready"
+  },
+  {
+    id: "payout-2",
+    crewMemberName: "Luis Ortega",
+    jobLabel: "Holloway Estate - Large cleanup and mulch reset",
+    serviceDateLabel: "May 28, 2026",
+    addressLine: "904 Holloway Ridge Rd, Brentwood, TN 37027",
+    amountLabel: "$220",
+    status: "ready"
+  },
+  {
+    id: "payout-3",
+    crewMemberName: "Jordan Price",
+    jobLabel: "Camden Office Park - Grounds maintenance block",
+    serviceDateLabel: "May 29, 2026",
+    addressLine: "2200 West End Ave, Nashville, TN 37203",
+    amountLabel: "$120",
+    status: "scheduled"
+  },
+  {
+    id: "payout-4",
+    crewMemberName: "Zoe Campbell",
+    jobLabel: "Whittaker HOA Entry - Beds and hedge line service",
+    serviceDateLabel: "May 30, 2026",
+    addressLine: "611 Whittaker Blvd, Hendersonville, TN 37075",
+    amountLabel: "$110",
+    status: "paid"
+  }
+];
+
+export const providerManagedJobs: ProviderManagedJob[] = [
+  {
+    id: "provider-job-1",
+    clientName: "Bennett Residence",
+    serviceLabel: "Weekly mow, edge, and blow",
+    isoDate: "2026-05-27",
+    dateLabel: "May 27, 2026",
+    dayLabel: "Tue",
+    monthLabel: "May 27",
+    timeLabel: "7:30 AM - 10:30 AM",
+    addressLine: "1482 Ashland City Hwy, Nashville, TN 37218",
+    distanceMiles: 3.2,
+    propertySizeLabel: "0.32 acre lot",
+    estimatedLaborHours: 3,
+    requiredCrewMembers: 2,
+    assignedCrewMembers: ["Ariana Fields", "Malik Turner"],
+    quoteLabel: "$145 quote",
+    notes: "Front gate opens at 7:15 AM. Standard recurring route stop."
+  },
+  {
+    id: "provider-job-2",
+    clientName: "Holloway Estate",
+    serviceLabel: "Large cleanup and mulch reset",
+    isoDate: "2026-05-28",
+    dateLabel: "May 28, 2026",
+    dayLabel: "Wed",
+    monthLabel: "May 28",
+    timeLabel: "8:00 AM - 1:00 PM",
+    addressLine: "904 Holloway Ridge Rd, Brentwood, TN 37027",
+    distanceMiles: 8.9,
+    propertySizeLabel: "1.1 acre property",
+    estimatedLaborHours: 5,
+    requiredCrewMembers: 4,
+    assignedCrewMembers: ["Luis Ortega", "Zoe Campbell"],
+    quoteLabel: "$420 quote",
+    notes: "Backyard bed reset, fresh mulch, and full perimeter cleanup."
+  },
+  {
+    id: "provider-job-3",
+    clientName: "Camden Office Park",
+    serviceLabel: "Grounds maintenance block",
+    isoDate: "2026-05-29",
+    dateLabel: "May 29, 2026",
+    dayLabel: "Thu",
+    monthLabel: "May 29",
+    timeLabel: "6:30 AM - 11:30 AM",
+    addressLine: "2200 West End Ave, Nashville, TN 37203",
+    distanceMiles: 5.4,
+    propertySizeLabel: "0.85 acre commercial site",
+    estimatedLaborHours: 5,
+    requiredCrewMembers: 3,
+    assignedCrewMembers: ["Ariana Fields", "Malik Turner", "Jordan Price"],
+    quoteLabel: "$360 quote",
+    notes: "Requires mowing, trimming, and sidewalk cleanup before office traffic ramps up."
+  },
+  {
+    id: "provider-job-4",
+    clientName: "Whittaker HOA Entry",
+    serviceLabel: "Entry beds and hedge line service",
+    isoDate: "2026-05-30",
+    dateLabel: "May 30, 2026",
+    dayLabel: "Fri",
+    monthLabel: "May 30",
+    timeLabel: "9:00 AM - 12:30 PM",
+    addressLine: "611 Whittaker Blvd, Hendersonville, TN 37075",
+    distanceMiles: 11.1,
+    propertySizeLabel: "0.7 acre shared entry corridor",
+    estimatedLaborHours: 3.5,
+    requiredCrewMembers: 3,
+    assignedCrewMembers: ["Jordan Price", "Zoe Campbell"],
+    quoteLabel: "$260 quote",
+    notes: "Two-person crew is not enough for the hedge line plus bed cleanup."
+  },
+  {
+    id: "provider-job-5",
+    clientName: "Larchmont Property Group",
+    serviceLabel: "Seasonal cleanup and blowing",
+    isoDate: "2026-05-31",
+    dateLabel: "May 31, 2026",
+    dayLabel: "Sat",
+    monthLabel: "May 31",
+    timeLabel: "8:30 AM - 11:30 AM",
+    addressLine: "321 Larchmont Dr, Nashville, TN 37215",
+    distanceMiles: 6.7,
+    propertySizeLabel: "0.41 acre property",
+    estimatedLaborHours: 3,
+    requiredCrewMembers: 2,
+    assignedCrewMembers: ["Luis Ortega", "Malik Turner"],
+    quoteLabel: "$175 quote",
+    notes: "Driveway and walkways need final blower pass before client arrival."
   }
 ];
 

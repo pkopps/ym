@@ -14,6 +14,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/login/crew",
     "/customer",
     "/provider",
+    "/provider/management",
+    "/provider/payments",
     "/provider/partnerships",
     "/crew",
     "/help"
