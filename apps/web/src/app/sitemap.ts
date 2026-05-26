@@ -6,6 +6,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/auth",
     "/auth/customer",
     "/auth/provider",
+    "/auth/provider/create",
     "/auth/crew",
     "/login",
     "/login/customer",
@@ -13,6 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/login/crew",
     "/customer",
     "/provider",
+    "/provider/partnerships",
     "/crew",
     "/help"
   ];

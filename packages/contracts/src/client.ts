@@ -2,6 +2,7 @@ import {
   AnalyticsEvent,
   CompleteBookingRequest,
   CustomerProperty,
+  GoogleAuthStartRequest,
   ListCustomerReviewOpportunitiesResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
@@ -63,6 +64,24 @@ export class MarketplaceApiClient {
 
   public registerUser(payload: RegisterUserRequest) {
     return this.postJson(ApiRoutes.register, payload);
+  }
+
+  public getGoogleAuthStartUrl(payload: GoogleAuthStartRequest): string {
+    const query = new URLSearchParams({
+      role: payload.role,
+      mode: payload.mode
+    });
+
+    return `${this.baseUrl}${ApiRoutes.googleAuthStart}?${query.toString()}`;
+  }
+
+  public getAppleAuthStartUrl(payload: GoogleAuthStartRequest): string {
+    const query = new URLSearchParams({
+      role: payload.role,
+      mode: payload.mode
+    });
+
+    return `${this.baseUrl}${ApiRoutes.appleAuthStart}?${query.toString()}`;
   }
 
   public createCustomerProperty(payload: CreateCustomerPropertyRequest) {

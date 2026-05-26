@@ -1,4 +1,6 @@
 export type MarketplaceRole = "customer" | "provider" | "crew-member";
+export type AuthFlowMode = "signup" | "login";
+export type AuthProvider = "google" | "apple";
 export type TelemetryPlatformSurface =
   | "api"
   | "web-mobile"
@@ -264,6 +266,19 @@ export interface RegisterUserRequest {
   willingToTravelMiles?: number;
   preferredSchedule?: CrewMemberSchedulePreference;
   hasOwnEquipment?: boolean;
+}
+
+export interface GoogleAuthStartRequest {
+  role: MarketplaceRole;
+  mode: AuthFlowMode;
+}
+
+export interface GoogleAuthStartResponse {
+  provider: AuthProvider;
+  role: MarketplaceRole;
+  mode: AuthFlowMode;
+  redirectUrl: string;
+  status: "demo-redirect";
 }
 
 export interface SearchProvidersRequest {

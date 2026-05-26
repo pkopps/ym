@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AuthIdentityOptions } from "../../../components/SignupIdentityOptions";
 
 export const metadata: Metadata = {
   title: "Business owner login"
@@ -14,15 +15,18 @@ export default function ProviderLoginPage() {
       </section>
 
       <section className="card">
-        <div className="form-grid">
-          <label className="form-field">
-            <span>Email</span>
-            <input placeholder="crewlead@greenstride.example" />
-          </label>
-          <label className="form-field">
-            <span>Password</span>
-            <input type="password" placeholder="••••••••" />
-          </label>
+        <div className="auth-form-stack">
+          <div className="form-grid">
+            <label className="form-field">
+              <span>Email</span>
+              <input placeholder="crewlead@greenstride.example" />
+            </label>
+            <label className="form-field">
+              <span>Password</span>
+              <input type="password" placeholder="••••••••" />
+            </label>
+          </div>
+          <AuthIdentityOptions mode="login" role="provider" />
         </div>
         <div className="cta-row" style={{ marginTop: "1rem" }}>
           <a className="button" href="/provider">

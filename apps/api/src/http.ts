@@ -61,3 +61,11 @@ export function sendHtml(response: ServerResponse, statusCode: number, payload: 
   });
   response.end(payload);
 }
+
+export function sendRedirect(response: ServerResponse, location: string): void {
+  applyCorsHeaders(response);
+  response.writeHead(302, {
+    Location: location
+  });
+  response.end();
+}

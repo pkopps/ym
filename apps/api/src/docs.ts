@@ -60,6 +60,56 @@ export const apiSpec = {
         }
       }
     },
+    "/api/auth/google/start": {
+      get: {
+        tags: ["Auth"],
+        summary: "Start Google auth for signup or login",
+        description:
+          "Shared Google auth entry point for customer, provider, and crew-member flows. The current scaffold redirects directly into the matching YardMatch web experience.",
+        parameters: [
+          {
+            name: "role",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["customer", "provider", "crew-member"] }
+          },
+          {
+            name: "mode",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["signup", "login"] }
+          }
+        ],
+        responses: {
+          "302": { description: "Redirects into the role-specific YardMatch flow" }
+        }
+      }
+    },
+    "/api/auth/apple/start": {
+      get: {
+        tags: ["Auth"],
+        summary: "Start Apple auth for signup or login",
+        description:
+          "Shared Apple auth entry point for customer, provider, and crew-member flows. The current scaffold redirects directly into the matching YardMatch web experience.",
+        parameters: [
+          {
+            name: "role",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["customer", "provider", "crew-member"] }
+          },
+          {
+            name: "mode",
+            in: "query",
+            required: true,
+            schema: { type: "string", enum: ["signup", "login"] }
+          }
+        ],
+        responses: {
+          "302": { description: "Redirects into the role-specific YardMatch flow" }
+        }
+      }
+    },
     "/api/customers/properties": {
       get: {
         tags: ["Customers"],

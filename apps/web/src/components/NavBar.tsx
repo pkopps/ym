@@ -1,6 +1,6 @@
 const links = [
   { href: "/customer", label: "Book a service" },
-  { href: "/provider", label: "Run my landscaping business" },
+  { href: "/auth/provider", label: "List your Business on YardMatch" },
   { href: "/crew", label: "Join a landscaping crew" },
   { href: "/help", label: "Help center" }
 ];

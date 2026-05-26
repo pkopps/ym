@@ -47,6 +47,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 
 - Geolocation and address handling for customers and providers
 - Registration flows for all three marketplace roles
+- Shared Google and Apple auth-start routes for all three signup flows
 - Separate customer, provider, and crew-member mobile app shells with role-specific navigation
 - One shared website with role-aware login entry points
 - Scheduling, calendar feeds, and availability planning
