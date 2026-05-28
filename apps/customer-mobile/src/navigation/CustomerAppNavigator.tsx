@@ -7,13 +7,13 @@ import { BookingsScreen } from "../screens/BookingsScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { SupportScreen } from "../screens/SupportScreen";
 
-type TabKey = "dashboard" | "book" | "bookings" | "support";
+type TabKey = "dashboard" | "book" | "bookings" | "account";
 
 const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
   { key: "dashboard", label: "Home", icon: "home" },
   { key: "book", label: "Book", icon: "search" },
   { key: "bookings", label: "Bookings", icon: "file-text" },
-  { key: "support", label: "Support", icon: "life-buoy" }
+  { key: "account", label: "Account", icon: "user" }
 ];
 
 export function CustomerAppNavigator() {
@@ -23,7 +23,7 @@ export function CustomerAppNavigator() {
     dashboard: <DashboardScreen />,
     book: <BookServiceScreen />,
     bookings: <BookingsScreen />,
-    support: <SupportScreen />
+    account: <SupportScreen />
   }[activeTab];
 
   return (

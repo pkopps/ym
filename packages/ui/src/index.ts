@@ -1,4 +1,4 @@
-import { ServiceCategory } from "@yardmatch/contracts";
+import { CustomerReviewOpportunity, ServiceCategory } from "@yardmatch/contracts";
 
 export interface BookedCalendarSlotShowcase {
   startLabel: string;
@@ -118,6 +118,48 @@ export interface ProviderCrewPayout {
   addressLine: string;
   amountLabel: string;
   status: "ready" | "scheduled" | "paid";
+}
+
+export interface ProviderFundingAccount {
+  id: string;
+  bankName: string;
+  accountMask: string;
+  accountType: "checking" | "savings";
+  payoutSpeedLabel: string;
+  isDefault: boolean;
+}
+
+export interface CustomerSavedPropertyPreview {
+  id: string;
+  label: string;
+  addressLine: string;
+  isDefault: boolean;
+  nextServiceLabel?: string;
+}
+
+export interface CustomerBookingPreview {
+  id: string;
+  serviceLabel: string;
+  providerName: string;
+  propertyLabel: string;
+  addressLine: string;
+  dateLabel: string;
+  timeLabel: string;
+  status: "upcoming" | "completed" | "needs-review";
+  addressChangeState?: string;
+}
+
+export interface CustomerProviderMatchPreview {
+  id: string;
+  businessName: string;
+  ownerName: string;
+  avatarUrl: string;
+  distanceMiles: number;
+  rating: string;
+  estimateLabel: string;
+  nextSlotLabel: string;
+  specialties: string[];
+  sponsored: boolean;
 }
 
 function buildAvatarDataUrl(initials: string, background: string, accent: string): string {
@@ -501,6 +543,25 @@ export const providerCrewPayouts: ProviderCrewPayout[] = [
   }
 ];
 
+export const providerFundingAccounts: ProviderFundingAccount[] = [
+  {
+    id: "bank-1",
+    bankName: "First Horizon",
+    accountMask: "•••• 4821",
+    accountType: "checking",
+    payoutSpeedLabel: "Weekly default",
+    isDefault: true
+  },
+  {
+    id: "bank-2",
+    bankName: "Ally Bank",
+    accountMask: "•••• 9914",
+    accountType: "savings",
+    payoutSpeedLabel: "Instant cash-out eligible",
+    isDefault: false
+  }
+];
+
 export const providerManagedJobs: ProviderManagedJob[] = [
   {
     id: "provider-job-1",
@@ -734,8 +795,132 @@ export const bookedBusinessSearchContext = {
   dateRangeLabel: "Today, May 10 - Sat, May 23",
   userAddressLabel: "220 Willow St, Nashville, TN 37206",
   mapEmbedUrl:
-    "https://www.openstreetmap.org/export/embed.html?bbox=-86.91%2C36.10%2C-86.63%2C36.29&layer=mapnik&marker=36.1749%2C-86.7271"
+  "https://www.openstreetmap.org/export/embed.html?bbox=-86.91%2C36.10%2C-86.63%2C36.29&layer=mapnik&marker=36.1749%2C-86.7271"
 };
+
+export const customerSavedProperties: CustomerSavedPropertyPreview[] = [
+  {
+    id: "property-1",
+    label: "Primary home",
+    addressLine: "220 Willow St, Nashville, TN 37206",
+    isDefault: true,
+    nextServiceLabel: "Weekly mow on Thu"
+  },
+  {
+    id: "property-2",
+    label: "Rental duplex",
+    addressLine: "915 Acklen Ave, Nashville, TN 37203",
+    isDefault: false,
+    nextServiceLabel: "Cleanup on Sat"
+  },
+  {
+    id: "property-3",
+    label: "Parents' house",
+    addressLine: "4418 Post Rd, Nashville, TN 37205",
+    isDefault: false
+  }
+];
+
+export const customerUpcomingBookings: CustomerBookingPreview[] = [
+  {
+    id: "YM-BOOKING-2048",
+    serviceLabel: "Weekly mow and edge",
+    providerName: "GreenStride Lawn Co.",
+    propertyLabel: "Primary home",
+    addressLine: "220 Willow St, Nashville, TN 37206",
+    dateLabel: "Thu, May 29",
+    timeLabel: "9:00 AM - 11:00 AM",
+    status: "upcoming",
+    addressChangeState: "Address changes are open until tonight at 9:00 PM."
+  },
+  {
+    id: "YM-BOOKING-2064",
+    serviceLabel: "Bed cleanup and mulch refresh",
+    providerName: "TerraCut Studio",
+    propertyLabel: "Rental duplex",
+    addressLine: "915 Acklen Ave, Nashville, TN 37203",
+    dateLabel: "Sat, May 31",
+    timeLabel: "8:00 AM - 12:00 PM",
+    status: "upcoming",
+    addressChangeState: "Change needs provider review because the crew is already scheduled."
+  }
+];
+
+export const customerPastBookings: CustomerBookingPreview[] = [
+  {
+    id: "YM-BOOKING-1982",
+    serviceLabel: "Spring cleanup",
+    providerName: "Cedarstone Landscaping",
+    propertyLabel: "Primary home",
+    addressLine: "220 Willow St, Nashville, TN 37206",
+    dateLabel: "Fri, May 23",
+    timeLabel: "10:00 AM - 1:00 PM",
+    status: "needs-review"
+  },
+  {
+    id: "YM-BOOKING-1904",
+    serviceLabel: "Lawn mow and trim",
+    providerName: "Blue Harbor Outdoor",
+    propertyLabel: "Parents' house",
+    addressLine: "4418 Post Rd, Nashville, TN 37205",
+    dateLabel: "Sun, May 18",
+    timeLabel: "1:00 PM - 3:00 PM",
+    status: "completed"
+  }
+];
+
+export const customerReviewOpportunitiesPreview: CustomerReviewOpportunity[] = [
+  {
+    bookingId: "YM-BOOKING-2048",
+    providerId: "provider-greenstride",
+    providerName: "GreenStride Lawn Co.",
+    category: "lawn-mowing",
+    completedAt: "2026-05-28T14:40:00.000Z",
+    inviteStatus: "scheduled",
+    inviteScheduledSendIso: "2026-05-30T14:40:00.000Z",
+    canReviewNow: false,
+    reviewAlreadySubmitted: false,
+    reason: "Review email is scheduled for 48 hours after service."
+  },
+  {
+    bookingId: "YM-BOOKING-1982",
+    providerId: "provider-terracut",
+    providerName: "TerraCut Studio",
+    category: "seasonal-cleanup",
+    completedAt: "2026-05-25T11:15:00.000Z",
+    inviteStatus: "sent",
+    inviteSentAt: "2026-05-27T11:15:00.000Z",
+    canReviewNow: true,
+    reviewAlreadySubmitted: false,
+    reason: "Ready for review."
+  },
+  {
+    bookingId: "YM-BOOKING-1904",
+    providerId: "provider-cedarstone",
+    providerName: "Cedarstone Landscaping",
+    category: "lawn-mowing",
+    completedAt: "2026-05-18T16:05:00.000Z",
+    reviewSubmittedAt: "2026-05-20T18:45:00.000Z",
+    canReviewNow: false,
+    reviewAlreadySubmitted: true,
+    reason: "Review already submitted."
+  }
+];
+
+export const customerProviderMatches: CustomerProviderMatchPreview[] = bookedBusinessShowcase.slice(0, 4).map(
+  (business, index) => ({
+    id: `match-${index + 1}`,
+    businessName: business.name,
+    ownerName: business.ownerName,
+    avatarUrl: business.avatarUrl,
+    distanceMiles: business.distanceMiles,
+    rating: business.rating,
+    estimateLabel: ["$68 estimate", "$92 estimate", "$74 estimate", "$110 estimate"][index] ?? "$82 estimate",
+    nextSlotLabel: ["Tomorrow 9:00 AM", "Thu 1:00 PM", "Fri 8:30 AM", "Sat 10:00 AM"][index] ?? "Next opening soon",
+    specialties: business.specialties,
+    sponsored: business.sponsored
+  })
+);
 
 export const quoteEnginePrinciples = [
   "Start with the address, not a long property questionnaire.",

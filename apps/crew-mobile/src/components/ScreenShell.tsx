@@ -10,7 +10,7 @@ export function ScreenShell({
 }: {
   eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
 }) {
   const { width } = useWindowDimensions();
@@ -28,7 +28,7 @@ export function ScreenShell({
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>{eyebrow}</Text>
         <Text style={styles.title}>{title}</Text>
-        <Text style={styles.description}>{description}</Text>
+        {description ? <Text style={styles.description}>{description}</Text> : null}
       </View>
       <View style={[styles.content, isTablet && styles.contentTablet]}>{children}</View>
     </ScrollView>
@@ -51,9 +51,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: BrandTokens.colors.ink,
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: "700",
-    lineHeight: 38
+    lineHeight: 32
   },
   description: {
     color: BrandTokens.colors.inkSoft,

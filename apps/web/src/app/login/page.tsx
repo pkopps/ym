@@ -13,7 +13,7 @@ export default function LoginPage() {
         <p>One website. Three paths.</p>
       </section>
 
-      <section className="grid-three">
+      <section className="grid-three auth-choice-grid">
         <article className="card">
           <h2>Customer</h2>
           <p>For homes and properties.</p>

@@ -1,4 +1,5 @@
 export class MarketplaceTelemetryEventCatalog {
+  public static readonly mobileAuthCompleted = "mobile_auth_completed";
   public static readonly customerRegistered = "customer_registered";
   public static readonly customerPropertyAdded = "customer_property_added";
   public static readonly customerDefaultPropertyChanged = "customer_default_property_changed";
@@ -13,6 +14,9 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly reviewInviteSent = "review_invite_sent";
   public static readonly instantQuoteGenerated = "instant_quote_generated";
   public static readonly instantQuoteNeedsFollowUp = "instant_quote_needs_follow_up";
+  public static readonly providerCashOutInitiated = "provider_cash_out_initiated";
+  public static readonly crewCheckInCompleted = "crew_check_in_completed";
+  public static readonly crewAssignmentCompleted = "crew_assignment_completed";
   public static readonly bookingRequested = "booking_requested";
   public static readonly bookingAddressChanged = "booking_address_changed";
   public static readonly bookingAddressChangePendingReview = "booking_address_change_pending_review";

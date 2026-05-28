@@ -1,0 +1,39 @@
+import { getBearerToken, verifySessionToken } from "./auth";
+import { HttpError, RequestContext } from "./http";
+import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
+
+export async function requireAuthenticatedIdentity(
+  context: RequestContext,
+  platform: MarketplacePlatformService
+) {
+  const token = getBearerToken(context);
+  if (!token) {
+    throw new HttpError(401, "Missing bearer token");
+  }
+
+  let session;
+  try {
+    session = verifySessionToken(token);
+  } catch (error) {
+    throw new HttpError(401, error instanceof Error ? error.message : "Invalid bearer token");
+  }
+  const identity = await platform.findAuthIdentityByUserId(session.userId);
+  if (!identity) {
+    throw new HttpError(401, "Unknown session");
+  }
+
+  return identity;
+}
+
+export async function requireRole(
+  context: RequestContext,
+  platform: MarketplacePlatformService,
+  role: "customer" | "provider" | "crew-member"
+) {
+  const identity = await requireAuthenticatedIdentity(context, platform);
+  if (identity.role !== role) {
+    throw new HttpError(403, `This route requires a ${role} account`);
+  }
+
+  return identity;
+}

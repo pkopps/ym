@@ -1,8 +1,11 @@
 import {
   AnalyticsEvent,
+  AuthenticatedUserEnvelope,
   CompleteBookingRequest,
   CustomerProperty,
   GoogleAuthStartRequest,
+  CurrentUserResponse,
+  LoginRequest,
   ListCustomerReviewOpportunitiesResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
@@ -27,14 +30,21 @@ import {
 import { ApiRoutes } from "./routes";
 
 export class MarketplaceApiClient {
+  private authToken?: string;
+
   public constructor(private readonly baseUrl: string) {}
+
+  public setAuthToken(token: string | undefined): void {
+    this.authToken = token;
+  }
 
   // Shared clients use one JSON helper so browsers and React Native stay consistent.
   private async postJson<TResponse>(path: string, payload: unknown): Promise<TResponse> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {})
       },
       body: JSON.stringify(payload)
     });
@@ -50,7 +60,8 @@ export class MarketplaceApiClient {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "GET",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {})
       },
       cache: "no-store"
     });
@@ -62,8 +73,16 @@ export class MarketplaceApiClient {
     return (await response.json()) as TResponse;
   }
 
-  public registerUser(payload: RegisterUserRequest) {
+  public registerUser(payload: RegisterUserRequest): Promise<AuthenticatedUserEnvelope> {
     return this.postJson(ApiRoutes.register, payload);
+  }
+
+  public login(payload: LoginRequest): Promise<AuthenticatedUserEnvelope> {
+    return this.postJson(ApiRoutes.login, payload);
+  }
+
+  public getCurrentUser(): Promise<CurrentUserResponse> {
+    return this.getJson(ApiRoutes.currentUser);
   }
 
   public getGoogleAuthStartUrl(payload: GoogleAuthStartRequest): string {
@@ -88,10 +107,8 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.customerProperties, payload);
   }
 
-  public getCustomerProperties(customerId: string) {
-    return this.getJson<CustomerProperty[]>(
-      `${ApiRoutes.customerProperties}?customerId=${encodeURIComponent(customerId)}`
-    );
+  public getCustomerProperties() {
+    return this.getJson<CustomerProperty[]>(ApiRoutes.customerProperties);
   }
 
   public setDefaultCustomerProperty(payload: SetDefaultCustomerPropertyRequest) {
@@ -120,10 +137,8 @@ export class MarketplaceApiClient {
     );
   }
 
-  public getCustomerReviewOpportunities(customerId: string): Promise<ListCustomerReviewOpportunitiesResponse> {
-    return this.getJson<ListCustomerReviewOpportunitiesResponse>(
-      `${ApiRoutes.customerReviewOpportunities}?customerId=${encodeURIComponent(customerId)}`
-    );
+  public getCustomerReviewOpportunities(): Promise<ListCustomerReviewOpportunitiesResponse> {
+    return this.getJson<ListCustomerReviewOpportunitiesResponse>(ApiRoutes.customerReviewOpportunities);
   }
 
   public createBooking(payload: CreateBookingRequest) {

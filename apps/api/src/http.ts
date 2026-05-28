@@ -5,6 +5,7 @@ export interface RequestContext {
   path: string;
   body: unknown;
   query: URLSearchParams;
+  headers: Record<string, string | undefined>;
 }
 
 export interface ApiController {
@@ -12,9 +13,18 @@ export interface ApiController {
   handle(context: RequestContext, response: ServerResponse): Promise<void>;
 }
 
+export class HttpError extends Error {
+  public constructor(
+    public readonly statusCode: number,
+    message: string
+  ) {
+    super(message);
+  }
+}
+
 export function applyCorsHeaders(response: ServerResponse): void {
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
 
@@ -34,7 +44,13 @@ export async function parseRequest(request: IncomingMessage): Promise<RequestCon
     method: request.method ?? "GET",
     path: url.pathname,
     body: parsedBody,
-    query: url.searchParams
+    query: url.searchParams,
+    headers: Object.fromEntries(
+      Object.entries(request.headers).map(([key, value]) => [
+        key,
+        Array.isArray(value) ? value.join(", ") : value
+      ])
+    )
   };
 }
 

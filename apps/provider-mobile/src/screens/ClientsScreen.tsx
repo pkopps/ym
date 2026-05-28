@@ -1,40 +1,105 @@
-import { Text } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { BrandTokens } from "@yardmatch/branding";
+import {
+  providerCrewMemberSnapshots,
+  providerManagedJobs
+} from "@yardmatch/ui";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { getProviderMobileTracker } from "../lib/tracking";
 
 export function ClientsScreen() {
+  const tracker = getProviderMobileTracker();
+  const shortStaffedJobs = providerManagedJobs.filter(
+    (job) => job.requiredCrewMembers > job.assignedCrewMembers.length
+  );
+
   return (
-    <ScreenShell
-      eyebrow="Clients"
-      title="See lead quality, active jobs, client notes, staffing needs, and payout context without switching apps."
-      description="This screen focuses the business-owner experience on operational follow-through rather than customer discovery."
-    >
-      <InfoCard
-        title="Lead management"
-        description="Review requests by service type, neighborhood, estimated payout, and route fit before accepting more work."
-      >
-        <Text>Highest demand category: lawn mowing</Text>
+    <ScreenShell eyebrow="Crew" title="Staffing and coverage">
+      <InfoCard title="Open crew needs" description={`${shortStaffedJobs.length} jobs need more help`}>
+        <View style={styles.list}>
+          {shortStaffedJobs.map((job) => {
+            const gap = job.requiredCrewMembers - job.assignedCrewMembers.length;
+
+            return (
+              <View key={job.id} style={styles.jobRow}>
+                <View style={styles.copy}>
+                  <Text style={styles.title}>{job.clientName}</Text>
+                  <Text style={styles.meta}>
+                    {job.serviceLabel} • {job.dateLabel}
+                  </Text>
+                  <Text style={styles.meta}>
+                    {gap} open spot{gap === 1 ? "" : "s"} • {job.distanceMiles} mi away
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() =>
+                    void tracker.track(MarketplaceTelemetryEventCatalog.providerSearchPerformed, {
+                      app: "provider",
+                      action: "fill-job-gap",
+                      bookingId: job.id,
+                      openSlots: gap
+                    })
+                  }
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Find help</Text>
+                </Pressable>
+              </View>
+            );
+          })}
+        </View>
       </InfoCard>
-      <InfoCard
-        title="Crew hiring pipeline"
-        description="Compare available crew members by skills, travel radius, and preferred schedule when demand rises."
-      >
-        <Text>Need next: 2 part-time workers for spring cleanups</Text>
+
+      <InfoCard title="Current crew" description={`${providerCrewMemberSnapshots.length} people available`}>
+        <View style={styles.list}>
+          {providerCrewMemberSnapshots.map((crewMember) => (
+            <View key={crewMember.name} style={styles.jobRow}>
+              <View style={styles.copy}>
+                <Text style={styles.title}>{crewMember.name}</Text>
+                <Text style={styles.meta}>{crewMember.roleLabel}</Text>
+                <Text style={styles.meta}>{crewMember.availabilityLabel}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
       </InfoCard>
-      <InfoCard
-        title="Address-change review"
-        description="If a confirmed customer booking changes location more than 24 hours out, the provider can review route impact before accepting."
-      />
-      <InfoCard
-        title="Review follow-through"
-        description="Customer reviews should only land after completed service, so business owners can evaluate feedback in the right operational context."
-      >
-        <Text>Monitor which completed jobs are generating 5-star feedback vs. coaching opportunities.</Text>
-      </InfoCard>
-      <InfoCard
-        title="Payout and dispute context"
-        description="Keep payment authorization, completion state, refund exposure, and support escalation connected to each job."
-      />
     </ScreenShell>
   );
 }
+
+const styles = StyleSheet.create({
+  list: {
+    gap: BrandTokens.spacing.md
+  },
+  jobRow: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.md,
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  copy: {
+    flex: 1,
+    gap: BrandTokens.spacing.xs
+  },
+  title: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
+  },
+  meta: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  secondaryButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  secondaryButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  }
+});

@@ -20,6 +20,7 @@ import {
   CustomerProperty,
   ObservabilityOverview,
   CustomerProfile,
+  CurrentUserResponse,
   PaymentRecord,
   ProviderProfile,
   ProviderReview,
@@ -45,7 +46,7 @@ import {
   SchedulingService
 } from "@yardmatch/domain";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
-import { InMemoryMarketplaceRepository } from "../repositories/InMemoryMarketplaceRepository";
+import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
 
 export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
@@ -59,11 +60,14 @@ export class MarketplacePlatformService {
   private readonly instantQuoteEngine = new InstantQuoteEngine();
 
   public constructor(
-    private readonly repository: InMemoryMarketplaceRepository,
+    private readonly repository: MarketplaceRepository,
     private readonly analytics: DataEngineeringLogger
   ) {}
 
-  public registerUser(payload: RegisterUserRequest) {
+  public async registerUser(
+    payload: RegisterUserRequest,
+    passwordHash?: string
+  ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
     const now = new Date().toISOString();
 
     if (payload.role === "customer") {
@@ -95,7 +99,7 @@ export class MarketplacePlatformService {
         city: customer.address.city,
         lawnSizeSqFt: customer.lawnSizeSqFt
       });
-      return this.repository.createCustomer(customer);
+      return this.repository.createCustomer(customer, passwordHash);
     }
 
     if (payload.role === "crew-member") {
@@ -129,7 +133,7 @@ export class MarketplacePlatformService {
           preferredSchedule: crewMember.preferredSchedule
         }
       );
-      return this.repository.createCrewMember(crewMember);
+      return this.repository.createCrewMember(crewMember, passwordHash);
     }
 
     const provider: ProviderProfile = {
@@ -160,10 +164,10 @@ export class MarketplacePlatformService {
       city: provider.address.city,
       serviceRadiusMiles: provider.serviceRadiusMiles
     });
-    return this.repository.createProvider(provider);
+    return this.repository.createProvider(provider, passwordHash);
   }
 
-  public searchProviders(payload: SearchProvidersRequest): SearchProvidersResponse {
+  public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.providerSearchPerformed, "anonymous", {
       dateIso: payload.dateIso,
       categoryCount: payload.categories.length,
@@ -173,8 +177,8 @@ export class MarketplacePlatformService {
     const matchingProviders = this.providerMatcher
       .rankProviders(
         payload.address,
-        this.repository
-          .listProviders()
+        (await this.repository
+          .listProviders())
           .filter((provider) =>
             payload.categories.some((category) => provider.categories.includes(category))
           )
@@ -184,20 +188,24 @@ export class MarketplacePlatformService {
           this.geoService.distanceMiles(payload.address, provider.address) <= provider.serviceRadiusMiles
       );
 
-    const suggestedSlots = matchingProviders.flatMap((provider) => {
-      const providerSlots = this.repository.listSlotsByProvider(provider.id);
+    const suggestedSlots = (
+      await Promise.all(
+        matchingProviders.map(async (provider) => {
+          const providerSlots = await this.repository.listSlotsByProvider(provider.id);
 
-      if (!payload.estimatedDurationMinutes) {
-        return providerSlots.filter((slot) => !slot.isBooked);
-      }
+          if (!payload.estimatedDurationMinutes) {
+            return providerSlots.filter((slot) => !slot.isBooked);
+          }
 
-      const firstMatchingSlot = this.schedulingService.findFirstAvailableSlot(
-        providerSlots,
-        payload.estimatedDurationMinutes
-      );
+          const firstMatchingSlot = this.schedulingService.findFirstAvailableSlot(
+            providerSlots,
+            payload.estimatedDurationMinutes
+          );
 
-      return firstMatchingSlot ? [firstMatchingSlot] : [];
-    });
+          return firstMatchingSlot ? [firstMatchingSlot] : [];
+        })
+      )
+    ).flat();
 
     this.analytics.record({
       id: crypto.randomUUID(),
@@ -216,8 +224,11 @@ export class MarketplacePlatformService {
     };
   }
 
-  public updateProviderSettings(payload: UpdateProviderSettingsRequest): ProviderProfile {
-    const provider = this.repository.findProviderById(payload.providerId);
+  public async updateProviderSettings(
+    providerId: string,
+    payload: UpdateProviderSettingsRequest
+  ): Promise<ProviderProfile> {
+    const provider = await this.repository.findProviderById(providerId);
     if (!provider) {
       throw new Error("Provider not found");
     }
@@ -227,7 +238,7 @@ export class MarketplacePlatformService {
       throw new Error("serviceRadiusMiles must be between 5 and 60");
     }
 
-    const updatedProvider = this.repository.updateProvider(provider.id, {
+    const updatedProvider = await this.repository.updateProvider(provider.id, {
       serviceRadiusMiles: normalizedRadius,
       sponsoredListingEnabled:
         payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled
@@ -266,13 +277,16 @@ export class MarketplacePlatformService {
     return updatedProvider;
   }
 
-  public createProviderReview(payload: CreateProviderReviewRequest): ProviderReview {
-    const booking = this.repository.findBookingById(payload.bookingId);
+  public async createProviderReview(
+    customerId: string,
+    payload: CreateProviderReviewRequest
+  ): Promise<ProviderReview> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
     if (!booking) {
       throw new Error("Booking not found");
     }
 
-    if (booking.customerId !== payload.customerId) {
+    if (booking.customerId !== customerId) {
       throw new Error("Only the booking customer can submit a review");
     }
 
@@ -280,13 +294,13 @@ export class MarketplacePlatformService {
       throw new Error("Reviews can only be submitted after the service is completed");
     }
 
-    if (booking.reviewId || this.repository.findProviderReviewByBookingId(booking.id)) {
+    if (booking.reviewId || (await this.repository.findProviderReviewByBookingId(booking.id))) {
       throw new Error("A review has already been submitted for this booking");
     }
 
-    const invite = this.getActiveReviewInviteOrThrow(booking.id);
+    const invite = await this.getActiveReviewInviteOrThrow(booking.id);
 
-    const provider = this.repository.findProviderById(booking.providerId);
+    const provider = await this.repository.findProviderById(booking.providerId);
     if (!provider) {
       throw new Error("Provider not found");
     }
@@ -304,7 +318,7 @@ export class MarketplacePlatformService {
       id: crypto.randomUUID(),
       bookingId: booking.id,
       providerId: booking.providerId,
-      customerId: payload.customerId,
+      customerId,
       overallRating: payload.overallRating,
       timelinessRating: payload.timelinessRating,
       attentionToDetailRating: payload.attentionToDetailRating,
@@ -312,19 +326,19 @@ export class MarketplacePlatformService {
       createdAt: new Date().toISOString()
     };
 
-    const savedReview = this.repository.createProviderReview(review);
-    this.repository.updateBooking(booking.id, {
+    const savedReview = await this.repository.createProviderReview(review);
+    await this.repository.updateBooking(booking.id, {
       reviewId: review.id
     });
-    this.repository.updateReviewInvite(invite.id, {
+    await this.repository.updateReviewInvite(invite.id, {
       status: "completed",
       completedAt: savedReview.createdAt
     });
 
-    const providerReviews = this.repository.listProviderReviews(provider.id);
+    const providerReviews = await this.repository.listProviderReviews(provider.id);
     const nextReviewCount = providerReviews.length;
 
-    this.repository.updateProvider(provider.id, {
+    await this.repository.updateProvider(provider.id, {
       rating: this.calculateAverageRating(providerReviews, "overallRating"),
       timelinessRating: this.calculateAverageRating(providerReviews, "timelinessRating"),
       attentionToDetailRating: this.calculateAverageRating(providerReviews, "attentionToDetailRating"),
@@ -334,7 +348,7 @@ export class MarketplacePlatformService {
     this.analytics.record({
       id: crypto.randomUUID(),
       name: MarketplaceTelemetryEventCatalog.providerReviewSubmitted,
-      actorId: payload.customerId,
+      actorId: customerId,
       occurredAt: savedReview.createdAt,
       properties: {
         bookingId: booking.id,
@@ -349,15 +363,22 @@ export class MarketplacePlatformService {
     return savedReview;
   }
 
-  public completeBooking(payload: CompleteBookingRequest): Booking {
-    const booking = this.repository.findBookingById(payload.bookingId);
+  public async completeBooking(
+    providerId: string,
+    payload: CompleteBookingRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
     if (!booking) {
       throw new Error("Booking not found");
     }
 
+    if (booking.providerId !== providerId) {
+      throw new Error("Only the booking provider can mark the service completed");
+    }
+
     const wasAlreadyCompleted = booking.status === "completed" && Boolean(booking.completedAt);
     const completedAt = booking.completedAt ?? new Date().toISOString();
-    const updatedBooking = this.repository.updateBooking(booking.id, {
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
       status: "completed",
       completedAt
     });
@@ -366,15 +387,15 @@ export class MarketplacePlatformService {
       throw new Error("Booking could not be completed");
     }
 
-    const existingInvite = this.repository.findReviewInviteByBookingId(booking.id);
+    const existingInvite = await this.repository.findReviewInviteByBookingId(booking.id);
     if (!existingInvite) {
-      const customer = this.repository.findCustomerById(booking.customerId);
+      const customer = await this.repository.findCustomerById(booking.customerId);
       if (!customer) {
         throw new Error("Customer not found");
       }
 
       const reviewInvite = this.buildReviewInvite(updatedBooking, customer.email, completedAt);
-      this.repository.createReviewInvite(reviewInvite);
+      await this.repository.createReviewInvite(reviewInvite);
 
       this.analytics.record({
         id: crypto.randomUUID(),
@@ -405,8 +426,8 @@ export class MarketplacePlatformService {
     return updatedBooking;
   }
 
-  public createInstantQuote(payload: InstantQuoteRequest): InstantQuoteResponse {
-    const customer = payload.customerId ? this.repository.findCustomerById(payload.customerId) : undefined;
+  public async createInstantQuote(payload: InstantQuoteRequest): Promise<InstantQuoteResponse> {
+    const customer = payload.customerId ? await this.repository.findCustomerById(payload.customerId) : undefined;
     const property = payload.propertyId
       ? customer?.properties.find((item) => item.id === payload.propertyId)
       : undefined;
@@ -443,8 +464,11 @@ export class MarketplacePlatformService {
     return quote;
   }
 
-  public createBooking(payload: CreateBookingRequest) {
-    const customer = this.repository.findCustomerById(payload.customerId);
+  public async createBooking(
+    customerId: string,
+    payload: CreateBookingRequest
+  ): Promise<Booking> {
+    const customer = await this.repository.findCustomerById(customerId);
     if (!customer) {
       throw new Error("Customer not found");
     }
@@ -458,12 +482,13 @@ export class MarketplacePlatformService {
     }
 
     const booking = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
+      customerId,
       ...payload,
       serviceAddress: selectedProperty?.address ?? payload.serviceAddress
     });
-    const result = this.repository.createBooking(booking);
+    const result = await this.repository.createBooking(booking);
 
-    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, payload.customerId, {
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, customerId, {
       providerId: payload.providerId,
       totalCents: payload.totalCents,
       category: payload.category,
@@ -472,14 +497,20 @@ export class MarketplacePlatformService {
     return result;
   }
 
-  public createCustomerProperty(payload: CreateCustomerPropertyRequest): CustomerProperty {
-    const customer = this.repository.findCustomerById(payload.customerId);
+  public async createCustomerProperty(
+    customerId: string,
+    payload: CreateCustomerPropertyRequest
+  ): Promise<CustomerProperty> {
+    const customer = await this.repository.findCustomerById(customerId);
 
     if (!customer) {
       throw new Error("Customer not found");
     }
 
-    const property = this.propertyBook.createProperty(crypto.randomUUID(), payload);
+    const property = this.propertyBook.createProperty(crypto.randomUUID(), {
+      ...payload,
+      customerId
+    });
     const properties = customer.properties.map((existingProperty) => ({
       ...existingProperty,
       isDefault: payload.setAsDefault ? false : existingProperty.isDefault
@@ -490,7 +521,7 @@ export class MarketplacePlatformService {
       ? property
       : properties.find((existingProperty) => existingProperty.isDefault) ?? property;
 
-    this.repository.updateCustomer(customer.id, {
+    await this.repository.updateCustomer(customer.id, {
       properties,
       defaultPropertyId: defaultProperty.id,
       address: defaultProperty.address,
@@ -513,32 +544,38 @@ export class MarketplacePlatformService {
     return property;
   }
 
-  public listCustomerProperties(customerId: string): CustomerProperty[] {
+  public async listCustomerProperties(customerId: string): Promise<CustomerProperty[]> {
     return this.repository.listCustomerProperties(customerId);
   }
 
-  public listProviderReviews(providerId: string): ProviderReview[] {
+  public async listProviderReviews(providerId: string): Promise<ProviderReview[]> {
     return this.repository.listProviderReviews(providerId);
   }
 
-  public listCustomerReviewOpportunities(
+  public async listCustomerReviewOpportunities(
     customerId: string
-  ): ListCustomerReviewOpportunitiesResponse {
+  ): Promise<ListCustomerReviewOpportunitiesResponse> {
     const now = new Date();
-    const opportunities = this.repository
-      .listBookings()
+    const opportunities = (await this.repository
+      .listBookings())
       .filter((booking) => booking.customerId === customerId && booking.status === "completed")
-      .map((booking) => this.buildReviewOpportunity(booking, now))
+      .map(async (booking) => this.buildReviewOpportunity(booking, now))
+      ;
+
+    const resolvedOpportunities = (await Promise.all(opportunities))
       .filter((opportunity): opportunity is CustomerReviewOpportunity => opportunity !== undefined)
       .sort((left, right) => (right.completedAt ?? "").localeCompare(left.completedAt ?? ""));
 
     return {
-      opportunities
+      opportunities: resolvedOpportunities
     };
   }
 
-  public setDefaultCustomerProperty(payload: SetDefaultCustomerPropertyRequest): CustomerProfile {
-    const customer = this.repository.findCustomerById(payload.customerId);
+  public async setDefaultCustomerProperty(
+    customerId: string,
+    payload: SetDefaultCustomerPropertyRequest
+  ): Promise<CustomerProfile> {
+    const customer = await this.repository.findCustomerById(customerId);
 
     if (!customer) {
       throw new Error("Customer not found");
@@ -550,7 +587,7 @@ export class MarketplacePlatformService {
     }
 
     const properties = this.propertyBook.setDefaultProperty(customer.properties, payload.propertyId);
-    const updatedCustomer = this.repository.updateCustomer(customer.id, {
+    const updatedCustomer = await this.repository.updateCustomer(customer.id, {
       properties,
       defaultPropertyId: payload.propertyId,
       address: property.address,
@@ -576,21 +613,33 @@ export class MarketplacePlatformService {
     return updatedCustomer;
   }
 
-  public listBookings() {
-    return this.repository.listBookings();
+  public async listBookingsForUser(actor: AuthIdentityRecord): Promise<Booking[]> {
+    const bookings = await this.repository.listBookings();
+    if (actor.role === "customer") {
+      return bookings.filter((booking) => booking.customerId === actor.userId);
+    }
+
+    if (actor.role === "provider") {
+      return bookings.filter((booking) => booking.providerId === actor.userId);
+    }
+
+    return [];
   }
 
-  public updateBookingAddress(payload: UpdateBookingAddressRequest): UpdateBookingAddressResponse {
-    const booking = this.repository.findBookingById(payload.bookingId);
+  public async updateBookingAddress(
+    customerId: string,
+    payload: UpdateBookingAddressRequest
+  ): Promise<UpdateBookingAddressResponse> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
     if (!booking) {
       throw new Error("Booking not found");
     }
 
-    if (booking.customerId !== payload.customerId) {
+    if (booking.customerId !== customerId) {
       throw new Error("Only the booking customer can request an address change");
     }
 
-    const customer = this.repository.findCustomerById(payload.customerId);
+    const customer = await this.repository.findCustomerById(customerId);
     if (!customer) {
       throw new Error("Customer not found");
     }
@@ -605,7 +654,7 @@ export class MarketplacePlatformService {
 
     const requestedAddress = selectedProperty?.address ?? payload.newAddress;
 
-    const provider = this.repository.findProviderById(booking.providerId);
+    const provider = await this.repository.findProviderById(booking.providerId);
     if (!provider) {
       throw new Error("Provider not found");
     }
@@ -618,7 +667,7 @@ export class MarketplacePlatformService {
 
     const historyEntry = this.bookingAddressPolicy.buildAddressChangeHistoryEntry({
       bookingId: booking.id,
-      customerId: payload.customerId,
+      customerId,
       previousAddress: booking.serviceAddress,
       requestedAddress: requestedAddress,
       requestedPropertyId: payload.newPropertyId,
@@ -629,12 +678,12 @@ export class MarketplacePlatformService {
     const nextHistory = [...booking.addressChangeHistory, historyEntry];
     const updatedBooking =
       evaluation.outcome === "updated"
-        ? this.repository.updateBooking(booking.id, {
+        ? await this.repository.updateBooking(booking.id, {
             serviceAddress: requestedAddress,
             servicePropertyId: payload.newPropertyId,
             addressChangeHistory: nextHistory
           })
-        : this.repository.updateBooking(booking.id, {
+        : await this.repository.updateBooking(booking.id, {
             addressChangeHistory: nextHistory
           });
 
@@ -652,7 +701,7 @@ export class MarketplacePlatformService {
     this.analytics.record({
       id: crypto.randomUUID(),
       name: eventName,
-      actorId: payload.customerId,
+      actorId: customerId,
       occurredAt: new Date().toISOString(),
       properties: {
         bookingId: booking.id,
@@ -669,7 +718,7 @@ export class MarketplacePlatformService {
     };
   }
 
-  public createPaymentIntent(payload: CreatePaymentIntentRequest): PaymentRecord {
+  public async createPaymentIntent(payload: CreatePaymentIntentRequest): Promise<PaymentRecord> {
     const payment: PaymentRecord = {
       id: crypto.randomUUID(),
       bookingId: payload.bookingId,
@@ -684,8 +733,8 @@ export class MarketplacePlatformService {
     return this.repository.createPayment(payment);
   }
 
-  public createRefund(payload: CreateRefundRequest) {
-    const updatedPayment = this.repository.updatePayment(payload.paymentId, {
+  public async createRefund(payload: CreateRefundRequest): Promise<PaymentRecord> {
+    const updatedPayment = await this.repository.updatePayment(payload.paymentId, {
       status: "refunded",
       refundReason: payload.reason,
       refundable: false
@@ -702,11 +751,14 @@ export class MarketplacePlatformService {
     return updatedPayment;
   }
 
-  public createSupportTicket(payload: CreateSupportTicketRequest): SupportTicket {
+  public async createSupportTicket(
+    requesterId: string,
+    payload: CreateSupportTicketRequest
+  ): Promise<SupportTicket> {
     const ticket: SupportTicket = {
       id: crypto.randomUUID(),
       bookingId: payload.bookingId,
-      requesterId: payload.requesterId,
+      requesterId,
       subject: payload.subject,
       description: payload.description,
       issueType: payload.issueType,
@@ -714,7 +766,7 @@ export class MarketplacePlatformService {
       createdAt: new Date().toISOString()
     };
 
-    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.supportTicketOpened, payload.requesterId, {
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.supportTicketOpened, requesterId, {
       issueType: payload.issueType,
       bookingId: payload.bookingId ?? "none"
     });
@@ -725,16 +777,16 @@ export class MarketplacePlatformService {
     return this.analytics.record(payload);
   }
 
-  public processReviewInvites(
+  public async processReviewInvites(
     payload: ProcessReviewInvitesRequest = {}
-  ): ProcessReviewInvitesResponse {
+  ): Promise<ProcessReviewInvitesResponse> {
     const now = payload.nowIso ? new Date(payload.nowIso) : new Date();
     const sentAt = now.toISOString();
-    const dispatches = this.repository
-      .listScheduledReviewInvites()
+    const dispatches = (await this.repository
+      .listScheduledReviewInvites())
       .filter((invite) => {
         if (new Date(invite.expiresAtIso).getTime() <= now.getTime()) {
-          this.repository.updateReviewInvite(invite.id, {
+          void this.repository.updateReviewInvite(invite.id, {
             status: "expired"
           });
           return false;
@@ -742,8 +794,8 @@ export class MarketplacePlatformService {
 
         return new Date(invite.scheduledSendIso).getTime() <= now.getTime();
       })
-      .map((invite) => {
-        const updatedInvite = this.repository.updateReviewInvite(invite.id, {
+      .map(async (invite) => {
+        const updatedInvite = await this.repository.updateReviewInvite(invite.id, {
           status: "sent",
           sentAt
         });
@@ -778,7 +830,7 @@ export class MarketplacePlatformService {
       });
 
     return {
-      dispatches
+      dispatches: await Promise.all(dispatches)
     };
   }
 
@@ -786,15 +838,37 @@ export class MarketplacePlatformService {
     return this.analytics.recordSessionHeartbeat(payload);
   }
 
-  public getObservabilityOverview(): ObservabilityOverview {
+  public async getObservabilityOverview(): Promise<ObservabilityOverview> {
     return this.analytics.getOverview({
-      bookings: this.repository.listBookings(),
-      supportTickets: this.repository.listSupportTickets()
+      bookings: await this.repository.listBookings(),
+      supportTickets: await this.repository.listSupportTickets()
     });
   }
 
-  public buildCalendarFeed(providerId: string): string {
-    return this.schedulingService.buildCalendarFeed(this.repository.listSlotsByProvider(providerId));
+  public async buildCalendarFeed(providerId: string): Promise<string> {
+    return this.schedulingService.buildCalendarFeed(await this.repository.listSlotsByProvider(providerId));
+  }
+
+  public async getUserByIdentity(
+    identity: AuthIdentityRecord
+  ): Promise<CurrentUserResponse["user"] | undefined> {
+    if (identity.role === "customer") {
+      return this.repository.findCustomerById(identity.userId);
+    }
+
+    if (identity.role === "provider") {
+      return this.repository.findProviderById(identity.userId);
+    }
+
+    return this.repository.findCrewMemberById(identity.userId);
+  }
+
+  public async findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined> {
+    return this.repository.findAuthIdentityByEmail(email);
+  }
+
+  public async findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined> {
+    return this.repository.findAuthIdentityByUserId(userId);
   }
 
   // Review validation stays centralized here so web and mobile both inherit the same rule set.
@@ -834,17 +908,17 @@ export class MarketplacePlatformService {
     };
   }
 
-  private buildReviewOpportunity(
+  private async buildReviewOpportunity(
     booking: Booking,
     now: Date
-  ): CustomerReviewOpportunity | undefined {
-    const provider = this.repository.findProviderById(booking.providerId);
+  ): Promise<CustomerReviewOpportunity | undefined> {
+    const provider = await this.repository.findProviderById(booking.providerId);
     if (!provider) {
       return undefined;
     }
 
-    const review = this.repository.findProviderReviewByBookingId(booking.id);
-    const invite = this.getResolvedReviewInvite(booking.id, now);
+    const review = await this.repository.findProviderReviewByBookingId(booking.id);
+    const invite = await this.getResolvedReviewInvite(booking.id, now);
 
     if (review) {
       return {
@@ -922,8 +996,8 @@ export class MarketplacePlatformService {
     };
   }
 
-  private getActiveReviewInviteOrThrow(bookingId: string): ReviewInvite {
-    const invite = this.getResolvedReviewInvite(bookingId, new Date());
+  private async getActiveReviewInviteOrThrow(bookingId: string): Promise<ReviewInvite> {
+    const invite = await this.getResolvedReviewInvite(bookingId, new Date());
 
     if (!invite) {
       throw new Error("No review invite exists for this booking");
@@ -936,8 +1010,8 @@ export class MarketplacePlatformService {
     return invite;
   }
 
-  private getResolvedReviewInvite(bookingId: string, now: Date): ReviewInvite | undefined {
-    const invite = this.repository.findReviewInviteByBookingId(bookingId);
+  private async getResolvedReviewInvite(bookingId: string, now: Date): Promise<ReviewInvite | undefined> {
+    const invite = await this.repository.findReviewInviteByBookingId(bookingId);
     if (!invite) {
       return undefined;
     }

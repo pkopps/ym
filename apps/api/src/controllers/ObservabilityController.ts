@@ -14,7 +14,7 @@ export class ObservabilityController implements ApiController {
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
     if (context.path === "/api/observability/overview") {
-      sendJson(response, 200, this.platform.getObservabilityOverview());
+      sendJson(response, 200, await this.platform.getObservabilityOverview());
       return;
     }
 

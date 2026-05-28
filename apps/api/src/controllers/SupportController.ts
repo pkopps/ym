@@ -1,4 +1,5 @@
 import { AnalyticsEvent, CreateSupportTicketRequest } from "@yardmatch/contracts";
+import { requireAuthenticatedIdentity } from "../controller-auth";
 import { ApiController, RequestContext, sendJson } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
@@ -14,7 +15,12 @@ export class SupportController implements ApiController {
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
     if (context.path === "/api/support/tickets") {
-      sendJson(response, 201, this.platform.createSupportTicket(context.body as CreateSupportTicketRequest));
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(
+        response,
+        201,
+        await this.platform.createSupportTicket(identity.userId, context.body as CreateSupportTicketRequest)
+      );
       return;
     }
 

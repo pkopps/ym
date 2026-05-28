@@ -3,6 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 import { AntDesign } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
 import { AuthFlowMode } from "@yardmatch/contracts";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { getCrewMobileTracker } from "../lib/tracking";
 
 function getModeCopy(mode: AuthFlowMode) {
   return mode === "login"
@@ -23,6 +25,16 @@ function getModeCopy(mode: AuthFlowMode) {
 export function CrewAuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
   const [mode, setMode] = useState<AuthFlowMode>("login");
   const authCopy = getModeCopy(mode);
+  const tracker = getCrewMobileTracker();
+
+  const handleAuth = (method: "password" | "google" | "apple") => {
+    void tracker.track(MarketplaceTelemetryEventCatalog.mobileAuthCompleted, {
+      app: "crew",
+      method,
+      mode
+    });
+    onAuthenticated();
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -55,16 +67,16 @@ export function CrewAuthScreen({ onAuthenticated }: { onAuthenticated: () => voi
           <TextInput placeholder="Password" placeholderTextColor="#6e7d71" secureTextEntry style={styles.input} />
         </View>
 
-        <Pressable onPress={onAuthenticated} style={styles.primaryButton}>
+        <Pressable onPress={() => handleAuth("password")} style={styles.primaryButton}>
           <Text style={styles.primaryButtonLabel}>{authCopy.submitLabel}</Text>
         </Pressable>
 
         <View style={styles.socialStack}>
-          <Pressable onPress={onAuthenticated} style={styles.socialButton}>
+          <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
             <AntDesign color="#4285F4" name="google" size={18} />
             <Text style={styles.socialLabel}>Continue with Google</Text>
           </Pressable>
-          <Pressable onPress={onAuthenticated} style={styles.socialButton}>
+          <Pressable onPress={() => handleAuth("apple")} style={styles.socialButton}>
             <AntDesign color={BrandTokens.colors.ink} name="apple" size={18} />
             <Text style={styles.socialLabel}>Continue with Apple</Text>
           </Pressable>

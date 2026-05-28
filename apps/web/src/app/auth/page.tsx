@@ -13,7 +13,7 @@ export default function AuthPage() {
         <p>Pick the role that fits you.</p>
       </section>
 
-      <section className="grid-three">
+      <section className="grid-three auth-choice-grid">
         <article className="card">
           <h2>Property owner</h2>
           <p>Book and manage service for your home or property.</p>

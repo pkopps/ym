@@ -1,5 +1,19 @@
-import { GoogleAuthStartResponse, RegisterUserRequest } from "@yardmatch/contracts";
-import { ApiController, RequestContext, sendJson, sendRedirect } from "../http";
+import {
+  AuthenticatedUserEnvelope,
+  CurrentUserResponse,
+  GoogleAuthStartResponse,
+  LoginRequest,
+  RegisterUserRequest
+} from "@yardmatch/contracts";
+import {
+  TOKEN_TTL_SECONDS,
+  getBearerToken,
+  hashPassword,
+  signSessionToken,
+  verifyPassword,
+  verifySessionToken
+} from "../auth";
+import { ApiController, HttpError, RequestContext, sendJson, sendRedirect } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
 export class AuthController implements ApiController {
@@ -8,6 +22,8 @@ export class AuthController implements ApiController {
   public canHandle(context: RequestContext): boolean {
     return (
       (context.method === "POST" && context.path === "/api/auth/register") ||
+      (context.method === "POST" && context.path === "/api/auth/login") ||
+      (context.method === "GET" && context.path === "/api/auth/me") ||
       (context.method === "GET" &&
         (context.path === "/api/auth/google/start" || context.path === "/api/auth/apple/start"))
     );
@@ -44,7 +60,90 @@ export class AuthController implements ApiController {
       return;
     }
 
-    const user = this.platform.registerUser(context.body as RegisterUserRequest);
-    sendJson(response, 201, user);
+    if (context.method === "POST" && context.path === "/api/auth/login") {
+      const payload = context.body as LoginRequest;
+      const identity = await this.platform.findAuthIdentityByEmail(payload.email.trim().toLowerCase());
+
+      if (!identity?.passwordHash || !verifyPassword(payload.password, identity.passwordHash)) {
+        throw new HttpError(401, "Invalid email or password");
+      }
+
+      const user = await this.platform.getUserByIdentity(identity);
+      if (!user) {
+        throw new HttpError(404, "User profile not found");
+      }
+
+      const result: AuthenticatedUserEnvelope = {
+        session: {
+          token: signSessionToken({
+            userId: identity.userId,
+            email: identity.email,
+            role: identity.role
+          }),
+          expiresInSeconds: TOKEN_TTL_SECONDS
+        },
+        user
+      };
+
+      sendJson(response, 200, result);
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/auth/me") {
+      const token = getBearerToken(context);
+      if (!token) {
+        throw new HttpError(401, "Missing bearer token");
+      }
+
+      let session;
+      try {
+        session = verifySessionToken(token);
+      } catch (error) {
+        throw new HttpError(401, error instanceof Error ? error.message : "Invalid bearer token");
+      }
+      const identity = await this.platform.findAuthIdentityByUserId(session.userId);
+      if (!identity) {
+        throw new HttpError(401, "Unknown session");
+      }
+
+      const user = await this.platform.getUserByIdentity(identity);
+      if (!user) {
+        throw new HttpError(404, "User profile not found");
+      }
+
+      const result: CurrentUserResponse = {
+        user
+      };
+      sendJson(response, 200, result);
+      return;
+    }
+
+    const payload = context.body as RegisterUserRequest;
+    const existingIdentity = await this.platform.findAuthIdentityByEmail(payload.email.trim().toLowerCase());
+    if (existingIdentity) {
+      throw new HttpError(409, "An account with that email already exists");
+    }
+
+    const user = await this.platform.registerUser(
+      {
+        ...payload,
+        email: payload.email.trim().toLowerCase()
+      },
+      hashPassword(payload.password)
+    );
+
+    const result: AuthenticatedUserEnvelope = {
+      session: {
+        token: signSessionToken({
+          userId: user.id,
+          email: user.email,
+          role: user.role
+        }),
+        expiresInSeconds: TOKEN_TTL_SECONDS
+      },
+      user
+    };
+
+    sendJson(response, 201, result);
   }
 }

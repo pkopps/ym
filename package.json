@@ -17,6 +17,9 @@
     "build:provider-mobile": "npm --workspace @yardmatch/provider-mobile run export",
     "build:crew-mobile": "npm --workspace @yardmatch/crew-mobile run export",
     "build:api": "tsc -p apps/api/tsconfig.json",
+    "prisma:generate": "npm --workspace @yardmatch/api run prisma:generate",
+    "prisma:seed": "npm --workspace @yardmatch/api run prisma:seed",
+    "test:api": "npm --workspace @yardmatch/api run test",
     "lint": "eslint .",
     "typecheck": "tsc -b"
   },
@@ -25,8 +28,12 @@
     "@types/react": "*",
     "@types/react-dom": "*",
     "eslint": "*",
+    "prisma": "^6.19.0",
     "tsx": "*",
     "turbo": "*",
     "typescript": "*"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0"
   }
 }

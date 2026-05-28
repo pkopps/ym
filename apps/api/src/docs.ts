@@ -23,13 +23,22 @@ export const apiSpec = {
     { name: "Support" },
     { name: "Observability" }
   ],
+  components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT"
+      }
+    }
+  },
   paths: {
     "/api/auth/register": {
       post: {
         tags: ["Auth"],
         summary: "Register a customer, provider business, or crew member",
         description:
-          "Providers represent landscaping businesses with equipment and client operations. Crew members represent individual workers who can join those businesses without running their own company.",
+          "Providers represent landscaping businesses with equipment and client operations. Crew members represent individual workers who can join those businesses without running their own company. The response returns both the created user profile and a bearer token.",
         requestBody: {
           required: true,
           content: {
@@ -37,6 +46,7 @@ export const apiSpec = {
               example: {
                 fullName: "Jordan Rivera",
                 email: "jordan@example.com",
+                password: "Password123!",
                 phone: "555-0200",
                 role: "customer",
                 propertyLabel: "Primary home",
@@ -56,7 +66,39 @@ export const apiSpec = {
           }
         },
         responses: {
-          "201": { description: "Registered user profile" }
+          "201": { description: "Registered user profile and bearer token" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      post: {
+        tags: ["Auth"],
+        summary: "Log in with email and password",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                email: "jordan@example.com",
+                password: "Password123!"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Authenticated user profile and bearer token" },
+          "401": { description: "Invalid credentials" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      get: {
+        tags: ["Auth"],
+        summary: "Fetch the current authenticated user",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Authenticated user profile" },
+          "401": { description: "Missing or invalid bearer token" }
         }
       }
     },
@@ -114,14 +156,7 @@ export const apiSpec = {
       get: {
         tags: ["Customers"],
         summary: "List saved properties for a customer",
-        parameters: [
-          {
-            name: "customerId",
-            in: "query",
-            required: true,
-            schema: { type: "string" }
-          }
-        ],
+        security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Customer property list" }
         }
@@ -129,12 +164,12 @@ export const apiSpec = {
       post: {
         tags: ["Customers"],
         summary: "Add a saved property",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
-                customerId: "customer_123",
                 label: "Rental property",
                 setAsDefault: false,
                 address: {
@@ -161,12 +196,12 @@ export const apiSpec = {
       post: {
         tags: ["Customers"],
         summary: "Set the default property for a customer",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
-                customerId: "customer_123",
                 propertyId: "property_456"
               }
             }
@@ -183,14 +218,7 @@ export const apiSpec = {
         summary: "List booking-specific review opportunities for a customer",
         description:
           "Returns completed bookings and whether each one is waiting on a delayed invite, ready for review, already reviewed, or expired.",
-        parameters: [
-          {
-            name: "customerId",
-            in: "query",
-            required: true,
-            schema: { type: "string" }
-          }
-        ],
+        security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Review opportunity list" }
         }
@@ -268,12 +296,12 @@ export const apiSpec = {
         summary: "Update provider business settings",
         description:
           "Lets a landscaping business owner change the service radius used to match against each customer property address.",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
-                providerId: "provider_123",
                 serviceRadiusMiles: 20,
                 sponsoredListingEnabled: true
               }
@@ -304,13 +332,13 @@ export const apiSpec = {
       post: {
         tags: ["Providers"],
         summary: "Create a provider review from a completed booking with an active invite",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
                 bookingId: "booking_123",
-                customerId: "customer_123",
                 overallRating: 5,
                 timelinessRating: 4,
                 attentionToDetailRating: 5,
@@ -328,6 +356,7 @@ export const apiSpec = {
       get: {
         tags: ["Bookings"],
         summary: "List bookings",
+        security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Booking list" }
         }
@@ -335,12 +364,12 @@ export const apiSpec = {
       post: {
         tags: ["Bookings"],
         summary: "Create a booking",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
-                customerId: "customer_123",
                 providerId: "provider_123",
                 servicePropertyId: "property_456",
                 serviceAddress: {
@@ -374,6 +403,7 @@ export const apiSpec = {
         summary: "Mark a booking complete and schedule the delayed review invite",
         description:
           "Completing a booking creates a review invite scheduled to send 48 hours later by default.",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -393,13 +423,13 @@ export const apiSpec = {
       post: {
         tags: ["Bookings"],
         summary: "Request an address change for an existing booking",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
                 bookingId: "booking_123",
-                customerId: "customer_123",
                 newPropertyId: "property_789",
                 newAddress: {
                   line1: "55 Barton Creek Ln",
@@ -425,6 +455,7 @@ export const apiSpec = {
       post: {
         tags: ["Payments"],
         summary: "Authorize a payment intent for a booking",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -445,6 +476,7 @@ export const apiSpec = {
       post: {
         tags: ["Payments"],
         summary: "Request or execute a refund",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
@@ -465,13 +497,13 @@ export const apiSpec = {
       post: {
         tags: ["Support"],
         summary: "Open a support ticket",
+        security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
                 bookingId: "booking_123",
-                requesterId: "customer_123",
                 subject: "Service quality issue",
                 description: "The back lawn was not completed.",
                 issueType: "service-quality"
@@ -515,14 +547,7 @@ export const apiSpec = {
       get: {
         tags: ["Providers"],
         summary: "Get provider availability as an ICS feed",
-        parameters: [
-          {
-            name: "providerId",
-            in: "query",
-            required: true,
-            schema: { type: "string" }
-          }
-        ],
+        security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "ICS calendar feed" }
         }

@@ -12,6 +12,7 @@ import {
   UpdateProviderSettingsRequest,
   UpdateBookingAddressRequest
 } from "@yardmatch/contracts";
+import { requireAuthenticatedIdentity, requireRole } from "../controller-auth";
 import { ApiController, RequestContext, sendJson, sendText } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
@@ -42,61 +43,57 @@ export class MarketplaceController implements ApiController {
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
     if (context.method === "GET" && context.path === "/api/customers/properties") {
-      const customerId = context.query.get("customerId");
-      if (!customerId) {
-        sendJson(response, 400, {
-          message: "customerId is required"
-        });
-        return;
-      }
-
-      sendJson(response, 200, this.platform.listCustomerProperties(customerId));
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.listCustomerProperties(identity.userId));
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/customers/properties") {
+      const identity = await requireRole(context, this.platform, "customer");
       sendJson(
         response,
         201,
-        this.platform.createCustomerProperty(context.body as CreateCustomerPropertyRequest)
+        await this.platform.createCustomerProperty(identity.userId, context.body as CreateCustomerPropertyRequest)
       );
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/customers/properties/default") {
+      const identity = await requireRole(context, this.platform, "customer");
       sendJson(
         response,
         200,
-        this.platform.setDefaultCustomerProperty(context.body as SetDefaultCustomerPropertyRequest)
+        await this.platform.setDefaultCustomerProperty(
+          identity.userId,
+          context.body as SetDefaultCustomerPropertyRequest
+        )
       );
       return;
     }
 
     if (context.method === "GET" && context.path === "/api/customers/review-opportunities") {
-      const customerId = context.query.get("customerId");
-      if (!customerId) {
-        sendJson(response, 400, {
-          message: "customerId is required"
-        });
-        return;
-      }
-
-      sendJson(response, 200, this.platform.listCustomerReviewOpportunities(customerId));
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.listCustomerReviewOpportunities(identity.userId));
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/quotes/instant") {
-      sendJson(response, 200, this.platform.createInstantQuote(context.body as InstantQuoteRequest));
+      sendJson(response, 200, await this.platform.createInstantQuote(context.body as InstantQuoteRequest));
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/providers/search") {
-      sendJson(response, 200, this.platform.searchProviders(context.body as SearchProvidersRequest));
+      sendJson(response, 200, await this.platform.searchProviders(context.body as SearchProvidersRequest));
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/providers/settings") {
-      sendJson(response, 200, this.platform.updateProviderSettings(context.body as UpdateProviderSettingsRequest));
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.updateProviderSettings(identity.userId, context.body as UpdateProviderSettingsRequest)
+      );
       return;
     }
 
@@ -114,53 +111,73 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/providers/reviews") {
-      sendJson(response, 201, this.platform.createProviderReview(context.body as CreateProviderReviewRequest));
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        201,
+        await this.platform.createProviderReview(identity.userId, context.body as CreateProviderReviewRequest)
+      );
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/bookings") {
-      sendJson(response, 201, this.platform.createBooking(context.body as CreateBookingRequest));
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        201,
+        await this.platform.createBooking(identity.userId, context.body as CreateBookingRequest)
+      );
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/bookings/complete") {
-      sendJson(response, 200, this.platform.completeBooking(context.body as CompleteBookingRequest));
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.completeBooking(identity.userId, context.body as CompleteBookingRequest)
+      );
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/bookings/address") {
-      sendJson(response, 200, this.platform.updateBookingAddress(context.body as UpdateBookingAddressRequest));
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        200,
+        await this.platform.updateBookingAddress(identity.userId, context.body as UpdateBookingAddressRequest)
+      );
       return;
     }
 
     if (context.method === "GET" && context.path === "/api/bookings") {
-      sendJson(response, 200, this.platform.listBookings());
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.listBookingsForUser(identity));
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/payments/intent") {
-      sendJson(response, 201, this.platform.createPaymentIntent(context.body as CreatePaymentIntentRequest));
+      await requireRole(context, this.platform, "customer");
+      sendJson(response, 201, await this.platform.createPaymentIntent(context.body as CreatePaymentIntentRequest));
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/payments/refund") {
-      sendJson(response, 200, this.platform.createRefund(context.body as CreateRefundRequest));
+      await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.createRefund(context.body as CreateRefundRequest));
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/review-invites/process") {
-      sendJson(response, 200, this.platform.processReviewInvites(context.body as ProcessReviewInvitesRequest));
+      sendJson(
+        response,
+        200,
+        await this.platform.processReviewInvites(context.body as ProcessReviewInvitesRequest)
+      );
       return;
     }
 
-    const providerId = context.query.get("providerId");
-    if (!providerId) {
-      sendJson(response, 400, {
-        message: "providerId is required"
-      });
-      return;
-    }
-
-    sendText(response, 200, this.platform.buildCalendarFeed(providerId));
+    const identity = await requireRole(context, this.platform, "provider");
+    sendText(response, 200, await this.platform.buildCalendarFeed(identity.userId));
   }
 }

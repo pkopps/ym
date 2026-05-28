@@ -26,7 +26,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(20, 40, 29, 0.08)",
     borderWidth: 1,
     borderRadius: BrandTokens.radius.md,
-    padding: BrandTokens.spacing.xl,
+    padding: 20,
     gap: BrandTokens.spacing.md
   },
   title: {

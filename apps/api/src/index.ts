@@ -1,15 +1,19 @@
 import { createServer } from "node:http";
+import { PrismaClient } from "@prisma/client";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import { AuthController } from "./controllers/AuthController";
 import { DocsController } from "./controllers/DocsController";
 import { MarketplaceController } from "./controllers/MarketplaceController";
 import { ObservabilityController } from "./controllers/ObservabilityController";
 import { SupportController } from "./controllers/SupportController";
-import { ApiController, applyCorsHeaders, parseRequest, sendJson } from "./http";
+import { ApiController, HttpError, applyCorsHeaders, parseRequest, sendJson } from "./http";
 import { InMemoryMarketplaceRepository } from "./repositories/InMemoryMarketplaceRepository";
+import { PrismaMarketplaceRepository } from "./repositories/PrismaMarketplaceRepository";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
 
-const repository = new InMemoryMarketplaceRepository();
+const repository = process.env.DATABASE_URL
+  ? new PrismaMarketplaceRepository(new PrismaClient())
+  : new InMemoryMarketplaceRepository();
 const analytics = new DataEngineeringLogger();
 const platform = new MarketplacePlatformService(repository, analytics);
 const controllers: ApiController[] = [
@@ -42,6 +46,13 @@ const server = createServer(async (request, response) => {
 
     await controller.handle(context, response);
   } catch (error) {
+    if (error instanceof HttpError) {
+      sendJson(response, error.statusCode, {
+        message: error.message
+      });
+      return;
+    }
+
     sendJson(response, 500, {
       message: error instanceof Error ? error.message : "Unknown server error"
     });

@@ -1,79 +1,155 @@
-import { Text } from "react-native";
-import { MaterialIcons } from "@expo/vector-icons";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
+import {
+  providerCrewPayouts,
+  providerCrewMemberSnapshots,
+  providerManagedJobs
+} from "@yardmatch/ui";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
-import { ServiceRadiusSettingsCard } from "../components/ServiceRadiusSettingsCard";
+import { getProviderMobileTracker } from "../lib/tracking";
 
 export function DashboardScreen() {
+  const tracker = getProviderMobileTracker();
+  const totalCrewNeeded = providerManagedJobs.reduce((sum, job) => sum + job.requiredCrewMembers, 0);
+  const totalAssignedCrew = providerManagedJobs.reduce((sum, job) => sum + job.assignedCrewMembers.length, 0);
+  const crewGap = totalCrewNeeded - totalAssignedCrew;
+  const payoutReadyAmount = providerCrewPayouts
+    .filter((payout) => payout.status === "ready")
+    .reduce((sum, payout) => sum + Number(payout.amountLabel.replace(/[^0-9.]/g, "")), 0);
+  const shortStaffedJobs = providerManagedJobs.filter(
+    (job) => job.requiredCrewMembers > job.assignedCrewMembers.length
+  );
+
   return (
-    <ScreenShell
-      eyebrow="Provider business app"
-      title="A dedicated operating app for schedules, crews, routes, clients, and payouts."
-      description="Business owners get a focused operational workspace without customer-booking clutter in the same mobile shell."
-    >
-      <InfoCard
-        title="Today at a glance"
-        description="Surface open slots, booked jobs, route density, crew coverage, and payout expectations as the first screen."
-      >
-        <Text>Example: 6 jobs today • 2 route gaps to tighten • 1 open crew slot • 3 reviews waiting</Text>
-      </InfoCard>
-      <ServiceRadiusSettingsCard />
-      <InfoCard
-        title="Review reputation signals"
-        description="Profiles track overall rating plus separate timeliness and attention-to-detail averages from real completed jobs."
-      >
-        <Text>Example: 4.8 overall • 4.7 timeliness • 4.9 attention to detail</Text>
-      </InfoCard>
-      <InfoCard
-        title="Recent post-service reviews"
-        description="Business owners can review customer feedback from completed jobs and spot coaching opportunities quickly."
-      >
-        <ReviewSnippet
-          author="Jordan R."
-          overall={5}
-          timeliness={5}
-          detail={4}
-          text="Crew showed up on time, handled edging carefully, and left the walkways clean."
-        />
-        <ReviewSnippet
-          author="Priya N."
-          overall={4}
-          timeliness={4}
-          detail={5}
-          text="Excellent attention to detail in the beds. Arrival was slightly later than expected but communication was clear."
-        />
-      </InfoCard>
-      <InfoCard
-        title="Crew coordination"
-        description="Recruit, assign, and monitor crew members from the same app that manages customer-facing bookings."
-      >
-        <Text>Example: 2 recurring crew members assigned • 1 seasonal worker available nearby</Text>
+    <ScreenShell eyebrow="Home" title="Today at a glance">
+      {crewGap > 0 ? (
+        <InfoCard title="Crew gap detected" description={`${crewGap} open crew slots across upcoming jobs`}>
+          <Text style={styles.alertText}>
+            Demand is outpacing your current crew coverage. Fill these spots before route quality slips.
+          </Text>
+          <Pressable
+            onPress={() =>
+              void tracker.track(MarketplaceTelemetryEventCatalog.providerSearchPerformed, {
+                app: "provider",
+                action: "find-crew-members",
+                crewGap
+              })
+            }
+            style={styles.primaryButton}
+          >
+            <Text style={styles.primaryButtonLabel}>Find crew members</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
+
+      <View style={styles.statGrid}>
+        <StatCard label="Jobs" value={`${providerManagedJobs.length}`} />
+        <StatCard label="Crew" value={`${providerCrewMemberSnapshots.length}`} />
+        <StatCard label="Crew gap" value={`${Math.max(crewGap, 0)}`} />
+        <StatCard label="Ready payout" value={`$${payoutReadyAmount.toFixed(0)}`} />
+      </View>
+
+      <InfoCard title="Next jobs" description={`${shortStaffedJobs.length} need attention`}>
+        <View style={styles.list}>
+          {providerManagedJobs.slice(0, 3).map((job) => {
+            const openSlots = job.requiredCrewMembers - job.assignedCrewMembers.length;
+            return (
+              <View key={job.id} style={styles.jobRow}>
+                <View style={styles.jobCopy}>
+                  <Text style={styles.jobTitle}>{job.clientName}</Text>
+                  <Text style={styles.jobMeta}>
+                    {job.dateLabel} • {job.timeLabel}
+                  </Text>
+                  <Text style={styles.jobMeta}>{job.serviceLabel}</Text>
+                </View>
+                <Text style={openSlots > 0 ? styles.warningBadge : styles.successBadge}>
+                  {openSlots > 0 ? `${openSlots} open` : "Covered"}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
       </InfoCard>
     </ScreenShell>
   );
 }
 
-function ReviewSnippet({
-  author,
-  overall,
-  timeliness,
-  detail,
-  text
-}: {
-  author: string;
-  overall: number;
-  timeliness: number;
-  detail: number;
-  text: string;
-}) {
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <Text style={{ color: BrandTokens.colors.inkSoft, lineHeight: 22 }}>
-      <Text style={{ color: BrandTokens.colors.ink, fontWeight: "700" }}>{author}</Text>
-      {"  "}
-      <MaterialIcons color={BrandTokens.colors.accent} name="star" size={16} />
-      <Text>{overall}/5 overall • {timeliness}/5 timeliness • {detail}/5 detail{"\n"}</Text>
-      <Text>{text}</Text>
-    </Text>
+    <View style={styles.statCard}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  alertText: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 21
+  },
+  primaryButton: {
+    marginTop: BrandTokens.spacing.sm,
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  primaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
+  },
+  statGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.md
+  },
+  statCard: {
+    width: "47%",
+    borderRadius: BrandTokens.radius.md,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    padding: BrandTokens.spacing.lg,
+    gap: BrandTokens.spacing.xs
+  },
+  statValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 24,
+    fontWeight: "700"
+  },
+  statLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  list: {
+    gap: BrandTokens.spacing.md
+  },
+  jobRow: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.md,
+    alignItems: "flex-start",
+    justifyContent: "space-between"
+  },
+  jobCopy: {
+    flex: 1,
+    gap: BrandTokens.spacing.xs
+  },
+  jobTitle: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
+  },
+  jobMeta: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  warningBadge: {
+    color: BrandTokens.colors.accent,
+    fontWeight: "700"
+  },
+  successBadge: {
+    color: BrandTokens.colors.success,
+    fontWeight: "700"
+  }
+});

@@ -7,13 +7,13 @@ import { DashboardScreen } from "../screens/DashboardScreen";
 import { ScheduleScreen } from "../screens/ScheduleScreen";
 import { SupportScreen } from "../screens/SupportScreen";
 
-type TabKey = "dashboard" | "schedule" | "clients" | "support";
+type TabKey = "dashboard" | "schedule" | "crew" | "account";
 
 const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
   { key: "dashboard", label: "Home", icon: "home" },
   { key: "schedule", label: "Schedule", icon: "calendar" },
-  { key: "clients", label: "Clients", icon: "users" },
-  { key: "support", label: "Support", icon: "life-buoy" }
+  { key: "crew", label: "Crew", icon: "users" },
+  { key: "account", label: "Account", icon: "user" }
 ];
 
 export function ProviderAppNavigator() {
@@ -22,8 +22,8 @@ export function ProviderAppNavigator() {
   const screen = {
     dashboard: <DashboardScreen />,
     schedule: <ScheduleScreen />,
-    clients: <ClientsScreen />,
-    support: <SupportScreen />
+    crew: <ClientsScreen />,
+    account: <SupportScreen />
   }[activeTab];
 
   return (

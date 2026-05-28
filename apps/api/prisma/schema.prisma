@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UserAccount {
+  id           String               @id
+  email        String               @unique
+  passwordHash String?
+  fullName     String
+  phone        String
+  role         String
+  address      Json
+  createdAt    DateTime             @default(now())
+  customer     CustomerProfile?
+  provider     ProviderBusinessProfile?
+  crewMember   CrewMemberProfile?
+
+  @@map("user_accounts")
+}
+
+model CustomerProfile {
+  userId            String   @id
+  propertyNotes     String
+  lawnSizeSqFt      Int
+  defaultPropertyId String?
+  user              UserAccount        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  properties        CustomerProperty[]
+
+  @@map("customer_profiles")
+}
+
+model CustomerProperty {
+  id               String   @id
+  customerId       String
+  label            String
+  address          Json
+  gateCode         String?
+  accessNotes      String?
+  lawnSizeSqFt     Int?
+  shrubBedSqFt     Int?
+  drivewaySqFt     Int?
+  sidewalkLinearFt Int?
+  isDefault        Boolean  @default(false)
+  createdAt        DateTime
+  customer         CustomerProfile @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+
+  @@map("customer_properties")
+}
+
+model ProviderBusinessProfile {
+  userId                    String   @id
+  companyName               String
+  bio                       String
+  yearsExperience           Int
+  serviceRadiusMiles        Int
+  sponsoredListingEnabled   Boolean  @default(false)
+  categories                String[]
+  rating                    Float
+  timelinessRating          Float
+  attentionToDetailRating   Float
+  reviewCount               Int
+  calendarConnection        Json
+  user                      UserAccount      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slots                     AvailabilitySlot[]
+
+  @@map("provider_business_profiles")
+}
+
+model CrewMemberProfile {
+  userId                String   @id
+  bio                   String
+  yearsExperience       Int
+  categories            String[]
+  willingToTravelMiles  Int
+  preferredSchedule     String
+  hasOwnEquipment       Boolean
+  rating                Float
+  completedJobs         Int
+  status                String
+  assignedProviderId    String?
+  user                  UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("crew_member_profiles")
+}
+
+model AvailabilitySlot {
+  id        String   @id
+  providerId String
+  startIso  DateTime
+  endIso    DateTime
+  isBooked  Boolean  @default(false)
+  provider  ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Cascade)
+
+  @@map("availability_slots")
+}
+
+model Booking {
+  id                   String   @id
+  customerId           String
+  providerId           String
+  serviceAddress       Json
+  servicePropertyId    String?
+  category             String
+  requestedAt          DateTime
+  scheduledStartIso    DateTime
+  scheduledEndIso      DateTime
+  status               String
+  completedAt          DateTime?
+  notes                String
+  totalCents           Int
+  reviewId             String?
+  addressChangeHistory Json
+
+  @@map("bookings")
+}
+
+model ProviderReview {
+  id                     String   @id
+  bookingId              String   @unique
+  providerId             String
+  customerId             String
+  overallRating          Int
+  timelinessRating       Int
+  attentionToDetailRating Int
+  reviewText             String
+  createdAt              DateTime
+
+  @@map("provider_reviews")
+}
+
+model ReviewInvite {
+  id               String   @id
+  bookingId        String   @unique
+  customerId       String
+  providerId       String
+  email            String
+  status           String
+  channels         String[]
+  scheduledSendIso DateTime
+  sentAt           DateTime?
+  openedAt         DateTime?
+  completedAt      DateTime?
+  expiresAtIso     DateTime
+  deepLinkPath     String
+
+  @@map("review_invites")
+}
+
+model PaymentRecord {
+  id           String   @id
+  bookingId    String
+  amountCents  Int
+  status       String
+  refundable   Boolean
+  refundReason String?
+
+  @@map("payment_records")
+}
+
+model SupportTicket {
+  id          String   @id
+  bookingId   String?
+  requesterId String
+  subject     String
+  description String
+  issueType   String
+  status      String
+  createdAt   DateTime
+
+  @@map("support_tickets")
+}

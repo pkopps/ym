@@ -252,6 +252,7 @@ export interface SupportTicket {
 export interface RegisterUserRequest {
   fullName: string;
   email: string;
+  password: string;
   phone: string;
   role: MarketplaceRole;
   address: Address;
@@ -266,6 +267,25 @@ export interface RegisterUserRequest {
   willingToTravelMiles?: number;
   preferredSchedule?: CrewMemberSchedulePreference;
   hasOwnEquipment?: boolean;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthenticatedSession {
+  token: string;
+  expiresInSeconds: number;
+}
+
+export interface AuthenticatedUserEnvelope {
+  session: AuthenticatedSession;
+  user: CustomerProfile | ProviderProfile | CrewMemberProfile;
+}
+
+export interface CurrentUserResponse {
+  user: CustomerProfile | ProviderProfile | CrewMemberProfile;
 }
 
 export interface GoogleAuthStartRequest {
@@ -294,7 +314,6 @@ export interface SearchProvidersResponse {
 }
 
 export interface CreateBookingRequest {
-  customerId: string;
   providerId: string;
   serviceAddress: Address;
   servicePropertyId?: string;
@@ -306,7 +325,6 @@ export interface CreateBookingRequest {
 }
 
 export interface CreateCustomerPropertyRequest {
-  customerId: string;
   label: string;
   address: Address;
   gateCode?: string;
@@ -319,12 +337,10 @@ export interface CreateCustomerPropertyRequest {
 }
 
 export interface SetDefaultCustomerPropertyRequest {
-  customerId: string;
   propertyId: string;
 }
 
 export interface UpdateProviderSettingsRequest {
-  providerId: string;
   serviceRadiusMiles: number;
   sponsoredListingEnabled?: boolean;
 }
@@ -343,7 +359,6 @@ export interface BookingAddressChangeRequest {
 
 export interface UpdateBookingAddressRequest {
   bookingId: string;
-  customerId: string;
   newAddress: Address;
   newPropertyId?: string;
 }
@@ -416,7 +431,6 @@ export interface CreateRefundRequest {
 
 export interface CreateSupportTicketRequest {
   bookingId?: string;
-  requesterId: string;
   subject: string;
   description: string;
   issueType: "billing" | "service-quality" | "account" | "general";
@@ -428,7 +442,6 @@ export interface CompleteBookingRequest {
 
 export interface CreateProviderReviewRequest {
   bookingId: string;
-  customerId: string;
   overallRating: ReviewScore;
   timelinessRating: ReviewScore;
   attentionToDetailRating: ReviewScore;

@@ -7,23 +7,23 @@ import { AvailabilityScreen } from "../screens/AvailabilityScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { SupportScreen } from "../screens/SupportScreen";
 
-type TabKey = "dashboard" | "assignments" | "availability" | "support";
+type TabKey = "today" | "schedule" | "availability" | "account";
 
 const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
-  { key: "dashboard", label: "Home", icon: "home" },
-  { key: "assignments", label: "Assignments", icon: "map-pin" },
+  { key: "today", label: "Today", icon: "sun" },
+  { key: "schedule", label: "Schedule", icon: "calendar" },
   { key: "availability", label: "Availability", icon: "clock" },
-  { key: "support", label: "Support", icon: "life-buoy" }
+  { key: "account", label: "Account", icon: "user" }
 ];
 
 export function CrewAppNavigator() {
-  const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
+  const [activeTab, setActiveTab] = useState<TabKey>("today");
 
   const screen = {
-    dashboard: <DashboardScreen />,
-    assignments: <AssignmentsScreen />,
+    today: <DashboardScreen />,
+    schedule: <AssignmentsScreen />,
     availability: <AvailabilityScreen />,
-    support: <SupportScreen />
+    account: <SupportScreen />
   }[activeTab];
 
   return (

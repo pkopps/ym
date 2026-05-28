@@ -4,6 +4,7 @@ import {
   serviceCategoryLabels
 } from "@yardmatch/ui";
 import { BookedBusinessResults } from "../components/BookedBusinessResults";
+import { HomeServiceScroller } from "../components/HomeServiceScroller";
 import { StructuredData } from "../components/StructuredData";
 
 const topRatedLandscapers = bookedBusinessShowcase
@@ -18,6 +19,15 @@ const topPunctualLandscapers = [
   { ...bookedBusinessShowcase[1], punctuality: "4.8" },
   { ...bookedBusinessShowcase[2], punctuality: "4.7" }
 ];
+
+const rotatingServices = [
+  "lawn mowing",
+  "weed whacking",
+  "hedge trimming",
+  "mulch installs",
+  "leaf blowing",
+  "snow shoveling"
+] as const;
 
 export default function HomePage() {
   return (
@@ -36,10 +46,12 @@ export default function HomePage() {
           }
         }}
       />
-      <section className="container hero">
-        <div>
-          <span className="eyebrow">YardMatch</span>
-          <h1>Book local lawn care. Grow your landscaping business. Join a crew.</h1>
+      <section className="container hero home-hero">
+        <div className="home-hero__content">
+          <h1 className="home-hero__headline">
+            <span>Book local</span>
+            <HomeServiceScroller services={rotatingServices} />
+          </h1>
           <p>One platform for customers, business owners, and crew members.</p>
           <div className="cta-row">
             <a className="button" href="/customer">
@@ -57,54 +69,54 @@ export default function HomePage() {
               <span key={label}>{label}</span>
             ))}
           </div>
-        </div>
-        <aside className="hero-rail">
-          <section className="hero-carousel">
-            <div className="hero-carousel__header">
-              <h2>Highest rated landscapers</h2>
-              <span>Top overall</span>
-            </div>
-            <div className="hero-carousel__track">
-              {topRatedLandscapers.map((business) => (
-                <article className="hero-carousel-card" key={`${business.name}-overall`}>
-                  <img
-                    alt={`${business.ownerName} from ${business.name}`}
-                    className="hero-carousel-card__avatar"
-                    src={business.avatarUrl}
-                  />
-                  <div>
-                    <strong>{business.name}</strong>
-                    <p>{business.ownerName}</p>
-                    <p>{business.rating} overall • {business.distanceMiles} mi away</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
+          <div className="hero-rail home-hero__carousels">
+            <section className="hero-carousel">
+              <div className="hero-carousel__header">
+                <h2>Highest rated landscapers</h2>
+                <span>Top overall</span>
+              </div>
+              <div className="hero-carousel__track">
+                {topRatedLandscapers.map((business) => (
+                  <article className="hero-carousel-card" key={`${business.name}-overall`}>
+                    <img
+                      alt={`${business.ownerName} from ${business.name}`}
+                      className="hero-carousel-card__avatar"
+                      src={business.avatarUrl}
+                    />
+                    <div>
+                      <strong>{business.name}</strong>
+                      <p>{business.ownerName}</p>
+                      <p>{business.rating} overall • {business.distanceMiles} mi away</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
 
-          <section className="hero-carousel">
-            <div className="hero-carousel__header">
-              <h2>High punctuality</h2>
-              <span>Shows up on time</span>
-            </div>
-            <div className="hero-carousel__track">
-              {topPunctualLandscapers.map((business) => (
-                <article className="hero-carousel-card" key={`${business.name}-punctuality`}>
-                  <img
-                    alt={`${business.ownerName} from ${business.name}`}
-                    className="hero-carousel-card__avatar"
-                    src={business.avatarUrl}
-                  />
-                  <div>
-                    <strong>{business.name}</strong>
-                    <p>{business.ownerName}</p>
-                    <p>{business.punctuality} punctuality • {business.city}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-        </aside>
+            <section className="hero-carousel">
+              <div className="hero-carousel__header">
+                <h2>High punctuality</h2>
+                <span>Shows up on time</span>
+              </div>
+              <div className="hero-carousel__track">
+                {topPunctualLandscapers.map((business) => (
+                  <article className="hero-carousel-card" key={`${business.name}-punctuality`}>
+                    <img
+                      alt={`${business.ownerName} from ${business.name}`}
+                      className="hero-carousel-card__avatar"
+                      src={business.avatarUrl}
+                    />
+                    <div>
+                      <strong>{business.name}</strong>
+                      <p>{business.ownerName}</p>
+                      <p>{business.punctuality} punctuality • {business.city}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
       </section>
 
       <section className="container app-banner">

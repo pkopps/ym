@@ -12,8 +12,9 @@ import {
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
+import { AuthIdentityRecord, MarketplaceRepository } from "./MarketplaceRepository";
 
-export class InMemoryMarketplaceRepository {
+export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly customers: CustomerProfile[] = [];
   private readonly providers: ProviderProfile[] = [];
   private readonly crewMembers: CrewMemberProfile[] = [];
@@ -23,51 +24,58 @@ export class InMemoryMarketplaceRepository {
   private readonly providerReviews: ProviderReview[] = [];
   private readonly reviewInvites: ReviewInvite[] = [];
   private readonly supportTickets: SupportTicket[] = [];
+  private readonly authIdentities: AuthIdentityRecord[] = [];
 
   public constructor() {
     this.seedProviders();
   }
 
-  public createCustomer(customer: CustomerProfile): CustomerProfile {
+  public async createCustomer(customer: CustomerProfile, passwordHash?: string): Promise<CustomerProfile> {
     this.customers.push(customer);
+    this.saveAuthIdentity(customer.id, customer.email, customer.role, passwordHash);
     return customer;
   }
 
-  public createProvider(provider: ProviderProfile): ProviderProfile {
+  public async createProvider(provider: ProviderProfile, passwordHash?: string): Promise<ProviderProfile> {
     this.providers.push(provider);
+    this.saveAuthIdentity(provider.id, provider.email, provider.role, passwordHash);
     return provider;
   }
 
-  public createCrewMember(crewMember: CrewMemberProfile): CrewMemberProfile {
+  public async createCrewMember(
+    crewMember: CrewMemberProfile,
+    passwordHash?: string
+  ): Promise<CrewMemberProfile> {
     this.crewMembers.push(crewMember);
+    this.saveAuthIdentity(crewMember.id, crewMember.email, crewMember.role, passwordHash);
     return crewMember;
   }
 
-  public listProviders(): ProviderProfile[] {
+  public async listProviders(): Promise<ProviderProfile[]> {
     return [...this.providers];
   }
 
-  public listCustomers(): CustomerProfile[] {
+  public async listCustomers(): Promise<CustomerProfile[]> {
     return [...this.customers];
   }
 
-  public listCrewMembers(): CrewMemberProfile[] {
+  public async listCrewMembers(): Promise<CrewMemberProfile[]> {
     return [...this.crewMembers];
   }
 
-  public findCustomerById(customerId: string): CustomerProfile | undefined {
+  public async findCustomerById(customerId: string): Promise<CustomerProfile | undefined> {
     return this.customers.find((customer) => customer.id === customerId);
   }
 
-  public findCrewMemberById(crewMemberId: string): CrewMemberProfile | undefined {
+  public async findCrewMemberById(crewMemberId: string): Promise<CrewMemberProfile | undefined> {
     return this.crewMembers.find((crewMember) => crewMember.id === crewMemberId);
   }
 
-  public updateCrewMember(
+  public async updateCrewMember(
     crewMemberId: string,
     updates: Partial<CrewMemberProfile>
-  ): CrewMemberProfile | undefined {
-    const crewMember = this.findCrewMemberById(crewMemberId);
+  ): Promise<CrewMemberProfile | undefined> {
+    const crewMember = this.crewMembers.find((item) => item.id === crewMemberId);
 
     if (!crewMember) {
       return undefined;
@@ -77,8 +85,11 @@ export class InMemoryMarketplaceRepository {
     return crewMember;
   }
 
-  public updateCustomer(customerId: string, updates: Partial<CustomerProfile>): CustomerProfile | undefined {
-    const customer = this.findCustomerById(customerId);
+  public async updateCustomer(
+    customerId: string,
+    updates: Partial<CustomerProfile>
+  ): Promise<CustomerProfile | undefined> {
+    const customer = this.customers.find((item) => item.id === customerId);
 
     if (!customer) {
       return undefined;
@@ -88,33 +99,33 @@ export class InMemoryMarketplaceRepository {
     return customer;
   }
 
-  public listCustomerProperties(customerId: string): CustomerProperty[] {
-    return this.findCustomerById(customerId)?.properties ?? [];
+  public async listCustomerProperties(customerId: string): Promise<CustomerProperty[]> {
+    return this.customers.find((customer) => customer.id === customerId)?.properties ?? [];
   }
 
-  public listSlotsByProvider(providerId: string): AvailabilitySlot[] {
+  public async listSlotsByProvider(providerId: string): Promise<AvailabilitySlot[]> {
     return this.slots.filter((slot) => slot.providerId === providerId);
   }
 
-  public listAllSlots(): AvailabilitySlot[] {
+  public async listAllSlots(): Promise<AvailabilitySlot[]> {
     return [...this.slots];
   }
 
-  public createBooking(booking: Booking): Booking {
+  public async createBooking(booking: Booking): Promise<Booking> {
     this.bookings.push(booking);
     return booking;
   }
 
-  public listBookings(): Booking[] {
+  public async listBookings(): Promise<Booking[]> {
     return [...this.bookings];
   }
 
-  public findBookingById(bookingId: string): Booking | undefined {
+  public async findBookingById(bookingId: string): Promise<Booking | undefined> {
     return this.bookings.find((booking) => booking.id === bookingId);
   }
 
-  public updateBooking(bookingId: string, updates: Partial<Booking>): Booking | undefined {
-    const booking = this.findBookingById(bookingId);
+  public async updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking | undefined> {
+    const booking = this.bookings.find((item) => item.id === bookingId);
 
     if (!booking) {
       return undefined;
@@ -124,41 +135,44 @@ export class InMemoryMarketplaceRepository {
     return booking;
   }
 
-  public createProviderReview(review: ProviderReview): ProviderReview {
+  public async createProviderReview(review: ProviderReview): Promise<ProviderReview> {
     this.providerReviews.push(review);
     return review;
   }
 
-  public listProviderReviews(providerId: string): ProviderReview[] {
+  public async listProviderReviews(providerId: string): Promise<ProviderReview[]> {
     return this.providerReviews.filter((review) => review.providerId === providerId).map((review) => ({ ...review }));
   }
 
-  public findProviderReviewByBookingId(bookingId: string): ProviderReview | undefined {
+  public async findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined> {
     return this.providerReviews.find((review) => review.bookingId === bookingId);
   }
 
-  public createReviewInvite(invite: ReviewInvite): ReviewInvite {
+  public async createReviewInvite(invite: ReviewInvite): Promise<ReviewInvite> {
     this.reviewInvites.push(invite);
     return invite;
   }
 
-  public listReviewInvitesByCustomer(customerId: string): ReviewInvite[] {
+  public async listReviewInvitesByCustomer(customerId: string): Promise<ReviewInvite[]> {
     return this.reviewInvites
       .filter((invite) => invite.customerId === customerId)
       .map((invite) => ({ ...invite }));
   }
 
-  public findReviewInviteByBookingId(bookingId: string): ReviewInvite | undefined {
+  public async findReviewInviteByBookingId(bookingId: string): Promise<ReviewInvite | undefined> {
     return this.reviewInvites.find((invite) => invite.bookingId === bookingId);
   }
 
-  public listScheduledReviewInvites(): ReviewInvite[] {
+  public async listScheduledReviewInvites(): Promise<ReviewInvite[]> {
     return this.reviewInvites
       .filter((invite) => invite.status === "scheduled")
       .map((invite) => ({ ...invite }));
   }
 
-  public updateReviewInvite(inviteId: string, updates: Partial<ReviewInvite>): ReviewInvite | undefined {
+  public async updateReviewInvite(
+    inviteId: string,
+    updates: Partial<ReviewInvite>
+  ): Promise<ReviewInvite | undefined> {
     const invite = this.reviewInvites.find((item) => item.id === inviteId);
 
     if (!invite) {
@@ -169,11 +183,11 @@ export class InMemoryMarketplaceRepository {
     return invite;
   }
 
-  public appendBookingAddressChange(
+  public async appendBookingAddressChange(
     bookingId: string,
     change: BookingAddressChangeRequest
-  ): Booking | undefined {
-    const booking = this.findBookingById(bookingId);
+  ): Promise<Booking | undefined> {
+    const booking = this.bookings.find((item) => item.id === bookingId);
 
     if (!booking) {
       return undefined;
@@ -183,12 +197,15 @@ export class InMemoryMarketplaceRepository {
     return booking;
   }
 
-  public findProviderById(providerId: string): ProviderProfile | undefined {
+  public async findProviderById(providerId: string): Promise<ProviderProfile | undefined> {
     return this.providers.find((provider) => provider.id === providerId);
   }
 
-  public updateProvider(providerId: string, updates: Partial<ProviderProfile>): ProviderProfile | undefined {
-    const provider = this.findProviderById(providerId);
+  public async updateProvider(
+    providerId: string,
+    updates: Partial<ProviderProfile>
+  ): Promise<ProviderProfile | undefined> {
+    const provider = this.providers.find((item) => item.id === providerId);
 
     if (!provider) {
       return undefined;
@@ -198,16 +215,19 @@ export class InMemoryMarketplaceRepository {
     return provider;
   }
 
-  public createPayment(payment: PaymentRecord): PaymentRecord {
+  public async createPayment(payment: PaymentRecord): Promise<PaymentRecord> {
     this.payments.push(payment);
     return payment;
   }
 
-  public listPayments(): PaymentRecord[] {
+  public async listPayments(): Promise<PaymentRecord[]> {
     return [...this.payments];
   }
 
-  public updatePayment(paymentId: string, updates: Partial<PaymentRecord>): PaymentRecord | undefined {
+  public async updatePayment(
+    paymentId: string,
+    updates: Partial<PaymentRecord>
+  ): Promise<PaymentRecord | undefined> {
     const payment = this.payments.find((item) => item.id === paymentId);
 
     if (!payment) {
@@ -218,13 +238,21 @@ export class InMemoryMarketplaceRepository {
     return payment;
   }
 
-  public createSupportTicket(ticket: SupportTicket): SupportTicket {
+  public async createSupportTicket(ticket: SupportTicket): Promise<SupportTicket> {
     this.supportTickets.push(ticket);
     return ticket;
   }
 
-  public listSupportTickets(): SupportTicket[] {
+  public async listSupportTickets(): Promise<SupportTicket[]> {
     return [...this.supportTickets];
+  }
+
+  public async findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined> {
+    return this.authIdentities.find((identity) => identity.email.toLowerCase() === email.toLowerCase());
+  }
+
+  public async findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined> {
+    return this.authIdentities.find((identity) => identity.userId === userId);
   }
 
   private seedProviders(): void {
@@ -332,6 +360,7 @@ export class InMemoryMarketplaceRepository {
 
     providers.forEach((provider, index) => {
       this.providers.push(provider);
+      this.saveAuthIdentity(provider.id, provider.email, provider.role);
       this.slots.push(
         {
           id: crypto.randomUUID(),
@@ -374,5 +403,27 @@ export class InMemoryMarketplaceRepository {
 
   private addHours(hours: number): string {
     return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+  }
+
+  private saveAuthIdentity(
+    userId: string,
+    email: string,
+    role: AuthIdentityRecord["role"],
+    passwordHash?: string
+  ): void {
+    const existing = this.authIdentities.find((identity) => identity.userId === userId);
+    if (existing) {
+      existing.email = email;
+      existing.role = role;
+      existing.passwordHash = passwordHash ?? existing.passwordHash;
+      return;
+    }
+
+    this.authIdentities.push({
+      userId,
+      email,
+      role,
+      passwordHash
+    });
   }
 }

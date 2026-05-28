@@ -98,7 +98,7 @@ export class SchedulingService {
 
 export class BookingLifecycleService {
   // Booking creation stays centralized so pricing and status defaults never drift by client.
-  public createBooking(id: string, payload: CreateBookingRequest): Booking {
+  public createBooking(id: string, payload: CreateBookingRequest & { customerId: string }): Booking {
     return {
       id,
       customerId: payload.customerId,
@@ -119,7 +119,10 @@ export class BookingLifecycleService {
 
 export class PropertyBookService {
   // Customer properties are stored separately from bookings so bookings can keep immutable snapshots.
-  public createProperty(id: string, payload: CreateCustomerPropertyRequest): CustomerProperty {
+  public createProperty(
+    id: string,
+    payload: CreateCustomerPropertyRequest & { customerId?: string }
+  ): CustomerProperty {
     return {
       id,
       label: payload.label,

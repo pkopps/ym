@@ -2,171 +2,171 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
+import {
+  customerPastBookings,
+  customerReviewOpportunitiesPreview,
+  customerUpcomingBookings
+} from "@yardmatch/ui";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { getCustomerMobileTracker } from "../lib/tracking";
 
-type ReviewOpportunity = {
-  bookingId: string;
-  providerName: string;
-  completedAtLabel: string;
-  canReviewNow: boolean;
-  reviewAlreadySubmitted: boolean;
-  reason: string;
-};
-
-const demoOpportunities: ReviewOpportunity[] = [
-  {
-    bookingId: "YM-BOOKING-2048",
-    providerName: "GreenStride Lawn Co.",
-    completedAtLabel: "Completed Apr 28 at 2:40 PM",
-    canReviewNow: false,
-    reviewAlreadySubmitted: false,
-    reason: "Review email scheduled for 48 hours after service completion."
-  },
-  {
-    bookingId: "YM-BOOKING-1982",
-    providerName: "TerraCut Studio",
-    completedAtLabel: "Completed Apr 25 at 11:15 AM",
-    canReviewNow: true,
-    reviewAlreadySubmitted: false,
-    reason: "Ready for review now."
-  },
-  {
-    bookingId: "YM-BOOKING-1904",
-    providerName: "Cedarstone Landscaping",
-    completedAtLabel: "Completed Apr 18 at 4:05 PM",
-    canReviewNow: false,
-    reviewAlreadySubmitted: true,
-    reason: "Review already submitted."
-  }
-];
+type ViewMode = "upcoming" | "past";
 
 export function BookingsScreen() {
-  const [opportunities, setOpportunities] = useState<ReviewOpportunity[]>(demoOpportunities);
-  const [selectedBookingId, setSelectedBookingId] = useState<string>("YM-BOOKING-1982");
+  const tracker = getCustomerMobileTracker();
+  const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
+  const [selectedBookingId, setSelectedBookingId] = useState(
+    customerReviewOpportunitiesPreview.find((opportunity) => opportunity.canReviewNow)?.bookingId ??
+      customerReviewOpportunitiesPreview[0]?.bookingId
+  );
   const [overallRating, setOverallRating] = useState(5);
   const [timelinessRating, setTimelinessRating] = useState(5);
-  const [attentionToDetailRating, setAttentionToDetailRating] = useState(5);
+  const [detailRating, setDetailRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
   const [submittedMessage, setSubmittedMessage] = useState("");
 
-  const selectedOpportunity = opportunities.find((opportunity) => opportunity.bookingId === selectedBookingId);
+  const readyOpportunity = customerReviewOpportunitiesPreview.find(
+    (opportunity) => opportunity.bookingId === selectedBookingId
+  );
 
-  // This local review flow keeps the prototype interactive until live auth and booking data are wired in.
   const submitReview = () => {
-    if (!selectedOpportunity || !selectedOpportunity.canReviewNow || reviewText.trim().length === 0) {
+    if (!readyOpportunity?.canReviewNow || reviewText.trim().length === 0) {
       return;
     }
 
-    setOpportunities((current) =>
-      current.map((opportunity) =>
-        opportunity.bookingId === selectedOpportunity.bookingId
-          ? {
-              ...opportunity,
-              canReviewNow: false,
-              reviewAlreadySubmitted: true,
-              reason: "Review submitted from the mobile app."
-            }
-          : opportunity
-      )
-    );
-    setSubmittedMessage(
-      `Saved ${overallRating}/5 overall, ${timelinessRating}/5 timeliness, and ${attentionToDetailRating}/5 attention to detail for ${selectedOpportunity.providerName}.`
-    );
+    void tracker.track(MarketplaceTelemetryEventCatalog.providerReviewSubmitted, {
+      app: "customer",
+      bookingId: readyOpportunity.bookingId,
+      overallRating,
+      timelinessRating,
+      detailRating
+    });
+    setSubmittedMessage(`Review saved for ${readyOpportunity.providerName}.`);
     setReviewText("");
   };
 
   return (
-    <ScreenShell
-      eyebrow="Bookings"
-      title="Manage upcoming service, address changes, and post-service reviews from one place."
-      description="Customers should only see operational states that matter to their own bookings and follow-up actions."
-    >
-      <InfoCard
-        title="Upcoming booking actions"
-        description="Requested bookings can still update immediately, while confirmed jobs more than 24 hours out route address changes for provider review."
-      >
-        <Text>Blocked if the new address is out of radius or the service window is too close</Text>
-      </InfoCard>
-      <InfoCard
-        title="Review timing"
-        description="Reviews are tied to completed bookings only and unlock from a booking-specific invite 48 hours after completion."
-      >
-        <Text>Channel mix: email invite plus in-app prompt for the same booking</Text>
-      </InfoCard>
-      <InfoCard
-        title="Sample review states"
-        description="The booking list can show waiting on invite, ready to review, or already reviewed without exposing any generic provider review path."
-      >
-        <View style={styles.list}>
-          {opportunities.map((opportunity) => (
-            <Pressable
-              key={opportunity.bookingId}
-              onPress={() => setSelectedBookingId(opportunity.bookingId)}
-              style={[
-                styles.reviewRow,
-                selectedBookingId === opportunity.bookingId && styles.reviewRowSelected
-              ]}
-            >
-              <View style={styles.reviewRowHeader}>
-                <Text style={styles.reviewProvider}>{opportunity.providerName}</Text>
-                <Text style={styles.reviewStatus}>
-                  {opportunity.reviewAlreadySubmitted
-                    ? "Reviewed"
-                    : opportunity.canReviewNow
-                      ? "Ready"
-                      : "Pending"}
-                </Text>
+    <ScreenShell eyebrow="Bookings" title="Manage services" description="Upcoming and past jobs.">
+      <View style={styles.modeRow}>
+        <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
+        <ModeButton active={viewMode === "past"} label="Past" onPress={() => setViewMode("past")} />
+      </View>
+
+      {viewMode === "upcoming" ? (
+        <InfoCard title="Upcoming jobs" description={`${customerUpcomingBookings.length} scheduled`}>
+          <View style={styles.list}>
+            {customerUpcomingBookings.map((booking) => (
+              <View key={booking.id} style={styles.bookingRow}>
+                <View style={styles.bookingCopy}>
+                  <Text style={styles.bookingTitle}>{booking.serviceLabel}</Text>
+                  <Text style={styles.bookingMeta}>
+                    {booking.dateLabel} • {booking.timeLabel}
+                  </Text>
+                  <Text style={styles.bookingMeta}>{booking.providerName}</Text>
+                  <Text style={styles.bookingMeta}>{booking.propertyLabel}</Text>
+                  <Text style={styles.bookingNote}>{booking.addressChangeState}</Text>
+                </View>
+                <StatusBadge label="Scheduled" tone="success" />
               </View>
-              <Text style={styles.reviewMeta}>{opportunity.bookingId}</Text>
-              <Text style={styles.reviewMeta}>{opportunity.completedAtLabel}</Text>
-              <Text style={styles.reviewReason}>{opportunity.reason}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </InfoCard>
-      {selectedOpportunity?.canReviewNow && !selectedOpportunity.reviewAlreadySubmitted ? (
-        <InfoCard
-          title={`Review ${selectedOpportunity.providerName}`}
-          description="Customers can rate the landscaping business owner only after the completed service invite unlocks."
-        >
-          <RatingField
-            label="Overall"
-            rating={overallRating}
-            onChange={setOverallRating}
-          />
-          <RatingField
-            label="Timeliness"
-            rating={timelinessRating}
-            onChange={setTimelinessRating}
-          />
-          <RatingField
-            label="Attention to detail"
-            rating={attentionToDetailRating}
-            onChange={setAttentionToDetailRating}
-          />
-          <View style={styles.formField}>
-            <Text style={styles.fieldLabel}>Free-text review</Text>
-            <TextInput
-              multiline
-              onChangeText={setReviewText}
-              placeholder="Tell other customers how the business owner and crew performed."
-              placeholderTextColor={BrandTokens.colors.muted}
-              style={styles.input}
-              value={reviewText}
-            />
+            ))}
           </View>
-          <Pressable onPress={submitReview} style={styles.submitButton}>
-            <Text style={styles.submitButtonLabel}>Submit post-service review</Text>
-          </Pressable>
-          {submittedMessage ? <Text style={styles.successText}>{submittedMessage}</Text> : null}
         </InfoCard>
-      ) : null}
-      <InfoCard
-        title="Booking history snapshot"
-        description="Bookings preserve the original service address, provider, payment, and review status for support and auditability."
-      />
+      ) : (
+        <>
+          <InfoCard title="Past jobs" description={`${customerPastBookings.length} completed`}>
+            <View style={styles.list}>
+              {customerPastBookings.map((booking) => (
+                <Pressable
+                  key={booking.id}
+                  onPress={() => setSelectedBookingId(booking.id)}
+                  style={styles.bookingRow}
+                >
+                  <View style={styles.bookingCopy}>
+                    <Text style={styles.bookingTitle}>{booking.serviceLabel}</Text>
+                    <Text style={styles.bookingMeta}>{booking.providerName}</Text>
+                    <Text style={styles.bookingMeta}>
+                      {booking.dateLabel} • {booking.timeLabel}
+                    </Text>
+                  </View>
+                  <StatusBadge
+                    label={booking.status === "needs-review" ? "Review" : "Done"}
+                    tone={booking.status === "needs-review" ? "warning" : "success"}
+                  />
+                </Pressable>
+              ))}
+            </View>
+          </InfoCard>
+
+          {readyOpportunity?.canReviewNow ? (
+            <InfoCard title={`Review ${readyOpportunity.providerName}`} description="Post-service only">
+              <RatingField label="Overall" rating={overallRating} onChange={setOverallRating} />
+              <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
+              <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
+              <TextInput
+                multiline
+                onChangeText={setReviewText}
+                placeholder="How did it go?"
+                placeholderTextColor={BrandTokens.colors.muted}
+                style={styles.input}
+                value={reviewText}
+              />
+              <Pressable onPress={submitReview} style={styles.submitButton}>
+                <Text style={styles.submitButtonLabel}>Submit review</Text>
+              </Pressable>
+              {submittedMessage ? <Text style={styles.successText}>{submittedMessage}</Text> : null}
+            </InfoCard>
+          ) : (
+            <InfoCard title="Review status" description={readyOpportunity?.providerName ?? "No review selected"}>
+              <Text style={styles.bookingMeta}>{readyOpportunity?.reason ?? "Nothing needs your attention right now."}</Text>
+            </InfoCard>
+          )}
+        </>
+      )}
     </ScreenShell>
+  );
+}
+
+function ModeButton({
+  active,
+  label,
+  onPress
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={[styles.modeButton, active && styles.modeButtonActive]}>
+      <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function StatusBadge({
+  label,
+  tone
+}: {
+  label: string;
+  tone: "success" | "warning";
+}) {
+  return (
+    <View
+      style={[
+        styles.statusBadge,
+        tone === "success" ? styles.statusBadgeSuccess : styles.statusBadgeWarning
+      ]}
+    >
+      <Text
+        style={[
+          styles.statusBadgeLabel,
+          tone === "success" ? styles.statusBadgeLabelSuccess : styles.statusBadgeLabelWarning
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
   );
 }
 
@@ -180,15 +180,15 @@ function RatingField({
   onChange: (rating: number) => void;
 }) {
   return (
-    <View style={styles.formField}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={styles.ratingField}>
+      <Text style={styles.ratingLabel}>{label}</Text>
       <View style={styles.ratingRow}>
         {[1, 2, 3, 4, 5].map((value) => (
           <Pressable key={value} onPress={() => onChange(value)}>
             <MaterialIcons
               color={value <= rating ? BrandTokens.colors.accent : BrandTokens.colors.border}
               name={value <= rating ? "star" : "star-border"}
-              size={28}
+              size={26}
             />
           </Pressable>
         ))}
@@ -198,47 +198,80 @@ function RatingField({
 }
 
 const styles = StyleSheet.create({
+  modeRow: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm
+  },
+  modeButton: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingVertical: BrandTokens.spacing.sm,
+    backgroundColor: "rgba(255,255,255,0.9)"
+  },
+  modeButtonActive: {
+    backgroundColor: BrandTokens.colors.primary,
+    borderColor: BrandTokens.colors.primary
+  },
+  modeLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  modeLabelActive: {
+    color: "#ffffff"
+  },
   list: {
     gap: BrandTokens.spacing.md
   },
-  reviewRow: {
-    borderColor: BrandTokens.colors.border,
-    borderRadius: BrandTokens.radius.sm,
-    borderWidth: 1,
-    gap: BrandTokens.spacing.xs,
-    padding: BrandTokens.spacing.md
-  },
-  reviewRowSelected: {
-    borderColor: BrandTokens.colors.primary,
-    backgroundColor: BrandTokens.colors.surfaceStrong
-  },
-  reviewRowHeader: {
-    alignItems: "center",
+  bookingRow: {
     flexDirection: "row",
-    justifyContent: "space-between"
+    gap: BrandTokens.spacing.md,
+    justifyContent: "space-between",
+    alignItems: "flex-start"
   },
-  reviewProvider: {
+  bookingCopy: {
+    flex: 1,
+    gap: BrandTokens.spacing.xs
+  },
+  bookingTitle: {
     color: BrandTokens.colors.ink,
     fontWeight: "700"
   },
-  reviewStatus: {
-    color: BrandTokens.colors.primaryStrong,
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase"
-  },
-  reviewMeta: {
-    color: BrandTokens.colors.inkSoft,
-    fontSize: 12
-  },
-  reviewReason: {
+  bookingMeta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
-  formField: {
-    gap: BrandTokens.spacing.sm
+  bookingNote: {
+    color: BrandTokens.colors.primaryStrong,
+    lineHeight: 20
   },
-  fieldLabel: {
+  statusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs
+  },
+  statusBadgeSuccess: {
+    backgroundColor: "rgba(35, 117, 79, 0.12)"
+  },
+  statusBadgeWarning: {
+    backgroundColor: "rgba(226, 154, 69, 0.16)"
+  },
+  statusBadgeLabel: {
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  statusBadgeLabelSuccess: {
+    color: BrandTokens.colors.success
+  },
+  statusBadgeLabelWarning: {
+    color: BrandTokens.colors.accent
+  },
+  ratingField: {
+    gap: BrandTokens.spacing.xs
+  },
+  ratingLabel: {
     color: BrandTokens.colors.ink,
     fontWeight: "700"
   },
@@ -247,19 +280,19 @@ const styles = StyleSheet.create({
     gap: BrandTokens.spacing.xs
   },
   input: {
-    borderColor: BrandTokens.colors.border,
+    minHeight: 92,
     borderRadius: BrandTokens.radius.sm,
     borderWidth: 1,
-    color: BrandTokens.colors.ink,
-    minHeight: 120,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.96)",
     padding: BrandTokens.spacing.md,
+    color: BrandTokens.colors.ink,
     textAlignVertical: "top"
   },
   submitButton: {
     alignItems: "center",
+    borderRadius: 999,
     backgroundColor: BrandTokens.colors.primary,
-    borderRadius: BrandTokens.radius.sm,
-    paddingHorizontal: BrandTokens.spacing.lg,
     paddingVertical: BrandTokens.spacing.md
   },
   submitButtonLabel: {
@@ -268,6 +301,6 @@ const styles = StyleSheet.create({
   },
   successText: {
     color: BrandTokens.colors.success,
-    lineHeight: 22
+    fontWeight: "600"
   }
 });
