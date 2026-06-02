@@ -1,51 +1,194 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
-import {
-  customerPastBookings,
-  customerReviewOpportunitiesPreview,
-  customerUpcomingBookings
-} from "@yardmatch/ui";
+import { Booking, CustomerReviewOpportunity, ReviewScore } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createCustomerMobileApiClient } from "../lib/api";
 import { getCustomerMobileTracker } from "../lib/tracking";
+import { useCustomerSession } from "../session/CustomerSessionContext";
 
 type ViewMode = "upcoming" | "past";
 
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
+
+function addOneDay(iso: string) {
+  return new Date(new Date(iso).getTime() + 24 * 60 * 60 * 1000).toISOString();
+}
+
 export function BookingsScreen() {
   const tracker = getCustomerMobileTracker();
+  const { envelope } = useCustomerSession();
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
-  const [selectedBookingId, setSelectedBookingId] = useState(
-    customerReviewOpportunitiesPreview.find((opportunity) => opportunity.canReviewNow)?.bookingId ??
-      customerReviewOpportunitiesPreview[0]?.bookingId
-  );
-  const [overallRating, setOverallRating] = useState(5);
-  const [timelinessRating, setTimelinessRating] = useState(5);
-  const [detailRating, setDetailRating] = useState(5);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
+  const [reviewOpportunities, setReviewOpportunities] = useState<CustomerReviewOpportunity[]>([]);
+  const [selectedBookingId, setSelectedBookingId] = useState<string | undefined>();
+  const [overallRating, setOverallRating] = useState<ReviewScore>(5);
+  const [timelinessRating, setTimelinessRating] = useState<ReviewScore>(5);
+  const [detailRating, setDetailRating] = useState<ReviewScore>(5);
   const [reviewText, setReviewText] = useState("");
   const [submittedMessage, setSubmittedMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
-  const readyOpportunity = customerReviewOpportunitiesPreview.find(
+  const upcomingBookings = useMemo(
+    () =>
+      bookings
+        .filter((booking) => booking.status === "requested" || booking.status === "confirmed")
+        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso)),
+    [bookings]
+  );
+
+  const pastBookings = useMemo(
+    () =>
+      bookings
+        .filter(
+          (booking) =>
+            booking.status === "completed" ||
+            booking.status === "cancelled" ||
+            booking.status === "refunded"
+        )
+        .sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso)),
+    [bookings]
+  );
+
+  const readyOpportunity = reviewOpportunities.find(
     (opportunity) => opportunity.bookingId === selectedBookingId
   );
 
-  const submitReview = () => {
-    if (!readyOpportunity?.canReviewNow || reviewText.trim().length === 0) {
+  async function loadBookings() {
+    if (!envelope?.session.token) {
       return;
     }
 
-    void tracker.track(MarketplaceTelemetryEventCatalog.providerReviewSubmitted, {
-      app: "customer",
-      bookingId: readyOpportunity.bookingId,
-      overallRating,
-      timelinessRating,
-      detailRating
-    });
-    setSubmittedMessage(`Review saved for ${readyOpportunity.providerName}.`);
-    setReviewText("");
+    try {
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+
+      const [bookingList, reviewResponse] = await Promise.all([
+        api.getBookings(),
+        api.getCustomerReviewOpportunities()
+      ]);
+
+      const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
+      const providers = await Promise.all(
+        uniqueProviderIds.map(async (providerId) => {
+          try {
+            return await api.getProviderProfile(providerId);
+          } catch {
+            return undefined;
+          }
+        })
+      );
+
+      setProviderNamesById(
+        providers.reduce<Record<string, string>>((accumulator, provider) => {
+          if (provider) {
+            accumulator[provider.id] = provider.companyName;
+          }
+          return accumulator;
+        }, {})
+      );
+      setBookings(bookingList);
+      setReviewOpportunities(reviewResponse.opportunities);
+      setSelectedBookingId(
+        reviewResponse.opportunities.find((opportunity) => opportunity.canReviewNow)?.bookingId ??
+          reviewResponse.opportunities[0]?.bookingId
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load bookings.");
+    }
+  }
+
+  useEffect(() => {
+    void loadBookings();
+  }, [envelope?.session.token]);
+
+  const submitReview = async () => {
+    if (!readyOpportunity?.canReviewNow || reviewText.trim().length === 0 || !envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.createProviderReview({
+        bookingId: readyOpportunity.bookingId,
+        overallRating,
+        timelinessRating,
+        attentionToDetailRating: detailRating,
+        reviewText: reviewText.trim()
+      });
+      void tracker.track(MarketplaceTelemetryEventCatalog.providerReviewSubmitted, {
+        app: "customer",
+        bookingId: readyOpportunity.bookingId,
+        overallRating,
+        timelinessRating,
+        detailRating
+      });
+      setSubmittedMessage(`Review saved for ${readyOpportunity.providerName}.`);
+      setReviewText("");
+      await loadBookings();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to submit review.");
+    } finally {
+      setIsWorking(false);
+    }
   };
+
+  async function cancelBooking(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.cancelBooking({ bookingId });
+      setSubmittedMessage("Booking cancelled.");
+      await loadBookings();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel booking.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function rescheduleBooking(booking: Booking) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.rescheduleBooking({
+        bookingId: booking.id,
+        scheduledStartIso: addOneDay(booking.scheduledStartIso),
+        scheduledEndIso: addOneDay(booking.scheduledEndIso)
+      });
+      setSubmittedMessage("Booking moved to the next day.");
+      await loadBookings();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to reschedule booking.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
 
   return (
     <ScreenShell eyebrow="Bookings" title="Manage services" description="Upcoming and past jobs.">
@@ -54,45 +197,63 @@ export function BookingsScreen() {
         <ModeButton active={viewMode === "past"} label="Past" onPress={() => setViewMode("past")} />
       </View>
 
+      {submittedMessage ? (
+        <InfoCard title="Updated" description={submittedMessage} />
+      ) : null}
+
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
       {viewMode === "upcoming" ? (
-        <InfoCard title="Upcoming jobs" description={`${customerUpcomingBookings.length} scheduled`}>
+        <InfoCard title="Upcoming jobs" description={`${upcomingBookings.length} scheduled`}>
           <View style={styles.list}>
-            {customerUpcomingBookings.map((booking) => (
-              <View key={booking.id} style={styles.bookingRow}>
+            {upcomingBookings.map((booking) => (
+              <View key={booking.id} style={styles.liveCard}>
                 <View style={styles.bookingCopy}>
-                  <Text style={styles.bookingTitle}>{booking.serviceLabel}</Text>
-                  <Text style={styles.bookingMeta}>
-                    {booking.dateLabel} • {booking.timeLabel}
-                  </Text>
-                  <Text style={styles.bookingMeta}>{booking.providerName}</Text>
-                  <Text style={styles.bookingMeta}>{booking.propertyLabel}</Text>
-                  <Text style={styles.bookingNote}>{booking.addressChangeState}</Text>
+                  <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
+                  <Text style={styles.bookingMeta}>{providerNamesById[booking.providerId] ?? "Landscaping business"}</Text>
+                  <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
+                  <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
+                  <Text style={styles.bookingNote}>{booking.status}</Text>
                 </View>
-                <StatusBadge label="Scheduled" tone="success" />
+                <StatusBadge label={booking.status === "confirmed" ? "Confirmed" : "Requested"} tone="success" />
+                <View style={styles.inlineActions}>
+                  <Pressable
+                    disabled={isWorking}
+                    onPress={() => void rescheduleBooking(booking)}
+                    style={styles.secondaryAction}
+                  >
+                    <Text style={styles.secondaryActionLabel}>Move to next day</Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={isWorking}
+                    onPress={() => void cancelBooking(booking.id)}
+                    style={styles.secondaryAction}
+                  >
+                    <Text style={styles.secondaryActionLabel}>Cancel</Text>
+                  </Pressable>
+                </View>
               </View>
             ))}
           </View>
         </InfoCard>
       ) : (
         <>
-          <InfoCard title="Past jobs" description={`${customerPastBookings.length} completed`}>
+          <InfoCard title="Past jobs" description={`${pastBookings.length} completed or closed`}>
             <View style={styles.list}>
-              {customerPastBookings.map((booking) => (
+              {pastBookings.map((booking) => (
                 <Pressable
                   key={booking.id}
                   onPress={() => setSelectedBookingId(booking.id)}
                   style={styles.bookingRow}
                 >
                   <View style={styles.bookingCopy}>
-                    <Text style={styles.bookingTitle}>{booking.serviceLabel}</Text>
-                    <Text style={styles.bookingMeta}>{booking.providerName}</Text>
-                    <Text style={styles.bookingMeta}>
-                      {booking.dateLabel} • {booking.timeLabel}
-                    </Text>
+                    <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
+                    <Text style={styles.bookingMeta}>{providerNamesById[booking.providerId] ?? "Landscaping business"}</Text>
+                    <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
                   </View>
                   <StatusBadge
-                    label={booking.status === "needs-review" ? "Review" : "Done"}
-                    tone={booking.status === "needs-review" ? "warning" : "success"}
+                    label={booking.status === "completed" ? "Done" : booking.status}
+                    tone={booking.status === "completed" ? "success" : "warning"}
                   />
                 </Pressable>
               ))}
@@ -112,10 +273,9 @@ export function BookingsScreen() {
                 style={styles.input}
                 value={reviewText}
               />
-              <Pressable onPress={submitReview} style={styles.submitButton}>
-                <Text style={styles.submitButtonLabel}>Submit review</Text>
+              <Pressable disabled={isWorking} onPress={() => void submitReview()} style={styles.submitButton}>
+                <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
               </Pressable>
-              {submittedMessage ? <Text style={styles.successText}>{submittedMessage}</Text> : null}
             </InfoCard>
           ) : (
             <InfoCard title="Review status" description={readyOpportunity?.providerName ?? "No review selected"}>
@@ -176,15 +336,15 @@ function RatingField({
   onChange
 }: {
   label: string;
-  rating: number;
-  onChange: (rating: number) => void;
+  rating: ReviewScore;
+  onChange: (rating: ReviewScore) => void;
 }) {
   return (
     <View style={styles.ratingField}>
       <Text style={styles.ratingLabel}>{label}</Text>
       <View style={styles.ratingRow}>
         {[1, 2, 3, 4, 5].map((value) => (
-          <Pressable key={value} onPress={() => onChange(value)}>
+          <Pressable key={value} onPress={() => onChange(value as ReviewScore)}>
             <MaterialIcons
               color={value <= rating ? BrandTokens.colors.accent : BrandTokens.colors.border}
               name={value <= rating ? "star" : "star-border"}
@@ -231,13 +391,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-start"
   },
+  liveCard: {
+    gap: BrandTokens.spacing.sm,
+    paddingBottom: BrandTokens.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: BrandTokens.colors.border
+  },
   bookingCopy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
   },
   bookingTitle: {
     color: BrandTokens.colors.ink,
-    fontWeight: "700"
+    fontWeight: "700",
+    textTransform: "capitalize"
   },
   bookingMeta: {
     color: BrandTokens.colors.inkSoft,
@@ -247,7 +414,25 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.primaryStrong,
     lineHeight: 20
   },
+  inlineActions: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm,
+    flexWrap: "wrap"
+  },
+  secondaryAction: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    backgroundColor: "rgba(255,255,255,0.92)"
+  },
+  secondaryActionLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
   statusBadge: {
+    alignSelf: "flex-start",
     borderRadius: 999,
     paddingHorizontal: BrandTokens.spacing.md,
     paddingVertical: BrandTokens.spacing.xs
@@ -298,9 +483,5 @@ const styles = StyleSheet.create({
   submitButtonLabel: {
     color: "#ffffff",
     fontWeight: "700"
-  },
-  successText: {
-    color: BrandTokens.colors.success,
-    fontWeight: "600"
   }
 });

@@ -58,6 +58,7 @@ model ProviderBusinessProfile {
   bio                       String
   yearsExperience           Int
   serviceRadiusMiles        Int
+  staffingMode              String   @default("review-first")
   sponsoredListingEnabled   Boolean  @default(false)
   categories                String[]
   rating                    Float
@@ -76,9 +77,11 @@ model CrewMemberProfile {
   bio                   String
   yearsExperience       Int
   categories            String[]
+  availableWeekdays     String[]
   willingToTravelMiles  Int
   preferredSchedule     String
   hasOwnEquipment       Boolean
+  winterWorkEnabled     Boolean  @default(false)
   rating                Float
   completedJobs         Int
   status                String
@@ -117,6 +120,58 @@ model Booking {
   addressChangeHistory Json
 
   @@map("bookings")
+}
+
+model CrewMatch {
+  id             String   @id
+  bookingId      String
+  providerId     String
+  crewMemberId   String
+  crewMemberName String
+  crewMemberPhone String
+  categories     String[]
+  availableWeekdays String[]
+  preferredSchedule String
+  willingToTravelMiles Int
+  hasOwnEquipment Boolean
+  winterWorkEnabled Boolean
+  status         String
+  autoAccepted   Boolean @default(false)
+  distanceMiles  Float
+  hourlyRateCents Int
+  createdAt      DateTime
+  reviewedAt     DateTime?
+
+  @@unique([bookingId, crewMemberId])
+  @@map("crew_matches")
+}
+
+model ProviderCrewConversation {
+  id               String   @id
+  crewMatchId      String   @unique
+  bookingId        String
+  providerId       String
+  crewMemberId     String
+  providerName     String
+  crewMemberName   String
+  status           String
+  updatedAt        DateTime
+  lastMessagePreview String?
+  unreadCount      Int      @default(0)
+  createdAt        DateTime
+
+  @@map("provider_crew_conversations")
+}
+
+model ProviderCrewMessage {
+  id             String   @id
+  conversationId String
+  senderId       String
+  senderRole     String
+  body           String
+  createdAt      DateTime
+
+  @@map("provider_crew_messages")
 }
 
 model ProviderReview {

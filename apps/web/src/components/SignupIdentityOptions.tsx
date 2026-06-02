@@ -1,4 +1,5 @@
 import { AuthFlowMode, MarketplaceApiClient, MarketplaceRole } from "@yardmatch/contracts";
+import { getWebApiBaseUrl } from "../lib/api";
 
 function GoogleLogo() {
   return (
@@ -41,9 +42,7 @@ export function AuthIdentityOptions({
   mode: AuthFlowMode;
   role: MarketplaceRole;
 }) {
-  const api = new MarketplaceApiClient(
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.API_BASE_URL ?? "http://localhost:4000"
-  );
+  const api = new MarketplaceApiClient(getWebApiBaseUrl());
 
   return (
     <div className="social-auth-group">

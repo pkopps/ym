@@ -1,65 +1,147 @@
-import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { crewAssignments } from "@yardmatch/ui";
-import {
-  MarketplaceTelemetryEventCatalog
-} from "@yardmatch/observability";
+import { CrewMatchesResponse, ProviderCrewConversationThread } from "@yardmatch/contracts";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createCrewMobileApiClient } from "../lib/api";
 import { getCrewMobileTracker } from "../lib/tracking";
+import { useCrewSession } from "../session/CrewSessionContext";
 
 export function DashboardScreen() {
   const tracker = getCrewMobileTracker();
-  const [checkedIn, setCheckedIn] = useState(false);
-  const [completed, setCompleted] = useState(false);
-  const nextShift = crewAssignments[0];
+  const { envelope } = useCrewSession();
+  const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
+  const [activeThread, setActiveThread] = useState<ProviderCrewConversationThread | undefined>();
+  const [chatDraft, setChatDraft] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
+  const acceptedMatch = useMemo(
+    () => matchesResponse?.matches.find((match) => match.status === "accepted"),
+    [matchesResponse]
+  );
 
-  const handleCheckIn = () => {
-    setCheckedIn(true);
-    void tracker.track(MarketplaceTelemetryEventCatalog.crewCheckInCompleted, {
-      app: "crew",
-      assignmentId: nextShift.id
-    });
-  };
+  async function loadMatches() {
+    if (!envelope?.session.token) {
+      return;
+    }
 
-  const handleComplete = () => {
-    setCompleted(true);
-    void tracker.track(MarketplaceTelemetryEventCatalog.crewAssignmentCompleted, {
-      app: "crew",
-      assignmentId: nextShift.id
-    });
-  };
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setMatchesResponse(await api.getCrewMatches());
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load today’s work.");
+    }
+  }
+
+  useEffect(() => {
+    void loadMatches();
+  }, [envelope?.session.token]);
+
+  async function openConversation() {
+    if (!envelope?.session.token || !acceptedMatch) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setActiveThread(await api.getProviderCrewConversationThread(undefined, acceptedMatch.id));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open chat.");
+    }
+  }
+
+  async function sendChat() {
+    if (!envelope?.session.token || !chatDraft.trim() || !acceptedMatch) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextThread = await api.sendProviderCrewMessage({
+        threadId: activeThread?.thread.id,
+        crewMatchId: acceptedMatch.id,
+        body: chatDraft.trim()
+      });
+      setActiveThread(nextThread);
+      setChatDraft("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to send this message.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
 
   return (
     <ScreenShell eyebrow="Today" title="Your next shift">
-      <InfoCard title={nextShift.businessName} description={`${nextShift.dateLabel} • ${nextShift.timeLabel}`}>
-        <Text style={styles.title}>{nextShift.serviceLabel}</Text>
-        <Text style={styles.meta}>Meet with {nextShift.crewLead}</Text>
-        <Text style={styles.meta}>{nextShift.addressLine}</Text>
-        <Text style={styles.meta}>{nextShift.notes}</Text>
-        <View style={styles.buttonRow}>
-          <Pressable
-            disabled={checkedIn}
-            onPress={handleCheckIn}
-            style={[styles.primaryButton, checkedIn && styles.buttonDisabled]}
-          >
-            <Text style={styles.primaryButtonLabel}>{checkedIn ? "Checked in" : "Check in"}</Text>
-          </Pressable>
-          <Pressable
-            disabled={completed}
-            onPress={handleComplete}
-            style={[styles.secondaryButton, completed && styles.buttonDisabled]}
-          >
-            <Text style={styles.secondaryButtonLabel}>{completed ? "Completed" : "Complete"}</Text>
-          </Pressable>
-        </View>
-      </InfoCard>
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
+      {acceptedMatch ? (
+        <InfoCard
+          title={acceptedMatch.providerCompanyName}
+          description={`${new Date(acceptedMatch.scheduledStartIso).toLocaleDateString()} • ${new Date(acceptedMatch.scheduledStartIso).toLocaleTimeString()}`}
+        >
+          <Text style={styles.title}>{acceptedMatch.category.replaceAll("-", " ")}</Text>
+          <Text style={styles.meta}>{acceptedMatch.serviceAddress.line1}</Text>
+          <Text style={styles.meta}>
+            {acceptedMatch.serviceAddress.city}, {acceptedMatch.serviceAddress.state}
+          </Text>
+          <View style={styles.buttonRow}>
+            <Pressable
+              onPress={() =>
+                void tracker.track(MarketplaceTelemetryEventCatalog.crewCheckInCompleted, {
+                  app: "crew",
+                  assignmentId: acceptedMatch.id
+                })
+              }
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>Check in</Text>
+            </Pressable>
+            <Pressable onPress={() => void openConversation()} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>Chat</Text>
+            </Pressable>
+          </View>
+        </InfoCard>
+      ) : (
+        <InfoCard title="No accepted shift yet" description="Keep your availability and skills current.">
+          <Text style={styles.meta}>Providers will see you automatically when the job fits your profile.</Text>
+        </InfoCard>
+      )}
 
       <View style={styles.statRow}>
-        <StatCard label="Planned hours" value={`${crewAssignments.reduce((sum, item) => sum + item.plannedHours, 0)}`} />
-        <StatCard label="Expected pay" value="$528" />
+        <StatCard label="Accepted" value={`${matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0}`} />
+        <StatCard label="Pending" value={`${matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0}`} />
       </View>
+
+      {activeThread ? (
+        <InfoCard title={activeThread.thread.providerName} description={activeThread.thread.status.replaceAll("-", " ")}>
+          <View style={styles.list}>
+            {activeThread.messages.map((message) => (
+              <View key={message.id} style={styles.messageRow}>
+                <Text style={styles.title}>{message.senderRole === "crew-member" ? "You" : activeThread.thread.providerName}</Text>
+                <Text style={styles.meta}>{message.body}</Text>
+              </View>
+            ))}
+          </View>
+          <TextInput
+            multiline
+            onChangeText={setChatDraft}
+            placeholder="Ask about timing or equipment."
+            placeholderTextColor={BrandTokens.colors.muted}
+            style={styles.input}
+            value={chatDraft}
+          />
+          <Pressable disabled={isWorking} onPress={() => void sendChat()} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Send"}</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
     </ScreenShell>
   );
 }
@@ -110,9 +192,6 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
   },
-  buttonDisabled: {
-    opacity: 0.55
-  },
   statRow: {
     flexDirection: "row",
     gap: BrandTokens.spacing.md
@@ -133,5 +212,21 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     fontSize: 13,
     fontWeight: "600"
+  },
+  list: {
+    gap: BrandTokens.spacing.md
+  },
+  messageRow: {
+    gap: BrandTokens.spacing.xs
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    borderRadius: 16,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.md,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    color: BrandTokens.colors.ink,
+    minHeight: 96
   }
 });

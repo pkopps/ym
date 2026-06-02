@@ -1,66 +1,104 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import {
-  customerPastBookings,
-  customerSavedProperties,
-  customerUpcomingBookings
-} from "@yardmatch/ui";
-import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { Booking, CustomerProperty, CustomerReviewOpportunity } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
-import { getCustomerMobileTracker } from "../lib/tracking";
+import { createCustomerMobileApiClient } from "../lib/api";
+import { useCustomerSession } from "../session/CustomerSessionContext";
+
+function formatDateTime(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
 
 export function DashboardScreen() {
-  const tracker = getCustomerMobileTracker();
-  const nextBooking = customerUpcomingBookings[0];
-  const activeProperty = customerSavedProperties.find((property) => property.isDefault) ?? customerSavedProperties[0];
-  const reviewReadyCount = customerPastBookings.filter((booking) => booking.status === "needs-review").length;
+  const { envelope } = useCustomerSession();
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [properties, setProperties] = useState<CustomerProperty[]>([]);
+  const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
+  const [reviewOpportunities, setReviewOpportunities] = useState<CustomerReviewOpportunity[]>([]);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleQuickAction = (action: "rebook" | "manage-bookings" | "review") => {
-    void tracker.track(MarketplaceTelemetryEventCatalog.pageViewed, {
-      app: "customer",
-      screen: "home",
-      action
-    });
-  };
+  const nextBooking = useMemo(
+    () =>
+      bookings
+        .filter((booking) => booking.status === "requested" || booking.status === "confirmed")
+        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
+    [bookings]
+  );
+  const activeProperty = properties.find((property) => property.isDefault) ?? properties[0];
+  const reviewReady = reviewOpportunities.find((opportunity) => opportunity.canReviewNow);
+
+  async function loadHome() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const [bookingList, nextProperties, reviewResponse] = await Promise.all([
+        api.getBookings(),
+        api.getCustomerProperties(),
+        api.getCustomerReviewOpportunities()
+      ]);
+      const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
+      const providers = await Promise.all(uniqueProviderIds.map((providerId) => api.getProviderProfile(providerId)));
+      setProviderNamesById(
+        providers.reduce<Record<string, string>>((accumulator, provider) => {
+          accumulator[provider.id] = provider.companyName;
+          return accumulator;
+        }, {})
+      );
+      setBookings(bookingList);
+      setProperties(nextProperties);
+      setReviewOpportunities(reviewResponse.opportunities);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
+    }
+  }
+
+  useEffect(() => {
+    void loadHome();
+  }, [envelope?.session.token]);
 
   return (
     <ScreenShell eyebrow="Home" title="Your next service">
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
       <View style={styles.statRow}>
-        <StatCard label="Upcoming" value={`${customerUpcomingBookings.length}`} />
-        <StatCard label="Ready reviews" value={`${reviewReadyCount}`} />
-        <StatCard label="Saved homes" value={`${customerSavedProperties.length}`} />
+        <StatCard label="Upcoming" value={`${bookings.filter((booking) => booking.status === "requested" || booking.status === "confirmed").length}`} />
+        <StatCard label="Ready reviews" value={`${reviewOpportunities.filter((opportunity) => opportunity.canReviewNow).length}`} />
+        <StatCard label="Saved homes" value={`${properties.length}`} />
       </View>
 
-      <InfoCard
-        title={nextBooking.serviceLabel}
-        description={`${nextBooking.dateLabel} • ${nextBooking.timeLabel}`}
-      >
-        <Text style={styles.primaryLine}>{nextBooking.providerName}</Text>
-        <Text style={styles.secondaryLine}>{nextBooking.addressLine}</Text>
-        <Text style={styles.noteLine}>{nextBooking.addressChangeState}</Text>
-        <View style={styles.actionRow}>
-          <QuickAction label="Rebook" onPress={() => handleQuickAction("rebook")} primary />
-          <QuickAction label="Bookings" onPress={() => handleQuickAction("manage-bookings")} />
-        </View>
-      </InfoCard>
+      {nextBooking ? (
+        <InfoCard
+          title={nextBooking.category.replaceAll("-", " ")}
+          description={formatDateTime(nextBooking.scheduledStartIso)}
+        >
+          <Text style={styles.primaryLine}>{providerNamesById[nextBooking.providerId] ?? "Landscaping business"}</Text>
+          <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
+          <Text style={styles.noteLine}>{nextBooking.status}</Text>
+        </InfoCard>
+      ) : null}
 
-      <InfoCard title={activeProperty.label} description="Active property">
-        <Text style={styles.primaryLine}>{activeProperty.addressLine}</Text>
-        <Text style={styles.secondaryLine}>
-          {activeProperty.nextServiceLabel ?? "No service booked yet"}
-        </Text>
-      </InfoCard>
-
-      {reviewReadyCount > 0 ? (
-        <InfoCard title="Review ready" description="Your last cleanup can be reviewed now.">
-          <Text style={styles.primaryLine}>
-            {customerPastBookings.find((booking) => booking.status === "needs-review")?.providerName}
+      {activeProperty ? (
+        <InfoCard title={activeProperty.label} description="Active property">
+          <Text style={styles.primaryLine}>{activeProperty.address.line1}</Text>
+          <Text style={styles.secondaryLine}>
+            {activeProperty.address.city}, {activeProperty.address.state} {activeProperty.address.postalCode}
           </Text>
-          <Text style={styles.secondaryLine}>Share how the service went.</Text>
-          <View style={styles.actionRow}>
-            <QuickAction label="Leave review" onPress={() => handleQuickAction("review")} primary />
-          </View>
+        </InfoCard>
+      ) : null}
+
+      {reviewReady ? (
+        <InfoCard title="Review ready" description="Open Bookings to leave your review.">
+          <Text style={styles.primaryLine}>{reviewReady.providerName}</Text>
+          <Text style={styles.secondaryLine}>{reviewReady.reason}</Text>
         </InfoCard>
       ) : null}
     </ScreenShell>
@@ -73,22 +111,6 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
-  );
-}
-
-function QuickAction({
-  label,
-  onPress,
-  primary = false
-}: {
-  label: string;
-  onPress: () => void;
-  primary?: boolean;
-}) {
-  return (
-    <Pressable onPress={onPress} style={[styles.quickAction, primary && styles.quickActionPrimary]}>
-      <Text style={[styles.quickActionLabel, primary && styles.quickActionLabelPrimary]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -126,29 +148,5 @@ const styles = StyleSheet.create({
   noteLine: {
     color: BrandTokens.colors.primaryStrong,
     lineHeight: 21
-  },
-  actionRow: {
-    flexDirection: "row",
-    gap: BrandTokens.spacing.md,
-    marginTop: BrandTokens.spacing.sm
-  },
-  quickAction: {
-    alignItems: "center",
-    borderRadius: 999,
-    borderColor: BrandTokens.colors.border,
-    borderWidth: 1,
-    paddingHorizontal: BrandTokens.spacing.lg,
-    paddingVertical: BrandTokens.spacing.md
-  },
-  quickActionPrimary: {
-    backgroundColor: BrandTokens.colors.primary,
-    borderColor: BrandTokens.colors.primary
-  },
-  quickActionLabel: {
-    color: BrandTokens.colors.primaryStrong,
-    fontWeight: "700"
-  },
-  quickActionLabelPrimary: {
-    color: "#ffffff"
   }
 });

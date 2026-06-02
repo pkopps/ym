@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
 
 const productColumns = [
   {
@@ -101,9 +102,12 @@ const learnLinks = [
 
 export function ProviderSiteHeader() {
   const [openMenu, setOpenMenu] = useState<null | "learn" | "marketplace" | "products">(null);
+  const [session, setSession] = useState<StoredWebSession | undefined>();
   const navRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    setSession(loadStoredSession());
+
     function handlePointerDown(event: MouseEvent) {
       if (!navRef.current?.contains(event.target as Node)) {
         setOpenMenu(null);
@@ -131,6 +135,11 @@ export function ProviderSiteHeader() {
 
   function closeMenu() {
     setOpenMenu(null);
+  }
+
+  function handleSignOut() {
+    clearStoredSession();
+    window.location.href = "/login/provider";
   }
 
   return (
@@ -242,12 +251,28 @@ export function ProviderSiteHeader() {
         </nav>
 
         <div className="site-header__actions">
-          <a className="button-secondary" href="/login/provider">
-            Log in
-          </a>
-          <a className="button" href="/auth/provider/create">
-            Sign up
-          </a>
+          {session?.role === "provider" ? (
+            <>
+              <a className="button-secondary" href="/provider/management">
+                Management
+              </a>
+              <a className="button-secondary" href="/provider/payments">
+                Payments
+              </a>
+              <button className="button" onClick={handleSignOut} type="button">
+                Sign out
+              </button>
+            </>
+          ) : (
+            <>
+              <a className="button-secondary" href="/login/provider">
+                Log in
+              </a>
+              <a className="button" href="/auth/provider/create">
+                Sign up
+              </a>
+            </>
+          )}
         </div>
       </div>
     </header>

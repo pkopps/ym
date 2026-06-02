@@ -1,39 +1,89 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { serviceCategoryLabels } from "@yardmatch/ui";
+import { CrewAvailabilityDay, CrewMemberProfile, ServiceCategory } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createCrewMobileApiClient } from "../lib/api";
+import { useCrewSession } from "../session/CrewSessionContext";
 
-const dayOptions = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const skillOptions = [
+const dayOptions: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const skillOptions: ServiceCategory[] = [
   "lawn-mowing",
   "hedge-trimming",
   "seasonal-cleanup",
   "mulch-installation",
   "snow-shoveling"
-] as const;
+];
 
 export function AvailabilityScreen() {
-  const [availableDays, setAvailableDays] = useState<string[]>(["Mon", "Tue", "Thu", "Sat"]);
-  const [travelMiles, setTravelMiles] = useState(20);
-  const [snowEnabled, setSnowEnabled] = useState(true);
-  const [skills, setSkills] = useState<string[]>(["lawn-mowing", "seasonal-cleanup"]);
+  const { envelope } = useCrewSession();
+  const [crewMember, setCrewMember] = useState<CrewMemberProfile | undefined>();
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const toggleValue = (value: string, current: string[], setter: (next: string[]) => void) => {
+  async function loadCrewMember() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const me = await api.getCurrentUser();
+      setCrewMember(me.user as CrewMemberProfile);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load availability.");
+    }
+  }
+
+  useEffect(() => {
+    void loadCrewMember();
+  }, [envelope?.session.token]);
+
+  async function savePreferences(updates: Partial<CrewMemberProfile>) {
+    if (!envelope?.session.token || !crewMember) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setCrewMember(
+        await api.updateCrewPreferences({
+          categories: updates.categories ?? crewMember.categories,
+          availableWeekdays: updates.availableWeekdays ?? crewMember.availableWeekdays,
+          willingToTravelMiles: updates.willingToTravelMiles ?? crewMember.willingToTravelMiles,
+          preferredSchedule: updates.preferredSchedule ?? crewMember.preferredSchedule,
+          hasOwnEquipment: updates.hasOwnEquipment ?? crewMember.hasOwnEquipment,
+          winterWorkEnabled: updates.winterWorkEnabled ?? crewMember.winterWorkEnabled
+        })
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update availability.");
+    }
+  }
+
+  const toggleValue = <T extends string>(value: T, current: T[], setter: (next: T[]) => void) => {
     setter(current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   };
 
   return (
     <ScreenShell eyebrow="Availability" title="Set your work preferences">
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
       <InfoCard title="Days you can work" description="Keep this current">
         <View style={styles.chipWrap}>
           {dayOptions.map((day) => {
-            const isActive = availableDays.includes(day);
+            const currentDays = crewMember?.availableWeekdays ?? [];
+            const isActive = currentDays.includes(day);
             return (
               <Pressable
                 key={day}
-                onPress={() => toggleValue(day, availableDays, setAvailableDays)}
+                onPress={() =>
+                  toggleValue(day, currentDays, (next) =>
+                    void savePreferences({ availableWeekdays: next })
+                  )
+                }
                 style={[styles.chip, isActive && styles.chipActive]}
               >
                 <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{day}</Text>
@@ -45,11 +95,21 @@ export function AvailabilityScreen() {
 
       <InfoCard title="Travel radius" description="How far can you realistically go?">
         <View style={styles.radiusRow}>
-          <Pressable onPress={() => setTravelMiles((current) => Math.max(5, current - 5))} style={styles.radiusButton}>
+          <Pressable
+            onPress={() =>
+              void savePreferences({ willingToTravelMiles: Math.max(5, (crewMember?.willingToTravelMiles ?? 20) - 5) })
+            }
+            style={styles.radiusButton}
+          >
             <Text style={styles.radiusButtonLabel}>-5</Text>
           </Pressable>
-          <Text style={styles.radiusValue}>{travelMiles} miles</Text>
-          <Pressable onPress={() => setTravelMiles((current) => Math.min(40, current + 5))} style={styles.radiusButton}>
+          <Text style={styles.radiusValue}>{crewMember?.willingToTravelMiles ?? 0} miles</Text>
+          <Pressable
+            onPress={() =>
+              void savePreferences({ willingToTravelMiles: Math.min(60, (crewMember?.willingToTravelMiles ?? 20) + 5) })
+            }
+            style={styles.radiusButton}
+          >
             <Text style={styles.radiusButtonLabel}>+5</Text>
           </Pressable>
         </View>
@@ -58,15 +118,20 @@ export function AvailabilityScreen() {
       <InfoCard title="Skills" description="Pick the work you can help with">
         <View style={styles.chipWrap}>
           {skillOptions.map((skill) => {
-            const isActive = skills.includes(skill);
+            const currentSkills = crewMember?.categories ?? [];
+            const isActive = currentSkills.includes(skill);
             return (
               <Pressable
                 key={skill}
-                onPress={() => toggleValue(skill, skills, setSkills)}
+                onPress={() =>
+                  toggleValue(skill, currentSkills, (next) =>
+                    void savePreferences({ categories: next })
+                  )
+                }
                 style={[styles.chip, isActive && styles.chipActive]}
               >
                 <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                  {serviceCategoryLabels[skill]}
+                  {skill.replaceAll("-", " ")}
                 </Text>
               </Pressable>
             );
@@ -80,8 +145,8 @@ export function AvailabilityScreen() {
           <Switch
             trackColor={{ false: BrandTokens.colors.border, true: BrandTokens.colors.primary }}
             thumbColor="#ffffff"
-            value={snowEnabled}
-            onValueChange={setSnowEnabled}
+            value={crewMember?.winterWorkEnabled ?? false}
+            onValueChange={(value) => void savePreferences({ winterWorkEnabled: value })}
           />
         </View>
       </InfoCard>

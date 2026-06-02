@@ -28,10 +28,6 @@ function createAddress(
 async function main() {
   const repository = new PrismaMarketplaceRepository(prisma);
 
-  if ((await repository.listProviders()).length > 0) {
-    return;
-  }
-
   const now = new Date().toISOString();
   const seededPassword = hashPassword("YardMatch123!");
 
@@ -48,6 +44,7 @@ async function main() {
       bio: "Weekly mowing, cleanup, edging, leaf service, and winter walkway clearing for busy homeowners.",
       yearsExperience: 7,
       serviceRadiusMiles: 18,
+      staffingMode: "review-first" as const,
       sponsoredListingEnabled: true,
       categories: ["lawn-mowing", "seasonal-cleanup", "weed-control", "leaf-blowing", "gutter-cleaning", "snow-shoveling"],
       rating: 4.9,
@@ -72,6 +69,7 @@ async function main() {
       bio: "Premium lawn, hedge, mulch, fertilization, and driveway snow service with weekend availability.",
       yearsExperience: 12,
       serviceRadiusMiles: 24,
+      staffingMode: "review-first" as const,
       sponsoredListingEnabled: false,
       categories: ["lawn-mowing", "hedge-trimming", "mulch-installation", "fertilization", "aeration", "snow-blowing"],
       rating: 4.8,
@@ -86,26 +84,224 @@ async function main() {
     }
   ];
 
-  for (const [index, provider] of providers.entries()) {
-    await repository.createProvider(provider, seededPassword);
+  async function ensureProviderAvailability(providerId: string, offsetIndex: number) {
+    const futureSlots = await prisma.availabilitySlot.findMany({
+      where: {
+        providerId,
+        startIso: {
+          gt: new Date()
+        }
+      }
+    });
+
+    const qualifyingSlots = futureSlots.filter(
+      (slot) => slot.endIso.getTime() - slot.startIso.getTime() >= 3 * 60 * 60 * 1000
+    );
+
+    if (qualifyingSlots.length >= 2) {
+      return;
+    }
+
     await prisma.availabilitySlot.createMany({
       data: [
         {
           id: crypto.randomUUID(),
-          providerId: provider.id,
-          startIso: new Date(Date.now() + (index + 2) * 60 * 60 * 1000),
-          endIso: new Date(Date.now() + (index + 3) * 60 * 60 * 1000),
+          providerId,
+          startIso: new Date(Date.now() + (offsetIndex + 48) * 60 * 60 * 1000),
+          endIso: new Date(Date.now() + (offsetIndex + 52) * 60 * 60 * 1000),
           isBooked: false
         },
         {
           id: crypto.randomUUID(),
-          providerId: provider.id,
-          startIso: new Date(Date.now() + (index + 26) * 60 * 60 * 1000),
-          endIso: new Date(Date.now() + (index + 27) * 60 * 60 * 1000),
+          providerId,
+          startIso: new Date(Date.now() + (offsetIndex + 72) * 60 * 60 * 1000),
+          endIso: new Date(Date.now() + (offsetIndex + 76) * 60 * 60 * 1000),
           isBooked: false
         }
       ]
     });
+  }
+
+  for (const [index, provider] of providers.entries()) {
+    const existingProvider = await prisma.userAccount.findUnique({
+      where: { email: provider.email }
+    });
+    if (!existingProvider) {
+      await repository.createProvider(provider, seededPassword);
+    } else {
+      await prisma.userAccount.update({
+        where: { id: existingProvider.id },
+        data: {
+          fullName: provider.fullName,
+          phone: provider.phone,
+          address: provider.address
+        }
+      });
+      await prisma.providerBusinessProfile.update({
+        where: { userId: existingProvider.id },
+        data: {
+          companyName: provider.companyName,
+          bio: provider.bio,
+          yearsExperience: provider.yearsExperience,
+          serviceRadiusMiles: provider.serviceRadiusMiles,
+          staffingMode: provider.staffingMode,
+          sponsoredListingEnabled: provider.sponsoredListingEnabled,
+          categories: provider.categories,
+          rating: provider.rating,
+          timelinessRating: provider.timelinessRating,
+          attentionToDetailRating: provider.attentionToDetailRating,
+          reviewCount: provider.reviewCount,
+          calendarConnection: provider.calendarConnection
+        }
+      });
+    }
+
+    await ensureProviderAvailability(existingProvider?.id ?? provider.id, index);
+  }
+
+  const seededCustomerEmail = "jordan@example.com";
+  const existingCustomer = await prisma.userAccount.findUnique({
+    where: { email: seededCustomerEmail }
+  });
+  let customerId = existingCustomer?.id;
+  let defaultPropertyId = "";
+
+  if (!existingCustomer) {
+    const propertyId = crypto.randomUUID();
+    const customer = await repository.createCustomer(
+      {
+        id: crypto.randomUUID(),
+        fullName: "Jordan Rivera",
+        email: seededCustomerEmail,
+        phone: "555-0200",
+        role: "customer",
+        address: createAddress("150 Prospect Ave", "Brooklyn", "NY", "11215", 40.6692, -73.9827),
+        createdAt: now,
+        propertyNotes: "Side gate near driveway.",
+        lawnSizeSqFt: 3900,
+        defaultPropertyId: propertyId,
+        properties: [
+          {
+            id: propertyId,
+            label: "Primary home",
+            address: createAddress("150 Prospect Ave", "Brooklyn", "NY", "11215", 40.6692, -73.9827),
+            accessNotes: "Side gate near driveway.",
+            lawnSizeSqFt: 3900,
+            shrubBedSqFt: 420,
+            drivewaySqFt: 560,
+            sidewalkLinearFt: 48,
+            isDefault: true,
+            createdAt: now
+          }
+        ]
+      },
+      seededPassword
+    );
+    customerId = customer.id;
+    defaultPropertyId = customer.defaultPropertyId;
+  } else {
+    customerId = existingCustomer.id;
+    const customerProfile = await repository.findCustomerById(existingCustomer.id);
+    defaultPropertyId = customerProfile?.defaultPropertyId ?? "";
+  }
+
+  const seededCrewEmail = "crew@example.com";
+  const existingCrew = await prisma.userAccount.findUnique({
+    where: { email: seededCrewEmail }
+  });
+  if (!existingCrew) {
+    await repository.createCrewMember(
+      {
+        id: crypto.randomUUID(),
+        fullName: "Maya Brooks",
+        email: seededCrewEmail,
+        phone: "555-0300",
+        role: "crew-member",
+        address: createAddress("170 5th Ave", "Brooklyn", "NY", "11217", 40.6761, -73.9804),
+        createdAt: now,
+        bio: "Reliable crew member for lawn care, cleanup, and seasonal work.",
+        yearsExperience: 3,
+        categories: ["lawn-mowing", "seasonal-cleanup", "leaf-blowing"],
+        availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        willingToTravelMiles: 20,
+        preferredSchedule: "flex",
+        hasOwnEquipment: false,
+        winterWorkEnabled: true,
+        rating: 4.9,
+        completedJobs: 28,
+        status: "available"
+      },
+      seededPassword
+    );
+  } else {
+    await prisma.userAccount.update({
+      where: { id: existingCrew.id },
+      data: {
+        fullName: "Maya Brooks",
+        phone: "555-0300",
+        address: createAddress("170 5th Ave", "Brooklyn", "NY", "11217", 40.6761, -73.9804)
+      }
+    });
+    await prisma.crewMemberProfile.update({
+      where: { userId: existingCrew.id },
+      data: {
+        bio: "Reliable crew member for lawn care, cleanup, and seasonal work.",
+        yearsExperience: 3,
+        categories: ["lawn-mowing", "seasonal-cleanup", "leaf-blowing"],
+        availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        willingToTravelMiles: 20,
+        preferredSchedule: "flex",
+        hasOwnEquipment: false,
+        winterWorkEnabled: true,
+        rating: 4.9,
+        completedJobs: 28,
+        status: "available"
+      }
+    });
+  }
+
+  const primaryProvider = await prisma.userAccount.findUnique({
+    where: { email: "ariana@greenstride.example" }
+  });
+
+  if (customerId && defaultPropertyId && primaryProvider) {
+    const existingBooking = await prisma.booking.findFirst({
+      where: {
+        customerId,
+        providerId: primaryProvider.id,
+        notes: "Seeded YardMatch booking"
+      }
+    });
+
+    if (!existingBooking) {
+      await prisma.booking.create({
+        data: {
+          id: crypto.randomUUID(),
+          customerId,
+          providerId: primaryProvider.id,
+          serviceAddress: {
+            line1: "150 Prospect Ave",
+            city: "Brooklyn",
+            state: "NY",
+            postalCode: "11215",
+            country: "US",
+            point: {
+              latitude: 40.6692,
+              longitude: -73.9827
+            }
+          },
+          servicePropertyId: defaultPropertyId,
+          category: "lawn-mowing",
+          requestedAt: new Date(),
+          scheduledStartIso: new Date(Date.now() + 48 * 60 * 60 * 1000),
+          scheduledEndIso: new Date(Date.now() + 49 * 60 * 60 * 1000),
+          status: "confirmed",
+          notes: "Seeded YardMatch booking",
+          totalCents: 6800,
+          addressChangeHistory: []
+        }
+      });
+    }
   }
 }
 

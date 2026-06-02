@@ -1,7 +1,12 @@
 import {
   AnalyticsEvent,
   AuthenticatedUserEnvelope,
+  Booking,
+  CancelBookingRequest,
+  CrewMemberProfile,
   CompleteBookingRequest,
+  CrewMatchesResponse,
+  CrewOpportunity,
   CustomerProperty,
   GoogleAuthStartRequest,
   CurrentUserResponse,
@@ -18,12 +23,20 @@ import {
   CreateRefundRequest,
   CreateSupportTicketRequest,
   ObservabilityOverview,
+  ProviderCrewConversation,
+  ProviderProfile,
+  ProviderStaffingOverview,
   ProviderReview,
   RegisterUserRequest,
+  ReviewCrewMatchRequest,
+  RescheduleBookingRequest,
+  SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SessionHeartbeatRequest,
   SearchProvidersRequest,
   SearchProvidersResponse,
+  ProviderCrewConversationThread,
+  UpdateCrewPreferencesRequest,
   UpdateProviderSettingsRequest,
   UpdateBookingAddressRequest
 } from "./types";
@@ -104,7 +117,7 @@ export class MarketplaceApiClient {
   }
 
   public createCustomerProperty(payload: CreateCustomerPropertyRequest) {
-    return this.postJson(ApiRoutes.customerProperties, payload);
+    return this.postJson<CustomerProperty>(ApiRoutes.customerProperties, payload);
   }
 
   public getCustomerProperties() {
@@ -123,8 +136,56 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.searchProviders, payload);
   }
 
+  public getProviderProfile(providerId: string): Promise<ProviderProfile> {
+    return this.getJson<ProviderProfile>(
+      `${ApiRoutes.providerProfile}?providerId=${encodeURIComponent(providerId)}`
+    );
+  }
+
+  public getCrewOpportunities(): Promise<CrewOpportunity[]> {
+    return this.getJson(ApiRoutes.crewOpportunities);
+  }
+
+  public getProviderStaffingOverview(): Promise<ProviderStaffingOverview> {
+    return this.getJson(ApiRoutes.providerStaffingOverview);
+  }
+
+  public reviewCrewMatch(payload: ReviewCrewMatchRequest) {
+    return this.postJson(ApiRoutes.providerReviewCrewMatch, payload);
+  }
+
   public updateProviderSettings(payload: UpdateProviderSettingsRequest) {
-    return this.postJson(ApiRoutes.updateProviderSettings, payload);
+    return this.postJson<ProviderProfile>(ApiRoutes.updateProviderSettings, payload);
+  }
+
+  public updateCrewPreferences(payload: UpdateCrewPreferencesRequest) {
+    return this.postJson<CrewMemberProfile>(ApiRoutes.crewPreferences, payload);
+  }
+
+  public getCrewMatches(): Promise<CrewMatchesResponse> {
+    return this.getJson(ApiRoutes.crewMatches);
+  }
+
+  public getProviderCrewConversations(): Promise<ProviderCrewConversation[]> {
+    return this.getJson(ApiRoutes.providerCrewConversations);
+  }
+
+  public getProviderCrewConversationThread(
+    threadId?: string,
+    crewMatchId?: string
+  ): Promise<ProviderCrewConversationThread> {
+    const query = new URLSearchParams({
+      ...(threadId ? { threadId } : {}),
+      ...(crewMatchId ? { crewMatchId } : {})
+    });
+
+    return this.getJson(`${ApiRoutes.providerCrewMessages}?${query.toString()}`);
+  }
+
+  public sendProviderCrewMessage(
+    payload: SendProviderCrewMessageRequest
+  ): Promise<ProviderCrewConversationThread> {
+    return this.postJson(ApiRoutes.providerCrewMessages, payload);
   }
 
   public createProviderReview(payload: CreateProviderReviewRequest): Promise<ProviderReview> {
@@ -141,12 +202,24 @@ export class MarketplaceApiClient {
     return this.getJson<ListCustomerReviewOpportunitiesResponse>(ApiRoutes.customerReviewOpportunities);
   }
 
+  public getBookings(): Promise<Booking[]> {
+    return this.getJson<Booking[]>(ApiRoutes.listBookings);
+  }
+
   public createBooking(payload: CreateBookingRequest) {
-    return this.postJson(ApiRoutes.createBooking, payload);
+    return this.postJson<Booking>(ApiRoutes.createBooking, payload);
+  }
+
+  public cancelBooking(payload: CancelBookingRequest) {
+    return this.postJson<Booking>(ApiRoutes.cancelBooking, payload);
+  }
+
+  public rescheduleBooking(payload: RescheduleBookingRequest) {
+    return this.postJson<Booking>(ApiRoutes.rescheduleBooking, payload);
   }
 
   public completeBooking(payload: CompleteBookingRequest) {
-    return this.postJson(ApiRoutes.completeBooking, payload);
+    return this.postJson<Booking>(ApiRoutes.completeBooking, payload);
   }
 
   public updateBookingAddress(payload: UpdateBookingAddressRequest) {

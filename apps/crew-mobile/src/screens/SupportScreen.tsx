@@ -1,42 +1,73 @@
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { crewAssignmentHistory, crewAssignments } from "@yardmatch/ui";
+import { CrewMatchesResponse } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createCrewMobileApiClient } from "../lib/api";
+import { useCrewSession } from "../session/CrewSessionContext";
 
 export function SupportScreen() {
-  const totalHours = [...crewAssignments, ...crewAssignmentHistory].reduce(
-    (sum, assignment) => sum + assignment.plannedHours,
-    0
+  const { envelope, signOut } = useCrewSession();
+  const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function loadMatches() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setMatchesResponse(await api.getCrewMatches());
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load account.");
+    }
+  }
+
+  useEffect(() => {
+    void loadMatches();
+  }, [envelope?.session.token]);
+
+  const totalAccepted = useMemo(
+    () => matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0,
+    [matchesResponse]
   );
-  const totalEarnings = [...crewAssignments, ...crewAssignmentHistory].reduce(
-    (sum, assignment) => sum + Number(assignment.expectedEarnings.replace(/[^0-9.]/g, "")),
-    0
+  const totalPending = useMemo(
+    () => matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0,
+    [matchesResponse]
   );
 
   return (
     <ScreenShell eyebrow="Account" title="Earnings and help">
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
       <View style={styles.statRow}>
-        <StatCard label="Hours worked" value={`${totalHours}`} />
-        <StatCard label="Earned" value={`$${totalEarnings.toFixed(0)}`} />
+        <StatCard label="Accepted work" value={`${totalAccepted}`} />
+        <StatCard label="Pending" value={`${totalPending}`} />
       </View>
 
       <InfoCard title="Payouts" description="Weekly direct deposit">
-        <Text style={styles.meta}>Next deposit lands Thursday or Friday.</Text>
-        <Text style={styles.meta}>Instant payout options stay on the business-owner side for now.</Text>
+        <Text style={styles.meta}>Business owners handle payout release after service completion.</Text>
       </InfoCard>
 
       <InfoCard title="Account basics" description="Keep details up to date">
-        <Text style={styles.title}>Crew member profile</Text>
-        <Text style={styles.meta}>Flexible schedule • Snow work enabled • 20 mile travel radius</Text>
+        <Text style={styles.title}>{matchesResponse?.crewMember.fullName ?? "Crew member profile"}</Text>
+        <Text style={styles.meta}>
+          {(matchesResponse?.crewMember.availableWeekdays ?? []).join(", ")} •{" "}
+          {matchesResponse?.crewMember.willingToTravelMiles ?? 0} mile travel radius
+        </Text>
       </InfoCard>
 
       <InfoCard title="Help" description="Fast support routes">
-        <View style={styles.helpRow}>
-          <HelpChip label="Assignment issue" />
-          <HelpChip label="Unsafe site" />
-          <HelpChip label="Account help" />
-        </View>
+        <Text style={styles.meta}>Support remains lighter in the app so job, chat, and availability stay front and center.</Text>
+      </InfoCard>
+
+      <InfoCard title="Session" description="Manage this device">
+        <Pressable onPress={signOut} style={styles.logoutButton}>
+          <Text style={styles.logoutButtonLabel}>Log out</Text>
+        </Pressable>
       </InfoCard>
     </ScreenShell>
   );
@@ -48,14 +79,6 @@ function StatCard({ label, value }: { label: string; value: string }) {
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
-  );
-}
-
-function HelpChip({ label }: { label: string }) {
-  return (
-    <Pressable style={styles.helpChip}>
-      <Text style={styles.helpChipLabel}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -89,20 +112,14 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
-  helpRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: BrandTokens.spacing.sm
-  },
-  helpChip: {
+  logoutButton: {
+    alignItems: "center",
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: BrandTokens.colors.border,
-    paddingHorizontal: BrandTokens.spacing.lg,
-    paddingVertical: BrandTokens.spacing.sm
+    backgroundColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
   },
-  helpChipLabel: {
-    color: BrandTokens.colors.primaryStrong,
+  logoutButtonLabel: {
+    color: "#ffffff",
     fontWeight: "700"
   }
 });

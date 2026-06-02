@@ -1,49 +1,145 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
-  customerProviderMatches,
-  customerSavedProperties,
-  serviceCategoryLabels
-} from "@yardmatch/ui";
+  AvailabilitySlot,
+  CustomerProperty,
+  InstantQuoteResponse,
+  ProviderProfile,
+  ServiceCategory
+} from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createCustomerMobileApiClient } from "../lib/api";
 import { getCustomerMobileTracker } from "../lib/tracking";
+import { useCustomerSession } from "../session/CustomerSessionContext";
 
-const serviceOptions = [
+const serviceOptions: ServiceCategory[] = [
   "lawn-mowing",
   "hedge-trimming",
   "mulch-installation",
   "seasonal-cleanup",
   "weed-control"
-] as const;
+];
 
 export function BookServiceScreen() {
   const tracker = getCustomerMobileTracker();
-  const [selectedService, setSelectedService] = useState<(typeof serviceOptions)[number]>("lawn-mowing");
-  const [selectedPropertyId, setSelectedPropertyId] = useState(customerSavedProperties[0]?.id ?? "");
-  const [quoteUnlocked, setQuoteUnlocked] = useState(false);
+  const { envelope } = useCustomerSession();
+  const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
+  const [properties, setProperties] = useState<CustomerProperty[]>([]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
+  const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
   const activeProperty = useMemo(
-    () => customerSavedProperties.find((property) => property.id === selectedPropertyId) ?? customerSavedProperties[0],
-    [selectedPropertyId]
+    () => properties.find((property) => property.id === selectedPropertyId) ?? properties[0],
+    [properties, selectedPropertyId]
   );
 
-  const shortlist = customerProviderMatches.slice(0, 3);
+  async function loadProperties() {
+    if (!envelope?.session.token) {
+      return;
+    }
 
-  const handleBuildQuote = () => {
-    setQuoteUnlocked(true);
-    void tracker.track(MarketplaceTelemetryEventCatalog.bookingRequested, {
-      app: "customer",
-      screen: "book",
-      service: selectedService,
-      property: activeProperty.label
-    });
+    try {
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextProperties = await api.getCustomerProperties();
+      setProperties(nextProperties);
+      setSelectedPropertyId(nextProperties.find((property) => property.isDefault)?.id ?? nextProperties[0]?.id ?? "");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load properties.");
+    }
+  }
+
+  useEffect(() => {
+    void loadProperties();
+  }, [envelope?.session.token]);
+
+  const handleBuildQuote = async () => {
+    if (!activeProperty || !envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      setMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextQuote = await api.createInstantQuote({
+        address: activeProperty.address,
+        category: selectedService,
+        propertyId: activeProperty.id
+      });
+      const providerSearch = await api.searchProviders({
+        address: activeProperty.address,
+        categories: [selectedService],
+        dateIso: new Date().toISOString(),
+        estimatedDurationMinutes: nextQuote.estimatedDurationMinutes
+      });
+      setQuote(nextQuote);
+      setProviders(providerSearch.providers);
+      setSlots(providerSearch.suggestedSlots);
+      void tracker.track(MarketplaceTelemetryEventCatalog.bookingRequested, {
+        app: "customer",
+        screen: "book",
+        service: selectedService,
+        property: activeProperty.label
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to build quote right now.");
+    } finally {
+      setIsWorking(false);
+    }
   };
+
+  async function handleCreateBooking(provider: ProviderProfile) {
+    if (!quote || !activeProperty || !envelope?.session.token) {
+      return;
+    }
+
+    const slot = slots.find((item) => item.providerId === provider.id && !item.isBooked);
+    if (!slot) {
+      setErrorMessage("No open slot is available for that provider.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.createBooking({
+        providerId: provider.id,
+        serviceAddress: activeProperty.address,
+        servicePropertyId: activeProperty.id,
+        category: selectedService,
+        scheduledStartIso: slot.startIso,
+        scheduledEndIso: slot.endIso,
+        notes: "Booked from the mobile customer app.",
+        totalCents: quote.estimatedPriceCents
+      });
+      setMessage(`Booked ${provider.companyName}.`);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  const shortlist = providers.slice(0, 3);
 
   return (
     <ScreenShell eyebrow="Book" title="Start a new booking" description="Pick a service and property.">
+      {message ? <InfoCard title="Booking confirmed" description={message} /> : null}
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
       <InfoCard title="Service" description="What do you need today?">
         <View style={styles.chipWrap}>
           {serviceOptions.map((option) => {
@@ -55,7 +151,7 @@ export function BookServiceScreen() {
                 style={[styles.chip, isActive && styles.chipActive]}
               >
                 <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                  {serviceCategoryLabels[option]}
+                  {option.replaceAll("-", " ")}
                 </Text>
               </Pressable>
             );
@@ -65,7 +161,7 @@ export function BookServiceScreen() {
 
       <InfoCard title="Property" description="Choose where the crew is going.">
         <View style={styles.propertyStack}>
-          {customerSavedProperties.map((property) => {
+          {properties.map((property) => {
             const isActive = property.id === selectedPropertyId;
             return (
               <Pressable
@@ -75,51 +171,54 @@ export function BookServiceScreen() {
               >
                 <View style={styles.propertyCopy}>
                   <Text style={styles.propertyLabel}>{property.label}</Text>
-                  <Text style={styles.propertyAddress}>{property.addressLine}</Text>
+                  <Text style={styles.propertyAddress}>{property.address.line1}</Text>
                 </View>
                 {property.isDefault ? <Text style={styles.defaultBadge}>Default</Text> : null}
               </Pressable>
             );
           })}
         </View>
-        <Pressable onPress={handleBuildQuote} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonLabel}>Get quote</Text>
+        <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Get quote"}</Text>
         </Pressable>
       </InfoCard>
 
-      {quoteUnlocked ? (
+      {quote ? (
         <>
-          <InfoCard title="$68 estimate" description="52 minutes • 1 crew member">
-            <Text style={styles.quoteSummary}>
-              Quote built from {activeProperty.label.toLowerCase()} and your selected service.
-            </Text>
+          <InfoCard
+            title={new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+              quote.estimatedPriceCents / 100
+            )}
+            description={`${quote.estimatedDurationMinutes} minutes • ${quote.estimatedCrewSize} crew`}
+          >
+            <Text style={styles.quoteSummary}>{quote.estimateSummary}</Text>
           </InfoCard>
 
           <InfoCard title="Nearby matches" description="Best next openings">
             <View style={styles.providerStack}>
-              {shortlist.map((provider) => (
-                <View key={provider.id} style={styles.providerRow}>
-                  <View style={styles.providerCopy}>
-                    <Text style={styles.providerName}>{provider.businessName}</Text>
-                    <Text style={styles.providerMeta}>
-                      {provider.rating} stars • {provider.distanceMiles} mi • {provider.nextSlotLabel}
-                    </Text>
-                    <Text style={styles.providerMeta}>{provider.estimateLabel}</Text>
+              {shortlist.map((provider) => {
+                const slot = slots.find((item) => item.providerId === provider.id && !item.isBooked);
+                return (
+                  <View key={provider.id} style={styles.providerRow}>
+                    <View style={styles.providerCopy}>
+                      <Text style={styles.providerName}>{provider.companyName}</Text>
+                      <Text style={styles.providerMeta}>
+                        {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {slot ? new Date(slot.startIso).toLocaleString() : "No open slot"}
+                      </Text>
+                    </View>
+                    <Pressable
+                      disabled={isWorking || !slot}
+                      onPress={() => void handleCreateBooking(provider)}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Book</Text>
+                    </Pressable>
                   </View>
-                  <Pressable
-                    onPress={() =>
-                      void tracker.track(MarketplaceTelemetryEventCatalog.providerSearchPerformed, {
-                        app: "customer",
-                        provider: provider.businessName,
-                        service: selectedService
-                      })
-                    }
-                    style={styles.secondaryButton}
-                  >
-                    <Text style={styles.secondaryButtonLabel}>Book</Text>
-                  </Pressable>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </InfoCard>
         </>

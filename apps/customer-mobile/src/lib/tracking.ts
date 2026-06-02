@@ -1,6 +1,6 @@
 import { Dimensions, Platform } from "react-native";
-import { MarketplaceApiClient } from "@yardmatch/contracts";
 import { MobileAnalyticsTracker } from "@yardmatch/observability";
+import { createCustomerMobileApiClient } from "./api";
 
 function getPlatformSurface(): "ios-phone" | "ios-tablet" | "android-phone" | "android-tablet" {
   const isTablet = Dimensions.get("window").width >= 900;
@@ -13,8 +13,7 @@ function getPlatformSurface(): "ios-phone" | "ios-tablet" | "android-phone" | "a
 }
 
 export function getCustomerMobileTracker() {
-  const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-  const api = new MarketplaceApiClient(runtimeEnv?.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:4000");
+  const api = createCustomerMobileApiClient();
 
   return new MobileAnalyticsTracker(api, "customer", getPlatformSurface(), "customer-mobile-demo");
 }

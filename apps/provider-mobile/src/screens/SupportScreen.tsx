@@ -1,92 +1,149 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import {
-  providerCrewPayouts,
-  providerFundingAccounts
-} from "@yardmatch/ui";
-import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { ProviderProfile } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
-import { ServiceRadiusSettingsCard } from "../components/ServiceRadiusSettingsCard";
-import { getProviderMobileTracker } from "../lib/tracking";
+import { createProviderMobileApiClient } from "../lib/api";
+import { useProviderSession } from "../session/ProviderSessionContext";
 
 export function SupportScreen() {
-  const tracker = getProviderMobileTracker();
-  const [defaultAccountId, setDefaultAccountId] = useState(
-    providerFundingAccounts.find((account) => account.isDefault)?.id ?? providerFundingAccounts[0]?.id
-  );
+  const { envelope, signOut } = useProviderSession();
+  const [provider, setProvider] = useState<ProviderProfile | undefined>();
+  const [statusMessage, setStatusMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
-  const readyAmount = providerCrewPayouts
-    .filter((payout) => payout.status === "ready")
-    .reduce((sum, payout) => sum + Number(payout.amountLabel.replace(/[^0-9.]/g, "")), 0);
+  async function loadProvider() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const me = await api.getCurrentUser();
+      setProvider(me.user as ProviderProfile);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load settings.");
+    }
+  }
+
+  useEffect(() => {
+    void loadProvider();
+  }, [envelope?.session.token]);
+
+  async function saveSettings(updates: Partial<Pick<ProviderProfile, "serviceRadiusMiles" | "staffingMode">>) {
+    if (!envelope?.session.token || !provider) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextProvider = await api.updateProviderSettings({
+        serviceRadiusMiles: updates.serviceRadiusMiles ?? provider.serviceRadiusMiles,
+        staffingMode: updates.staffingMode ?? provider.staffingMode,
+        sponsoredListingEnabled: provider.sponsoredListingEnabled
+      });
+      setProvider(nextProvider);
+      setStatusMessage("Settings updated.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update settings.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
 
   return (
     <ScreenShell eyebrow="Account" title="Settings and payouts">
-      <ServiceRadiusSettingsCard />
+      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard title="Payouts" description="Weekly direct deposit is the default">
-        <Text style={styles.emphasis}>${readyAmount.toFixed(0)} ready for cash-out now</Text>
-        <Text style={styles.meta}>Instant cash-out is available up to 6 times per day.</Text>
-        <Pressable
-          onPress={() =>
-            void tracker.track(MarketplaceTelemetryEventCatalog.providerCashOutInitiated, {
-              app: "provider",
-              readyAmount
-            })
-          }
-          style={styles.primaryButton}
-        >
-          <Text style={styles.primaryButtonLabel}>Cash out now</Text>
+      <InfoCard title="Service radius" description="Measured from customer property addresses">
+        <View style={styles.stepRow}>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ serviceRadiusMiles: Math.max(5, (provider?.serviceRadiusMiles ?? 15) - 5) })}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>-5</Text>
+          </Pressable>
+          <Text style={styles.valueText}>{provider?.serviceRadiusMiles ?? 0} miles</Text>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ serviceRadiusMiles: Math.min(60, (provider?.serviceRadiusMiles ?? 15) + 5) })}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>+5</Text>
+          </Pressable>
+        </View>
+      </InfoCard>
+
+      <InfoCard title="Staffing mode" description="Choose how matched crew is added">
+        <View style={styles.stepRow}>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ staffingMode: "review-first" })}
+            style={[styles.secondaryButton, provider?.staffingMode === "review-first" && styles.secondaryButtonActive]}
+          >
+            <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "review-first" && styles.secondaryButtonLabelActive]}>
+              Review first
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ staffingMode: "auto-accept" })}
+            style={[styles.secondaryButton, provider?.staffingMode === "auto-accept" && styles.secondaryButtonActive]}
+          >
+            <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "auto-accept" && styles.secondaryButtonLabelActive]}>
+              Auto accept
+            </Text>
+          </Pressable>
+        </View>
+      </InfoCard>
+
+      <InfoCard title="Payouts" description="Weekly direct deposit is still the default">
+        <Text style={styles.meta}>Crew payout depth stays web-first for now so the field app stays lighter.</Text>
+      </InfoCard>
+
+      <InfoCard title="Session" description="Manage this device">
+        <Pressable onPress={signOut} style={styles.logoutButton}>
+          <Text style={styles.logoutButtonLabel}>Log out</Text>
         </Pressable>
-      </InfoCard>
-
-      <InfoCard title="Bank accounts" description={`${providerFundingAccounts.length} linked`}>
-        <View style={styles.list}>
-          {providerFundingAccounts.map((account) => {
-            const isDefault = account.id === defaultAccountId;
-            return (
-              <Pressable
-                key={account.id}
-                onPress={() => setDefaultAccountId(account.id)}
-                style={[styles.accountRow, isDefault && styles.accountRowActive]}
-              >
-                <View style={styles.copy}>
-                  <Text style={styles.title}>
-                    {account.bankName} {account.accountMask}
-                  </Text>
-                  <Text style={styles.meta}>
-                    {account.accountType} • {account.payoutSpeedLabel}
-                  </Text>
-                </View>
-                {isDefault ? <Text style={styles.badge}>Default</Text> : null}
-              </Pressable>
-            );
-          })}
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Help" description="Fast support routes">
-        <View style={styles.helpRow}>
-          <HelpChip label="Payout issue" />
-          <HelpChip label="Crew help" />
-          <HelpChip label="Dispute" />
-        </View>
       </InfoCard>
     </ScreenShell>
   );
 }
 
-function HelpChip({ label }: { label: string }) {
-  return (
-    <Pressable style={styles.helpChip}>
-      <Text style={styles.helpChipLabel}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
-  emphasis: {
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
+  },
+  secondaryButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  secondaryButtonActive: {
+    backgroundColor: BrandTokens.colors.primary
+  },
+  secondaryButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  secondaryButtonLabelActive: {
+    color: "#ffffff"
+  },
+  valueText: {
     color: BrandTokens.colors.ink,
     fontSize: 18,
     fontWeight: "700"
@@ -95,61 +152,14 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
-  primaryButton: {
+  logoutButton: {
     alignItems: "center",
     borderRadius: 999,
     backgroundColor: BrandTokens.colors.primary,
     paddingVertical: BrandTokens.spacing.md
   },
-  primaryButtonLabel: {
+  logoutButtonLabel: {
     color: "#ffffff",
-    fontWeight: "700"
-  },
-  list: {
-    gap: BrandTokens.spacing.md
-  },
-  accountRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: BrandTokens.spacing.md,
-    borderRadius: BrandTokens.radius.sm,
-    borderWidth: 1,
-    borderColor: BrandTokens.colors.border,
-    padding: BrandTokens.spacing.md,
-    backgroundColor: "rgba(255,255,255,0.96)"
-  },
-  accountRowActive: {
-    borderColor: BrandTokens.colors.primary,
-    backgroundColor: BrandTokens.colors.surfaceStrong
-  },
-  copy: {
-    flex: 1,
-    gap: BrandTokens.spacing.xs
-  },
-  title: {
-    color: BrandTokens.colors.ink,
-    fontWeight: "700"
-  },
-  badge: {
-    color: BrandTokens.colors.primaryStrong,
-    fontSize: 12,
-    fontWeight: "700"
-  },
-  helpRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: BrandTokens.spacing.sm
-  },
-  helpChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: BrandTokens.colors.border,
-    paddingHorizontal: BrandTokens.spacing.lg,
-    paddingVertical: BrandTokens.spacing.sm
-  },
-  helpChipLabel: {
-    color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
   }
 });

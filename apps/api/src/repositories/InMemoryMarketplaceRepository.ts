@@ -3,6 +3,9 @@ import {
   AvailabilitySlot,
   Booking,
   BookingAddressChangeRequest,
+  CrewMatchCandidate,
+  ProviderCrewConversation,
+  ProviderCrewMessage,
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
@@ -24,6 +27,9 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly providerReviews: ProviderReview[] = [];
   private readonly reviewInvites: ReviewInvite[] = [];
   private readonly supportTickets: SupportTicket[] = [];
+  private readonly crewMatches: CrewMatchCandidate[] = [];
+  private readonly providerCrewConversations: ProviderCrewConversation[] = [];
+  private readonly providerCrewMessages: ProviderCrewMessage[] = [];
   private readonly authIdentities: AuthIdentityRecord[] = [];
 
   public constructor() {
@@ -133,6 +139,32 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
     Object.assign(booking, updates);
     return booking;
+  }
+
+  public async createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate> {
+    this.crewMatches.push(match);
+    return match;
+  }
+
+  public async listCrewMatches(): Promise<CrewMatchCandidate[]> {
+    return this.crewMatches.map((match) => ({ ...match }));
+  }
+
+  public async updateCrewMatch(
+    matchId: string,
+    updates: Partial<CrewMatchCandidate>
+  ): Promise<CrewMatchCandidate | undefined> {
+    const match = this.crewMatches.find((item) => item.id === matchId);
+    if (!match) {
+      return undefined;
+    }
+
+    Object.assign(match, updates);
+    return match;
+  }
+
+  public async findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined> {
+    return this.crewMatches.find((match) => match.id === matchId);
   }
 
   public async createProviderReview(review: ProviderReview): Promise<ProviderReview> {
@@ -247,6 +279,53 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return [...this.supportTickets];
   }
 
+  public async createProviderCrewConversation(
+    conversation: ProviderCrewConversation
+  ): Promise<ProviderCrewConversation> {
+    this.providerCrewConversations.push(conversation);
+    return conversation;
+  }
+
+  public async findProviderCrewConversationById(
+    conversationId: string
+  ): Promise<ProviderCrewConversation | undefined> {
+    return this.providerCrewConversations.find((conversation) => conversation.id === conversationId);
+  }
+
+  public async findProviderCrewConversationByCrewMatchId(
+    crewMatchId: string
+  ): Promise<ProviderCrewConversation | undefined> {
+    return this.providerCrewConversations.find((conversation) => conversation.crewMatchId === crewMatchId);
+  }
+
+  public async listProviderCrewConversations(): Promise<ProviderCrewConversation[]> {
+    return this.providerCrewConversations.map((conversation) => ({ ...conversation }));
+  }
+
+  public async updateProviderCrewConversation(
+    conversationId: string,
+    updates: Partial<ProviderCrewConversation>
+  ): Promise<ProviderCrewConversation | undefined> {
+    const conversation = this.providerCrewConversations.find((item) => item.id === conversationId);
+    if (!conversation) {
+      return undefined;
+    }
+
+    Object.assign(conversation, updates);
+    return conversation;
+  }
+
+  public async createProviderCrewMessage(message: ProviderCrewMessage): Promise<ProviderCrewMessage> {
+    this.providerCrewMessages.push(message);
+    return message;
+  }
+
+  public async listProviderCrewMessages(conversationId: string): Promise<ProviderCrewMessage[]> {
+    return this.providerCrewMessages
+      .filter((message) => message.threadId === conversationId)
+      .map((message) => ({ ...message }));
+  }
+
   public async findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined> {
     return this.authIdentities.find((identity) => identity.email.toLowerCase() === email.toLowerCase());
   }
@@ -275,6 +354,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         bio: "Weekly mowing, cleanup, edging, leaf service, and winter walkway clearing for busy homeowners.",
         yearsExperience: 7,
         serviceRadiusMiles: 18,
+        staffingMode: "review-first",
         sponsoredListingEnabled: true,
         categories: [
           "lawn-mowing",
@@ -306,6 +386,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         bio: "Premium lawn, hedge, mulch, fertilization, and driveway snow service with weekend availability.",
         yearsExperience: 12,
         serviceRadiusMiles: 24,
+        staffingMode: "review-first",
         sponsoredListingEnabled: false,
         categories: [
           "lawn-mowing",
@@ -337,6 +418,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         bio: "Cleanup, irrigation checks, lawn refresh packages, gutter care, and winter de-icing support.",
         yearsExperience: 10,
         serviceRadiusMiles: 30,
+        staffingMode: "review-first",
         sponsoredListingEnabled: true,
         categories: [
           "seasonal-cleanup",

@@ -5,6 +5,9 @@ import {
   Booking,
   BookingAddressChangeRequest,
   CalendarConnection,
+  CrewMatchCandidate,
+  ProviderCrewConversation,
+  ProviderCrewMessage,
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
@@ -130,6 +133,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           bio: provider.bio,
           yearsExperience: provider.yearsExperience,
           serviceRadiusMiles: provider.serviceRadiusMiles,
+          staffingMode: provider.staffingMode,
           sponsoredListingEnabled: provider.sponsoredListingEnabled,
           categories: provider.categories,
           rating: provider.rating,
@@ -168,9 +172,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           bio: crewMember.bio,
           yearsExperience: crewMember.yearsExperience,
           categories: crewMember.categories,
+          availableWeekdays: crewMember.availableWeekdays,
           willingToTravelMiles: crewMember.willingToTravelMiles,
           preferredSchedule: crewMember.preferredSchedule,
           hasOwnEquipment: crewMember.hasOwnEquipment,
+          winterWorkEnabled: crewMember.winterWorkEnabled,
           rating: crewMember.rating,
           completedJobs: crewMember.completedJobs,
           status: crewMember.status,
@@ -263,9 +269,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           bio: updates.bio,
           yearsExperience: updates.yearsExperience,
           categories: updates.categories,
+          availableWeekdays: updates.availableWeekdays,
           willingToTravelMiles: updates.willingToTravelMiles,
           preferredSchedule: updates.preferredSchedule,
           hasOwnEquipment: updates.hasOwnEquipment,
+          winterWorkEnabled: updates.winterWorkEnabled,
           rating: updates.rating,
           completedJobs: updates.completedJobs,
           status: updates.status,
@@ -431,6 +439,83 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapBooking(booking);
   }
 
+  public async createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate> {
+    await this.prisma.crewMatch.create({
+      data: {
+        id: match.id,
+        bookingId: match.bookingId,
+        providerId: match.providerId,
+        crewMemberId: match.crewMemberId,
+        crewMemberName: match.crewMemberName,
+        crewMemberPhone: match.crewMemberPhone,
+        categories: match.categories,
+        availableWeekdays: match.availableWeekdays,
+        preferredSchedule: match.preferredSchedule,
+        willingToTravelMiles: match.willingToTravelMiles,
+        hasOwnEquipment: match.hasOwnEquipment,
+        winterWorkEnabled: match.winterWorkEnabled,
+        status: match.status,
+        autoAccepted: match.autoAccepted,
+        distanceMiles: match.distanceMiles,
+        hourlyRateCents: match.hourlyRateCents,
+        createdAt: new Date(match.createdAt),
+        reviewedAt: match.reviewedAt ? new Date(match.reviewedAt) : undefined
+      }
+    });
+    return match;
+  }
+
+  public async listCrewMatches(): Promise<CrewMatchCandidate[]> {
+    const matches = await this.prisma.crewMatch.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+    return matches.map((match: any) => this.mapCrewMatch(match));
+  }
+
+  public async updateCrewMatch(
+    matchId: string,
+    updates: Partial<CrewMatchCandidate>
+  ): Promise<CrewMatchCandidate | undefined> {
+    const current = await this.prisma.crewMatch.findUnique({
+      where: { id: matchId }
+    });
+    if (!current) {
+      return undefined;
+    }
+
+    const match = await this.prisma.crewMatch.update({
+      where: { id: matchId },
+      data: {
+        crewMemberName: updates.crewMemberName,
+        crewMemberPhone: updates.crewMemberPhone,
+        categories: updates.categories,
+        availableWeekdays: updates.availableWeekdays,
+        preferredSchedule: updates.preferredSchedule,
+        willingToTravelMiles: updates.willingToTravelMiles,
+        hasOwnEquipment: updates.hasOwnEquipment,
+        winterWorkEnabled: updates.winterWorkEnabled,
+        status: updates.status,
+        autoAccepted: updates.autoAccepted,
+        distanceMiles: updates.distanceMiles,
+        hourlyRateCents: updates.hourlyRateCents,
+        reviewedAt: updates.reviewedAt
+          ? new Date(updates.reviewedAt)
+          : updates.reviewedAt === undefined
+            ? undefined
+            : null
+      }
+    });
+
+    return this.mapCrewMatch(match);
+  }
+
+  public async findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined> {
+    const match = await this.prisma.crewMatch.findUnique({
+      where: { id: matchId }
+    });
+    return match ? this.mapCrewMatch(match) : undefined;
+  }
+
   public async createProviderReview(review: ProviderReview): Promise<ProviderReview> {
     await this.prisma.providerReview.create({
       data: {
@@ -453,22 +538,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       where: { providerId },
       orderBy: { createdAt: "desc" }
     });
-    return reviews.map((review: any) => ({
-      ...review,
-      createdAt: review.createdAt.toISOString()
-    }));
+    return reviews.map((review: any) => this.mapProviderReview(review));
   }
 
   public async findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined> {
     const review = await this.prisma.providerReview.findUnique({
       where: { bookingId }
     });
-    return review
-      ? {
-          ...review,
-          createdAt: review.createdAt.toISOString()
-        }
-      : undefined;
+    return review ? this.mapProviderReview(review) : undefined;
   }
 
   public async createReviewInvite(invite: ReviewInvite): Promise<ReviewInvite> {
@@ -585,6 +662,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           bio: updates.bio,
           yearsExperience: updates.yearsExperience,
           serviceRadiusMiles: updates.serviceRadiusMiles,
+          staffingMode: updates.staffingMode,
           sponsoredListingEnabled: updates.sponsoredListingEnabled,
           categories: updates.categories,
           rating: updates.rating,
@@ -607,7 +685,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   }
 
   public async listPayments(): Promise<PaymentRecord[]> {
-    return this.prisma.paymentRecord.findMany();
+    const payments = await this.prisma.paymentRecord.findMany();
+    return payments.map((payment: any) => this.mapPaymentRecord(payment));
   }
 
   public async updatePayment(
@@ -621,10 +700,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       return undefined;
     }
 
-    return this.prisma.paymentRecord.update({
+    const payment = await this.prisma.paymentRecord.update({
       where: { id: paymentId },
       data: updates
     });
+    return this.mapPaymentRecord(payment);
   }
 
   public async createSupportTicket(ticket: SupportTicket): Promise<SupportTicket> {
@@ -646,6 +726,98 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       bookingId: ticket.bookingId ?? undefined,
       createdAt: ticket.createdAt.toISOString()
     }));
+  }
+
+  public async createProviderCrewConversation(
+    conversation: ProviderCrewConversation
+  ): Promise<ProviderCrewConversation> {
+    await this.prisma.providerCrewConversation.create({
+      data: {
+        id: conversation.id,
+        crewMatchId: conversation.crewMatchId,
+        bookingId: conversation.bookingId,
+        providerId: conversation.providerId,
+        crewMemberId: conversation.crewMemberId,
+        providerName: conversation.providerName,
+        crewMemberName: conversation.crewMemberName,
+        status: conversation.status,
+        updatedAt: new Date(conversation.updatedAt),
+        lastMessagePreview: conversation.lastMessagePreview,
+        unreadCount: conversation.unreadCount,
+        createdAt: new Date(conversation.updatedAt)
+      }
+    });
+    return conversation;
+  }
+
+  public async findProviderCrewConversationById(
+    conversationId: string
+  ): Promise<ProviderCrewConversation | undefined> {
+    const conversation = await this.prisma.providerCrewConversation.findUnique({
+      where: { id: conversationId }
+    });
+    return conversation ? this.mapProviderCrewConversation(conversation) : undefined;
+  }
+
+  public async findProviderCrewConversationByCrewMatchId(
+    crewMatchId: string
+  ): Promise<ProviderCrewConversation | undefined> {
+    const conversation = await this.prisma.providerCrewConversation.findUnique({
+      where: { crewMatchId }
+    });
+    return conversation ? this.mapProviderCrewConversation(conversation) : undefined;
+  }
+
+  public async listProviderCrewConversations(): Promise<ProviderCrewConversation[]> {
+    const conversations = await this.prisma.providerCrewConversation.findMany({
+      orderBy: { updatedAt: "desc" }
+    });
+    return conversations.map((conversation: any) => this.mapProviderCrewConversation(conversation));
+  }
+
+  public async updateProviderCrewConversation(
+    conversationId: string,
+    updates: Partial<ProviderCrewConversation>
+  ): Promise<ProviderCrewConversation | undefined> {
+    const current = await this.prisma.providerCrewConversation.findUnique({
+      where: { id: conversationId }
+    });
+    if (!current) {
+      return undefined;
+    }
+
+    const conversation = await this.prisma.providerCrewConversation.update({
+      where: { id: conversationId },
+      data: {
+        status: updates.status,
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined,
+        lastMessagePreview: updates.lastMessagePreview,
+        unreadCount: updates.unreadCount
+      }
+    });
+    return this.mapProviderCrewConversation(conversation);
+  }
+
+  public async createProviderCrewMessage(message: ProviderCrewMessage): Promise<ProviderCrewMessage> {
+    await this.prisma.providerCrewMessage.create({
+      data: {
+        id: message.id,
+        conversationId: message.threadId,
+        senderId: message.senderId,
+        senderRole: message.senderRole,
+        body: message.body,
+        createdAt: new Date(message.createdAt)
+      }
+    });
+    return message;
+  }
+
+  public async listProviderCrewMessages(conversationId: string): Promise<ProviderCrewMessage[]> {
+    const messages = await this.prisma.providerCrewMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "asc" }
+    });
+    return messages.map((message: any) => this.mapProviderCrewMessage(message));
   }
 
   public async findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined> {
@@ -746,6 +918,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       bio: string;
       yearsExperience: number;
       serviceRadiusMiles: number;
+      staffingMode?: string;
       sponsoredListingEnabled: boolean;
       categories: string[];
       rating: number;
@@ -767,6 +940,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       bio: profile.bio,
       yearsExperience: profile.yearsExperience,
       serviceRadiusMiles: profile.serviceRadiusMiles,
+      staffingMode: (profile.staffingMode as ProviderProfile["staffingMode"] | undefined) ?? "review-first",
       sponsoredListingEnabled: profile.sponsoredListingEnabled,
       categories: profile.categories as ProviderProfile["categories"],
       rating: profile.rating,
@@ -791,9 +965,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       bio: string;
       yearsExperience: number;
       categories: string[];
+      availableWeekdays?: string[];
       willingToTravelMiles: number;
       preferredSchedule: string;
       hasOwnEquipment: boolean;
+      winterWorkEnabled?: boolean;
       rating: number;
       completedJobs: number;
       status: string;
@@ -811,9 +987,13 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       bio: profile.bio,
       yearsExperience: profile.yearsExperience,
       categories: profile.categories as CrewMemberProfile["categories"],
+      availableWeekdays:
+        (profile.availableWeekdays as CrewMemberProfile["availableWeekdays"] | undefined) ??
+        ["Mon", "Tue", "Wed", "Thu", "Fri"],
       willingToTravelMiles: profile.willingToTravelMiles,
       preferredSchedule: profile.preferredSchedule as CrewMemberProfile["preferredSchedule"],
       hasOwnEquipment: profile.hasOwnEquipment,
+      winterWorkEnabled: profile.winterWorkEnabled ?? true,
       rating: profile.rating,
       completedJobs: profile.completedJobs,
       status: profile.status as CrewMemberProfile["status"],
@@ -886,6 +1066,137 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       completedAt: record.completedAt?.toISOString(),
       expiresAtIso: record.expiresAtIso.toISOString(),
       deepLinkPath: record.deepLinkPath
+    };
+  }
+
+  private mapProviderReview(record: {
+    id: string;
+    bookingId: string;
+    providerId: string;
+    customerId: string;
+    overallRating: number;
+    timelinessRating: number;
+    attentionToDetailRating: number;
+    reviewText: string;
+    createdAt: Date;
+  }): ProviderReview {
+    return {
+      id: record.id,
+      bookingId: record.bookingId,
+      providerId: record.providerId,
+      customerId: record.customerId,
+      overallRating: record.overallRating as ProviderReview["overallRating"],
+      timelinessRating: record.timelinessRating as ProviderReview["timelinessRating"],
+      attentionToDetailRating:
+        record.attentionToDetailRating as ProviderReview["attentionToDetailRating"],
+      reviewText: record.reviewText,
+      createdAt: record.createdAt.toISOString()
+    };
+  }
+
+  private mapPaymentRecord(record: {
+    id: string;
+    bookingId: string;
+    amountCents: number;
+    status: string;
+    refundable: boolean;
+    refundReason: string | null;
+  }): PaymentRecord {
+    return {
+      id: record.id,
+      bookingId: record.bookingId,
+      amountCents: record.amountCents,
+      status: record.status as PaymentRecord["status"],
+      refundable: record.refundable,
+      refundReason: record.refundReason ?? undefined
+    };
+  }
+
+  private mapCrewMatch(record: {
+    id: string;
+    bookingId: string;
+    providerId: string;
+    crewMemberId: string;
+    crewMemberName: string;
+    crewMemberPhone: string;
+    categories: string[];
+    availableWeekdays: string[];
+    preferredSchedule: string;
+    willingToTravelMiles: number;
+    hasOwnEquipment: boolean;
+    winterWorkEnabled: boolean;
+    status: string;
+    autoAccepted: boolean;
+    distanceMiles: number;
+    hourlyRateCents: number;
+    createdAt: Date;
+    reviewedAt: Date | null;
+  }): CrewMatchCandidate {
+    return {
+      id: record.id,
+      bookingId: record.bookingId,
+      providerId: record.providerId,
+      crewMemberId: record.crewMemberId,
+      crewMemberName: record.crewMemberName,
+      crewMemberPhone: record.crewMemberPhone,
+      categories: record.categories as CrewMatchCandidate["categories"],
+      availableWeekdays: record.availableWeekdays as CrewMatchCandidate["availableWeekdays"],
+      preferredSchedule: record.preferredSchedule as CrewMatchCandidate["preferredSchedule"],
+      willingToTravelMiles: record.willingToTravelMiles,
+      hasOwnEquipment: record.hasOwnEquipment,
+      winterWorkEnabled: record.winterWorkEnabled,
+      status: record.status as CrewMatchCandidate["status"],
+      autoAccepted: record.autoAccepted,
+      distanceMiles: record.distanceMiles,
+      hourlyRateCents: record.hourlyRateCents,
+      createdAt: record.createdAt.toISOString(),
+      reviewedAt: record.reviewedAt?.toISOString()
+    };
+  }
+
+  private mapProviderCrewConversation(record: {
+    id: string;
+    crewMatchId: string;
+    bookingId: string;
+    providerId: string;
+    crewMemberId: string;
+    providerName: string;
+    crewMemberName: string;
+    status: string;
+    updatedAt: Date;
+    lastMessagePreview: string | null;
+    unreadCount: number;
+  }): ProviderCrewConversation {
+    return {
+      id: record.id,
+      crewMatchId: record.crewMatchId,
+      bookingId: record.bookingId,
+      providerId: record.providerId,
+      crewMemberId: record.crewMemberId,
+      providerName: record.providerName,
+      crewMemberName: record.crewMemberName,
+      status: record.status as ProviderCrewConversation["status"],
+      updatedAt: record.updatedAt.toISOString(),
+      lastMessagePreview: record.lastMessagePreview ?? undefined,
+      unreadCount: record.unreadCount
+    };
+  }
+
+  private mapProviderCrewMessage(record: {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    senderRole: string;
+    body: string;
+    createdAt: Date;
+  }): ProviderCrewMessage {
+    return {
+      id: record.id,
+      threadId: record.conversationId,
+      senderId: record.senderId,
+      senderRole: record.senderRole as ProviderCrewMessage["senderRole"],
+      body: record.body,
+      createdAt: record.createdAt.toISOString()
     };
   }
 }

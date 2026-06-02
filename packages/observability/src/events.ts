@@ -18,6 +18,8 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly crewCheckInCompleted = "crew_check_in_completed";
   public static readonly crewAssignmentCompleted = "crew_assignment_completed";
   public static readonly bookingRequested = "booking_requested";
+  public static readonly bookingCancelled = "booking_cancelled";
+  public static readonly bookingRescheduled = "booking_rescheduled";
   public static readonly bookingAddressChanged = "booking_address_changed";
   public static readonly bookingAddressChangePendingReview = "booking_address_change_pending_review";
   public static readonly bookingAddressChangeBlocked = "booking_address_change_blocked";

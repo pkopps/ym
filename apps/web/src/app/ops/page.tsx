@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MarketplaceApiClient, ObservabilityOverview } from "@yardmatch/contracts";
+import { getWebApiBaseUrl } from "../../lib/api";
 
 export const metadata: Metadata = {
   title: "Operational telemetry",
@@ -10,9 +11,7 @@ export const metadata: Metadata = {
 };
 
 async function getOverview(): Promise<ObservabilityOverview> {
-  const api = new MarketplaceApiClient(
-    process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.API_BASE_URL ?? "http://localhost:4000"
-  );
+  const api = new MarketplaceApiClient(getWebApiBaseUrl());
 
   try {
     return await api.getObservabilityOverview();

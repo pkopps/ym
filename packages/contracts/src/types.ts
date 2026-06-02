@@ -39,6 +39,7 @@ export type BookingStatus =
   | "confirmed"
   | "in-progress"
   | "completed"
+  | "cancelled"
   | "disputed"
   | "refunded";
 
@@ -50,6 +51,9 @@ export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" |
 export type NotificationChannel = "email" | "in-app" | "push";
 export type CrewMemberSchedulePreference = "full-time" | "part-time" | "seasonal" | "flex";
 export type CrewMemberStatus = "available" | "assigned" | "off-duty";
+export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
+export type ProviderStaffingMode = "auto-accept" | "review-first";
+export type CrewMatchStatus = "pending-provider-review" | "accepted" | "denied";
 
 export interface GeoPoint {
   latitude: number;
@@ -110,6 +114,7 @@ export interface ProviderProfile extends BaseUser {
   bio: string;
   yearsExperience: number;
   serviceRadiusMiles: number;
+  staffingMode?: ProviderStaffingMode;
   sponsoredListingEnabled: boolean;
   categories: ServiceCategory[];
   rating: number;
@@ -124,9 +129,11 @@ export interface CrewMemberProfile extends BaseUser {
   bio: string;
   yearsExperience: number;
   categories: ServiceCategory[];
+  availableWeekdays?: CrewAvailabilityDay[];
   willingToTravelMiles: number;
   preferredSchedule: CrewMemberSchedulePreference;
   hasOwnEquipment: boolean;
+  winterWorkEnabled?: boolean;
   rating: number;
   completedJobs: number;
   status: CrewMemberStatus;
@@ -141,10 +148,102 @@ export interface CrewOpportunity {
   categories: ServiceCategory[];
   city: string;
   state: string;
+  neededByStartIso: string;
+  neededByEndIso: string;
   hourlyRateCents: number;
   preferredSchedule: CrewMemberSchedulePreference;
   requiresEquipmentOwnership: boolean;
+  trainingProvided: boolean;
+  equipmentProvided: boolean;
   summary: string;
+}
+
+export interface CrewMatchCandidate {
+  id: string;
+  bookingId: string;
+  providerId: string;
+  crewMemberId: string;
+  crewMemberName: string;
+  crewMemberPhone: string;
+  categories: ServiceCategory[];
+  availableWeekdays: CrewAvailabilityDay[];
+  preferredSchedule: CrewMemberSchedulePreference;
+  willingToTravelMiles: number;
+  hasOwnEquipment: boolean;
+  winterWorkEnabled: boolean;
+  status: CrewMatchStatus;
+  autoAccepted: boolean;
+  distanceMiles: number;
+  hourlyRateCents: number;
+  createdAt: string;
+  reviewedAt?: string;
+}
+
+export interface ProviderStaffingJobSummary {
+  bookingId: string;
+  customerName: string;
+  serviceAddress: Address;
+  category: ServiceCategory;
+  scheduledStartIso: string;
+  scheduledEndIso: string;
+  totalCents: number;
+  requiredCrewMembers: number;
+  assignedCrewMembers: number;
+  crewGap: number;
+  matches: CrewMatchCandidate[];
+}
+
+export interface ProviderStaffingOverview {
+  provider: ProviderProfile;
+  jobs: ProviderStaffingJobSummary[];
+}
+
+export interface CrewMatchSummary {
+  id: string;
+  bookingId: string;
+  providerId: string;
+  providerCompanyName: string;
+  category: ServiceCategory;
+  serviceAddress: Address;
+  scheduledStartIso: string;
+  scheduledEndIso: string;
+  status: CrewMatchStatus;
+  hourlyRateCents: number;
+  canChat: boolean;
+  summary: string;
+}
+
+export interface CrewMatchesResponse {
+  crewMember: CrewMemberProfile;
+  matches: CrewMatchSummary[];
+}
+
+export interface ProviderCrewConversation {
+  id: string;
+  crewMatchId: string;
+  bookingId: string;
+  providerId: string;
+  crewMemberId: string;
+  providerName: string;
+  crewMemberName: string;
+  status: CrewMatchStatus;
+  updatedAt: string;
+  lastMessagePreview?: string;
+  unreadCount: number;
+}
+
+export interface ProviderCrewMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  senderRole: "provider" | "crew-member";
+  body: string;
+  createdAt: string;
+}
+
+export interface ProviderCrewConversationThread {
+  thread: ProviderCrewConversation;
+  messages: ProviderCrewMessage[];
 }
 
 export interface CrewAssignment {
@@ -264,9 +363,11 @@ export interface RegisterUserRequest {
   propertyNotes?: string;
   lawnSizeSqFt?: number;
   propertyLabel?: string;
+  availableWeekdays?: CrewAvailabilityDay[];
   willingToTravelMiles?: number;
   preferredSchedule?: CrewMemberSchedulePreference;
   hasOwnEquipment?: boolean;
+  winterWorkEnabled?: boolean;
 }
 
 export interface LoginRequest {
@@ -342,7 +443,28 @@ export interface SetDefaultCustomerPropertyRequest {
 
 export interface UpdateProviderSettingsRequest {
   serviceRadiusMiles: number;
+  staffingMode?: ProviderStaffingMode;
   sponsoredListingEnabled?: boolean;
+}
+
+export interface UpdateCrewPreferencesRequest {
+  categories?: ServiceCategory[];
+  availableWeekdays?: CrewAvailabilityDay[];
+  willingToTravelMiles?: number;
+  preferredSchedule?: CrewMemberSchedulePreference;
+  hasOwnEquipment?: boolean;
+  winterWorkEnabled?: boolean;
+}
+
+export interface ReviewCrewMatchRequest {
+  crewMatchId: string;
+  action: "accept" | "deny";
+}
+
+export interface SendProviderCrewMessageRequest {
+  crewMatchId?: string;
+  threadId?: string;
+  body: string;
 }
 
 export interface BookingAddressChangeRequest {
@@ -438,6 +560,16 @@ export interface CreateSupportTicketRequest {
 
 export interface CompleteBookingRequest {
   bookingId: string;
+}
+
+export interface CancelBookingRequest {
+  bookingId: string;
+}
+
+export interface RescheduleBookingRequest {
+  bookingId: string;
+  scheduledStartIso: string;
+  scheduledEndIso: string;
 }
 
 export interface CreateProviderReviewRequest {

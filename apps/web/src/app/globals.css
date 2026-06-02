@@ -15,6 +15,26 @@ body {
   width: min(calc(100% - 3rem), 1560px);
 }
 
+.stack-md {
+  display: grid;
+  gap: var(--ym-space-4);
+}
+
+.input {
+  width: 100%;
+  min-height: 3rem;
+  border: 1px solid var(--ym-color-border);
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ym-color-ink);
+  font: inherit;
+}
+
+.input::placeholder {
+  color: var(--ym-color-muted);
+}
+
 .site-header {
   position: sticky;
   top: 0;
@@ -319,6 +339,18 @@ body {
   color: var(--ym-color-ink-soft);
 }
 
+.profile-menu__button {
+  appearance: none;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--ym-color-ink-soft);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.85rem 1rem;
+  text-align: left;
+}
+
 .auth-menu__panel a:hover,
 .auth-menu__panel a:focus-visible {
   background: var(--ym-color-surface-strong);
@@ -326,7 +358,9 @@ body {
 }
 
 .profile-menu__panel a:hover,
-.profile-menu__panel a:focus-visible {
+.profile-menu__panel a:focus-visible,
+.profile-menu__button:hover,
+.profile-menu__button:focus-visible {
   background: var(--ym-color-surface-strong);
   color: var(--ym-color-primary-strong);
 }

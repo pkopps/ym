@@ -1,14 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { providerManagedJobs } from "@yardmatch/ui";
+import { ProviderStaffingOverview } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createProviderMobileApiClient } from "../lib/api";
+import { useProviderSession } from "../session/ProviderSessionContext";
 
 type ViewMode = "calendar" | "list";
 
 export function ScheduleScreen() {
+  const { envelope } = useProviderSession();
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
+  const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function loadOverview() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setOverview(await api.getProviderStaffingOverview());
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load schedule.");
+    }
+  }
+
+  useEffect(() => {
+    void loadOverview();
+  }, [envelope?.session.token]);
+
+  const jobs = overview?.jobs ?? [];
 
   return (
     <ScreenShell eyebrow="Schedule" title="Upcoming jobs">
@@ -17,35 +42,41 @@ export function ScheduleScreen() {
         <ModeButton active={viewMode === "list"} label="List" onPress={() => setViewMode("list")} />
       </View>
 
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
       {viewMode === "calendar" ? (
         <InfoCard title="This week" description="Crew-aware schedule blocks">
           <View style={styles.list}>
-            {providerManagedJobs.map((job) => (
-              <View key={job.id} style={styles.dayCard}>
-                <Text style={styles.dayLabel}>{job.dayLabel}</Text>
-                <Text style={styles.timeLabel}>{job.timeLabel}</Text>
-                <Text style={styles.clientLabel}>{job.clientName}</Text>
-                <Text style={styles.metaLine}>{job.serviceLabel}</Text>
+            {jobs.map((job) => (
+              <View key={job.bookingId} style={styles.dayCard}>
+                <Text style={styles.dayLabel}>
+                  {new Date(job.scheduledStartIso).toLocaleDateString(undefined, { weekday: "short" })}
+                </Text>
+                <Text style={styles.timeLabel}>
+                  {new Date(job.scheduledStartIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
+                </Text>
+                <Text style={styles.clientLabel}>{job.customerName}</Text>
+                <Text style={styles.metaLine}>{job.category.replaceAll("-", " ")}</Text>
                 <Text style={styles.metaLine}>
-                  {job.requiredCrewMembers} crew • {job.distanceMiles} mi • {job.estimatedLaborHours} hr
+                  {job.requiredCrewMembers} crew • {job.assignedCrewMembers} assigned • {job.crewGap} open
                 </Text>
               </View>
             ))}
           </View>
         </InfoCard>
       ) : (
-        <InfoCard title="Job list" description={`${providerManagedJobs.length} scheduled`}>
+        <InfoCard title="Job list" description={`${jobs.length} scheduled`}>
           <View style={styles.list}>
-            {providerManagedJobs.map((job) => (
-              <View key={job.id} style={styles.jobRow}>
+            {jobs.map((job) => (
+              <View key={job.bookingId} style={styles.jobRow}>
                 <View style={styles.jobCopy}>
-                  <Text style={styles.clientLabel}>{job.clientName}</Text>
+                  <Text style={styles.clientLabel}>{job.customerName}</Text>
                   <Text style={styles.metaLine}>
-                    {job.dateLabel} • {job.timeLabel}
+                    {new Date(job.scheduledStartIso).toLocaleString()}
                   </Text>
-                  <Text style={styles.metaLine}>{job.addressLine}</Text>
+                  <Text style={styles.metaLine}>{job.serviceAddress.line1}</Text>
                   <Text style={styles.metaLine}>
-                    {job.serviceLabel} • {job.distanceMiles} mi • {job.requiredCrewMembers} crew needed
+                    {job.category.replaceAll("-", " ")} • {job.assignedCrewMembers}/{job.requiredCrewMembers} crew
                   </Text>
                 </View>
               </View>

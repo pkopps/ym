@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
-import { AuthFlowMode } from "@yardmatch/contracts";
+import { AuthenticatedUserEnvelope, AuthFlowMode } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { createCrewMobileApiClient } from "../lib/api";
 import { getCrewMobileTracker } from "../lib/tracking";
 
 function getModeCopy(mode: AuthFlowMode) {
@@ -22,18 +23,56 @@ function getModeCopy(mode: AuthFlowMode) {
       };
 }
 
-export function CrewAuthScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+export function CrewAuthScreen({
+  onAuthenticated
+}: {
+  onAuthenticated: (envelope: AuthenticatedUserEnvelope) => void;
+}) {
   const [mode, setMode] = useState<AuthFlowMode>("login");
+  const [email, setEmail] = useState("crew@example.com");
+  const [password, setPassword] = useState("YardMatch123!");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const authCopy = getModeCopy(mode);
   const tracker = getCrewMobileTracker();
 
-  const handleAuth = (method: "password" | "google" | "apple") => {
+  const handleAuth = async (method: "password" | "google" | "apple") => {
     void tracker.track(MarketplaceTelemetryEventCatalog.mobileAuthCompleted, {
       app: "crew",
       method,
       mode
     });
-    onAuthenticated();
+
+    if (method !== "password") {
+      setErrorMessage("Google and Apple sign-in are still mobile placeholders.");
+      return;
+    }
+
+    if (mode !== "login") {
+      setErrorMessage("Mobile signup is not wired yet. Use the web signup flow for now.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setErrorMessage("");
+      const api = createCrewMobileApiClient();
+      const envelope = await api.login({
+        email: email.trim(),
+        password
+      });
+
+      if (envelope.user.role !== "crew-member") {
+        setErrorMessage("Use a crew account in the crew app.");
+        return;
+      }
+
+      onAuthenticated(envelope);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to log in right now.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -63,13 +102,29 @@ export function CrewAuthScreen({ onAuthenticated }: { onAuthenticated: () => voi
         </View>
 
         <View style={styles.fieldStack}>
-          <TextInput placeholder="crew.member@example.com" placeholderTextColor="#6e7d71" style={styles.input} />
-          <TextInput placeholder="Password" placeholderTextColor="#6e7d71" secureTextEntry style={styles.input} />
+          <TextInput
+            autoCapitalize="none"
+            onChangeText={setEmail}
+            placeholder="crew.member@example.com"
+            placeholderTextColor="#6e7d71"
+            style={styles.input}
+            value={email}
+          />
+          <TextInput
+            onChangeText={setPassword}
+            placeholder="Password"
+            placeholderTextColor="#6e7d71"
+            secureTextEntry
+            style={styles.input}
+            value={password}
+          />
         </View>
 
         <Pressable onPress={() => handleAuth("password")} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonLabel}>{authCopy.submitLabel}</Text>
+          <Text style={styles.primaryButtonLabel}>{isSubmitting ? "Working..." : authCopy.submitLabel}</Text>
         </Pressable>
+
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
         <View style={styles.socialStack}>
           <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
@@ -192,6 +247,10 @@ const styles = StyleSheet.create({
   },
   helper: {
     color: BrandTokens.colors.inkSoft,
+    lineHeight: 22
+  },
+  errorText: {
+    color: "#b34332",
     lineHeight: 22
   }
 });

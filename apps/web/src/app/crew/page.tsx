@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CrewHiringDashboard } from "../../components/CrewHiringDashboard";
+import { CrewLiveDashboard } from "../../components/CrewLiveDashboard";
 
 export const metadata: Metadata = {
   title: "Crew dashboard",
@@ -11,11 +11,10 @@ export default function CrewPage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">Crew dashboard</span>
-        <h1>Crews hiring near you.</h1>
-        <p>See who needs help, when they need it, and what they provide.</p>
+        <h1>Live crew openings.</h1>
+        <p>See real demand coming from provider bookings.</p>
       </section>
-      <CrewHiringDashboard />
+      <CrewLiveDashboard />
     </main>
   );
 }

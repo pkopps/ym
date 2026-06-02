@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { MarketplaceApiClient } from "@yardmatch/contracts";
 import { SessionHeartbeatFactory } from "@yardmatch/observability";
+import { getWebApiBaseUrl } from "../lib/api";
 
 function getOrCreateSessionId(): string {
   const storageKey = "yardmatch-session-id";
@@ -22,9 +23,7 @@ function getPlatformSurface(): "web-mobile" | "web-desktop" {
 
 export function ObservabilityProvider() {
   useEffect(() => {
-    const api = new MarketplaceApiClient(
-      process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
-    );
+    const api = new MarketplaceApiClient(getWebApiBaseUrl());
     const sessionId = getOrCreateSessionId();
 
     const sendHeartbeat = () => {

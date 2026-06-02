@@ -43,6 +43,41 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - Machine-readable spec: `GET /api/docs/openapi.json`
 - The docs page is served directly by the monolith so other developers can inspect routes and example payloads without extra tooling.
 
+## Backend hardening status
+
+- Local email/password auth is now wired with bearer-token sessions through:
+  - `POST /api/auth/register`
+  - `POST /api/auth/login`
+  - `GET /api/auth/me`
+- Protected customer/provider routes now derive identity from the bearer token instead of trusting caller-supplied IDs.
+- The API keeps the current route families, but ownership is enforced for:
+  - customer properties
+  - customer bookings and booking address changes
+  - provider settings
+  - provider-side booking completion
+  - post-service reviews
+  - support tickets
+- Prisma/Postgres scaffolding is in place under [`apps/api/prisma`](</Users/patrickkopps/Documents/app/apps/api/prisma>).
+- If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
+- If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
+
+### Database setup commands
+
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:seed
+```
+
+### Current backend test coverage
+
+- auth register/login/current-user flow
+- booking completion and delayed review eligibility
+- duplicate review rejection
+- booking address-change policy
+- provider-route authorization
+- support-ticket attribution to the authenticated requester
+
 ## Core marketplace capabilities scaffolded
 
 - Geolocation and address handling for customers and providers

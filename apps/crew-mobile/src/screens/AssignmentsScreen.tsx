@@ -1,15 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { crewAssignmentHistory, crewAssignments } from "@yardmatch/ui";
+import { CrewMatchesResponse } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createCrewMobileApiClient } from "../lib/api";
+import { useCrewSession } from "../session/CrewSessionContext";
 
 type ViewMode = "upcoming" | "history";
 
 export function AssignmentsScreen() {
+  const { envelope } = useCrewSession();
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
-  const items = viewMode === "upcoming" ? crewAssignments : crewAssignmentHistory;
+  const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function loadMatches() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setMatchesResponse(await api.getCrewMatches());
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load assignments.");
+    }
+  }
+
+  useEffect(() => {
+    void loadMatches();
+  }, [envelope?.session.token]);
+
+  const items = (matchesResponse?.matches ?? []).filter((match) =>
+    viewMode === "upcoming" ? match.status !== "denied" : match.status === "denied"
+  );
 
   return (
     <ScreenShell eyebrow="Schedule" title="Your work">
@@ -18,23 +44,25 @@ export function AssignmentsScreen() {
         <ModeButton active={viewMode === "history"} label="History" onPress={() => setViewMode("history")} />
       </View>
 
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
       <InfoCard
-        title={viewMode === "upcoming" ? "Upcoming assignments" : "Past work"}
+        title={viewMode === "upcoming" ? "Matched and accepted work" : "Not selected"}
         description={`${items.length} items`}
       >
         <View style={styles.list}>
           {items.map((assignment) => (
             <View key={assignment.id} style={styles.assignmentRow}>
-              <Text style={styles.dayPill}>{assignment.dayLabel}</Text>
+              <Text style={styles.dayPill}>
+                {new Date(assignment.scheduledStartIso).toLocaleDateString(undefined, { weekday: "short" })}
+              </Text>
               <View style={styles.copy}>
-                <Text style={styles.title}>{assignment.businessName}</Text>
-                <Text style={styles.meta}>{assignment.serviceLabel}</Text>
-                <Text style={styles.meta}>
-                  {assignment.dateLabel} • {assignment.timeLabel}
-                </Text>
-                <Text style={styles.meta}>{assignment.addressLine}</Text>
+                <Text style={styles.title}>{assignment.providerCompanyName}</Text>
+                <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                <Text style={styles.meta}>{new Date(assignment.scheduledStartIso).toLocaleString()}</Text>
+                <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
               </View>
-              <Text style={styles.earnings}>{assignment.expectedEarnings}</Text>
+              <Text style={styles.earnings}>{assignment.status.replaceAll("-", " ")}</Text>
             </View>
           ))}
         </View>

@@ -1,23 +1,48 @@
-import { useState } from "react";
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { StyleSheet, Switch, Text, View, Pressable } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { customerSavedProperties } from "@yardmatch/ui";
+import { CustomerProperty } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createCustomerMobileApiClient } from "../lib/api";
+import { useCustomerSession } from "../session/CustomerSessionContext";
 
 export function SupportScreen() {
   const [pushEnabled, setPushEnabled] = useState(true);
   const [reviewRemindersEnabled, setReviewRemindersEnabled] = useState(true);
+  const [properties, setProperties] = useState<CustomerProperty[]>([]);
+  const [errorMessage, setErrorMessage] = useState("");
+  const { envelope, signOut } = useCustomerSession();
+
+  async function loadProperties() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setProperties(await api.getCustomerProperties());
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
+    }
+  }
+
+  useEffect(() => {
+    void loadProperties();
+  }, [envelope?.session.token]);
 
   return (
     <ScreenShell eyebrow="Account" title="Your account">
-      <InfoCard title="Saved properties" description={`${customerSavedProperties.length} on file`}>
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
+      <InfoCard title="Saved properties" description={`${properties.length} on file`}>
         <View style={styles.list}>
-          {customerSavedProperties.map((property) => (
+          {properties.map((property) => (
             <View key={property.id} style={styles.row}>
               <View style={styles.copy}>
                 <Text style={styles.title}>{property.label}</Text>
-                <Text style={styles.meta}>{property.addressLine}</Text>
+                <Text style={styles.meta}>{property.address.line1}</Text>
               </View>
               {property.isDefault ? <Text style={styles.badge}>Default</Text> : null}
             </View>
@@ -39,16 +64,17 @@ export function SupportScreen() {
       </InfoCard>
 
       <InfoCard title="Payments" description="Saved here for later">
-        <Text style={styles.meta}>Primary card ending in 2048</Text>
-        <Text style={styles.meta}>Payment methods and billing details stay simple on mobile.</Text>
+        <Text style={styles.meta}>Billing depth stays lighter on mobile so booking and schedule management stay faster.</Text>
       </InfoCard>
 
       <InfoCard title="Help" description="Fast support paths">
-        <View style={styles.actionStack}>
-          <ActionChip label="Billing issue" />
-          <ActionChip label="Service quality" />
-          <ActionChip label="Booking help" />
-        </View>
+        <Text style={styles.meta}>Use the website for billing disputes and deeper support workflows.</Text>
+      </InfoCard>
+
+      <InfoCard title="Session" description="Manage this device">
+        <Pressable onPress={signOut} style={styles.logoutButton}>
+          <Text style={styles.logoutButtonLabel}>Log out</Text>
+        </Pressable>
       </InfoCard>
     </ScreenShell>
   );
@@ -73,14 +99,6 @@ function PreferenceRow({
         onValueChange={onValueChange}
       />
     </View>
-  );
-}
-
-function ActionChip({ label }: { label: string }) {
-  return (
-    <Pressable style={styles.actionChip}>
-      <Text style={styles.actionChipLabel}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -117,19 +135,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: BrandTokens.spacing.md
   },
-  actionStack: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: BrandTokens.spacing.sm
-  },
-  actionChip: {
+  logoutButton: {
+    alignItems: "center",
     borderRadius: 999,
     borderWidth: 1,
     borderColor: BrandTokens.colors.border,
-    paddingHorizontal: BrandTokens.spacing.lg,
-    paddingVertical: BrandTokens.spacing.sm
+    backgroundColor: "rgba(255,255,255,0.96)",
+    paddingVertical: BrandTokens.spacing.md
   },
-  actionChipLabel: {
+  logoutButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
   }

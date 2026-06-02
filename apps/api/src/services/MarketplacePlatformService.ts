@@ -2,7 +2,15 @@ import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
   AnalyticsEvent,
+  CancelBookingRequest,
   CompleteBookingRequest,
+  CrewAvailabilityDay,
+  CrewMatchCandidate,
+  CrewMatchesResponse,
+  ProviderCrewConversation,
+  ProviderCrewConversationThread,
+  ProviderCrewMessage,
+  CrewOpportunity,
   CustomerReviewOpportunity,
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
@@ -24,13 +32,19 @@ import {
   PaymentRecord,
   ProviderProfile,
   ProviderReview,
+  ProviderStaffingJobSummary,
+  ProviderStaffingOverview,
   RegisterUserRequest,
+  ReviewCrewMatchRequest,
+  RescheduleBookingRequest,
   ReviewInvite,
   ReviewInviteDispatch,
+  SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SessionHeartbeatRequest,
   SearchProvidersRequest,
   SearchProvidersResponse,
+  UpdateCrewPreferencesRequest,
   UpdateProviderSettingsRequest,
   SupportTicket,
   UpdateBookingAddressRequest,
@@ -116,9 +130,11 @@ export class MarketplacePlatformService {
           "Dependable crew member available for recurring lawn care, cleanup, and seasonal field work.",
         yearsExperience: payload.yearsExperience ?? 1,
         categories: payload.categories ?? ["lawn-mowing", "seasonal-cleanup"],
+        availableWeekdays: payload.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"],
         willingToTravelMiles: payload.willingToTravelMiles ?? 20,
         preferredSchedule: payload.preferredSchedule ?? "flex",
         hasOwnEquipment: payload.hasOwnEquipment ?? false,
+        winterWorkEnabled: payload.winterWorkEnabled ?? true,
         rating: 5,
         completedJobs: 0,
         status: "available"
@@ -148,6 +164,7 @@ export class MarketplacePlatformService {
       bio: payload.bio ?? "Quality lawn care and landscaping services.",
       yearsExperience: payload.yearsExperience ?? 1,
       serviceRadiusMiles: payload.serviceRadiusMiles ?? 15,
+      staffingMode: "review-first",
       sponsoredListingEnabled: false,
       categories: payload.categories ?? ["lawn-mowing"],
       rating: 5,
@@ -224,6 +241,304 @@ export class MarketplacePlatformService {
     };
   }
 
+  public async getProviderProfile(providerId: string): Promise<ProviderProfile> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new Error("Provider not found");
+    }
+
+    return provider;
+  }
+
+  public async updateCrewPreferences(
+    crewMemberId: string,
+    payload: UpdateCrewPreferencesRequest
+  ): Promise<CrewMemberProfile> {
+    const crewMember = await this.repository.findCrewMemberById(crewMemberId);
+    if (!crewMember) {
+      throw new Error("Crew member not found");
+    }
+
+    const nextMiles = payload.willingToTravelMiles ?? crewMember.willingToTravelMiles;
+    if (nextMiles < 5 || nextMiles > 60) {
+      throw new Error("willingToTravelMiles must be between 5 and 60");
+    }
+
+    const nextDays =
+      payload.availableWeekdays ?? crewMember.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    if (nextDays.length === 0) {
+      throw new Error("At least one available day is required");
+    }
+
+    const updatedCrewMember = await this.repository.updateCrewMember(crewMemberId, {
+      categories: payload.categories ?? crewMember.categories,
+      availableWeekdays: nextDays,
+      willingToTravelMiles: nextMiles,
+      preferredSchedule: payload.preferredSchedule ?? crewMember.preferredSchedule,
+      hasOwnEquipment: payload.hasOwnEquipment ?? crewMember.hasOwnEquipment,
+      winterWorkEnabled: payload.winterWorkEnabled ?? crewMember.winterWorkEnabled ?? true
+    });
+
+    if (!updatedCrewMember) {
+      throw new Error("Crew preferences could not be updated");
+    }
+
+    return updatedCrewMember;
+  }
+
+  public async getProviderStaffingOverview(providerId: string): Promise<ProviderStaffingOverview> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new Error("Provider not found");
+    }
+
+    const jobs = await this.buildProviderStaffingSummaries(provider);
+    return {
+      provider,
+      jobs
+    };
+  }
+
+  public async reviewCrewMatch(
+    providerId: string,
+    payload: ReviewCrewMatchRequest
+  ): Promise<CrewMatchCandidate> {
+    const match = await this.repository.findCrewMatchById(payload.crewMatchId);
+    if (!match) {
+      throw new Error("Crew match not found");
+    }
+
+    if (match.providerId !== providerId) {
+      throw new Error("Only the provider can review this crew match");
+    }
+
+    const nextStatus = payload.action === "accept" ? "accepted" : "denied";
+    const updatedMatch = await this.repository.updateCrewMatch(match.id, {
+      status: nextStatus,
+      autoAccepted: false,
+      reviewedAt: new Date().toISOString()
+    });
+
+    if (!updatedMatch) {
+      throw new Error("Crew match could not be updated");
+    }
+
+    await this.refreshCrewMemberStatus(updatedMatch.crewMemberId);
+
+    return updatedMatch;
+  }
+
+  public async getCrewMatchesForCrew(crewMemberId: string): Promise<CrewMatchesResponse> {
+    const crewMember = await this.repository.findCrewMemberById(crewMemberId);
+    if (!crewMember) {
+      throw new Error("Crew member not found");
+    }
+
+    await this.reconcileCrewMatches();
+
+    const [matches, providers, bookings] = await Promise.all([
+      this.repository.listCrewMatches(),
+      this.repository.listProviders(),
+      this.repository.listBookings()
+    ]);
+
+    return {
+      crewMember,
+      matches: matches
+        .filter((match) => match.crewMemberId === crewMemberId)
+        .map((match) => {
+          const provider = providers.find((item) => item.id === match.providerId);
+          const booking = bookings.find((item) => item.id === match.bookingId);
+          if (!provider || !booking) {
+            return undefined;
+          }
+
+          return {
+            id: match.id,
+            bookingId: match.bookingId,
+            providerId: match.providerId,
+            providerCompanyName: provider.companyName,
+            category: booking.category,
+            serviceAddress: booking.serviceAddress,
+            scheduledStartIso: booking.scheduledStartIso,
+            scheduledEndIso: booking.scheduledEndIso,
+            status: match.status,
+            hourlyRateCents: match.hourlyRateCents,
+            canChat: match.status === "pending-provider-review" || match.status === "accepted",
+            summary:
+              match.status === "accepted"
+                ? `${provider.companyName} accepted you for this job.`
+                : match.status === "denied"
+                  ? `${provider.companyName} passed on this match.`
+                  : `${provider.companyName} is reviewing your fit for this job.`
+          };
+        })
+        .filter((match): match is CrewMatchesResponse["matches"][number] => Boolean(match))
+        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
+    };
+  }
+
+  public async listProviderCrewConversations(
+    actor: AuthIdentityRecord
+  ): Promise<ProviderCrewConversation[]> {
+    const conversations = await this.repository.listProviderCrewConversations();
+    return conversations.filter((conversation) =>
+      actor.role === "provider"
+        ? conversation.providerId === actor.userId
+        : conversation.crewMemberId === actor.userId
+    );
+  }
+
+  public async getProviderCrewConversationThread(
+    actor: AuthIdentityRecord,
+    threadId?: string,
+    crewMatchId?: string
+  ): Promise<ProviderCrewConversationThread> {
+    const thread = threadId
+      ? await this.repository.findProviderCrewConversationById(threadId)
+      : crewMatchId
+        ? await this.repository.findProviderCrewConversationByCrewMatchId(crewMatchId)
+        : undefined;
+
+    if (!thread) {
+      throw new Error("Conversation not found");
+    }
+
+    this.assertCanAccessConversation(actor, thread);
+    const messages = await this.repository.listProviderCrewMessages(thread.id);
+    return {
+      thread,
+      messages
+    };
+  }
+
+  public async sendProviderCrewMessage(
+    actor: AuthIdentityRecord,
+    payload: SendProviderCrewMessageRequest
+  ): Promise<ProviderCrewConversationThread> {
+    const body = payload.body.trim();
+    if (body.length === 0) {
+      throw new Error("Message body is required");
+    }
+
+    let thread = payload.threadId
+      ? await this.repository.findProviderCrewConversationById(payload.threadId)
+      : payload.crewMatchId
+        ? await this.repository.findProviderCrewConversationByCrewMatchId(payload.crewMatchId)
+        : undefined;
+
+    if (!thread && !payload.crewMatchId) {
+      throw new Error("threadId or crewMatchId is required");
+    }
+
+    if (!thread && payload.crewMatchId) {
+      const match = await this.repository.findCrewMatchById(payload.crewMatchId);
+      if (!match) {
+        throw new Error("Crew match not found");
+      }
+
+      if (match.status !== "pending-provider-review" && match.status !== "accepted") {
+        throw new Error("Chat is only available for pending or accepted crew matches");
+      }
+
+      const provider = await this.repository.findProviderById(match.providerId);
+      const crewMember = await this.repository.findCrewMemberById(match.crewMemberId);
+      if (!provider || !crewMember) {
+        throw new Error("Conversation participants could not be loaded");
+      }
+
+      if (
+        !(
+          (actor.role === "provider" && actor.userId === provider.id) ||
+          (actor.role === "crew-member" && actor.userId === crewMember.id)
+        )
+      ) {
+        throw new Error("You cannot send a message for this crew match");
+      }
+
+      thread = await this.repository.createProviderCrewConversation({
+        id: crypto.randomUUID(),
+        crewMatchId: match.id,
+        bookingId: match.bookingId,
+        providerId: match.providerId,
+        crewMemberId: match.crewMemberId,
+        providerName: provider.companyName,
+        crewMemberName: crewMember.fullName,
+        status: match.status,
+        updatedAt: new Date().toISOString(),
+        lastMessagePreview: body,
+        unreadCount: 0
+      });
+    }
+
+    if (!thread) {
+      throw new Error("Conversation not found");
+    }
+
+    this.assertCanAccessConversation(actor, thread);
+
+    const message: ProviderCrewMessage = {
+      id: crypto.randomUUID(),
+      threadId: thread.id,
+      senderId: actor.userId,
+      senderRole: actor.role === "provider" ? "provider" : "crew-member",
+      body,
+      createdAt: new Date().toISOString()
+    };
+    await this.repository.createProviderCrewMessage(message);
+    await this.repository.updateProviderCrewConversation(thread.id, {
+      status: thread.status,
+      updatedAt: message.createdAt,
+      lastMessagePreview: body
+    });
+
+    return this.getProviderCrewConversationThread(actor, thread.id);
+  }
+
+  public async listCrewOpportunities(): Promise<CrewOpportunity[]> {
+    const [providers, bookings] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listBookings()
+    ]);
+
+    const now = Date.now();
+    return bookings
+      .filter((booking) => {
+        const start = new Date(booking.scheduledStartIso).getTime();
+        return (
+          start > now &&
+          (booking.status === "requested" || booking.status === "confirmed")
+        );
+      })
+      .map((booking) => {
+        const provider = providers.find((item) => item.id === booking.providerId);
+        if (!provider) {
+          return undefined;
+        }
+
+        const opportunity: CrewOpportunity = {
+          id: booking.id,
+          providerId: provider.id,
+          providerCompanyName: provider.companyName,
+          title: `${this.titleCaseCategory(booking.category)} crew support`,
+          categories: [booking.category],
+          city: provider.address.city,
+          state: provider.address.state,
+          neededByStartIso: booking.scheduledStartIso,
+          neededByEndIso: booking.scheduledEndIso,
+          hourlyRateCents: this.estimateCrewHourlyRate(booking.category),
+          preferredSchedule: "flex",
+          requiresEquipmentOwnership: false,
+          trainingProvided: true,
+          equipmentProvided: true,
+          summary: `${provider.companyName} needs extra crew coverage for an upcoming ${this.titleCaseCategory(booking.category).toLowerCase()} job.`
+        };
+
+        return opportunity;
+      })
+      .filter((opportunity): opportunity is CrewOpportunity => opportunity !== undefined);
+  }
+
   public async updateProviderSettings(
     providerId: string,
     payload: UpdateProviderSettingsRequest
@@ -238,8 +553,14 @@ export class MarketplacePlatformService {
       throw new Error("serviceRadiusMiles must be between 5 and 60");
     }
 
+    const staffingMode = payload.staffingMode ?? provider.staffingMode ?? "review-first";
+    if (staffingMode !== "auto-accept" && staffingMode !== "review-first") {
+      throw new Error("staffingMode must be auto-accept or review-first");
+    }
+
     const updatedProvider = await this.repository.updateProvider(provider.id, {
       serviceRadiusMiles: normalizedRadius,
+      staffingMode,
       sponsoredListingEnabled:
         payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled
     });
@@ -255,6 +576,7 @@ export class MarketplacePlatformService {
       occurredAt: new Date().toISOString(),
       properties: {
         serviceRadiusMiles: normalizedRadius,
+        staffingMode,
         sponsoredListingEnabled:
           payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
         city: provider.address.city
@@ -495,6 +817,104 @@ export class MarketplacePlatformService {
       servicePropertyId: payload.servicePropertyId ?? "custom-address"
     });
     return result;
+  }
+
+  public async cancelBooking(
+    customerId: string,
+    payload: CancelBookingRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+
+    this.assertCustomerCanManageBooking(customerId, booking);
+    if (!this.canCustomerCancelOrReschedule(booking)) {
+      throw new Error("Only future requested or confirmed bookings can be cancelled");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      status: "cancelled"
+    });
+
+    if (!updatedBooking) {
+      throw new Error("Booking could not be cancelled");
+    }
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.bookingCancelled,
+      actorId: customerId,
+      occurredAt: new Date().toISOString(),
+      properties: {
+        bookingId: booking.id,
+        providerId: booking.providerId,
+        category: booking.category
+      }
+    });
+
+    return updatedBooking;
+  }
+
+  public async rescheduleBooking(
+    customerId: string,
+    payload: RescheduleBookingRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new Error("Booking not found");
+    }
+
+    this.assertCustomerCanManageBooking(customerId, booking);
+    if (!this.canCustomerCancelOrReschedule(booking)) {
+      throw new Error("Only future requested or confirmed bookings can be rescheduled");
+    }
+
+    const nextStart = new Date(payload.scheduledStartIso);
+    const nextEnd = new Date(payload.scheduledEndIso);
+
+    if (Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
+      throw new Error("A valid start and end time are required");
+    }
+
+    if (nextStart.getTime() <= Date.now()) {
+      throw new Error("Rescheduled start time must be in the future");
+    }
+
+    if (nextEnd.getTime() <= nextStart.getTime()) {
+      throw new Error("Rescheduled end time must be after the start time");
+    }
+
+    const hoursUntilOriginalStart =
+      (new Date(booking.scheduledStartIso).getTime() - Date.now()) / (60 * 60 * 1000);
+
+    if (booking.status === "confirmed" && hoursUntilOriginalStart < 24) {
+      throw new Error("Confirmed bookings starting in less than 24 hours cannot be rescheduled in app");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      scheduledStartIso: payload.scheduledStartIso,
+      scheduledEndIso: payload.scheduledEndIso
+    });
+
+    if (!updatedBooking) {
+      throw new Error("Booking could not be rescheduled");
+    }
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.bookingRescheduled,
+      actorId: customerId,
+      occurredAt: new Date().toISOString(),
+      properties: {
+        bookingId: booking.id,
+        providerId: booking.providerId,
+        previousStartIso: booking.scheduledStartIso,
+        nextStartIso: payload.scheduledStartIso
+      }
+    });
+
+    return updatedBooking;
   }
 
   public async createCustomerProperty(
@@ -871,6 +1291,237 @@ export class MarketplacePlatformService {
     return this.repository.findAuthIdentityByUserId(userId);
   }
 
+  private async buildProviderStaffingSummaries(
+    provider: ProviderProfile
+  ): Promise<ProviderStaffingJobSummary[]> {
+    await this.reconcileCrewMatches(provider.id);
+
+    const [bookings, customers, matches] = await Promise.all([
+      this.repository.listBookings(),
+      this.repository.listCustomers(),
+      this.repository.listCrewMatches()
+    ]);
+
+    return bookings
+      .filter(
+        (booking) =>
+          booking.providerId === provider.id &&
+          (booking.status === "requested" || booking.status === "confirmed" || booking.status === "in-progress")
+      )
+      .map((booking) => {
+        const customer = customers.find((item) => item.id === booking.customerId);
+        const requiredCrewMembers = this.estimateRequiredCrewMembers(
+          booking,
+          customer?.properties.find((property) => property.id === booking.servicePropertyId)
+        );
+        const bookingMatches = matches.filter((match) => match.bookingId === booking.id);
+        const assignedCrewMembers = bookingMatches.filter((match) => match.status === "accepted").length;
+
+        return {
+          bookingId: booking.id,
+          customerName: customer?.fullName ?? "Customer",
+          serviceAddress: booking.serviceAddress,
+          category: booking.category,
+          scheduledStartIso: booking.scheduledStartIso,
+          scheduledEndIso: booking.scheduledEndIso,
+          totalCents: booking.totalCents,
+          requiredCrewMembers,
+          assignedCrewMembers,
+          crewGap: Math.max(requiredCrewMembers - assignedCrewMembers, 0),
+          matches: bookingMatches
+        };
+      })
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
+  }
+
+  private async reconcileCrewMatches(providerId?: string): Promise<void> {
+    const [providers, crewMembers, bookings, matches, customers] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listCrewMembers(),
+      this.repository.listBookings(),
+      this.repository.listCrewMatches(),
+      this.repository.listCustomers()
+    ]);
+
+    const targetProviders = providerId
+      ? providers.filter((provider) => provider.id === providerId)
+      : providers;
+
+    for (const provider of targetProviders) {
+      const providerBookings = bookings.filter(
+        (booking) =>
+          booking.providerId === provider.id &&
+          (booking.status === "requested" || booking.status === "confirmed" || booking.status === "in-progress") &&
+          new Date(booking.scheduledStartIso).getTime() > Date.now()
+      );
+
+      for (const booking of providerBookings) {
+        const property = customers
+          .find((customer) => customer.id === booking.customerId)
+          ?.properties.find((item) => item.id === booking.servicePropertyId);
+        const requiredCrewMembers = this.estimateRequiredCrewMembers(booking, property);
+        const bookingMatches = matches.filter((match) => match.bookingId === booking.id);
+        const acceptedMatches = bookingMatches.filter((match) => match.status === "accepted");
+
+        if (acceptedMatches.length >= requiredCrewMembers) {
+          continue;
+        }
+
+        const candidatePool = crewMembers
+          .filter((crewMember) => this.isCrewMemberEligibleForBooking(crewMember, booking))
+          .sort(
+            (left, right) =>
+              this.geoService.distanceMiles(left.address, booking.serviceAddress) -
+              this.geoService.distanceMiles(right.address, booking.serviceAddress)
+          );
+
+        const gap = requiredCrewMembers - acceptedMatches.length;
+        const existingIds = new Set(bookingMatches.map((match) => match.crewMemberId));
+        const nextCandidates = candidatePool
+          .filter((crewMember) => !existingIds.has(crewMember.id))
+          .slice(0, provider.staffingMode === "auto-accept" ? gap : Math.max(3, gap));
+
+        for (const crewMember of nextCandidates) {
+          const distanceMiles = Number(
+            this.geoService.distanceMiles(crewMember.address, booking.serviceAddress).toFixed(1)
+          );
+          const status = provider.staffingMode === "auto-accept" ? "accepted" : "pending-provider-review";
+          await this.repository.createCrewMatch({
+            id: crypto.randomUUID(),
+            bookingId: booking.id,
+            providerId: provider.id,
+            crewMemberId: crewMember.id,
+            crewMemberName: crewMember.fullName,
+            crewMemberPhone: crewMember.phone,
+            categories: crewMember.categories,
+            availableWeekdays: crewMember.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"],
+            preferredSchedule: crewMember.preferredSchedule,
+            willingToTravelMiles: crewMember.willingToTravelMiles,
+            hasOwnEquipment: crewMember.hasOwnEquipment,
+            winterWorkEnabled: crewMember.winterWorkEnabled ?? true,
+            status,
+            autoAccepted: provider.staffingMode === "auto-accept",
+            distanceMiles,
+            hourlyRateCents: this.estimateCrewHourlyRate(booking.category),
+            createdAt: new Date().toISOString(),
+            reviewedAt: provider.staffingMode === "auto-accept" ? new Date().toISOString() : undefined
+          });
+
+          if (provider.staffingMode === "auto-accept") {
+            await this.refreshCrewMemberStatus(crewMember.id);
+          }
+        }
+      }
+    }
+  }
+
+  private async refreshCrewMemberStatus(crewMemberId: string): Promise<void> {
+    const crewMember = await this.repository.findCrewMemberById(crewMemberId);
+    if (!crewMember) {
+      return;
+    }
+
+    const matches = await this.repository.listCrewMatches();
+    const hasAcceptedFutureMatch = matches.some(
+      (match) =>
+        match.crewMemberId === crewMemberId &&
+        match.status === "accepted" &&
+        new Date(match.createdAt).getTime() > Date.now() - 90 * 24 * 60 * 60 * 1000
+    );
+
+    await this.repository.updateCrewMember(crewMemberId, {
+      status: hasAcceptedFutureMatch ? "assigned" : "available"
+    });
+  }
+
+  private isCrewMemberEligibleForBooking(crewMember: CrewMemberProfile, booking: Booking): boolean {
+    if (!crewMember.categories.includes(booking.category)) {
+      return false;
+    }
+
+    const distanceMiles = this.geoService.distanceMiles(crewMember.address, booking.serviceAddress);
+    if (distanceMiles > crewMember.willingToTravelMiles) {
+      return false;
+    }
+
+    const day = this.isoToAvailabilityDay(booking.scheduledStartIso);
+    if (!(crewMember.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"]).includes(day)) {
+      return false;
+    }
+
+    if (
+      (booking.category === "snow-shoveling" ||
+        booking.category === "snow-blowing" ||
+        booking.category === "ice-melt-salting") &&
+      !(crewMember.winterWorkEnabled ?? true)
+    ) {
+      return false;
+    }
+
+    return crewMember.status !== "off-duty";
+  }
+
+  private estimateRequiredCrewMembers(booking: Booking, property?: CustomerProperty): number {
+    const baseByCategory: Record<Booking["category"], number> = {
+      "lawn-mowing": 1,
+      "hedge-trimming": 1,
+      "mulch-installation": 2,
+      "seasonal-cleanup": 2,
+      "weed-control": 1,
+      "irrigation-check": 1,
+      "leaf-blowing": 1,
+      "aeration": 1,
+      "fertilization": 1,
+      "gutter-cleaning": 2,
+      "snow-shoveling": 2,
+      "ice-melt-salting": 1,
+      "snow-blowing": 2
+    };
+
+    let crewSize = baseByCategory[booking.category] ?? 1;
+    if (property?.lawnSizeSqFt && property.lawnSizeSqFt > 5000) {
+      crewSize += 1;
+    }
+    if (property?.shrubBedSqFt && property.shrubBedSqFt > 900) {
+      crewSize += 1;
+    }
+
+    return Math.min(crewSize, 4);
+  }
+
+  private isoToAvailabilityDay(iso: string): CrewAvailabilityDay {
+    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
+      new Date(iso).getDay()
+    ] as CrewAvailabilityDay;
+  }
+
+  private assertCanAccessConversation(
+    actor: AuthIdentityRecord,
+    thread: ProviderCrewConversation
+  ): void {
+    const canAccess =
+      (actor.role === "provider" && actor.userId === thread.providerId) ||
+      (actor.role === "crew-member" && actor.userId === thread.crewMemberId);
+
+    if (!canAccess) {
+      throw new Error("You cannot access this conversation");
+    }
+  }
+
+  private assertCustomerCanManageBooking(customerId: string, booking: Booking): void {
+    if (booking.customerId !== customerId) {
+      throw new Error("Only the booking customer can manage this booking");
+    }
+  }
+
+  private canCustomerCancelOrReschedule(booking: Booking): boolean {
+    if (!(booking.status === "requested" || booking.status === "confirmed")) {
+      return false;
+    }
+
+    return new Date(booking.scheduledStartIso).getTime() > Date.now();
+  }
+
   // Review validation stays centralized here so web and mobile both inherit the same rule set.
   private assertReviewScore(score: number, fieldName: string): void {
     if (!Number.isInteger(score) || score < 1 || score > 5) {
@@ -1035,5 +1686,32 @@ export class MarketplacePlatformService {
 
   private addDays(iso: string, days: number): string {
     return new Date(new Date(iso).getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  private titleCaseCategory(category: Booking["category"]): string {
+    return category
+      .split("-")
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(" ");
+  }
+
+  private estimateCrewHourlyRate(category: Booking["category"]): number {
+    const rateByCategory: Record<Booking["category"], number> = {
+      "lawn-mowing": 2200,
+      "hedge-trimming": 2400,
+      "mulch-installation": 2500,
+      "seasonal-cleanup": 2300,
+      "weed-control": 2200,
+      "irrigation-check": 2600,
+      "leaf-blowing": 2100,
+      "aeration": 2300,
+      "fertilization": 2250,
+      "gutter-cleaning": 2550,
+      "snow-shoveling": 2350,
+      "ice-melt-salting": 2300,
+      "snow-blowing": 2450
+    };
+
+    return rateByCategory[category];
   }
 }

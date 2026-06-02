@@ -25,6 +25,23 @@ export async function requireAuthenticatedIdentity(
   return identity;
 }
 
+export async function getOptionalAuthenticatedIdentity(
+  context: RequestContext,
+  platform: MarketplacePlatformService
+) {
+  const token = getBearerToken(context);
+  if (!token) {
+    return undefined;
+  }
+
+  try {
+    const session = verifySessionToken(token);
+    return await platform.findAuthIdentityByUserId(session.userId);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function requireRole(
   context: RequestContext,
   platform: MarketplacePlatformService,

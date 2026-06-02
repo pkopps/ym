@@ -1,4 +1,5 @@
 import {
+  CancelBookingRequest,
   CompleteBookingRequest,
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
@@ -7,12 +8,16 @@ import {
   CreatePaymentIntentRequest,
   ProcessReviewInvitesRequest,
   CreateRefundRequest,
+  ReviewCrewMatchRequest,
+  SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SearchProvidersRequest,
+  RescheduleBookingRequest,
+  UpdateCrewPreferencesRequest,
   UpdateProviderSettingsRequest,
   UpdateBookingAddressRequest
 } from "@yardmatch/contracts";
-import { requireAuthenticatedIdentity, requireRole } from "../controller-auth";
+import { getOptionalAuthenticatedIdentity, requireAuthenticatedIdentity, requireRole } from "../controller-auth";
 import { ApiController, RequestContext, sendJson, sendText } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
@@ -27,14 +32,25 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/customers/review-opportunities") ||
       (context.method === "POST" && context.path === "/api/quotes/instant") ||
       (context.method === "POST" && context.path === "/api/providers/search") ||
+      (context.method === "GET" && context.path === "/api/providers/profile") ||
+      (context.method === "GET" && context.path === "/api/crew/opportunities") ||
+      (context.method === "GET" && context.path === "/api/providers/staffing") ||
+      (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
       (context.method === "POST" && context.path === "/api/providers/settings") ||
       (context.method === "GET" && context.path === "/api/providers/reviews") ||
       (context.method === "POST" && context.path === "/api/providers/reviews") ||
       (context.method === "POST" && context.path === "/api/bookings") ||
+      (context.method === "POST" && context.path === "/api/bookings/cancel") ||
+      (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/address") ||
       (context.method === "GET" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/review-invites/process") ||
+      (context.method === "POST" && context.path === "/api/crew/preferences") ||
+      (context.method === "GET" && context.path === "/api/crew/matches") ||
+      (context.method === "GET" && context.path === "/api/chat/provider-crew/threads") ||
+      (context.method === "GET" && context.path === "/api/chat/provider-crew/messages") ||
+      (context.method === "POST" && context.path === "/api/chat/provider-crew/messages") ||
       (context.method === "POST" && context.path === "/api/payments/intent") ||
       (context.method === "POST" && context.path === "/api/payments/refund") ||
       (context.method === "GET" && context.path === "/api/calendar/feed")
@@ -78,12 +94,52 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/quotes/instant") {
-      sendJson(response, 200, await this.platform.createInstantQuote(context.body as InstantQuoteRequest));
+      const identity = await getOptionalAuthenticatedIdentity(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.createInstantQuote({
+          ...(context.body as InstantQuoteRequest),
+          customerId: identity?.role === "customer" ? identity.userId : undefined
+        })
+      );
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/providers/search") {
       sendJson(response, 200, await this.platform.searchProviders(context.body as SearchProvidersRequest));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/providers/profile") {
+      await requireAuthenticatedIdentity(context, this.platform);
+      const providerId = context.query.get("providerId");
+      if (!providerId) {
+        sendJson(response, 400, {
+          message: "providerId is required"
+        });
+        return;
+      }
+
+      sendJson(response, 200, await this.platform.getProviderProfile(providerId));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/crew/opportunities") {
+      await requireRole(context, this.platform, "crew-member");
+      sendJson(response, 200, await this.platform.listCrewOpportunities());
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/providers/staffing") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.getProviderStaffingOverview(identity.userId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/staffing/review") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.reviewCrewMatch(identity.userId, context.body as ReviewCrewMatchRequest));
       return;
     }
 
@@ -126,6 +182,26 @@ export class MarketplaceController implements ApiController {
         response,
         201,
         await this.platform.createBooking(identity.userId, context.body as CreateBookingRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/cancel") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        200,
+        await this.platform.cancelBooking(identity.userId, context.body as CancelBookingRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/reschedule") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        200,
+        await this.platform.rescheduleBooking(identity.userId, context.body as RescheduleBookingRequest)
       );
       return;
     }
@@ -174,6 +250,44 @@ export class MarketplaceController implements ApiController {
         200,
         await this.platform.processReviewInvites(context.body as ProcessReviewInvitesRequest)
       );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/crew/preferences") {
+      const identity = await requireRole(context, this.platform, "crew-member");
+      sendJson(response, 200, await this.platform.updateCrewPreferences(identity.userId, context.body as UpdateCrewPreferencesRequest));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/crew/matches") {
+      const identity = await requireRole(context, this.platform, "crew-member");
+      sendJson(response, 200, await this.platform.getCrewMatchesForCrew(identity.userId));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/chat/provider-crew/threads") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.listProviderCrewConversations(identity));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/chat/provider-crew/messages") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.getProviderCrewConversationThread(
+          identity,
+          context.query.get("threadId") ?? undefined,
+          context.query.get("crewMatchId") ?? undefined
+        )
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/chat/provider-crew/messages") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 201, await this.platform.sendProviderCrewMessage(identity, context.body as SendProviderCrewMessageRequest));
       return;
     }
 

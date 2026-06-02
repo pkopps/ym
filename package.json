@@ -18,6 +18,8 @@
     "build:crew-mobile": "npm --workspace @yardmatch/crew-mobile run export",
     "build:api": "tsc -p apps/api/tsconfig.json",
     "prisma:generate": "npm --workspace @yardmatch/api run prisma:generate",
+    "prisma:migrate": "npm --workspace @yardmatch/api run prisma:migrate",
+    "prisma:deploy": "npm --workspace @yardmatch/api run prisma:deploy",
     "prisma:seed": "npm --workspace @yardmatch/api run prisma:seed",
     "test:api": "npm --workspace @yardmatch/api run test",
     "lint": "eslint .",

@@ -18,7 +18,9 @@ export const apiSpec = {
     { name: "Customers" },
     { name: "Quotes" },
     { name: "Providers" },
+    { name: "Crew" },
     { name: "Bookings" },
+    { name: "Chat" },
     { name: "Payments" },
     { name: "Support" },
     { name: "Observability" }
@@ -152,6 +154,26 @@ export const apiSpec = {
         }
       }
     },
+    "/api/providers/profile": {
+      get: {
+        tags: ["Providers"],
+        summary: "Fetch a provider profile by id",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "providerId",
+            in: "query",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Provider profile" },
+          "400": { description: "Missing providerId" },
+          "401": { description: "Missing or invalid bearer token" }
+        }
+      }
+    },
     "/api/customers/properties": {
       get: {
         tags: ["Customers"],
@@ -221,6 +243,48 @@ export const apiSpec = {
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Review opportunity list" }
+        }
+      }
+    },
+    "/api/bookings/cancel": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Cancel a customer booking",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking in cancelled status" }
+        }
+      }
+    },
+    "/api/bookings/reschedule": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Reschedule a customer booking",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                scheduledStartIso: "2026-06-03T13:00:00.000Z",
+                scheduledEndIso: "2026-06-03T15:00:00.000Z"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with new scheduled times" }
         }
       }
     },
@@ -295,7 +359,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Update provider business settings",
         description:
-          "Lets a landscaping business owner change the service radius used to match against each customer property address.",
+          "Lets a landscaping business owner change the service radius used to match against each customer property address and choose whether matched crew members are auto-accepted or reviewed first.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -303,6 +367,7 @@ export const apiSpec = {
             "application/json": {
               example: {
                 serviceRadiusMiles: 20,
+                staffingMode: "review-first",
                 sponsoredListingEnabled: true
               }
             }
@@ -310,6 +375,39 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated provider profile" }
+        }
+      }
+    },
+    "/api/providers/staffing": {
+      get: {
+        tags: ["Providers"],
+        summary: "Get provider staffing overview",
+        description:
+          "Returns upcoming jobs, crew gaps, matched crew candidates, and accepted assignments for the authenticated provider business.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Provider staffing overview" }
+        }
+      }
+    },
+    "/api/providers/staffing/review": {
+      post: {
+        tags: ["Providers"],
+        summary: "Accept or deny a matched crew candidate",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                crewMatchId: "crew_match_123",
+                action: "accept"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated crew match candidate" }
         }
       }
     },
@@ -448,6 +546,98 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Booking update outcome" }
+        }
+      }
+    },
+    "/api/crew/preferences": {
+      post: {
+        tags: ["Crew"],
+        summary: "Update crew availability, travel radius, and skills",
+        description:
+          "Keeps the crew-member profile current so the matching engine can automatically surface the worker when provider demand exceeds staffed supply.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                categories: ["lawn-mowing", "weed-control", "hedge-trimming"],
+                availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+                willingToTravelMiles: 20,
+                preferredSchedule: "flex",
+                hasOwnEquipment: false,
+                winterWorkEnabled: true
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated crew member profile" }
+        }
+      }
+    },
+    "/api/crew/matches": {
+      get: {
+        tags: ["Crew"],
+        summary: "List auto-matched and accepted crew opportunities",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Crew match list for the authenticated crew member" }
+        }
+      }
+    },
+    "/api/chat/provider-crew/threads": {
+      get: {
+        tags: ["Chat"],
+        summary: "List provider-to-crew conversations for the authenticated user",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Conversation summaries" }
+        }
+      }
+    },
+    "/api/chat/provider-crew/messages": {
+      get: {
+        tags: ["Chat"],
+        summary: "Fetch a provider-to-crew conversation thread",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "threadId",
+            in: "query",
+            required: false,
+            schema: { type: "string" }
+          },
+          {
+            name: "crewMatchId",
+            in: "query",
+            required: false,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Conversation thread and messages" }
+        }
+      },
+      post: {
+        tags: ["Chat"],
+        summary: "Send a provider-to-crew message",
+        description:
+          "Creates or appends to a one-to-one conversation linked to an accepted or pending crew match. Only the provider or crew member on that match can send messages.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                crewMatchId: "crew_match_123",
+                body: "Can you meet at the property 15 minutes early?"
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Updated conversation thread" }
         }
       }
     },

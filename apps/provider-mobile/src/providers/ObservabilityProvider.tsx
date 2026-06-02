@@ -1,7 +1,7 @@
 import { ReactNode, useEffect } from "react";
 import { Dimensions, Platform } from "react-native";
-import { MarketplaceApiClient } from "@yardmatch/contracts";
 import { SessionHeartbeatFactory } from "@yardmatch/observability";
+import { createProviderMobileApiClient } from "../lib/api";
 
 function createSessionId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `ym-provider-mobile-${Date.now()}`;
@@ -19,10 +19,7 @@ function getPlatformSurface(): "ios-phone" | "ios-tablet" | "android-phone" | "a
 
 export function ObservabilityProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
-    const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-    const api = new MarketplaceApiClient(
-      runtimeEnv?.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
-    );
+    const api = createProviderMobileApiClient();
     const sessionId = createSessionId();
 
     const sendHeartbeat = () => {

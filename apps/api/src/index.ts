@@ -14,6 +14,8 @@ import { MarketplacePlatformService } from "./services/MarketplacePlatformServic
 const repository = process.env.DATABASE_URL
   ? new PrismaMarketplaceRepository(new PrismaClient())
   : new InMemoryMarketplaceRepository();
+const port = Number(process.env.PORT ?? 4000);
+const repositoryMode = process.env.DATABASE_URL ? "prisma-postgres" : "in-memory";
 const analytics = new DataEngineeringLogger();
 const platform = new MarketplacePlatformService(repository, analytics);
 const controllers: ApiController[] = [
@@ -60,6 +62,6 @@ const server = createServer(async (request, response) => {
 });
 
 // A single monolith keeps deployment simple while the product surface is still growing quickly.
-server.listen(4000, () => {
-  console.log("YardMatch API listening on http://localhost:4000");
+server.listen(port, () => {
+  console.log(`YardMatch API listening on http://localhost:${port} (${repositoryMode})`);
 });

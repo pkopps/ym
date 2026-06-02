@@ -4,6 +4,9 @@ import {
   AvailabilitySlot,
   Booking,
   BookingAddressChangeRequest,
+  CrewMatchCandidate,
+  ProviderCrewConversation,
+  ProviderCrewMessage,
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
@@ -42,6 +45,10 @@ export interface MarketplaceRepository {
   listBookings(): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking | undefined>;
+  createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate>;
+  listCrewMatches(): Promise<CrewMatchCandidate[]>;
+  updateCrewMatch(matchId: string, updates: Partial<CrewMatchCandidate>): Promise<CrewMatchCandidate | undefined>;
+  findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined>;
   createProviderReview(review: ProviderReview): Promise<ProviderReview>;
   listProviderReviews(providerId: string): Promise<ProviderReview[]>;
   findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined>;
@@ -61,6 +68,18 @@ export interface MarketplaceRepository {
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
   createSupportTicket(ticket: SupportTicket): Promise<SupportTicket>;
   listSupportTickets(): Promise<SupportTicket[]>;
+  createProviderCrewConversation(conversation: ProviderCrewConversation): Promise<ProviderCrewConversation>;
+  findProviderCrewConversationById(conversationId: string): Promise<ProviderCrewConversation | undefined>;
+  findProviderCrewConversationByCrewMatchId(
+    crewMatchId: string
+  ): Promise<ProviderCrewConversation | undefined>;
+  listProviderCrewConversations(): Promise<ProviderCrewConversation[]>;
+  updateProviderCrewConversation(
+    conversationId: string,
+    updates: Partial<ProviderCrewConversation>
+  ): Promise<ProviderCrewConversation | undefined>;
+  createProviderCrewMessage(message: ProviderCrewMessage): Promise<ProviderCrewMessage>;
+  listProviderCrewMessages(conversationId: string): Promise<ProviderCrewMessage[]>;
   findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined>;
   findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined>;
 }

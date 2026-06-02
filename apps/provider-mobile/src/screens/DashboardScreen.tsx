@@ -1,75 +1,96 @@
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import {
-  providerCrewPayouts,
-  providerCrewMemberSnapshots,
-  providerManagedJobs
-} from "@yardmatch/ui";
+import { ProviderStaffingOverview } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { createProviderMobileApiClient } from "../lib/api";
 import { getProviderMobileTracker } from "../lib/tracking";
+import { useProviderSession } from "../session/ProviderSessionContext";
 
 export function DashboardScreen() {
   const tracker = getProviderMobileTracker();
-  const totalCrewNeeded = providerManagedJobs.reduce((sum, job) => sum + job.requiredCrewMembers, 0);
-  const totalAssignedCrew = providerManagedJobs.reduce((sum, job) => sum + job.assignedCrewMembers.length, 0);
-  const crewGap = totalCrewNeeded - totalAssignedCrew;
-  const payoutReadyAmount = providerCrewPayouts
-    .filter((payout) => payout.status === "ready")
-    .reduce((sum, payout) => sum + Number(payout.amountLabel.replace(/[^0-9.]/g, "")), 0);
-  const shortStaffedJobs = providerManagedJobs.filter(
-    (job) => job.requiredCrewMembers > job.assignedCrewMembers.length
+  const { envelope } = useProviderSession();
+  const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const totalAssignedCrew = useMemo(
+    () => overview?.jobs.reduce((sum, job) => sum + job.assignedCrewMembers, 0) ?? 0,
+    [overview]
   );
+  const totalCrewGap = useMemo(
+    () => overview?.jobs.reduce((sum, job) => sum + job.crewGap, 0) ?? 0,
+    [overview]
+  );
+
+  async function loadOverview() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setOverview(await api.getProviderStaffingOverview());
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load operations.");
+    }
+  }
+
+  useEffect(() => {
+    void loadOverview();
+  }, [envelope?.session.token]);
 
   return (
     <ScreenShell eyebrow="Home" title="Today at a glance">
-      {crewGap > 0 ? (
-        <InfoCard title="Crew gap detected" description={`${crewGap} open crew slots across upcoming jobs`}>
+      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
+      {totalCrewGap > 0 ? (
+        <InfoCard title="Crew gap detected" description={`${totalCrewGap} open crew slots across upcoming jobs`}>
           <Text style={styles.alertText}>
-            Demand is outpacing your current crew coverage. Fill these spots before route quality slips.
+            Matching is live. Review candidates now or switch the business to auto-accept.
           </Text>
           <Pressable
             onPress={() =>
               void tracker.track(MarketplaceTelemetryEventCatalog.providerSearchPerformed, {
                 app: "provider",
                 action: "find-crew-members",
-                crewGap
+                crewGap: totalCrewGap
               })
             }
             style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonLabel}>Find crew members</Text>
+            <Text style={styles.primaryButtonLabel}>Go to crew</Text>
           </Pressable>
         </InfoCard>
       ) : null}
 
       <View style={styles.statGrid}>
-        <StatCard label="Jobs" value={`${providerManagedJobs.length}`} />
-        <StatCard label="Crew" value={`${providerCrewMemberSnapshots.length}`} />
-        <StatCard label="Crew gap" value={`${Math.max(crewGap, 0)}`} />
-        <StatCard label="Ready payout" value={`$${payoutReadyAmount.toFixed(0)}`} />
+        <StatCard label="Jobs" value={`${overview?.jobs.length ?? 0}`} />
+        <StatCard label="Crew assigned" value={`${totalAssignedCrew}`} />
+        <StatCard label="Crew gap" value={`${totalCrewGap}`} />
+        <StatCard label="Staffing mode" value={overview?.provider.staffingMode === "auto-accept" ? "Auto" : "Review"} />
       </View>
 
-      <InfoCard title="Next jobs" description={`${shortStaffedJobs.length} need attention`}>
+      <InfoCard title="Next jobs" description={`${overview?.jobs.length ?? 0} upcoming`}>
         <View style={styles.list}>
-          {providerManagedJobs.slice(0, 3).map((job) => {
-            const openSlots = job.requiredCrewMembers - job.assignedCrewMembers.length;
-            return (
-              <View key={job.id} style={styles.jobRow}>
-                <View style={styles.jobCopy}>
-                  <Text style={styles.jobTitle}>{job.clientName}</Text>
-                  <Text style={styles.jobMeta}>
-                    {job.dateLabel} • {job.timeLabel}
-                  </Text>
-                  <Text style={styles.jobMeta}>{job.serviceLabel}</Text>
-                </View>
-                <Text style={openSlots > 0 ? styles.warningBadge : styles.successBadge}>
-                  {openSlots > 0 ? `${openSlots} open` : "Covered"}
+          {(overview?.jobs ?? []).slice(0, 3).map((job) => (
+            <View key={job.bookingId} style={styles.jobRow}>
+              <View style={styles.jobCopy}>
+                <Text style={styles.jobTitle}>{job.customerName}</Text>
+                <Text style={styles.jobMeta}>
+                  {new Date(job.scheduledStartIso).toLocaleDateString()} • {job.category.replaceAll("-", " ")}
+                </Text>
+                <Text style={styles.jobMeta}>
+                  {job.assignedCrewMembers}/{job.requiredCrewMembers} crew • {job.crewGap} open
                 </Text>
               </View>
-            );
-          })}
+              <Text style={job.crewGap > 0 ? styles.warningBadge : styles.successBadge}>
+                {job.crewGap > 0 ? "Needs review" : "Covered"}
+              </Text>
+            </View>
+          ))}
         </View>
       </InfoCard>
     </ScreenShell>
