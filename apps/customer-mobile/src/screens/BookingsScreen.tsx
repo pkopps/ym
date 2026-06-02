@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
-import { Booking, CustomerReviewOpportunity, ReviewScore } from "@yardmatch/contracts";
+import {
+  Booking,
+  CustomerProviderConversationThread,
+  CustomerReviewOpportunity,
+  ReviewScore
+} from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
@@ -38,6 +43,9 @@ export function BookingsScreen() {
   const [submittedMessage, setSubmittedMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [activeChatBookingId, setActiveChatBookingId] = useState<string | undefined>();
+  const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
+  const [chatDraft, setChatDraft] = useState("");
 
   const upcomingBookings = useMemo(
     () =>
@@ -190,6 +198,52 @@ export function BookingsScreen() {
     }
   }
 
+  async function openCustomerChat(booking: Booking) {
+    if (!envelope?.session.token || !booking.onRouteConfirmedAt) {
+      return;
+    }
+
+    try {
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setActiveChatBookingId(booking.id);
+      setChatThread(await api.getCustomerProviderConversationThread(undefined, booking.id));
+    } catch (error) {
+      if (error instanceof Error && /Conversation not found/.test(error.message)) {
+        setActiveChatBookingId(booking.id);
+        setChatThread(undefined);
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open chat.");
+    }
+  }
+
+  async function sendCustomerChat(bookingId: string) {
+    if (!envelope?.session.token || !chatDraft.trim()) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setChatThread(
+        await api.sendCustomerProviderMessage({
+          threadId: chatThread?.thread.id,
+          bookingId,
+          body: chatDraft.trim()
+        })
+      );
+      setChatDraft("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to send this message.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Bookings" title="Manage services" description="Upcoming and past jobs.">
       <View style={styles.modeRow}>
@@ -214,6 +268,9 @@ export function BookingsScreen() {
                   <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
                   <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
                   <Text style={styles.bookingNote}>{booking.status}</Text>
+                  {booking.onRouteConfirmedAt ? (
+                    <Text style={styles.bookingMeta}>Crew is on the way. Business chat is open.</Text>
+                  ) : null}
                 </View>
                 <StatusBadge label={booking.status === "confirmed" ? "Confirmed" : "Requested"} tone="success" />
                 <View style={styles.inlineActions}>
@@ -231,7 +288,45 @@ export function BookingsScreen() {
                   >
                     <Text style={styles.secondaryActionLabel}>Cancel</Text>
                   </Pressable>
+                  {booking.onRouteConfirmedAt ? (
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void openCustomerChat(booking)}
+                      style={styles.secondaryAction}
+                    >
+                      <Text style={styles.secondaryActionLabel}>Message business</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
+                {booking.onRouteConfirmedAt && activeChatBookingId === booking.id ? (
+                  <View style={styles.chatStack}>
+                    {(chatThread?.messages ?? []).map((message) => (
+                      <View key={message.id} style={styles.chatBubble}>
+                        <Text style={styles.bookingTitle}>
+                          {message.senderRole === "customer"
+                            ? "You"
+                            : providerNamesById[booking.providerId] ?? "Business"}
+                        </Text>
+                        <Text style={styles.bookingMeta}>{message.body}</Text>
+                      </View>
+                    ))}
+                    <TextInput
+                      multiline
+                      onChangeText={setChatDraft}
+                      placeholder="Message the business owner."
+                      placeholderTextColor={BrandTokens.colors.muted}
+                      style={styles.input}
+                      value={chatDraft}
+                    />
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void sendCustomerChat(booking.id)}
+                      style={styles.submitButton}
+                    >
+                      <Text style={styles.submitButtonLabel}>{isWorking ? "Sending..." : "Send message"}</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </View>
             ))}
           </View>
@@ -418,6 +513,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: BrandTokens.spacing.sm,
     flexWrap: "wrap"
+  },
+  chatStack: {
+    gap: BrandTokens.spacing.sm
+  },
+  chatBubble: {
+    gap: BrandTokens.spacing.xs
   },
   secondaryAction: {
     borderRadius: 999,

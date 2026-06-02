@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { ProviderStaffingOverview } from "@yardmatch/contracts";
+import { CustomerProviderConversationThread, ProviderStaffingOverview } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
@@ -14,6 +14,10 @@ export function ScheduleScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
+  const [activeBookingId, setActiveBookingId] = useState<string | undefined>();
+  const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
+  const [chatDraft, setChatDraft] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
   async function loadOverview() {
     if (!envelope?.session.token) {
@@ -34,6 +38,50 @@ export function ScheduleScreen() {
   }, [envelope?.session.token]);
 
   const jobs = overview?.jobs ?? [];
+
+  async function openCustomerChat(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setActiveBookingId(bookingId);
+      setChatThread(await api.getCustomerProviderConversationThread(undefined, bookingId));
+    } catch (error) {
+      if (error instanceof Error && /Conversation not found/.test(error.message)) {
+        setActiveBookingId(bookingId);
+        setChatThread(undefined);
+        return;
+      }
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open customer chat.");
+    }
+  }
+
+  async function sendCustomerChat(bookingId: string) {
+    if (!envelope?.session.token || !chatDraft.trim()) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setChatThread(
+        await api.sendCustomerProviderMessage({
+          threadId: chatThread?.thread.id,
+          bookingId,
+          body: chatDraft.trim()
+        })
+      );
+      setChatDraft("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to send customer message.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
 
   return (
     <ScreenShell eyebrow="Schedule" title="Upcoming jobs">
@@ -78,6 +126,45 @@ export function ScheduleScreen() {
                   <Text style={styles.metaLine}>
                     {job.category.replaceAll("-", " ")} • {job.assignedCrewMembers}/{job.requiredCrewMembers} crew
                   </Text>
+                  {job.onRouteConfirmedAt ? (
+                    <Text style={styles.metaLine}>Crew is on the way. Customer chat is open.</Text>
+                  ) : null}
+                  {job.onRouteConfirmedAt ? (
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void openCustomerChat(job.bookingId)}
+                      style={styles.chatButton}
+                    >
+                      <Text style={styles.chatButtonLabel}>Message customer</Text>
+                    </Pressable>
+                  ) : null}
+                  {job.onRouteConfirmedAt && activeBookingId === job.bookingId ? (
+                    <View style={styles.chatStack}>
+                      {(chatThread?.messages ?? []).map((message) => (
+                        <View key={message.id} style={styles.chatBubble}>
+                          <Text style={styles.clientLabel}>
+                            {message.senderRole === "provider" ? "You" : job.customerName}
+                          </Text>
+                          <Text style={styles.metaLine}>{message.body}</Text>
+                        </View>
+                      ))}
+                      <TextInput
+                        multiline
+                        onChangeText={setChatDraft}
+                        placeholder="Message the property owner."
+                        placeholderTextColor={BrandTokens.colors.muted}
+                        style={styles.input}
+                        value={chatDraft}
+                      />
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void sendCustomerChat(job.bookingId)}
+                        style={styles.submitButton}
+                      >
+                        <Text style={styles.submitButtonLabel}>{isWorking ? "Sending..." : "Send message"}</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
               </View>
             ))}
@@ -165,5 +252,45 @@ const styles = StyleSheet.create({
   },
   jobCopy: {
     gap: BrandTokens.spacing.xs
+  },
+  chatButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.sm
+  },
+  chatButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  chatStack: {
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.sm
+  },
+  chatBubble: {
+    gap: BrandTokens.spacing.xs
+  },
+  input: {
+    minHeight: 92,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    padding: BrandTokens.spacing.md,
+    color: BrandTokens.colors.ink,
+    textAlignVertical: "top"
+  },
+  submitButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  submitButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
   }
 });

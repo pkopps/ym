@@ -6,6 +6,8 @@ import {
   BookingAddressChangeRequest,
   CalendarConnection,
   CrewMatchCandidate,
+  CustomerProviderConversation,
+  CustomerProviderMessage,
   ProviderCrewConversation,
   ProviderCrewMessage,
   CrewMemberProfile,
@@ -386,6 +388,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         scheduledStartIso: new Date(booking.scheduledStartIso),
         scheduledEndIso: new Date(booking.scheduledEndIso),
         status: booking.status,
+        onRouteConfirmedAt: booking.onRouteConfirmedAt ? new Date(booking.onRouteConfirmedAt) : undefined,
+        onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
         completedAt: booking.completedAt ? new Date(booking.completedAt) : undefined,
         notes: booking.notes,
         totalCents: booking.totalCents,
@@ -428,6 +432,15 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         scheduledStartIso: updates.scheduledStartIso ? new Date(updates.scheduledStartIso) : undefined,
         scheduledEndIso: updates.scheduledEndIso ? new Date(updates.scheduledEndIso) : undefined,
         status: updates.status,
+        onRouteConfirmedAt: updates.onRouteConfirmedAt
+          ? new Date(updates.onRouteConfirmedAt)
+          : updates.onRouteConfirmedAt === undefined
+            ? undefined
+            : null,
+        onRouteConfirmedByCrewMemberId:
+          updates.onRouteConfirmedByCrewMemberId === undefined
+            ? undefined
+            : updates.onRouteConfirmedByCrewMemberId,
         completedAt: updates.completedAt ? new Date(updates.completedAt) : updates.completedAt === undefined ? undefined : null,
         notes: updates.notes,
         totalCents: updates.totalCents,
@@ -820,6 +833,97 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return messages.map((message: any) => this.mapProviderCrewMessage(message));
   }
 
+  public async createCustomerProviderConversation(
+    conversation: CustomerProviderConversation
+  ): Promise<CustomerProviderConversation> {
+    await this.prisma.customerProviderConversation.create({
+      data: {
+        id: conversation.id,
+        bookingId: conversation.bookingId,
+        customerId: conversation.customerId,
+        providerId: conversation.providerId,
+        customerName: conversation.customerName,
+        providerName: conversation.providerName,
+        updatedAt: new Date(conversation.updatedAt),
+        lastMessagePreview: conversation.lastMessagePreview,
+        unreadCount: conversation.unreadCount,
+        createdAt: new Date(conversation.updatedAt)
+      }
+    });
+    return conversation;
+  }
+
+  public async findCustomerProviderConversationById(
+    conversationId: string
+  ): Promise<CustomerProviderConversation | undefined> {
+    const conversation = await this.prisma.customerProviderConversation.findUnique({
+      where: { id: conversationId }
+    });
+    return conversation ? this.mapCustomerProviderConversation(conversation) : undefined;
+  }
+
+  public async findCustomerProviderConversationByBookingId(
+    bookingId: string
+  ): Promise<CustomerProviderConversation | undefined> {
+    const conversation = await this.prisma.customerProviderConversation.findUnique({
+      where: { bookingId }
+    });
+    return conversation ? this.mapCustomerProviderConversation(conversation) : undefined;
+  }
+
+  public async listCustomerProviderConversations(): Promise<CustomerProviderConversation[]> {
+    const conversations = await this.prisma.customerProviderConversation.findMany({
+      orderBy: { updatedAt: "desc" }
+    });
+    return conversations.map((conversation: any) => this.mapCustomerProviderConversation(conversation));
+  }
+
+  public async updateCustomerProviderConversation(
+    conversationId: string,
+    updates: Partial<CustomerProviderConversation>
+  ): Promise<CustomerProviderConversation | undefined> {
+    const current = await this.prisma.customerProviderConversation.findUnique({
+      where: { id: conversationId }
+    });
+    if (!current) {
+      return undefined;
+    }
+
+    const conversation = await this.prisma.customerProviderConversation.update({
+      where: { id: conversationId },
+      data: {
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined,
+        lastMessagePreview: updates.lastMessagePreview,
+        unreadCount: updates.unreadCount
+      }
+    });
+    return this.mapCustomerProviderConversation(conversation);
+  }
+
+  public async createCustomerProviderMessage(
+    message: CustomerProviderMessage
+  ): Promise<CustomerProviderMessage> {
+    await this.prisma.customerProviderMessage.create({
+      data: {
+        id: message.id,
+        conversationId: message.threadId,
+        senderId: message.senderId,
+        senderRole: message.senderRole,
+        body: message.body,
+        createdAt: new Date(message.createdAt)
+      }
+    });
+    return message;
+  }
+
+  public async listCustomerProviderMessages(conversationId: string): Promise<CustomerProviderMessage[]> {
+    const messages = await this.prisma.customerProviderMessage.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: "asc" }
+    });
+    return messages.map((message: any) => this.mapCustomerProviderMessage(message));
+  }
+
   public async findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined> {
     const identity = await this.prisma.userAccount.findUnique({
       where: { email: email.toLowerCase() }
@@ -1012,6 +1116,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     scheduledStartIso: Date;
     scheduledEndIso: Date;
     status: string;
+    onRouteConfirmedAt: Date | null;
+    onRouteConfirmedByCrewMemberId: string | null;
     completedAt: Date | null;
     notes: string;
     totalCents: number;
@@ -1029,6 +1135,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       scheduledStartIso: record.scheduledStartIso.toISOString(),
       scheduledEndIso: record.scheduledEndIso.toISOString(),
       status: record.status as Booking["status"],
+      onRouteConfirmedAt: record.onRouteConfirmedAt?.toISOString(),
+      onRouteConfirmedByCrewMemberId: record.onRouteConfirmedByCrewMemberId ?? undefined,
       completedAt: record.completedAt?.toISOString(),
       notes: record.notes,
       totalCents: record.totalCents,
@@ -1195,6 +1303,48 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       threadId: record.conversationId,
       senderId: record.senderId,
       senderRole: record.senderRole as ProviderCrewMessage["senderRole"],
+      body: record.body,
+      createdAt: record.createdAt.toISOString()
+    };
+  }
+
+  private mapCustomerProviderConversation(record: {
+    id: string;
+    bookingId: string;
+    customerId: string;
+    providerId: string;
+    customerName: string;
+    providerName: string;
+    updatedAt: Date;
+    lastMessagePreview: string | null;
+    unreadCount: number;
+  }): CustomerProviderConversation {
+    return {
+      id: record.id,
+      bookingId: record.bookingId,
+      customerId: record.customerId,
+      providerId: record.providerId,
+      customerName: record.customerName,
+      providerName: record.providerName,
+      updatedAt: record.updatedAt.toISOString(),
+      lastMessagePreview: record.lastMessagePreview ?? undefined,
+      unreadCount: record.unreadCount
+    };
+  }
+
+  private mapCustomerProviderMessage(record: {
+    id: string;
+    conversationId: string;
+    senderId: string;
+    senderRole: string;
+    body: string;
+    createdAt: Date;
+  }): CustomerProviderMessage {
+    return {
+      id: record.id,
+      threadId: record.conversationId,
+      senderId: record.senderId,
+      senderRole: record.senderRole as CustomerProviderMessage["senderRole"],
       body: record.body,
       createdAt: record.createdAt.toISOString()
     };

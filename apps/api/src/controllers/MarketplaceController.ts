@@ -5,10 +5,12 @@ import {
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
   InstantQuoteRequest,
+  MarkBookingOnRouteRequest,
   CreatePaymentIntentRequest,
   ProcessReviewInvitesRequest,
   CreateRefundRequest,
   ReviewCrewMatchRequest,
+  SendCustomerProviderMessageRequest,
   SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SearchProvidersRequest,
@@ -43,6 +45,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
+      (context.method === "POST" && context.path === "/api/bookings/on-route") ||
       (context.method === "POST" && context.path === "/api/bookings/address") ||
       (context.method === "GET" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/review-invites/process") ||
@@ -51,6 +54,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/chat/provider-crew/threads") ||
       (context.method === "GET" && context.path === "/api/chat/provider-crew/messages") ||
       (context.method === "POST" && context.path === "/api/chat/provider-crew/messages") ||
+      (context.method === "GET" && context.path === "/api/chat/customer-provider/threads") ||
+      (context.method === "GET" && context.path === "/api/chat/customer-provider/messages") ||
+      (context.method === "POST" && context.path === "/api/chat/customer-provider/messages") ||
       (context.method === "POST" && context.path === "/api/payments/intent") ||
       (context.method === "POST" && context.path === "/api/payments/refund") ||
       (context.method === "GET" && context.path === "/api/calendar/feed")
@@ -216,6 +222,16 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "POST" && context.path === "/api/bookings/on-route") {
+      const identity = await requireRole(context, this.platform, "crew-member");
+      sendJson(
+        response,
+        200,
+        await this.platform.markBookingOnRoute(identity.userId, context.body as MarkBookingOnRouteRequest)
+      );
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/bookings/address") {
       const identity = await requireRole(context, this.platform, "customer");
       sendJson(
@@ -288,6 +304,39 @@ export class MarketplaceController implements ApiController {
     if (context.method === "POST" && context.path === "/api/chat/provider-crew/messages") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(response, 201, await this.platform.sendProviderCrewMessage(identity, context.body as SendProviderCrewMessageRequest));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/chat/customer-provider/threads") {
+      const identity = await requireRole(context, this.platform, ["customer", "provider"]);
+      sendJson(response, 200, await this.platform.listCustomerProviderConversations(identity));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/chat/customer-provider/messages") {
+      const identity = await requireRole(context, this.platform, ["customer", "provider"]);
+      sendJson(
+        response,
+        200,
+        await this.platform.getCustomerProviderConversationThread(
+          identity,
+          context.query.get("threadId") ?? undefined,
+          context.query.get("bookingId") ?? undefined
+        )
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/chat/customer-provider/messages") {
+      const identity = await requireRole(context, this.platform, ["customer", "provider"]);
+      sendJson(
+        response,
+        201,
+        await this.platform.sendCustomerProviderMessage(
+          identity,
+          context.body as SendCustomerProviderMessageRequest
+        )
+      );
       return;
     }
 

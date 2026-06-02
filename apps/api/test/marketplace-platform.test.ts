@@ -22,6 +22,10 @@ function createAddress(
   };
 }
 
+function futureIso(hoursFromNow: number) {
+  return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
+}
+
 test("completed bookings unlock review invites and reject duplicate reviews", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -265,8 +269,8 @@ test("review-first staffing creates pending crew matches that providers can appr
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
     category: "mulch-installation",
-    scheduledStartIso: "2026-06-01T15:00:00.000Z",
-    scheduledEndIso: "2026-06-01T18:00:00.000Z",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
     notes: "Front beds and walkway border",
     totalCents: 9200
   });
@@ -345,8 +349,8 @@ test("auto-accept staffing immediately creates accepted crew matches", async () 
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
     category: "lawn-mowing",
-    scheduledStartIso: "2026-06-01T15:00:00.000Z",
-    scheduledEndIso: "2026-06-01T16:00:00.000Z",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
     notes: "Weekly service",
     totalCents: 6200
   });
@@ -417,8 +421,8 @@ test("provider and crew can chat on a valid crew match while unrelated users are
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
     category: "mulch-installation",
-    scheduledStartIso: "2026-06-01T15:00:00.000Z",
-    scheduledEndIso: "2026-06-01T18:00:00.000Z",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
     notes: "Front beds and walkway border",
     totalCents: 9200
   });
@@ -452,6 +456,147 @@ test("provider and crew can chat on a valid crew match while unrelated users are
   await assert.rejects(
     platform.getProviderCrewConversationThread(
       { userId: otherCrew.id, email: otherCrew.email, role: "crew-member" },
+      providerThread.thread.id
+    ),
+    /cannot access this conversation/
+  );
+});
+
+test("customer-provider chat unlocks only after an accepted crew member is on route", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-customer-chat@example.com",
+    password: "Password123!",
+    phone: "555-0900",
+    role: "provider",
+    companyName: "GreenStride Lawn",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  assert.equal(provider.role, "provider");
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-customer-chat@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    lawnSizeSqFt: 6400
+  });
+  assert.equal(customer.role, "customer");
+
+  const otherCustomer = await platform.registerUser({
+    fullName: "Casey Blocked",
+    email: "customer-blocked@example.com",
+    password: "Password123!",
+    phone: "555-0201",
+    role: "customer",
+    propertyLabel: "Rental",
+    address: createAddress("210 Other St", 30.2501, -97.759)
+  });
+  assert.equal(otherCustomer.role, "customer");
+
+  const crew = await platform.registerUser({
+    fullName: "Terry Crew",
+    email: "crew-on-route@example.com",
+    password: "Password123!",
+    phone: "555-0800",
+    role: "crew-member",
+    address: createAddress("118 Garden Row", 30.2437, -97.7634),
+    categories: ["mulch-installation"],
+    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 25
+  });
+  assert.equal(crew.role, "crew-member");
+
+  const otherCrew = await platform.registerUser({
+    fullName: "Chris Backup",
+    email: "crew-backup@example.com",
+    password: "Password123!",
+    phone: "555-0801",
+    role: "crew-member",
+    address: createAddress("120 Garden Row", 30.2439, -97.7632),
+    categories: ["mulch-installation"],
+    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 25
+  });
+  assert.equal(otherCrew.role, "crew-member");
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Front beds and walkway border",
+    totalCents: 9200
+  });
+
+  const staffing = await platform.getProviderStaffingOverview(provider.id);
+  const job = staffing.jobs.find((item) => item.bookingId === booking.id);
+  assert.ok(job);
+  const crewMatch = job.matches.find((match) => match.crewMemberId === crew.id);
+  assert.ok(crewMatch);
+
+  await platform.reviewCrewMatch(provider.id, {
+    crewMatchId: crewMatch.id,
+    action: "accept"
+  });
+
+  await assert.rejects(
+    platform.sendCustomerProviderMessage(
+      { userId: customer.id, email: customer.email, role: "customer" },
+      {
+        bookingId: booking.id,
+        body: "Are you still on schedule?"
+      }
+    ),
+    /unlocks only after the crew is on route/
+  );
+
+  await assert.rejects(
+    platform.markBookingOnRoute(otherCrew.id, {
+      bookingId: booking.id
+    }),
+    /Only accepted crew members can confirm they are on route/
+  );
+
+  const onRouteBooking = await platform.markBookingOnRoute(crew.id, {
+    bookingId: booking.id
+  });
+  assert.ok(onRouteBooking.onRouteConfirmedAt);
+  assert.equal(onRouteBooking.onRouteConfirmedByCrewMemberId, crew.id);
+
+  const customerThread = await platform.sendCustomerProviderMessage(
+    { userId: customer.id, email: customer.email, role: "customer" },
+    {
+      bookingId: booking.id,
+      body: "Thanks for the update. The side gate will be open."
+    }
+  );
+  assert.equal(customerThread.messages.length, 1);
+  assert.equal(customerThread.messages[0]?.senderRole, "customer");
+
+  const providerThread = await platform.sendCustomerProviderMessage(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      threadId: customerThread.thread.id,
+      body: "Perfect. Our crew is 10 minutes away."
+    }
+  );
+  assert.equal(providerThread.messages.length, 2);
+  assert.equal(providerThread.messages[1]?.senderRole, "provider");
+
+  await assert.rejects(
+    platform.getCustomerProviderConversationThread(
+      { userId: otherCustomer.id, email: otherCustomer.email, role: "customer" },
       providerThread.thread.id
     ),
     /cannot access this conversation/

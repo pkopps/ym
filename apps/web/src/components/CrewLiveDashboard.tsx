@@ -3,8 +3,6 @@
 import {
   CrewAvailabilityDay,
   CrewMatchesResponse,
-  ProviderCrewConversation,
-  ProviderCrewConversationThread,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
@@ -39,9 +37,6 @@ export function CrewLiveDashboard() {
   const [sessionReady, setSessionReady] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
-  const [conversations, setConversations] = useState<ProviderCrewConversation[]>([]);
-  const [activeThread, setActiveThread] = useState<ProviderCrewConversationThread | undefined>();
-  const [chatDraft, setChatDraft] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
@@ -63,12 +58,8 @@ export function CrewLiveDashboard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [nextMatches, nextConversations] = await Promise.all([
-      api.getCrewMatches(),
-      api.getProviderCrewConversations()
-    ]);
+    const nextMatches = await api.getCrewMatches();
     setMatchesResponse(nextMatches);
-    setConversations(nextConversations);
     setSessionReady(true);
   }
 
@@ -112,39 +103,18 @@ export function CrewLiveDashboard() {
     }
   }
 
-  async function openConversation(threadId?: string, crewMatchId?: string) {
-    setErrorMessage(undefined);
-
-    try {
-      const api = createAuthenticatedWebApiClient();
-      const thread = await api.getProviderCrewConversationThread(threadId, crewMatchId);
-      setActiveThread(thread);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open this conversation.");
-    }
-  }
-
-  async function handleSendChat() {
-    const body = chatDraft.trim();
-    if (!body) {
-      return;
-    }
-
+  async function confirmOnRoute(bookingId: string) {
     setIsWorking(true);
     setErrorMessage(undefined);
+    setStatusMessage(undefined);
 
     try {
       const api = createAuthenticatedWebApiClient();
-      const nextThread = await api.sendProviderCrewMessage({
-        threadId: activeThread?.thread.id,
-        crewMatchId: activeThread?.thread.crewMatchId,
-        body
-      });
-      setActiveThread(nextThread);
-      setChatDraft("");
+      await api.markBookingOnRoute({ bookingId });
+      setStatusMessage("On-route confirmed. The property owner can now chat with the business.");
       await loadCrewView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send this message.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm on-route status.");
     } finally {
       setIsWorking(false);
     }
@@ -297,7 +267,6 @@ export function CrewLiveDashboard() {
 
       <section className="stack-lg">
         {matches.map((match) => {
-          const existingConversation = conversations.find((conversation) => conversation.crewMatchId === match.id);
           return (
             <article className="crew-opportunity-card" key={match.id}>
               <div className="crew-opportunity-card__header">
@@ -328,52 +297,25 @@ export function CrewLiveDashboard() {
 
               <p>{match.summary}</p>
 
-              {match.canChat ? (
+              {match.status === "accepted" ? (
                 <div className="cta-row">
                   <button
-                    className="button-secondary"
-                    onClick={() => void openConversation(existingConversation?.id, match.id)}
+                    className="button"
+                    disabled={isWorking}
+                    onClick={() => void confirmOnRoute(match.bookingId)}
                     type="button"
                   >
-                    {existingConversation ? "Open chat" : "Start chat"}
+                    Confirm on route
                   </button>
+                  <a className="button-secondary" href={`tel:${match.providerPhone}`}>
+                    Call business
+                  </a>
                 </div>
               ) : null}
             </article>
           );
         })}
       </section>
-
-      {activeThread ? (
-        <section className="card">
-          <div className="search-result-title">
-            <div>
-              <h2>{activeThread.thread.providerName}</h2>
-              <p>{activeThread.thread.status.replaceAll("-", " ")}</p>
-            </div>
-          </div>
-          <div className="stack-md">
-            {activeThread.messages.map((message) => (
-              <div className="list-panel" key={message.id}>
-                <strong>{message.senderRole === "crew-member" ? "You" : activeThread.thread.providerName}</strong>
-                <p>{message.body}</p>
-                <small>{formatDateTime(message.createdAt)}</small>
-              </div>
-            ))}
-          </div>
-          <div className="cta-row">
-            <input
-              className="input"
-              onChange={(event) => setChatDraft(event.target.value)}
-              placeholder="Ask about arrival time, training, or equipment."
-              value={chatDraft}
-            />
-            <button className="button" disabled={isWorking} onClick={() => void handleSendChat()} type="button">
-              Send
-            </button>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

@@ -5,6 +5,8 @@ import {
   Booking,
   BookingAddressChangeRequest,
   CrewMatchCandidate,
+  CustomerProviderConversation,
+  CustomerProviderMessage,
   ProviderCrewConversation,
   ProviderCrewMessage,
   CrewMemberProfile,
@@ -80,6 +82,22 @@ export interface MarketplaceRepository {
   ): Promise<ProviderCrewConversation | undefined>;
   createProviderCrewMessage(message: ProviderCrewMessage): Promise<ProviderCrewMessage>;
   listProviderCrewMessages(conversationId: string): Promise<ProviderCrewMessage[]>;
+  createCustomerProviderConversation(
+    conversation: CustomerProviderConversation
+  ): Promise<CustomerProviderConversation>;
+  findCustomerProviderConversationById(
+    conversationId: string
+  ): Promise<CustomerProviderConversation | undefined>;
+  findCustomerProviderConversationByBookingId(
+    bookingId: string
+  ): Promise<CustomerProviderConversation | undefined>;
+  listCustomerProviderConversations(): Promise<CustomerProviderConversation[]>;
+  updateCustomerProviderConversation(
+    conversationId: string,
+    updates: Partial<CustomerProviderConversation>
+  ): Promise<CustomerProviderConversation | undefined>;
+  createCustomerProviderMessage(message: CustomerProviderMessage): Promise<CustomerProviderMessage>;
+  listCustomerProviderMessages(conversationId: string): Promise<CustomerProviderMessage[]>;
   findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined>;
   findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined>;
 }

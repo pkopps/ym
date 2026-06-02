@@ -45,11 +45,12 @@ export async function getOptionalAuthenticatedIdentity(
 export async function requireRole(
   context: RequestContext,
   platform: MarketplacePlatformService,
-  role: "customer" | "provider" | "crew-member"
+  role: "customer" | "provider" | "crew-member" | Array<"customer" | "provider" | "crew-member">
 ) {
   const identity = await requireAuthenticatedIdentity(context, platform);
-  if (identity.role !== role) {
-    throw new HttpError(403, `This route requires a ${role} account`);
+  const allowedRoles = Array.isArray(role) ? role : [role];
+  if (!allowedRoles.includes(identity.role)) {
+    throw new HttpError(403, `This route requires a ${allowedRoles.join(" or ")} account`);
   }
 
   return identity;

@@ -186,6 +186,8 @@ export interface ProviderStaffingJobSummary {
   category: ServiceCategory;
   scheduledStartIso: string;
   scheduledEndIso: string;
+  onRouteConfirmedAt?: string;
+  onRouteConfirmedByCrewMemberId?: string;
   totalCents: number;
   requiredCrewMembers: number;
   assignedCrewMembers: number;
@@ -203,6 +205,7 @@ export interface CrewMatchSummary {
   bookingId: string;
   providerId: string;
   providerCompanyName: string;
+  providerPhone: string;
   category: ServiceCategory;
   serviceAddress: Address;
   scheduledStartIso: string;
@@ -246,6 +249,32 @@ export interface ProviderCrewConversationThread {
   messages: ProviderCrewMessage[];
 }
 
+export interface CustomerProviderConversation {
+  id: string;
+  bookingId: string;
+  customerId: string;
+  providerId: string;
+  customerName: string;
+  providerName: string;
+  updatedAt: string;
+  lastMessagePreview?: string;
+  unreadCount: number;
+}
+
+export interface CustomerProviderMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  senderRole: "customer" | "provider";
+  body: string;
+  createdAt: string;
+}
+
+export interface CustomerProviderConversationThread {
+  thread: CustomerProviderConversation;
+  messages: CustomerProviderMessage[];
+}
+
 export interface CrewAssignment {
   id: string;
   providerId: string;
@@ -278,6 +307,8 @@ export interface Booking {
   scheduledStartIso: string;
   scheduledEndIso: string;
   status: BookingStatus;
+  onRouteConfirmedAt?: string;
+  onRouteConfirmedByCrewMemberId?: string;
   completedAt?: string;
   notes: string;
   totalCents: number;
@@ -465,6 +496,16 @@ export interface SendProviderCrewMessageRequest {
   crewMatchId?: string;
   threadId?: string;
   body: string;
+}
+
+export interface SendCustomerProviderMessageRequest {
+  bookingId?: string;
+  threadId?: string;
+  body: string;
+}
+
+export interface MarkBookingOnRouteRequest {
+  bookingId: string;
 }
 
 export interface BookingAddressChangeRequest {

@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import {
-  ProviderCrewConversation,
-  ProviderCrewConversationThread,
-  ProviderStaffingOverview
-} from "@yardmatch/contracts";
+import { ProviderStaffingOverview } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
@@ -14,9 +10,6 @@ import { useProviderSession } from "../session/ProviderSessionContext";
 export function ClientsScreen() {
   const { envelope } = useProviderSession();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
-  const [conversations, setConversations] = useState<ProviderCrewConversation[]>([]);
-  const [activeThread, setActiveThread] = useState<ProviderCrewConversationThread | undefined>();
-  const [chatDraft, setChatDraft] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -29,12 +22,7 @@ export function ClientsScreen() {
     try {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [nextOverview, nextConversations] = await Promise.all([
-        api.getProviderStaffingOverview(),
-        api.getProviderCrewConversations()
-      ]);
-      setOverview(nextOverview);
-      setConversations(nextConversations);
+      setOverview(await api.getProviderStaffingOverview());
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load crew matches.");
     }
@@ -64,45 +52,6 @@ export function ClientsScreen() {
     }
   }
 
-  async function openConversation(threadId?: string, crewMatchId?: string) {
-    if (!envelope?.session.token) {
-      return;
-    }
-
-    try {
-      const api = createProviderMobileApiClient();
-      api.setAuthToken(envelope.session.token);
-      setActiveThread(await api.getProviderCrewConversationThread(threadId, crewMatchId));
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open chat.");
-    }
-  }
-
-  async function sendChat() {
-    if (!envelope?.session.token || !chatDraft.trim()) {
-      return;
-    }
-
-    try {
-      setIsWorking(true);
-      setErrorMessage("");
-      const api = createProviderMobileApiClient();
-      api.setAuthToken(envelope.session.token);
-      const nextThread = await api.sendProviderCrewMessage({
-        threadId: activeThread?.thread.id,
-        crewMatchId: activeThread?.thread.crewMatchId,
-        body: chatDraft.trim()
-      });
-      setActiveThread(nextThread);
-      setChatDraft("");
-      await loadData();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send this message.");
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
   const jobsNeedingAttention = (overview?.jobs ?? []).filter((job) => job.crewGap > 0);
 
   return (
@@ -119,7 +68,6 @@ export function ClientsScreen() {
                 {job.category.replaceAll("-", " ")} • {job.crewGap} open spot{job.crewGap === 1 ? "" : "s"}
               </Text>
               {job.matches.map((match) => {
-                const existingConversation = conversations.find((conversation) => conversation.crewMatchId === match.id);
                 return (
                   <View key={match.id} style={styles.matchRow}>
                     <View style={styles.copy}>
@@ -151,10 +99,10 @@ export function ClientsScreen() {
                         </>
                       ) : null}
                       <Pressable
-                        onPress={() => void openConversation(existingConversation?.id, match.id)}
+                        onPress={() => void Linking.openURL(`tel:${match.crewMemberPhone}`)}
                         style={styles.secondaryButton}
                       >
-                        <Text style={styles.secondaryButtonLabel}>Chat</Text>
+                        <Text style={styles.secondaryButtonLabel}>Call</Text>
                       </Pressable>
                     </View>
                   </View>
@@ -164,30 +112,6 @@ export function ClientsScreen() {
           ))}
         </View>
       </InfoCard>
-
-      {activeThread ? (
-        <InfoCard title={activeThread.thread.crewMemberName} description={activeThread.thread.status.replaceAll("-", " ")}>
-          <View style={styles.list}>
-            {activeThread.messages.map((message) => (
-              <View key={message.id} style={styles.section}>
-                <Text style={styles.title}>{message.senderRole === "provider" ? "You" : activeThread.thread.crewMemberName}</Text>
-                <Text style={styles.meta}>{message.body}</Text>
-              </View>
-            ))}
-          </View>
-          <TextInput
-            multiline
-            onChangeText={setChatDraft}
-            placeholder="Ask about timing, equipment, or site access."
-            placeholderTextColor={BrandTokens.colors.muted}
-            style={styles.input}
-            value={chatDraft}
-          />
-          <Pressable disabled={isWorking} onPress={() => void sendChat()} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Send"}</Text>
-          </Pressable>
-        </InfoCard>
-      ) : null}
     </ScreenShell>
   );
 }
@@ -245,15 +169,5 @@ const styles = StyleSheet.create({
   secondaryButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: BrandTokens.colors.border,
-    borderRadius: 16,
-    paddingHorizontal: BrandTokens.spacing.lg,
-    paddingVertical: BrandTokens.spacing.md,
-    backgroundColor: "rgba(255,255,255,0.96)",
-    color: BrandTokens.colors.ink,
-    minHeight: 96
   }
 });

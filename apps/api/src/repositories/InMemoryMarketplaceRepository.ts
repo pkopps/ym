@@ -4,6 +4,8 @@ import {
   Booking,
   BookingAddressChangeRequest,
   CrewMatchCandidate,
+  CustomerProviderConversation,
+  CustomerProviderMessage,
   ProviderCrewConversation,
   ProviderCrewMessage,
   CrewMemberProfile,
@@ -30,6 +32,8 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly crewMatches: CrewMatchCandidate[] = [];
   private readonly providerCrewConversations: ProviderCrewConversation[] = [];
   private readonly providerCrewMessages: ProviderCrewMessage[] = [];
+  private readonly customerProviderConversations: CustomerProviderConversation[] = [];
+  private readonly customerProviderMessages: CustomerProviderMessage[] = [];
   private readonly authIdentities: AuthIdentityRecord[] = [];
 
   public constructor() {
@@ -322,6 +326,55 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listProviderCrewMessages(conversationId: string): Promise<ProviderCrewMessage[]> {
     return this.providerCrewMessages
+      .filter((message) => message.threadId === conversationId)
+      .map((message) => ({ ...message }));
+  }
+
+  public async createCustomerProviderConversation(
+    conversation: CustomerProviderConversation
+  ): Promise<CustomerProviderConversation> {
+    this.customerProviderConversations.push(conversation);
+    return conversation;
+  }
+
+  public async findCustomerProviderConversationById(
+    conversationId: string
+  ): Promise<CustomerProviderConversation | undefined> {
+    return this.customerProviderConversations.find((conversation) => conversation.id === conversationId);
+  }
+
+  public async findCustomerProviderConversationByBookingId(
+    bookingId: string
+  ): Promise<CustomerProviderConversation | undefined> {
+    return this.customerProviderConversations.find((conversation) => conversation.bookingId === bookingId);
+  }
+
+  public async listCustomerProviderConversations(): Promise<CustomerProviderConversation[]> {
+    return this.customerProviderConversations.map((conversation) => ({ ...conversation }));
+  }
+
+  public async updateCustomerProviderConversation(
+    conversationId: string,
+    updates: Partial<CustomerProviderConversation>
+  ): Promise<CustomerProviderConversation | undefined> {
+    const conversation = this.customerProviderConversations.find((item) => item.id === conversationId);
+    if (!conversation) {
+      return undefined;
+    }
+
+    Object.assign(conversation, updates);
+    return conversation;
+  }
+
+  public async createCustomerProviderMessage(
+    message: CustomerProviderMessage
+  ): Promise<CustomerProviderMessage> {
+    this.customerProviderMessages.push(message);
+    return message;
+  }
+
+  public async listCustomerProviderMessages(conversationId: string): Promise<CustomerProviderMessage[]> {
+    return this.customerProviderMessages
       .filter((message) => message.threadId === conversationId)
       .map((message) => ({ ...message }));
   }

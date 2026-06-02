@@ -2,6 +2,7 @@
 
 import {
   Booking,
+  CustomerProviderConversationThread,
   CustomerProfile,
   CustomerProperty,
   CustomerReviewOpportunity,
@@ -65,6 +66,9 @@ export function CustomerLiveDashboard() {
   const [rescheduleDrafts, setRescheduleDrafts] = useState<
     Record<string, { start: string; end: string }>
   >({});
+  const [activeChatBookingId, setActiveChatBookingId] = useState<string | undefined>();
+  const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
+  const [chatDraft, setChatDraft] = useState("");
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
   const nextBooking = bookings
@@ -292,6 +296,47 @@ export function CustomerLiveDashboard() {
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to reschedule this booking right now.");
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
+  async function openCustomerChat(bookingId: string) {
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const nextThread = await api.getCustomerProviderConversationThread(undefined, bookingId);
+      setActiveChatBookingId(bookingId);
+      setChatThread(nextThread);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open business chat right now.");
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
+  async function sendCustomerChat(bookingId: string) {
+    const body = chatDraft.trim();
+    if (!body) {
+      return;
+    }
+
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const nextThread = await api.sendCustomerProviderMessage({
+        threadId: chatThread?.thread.id,
+        bookingId,
+        body
+      });
+      setChatThread(nextThread);
+      setChatDraft("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to send your message right now.");
     } finally {
       setLoadingState("idle");
     }
@@ -575,6 +620,56 @@ export function CustomerLiveDashboard() {
                       </button>
                     </div>
                   </>
+                ) : null}
+                {booking.onRouteConfirmedAt ? (
+                  <div className="list-panel" style={{ marginTop: "1rem" }}>
+                    <h3>Business chat</h3>
+                    <p>
+                      Crew is on the way. You can now message{" "}
+                      {providerNamesById[booking.providerId] ?? "the landscaping business"}.
+                    </p>
+                    <div className="cta-row">
+                      <button
+                        className="button-secondary"
+                        disabled={loadingState === "loading"}
+                        onClick={() => void openCustomerChat(booking.id)}
+                        type="button"
+                      >
+                        Message business
+                      </button>
+                    </div>
+                    {activeChatBookingId === booking.id && chatThread ? (
+                      <div className="stack-md" style={{ marginTop: "1rem" }}>
+                        {chatThread.messages.map((message) => (
+                          <div className="list-panel" key={message.id}>
+                            <strong>
+                              {message.senderRole === "customer"
+                                ? "You"
+                                : providerNamesById[booking.providerId] ?? "Landscaping business"}
+                            </strong>
+                            <p>{message.body}</p>
+                            <small>{formatDateTime(message.createdAt)}</small>
+                          </div>
+                        ))}
+                        <textarea
+                          onChange={(event) => setChatDraft(event.target.value)}
+                          placeholder="Message the business about arrival or access."
+                          rows={3}
+                          value={chatDraft}
+                        />
+                        <div className="cta-row">
+                          <button
+                            className="button"
+                            disabled={loadingState === "loading"}
+                            onClick={() => void sendCustomerChat(booking.id)}
+                            type="button"
+                          >
+                            Send
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
               </article>
             ))}

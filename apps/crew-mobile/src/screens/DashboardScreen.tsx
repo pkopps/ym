@@ -1,21 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CrewMatchesResponse, ProviderCrewConversationThread } from "@yardmatch/contracts";
-import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { CrewMatchesResponse } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
-import { getCrewMobileTracker } from "../lib/tracking";
 import { useCrewSession } from "../session/CrewSessionContext";
 
 export function DashboardScreen() {
-  const tracker = getCrewMobileTracker();
   const { envelope } = useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
-  const [activeThread, setActiveThread] = useState<ProviderCrewConversationThread | undefined>();
-  const [chatDraft, setChatDraft] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const acceptedMatch = useMemo(
     () => matchesResponse?.matches.find((match) => match.status === "accepted"),
@@ -40,7 +36,7 @@ export function DashboardScreen() {
     void loadMatches();
   }, [envelope?.session.token]);
 
-  async function openConversation() {
+  async function confirmOnRoute() {
     if (!envelope?.session.token || !acceptedMatch) {
       return;
     }
@@ -48,30 +44,11 @@ export function DashboardScreen() {
     try {
       const api = createCrewMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      setActiveThread(await api.getProviderCrewConversationThread(undefined, acceptedMatch.id));
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open chat.");
-    }
-  }
-
-  async function sendChat() {
-    if (!envelope?.session.token || !chatDraft.trim() || !acceptedMatch) {
-      return;
-    }
-
-    try {
       setIsWorking(true);
-      const api = createCrewMobileApiClient();
-      api.setAuthToken(envelope.session.token);
-      const nextThread = await api.sendProviderCrewMessage({
-        threadId: activeThread?.thread.id,
-        crewMatchId: acceptedMatch.id,
-        body: chatDraft.trim()
-      });
-      setActiveThread(nextThread);
-      setChatDraft("");
+      await api.markBookingOnRoute({ bookingId: acceptedMatch.bookingId });
+      setStatusMessage("On-route confirmed. Customer chat is now open for the business owner.");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send this message.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm on-route status.");
     } finally {
       setIsWorking(false);
     }
@@ -79,6 +56,7 @@ export function DashboardScreen() {
 
   return (
     <ScreenShell eyebrow="Today" title="Your next shift">
+      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       {acceptedMatch ? (
@@ -93,18 +71,17 @@ export function DashboardScreen() {
           </Text>
           <View style={styles.buttonRow}>
             <Pressable
-              onPress={() =>
-                void tracker.track(MarketplaceTelemetryEventCatalog.crewCheckInCompleted, {
-                  app: "crew",
-                  assignmentId: acceptedMatch.id
-                })
-              }
+              disabled={isWorking}
+              onPress={() => void confirmOnRoute()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>Check in</Text>
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Confirm on route"}</Text>
             </Pressable>
-            <Pressable onPress={() => void openConversation()} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Chat</Text>
+            <Pressable
+              onPress={() => void Linking.openURL(`tel:${acceptedMatch.providerPhone}`)}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonLabel}>Call business</Text>
             </Pressable>
           </View>
         </InfoCard>
@@ -119,29 +96,6 @@ export function DashboardScreen() {
         <StatCard label="Pending" value={`${matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0}`} />
       </View>
 
-      {activeThread ? (
-        <InfoCard title={activeThread.thread.providerName} description={activeThread.thread.status.replaceAll("-", " ")}>
-          <View style={styles.list}>
-            {activeThread.messages.map((message) => (
-              <View key={message.id} style={styles.messageRow}>
-                <Text style={styles.title}>{message.senderRole === "crew-member" ? "You" : activeThread.thread.providerName}</Text>
-                <Text style={styles.meta}>{message.body}</Text>
-              </View>
-            ))}
-          </View>
-          <TextInput
-            multiline
-            onChangeText={setChatDraft}
-            placeholder="Ask about timing or equipment."
-            placeholderTextColor={BrandTokens.colors.muted}
-            style={styles.input}
-            value={chatDraft}
-          />
-          <Pressable disabled={isWorking} onPress={() => void sendChat()} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Send"}</Text>
-          </Pressable>
-        </InfoCard>
-      ) : null}
     </ScreenShell>
   );
 }
@@ -215,18 +169,5 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: BrandTokens.spacing.md
-  },
-  messageRow: {
-    gap: BrandTokens.spacing.xs
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: BrandTokens.colors.border,
-    borderRadius: 16,
-    paddingHorizontal: BrandTokens.spacing.lg,
-    paddingVertical: BrandTokens.spacing.md,
-    backgroundColor: "rgba(255,255,255,0.96)",
-    color: BrandTokens.colors.ink,
-    minHeight: 96
   }
 });

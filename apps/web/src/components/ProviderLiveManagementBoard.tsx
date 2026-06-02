@@ -1,8 +1,7 @@
 "use client";
 
 import {
-  ProviderCrewConversation,
-  ProviderCrewConversationThread,
+  CustomerProviderConversationThread,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
@@ -26,8 +25,10 @@ export function ProviderLiveManagementBoard() {
   const [sessionReady, setSessionReady] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
-  const [conversations, setConversations] = useState<ProviderCrewConversation[]>([]);
-  const [activeThread, setActiveThread] = useState<ProviderCrewConversationThread | undefined>();
+  const [activeBookingId, setActiveBookingId] = useState<string | undefined>();
+  const [activeCustomerThread, setActiveCustomerThread] = useState<
+    CustomerProviderConversationThread | undefined
+  >();
   const [chatDraft, setChatDraft] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -51,12 +52,8 @@ export function ProviderLiveManagementBoard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [nextOverview, nextConversations] = await Promise.all([
-      api.getProviderStaffingOverview(),
-      api.getProviderCrewConversations()
-    ]);
+    const nextOverview = await api.getProviderStaffingOverview();
     setOverview(nextOverview);
-    setConversations(nextConversations);
     setSessionReady(true);
   }
 
@@ -113,25 +110,22 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
-  async function openConversation(threadId?: string, crewMatchId?: string) {
+  async function openCustomerChat(bookingId: string) {
     setErrorMessage(undefined);
 
     try {
       const api = createAuthenticatedWebApiClient();
-      const thread = await api.getProviderCrewConversationThread(threadId, crewMatchId);
-      setActiveThread(thread);
+      const thread = await api.getCustomerProviderConversationThread(undefined, bookingId);
+      setActiveBookingId(bookingId);
+      setActiveCustomerThread(thread);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to open this conversation.");
     }
   }
 
-  async function handleSendChat() {
-    if (!activeThread && !chatDraft.trim()) {
-      return;
-    }
-
+  async function handleSendCustomerChat() {
     const body = chatDraft.trim();
-    if (!body) {
+    if (!body || !activeBookingId) {
       return;
     }
 
@@ -140,14 +134,13 @@ export function ProviderLiveManagementBoard() {
 
     try {
       const api = createAuthenticatedWebApiClient();
-      const nextThread = await api.sendProviderCrewMessage({
-        threadId: activeThread?.thread.id,
-        crewMatchId: activeThread?.thread.crewMatchId,
+      const nextThread = await api.sendCustomerProviderMessage({
+        threadId: activeCustomerThread?.thread.id,
+        bookingId: activeBookingId,
         body
       });
-      setActiveThread(nextThread);
+      setActiveCustomerThread(nextThread);
       setChatDraft("");
-      await loadProviderView();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to send this message right now.");
     } finally {
@@ -236,8 +229,8 @@ export function ProviderLiveManagementBoard() {
           <p>Crew assigned</p>
         </article>
         <article className="card">
-          <h2>{conversations.length}</h2>
-          <p>Active crew chats</p>
+          <h2>{totalCrewGap}</h2>
+          <p>Open crew slots</p>
         </article>
       </section>
 
@@ -280,10 +273,6 @@ export function ProviderLiveManagementBoard() {
                 </div>
               ) : (
                 job.matches.map((match) => {
-                  const existingConversation = conversations.find(
-                    (conversation) => conversation.crewMatchId === match.id
-                  );
-
                   return (
                     <div className="list-panel" key={match.id}>
                       <div className="search-result-title">
@@ -321,53 +310,69 @@ export function ProviderLiveManagementBoard() {
                             </button>
                           </>
                         ) : null}
-                        <button
-                          className="button-secondary"
-                          onClick={() => void openConversation(existingConversation?.id, match.id)}
-                          type="button"
-                        >
-                          {existingConversation ? "Open chat" : "Start chat"}
-                        </button>
+                        <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
+                          Call crew
+                        </a>
                       </div>
                     </div>
                   );
                 })
               )}
             </div>
+
+            {job.onRouteConfirmedAt ? (
+              <div className="list-panel">
+                <div className="search-result-title">
+                  <div>
+                    <h3>Customer chat</h3>
+                    <p>Crew is on the way. Chat is now open with the property owner.</p>
+                  </div>
+                </div>
+                <div className="cta-row">
+                  <button
+                    className="button-secondary"
+                    onClick={() => void openCustomerChat(job.bookingId)}
+                    type="button"
+                  >
+                    Message customer
+                  </button>
+                </div>
+                {activeBookingId === job.bookingId && activeCustomerThread ? (
+                  <div className="stack-md" style={{ marginTop: "1rem" }}>
+                    {activeCustomerThread.messages.map((message) => (
+                      <div className="list-panel" key={message.id}>
+                        <strong>
+                          {message.senderRole === "provider"
+                            ? "You"
+                            : activeCustomerThread.thread.customerName}
+                        </strong>
+                        <p>{message.body}</p>
+                        <small>{formatDateTime(message.createdAt)}</small>
+                      </div>
+                    ))}
+                    <div className="cta-row">
+                      <input
+                        className="input"
+                        onChange={(event) => setChatDraft(event.target.value)}
+                        placeholder="Send a quick update before arrival."
+                        value={chatDraft}
+                      />
+                      <button
+                        className="button"
+                        disabled={isWorking}
+                        onClick={() => void handleSendCustomerChat()}
+                        type="button"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </article>
         ))}
       </section>
-
-      {activeThread ? (
-        <section className="card">
-          <div className="search-result-title">
-            <div>
-              <h2>{activeThread.thread.crewMemberName}</h2>
-              <p>{activeThread.thread.status.replaceAll("-", " ")}</p>
-            </div>
-          </div>
-          <div className="stack-md">
-            {activeThread.messages.map((message) => (
-              <div className="list-panel" key={message.id}>
-                <strong>{message.senderRole === "provider" ? "You" : activeThread.thread.crewMemberName}</strong>
-                <p>{message.body}</p>
-                <small>{formatDateTime(message.createdAt)}</small>
-              </div>
-            ))}
-          </div>
-          <div className="cta-row">
-            <input
-              className="input"
-              onChange={(event) => setChatDraft(event.target.value)}
-              placeholder="Ask about arrival time, equipment, or site access."
-              value={chatDraft}
-            />
-            <button className="button" disabled={isWorking} onClick={() => void handleSendChat()} type="button">
-              Send
-            </button>
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

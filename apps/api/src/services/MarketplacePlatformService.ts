@@ -7,6 +7,10 @@ import {
   CrewAvailabilityDay,
   CrewMatchCandidate,
   CrewMatchesResponse,
+  CustomerProviderConversation,
+  CustomerProviderConversationThread,
+  CustomerProviderMessage,
+  MarkBookingOnRouteRequest,
   ProviderCrewConversation,
   ProviderCrewConversationThread,
   ProviderCrewMessage,
@@ -39,6 +43,7 @@ import {
   RescheduleBookingRequest,
   ReviewInvite,
   ReviewInviteDispatch,
+  SendCustomerProviderMessageRequest,
   SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SessionHeartbeatRequest,
@@ -60,6 +65,7 @@ import {
   SchedulingService
 } from "@yardmatch/domain";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { HttpError } from "../http";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
 
 export class MarketplacePlatformService {
@@ -353,15 +359,16 @@ export class MarketplacePlatformService {
             return undefined;
           }
 
-          return {
-            id: match.id,
-            bookingId: match.bookingId,
-            providerId: match.providerId,
-            providerCompanyName: provider.companyName,
-            category: booking.category,
-            serviceAddress: booking.serviceAddress,
-            scheduledStartIso: booking.scheduledStartIso,
-            scheduledEndIso: booking.scheduledEndIso,
+      return {
+        id: match.id,
+        bookingId: match.bookingId,
+        providerId: match.providerId,
+        providerCompanyName: provider.companyName,
+        providerPhone: provider.phone,
+        category: booking.category,
+        serviceAddress: booking.serviceAddress,
+        scheduledStartIso: booking.scheduledStartIso,
+        scheduledEndIso: booking.scheduledEndIso,
             status: match.status,
             hourlyRateCents: match.hourlyRateCents,
             canChat: match.status === "pending-provider-review" || match.status === "accepted",
@@ -493,6 +500,156 @@ export class MarketplacePlatformService {
     });
 
     return this.getProviderCrewConversationThread(actor, thread.id);
+  }
+
+  public async markBookingOnRoute(
+    crewMemberId: string,
+    payload: MarkBookingOnRouteRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const acceptedMatch = (await this.repository.listCrewMatches()).find(
+      (match) =>
+        match.bookingId === booking.id &&
+        match.crewMemberId === crewMemberId &&
+        match.status === "accepted"
+    );
+    if (!acceptedMatch) {
+      throw new HttpError(403, "Only accepted crew members can confirm they are on route");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      onRouteConfirmedAt: new Date().toISOString(),
+      onRouteConfirmedByCrewMemberId: crewMemberId
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be updated");
+    }
+
+    return updatedBooking;
+  }
+
+  public async listCustomerProviderConversations(
+    actor: AuthIdentityRecord
+  ): Promise<CustomerProviderConversation[]> {
+    const conversations = await this.repository.listCustomerProviderConversations();
+    return conversations.filter((conversation) =>
+      actor.role === "customer"
+        ? conversation.customerId === actor.userId
+        : conversation.providerId === actor.userId
+    );
+  }
+
+  public async getCustomerProviderConversationThread(
+    actor: AuthIdentityRecord,
+    threadId?: string,
+    bookingId?: string
+  ): Promise<CustomerProviderConversationThread> {
+    const thread = threadId
+      ? await this.repository.findCustomerProviderConversationById(threadId)
+      : bookingId
+        ? await this.repository.findCustomerProviderConversationByBookingId(bookingId)
+        : undefined;
+
+    if (!thread) {
+      throw new HttpError(404, "Conversation not found");
+    }
+
+    this.assertCanAccessCustomerProviderConversation(actor, thread);
+    const messages = await this.repository.listCustomerProviderMessages(thread.id);
+    return {
+      thread,
+      messages
+    };
+  }
+
+  public async sendCustomerProviderMessage(
+    actor: AuthIdentityRecord,
+    payload: SendCustomerProviderMessageRequest
+  ): Promise<CustomerProviderConversationThread> {
+    const body = payload.body.trim();
+    if (body.length === 0) {
+      throw new HttpError(400, "Message body is required");
+    }
+
+    let thread = payload.threadId
+      ? await this.repository.findCustomerProviderConversationById(payload.threadId)
+      : payload.bookingId
+        ? await this.repository.findCustomerProviderConversationByBookingId(payload.bookingId)
+        : undefined;
+
+    if (!thread && !payload.bookingId) {
+      throw new HttpError(400, "threadId or bookingId is required");
+    }
+
+    if (!thread && payload.bookingId) {
+      const booking = await this.repository.findBookingById(payload.bookingId);
+      if (!booking) {
+        throw new HttpError(404, "Booking not found");
+      }
+
+      if (!booking.onRouteConfirmedAt) {
+        throw new HttpError(403, "Customer-provider chat unlocks only after the crew is on route");
+      }
+
+      const customer = await this.repository.findCustomerById(booking.customerId);
+      const provider = await this.repository.findProviderById(booking.providerId);
+      if (!customer || !provider) {
+        throw new HttpError(500, "Conversation participants could not be loaded");
+      }
+
+      if (
+        !(
+          (actor.role === "customer" && actor.userId === customer.id) ||
+          (actor.role === "provider" && actor.userId === provider.id)
+        )
+      ) {
+        throw new HttpError(403, "You cannot send a message for this booking");
+      }
+
+      thread = await this.repository.createCustomerProviderConversation({
+        id: crypto.randomUUID(),
+        bookingId: booking.id,
+        customerId: booking.customerId,
+        providerId: booking.providerId,
+        customerName: customer.fullName,
+        providerName: provider.companyName,
+        updatedAt: new Date().toISOString(),
+        lastMessagePreview: body,
+        unreadCount: 0
+      });
+    }
+
+    if (!thread) {
+      throw new HttpError(404, "Conversation not found");
+    }
+
+    const booking = await this.repository.findBookingById(thread.bookingId);
+    if (!booking?.onRouteConfirmedAt) {
+      throw new HttpError(403, "Customer-provider chat unlocks only after the crew is on route");
+    }
+
+    this.assertCanAccessCustomerProviderConversation(actor, thread);
+
+    const message: CustomerProviderMessage = {
+      id: crypto.randomUUID(),
+      threadId: thread.id,
+      senderId: actor.userId,
+      senderRole: actor.role === "customer" ? "customer" : "provider",
+      body,
+      createdAt: new Date().toISOString()
+    };
+    await this.repository.createCustomerProviderMessage(message);
+    await this.repository.updateCustomerProviderConversation(thread.id, {
+      updatedAt: message.createdAt,
+      lastMessagePreview: body
+    });
+
+    return this.getCustomerProviderConversationThread(actor, thread.id);
   }
 
   public async listCrewOpportunities(): Promise<CrewOpportunity[]> {
@@ -1324,6 +1481,8 @@ export class MarketplacePlatformService {
           category: booking.category,
           scheduledStartIso: booking.scheduledStartIso,
           scheduledEndIso: booking.scheduledEndIso,
+          onRouteConfirmedAt: booking.onRouteConfirmedAt,
+          onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
           totalCents: booking.totalCents,
           requiredCrewMembers,
           assignedCrewMembers,
@@ -1504,7 +1663,20 @@ export class MarketplacePlatformService {
       (actor.role === "crew-member" && actor.userId === thread.crewMemberId);
 
     if (!canAccess) {
-      throw new Error("You cannot access this conversation");
+      throw new HttpError(403, "You cannot access this conversation");
+    }
+  }
+
+  private assertCanAccessCustomerProviderConversation(
+    actor: AuthIdentityRecord,
+    thread: CustomerProviderConversation
+  ): void {
+    const canAccess =
+      (actor.role === "customer" && actor.userId === thread.customerId) ||
+      (actor.role === "provider" && actor.userId === thread.providerId);
+
+    if (!canAccess) {
+      throw new HttpError(403, "You cannot access this conversation");
     }
   }
 

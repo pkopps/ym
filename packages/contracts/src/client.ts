@@ -3,6 +3,8 @@ import {
   AuthenticatedUserEnvelope,
   Booking,
   CancelBookingRequest,
+  CustomerProviderConversation,
+  CustomerProviderConversationThread,
   CrewMemberProfile,
   CompleteBookingRequest,
   CrewMatchesResponse,
@@ -28,8 +30,10 @@ import {
   ProviderStaffingOverview,
   ProviderReview,
   RegisterUserRequest,
+  MarkBookingOnRouteRequest,
   ReviewCrewMatchRequest,
   RescheduleBookingRequest,
+  SendCustomerProviderMessageRequest,
   SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SessionHeartbeatRequest,
@@ -188,6 +192,28 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.providerCrewMessages, payload);
   }
 
+  public getCustomerProviderConversations(): Promise<CustomerProviderConversation[]> {
+    return this.getJson(ApiRoutes.customerProviderConversations);
+  }
+
+  public getCustomerProviderConversationThread(
+    threadId?: string,
+    bookingId?: string
+  ): Promise<CustomerProviderConversationThread> {
+    const query = new URLSearchParams({
+      ...(threadId ? { threadId } : {}),
+      ...(bookingId ? { bookingId } : {})
+    });
+
+    return this.getJson(`${ApiRoutes.customerProviderMessages}?${query.toString()}`);
+  }
+
+  public sendCustomerProviderMessage(
+    payload: SendCustomerProviderMessageRequest
+  ): Promise<CustomerProviderConversationThread> {
+    return this.postJson(ApiRoutes.customerProviderMessages, payload);
+  }
+
   public createProviderReview(payload: CreateProviderReviewRequest): Promise<ProviderReview> {
     return this.postJson(ApiRoutes.providerReviews, payload);
   }
@@ -220,6 +246,10 @@ export class MarketplaceApiClient {
 
   public completeBooking(payload: CompleteBookingRequest) {
     return this.postJson<Booking>(ApiRoutes.completeBooking, payload);
+  }
+
+  public markBookingOnRoute(payload: MarkBookingOnRouteRequest) {
+    return this.postJson<Booking>(ApiRoutes.markBookingOnRoute, payload);
   }
 
   public updateBookingAddress(payload: UpdateBookingAddressRequest) {

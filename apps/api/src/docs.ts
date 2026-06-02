@@ -288,6 +288,29 @@ export const apiSpec = {
         }
       }
     },
+    "/api/bookings/on-route": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Mark a booking as on route",
+        description:
+          "Used by an accepted crew member to confirm they are on the way. This unlocks customer-to-provider chat for the booking.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with on-route confirmation" },
+          "403": { description: "Only the accepted crew member can confirm on-route status" }
+        }
+      }
+    },
     "/api/quotes/instant": {
       post: {
         tags: ["Quotes"],
@@ -638,6 +661,64 @@ export const apiSpec = {
         },
         responses: {
           "201": { description: "Updated conversation thread" }
+        }
+      }
+    },
+    "/api/chat/customer-provider/threads": {
+      get: {
+        tags: ["Chat"],
+        summary: "List customer-provider conversations",
+        description:
+          "Only the customer or provider tied to a booking can see these threads. They appear only after an accepted crew member confirms they are on route.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Customer-provider conversation summaries" }
+        }
+      }
+    },
+    "/api/chat/customer-provider/messages": {
+      get: {
+        tags: ["Chat"],
+        summary: "Fetch a customer-provider conversation thread",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "threadId",
+            in: "query",
+            required: false,
+            schema: { type: "string" }
+          },
+          {
+            name: "bookingId",
+            in: "query",
+            required: false,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Customer-provider conversation thread and messages" }
+        }
+      },
+      post: {
+        tags: ["Chat"],
+        summary: "Send a customer-provider message",
+        description:
+          "Customer-to-provider chat is intentionally limited and only unlocks once an accepted crew member has confirmed they are on the way to the property.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                body: "The side gate will be unlocked."
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Updated customer-provider conversation thread" },
+          "403": { description: "Chat is not unlocked or the user is not tied to the booking" }
         }
       }
     },
