@@ -38,6 +38,7 @@ import {
   ProviderReview,
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
+  PlaceSearchResponse,
   RegisterUserRequest,
   ReviewCrewMatchRequest,
   RescheduleBookingRequest,
@@ -67,6 +68,7 @@ import {
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { HttpError } from "../http";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
+import { PlaceSearchService } from "./PlaceSearchService";
 
 export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
@@ -78,6 +80,7 @@ export class MarketplacePlatformService {
   private readonly propertyBook = new PropertyBookService();
   private readonly bookingAddressPolicy = new BookingAddressPolicyService(this.geoService);
   private readonly instantQuoteEngine = new InstantQuoteEngine();
+  private readonly placeSearch = new PlaceSearchService(process.env.GOOGLE_MAPS_API_KEY);
 
   public constructor(
     private readonly repository: MarketplaceRepository,
@@ -188,6 +191,10 @@ export class MarketplacePlatformService {
       serviceRadiusMiles: provider.serviceRadiusMiles
     });
     return this.repository.createProvider(provider, passwordHash);
+  }
+
+  public async searchPlaces(query: string): Promise<PlaceSearchResponse> {
+    return this.placeSearch.search(query);
   }
 
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {

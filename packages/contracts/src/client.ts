@@ -14,6 +14,7 @@ import {
   CurrentUserResponse,
   LoginRequest,
   ListCustomerReviewOpportunitiesResponse,
+  PlaceSearchResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
   CreateProviderReviewRequest,
@@ -119,6 +120,10 @@ export class MarketplaceApiClient {
     });
 
     return `${this.baseUrl}${ApiRoutes.appleAuthStart}?${query.toString()}`;
+  }
+
+  public searchPlaces(query: string): Promise<PlaceSearchResponse> {
+    return this.getJson(`${ApiRoutes.placeSearch}?query=${encodeURIComponent(query)}`);
   }
 
   public createCustomerProperty(payload: CreateCustomerPropertyRequest) {

@@ -5,6 +5,7 @@ import {
 } from "@yardmatch/ui";
 import { BookedBusinessResults } from "./BookedBusinessResults";
 import { HomeServiceScroller } from "./HomeServiceScroller";
+import { PublicMarketplaceSearchShell } from "./PublicMarketplaceSearchShell";
 import { StructuredData } from "./StructuredData";
 
 const topRatedLandscapers = bookedBusinessShowcase
@@ -53,27 +54,7 @@ export function PublicCustomerMarketplacePage() {
             <HomeServiceScroller services={rotatingServices} />
           </h1>
           <p>Search by service and area first. Create an account only when you need to manage the booking.</p>
-          <div className="customer-search-shell">
-            <div className="customer-search-shell__grid">
-              <label className="customer-search-shell__field">
-                <span>Service</span>
-                <select defaultValue="lawn-mowing">
-                  {Object.entries(serviceCategoryLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="customer-search-shell__field">
-                <span>Area</span>
-                <input defaultValue="Brooklyn, NY" placeholder="City, town, or address" />
-              </label>
-              <a className="button customer-search-shell__action" href="/customer/listings">
-                Search services
-              </a>
-            </div>
-          </div>
+          <PublicMarketplaceSearchShell />
           <div className="cta-row">
             <a className="button-secondary" href="/customer/listings">
               Browse local pros

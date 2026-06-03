@@ -33,6 +33,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/customers/properties/default") ||
       (context.method === "GET" && context.path === "/api/customers/review-opportunities") ||
       (context.method === "POST" && context.path === "/api/quotes/instant") ||
+      (context.method === "GET" && context.path === "/api/places/search") ||
       (context.method === "POST" && context.path === "/api/providers/search") ||
       (context.method === "GET" && context.path === "/api/providers/profile") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
@@ -109,6 +110,11 @@ export class MarketplaceController implements ApiController {
           customerId: identity?.role === "customer" ? identity.userId : undefined
         })
       );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/places/search") {
+      sendJson(response, 200, await this.platform.searchPlaces(context.query.get("query") ?? ""));
       return;
     }
 

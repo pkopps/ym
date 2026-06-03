@@ -47,6 +47,7 @@ export type PaymentStatus = "authorized" | "captured" | "refunded" | "failed";
 
 export type SupportTicketStatus = "open" | "triaged" | "resolved";
 export type SupportIssueType = "billing" | "service-quality" | "account" | "general";
+export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
 export type NotificationChannel = "email" | "in-app" | "push";
@@ -69,6 +70,17 @@ export interface Address {
   postalCode: string;
   country: string;
   point: GeoPoint;
+}
+
+export interface PlaceSuggestion {
+  id: string;
+  label: string;
+  source: PlaceSuggestionSource;
+  address: Address;
+}
+
+export interface PlaceSearchResponse {
+  suggestions: PlaceSuggestion[];
 }
 
 export interface CustomerProperty {

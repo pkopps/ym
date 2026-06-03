@@ -5,10 +5,14 @@ import { bookedBusinessSearchContext, bookedBusinessShowcase } from "@yardmatch/
 
 export function BookedBusinessResults({
   allowMapToggle = false,
-  showOpenListingsLink = false
+  showOpenListingsLink = false,
+  searchAreaLabel,
+  serviceLabel
 }: {
   allowMapToggle?: boolean;
   showOpenListingsLink?: boolean;
+  searchAreaLabel?: string;
+  serviceLabel?: string;
 }) {
   const [mapExpanded, setMapExpanded] = useState(true);
 
@@ -18,7 +22,9 @@ export function BookedBusinessResults({
         <div className="results-summary">
           <div className="results-summary__copy">
             <strong>{bookedBusinessSearchContext.resultCountLabel}</strong>
-            <span>{bookedBusinessSearchContext.dateRangeLabel}</span>
+            <span>
+              {serviceLabel ? `${serviceLabel} near ${searchAreaLabel ?? bookedBusinessSearchContext.userAddressLabel}` : bookedBusinessSearchContext.dateRangeLabel}
+            </span>
           </div>
           <div className="results-summary__actions">
             {allowMapToggle ? (
@@ -99,7 +105,7 @@ export function BookedBusinessResults({
           <div className="map-panel">
             <div className="map-panel__toolbar">
               <span className="eyebrow">Requested address</span>
-              <strong>{bookedBusinessSearchContext.userAddressLabel}</strong>
+              <strong>{searchAreaLabel ?? bookedBusinessSearchContext.userAddressLabel}</strong>
               <p>
                 Distances are measured from the customer property to each booked landscaping
                 business.

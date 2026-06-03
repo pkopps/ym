@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CreateCustomerPropertyRequest } from "@yardmatch/contracts";
+import { CreateCustomerPropertyRequest, PlaceSuggestion } from "@yardmatch/contracts";
+import { createCustomerMobileApiClient } from "../lib/api";
 
 function buildEstimatedPoint(state: string, postalCode: string) {
   const normalizedState = state.trim().toUpperCase();
@@ -29,7 +30,11 @@ export function CustomerPropertyForm({
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
   const [setAsDefault, setSetAsDefault] = useState(true);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const canSubmit =
     label.trim().length > 0 &&
@@ -37,6 +42,24 @@ export function CustomerPropertyForm({
     city.trim().length > 0 &&
     state.trim().length > 0 &&
     postalCode.trim().length > 0;
+
+  useEffect(() => {
+    if (locationQuery.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setIsSearching(true);
+      createCustomerMobileApiClient()
+        .searchPlaces(locationQuery)
+        .then((response) => setSuggestions(response.suggestions))
+        .catch(() => setSuggestions([]))
+        .finally(() => setIsSearching(false));
+    }, 220);
+
+    return () => clearTimeout(timeoutId);
+  }, [locationQuery]);
 
   async function handleSubmit() {
     if (!canSubmit) {
@@ -51,7 +74,13 @@ export function CustomerPropertyForm({
         state: state.trim().toUpperCase(),
         postalCode: postalCode.trim(),
         country: "US",
-        point: buildEstimatedPoint(state, postalCode)
+        point:
+          selectedSuggestion &&
+          selectedSuggestion.address.city.toLowerCase() === city.trim().toLowerCase() &&
+          selectedSuggestion.address.state.toLowerCase() === state.trim().toLowerCase() &&
+          selectedSuggestion.address.postalCode === postalCode.trim()
+            ? selectedSuggestion.address.point
+            : buildEstimatedPoint(state, postalCode)
       },
       setAsDefault
     });
@@ -61,10 +90,49 @@ export function CustomerPropertyForm({
     setCity("");
     setState("");
     setPostalCode("");
+    setLocationQuery("");
+    setSelectedSuggestion(undefined);
+    setSuggestions([]);
   }
 
   return (
     <View style={styles.stack}>
+      <TextInput
+        autoCapitalize="words"
+        onChangeText={(value) => {
+          setLocationQuery(value);
+          setSelectedSuggestion(undefined);
+        }}
+        placeholder="Search city or town"
+        placeholderTextColor={BrandTokens.colors.muted}
+        style={styles.input}
+        value={locationQuery}
+      />
+      {suggestions.length > 0 ? (
+        <View style={styles.suggestionStack}>
+          {suggestions.map((suggestion) => (
+            <Pressable
+              key={suggestion.id}
+              onPress={() => {
+                setLocationQuery(suggestion.label);
+                setCity(suggestion.address.city);
+                setState(suggestion.address.state);
+                setPostalCode(suggestion.address.postalCode);
+                setSelectedSuggestion(suggestion);
+                setSuggestions([]);
+              }}
+              style={styles.suggestionRow}
+            >
+              <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
+              <Text style={styles.suggestionMeta}>
+                {suggestion.source === "google-geocoding" ? "Google" : "Suggested area"}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : locationQuery.trim().length >= 2 && isSearching ? (
+        <Text style={styles.searchingLabel}>Searching areas…</Text>
+      ) : null}
       <TextInput
         autoCapitalize="words"
         onChangeText={setLabel}
@@ -144,6 +212,29 @@ const styles = StyleSheet.create({
   inlineRow: {
     flexDirection: "row",
     gap: BrandTokens.spacing.sm
+  },
+  suggestionStack: {
+    gap: BrandTokens.spacing.xs
+  },
+  suggestionRow: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    gap: BrandTokens.spacing.xs
+  },
+  suggestionTitle: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
+  },
+  suggestionMeta: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12
+  },
+  searchingLabel: {
+    color: BrandTokens.colors.inkSoft
   },
   inlineInput: {
     flex: 1

@@ -345,6 +345,25 @@ export const apiSpec = {
         }
       }
     },
+    "/api/places/search": {
+      get: {
+        tags: ["Search"],
+        summary: "Search for cities, towns, and service areas",
+        parameters: [
+          {
+            name: "query",
+            in: "query",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": {
+            description: "Matching place suggestions returned"
+          }
+        }
+      }
+    },
     "/api/providers/search": {
       post: {
         tags: ["Providers"],

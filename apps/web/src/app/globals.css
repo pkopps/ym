@@ -997,6 +997,7 @@ body {
 .customer-search-shell__field {
   display: grid;
   gap: var(--ym-space-2);
+  position: relative;
 }
 
 .customer-search-shell__field span {
@@ -1017,6 +1018,55 @@ body {
 
 .customer-search-shell__action {
   min-width: 11rem;
+}
+
+.customer-search-shell__suggestions {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.55rem;
+  border: 1px solid rgba(20, 40, 29, 0.12);
+  border-radius: 1rem;
+  background: rgba(255, 252, 245, 0.98);
+  box-shadow: 0 18px 44px rgba(20, 40, 29, 0.14);
+}
+
+.customer-search-shell__suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0.85rem 0.95rem;
+  border: 0;
+  border-radius: 0.9rem;
+  background: transparent;
+  color: var(--ym-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.customer-search-shell__suggestion:hover,
+.customer-search-shell__suggestion--active {
+  background: rgba(20, 40, 29, 0.08);
+}
+
+.customer-search-shell__suggestion strong {
+  font-size: 0.98rem;
+}
+
+.customer-search-shell__suggestion span {
+  color: var(--ym-ink-soft);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.customer-search-shell__suggestion--static {
+  cursor: default;
 }
 
 .business-showcase-list {
