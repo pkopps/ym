@@ -1329,13 +1329,41 @@ export class MarketplacePlatformService {
   }
 
   public async createSupportTicket(
-    requesterId: string,
+    requester: { userId: string; role: "customer" | "provider" | "crew-member" },
     payload: CreateSupportTicketRequest
   ): Promise<SupportTicket> {
+    if (payload.bookingId) {
+      const booking = await this.repository.findBookingById(payload.bookingId);
+      if (!booking) {
+        throw new Error("Booking not found");
+      }
+
+      if (requester.role === "customer" && booking.customerId !== requester.userId) {
+        throw new Error("Customers can only open support tickets for their own bookings");
+      }
+
+      if (requester.role === "provider" && booking.providerId !== requester.userId) {
+        throw new Error("Providers can only open support tickets for their own jobs");
+      }
+
+      if (requester.role === "crew-member") {
+        const matches = await this.repository.listCrewMatches();
+        const hasAcceptedMatch = matches.some(
+          (match) =>
+            match.bookingId === booking.id &&
+            match.crewMemberId === requester.userId &&
+            match.status === "accepted"
+        );
+        if (!hasAcceptedMatch) {
+          throw new Error("Crew members can only open support tickets for accepted assignments");
+        }
+      }
+    }
+
     const ticket: SupportTicket = {
       id: crypto.randomUUID(),
       bookingId: payload.bookingId,
-      requesterId,
+      requesterId: requester.userId,
       subject: payload.subject,
       description: payload.description,
       issueType: payload.issueType,
@@ -1343,11 +1371,19 @@ export class MarketplacePlatformService {
       createdAt: new Date().toISOString()
     };
 
-    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.supportTicketOpened, requesterId, {
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.supportTicketOpened, requester.userId, {
       issueType: payload.issueType,
       bookingId: payload.bookingId ?? "none"
     });
     return this.repository.createSupportTicket(ticket);
+  }
+
+  public async listSupportTicketsForRequester(
+    requester: { userId: string; role: "customer" | "provider" | "crew-member" }
+  ): Promise<SupportTicket[]> {
+    return (await this.repository.listSupportTickets())
+      .filter((ticket) => ticket.requesterId === requester.userId)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
   public createAnalyticsEvent(payload: AnalyticsEvent): AnalyticsEvent {

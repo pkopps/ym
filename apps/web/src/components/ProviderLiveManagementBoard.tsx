@@ -314,6 +314,12 @@ export function ProviderLiveManagementBoard() {
                         <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
                           Call crew
                         </a>
+                        <a
+                          className="button-secondary"
+                          href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=general&subject=${encodeURIComponent("Crew staffing support")}`}
+                        >
+                          Get help
+                        </a>
                       </div>
                     </div>
                   );
@@ -337,6 +343,12 @@ export function ProviderLiveManagementBoard() {
                   >
                     Message customer
                   </button>
+                  <a
+                    className="button-secondary"
+                    href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent("Customer job support")}`}
+                  >
+                    Get help
+                  </a>
                 </div>
               </div>
             ) : null}

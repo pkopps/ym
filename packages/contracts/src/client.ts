@@ -39,6 +39,7 @@ import {
   SessionHeartbeatRequest,
   SearchProvidersRequest,
   SearchProvidersResponse,
+  SupportTicket,
   ProviderCrewConversationThread,
   UpdateCrewPreferencesRequest,
   UpdateProviderSettingsRequest,
@@ -266,6 +267,10 @@ export class MarketplaceApiClient {
 
   public createSupportTicket(payload: CreateSupportTicketRequest) {
     return this.postJson(ApiRoutes.createSupportTicket, payload);
+  }
+
+  public getSupportTickets(): Promise<SupportTicket[]> {
+    return this.getJson(ApiRoutes.supportTickets);
   }
 
   public processReviewInvites(

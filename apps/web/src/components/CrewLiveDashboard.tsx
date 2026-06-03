@@ -310,6 +310,12 @@ export function CrewLiveDashboard() {
                   <a className="button-secondary" href={`tel:${match.providerPhone}`}>
                     Call business
                   </a>
+                  <a
+                    className="button-secondary"
+                    href={`/help?bookingId=${encodeURIComponent(match.bookingId)}&issueType=general&subject=${encodeURIComponent("Crew assignment support")}`}
+                  >
+                    Get help
+                  </a>
                 </div>
               ) : null}
             </article>

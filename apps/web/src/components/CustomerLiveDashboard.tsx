@@ -622,6 +622,12 @@ export function CustomerLiveDashboard() {
                       >
                         Cancel booking
                       </button>
+                      <a
+                        className="button-secondary"
+                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=general&subject=${encodeURIComponent("Booking support")}`}
+                      >
+                        Get help
+                      </a>
                     </div>
                   </>
                 ) : null}
@@ -641,6 +647,12 @@ export function CustomerLiveDashboard() {
                       >
                         Message business
                       </button>
+                      <a
+                        className="button-secondary"
+                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=service-quality&subject=${encodeURIComponent("On-route support")}`}
+                      >
+                        Get help
+                      </a>
                     </div>
                   </div>
                 ) : null}

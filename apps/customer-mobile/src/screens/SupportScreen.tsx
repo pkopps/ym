@@ -1,23 +1,38 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Switch, Text, View, Pressable } from "react-native";
+import { StyleSheet, Switch, Text, View, Pressable, TextInput } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CreateCustomerPropertyRequest, CustomerProperty } from "@yardmatch/contracts";
+import {
+  Booking,
+  CreateCustomerPropertyRequest,
+  CreateSupportTicketRequest,
+  CustomerProperty,
+  SupportIssueType,
+  SupportTicket
+} from "@yardmatch/contracts";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCustomerMobileApiClient } from "../lib/api";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
+const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
+
 export function SupportScreen() {
   const [pushEnabled, setPushEnabled] = useState(true);
   const [reviewRemindersEnabled, setReviewRemindersEnabled] = useState(true);
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
+  const [selectedBookingId, setSelectedBookingId] = useState<string>("");
+  const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const { envelope, signOut } = useCustomerSession();
 
-  async function loadProperties() {
+  async function loadAccount() {
     if (!envelope?.session.token) {
       return;
     }
@@ -25,7 +40,14 @@ export function SupportScreen() {
     try {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      setProperties(await api.getCustomerProperties());
+      const [nextProperties, nextBookings, nextTickets] = await Promise.all([
+        api.getCustomerProperties(),
+        api.getBookings(),
+        api.getSupportTickets()
+      ]);
+      setProperties(nextProperties);
+      setBookings(nextBookings);
+      setSupportTickets(nextTickets);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
     }
@@ -43,7 +65,7 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       const property = await api.createCustomerProperty(payload);
       setStatusMessage(`${property.label} added.`);
-      await loadProperties();
+      await loadAccount();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to save your property.");
     } finally {
@@ -63,7 +85,7 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       await api.setDefaultCustomerProperty({ propertyId });
       setStatusMessage("Default property updated.");
-      await loadProperties();
+      await loadAccount();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to update your default property.");
     } finally {
@@ -71,8 +93,36 @@ export function SupportScreen() {
     }
   }
 
+  async function handleCreateSupportTicket() {
+    if (!envelope?.session.token || subject.trim().length === 0 || description.trim().length === 0) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.createSupportTicket({
+        bookingId: selectedBookingId || undefined,
+        issueType: selectedIssueType,
+        subject: subject.trim(),
+        description: description.trim()
+      } satisfies CreateSupportTicketRequest);
+      setStatusMessage("Support ticket submitted.");
+      setSubject("");
+      setDescription("");
+      setSelectedBookingId("");
+      await loadAccount();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   useEffect(() => {
-    void loadProperties();
+    void loadAccount();
   }, [envelope?.session.token]);
 
   return (
@@ -123,7 +173,82 @@ export function SupportScreen() {
       </InfoCard>
 
       <InfoCard title="Help" description="Fast support paths">
-        <Text style={styles.meta}>Use the website for billing disputes and deeper support workflows.</Text>
+        <View style={styles.chipWrap}>
+          {supportIssueOptions.map((issueType) => {
+            const isActive = issueType === selectedIssueType;
+            return (
+              <Pressable
+                key={issueType}
+                onPress={() => setSelectedIssueType(issueType)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                  {issueType.replaceAll("-", " ")}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.list}>
+          <Text style={styles.meta}>Related booking (optional)</Text>
+          <View style={styles.chipWrap}>
+            <Pressable
+              onPress={() => setSelectedBookingId("")}
+              style={[styles.chip, !selectedBookingId && styles.chipActive]}
+            >
+              <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No booking</Text>
+            </Pressable>
+            {bookings.slice(0, 4).map((booking) => {
+              const isActive = selectedBookingId === booking.id;
+              return (
+                <Pressable
+                  key={booking.id}
+                  onPress={() => setSelectedBookingId(booking.id)}
+                  style={[styles.chip, isActive && styles.chipActive]}
+                >
+                  <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                    {booking.category.replaceAll("-", " ")}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <TextInput
+          onChangeText={setSubject}
+          placeholder="Short subject"
+          placeholderTextColor={BrandTokens.colors.muted}
+          style={styles.input}
+          value={subject}
+        />
+        <TextInput
+          multiline
+          onChangeText={setDescription}
+          placeholder="Tell us what happened and what you need."
+          placeholderTextColor={BrandTokens.colors.muted}
+          style={[styles.input, styles.textarea]}
+          value={description}
+        />
+        <Pressable
+          disabled={isWorking || subject.trim().length === 0 || description.trim().length === 0}
+          onPress={() => void handleCreateSupportTicket()}
+          style={styles.primaryButton}
+        >
+          <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Open support ticket"}</Text>
+        </Pressable>
+        <View style={styles.list}>
+          {supportTickets.slice(0, 3).map((ticket) => (
+            <View key={ticket.id} style={styles.ticketRow}>
+              <View style={styles.copy}>
+                <Text style={styles.title}>{ticket.subject}</Text>
+                <Text style={styles.meta}>
+                  {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                </Text>
+              </View>
+              <Text style={styles.badge}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+            </View>
+          ))}
+        </View>
       </InfoCard>
 
       <InfoCard title="Session" description="Manage this device">
@@ -213,5 +338,58 @@ const styles = StyleSheet.create({
   logoutButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
+  },
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  chip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    backgroundColor: "rgba(255,255,255,0.94)"
+  },
+  chipActive: {
+    borderColor: BrandTokens.colors.primary,
+    backgroundColor: BrandTokens.colors.primary
+  },
+  chipLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  chipLabelActive: {
+    color: "#ffffff"
+  },
+  input: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    color: BrandTokens.colors.ink,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  textarea: {
+    minHeight: 120,
+    textAlignVertical: "top"
+  },
+  primaryButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  primaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
+  },
+  ticketRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
   }
 });

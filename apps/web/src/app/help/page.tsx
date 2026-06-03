@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { helpCollections } from "@yardmatch/help-center";
+import { HelpSupportTicketPanel } from "../../components/HelpSupportTicketPanel";
 
 export const metadata: Metadata = {
   title: "Help center for customers, providers, and crew members",
@@ -19,33 +20,7 @@ export default function HelpPage() {
       </section>
 
       <section className="grid-two">
-        <article className="card">
-          <h2>Open a support ticket</h2>
-          <div className="form-grid">
-            <label className="form-field">
-              <span>Issue type</span>
-              <select defaultValue="billing">
-                <option value="billing">Billing issue</option>
-                <option value="service-quality">Service quality</option>
-                <option value="account">Account issue</option>
-                <option value="general">General help</option>
-              </select>
-            </label>
-            <label className="form-field">
-              <span>Booking ID</span>
-              <input placeholder="YM-BOOKING-2048" />
-            </label>
-            <label className="form-field form-field--full">
-              <span>Describe the issue</span>
-              <textarea rows={5} placeholder="Tell us what went wrong and what outcome you need." />
-            </label>
-          </div>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
-            <button className="button" type="button">
-              Submit ticket
-            </button>
-          </div>
-        </article>
+        <HelpSupportTicketPanel />
 
         <article className="card">
           <h2>Collections at a glance</h2>

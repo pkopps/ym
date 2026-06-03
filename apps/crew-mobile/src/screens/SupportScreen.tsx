@@ -1,15 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CrewMatchesResponse } from "@yardmatch/contracts";
+import {
+  CreateSupportTicketRequest,
+  CrewMatchesResponse,
+  SupportIssueType,
+  SupportTicket
+} from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
+const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
+
 export function SupportScreen() {
   const { envelope, signOut } = useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
+  const [selectedBookingId, setSelectedBookingId] = useState<string>("");
+  const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   async function loadMatches() {
@@ -20,7 +34,9 @@ export function SupportScreen() {
     try {
       const api = createCrewMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      setMatchesResponse(await api.getCrewMatches());
+      const [nextMatches, nextTickets] = await Promise.all([api.getCrewMatches(), api.getSupportTickets()]);
+      setMatchesResponse(nextMatches);
+      setSupportTickets(nextTickets);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load account.");
     }
@@ -39,8 +55,37 @@ export function SupportScreen() {
     [matchesResponse]
   );
 
+  async function handleCreateSupportTicket() {
+    if (!envelope?.session.token || subject.trim().length === 0 || description.trim().length === 0) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.createSupportTicket({
+        bookingId: selectedBookingId || undefined,
+        issueType: selectedIssueType,
+        subject: subject.trim(),
+        description: description.trim()
+      } satisfies CreateSupportTicketRequest);
+      setStatusMessage("Support ticket submitted.");
+      setSubject("");
+      setDescription("");
+      setSelectedBookingId("");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Account" title="Earnings and help">
+      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       <View style={styles.statRow}>
@@ -61,7 +106,79 @@ export function SupportScreen() {
       </InfoCard>
 
       <InfoCard title="Help" description="Fast support routes">
-        <Text style={styles.meta}>Support remains lighter in the app so job, chat, and availability stay front and center.</Text>
+        <View style={styles.issueRow}>
+          {supportIssueOptions.map((issueType) => {
+            const isActive = issueType === selectedIssueType;
+            return (
+              <Pressable
+                key={issueType}
+                onPress={() => setSelectedIssueType(issueType)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                  {issueType.replaceAll("-", " ")}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.issueRow}>
+          <Pressable
+            onPress={() => setSelectedBookingId("")}
+            style={[styles.chip, !selectedBookingId && styles.chipActive]}
+          >
+            <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No booking</Text>
+          </Pressable>
+          {(matchesResponse?.matches ?? []).slice(0, 4).map((match) => {
+            const isActive = selectedBookingId === match.bookingId;
+            return (
+              <Pressable
+                key={match.id}
+                onPress={() => setSelectedBookingId(match.bookingId)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                  {match.providerCompanyName}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <TextInput
+          onChangeText={setSubject}
+          placeholder="Short subject"
+          placeholderTextColor={BrandTokens.colors.muted}
+          style={styles.input}
+          value={subject}
+        />
+        <TextInput
+          multiline
+          onChangeText={setDescription}
+          placeholder="What happened, and what should support know?"
+          placeholderTextColor={BrandTokens.colors.muted}
+          style={[styles.input, styles.textarea]}
+          value={description}
+        />
+        <Pressable
+          disabled={isWorking || subject.trim().length === 0 || description.trim().length === 0}
+          onPress={() => void handleCreateSupportTicket()}
+          style={styles.primaryButton}
+        >
+          <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Open support ticket"}</Text>
+        </Pressable>
+        <View style={styles.ticketStack}>
+          {supportTickets.slice(0, 3).map((ticket) => (
+            <View key={ticket.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.title}>{ticket.subject}</Text>
+                <Text style={styles.meta}>
+                  {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                </Text>
+              </View>
+              <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+            </View>
+          ))}
+        </View>
       </InfoCard>
 
       <InfoCard title="Session" description="Manage this device">
@@ -111,6 +228,66 @@ const styles = StyleSheet.create({
   meta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  issueRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  chip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    backgroundColor: "rgba(255,255,255,0.94)"
+  },
+  chipActive: {
+    backgroundColor: BrandTokens.colors.primary,
+    borderColor: BrandTokens.colors.primary
+  },
+  chipLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  chipLabelActive: {
+    color: "#ffffff"
+  },
+  input: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    color: BrandTokens.colors.ink,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  textarea: {
+    minHeight: 120,
+    textAlignVertical: "top"
+  },
+  primaryButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  primaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
+  },
+  ticketStack: {
+    gap: BrandTokens.spacing.sm
+  },
+  ticketRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
+  },
+  ticketCopy: {
+    flex: 1,
+    gap: BrandTokens.spacing.xs
   },
   logoutButton: {
     alignItems: "center",

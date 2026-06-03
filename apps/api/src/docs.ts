@@ -765,6 +765,14 @@ export const apiSpec = {
       }
     },
     "/api/support/tickets": {
+      get: {
+        tags: ["Support"],
+        summary: "List the authenticated user's support tickets",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Support tickets returned" }
+        }
+      },
       post: {
         tags: ["Support"],
         summary: "Open a support ticket",

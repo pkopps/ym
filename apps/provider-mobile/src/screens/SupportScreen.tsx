@@ -1,15 +1,29 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { ProviderProfile } from "@yardmatch/contracts";
+import {
+  CreateSupportTicketRequest,
+  ProviderProfile,
+  ProviderStaffingOverview,
+  SupportIssueType,
+  SupportTicket
+} from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
+const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
+
 export function SupportScreen() {
   const { envelope, signOut } = useProviderSession();
   const [provider, setProvider] = useState<ProviderProfile | undefined>();
+  const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
+  const [selectedBookingId, setSelectedBookingId] = useState<string>("");
+  const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -22,8 +36,14 @@ export function SupportScreen() {
     try {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const me = await api.getCurrentUser();
+      const [me, nextOverview, nextTickets] = await Promise.all([
+        api.getCurrentUser(),
+        api.getProviderStaffingOverview(),
+        api.getSupportTickets()
+      ]);
       setProvider(me.user as ProviderProfile);
+      setOverview(nextOverview);
+      setSupportTickets(nextTickets);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load settings.");
     }
@@ -52,6 +72,34 @@ export function SupportScreen() {
       setStatusMessage("Settings updated.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to update settings.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleCreateSupportTicket() {
+    if (!envelope?.session.token || subject.trim().length === 0 || description.trim().length === 0) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.createSupportTicket({
+        bookingId: selectedBookingId || undefined,
+        issueType: selectedIssueType,
+        subject: subject.trim(),
+        description: description.trim()
+      } satisfies CreateSupportTicketRequest);
+      setStatusMessage("Support ticket submitted.");
+      setSubject("");
+      setDescription("");
+      setSelectedBookingId("");
+      await loadProvider();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
     } finally {
       setIsWorking(false);
     }
@@ -109,6 +157,84 @@ export function SupportScreen() {
         <Text style={styles.meta}>Crew payout depth stays web-first for now so the field app stays lighter.</Text>
       </InfoCard>
 
+      <InfoCard title="Support" description="Open an ops or job issue ticket">
+        <View style={styles.issueRow}>
+          {supportIssueOptions.map((issueType) => {
+            const isActive = issueType === selectedIssueType;
+            return (
+              <Pressable
+                key={issueType}
+                onPress={() => setSelectedIssueType(issueType)}
+                style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
+                  {issueType.replaceAll("-", " ")}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.issueRow}>
+          <Pressable
+            onPress={() => setSelectedBookingId("")}
+            style={[styles.secondaryButton, !selectedBookingId && styles.secondaryButtonActive]}
+          >
+            <Text style={[styles.secondaryButtonLabel, !selectedBookingId && styles.secondaryButtonLabelActive]}>
+              No booking
+            </Text>
+          </Pressable>
+          {(overview?.jobs ?? []).slice(0, 3).map((job) => {
+            const isActive = selectedBookingId === job.bookingId;
+            return (
+              <Pressable
+                key={job.bookingId}
+                onPress={() => setSelectedBookingId(job.bookingId)}
+                style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
+                  {job.customerName}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <TextInput
+          onChangeText={setSubject}
+          placeholder="Short subject"
+          placeholderTextColor={BrandTokens.colors.muted}
+          style={styles.input}
+          value={subject}
+        />
+        <TextInput
+          multiline
+          onChangeText={setDescription}
+          placeholder="What happened, and what do you need help with?"
+          placeholderTextColor={BrandTokens.colors.muted}
+          style={[styles.input, styles.textarea]}
+          value={description}
+        />
+        <Pressable
+          disabled={isWorking || subject.trim().length === 0 || description.trim().length === 0}
+          onPress={() => void handleCreateSupportTicket()}
+          style={styles.primaryButton}
+        >
+          <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Open support ticket"}</Text>
+        </Pressable>
+        <View style={styles.ticketStack}>
+          {supportTickets.slice(0, 3).map((ticket) => (
+            <View key={ticket.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.valueText}>{ticket.subject}</Text>
+                <Text style={styles.meta}>
+                  {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                </Text>
+              </View>
+              <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+            </View>
+          ))}
+        </View>
+      </InfoCard>
+
       <InfoCard title="Session" description="Manage this device">
         <Pressable onPress={signOut} style={styles.logoutButton}>
           <Text style={styles.logoutButtonLabel}>Log out</Text>
@@ -151,6 +277,47 @@ const styles = StyleSheet.create({
   meta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  issueRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  input: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    color: BrandTokens.colors.ink,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  textarea: {
+    minHeight: 120,
+    textAlignVertical: "top"
+  },
+  ticketStack: {
+    gap: BrandTokens.spacing.sm
+  },
+  ticketRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
+  },
+  ticketCopy: {
+    flex: 1,
+    gap: BrandTokens.spacing.xs
+  },
+  primaryButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  primaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
   },
   logoutButton: {
     alignItems: "center",

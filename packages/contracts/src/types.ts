@@ -46,6 +46,7 @@ export type BookingStatus =
 export type PaymentStatus = "authorized" | "captured" | "refunded" | "failed";
 
 export type SupportTicketStatus = "open" | "triaged" | "resolved";
+export type SupportIssueType = "billing" | "service-quality" | "account" | "general";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
 export type NotificationChannel = "email" | "in-app" | "push";
@@ -375,7 +376,7 @@ export interface SupportTicket {
   requesterId: string;
   subject: string;
   description: string;
-  issueType: "billing" | "service-quality" | "account" | "general";
+  issueType: SupportIssueType;
   status: SupportTicketStatus;
   createdAt: string;
 }
@@ -597,7 +598,7 @@ export interface CreateSupportTicketRequest {
   bookingId?: string;
   subject: string;
   description: string;
-  issueType: "billing" | "service-quality" | "account" | "general";
+  issueType: SupportIssueType;
 }
 
 export interface CompleteBookingRequest {

@@ -8,6 +8,7 @@ export class SupportController implements ApiController {
 
   public canHandle(context: RequestContext): boolean {
     return (
+      (context.method === "GET" && context.path === "/api/support/tickets") ||
       (context.method === "POST" && context.path === "/api/support/tickets") ||
       (context.method === "POST" && context.path === "/api/analytics/events")
     );
@@ -16,10 +17,14 @@ export class SupportController implements ApiController {
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
     if (context.path === "/api/support/tickets") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
+      if (context.method === "GET") {
+        sendJson(response, 200, await this.platform.listSupportTicketsForRequester(identity));
+        return;
+      }
       sendJson(
         response,
         201,
-        await this.platform.createSupportTicket(identity.userId, context.body as CreateSupportTicketRequest)
+        await this.platform.createSupportTicket(identity, context.body as CreateSupportTicketRequest)
       );
       return;
     }
