@@ -120,6 +120,23 @@ export function CrewLiveDashboard() {
     }
   }
 
+  async function startWork(bookingId: string) {
+    setIsWorking(true);
+    setErrorMessage(undefined);
+    setStatusMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.startBooking({ bookingId });
+      setStatusMessage("Work started. The business owner can now treat this booking as in progress.");
+      await loadCrewView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start this booking.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   if (!sessionReady) {
     return (
       <section className="card">
@@ -299,14 +316,32 @@ export function CrewLiveDashboard() {
 
               {match.status === "accepted" ? (
                 <div className="cta-row">
-                  <button
-                    className="button"
-                    disabled={isWorking}
-                    onClick={() => void confirmOnRoute(match.bookingId)}
-                    type="button"
-                  >
-                    Confirm on route
-                  </button>
+                  {match.bookingStatus === "requested" ? (
+                    <span className="result-badge">Waiting on business confirmation</span>
+                  ) : null}
+                  {match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt ? (
+                    <button
+                      className="button"
+                      disabled={isWorking}
+                      onClick={() => void confirmOnRoute(match.bookingId)}
+                      type="button"
+                    >
+                      Confirm on route
+                    </button>
+                  ) : null}
+                  {match.bookingStatus === "confirmed" && match.onRouteConfirmedAt ? (
+                    <button
+                      className="button"
+                      disabled={isWorking}
+                      onClick={() => void startWork(match.bookingId)}
+                      type="button"
+                    >
+                      Start work
+                    </button>
+                  ) : null}
+                  {match.bookingStatus === "in-progress" ? (
+                    <span className="result-badge">Job in progress</span>
+                  ) : null}
                   <a className="button-secondary" href={`tel:${match.providerPhone}`}>
                     Call business
                   </a>

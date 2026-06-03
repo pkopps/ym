@@ -4,6 +4,7 @@ import {
   AnalyticsEvent,
   CancelBookingRequest,
   CompleteBookingRequest,
+  ConfirmBookingRequest,
   CrewAvailabilityDay,
   CrewMatchCandidate,
   CrewMatchesResponse,
@@ -50,6 +51,7 @@ import {
   SessionHeartbeatRequest,
   SearchProvidersRequest,
   SearchProvidersResponse,
+  StartBookingRequest,
   UpdateCrewPreferencesRequest,
   UpdateProviderSettingsRequest,
   SupportTicket,
@@ -359,23 +361,25 @@ export class MarketplacePlatformService {
       crewMember,
       matches: matches
         .filter((match) => match.crewMemberId === crewMemberId)
-        .map((match) => {
+        .flatMap((match) => {
           const provider = providers.find((item) => item.id === match.providerId);
           const booking = bookings.find((item) => item.id === match.bookingId);
           if (!provider || !booking) {
-            return undefined;
+            return [];
           }
 
-      return {
-        id: match.id,
-        bookingId: match.bookingId,
-        providerId: match.providerId,
-        providerCompanyName: provider.companyName,
-        providerPhone: provider.phone,
-        category: booking.category,
-        serviceAddress: booking.serviceAddress,
-        scheduledStartIso: booking.scheduledStartIso,
-        scheduledEndIso: booking.scheduledEndIso,
+          return [{
+            id: match.id,
+            bookingId: match.bookingId,
+            providerId: match.providerId,
+            providerCompanyName: provider.companyName,
+            providerPhone: provider.phone,
+            category: booking.category,
+            serviceAddress: booking.serviceAddress,
+            scheduledStartIso: booking.scheduledStartIso,
+            scheduledEndIso: booking.scheduledEndIso,
+            bookingStatus: booking.status,
+            onRouteConfirmedAt: booking.onRouteConfirmedAt,
             status: match.status,
             hourlyRateCents: match.hourlyRateCents,
             canChat: match.status === "pending-provider-review" || match.status === "accepted",
@@ -385,9 +389,8 @@ export class MarketplacePlatformService {
                 : match.status === "denied"
                   ? `${provider.companyName} passed on this match.`
                   : `${provider.companyName} is reviewing your fit for this job.`
-          };
+          }];
         })
-        .filter((match): match is CrewMatchesResponse["matches"][number] => Boolean(match))
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
     };
   }
@@ -528,6 +531,13 @@ export class MarketplacePlatformService {
       throw new HttpError(403, "Only accepted crew members can confirm they are on route");
     }
 
+    if (booking.status !== "confirmed" && booking.status !== "in-progress") {
+      throw new HttpError(
+        400,
+        "Bookings must be confirmed before a crew member can mark them on route"
+      );
+    }
+
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       onRouteConfirmedAt: new Date().toISOString(),
       onRouteConfirmedByCrewMemberId: crewMemberId
@@ -536,6 +546,56 @@ export class MarketplacePlatformService {
     if (!updatedBooking) {
       throw new HttpError(500, "Booking could not be updated");
     }
+
+    return updatedBooking;
+  }
+
+  public async startBooking(crewMemberId: string, payload: StartBookingRequest): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const acceptedMatch = (await this.repository.listCrewMatches()).find(
+      (match) =>
+        match.bookingId === booking.id &&
+        match.crewMemberId === crewMemberId &&
+        match.status === "accepted"
+    );
+    if (!acceptedMatch) {
+      throw new HttpError(403, "Only accepted crew members can start this booking");
+    }
+
+    if (booking.status === "in-progress") {
+      return booking;
+    }
+
+    if (booking.status !== "confirmed") {
+      throw new HttpError(400, "Bookings must be confirmed before work can start");
+    }
+
+    if (!booking.onRouteConfirmedAt) {
+      throw new HttpError(400, "Confirm on route before starting work");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      status: "in-progress"
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be started");
+    }
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.crewCheckInCompleted,
+      actorId: crewMemberId,
+      occurredAt: new Date().toISOString(),
+      properties: {
+        bookingId: booking.id,
+        providerId: booking.providerId
+      }
+    });
 
     return updatedBooking;
   }
@@ -862,6 +922,14 @@ export class MarketplacePlatformService {
       throw new Error("Only the booking provider can mark the service completed");
     }
 
+    if (
+      booking.status !== "completed" &&
+      booking.status !== "confirmed" &&
+      booking.status !== "in-progress"
+    ) {
+      throw new Error("Bookings must be confirmed before the provider can complete them");
+    }
+
     const wasAlreadyCompleted = booking.status === "completed" && Boolean(booking.completedAt);
     const completedAt = booking.completedAt ?? new Date().toISOString();
     const updatedBooking = await this.repository.updateBooking(booking.id, {
@@ -908,6 +976,53 @@ export class MarketplacePlatformService {
         }
       });
     }
+
+    return updatedBooking;
+  }
+
+  public async confirmBooking(
+    providerId: string,
+    payload: ConfirmBookingRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.providerId !== providerId) {
+      throw new HttpError(403, "Only the booking provider can confirm this service");
+    }
+
+    if (
+      booking.status === "confirmed" ||
+      booking.status === "in-progress" ||
+      booking.status === "completed"
+    ) {
+      return booking;
+    }
+
+    if (booking.status !== "requested") {
+      throw new HttpError(400, "Only requested bookings can be confirmed");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      status: "confirmed"
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be confirmed");
+    }
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.bookingConfirmed,
+      actorId: providerId,
+      occurredAt: new Date().toISOString(),
+      properties: {
+        bookingId: booking.id,
+        customerId: booking.customerId
+      }
+    });
 
     return updatedBooking;
   }

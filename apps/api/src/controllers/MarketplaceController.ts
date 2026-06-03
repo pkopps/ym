@@ -1,5 +1,6 @@
 import {
   CancelBookingRequest,
+  ConfirmBookingRequest,
   CompleteBookingRequest,
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
@@ -14,6 +15,7 @@ import {
   SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SearchProvidersRequest,
+  StartBookingRequest,
   RescheduleBookingRequest,
   UpdateCrewPreferencesRequest,
   UpdateProviderSettingsRequest,
@@ -45,6 +47,8 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
+      (context.method === "POST" && context.path === "/api/bookings/confirm") ||
+      (context.method === "POST" && context.path === "/api/bookings/start") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/on-route") ||
       (context.method === "POST" && context.path === "/api/bookings/address") ||
@@ -214,6 +218,26 @@ export class MarketplaceController implements ApiController {
         response,
         200,
         await this.platform.rescheduleBooking(identity.userId, context.body as RescheduleBookingRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/confirm") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.confirmBooking(identity.userId, context.body as ConfirmBookingRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/start") {
+      const identity = await requireRole(context, this.platform, "crew-member");
+      sendJson(
+        response,
+        200,
+        await this.platform.startBooking(identity.userId, context.body as StartBookingRequest)
       );
       return;
     }

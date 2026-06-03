@@ -50,7 +50,12 @@ export function BookingsScreen() {
   const upcomingBookings = useMemo(
     () =>
       bookings
-        .filter((booking) => booking.status === "requested" || booking.status === "confirmed")
+        .filter(
+          (booking) =>
+            booking.status === "requested" ||
+            booking.status === "confirmed" ||
+            booking.status === "in-progress"
+        )
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso)),
     [bookings]
   );
@@ -272,22 +277,35 @@ export function BookingsScreen() {
                     <Text style={styles.bookingMeta}>Crew is on the way. Business chat is open.</Text>
                   ) : null}
                 </View>
-                <StatusBadge label={booking.status === "confirmed" ? "Confirmed" : "Requested"} tone="success" />
+                <StatusBadge
+                  label={
+                    booking.status === "confirmed"
+                      ? "Confirmed"
+                      : booking.status === "in-progress"
+                        ? "In progress"
+                        : "Requested"
+                  }
+                  tone="success"
+                />
                 <View style={styles.inlineActions}>
-                  <Pressable
-                    disabled={isWorking}
-                    onPress={() => void rescheduleBooking(booking)}
-                    style={styles.secondaryAction}
-                  >
-                    <Text style={styles.secondaryActionLabel}>Move to next day</Text>
-                  </Pressable>
-                  <Pressable
-                    disabled={isWorking}
-                    onPress={() => void cancelBooking(booking.id)}
-                    style={styles.secondaryAction}
-                  >
-                    <Text style={styles.secondaryActionLabel}>Cancel</Text>
-                  </Pressable>
+                  {booking.status === "requested" || booking.status === "confirmed" ? (
+                    <>
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void rescheduleBooking(booking)}
+                        style={styles.secondaryAction}
+                      >
+                        <Text style={styles.secondaryActionLabel}>Move to next day</Text>
+                      </Pressable>
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void cancelBooking(booking.id)}
+                        style={styles.secondaryAction}
+                      >
+                        <Text style={styles.secondaryActionLabel}>Cancel</Text>
+                      </Pressable>
+                    </>
+                  ) : null}
                   {booking.onRouteConfirmedAt ? (
                     <Pressable
                       disabled={isWorking}

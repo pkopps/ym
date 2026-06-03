@@ -311,6 +311,29 @@ export const apiSpec = {
         }
       }
     },
+    "/api/bookings/start": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Start work on a confirmed booking",
+        description:
+          "Used by an accepted crew member after they have marked the booking on route. This moves the booking into in-progress status.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking in in-progress status" },
+          "403": { description: "Only the accepted crew member can start work" }
+        }
+      }
+    },
     "/api/quotes/instant": {
       post: {
         tags: ["Quotes"],
@@ -556,6 +579,29 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Completed booking" }
+        }
+      }
+    },
+    "/api/bookings/confirm": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Confirm a requested booking",
+        description:
+          "Used by the provider business owner to confirm a newly requested booking before the crew heads out.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Confirmed booking" },
+          "403": { description: "Only the booking provider can confirm the booking" }
         }
       }
     },

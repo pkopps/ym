@@ -31,7 +31,12 @@ export function DashboardScreen({
   const nextBooking = useMemo(
     () =>
       bookings
-        .filter((booking) => booking.status === "requested" || booking.status === "confirmed")
+        .filter(
+          (booking) =>
+            booking.status === "requested" ||
+            booking.status === "confirmed" ||
+            booking.status === "in-progress"
+        )
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
     [bookings]
   );
@@ -76,7 +81,17 @@ export function DashboardScreen({
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       <View style={styles.statRow}>
-        <StatCard label="Upcoming" value={`${bookings.filter((booking) => booking.status === "requested" || booking.status === "confirmed").length}`} />
+        <StatCard
+          label="Upcoming"
+          value={`${
+            bookings.filter(
+              (booking) =>
+                booking.status === "requested" ||
+                booking.status === "confirmed" ||
+                booking.status === "in-progress"
+            ).length
+          }`}
+        />
         <StatCard label="Ready reviews" value={`${reviewOpportunities.filter((opportunity) => opportunity.canReviewNow).length}`} />
         <StatCard label="Saved homes" value={`${properties.length}`} />
       </View>
@@ -88,7 +103,7 @@ export function DashboardScreen({
         >
           <Text style={styles.primaryLine}>{providerNamesById[nextBooking.providerId] ?? "Landscaping business"}</Text>
           <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
-          <Text style={styles.noteLine}>{nextBooking.status}</Text>
+          <Text style={styles.noteLine}>{nextBooking.status.replaceAll("-", " ")}</Text>
           <Pressable onPress={onOpenBookings} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>Open bookings</Text>
           </Pressable>

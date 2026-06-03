@@ -3,6 +3,7 @@ import {
   AuthenticatedUserEnvelope,
   Booking,
   CancelBookingRequest,
+  ConfirmBookingRequest,
   CustomerProviderConversation,
   CustomerProviderConversationThread,
   CrewMemberProfile,
@@ -44,7 +45,8 @@ import {
   ProviderCrewConversationThread,
   UpdateCrewPreferencesRequest,
   UpdateProviderSettingsRequest,
-  UpdateBookingAddressRequest
+  UpdateBookingAddressRequest,
+  StartBookingRequest
 } from "./types";
 import { ApiRoutes } from "./routes";
 
@@ -248,6 +250,14 @@ export class MarketplaceApiClient {
 
   public rescheduleBooking(payload: RescheduleBookingRequest) {
     return this.postJson<Booking>(ApiRoutes.rescheduleBooking, payload);
+  }
+
+  public confirmBooking(payload: ConfirmBookingRequest) {
+    return this.postJson<Booking>(ApiRoutes.confirmBooking, payload);
+  }
+
+  public startBooking(payload: StartBookingRequest) {
+    return this.postJson<Booking>(ApiRoutes.startBooking, payload);
   }
 
   public completeBooking(payload: CompleteBookingRequest) {

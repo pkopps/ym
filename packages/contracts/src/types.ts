@@ -224,6 +224,8 @@ export interface CrewMatchSummary {
   serviceAddress: Address;
   scheduledStartIso: string;
   scheduledEndIso: string;
+  bookingStatus: BookingStatus;
+  onRouteConfirmedAt?: string;
   status: CrewMatchStatus;
   hourlyRateCents: number;
   canChat: boolean;
@@ -611,6 +613,14 @@ export interface CreateSupportTicketRequest {
   subject: string;
   description: string;
   issueType: SupportIssueType;
+}
+
+export interface ConfirmBookingRequest {
+  bookingId: string;
+}
+
+export interface StartBookingRequest {
+  bookingId: string;
 }
 
 export interface CompleteBookingRequest {

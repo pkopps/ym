@@ -20,6 +20,8 @@ export class ApiRoutes {
   public static readonly listBookings = "/api/bookings";
   public static readonly cancelBooking = "/api/bookings/cancel";
   public static readonly rescheduleBooking = "/api/bookings/reschedule";
+  public static readonly confirmBooking = "/api/bookings/confirm";
+  public static readonly startBooking = "/api/bookings/start";
   public static readonly completeBooking = "/api/bookings/complete";
   public static readonly markBookingOnRoute = "/api/bookings/on-route";
   public static readonly updateBookingAddress = "/api/bookings/address";

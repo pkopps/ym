@@ -62,6 +62,26 @@ export function ScheduleScreen() {
     }
   }
 
+  async function confirmJob(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.confirmBooking({ bookingId });
+      setStatusMessage("Booking confirmed.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm that booking.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function openCustomerChat(bookingId: string) {
     if (!envelope?.session.token) {
       return;
@@ -156,7 +176,16 @@ export function ScheduleScreen() {
                     <Text style={styles.metaLine}>Crew is on the way. Customer chat is open.</Text>
                   ) : null}
                   <View style={styles.actionRow}>
-                    {(job.status === "requested" || job.status === "confirmed" || job.status === "in-progress") ? (
+                    {job.status === "requested" ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void confirmJob(job.bookingId)}
+                        style={styles.completeButton}
+                      >
+                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Confirm booking"}</Text>
+                      </Pressable>
+                    ) : null}
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
                       <Pressable
                         disabled={isWorking}
                         onPress={() => void completeJob(job.bookingId)}

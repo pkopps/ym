@@ -56,6 +56,10 @@ test("completed bookings unlock review invites and reject duplicate reviews", as
     totalCents: 6200
   });
 
+  await platform.confirmBooking(provider.id, {
+    bookingId: booking.id
+  });
+
   await platform.completeBooking(provider.id, {
     bookingId: booking.id
   });
@@ -129,6 +133,10 @@ test("customers can change addresses only when the booking state allows it", asy
   });
 
   assert.equal(response.outcome, "updated");
+
+  await platform.confirmBooking(provider.id, {
+    bookingId: booking.id
+  });
 
   const completed = await platform.completeBooking(provider.id, {
     bookingId: booking.id
@@ -568,6 +576,10 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
     /Only accepted crew members can confirm they are on route/
   );
 
+  await platform.confirmBooking(provider.id, {
+    bookingId: booking.id
+  });
+
   const onRouteBooking = await platform.markBookingOnRoute(crew.id, {
     bookingId: booking.id
   });
@@ -600,5 +612,128 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
       providerThread.thread.id
     ),
     /cannot access this conversation/
+  );
+});
+
+test("providers confirm bookings before crew can go on route or start work", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-lifecycle@example.com",
+    password: "Password123!",
+    phone: "555-1300",
+    role: "provider",
+    companyName: "Route Ready Lawn",
+    categories: ["lawn-mowing", "mulch-installation"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  assert.equal(provider.role, "provider");
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-lifecycle@example.com",
+    password: "Password123!",
+    phone: "555-1200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    lawnSizeSqFt: 6400
+  });
+  assert.equal(customer.role, "customer");
+
+  const crewMember = await platform.registerUser({
+    fullName: "Marco Crew",
+    email: "crew-lifecycle@example.com",
+    password: "Password123!",
+    phone: "555-1400",
+    role: "crew-member",
+    address: createAddress("118 Garden Row", 30.2437, -97.7634),
+    categories: ["lawn-mowing", "mulch-installation"],
+    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 25,
+    winterWorkEnabled: true
+  });
+  assert.equal(crewMember.role, "crew-member");
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(96),
+    scheduledEndIso: futureIso(99),
+    notes: "Front beds",
+    totalCents: 9100
+  });
+
+  const overview = await platform.getProviderStaffingOverview(provider.id);
+  const pendingMatch = overview.jobs[0]?.matches[0];
+  assert.ok(pendingMatch);
+
+  await platform.reviewCrewMatch(provider.id, {
+    crewMatchId: pendingMatch.id,
+    action: "accept"
+  });
+
+  await assert.rejects(
+    platform.markBookingOnRoute(crewMember.id, {
+      bookingId: booking.id
+    }),
+    /must be confirmed/
+  );
+
+  const confirmedBooking = await platform.confirmBooking(provider.id, {
+    bookingId: booking.id
+  });
+  assert.equal(confirmedBooking.status, "confirmed");
+
+  const onRouteBooking = await platform.markBookingOnRoute(crewMember.id, {
+    bookingId: booking.id
+  });
+  assert.ok(onRouteBooking.onRouteConfirmedAt);
+
+  const inProgressBooking = await platform.startBooking(crewMember.id, {
+    bookingId: booking.id
+  });
+  assert.equal(inProgressBooking.status, "in-progress");
+});
+
+test("providers cannot complete requested bookings before confirmation", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-precomplete@example.com",
+    password: "Password123!",
+    phone: "555-2200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Front and back yard",
+    totalCents: 6200
+  });
+
+  await assert.rejects(
+    platform.completeBooking(provider.id, {
+      bookingId: booking.id
+    }),
+    /must be confirmed/
   );
 });

@@ -60,6 +60,25 @@ export function DashboardScreen({
     }
   }
 
+  async function startWork() {
+    if (!envelope?.session.token || !acceptedMatch) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setIsWorking(true);
+      await api.startBooking({ bookingId: acceptedMatch.bookingId });
+      setStatusMessage("Work started.");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start work.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Today" title="Your next shift">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -75,14 +94,36 @@ export function DashboardScreen({
           <Text style={styles.meta}>
             {acceptedMatch.serviceAddress.city}, {acceptedMatch.serviceAddress.state}
           </Text>
+          <Text style={styles.meta}>Status: {acceptedMatch.bookingStatus.replaceAll("-", " ")}</Text>
           <View style={styles.buttonRow}>
-            <Pressable
-              disabled={isWorking}
-              onPress={() => void confirmOnRoute()}
-              style={styles.primaryButton}
-            >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Confirm on route"}</Text>
-            </Pressable>
+            {acceptedMatch.bookingStatus === "requested" ? (
+              <View style={styles.waitingBadge}>
+                <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation</Text>
+              </View>
+            ) : null}
+            {acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void confirmOnRoute()}
+                style={styles.primaryButton}
+              >
+                <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Confirm on route"}</Text>
+              </Pressable>
+            ) : null}
+            {acceptedMatch.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void startWork()}
+                style={styles.primaryButton}
+              >
+                <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+              </Pressable>
+            ) : null}
+            {acceptedMatch.bookingStatus === "in-progress" ? (
+              <View style={styles.waitingBadge}>
+                <Text style={styles.waitingBadgeLabel}>Job in progress</Text>
+              </View>
+            ) : null}
             <Pressable
               onPress={() => void Linking.openURL(`tel:${acceptedMatch.providerPhone}`)}
               style={styles.secondaryButton}
@@ -157,6 +198,20 @@ const styles = StyleSheet.create({
   secondaryButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
+  },
+  waitingBadge: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    paddingVertical: BrandTokens.spacing.md,
+    paddingHorizontal: BrandTokens.spacing.md
+  },
+  waitingBadgeLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontWeight: "700",
+    textAlign: "center"
   },
   linkButton: {
     alignSelf: "flex-start",

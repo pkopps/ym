@@ -124,6 +124,42 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
+  async function handleConfirmBooking(bookingId: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.confirmBooking({ bookingId });
+      setStatusMessage("Booking confirmed. Your crew can now head out when ready.");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm this booking right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function completeJob(bookingId: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.completeBooking({ bookingId });
+      setStatusMessage("Job marked complete.");
+      setActiveBookingId(undefined);
+      setActiveCustomerThread(undefined);
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to complete this job right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function handleSendCustomerChat() {
     const body = chatDraft.trim();
     if (!body || !activeBookingId) {
@@ -263,7 +299,31 @@ export function ProviderLiveManagementBoard() {
                 <p>{job.requiredCrewMembers} needed</p>
                 <p>{job.assignedCrewMembers} assigned</p>
                 <p>{job.crewGap} open</p>
+                <p>Status: {job.status.replaceAll("-", " ")}</p>
               </div>
+            </div>
+
+            <div className="cta-row">
+              {job.status === "requested" ? (
+                <button
+                  className="button"
+                  disabled={isWorking}
+                  onClick={() => void handleConfirmBooking(job.bookingId)}
+                  type="button"
+                >
+                  Confirm booking
+                </button>
+              ) : null}
+              {(job.status === "confirmed" || job.status === "in-progress") ? (
+                <button
+                  className="button-secondary"
+                  disabled={isWorking}
+                  onClick={() => void completeJob(job.bookingId)}
+                  type="button"
+                >
+                  Complete job
+                </button>
+              ) : null}
             </div>
 
             <div className="stack-md">
