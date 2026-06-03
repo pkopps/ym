@@ -6,6 +6,7 @@ import {
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { FloatingChatWindow } from "./FloatingChatWindow";
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -337,42 +338,38 @@ export function ProviderLiveManagementBoard() {
                     Message customer
                   </button>
                 </div>
-                {activeBookingId === job.bookingId && activeCustomerThread ? (
-                  <div className="stack-md" style={{ marginTop: "1rem" }}>
-                    {activeCustomerThread.messages.map((message) => (
-                      <div className="list-panel" key={message.id}>
-                        <strong>
-                          {message.senderRole === "provider"
-                            ? "You"
-                            : activeCustomerThread.thread.customerName}
-                        </strong>
-                        <p>{message.body}</p>
-                        <small>{formatDateTime(message.createdAt)}</small>
-                      </div>
-                    ))}
-                    <div className="cta-row">
-                      <input
-                        className="input"
-                        onChange={(event) => setChatDraft(event.target.value)}
-                        placeholder="Send a quick update before arrival."
-                        value={chatDraft}
-                      />
-                      <button
-                        className="button"
-                        disabled={isWorking}
-                        onClick={() => void handleSendCustomerChat()}
-                        type="button"
-                      >
-                        Send
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
               </div>
             ) : null}
           </article>
         ))}
       </section>
+      {activeBookingId && activeCustomerThread ? (
+        <FloatingChatWindow
+          busy={isWorking}
+          draft={chatDraft}
+          inputPlaceholder="Send a quick update before arrival."
+          isOpen={Boolean(activeBookingId)}
+          launcherLabel="Open customer chat"
+          messages={activeCustomerThread.messages.map((message) => ({
+            id: message.id,
+            body: message.body,
+            createdAt: message.createdAt,
+            senderLabel:
+              message.senderRole === "provider" ? "You" : activeCustomerThread.thread.customerName,
+            isCurrentUser: message.senderRole === "provider"
+          }))}
+          onClose={() => {
+            setActiveBookingId(undefined);
+            setActiveCustomerThread(undefined);
+            setChatDraft("");
+          }}
+          onDraftChange={setChatDraft}
+          onOpen={() => undefined}
+          onSend={() => void handleSendCustomerChat()}
+          subtitle={activeCustomerThread.thread.customerName}
+          title="Customer chat"
+        />
+      ) : null}
     </div>
   );
 }

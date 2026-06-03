@@ -20,7 +20,12 @@ export function CustomerAppNavigator() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
 
   const screen = {
-    dashboard: <DashboardScreen />,
+    dashboard: (
+      <DashboardScreen
+        onOpenBookings={() => setActiveTab("bookings")}
+        onStartBooking={() => setActiveTab("book")}
+      />
+    ),
     book: <BookServiceScreen />,
     bookings: <BookingsScreen />,
     account: <SupportScreen />

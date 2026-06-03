@@ -14,6 +14,7 @@ export function ScheduleScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
   const [activeBookingId, setActiveBookingId] = useState<string | undefined>();
   const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
   const [chatDraft, setChatDraft] = useState("");
@@ -38,6 +39,28 @@ export function ScheduleScreen() {
   }, [envelope?.session.token]);
 
   const jobs = overview?.jobs ?? [];
+
+  async function completeJob(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.completeBooking({ bookingId });
+      setStatusMessage("Job marked complete.");
+      setActiveBookingId(undefined);
+      setChatThread(undefined);
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to complete that job.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
 
   async function openCustomerChat(bookingId: string) {
     if (!envelope?.session.token) {
@@ -90,6 +113,7 @@ export function ScheduleScreen() {
         <ModeButton active={viewMode === "list"} label="List" onPress={() => setViewMode("list")} />
       </View>
 
+      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       {viewMode === "calendar" ? (
@@ -108,6 +132,7 @@ export function ScheduleScreen() {
                 <Text style={styles.metaLine}>
                   {job.requiredCrewMembers} crew • {job.assignedCrewMembers} assigned • {job.crewGap} open
                 </Text>
+                <Text style={styles.statusLine}>{job.status.replaceAll("-", " ")}</Text>
               </View>
             ))}
           </View>
@@ -126,18 +151,30 @@ export function ScheduleScreen() {
                   <Text style={styles.metaLine}>
                     {job.category.replaceAll("-", " ")} • {job.assignedCrewMembers}/{job.requiredCrewMembers} crew
                   </Text>
+                  <Text style={styles.statusLine}>{job.status.replaceAll("-", " ")}</Text>
                   {job.onRouteConfirmedAt ? (
                     <Text style={styles.metaLine}>Crew is on the way. Customer chat is open.</Text>
                   ) : null}
-                  {job.onRouteConfirmedAt ? (
-                    <Pressable
-                      disabled={isWorking}
-                      onPress={() => void openCustomerChat(job.bookingId)}
-                      style={styles.chatButton}
-                    >
-                      <Text style={styles.chatButtonLabel}>Message customer</Text>
-                    </Pressable>
-                  ) : null}
+                  <View style={styles.actionRow}>
+                    {(job.status === "requested" || job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void completeJob(job.bookingId)}
+                        style={styles.completeButton}
+                      >
+                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Complete job"}</Text>
+                      </Pressable>
+                    ) : null}
+                    {job.onRouteConfirmedAt ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void openCustomerChat(job.bookingId)}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Message customer</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                   {job.onRouteConfirmedAt && activeBookingId === job.bookingId ? (
                     <View style={styles.chatStack}>
                       {(chatThread?.messages ?? []).map((message) => (
@@ -245,6 +282,10 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
+  statusLine: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
   jobRow: {
     borderBottomWidth: 1,
     borderBottomColor: BrandTokens.colors.border,
@@ -252,6 +293,23 @@ const styles = StyleSheet.create({
   },
   jobCopy: {
     gap: BrandTokens.spacing.xs
+  },
+  actionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.xs
+  },
+  completeButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  completeButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
   },
   chatButton: {
     alignSelf: "flex-start",

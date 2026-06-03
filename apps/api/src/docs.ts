@@ -848,33 +848,15 @@ export const apiSpec = {
   }
 } as const;
 
-type ApiOperationSummary = {
-  summary: string;
-  description?: string;
-};
-
-function renderEndpointSummary(): string {
-  const paths = apiSpec.paths as Record<string, Record<string, ApiOperationSummary>>;
-
-  return Object.entries(paths)
-    .map(([path, methods]) =>
-      Object.entries(methods)
-        .map(
-          ([method, operation]) => `
-            <div class="endpoint">
-              <div><span class="method">${method.toUpperCase()}</span><code>${path}</code></div>
-              <h3>${operation.summary}</h3>
-              <p>${operation.description ?? "See example payloads in the JSON spec."}</p>
-            </div>
-          `
-        )
-        .join("")
-    )
-    .join("");
-}
-
 export function renderDocsHtml(): string {
-  const specJson = JSON.stringify(apiSpec, null, 2);
+  const pathGroups = apiSpec.paths as Record<
+    string,
+    Record<string, { summary: string; description?: string }>
+  >;
+  const endpointCount = Object.values(pathGroups).reduce(
+    (count, operations) => count + Object.keys(operations).length,
+    0
+  );
 
   return `<!doctype html>
 <html lang="en">
@@ -882,144 +864,223 @@ export function renderDocsHtml(): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>YardMatch API Docs</title>
+    <meta
+      name="description"
+      content="Interactive YardMatch API reference for auth, bookings, staffing, customer chat, support, and observability."
+    />
     <style>
       :root {
-        color-scheme: light;
-        --bg: #f7f5ef;
-        --card: rgba(255,255,255,0.88);
+        color-scheme: light only;
+        --bg: #f5f0e4;
+        --card: rgba(255,255,255,0.92);
         --ink: #14281d;
-        --muted: #66756a;
+        --muted: #58675d;
         --primary: #2f7d4c;
-        --border: rgba(20, 40, 29, 0.12);
+        --accent: #e7f4ea;
+        --border: rgba(20, 40, 29, 0.1);
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: linear-gradient(135deg, #f8f1dc 0%, #eef8f0 42%, #e4efe8 100%);
+        background:
+          radial-gradient(circle at top left, rgba(255, 219, 133, 0.25), transparent 28rem),
+          linear-gradient(135deg, #f8f1dc 0%, #eef8f0 45%, #e9f2ec 100%);
         color: var(--ink);
       }
-      .container {
-        width: min(calc(100% - 2rem), 1180px);
+      .shell {
+        width: min(calc(100% - 2rem), 1320px);
         margin: 0 auto;
-        padding: 2rem 0 4rem;
+        padding: 1.5rem 0 2rem;
       }
-      .hero, .grid, .endpoint-list { display: grid; gap: 1rem; }
-      .hero { grid-template-columns: 1.1fr 0.9fr; align-items: start; }
-      .card {
+      .hero {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: 1.05fr 0.95fr;
+        align-items: stretch;
+        margin-bottom: 1rem;
+      }
+      .panel {
         background: var(--card);
         border: 1px solid var(--border);
-        border-radius: 22px;
-        padding: 1.25rem;
-        box-shadow: 0 12px 36px rgba(20, 40, 29, 0.08);
+        border-radius: 24px;
+        padding: 1.25rem 1.35rem;
+        box-shadow: 0 18px 42px rgba(20, 40, 29, 0.08);
+        backdrop-filter: blur(14px);
       }
       .eyebrow {
         display: inline-block;
         padding: 0.35rem 0.75rem;
         border-radius: 999px;
-        background: rgba(255,255,255,0.7);
+        background: var(--accent);
         border: 1px solid var(--border);
         color: var(--primary);
         font-weight: 600;
+        letter-spacing: 0.01em;
       }
-      h1, h2, h3 { margin: 0 0 0.75rem; }
-      p { line-height: 1.6; color: var(--muted); }
-      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 1.25rem; }
-      .endpoint-list { margin-top: 1rem; }
-      .endpoint {
+      h1, h2, h3, p { margin: 0; }
+      h1 {
+        font-size: clamp(2rem, 4vw, 3.35rem);
+        line-height: 0.95;
+        margin-top: 0.9rem;
+      }
+      p {
+        line-height: 1.6;
+        color: var(--muted);
+      }
+      .hero-copy {
+        display: grid;
+        gap: 1rem;
+      }
+      .hero-copy p {
+        max-width: 56ch;
+        font-size: 1.03rem;
+      }
+      .stats {
+        display: grid;
+        gap: 0.85rem;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .stat {
+        border-radius: 18px;
         border: 1px solid var(--border);
-        border-radius: 18px;
-        padding: 1rem;
-        background: rgba(255,255,255,0.74);
+        padding: 0.9rem;
+        background: rgba(255,255,255,0.7);
       }
-      .method {
-        display: inline-block;
-        min-width: 4.5rem;
-        text-align: center;
-        font-weight: 700;
-        color: white;
-        border-radius: 999px;
-        padding: 0.35rem 0.75rem;
-        margin-right: 0.75rem;
-        background: var(--primary);
-      }
-      .endpoint code, pre {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      }
-      pre {
-        overflow: auto;
-        padding: 1rem;
-        border-radius: 18px;
-        background: #16241d;
-        color: #eef8f0;
+      .stat strong {
+        display: block;
+        font-size: 1.4rem;
+        margin-bottom: 0.25rem;
       }
       .actions {
         display: flex;
         gap: 0.75rem;
         flex-wrap: wrap;
-        margin-top: 1rem;
       }
       .button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 2.75rem;
-        padding: 0 1rem;
+        min-height: 2.9rem;
+        padding: 0 1.1rem;
         border-radius: 999px;
         background: var(--primary);
         color: white;
         text-decoration: none;
         font-weight: 600;
+        border: 0;
+      }
+      .button-secondary {
+        background: white;
+        color: var(--ink);
+        border: 1px solid var(--border);
+      }
+      .notes {
+        display: grid;
+        gap: 0.85rem;
+      }
+      .note {
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        padding: 0.95rem 1rem;
+        background: rgba(255,255,255,0.72);
+      }
+      .reference-shell {
+        border: 1px solid var(--border);
+        border-radius: 26px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.84);
+        box-shadow: 0 18px 42px rgba(20, 40, 29, 0.08);
+      }
+      #scalar-api-reference {
+        min-height: 70vh;
       }
       @media (max-width: 900px) {
-        .hero, .grid { grid-template-columns: 1fr; }
+        .shell {
+          width: min(calc(100% - 1rem), 1320px);
+          padding-top: 0.75rem;
+        }
+        .hero, .stats {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
   <body>
-    <main class="container">
+    <main class="shell">
       <section class="hero">
-        <article class="card">
-          <span class="eyebrow">Developer docs</span>
-          <h1>YardMatch API</h1>
+        <article class="panel hero-copy">
+          <div>
+            <span class="eyebrow">Developer docs</span>
+            <h1>YardMatch API</h1>
+          </div>
           <p>
-            Browse routes, example payloads, and integration notes for customer properties,
-            instant quotes, bookings, payments, support, and operational telemetry.
+            Interactive reference for auth, bookings, staffing, on-route handoff, support,
+            observability, and the shared marketplace flows used by web and mobile.
           </p>
+          <div class="stats">
+            <div class="stat">
+              <strong>${endpointCount}</strong>
+              <span>documented operations</span>
+            </div>
+            <div class="stat">
+              <strong>${apiSpec.tags.length}</strong>
+              <span>route groups</span>
+            </div>
+            <div class="stat">
+              <strong>JWT</strong>
+              <span>bearer auth</span>
+            </div>
+          </div>
           <div class="actions">
             <a class="button" href="/api/docs/openapi.json">Open JSON spec</a>
-            <a class="button" href="/api/observability/overview">Live ops endpoint</a>
+            <a class="button button-secondary" href="/api/observability/overview">Live ops endpoint</a>
           </div>
         </article>
-        <article class="card">
+        <article class="panel notes">
           <h2>Integration notes</h2>
-          <p>Use the shared contracts package in-repo for type-safe integrations where possible.</p>
-          <p>Instant quotes are designed for low-friction address-first flows and may return follow-up questions when confidence is not yet high.</p>
-          <p>Bookings snapshot the service address so later default-property changes do not mutate history.</p>
+          <div class="note">
+            <strong>Shared contracts first</strong>
+            <p>Use the in-repo contracts package when possible so clients stay aligned with request and response shapes.</p>
+          </div>
+          <div class="note">
+            <strong>Auth and ownership</strong>
+            <p>Protected routes infer identity from the bearer token. Customer, provider, and crew access is role-checked in the API.</p>
+          </div>
+          <div class="note">
+            <strong>Operational behavior</strong>
+            <p>Customer↔provider chat unlocks only after an accepted crew member confirms they are on route for the booking.</p>
+          </div>
         </article>
       </section>
 
-      <section class="grid">
-        <article class="card">
-          <h2>Endpoint summary</h2>
-          <div class="endpoint-list">
-            ${renderEndpointSummary()}
-          </div>
-        </article>
-        <article class="card">
-          <h2>OpenAPI-style JSON</h2>
-          <p>The current monolith serves a built-in machine-readable spec you can pull into other tooling.</p>
-          <pre>${escapeHtml(specJson)}</pre>
-        </article>
+      <section class="reference-shell">
+        <div id="scalar-api-reference"></div>
       </section>
     </main>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script>
+      Scalar.createApiReference('#scalar-api-reference', {
+        url: '/api/docs/openapi.json',
+        title: 'YardMatch API',
+        layout: 'modern',
+        theme: 'default',
+        defaultHttpClient: {
+          targetKey: 'js',
+          clientKey: 'fetch'
+        },
+        hideDownloadButton: false,
+        darkMode: false
+      });
+    </script>
+    <noscript>
+      <main class="shell">
+        <article class="panel">
+          <h2>JavaScript is required for the interactive API reference.</h2>
+          <p>You can still inspect the OpenAPI document directly at <a href="/api/docs/openapi.json">/api/docs/openapi.json</a>.</p>
+        </article>
+      </main>
+    </noscript>
   </body>
 </html>`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
 }

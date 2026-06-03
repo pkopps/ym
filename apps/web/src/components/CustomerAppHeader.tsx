@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
 
 const profileLinks = [
-  { href: "/customer", label: "Dashboard" },
+  { href: "/customer/dashboard", label: "Dashboard" },
   { href: "/customer/history", label: "Service history" },
   { href: "/help", label: "Help" }
 ] as const;
@@ -23,13 +23,13 @@ export function CustomerAppHeader() {
 
   function handleSignOut() {
     clearStoredSession();
-    window.location.href = "/login/customer";
+    window.location.href = "/customer";
   }
 
   return (
     <header className="app-header">
       <div className="container app-header__inner">
-        <a className="brand-lockup" href="/customer">
+        <a className="brand-lockup" href="/customer/dashboard">
           <span className="brand-lockup__mark">YM</span>
           <span>
             <strong>YardMatch</strong>

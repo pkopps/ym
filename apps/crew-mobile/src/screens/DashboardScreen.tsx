@@ -7,7 +7,13 @@ import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
-export function DashboardScreen() {
+export function DashboardScreen({
+  onOpenAvailability,
+  onOpenSchedule
+}: {
+  onOpenAvailability?: () => void;
+  onOpenSchedule?: () => void;
+}) {
   const { envelope } = useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
@@ -84,10 +90,16 @@ export function DashboardScreen() {
               <Text style={styles.secondaryButtonLabel}>Call business</Text>
             </Pressable>
           </View>
+          <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Open schedule</Text>
+          </Pressable>
         </InfoCard>
       ) : (
         <InfoCard title="No accepted shift yet" description="Keep your availability and skills current.">
           <Text style={styles.meta}>Providers will see you automatically when the job fits your profile.</Text>
+          <Pressable onPress={onOpenAvailability} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Update availability</Text>
+          </Pressable>
         </InfoCard>
       )}
 
@@ -143,6 +155,18 @@ const styles = StyleSheet.create({
     paddingVertical: BrandTokens.spacing.md
   },
   secondaryButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  linkButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  linkButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
   },

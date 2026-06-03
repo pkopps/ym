@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { CustomerLiveDashboard } from "../../components/CustomerLiveDashboard";
+import { PublicCustomerMarketplacePage } from "../../components/PublicCustomerMarketplacePage";
 
 export const metadata: Metadata = {
-  title: "Customer dashboard",
-  description: "Book live services, manage bookings, and submit post-service reviews."
+  title: "Book lawn care",
+  description: "Search for local lawn care and landscaping services."
 };
 
 export default function CustomerPage() {
-  return <CustomerLiveDashboard />;
+  return <PublicCustomerMarketplacePage />;
 }

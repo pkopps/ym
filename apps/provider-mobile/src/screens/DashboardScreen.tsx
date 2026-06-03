@@ -9,7 +9,7 @@ import { createProviderMobileApiClient } from "../lib/api";
 import { getProviderMobileTracker } from "../lib/tracking";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
-export function DashboardScreen() {
+export function DashboardScreen({ onOpenCrew }: { onOpenCrew?: () => void }) {
   const tracker = getProviderMobileTracker();
   const { envelope } = useProviderSession();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
@@ -52,16 +52,17 @@ export function DashboardScreen() {
             Matching is live. Review candidates now or switch the business to auto-accept.
           </Text>
           <Pressable
-            onPress={() =>
+            onPress={() => {
               void tracker.track(MarketplaceTelemetryEventCatalog.providerSearchPerformed, {
                 app: "provider",
                 action: "find-crew-members",
                 crewGap: totalCrewGap
-              })
-            }
+              });
+              onOpenCrew?.();
+            }}
             style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonLabel}>Go to crew</Text>
+            <Text style={styles.primaryButtonLabel}>Review crew below</Text>
           </Pressable>
         </InfoCard>
       ) : null}

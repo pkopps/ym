@@ -184,6 +184,7 @@ export interface ProviderStaffingJobSummary {
   customerName: string;
   serviceAddress: Address;
   category: ServiceCategory;
+  status: BookingStatus;
   scheduledStartIso: string;
   scheduledEndIso: string;
   onRouteConfirmedAt?: string;

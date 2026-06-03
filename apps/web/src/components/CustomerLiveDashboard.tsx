@@ -13,6 +13,7 @@ import {
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { FloatingChatWindow } from "./FloatingChatWindow";
 
 const serviceOptions: Array<{ label: string; value: ServiceCategory }> = [
   { label: "Lawn mowing", value: "lawn-mowing" },
@@ -357,10 +358,13 @@ export function CustomerLiveDashboard() {
       <main className="container stack-lg">
         <section className="card">
           <h2>Customer login required</h2>
-          <p>Log in with the seeded customer account to test live bookings against Postgres.</p>
+          <p>Start by searching for service, or log in to manage existing bookings.</p>
           <div className="cta-row">
+            <a className="button-secondary" href="/customer">
+              Search services
+            </a>
             <a className="button" href="/login/customer">
-              Go to customer login
+              Log in
             </a>
           </div>
         </section>
@@ -638,37 +642,6 @@ export function CustomerLiveDashboard() {
                         Message business
                       </button>
                     </div>
-                    {activeChatBookingId === booking.id && chatThread ? (
-                      <div className="stack-md" style={{ marginTop: "1rem" }}>
-                        {chatThread.messages.map((message) => (
-                          <div className="list-panel" key={message.id}>
-                            <strong>
-                              {message.senderRole === "customer"
-                                ? "You"
-                                : providerNamesById[booking.providerId] ?? "Landscaping business"}
-                            </strong>
-                            <p>{message.body}</p>
-                            <small>{formatDateTime(message.createdAt)}</small>
-                          </div>
-                        ))}
-                        <textarea
-                          onChange={(event) => setChatDraft(event.target.value)}
-                          placeholder="Message the business about arrival or access."
-                          rows={3}
-                          value={chatDraft}
-                        />
-                        <div className="cta-row">
-                          <button
-                            className="button"
-                            disabled={loadingState === "loading"}
-                            onClick={() => void sendCustomerChat(booking.id)}
-                            type="button"
-                          >
-                            Send
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
                 ) : null}
               </article>
@@ -715,6 +688,35 @@ export function CustomerLiveDashboard() {
           </div>
         </article>
       </section>
+      {activeChatBookingId && chatThread ? (
+        <FloatingChatWindow
+          busy={loadingState === "loading"}
+          draft={chatDraft}
+          inputPlaceholder="Message the business about arrival or access."
+          isOpen={Boolean(activeChatBookingId)}
+          launcherLabel="Open chat"
+          messages={chatThread.messages.map((message) => ({
+            id: message.id,
+            body: message.body,
+            createdAt: message.createdAt,
+            senderLabel:
+              message.senderRole === "customer"
+                ? "You"
+                : providerNamesById[chatThread.thread.providerId] ?? chatThread.thread.providerName,
+            isCurrentUser: message.senderRole === "customer"
+          }))}
+          onClose={() => {
+            setActiveChatBookingId(undefined);
+            setChatThread(undefined);
+            setChatDraft("");
+          }}
+          onDraftChange={setChatDraft}
+          onOpen={() => undefined}
+          onSend={() => void sendCustomerChat(activeChatBookingId)}
+          subtitle={chatThread.thread.providerName}
+          title="Business chat"
+        />
+      ) : null}
     </main>
   );
 }

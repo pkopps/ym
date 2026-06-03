@@ -77,7 +77,7 @@ export function RoleLoginCard({
   }
 
   return (
-    <section className="card">
+    <section className="card auth-form-card">
       <form className="auth-form-stack" onSubmit={handleSubmit}>
         <div className="form-grid">
           <label className="form-field">

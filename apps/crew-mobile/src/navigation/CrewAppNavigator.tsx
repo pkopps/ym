@@ -20,7 +20,12 @@ export function CrewAppNavigator() {
   const [activeTab, setActiveTab] = useState<TabKey>("today");
 
   const screen = {
-    today: <DashboardScreen />,
+    today: (
+      <DashboardScreen
+        onOpenAvailability={() => setActiveTab("availability")}
+        onOpenSchedule={() => setActiveTab("schedule")}
+      />
+    ),
     schedule: <AssignmentsScreen />,
     availability: <AvailabilityScreen />,
     account: <SupportScreen />

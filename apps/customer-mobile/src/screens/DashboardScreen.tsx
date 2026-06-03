@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { Booking, CustomerProperty, CustomerReviewOpportunity } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
@@ -14,7 +14,13 @@ function formatDateTime(iso: string) {
   });
 }
 
-export function DashboardScreen() {
+export function DashboardScreen({
+  onStartBooking,
+  onOpenBookings
+}: {
+  onStartBooking?: () => void;
+  onOpenBookings?: () => void;
+}) {
   const { envelope } = useCustomerSession();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
@@ -83,6 +89,9 @@ export function DashboardScreen() {
           <Text style={styles.primaryLine}>{providerNamesById[nextBooking.providerId] ?? "Landscaping business"}</Text>
           <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
           <Text style={styles.noteLine}>{nextBooking.status}</Text>
+          <Pressable onPress={onOpenBookings} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Open bookings</Text>
+          </Pressable>
         </InfoCard>
       ) : null}
 
@@ -92,6 +101,9 @@ export function DashboardScreen() {
           <Text style={styles.secondaryLine}>
             {activeProperty.address.city}, {activeProperty.address.state} {activeProperty.address.postalCode}
           </Text>
+          <Pressable onPress={onStartBooking} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Book this property</Text>
+          </Pressable>
         </InfoCard>
       ) : null}
 
@@ -99,6 +111,9 @@ export function DashboardScreen() {
         <InfoCard title="Review ready" description="Open Bookings to leave your review.">
           <Text style={styles.primaryLine}>{reviewReady.providerName}</Text>
           <Text style={styles.secondaryLine}>{reviewReady.reason}</Text>
+          <Pressable onPress={onOpenBookings} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Leave review</Text>
+          </Pressable>
         </InfoCard>
       ) : null}
     </ScreenShell>
@@ -148,5 +163,17 @@ const styles = StyleSheet.create({
   noteLine: {
     color: BrandTokens.colors.primaryStrong,
     lineHeight: 21
+  },
+  linkButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  linkButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
   }
 });

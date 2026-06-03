@@ -1479,6 +1479,7 @@ export class MarketplacePlatformService {
           customerName: customer?.fullName ?? "Customer",
           serviceAddress: booking.serviceAddress,
           category: booking.category,
+          status: booking.status,
           scheduledStartIso: booking.scheduledStartIso,
           scheduledEndIso: booking.scheduledEndIso,
           onRouteConfirmedAt: booking.onRouteConfirmedAt,
