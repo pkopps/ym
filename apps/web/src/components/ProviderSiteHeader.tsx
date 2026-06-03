@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
+import { NotificationMenu } from "./NotificationMenu";
 
 const productColumns = [
   {
@@ -253,6 +254,7 @@ export function ProviderSiteHeader() {
         <div className="site-header__actions">
           {session?.role === "provider" ? (
             <>
+              <NotificationMenu session={session} />
               <a className="button-secondary" href="/provider/management">
                 Management
               </a>

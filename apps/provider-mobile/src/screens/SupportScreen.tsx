@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  AppNotification,
   CreateSupportTicketRequest,
   ProviderProfile,
   ProviderStaffingOverview,
@@ -20,6 +21,8 @@ export function SupportScreen() {
   const [provider, setProvider] = useState<ProviderProfile | undefined>();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
   const [subject, setSubject] = useState("");
@@ -36,14 +39,17 @@ export function SupportScreen() {
     try {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [me, nextOverview, nextTickets] = await Promise.all([
+      const [me, nextOverview, nextTickets, notificationResponse] = await Promise.all([
         api.getCurrentUser(),
         api.getProviderStaffingOverview(),
-        api.getSupportTickets()
+        api.getSupportTickets(),
+        api.getNotifications()
       ]);
       setProvider(me.user as ProviderProfile);
       setOverview(nextOverview);
       setSupportTickets(nextTickets);
+      setNotifications(notificationResponse.notifications);
+      setUnreadCount(notificationResponse.unreadCount);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load settings.");
     }
@@ -105,6 +111,26 @@ export function SupportScreen() {
     }
   }
 
+  async function handleMarkNotificationsRead() {
+    if (!envelope?.session.token || unreadCount === 0) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const response = await api.markNotificationsRead({});
+      setNotifications(response.notifications);
+      setUnreadCount(response.unreadCount);
+      setStatusMessage("Notifications marked read.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update notifications.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Account" title="Settings and payouts">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -155,6 +181,27 @@ export function SupportScreen() {
 
       <InfoCard title="Payouts" description="Weekly direct deposit is still the default">
         <Text style={styles.meta}>Crew payout depth stays web-first for now so the field app stays lighter.</Text>
+      </InfoCard>
+
+      <InfoCard title="Updates" description={`${unreadCount} unread`}>
+        <View style={styles.ticketStack}>
+          {notifications.slice(0, 4).map((notification) => (
+            <View key={notification.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.valueText}>{notification.title}</Text>
+                <Text style={styles.meta}>{notification.body}</Text>
+              </View>
+              <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
+            </View>
+          ))}
+        </View>
+        <Pressable
+          disabled={isWorking || unreadCount === 0}
+          onPress={() => void handleMarkNotificationsRead()}
+          style={styles.secondaryButton}
+        >
+          <Text style={styles.secondaryButtonLabel}>Mark updates read</Text>
+        </Pressable>
       </InfoCard>
 
       <InfoCard title="Support" description="Open an ops or job issue ticket">

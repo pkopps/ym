@@ -1,4 +1,5 @@
 import {
+  AppNotification,
   Address,
   AvailabilitySlot,
   Booking,
@@ -29,6 +30,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly providerReviews: ProviderReview[] = [];
   private readonly reviewInvites: ReviewInvite[] = [];
   private readonly supportTickets: SupportTicket[] = [];
+  private readonly notifications: AppNotification[] = [];
   private readonly crewMatches: CrewMatchCandidate[] = [];
   private readonly providerCrewConversations: ProviderCrewConversation[] = [];
   private readonly providerCrewMessages: ProviderCrewMessage[] = [];
@@ -281,6 +283,30 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listSupportTickets(): Promise<SupportTicket[]> {
     return [...this.supportTickets];
+  }
+
+  public async createNotification(notification: AppNotification): Promise<AppNotification> {
+    this.notifications.push(notification);
+    return notification;
+  }
+
+  public async listNotificationsByRecipient(recipientId: string): Promise<AppNotification[]> {
+    return this.notifications
+      .filter((notification) => notification.recipientId === recipientId)
+      .map((notification) => ({ ...notification }));
+  }
+
+  public async updateNotification(
+    notificationId: string,
+    updates: Partial<AppNotification>
+  ): Promise<AppNotification | undefined> {
+    const notification = this.notifications.find((item) => item.id === notificationId);
+    if (!notification) {
+      return undefined;
+    }
+
+    Object.assign(notification, updates);
+    return notification;
   }
 
   public async createProviderCrewConversation(

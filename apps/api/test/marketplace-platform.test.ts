@@ -737,3 +737,110 @@ test("providers cannot complete requested bookings before confirmation", async (
     /must be confirmed/
   );
 });
+
+test("notifications track booking, staffing, and review milestones across roles", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-notify@example.com",
+    password: "Password123!",
+    phone: "555-3300",
+    role: "provider",
+    companyName: "Signal Lawn Co.",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  assert.equal(provider.role, "provider");
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-notify@example.com",
+    password: "Password123!",
+    phone: "555-3200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  assert.equal(customer.role, "customer");
+
+  const crew = await platform.registerUser({
+    fullName: "Terry Crew",
+    email: "crew-notify@example.com",
+    password: "Password123!",
+    phone: "555-3400",
+    role: "crew-member",
+    address: createAddress("118 Garden Row", 30.2437, -97.7634),
+    categories: ["mulch-installation"],
+    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 25
+  });
+  assert.equal(crew.role, "crew-member");
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Front beds and walkway border",
+    totalCents: 9200
+  });
+
+  const providerNotifications = await platform.listNotifications({
+    userId: provider.id,
+    email: provider.email,
+    role: "provider"
+  });
+  assert.equal(providerNotifications.unreadCount, 1);
+  assert.equal(providerNotifications.notifications[0]?.title, "New booking request");
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  const customerNotifications = await platform.listNotifications({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  });
+  assert.ok(customerNotifications.notifications.some((notification) => notification.title === "Your booking is confirmed"));
+
+  const staffing = await platform.getProviderStaffingOverview(provider.id);
+  const crewMatch = staffing.jobs[0]?.matches.find((match) => match.crewMemberId === crew.id);
+  assert.ok(crewMatch);
+
+  const crewPendingNotifications = await platform.listNotifications({
+    userId: crew.id,
+    email: crew.email,
+    role: "crew-member"
+  });
+  assert.ok(crewPendingNotifications.notifications.some((notification) => notification.title === "You have a new crew match"));
+
+  await platform.reviewCrewMatch(provider.id, {
+    crewMatchId: crewMatch.id,
+    action: "accept"
+  });
+
+  const crewAcceptedNotifications = await platform.listNotifications({
+    userId: crew.id,
+    email: crew.email,
+    role: "crew-member"
+  });
+  assert.ok(crewAcceptedNotifications.notifications.some((notification) => notification.title === "You were accepted for a job"));
+
+  await platform.markNotificationsRead(
+    {
+      userId: crew.id,
+      email: crew.email,
+      role: "crew-member"
+    },
+    {}
+  );
+  const crewReadNotifications = await platform.listNotifications({
+    userId: crew.id,
+    email: crew.email,
+    role: "crew-member"
+  });
+  assert.equal(crewReadNotifications.unreadCount, 0);
+});

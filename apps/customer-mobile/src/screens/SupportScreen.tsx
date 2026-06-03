@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Switch, Text, View, Pressable, TextInput } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  AppNotification,
   Booking,
   CreateCustomerPropertyRequest,
   CreateSupportTicketRequest,
@@ -23,6 +24,8 @@ export function SupportScreen() {
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
   const [subject, setSubject] = useState("");
@@ -40,16 +43,39 @@ export function SupportScreen() {
     try {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [nextProperties, nextBookings, nextTickets] = await Promise.all([
+      const [nextProperties, nextBookings, nextTickets, notificationResponse] = await Promise.all([
         api.getCustomerProperties(),
         api.getBookings(),
-        api.getSupportTickets()
+        api.getSupportTickets(),
+        api.getNotifications()
       ]);
       setProperties(nextProperties);
       setBookings(nextBookings);
       setSupportTickets(nextTickets);
+      setNotifications(notificationResponse.notifications);
+      setUnreadCount(notificationResponse.unreadCount);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
+    }
+  }
+
+  async function handleMarkNotificationsRead() {
+    if (!envelope?.session.token || unreadCount === 0) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const response = await api.markNotificationsRead({});
+      setNotifications(response.notifications);
+      setUnreadCount(response.unreadCount);
+      setStatusMessage("Notifications marked read.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update notifications.");
+    } finally {
+      setIsWorking(false);
     }
   }
 
@@ -156,6 +182,25 @@ export function SupportScreen() {
       </InfoCard>
 
       <InfoCard title="Notifications" description="Only what matters">
+        <Text style={styles.meta}>{unreadCount} unread</Text>
+        <View style={styles.list}>
+          {notifications.slice(0, 4).map((notification) => (
+            <View key={notification.id} style={styles.ticketRow}>
+              <View style={styles.copy}>
+                <Text style={styles.title}>{notification.title}</Text>
+                <Text style={styles.meta}>{notification.body}</Text>
+              </View>
+              <Text style={styles.badge}>{notification.isRead ? "Read" : "New"}</Text>
+            </View>
+          ))}
+        </View>
+        <Pressable
+          disabled={isWorking || unreadCount === 0}
+          onPress={() => void handleMarkNotificationsRead()}
+          style={styles.linkButton}
+        >
+          <Text style={styles.linkButtonLabel}>Mark updates read</Text>
+        </Pressable>
         <PreferenceRow
           label="Push for upcoming services"
           value={pushEnabled}

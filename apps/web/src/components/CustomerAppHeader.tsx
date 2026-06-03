@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
+import { NotificationMenu } from "./NotificationMenu";
 
 const profileLinks = [
   { href: "/customer/dashboard", label: "Dashboard" },
@@ -38,12 +39,7 @@ export function CustomerAppHeader() {
         </a>
 
         <div className="app-header__actions">
-          <button className="app-header__notification" type="button" aria-label="Notifications, 3 unread">
-            <span className="app-header__notification-icon" aria-hidden="true">
-              &#128276;
-            </span>
-            <span className="app-header__notification-count">3</span>
-          </button>
+          <NotificationMenu session={session} />
 
           <details className="profile-menu">
             <summary className="profile-menu__summary">{session?.fullName ?? "Customer"}</summary>

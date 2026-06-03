@@ -1,4 +1,5 @@
 import {
+  AppNotification,
   ActiveSession,
   Address,
   AvailabilitySlot,
@@ -70,6 +71,12 @@ export interface MarketplaceRepository {
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
   createSupportTicket(ticket: SupportTicket): Promise<SupportTicket>;
   listSupportTickets(): Promise<SupportTicket[]>;
+  createNotification(notification: AppNotification): Promise<AppNotification>;
+  listNotificationsByRecipient(recipientId: string): Promise<AppNotification[]>;
+  updateNotification(
+    notificationId: string,
+    updates: Partial<AppNotification>
+  ): Promise<AppNotification | undefined>;
   createProviderCrewConversation(conversation: ProviderCrewConversation): Promise<ProviderCrewConversation>;
   findProviderCrewConversationById(conversationId: string): Promise<ProviderCrewConversation | undefined>;
   findProviderCrewConversationByCrewMatchId(

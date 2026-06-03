@@ -257,3 +257,19 @@ model SupportTicket {
 
   @@map("support_tickets")
 }
+
+model AppNotification {
+  id            String   @id
+  recipientId    String
+  recipientRole  String
+  category       String
+  title          String
+  body           String
+  actionHref     String?
+  isRead         Boolean  @default(false)
+  createdAt      DateTime
+  readAt         DateTime?
+
+  @@index([recipientId, createdAt])
+  @@map("app_notifications")
+}

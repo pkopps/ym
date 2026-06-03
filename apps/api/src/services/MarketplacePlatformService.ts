@@ -1,6 +1,7 @@
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
+  AppNotification,
   AnalyticsEvent,
   CancelBookingRequest,
   CompleteBookingRequest,
@@ -12,6 +13,7 @@ import {
   CustomerProviderConversationThread,
   CustomerProviderMessage,
   MarkBookingOnRouteRequest,
+  MarkNotificationsReadRequest,
   ProviderCrewConversation,
   ProviderCrewConversationThread,
   ProviderCrewMessage,
@@ -34,6 +36,7 @@ import {
   ObservabilityOverview,
   CustomerProfile,
   CurrentUserResponse,
+  NotificationListResponse,
   PaymentRecord,
   ProviderProfile,
   ProviderReview,
@@ -199,6 +202,44 @@ export class MarketplacePlatformService {
     return this.placeSearch.search(query);
   }
 
+  public async listNotifications(identity: AuthIdentityRecord): Promise<NotificationListResponse> {
+    const notifications = (await this.repository.listNotificationsByRecipient(identity.userId))
+      .filter((notification) => notification.recipientRole === identity.role)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+    return {
+      notifications,
+      unreadCount: notifications.filter((notification) => !notification.isRead).length
+    };
+  }
+
+  public async markNotificationsRead(
+    identity: AuthIdentityRecord,
+    payload: MarkNotificationsReadRequest
+  ): Promise<NotificationListResponse> {
+    const notifications = (await this.repository.listNotificationsByRecipient(identity.userId)).filter(
+      (notification) => notification.recipientRole === identity.role
+    );
+    const targetIds =
+      payload.notificationIds && payload.notificationIds.length > 0
+        ? new Set(payload.notificationIds)
+        : new Set(notifications.filter((notification) => !notification.isRead).map((notification) => notification.id));
+    const nowIso = new Date().toISOString();
+
+    await Promise.all(
+      notifications
+        .filter((notification) => targetIds.has(notification.id) && !notification.isRead)
+        .map((notification) =>
+          this.repository.updateNotification(notification.id, {
+            isRead: true,
+            readAt: nowIso
+          })
+        )
+    );
+
+    return this.listNotifications(identity);
+  }
+
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.providerSearchPerformed, "anonymous", {
       dateIso: payload.dateIso,
@@ -339,6 +380,20 @@ export class MarketplacePlatformService {
     }
 
     await this.refreshCrewMemberStatus(updatedMatch.crewMemberId);
+    const provider = await this.repository.findProviderById(providerId);
+    if (provider) {
+      await this.createNotification({
+        recipientId: updatedMatch.crewMemberId,
+        recipientRole: "crew-member",
+        category: "staffing",
+        title: payload.action === "accept" ? "You were accepted for a job" : "A crew match was declined",
+        body:
+          payload.action === "accept"
+            ? `${provider.companyName} added you to an upcoming ${this.titleCaseCategory(updatedMatch.categories[0] ?? "lawn-mowing")} job.`
+            : `${provider.companyName} passed on one of your staffing matches.`,
+        actionHref: "/crew/schedule"
+      });
+    }
 
     return updatedMatch;
   }
@@ -547,6 +602,26 @@ export class MarketplacePlatformService {
       throw new HttpError(500, "Booking could not be updated");
     }
 
+    const provider = await this.repository.findProviderById(booking.providerId);
+    await Promise.all([
+      this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "booking",
+        title: "Your crew is on the way",
+        body: `${provider?.companyName ?? "Your landscaping business"} is heading to your property now.`,
+        actionHref: "/customer/dashboard"
+      }),
+      this.createNotification({
+        recipientId: booking.providerId,
+        recipientRole: "provider",
+        category: "staffing",
+        title: "Crew confirmed on route",
+        body: "Your assigned crew member marked this job on route.",
+        actionHref: "/provider/management"
+      })
+    ]);
+
     return updatedBooking;
   }
 
@@ -595,6 +670,15 @@ export class MarketplacePlatformService {
         bookingId: booking.id,
         providerId: booking.providerId
       }
+    });
+
+    await this.createNotification({
+      recipientId: booking.providerId,
+      recipientRole: "provider",
+      category: "staffing",
+      title: "Work started",
+      body: "An assigned crew member checked in and started work on an upcoming job.",
+      actionHref: "/provider/management"
     });
 
     return updatedBooking;
@@ -906,6 +990,15 @@ export class MarketplacePlatformService {
       }
     });
 
+    await this.createNotification({
+      recipientId: booking.providerId,
+      recipientRole: "provider",
+      category: "review",
+      title: "You received a new review",
+      body: `${payload.overallRating}/5 from a completed ${this.titleCaseCategory(booking.category)} booking.`,
+      actionHref: "/provider/management"
+    });
+
     return savedReview;
   }
 
@@ -975,6 +1068,15 @@ export class MarketplacePlatformService {
           providerId: booking.providerId
         }
       });
+
+      await this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "review",
+        title: "Service marked complete",
+        body: "Your landscaping service was completed. A review prompt will unlock after the follow-up delay.",
+        actionHref: "/customer/dashboard"
+      });
     }
 
     return updatedBooking;
@@ -1022,6 +1124,15 @@ export class MarketplacePlatformService {
         bookingId: booking.id,
         customerId: booking.customerId
       }
+    });
+
+    await this.createNotification({
+      recipientId: booking.customerId,
+      recipientRole: "customer",
+      category: "booking",
+      title: "Your booking is confirmed",
+      body: "The landscaping business confirmed your requested service window.",
+      actionHref: "/customer/dashboard"
     });
 
     return updatedBooking;
@@ -1095,6 +1206,17 @@ export class MarketplacePlatformService {
       category: payload.category,
       servicePropertyId: payload.servicePropertyId ?? "custom-address"
     });
+    const provider = await this.repository.findProviderById(payload.providerId);
+    await this.createNotification({
+      recipientId: payload.providerId,
+      recipientRole: "provider",
+      category: "booking",
+      title: "New booking request",
+      body: `${customer.fullName} requested ${this.titleCaseCategory(payload.category)} for ${new Date(
+        booking.scheduledStartIso
+      ).toLocaleDateString()}.`,
+      actionHref: "/provider/management"
+    });
     return result;
   }
 
@@ -1130,6 +1252,15 @@ export class MarketplacePlatformService {
         providerId: booking.providerId,
         category: booking.category
       }
+    });
+
+    await this.createNotification({
+      recipientId: booking.providerId,
+      recipientRole: "provider",
+      category: "booking",
+      title: "Booking cancelled",
+      body: "A customer cancelled an upcoming booking.",
+      actionHref: "/provider/management"
     });
 
     return updatedBooking;
@@ -1191,6 +1322,15 @@ export class MarketplacePlatformService {
         previousStartIso: booking.scheduledStartIso,
         nextStartIso: payload.scheduledStartIso
       }
+    });
+
+    await this.createNotification({
+      recipientId: booking.providerId,
+      recipientRole: "provider",
+      category: "booking",
+      title: "Booking rescheduled",
+      body: `A customer moved a ${this.titleCaseCategory(booking.category)} booking to a new time.`,
+      actionHref: "/provider/management"
     });
 
     return updatedBooking;
@@ -1551,6 +1691,15 @@ export class MarketplacePlatformService {
           }
         });
 
+        await this.createNotification({
+          recipientId: updatedInvite.customerId,
+          recipientRole: "customer",
+          category: "review",
+          title: "Leave your service review",
+          body: "Your review window is now open for a completed YardMatch service.",
+          actionHref: "/customer/dashboard"
+        });
+
         return {
           inviteId: updatedInvite.id,
           bookingId: updatedInvite.bookingId,
@@ -1723,6 +1872,21 @@ export class MarketplacePlatformService {
             hourlyRateCents: this.estimateCrewHourlyRate(booking.category),
             createdAt: new Date().toISOString(),
             reviewedAt: provider.staffingMode === "auto-accept" ? new Date().toISOString() : undefined
+          });
+
+          await this.createNotification({
+            recipientId: crewMember.id,
+            recipientRole: "crew-member",
+            category: "staffing",
+            title:
+              provider.staffingMode === "auto-accept"
+                ? "You were auto-matched to a job"
+                : "You have a new crew match",
+            body:
+              provider.staffingMode === "auto-accept"
+                ? `${provider.companyName} automatically assigned you to an upcoming ${this.titleCaseCategory(booking.category)} job.`
+                : `${provider.companyName} is reviewing you for an upcoming ${this.titleCaseCategory(booking.category)} job.`,
+            actionHref: "/crew/schedule"
           });
 
           if (provider.staffingMode === "auto-accept") {
@@ -2024,6 +2188,23 @@ export class MarketplacePlatformService {
       .split("-")
       .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
       .join(" ");
+  }
+
+  private async createNotification(
+    payload: Omit<AppNotification, "id" | "isRead" | "createdAt">
+  ): Promise<void> {
+    await this.repository.createNotification({
+      id: crypto.randomUUID(),
+      recipientId: payload.recipientId,
+      recipientRole: payload.recipientRole,
+      category: payload.category,
+      title: payload.title,
+      body: payload.body,
+      actionHref: payload.actionHref,
+      isRead: false,
+      createdAt: new Date().toISOString(),
+      readAt: undefined
+    });
   }
 
   private estimateCrewHourlyRate(category: Booking["category"]): number {

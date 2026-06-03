@@ -515,6 +515,40 @@ export const apiSpec = {
         }
       }
     },
+    "/api/notifications": {
+      get: {
+        tags: ["Observability"],
+        summary: "List in-app notifications for the authenticated user",
+        description:
+          "Returns the newest in-app updates generated from booking, staffing, review, and account events, along with the unread count.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Notification list with unread count" }
+        }
+      }
+    },
+    "/api/notifications/read": {
+      post: {
+        tags: ["Observability"],
+        summary: "Mark notifications as read",
+        description:
+          "Marks specific notifications as read, or all unread notifications when no ids are provided, then returns the updated list and unread count.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              example: {
+                notificationIds: ["notification_123", "notification_456"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated notification list with unread count" }
+        }
+      }
+    },
     "/api/bookings": {
       get: {
         tags: ["Bookings"],

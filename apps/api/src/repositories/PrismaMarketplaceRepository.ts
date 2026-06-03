@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import {
+  AppNotification,
   Address,
   AvailabilitySlot,
   Booking,
@@ -741,6 +742,57 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     }));
   }
 
+  public async createNotification(notification: AppNotification): Promise<AppNotification> {
+    await this.prisma.appNotification.create({
+      data: {
+        id: notification.id,
+        recipientId: notification.recipientId,
+        recipientRole: notification.recipientRole,
+        category: notification.category,
+        title: notification.title,
+        body: notification.body,
+        actionHref: notification.actionHref,
+        isRead: notification.isRead,
+        createdAt: new Date(notification.createdAt),
+        readAt: notification.readAt ? new Date(notification.readAt) : null
+      }
+    });
+    return notification;
+  }
+
+  public async listNotificationsByRecipient(recipientId: string): Promise<AppNotification[]> {
+    const notifications = await this.prisma.appNotification.findMany({
+      where: { recipientId },
+      orderBy: { createdAt: "desc" }
+    });
+    return notifications.map((notification: any) => this.mapAppNotification(notification));
+  }
+
+  public async updateNotification(
+    notificationId: string,
+    updates: Partial<AppNotification>
+  ): Promise<AppNotification | undefined> {
+    const current = await this.prisma.appNotification.findUnique({
+      where: { id: notificationId }
+    });
+    if (!current) {
+      return undefined;
+    }
+
+    const notification = await this.prisma.appNotification.update({
+      where: { id: notificationId },
+      data: {
+        category: updates.category,
+        title: updates.title,
+        body: updates.body,
+        actionHref: updates.actionHref,
+        isRead: updates.isRead,
+        readAt: updates.readAt ? new Date(updates.readAt) : updates.readAt === undefined ? undefined : null
+      }
+    });
+    return this.mapAppNotification(notification);
+  }
+
   public async createProviderCrewConversation(
     conversation: ProviderCrewConversation
   ): Promise<ProviderCrewConversation> {
@@ -1287,6 +1339,32 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       updatedAt: record.updatedAt.toISOString(),
       lastMessagePreview: record.lastMessagePreview ?? undefined,
       unreadCount: record.unreadCount
+    };
+  }
+
+  private mapAppNotification(record: {
+    id: string;
+    recipientId: string;
+    recipientRole: string;
+    category: string;
+    title: string;
+    body: string;
+    actionHref: string | null;
+    isRead: boolean;
+    createdAt: Date;
+    readAt: Date | null;
+  }): AppNotification {
+    return {
+      id: record.id,
+      recipientId: record.recipientId,
+      recipientRole: record.recipientRole as AppNotification["recipientRole"],
+      category: record.category as AppNotification["category"],
+      title: record.title,
+      body: record.body,
+      actionHref: record.actionHref ?? undefined,
+      isRead: record.isRead,
+      createdAt: record.createdAt.toISOString(),
+      readAt: record.readAt?.toISOString()
     };
   }
 

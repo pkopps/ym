@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
+import { NotificationMenu } from "./NotificationMenu";
 
 const links = [
   { href: "/customer", label: "Book a service" },
@@ -65,19 +66,22 @@ export function NavBar() {
         </nav>
         <div className="site-header__actions">
           {session ? (
-            <details className="profile-menu">
-              <summary className="profile-menu__summary">{session.fullName}</summary>
-              <div className="profile-menu__panel">
-                {accountLinks[session.role].map((link) => (
-                  <a href={link.href} key={link.href}>
-                    {link.label}
-                  </a>
-                ))}
-                <button className="profile-menu__button" onClick={handleSignOut} type="button">
-                  Sign out
-                </button>
-              </div>
-            </details>
+            <>
+              <NotificationMenu session={session} />
+              <details className="profile-menu">
+                <summary className="profile-menu__summary">{session.fullName}</summary>
+                <div className="profile-menu__panel">
+                  {accountLinks[session.role].map((link) => (
+                    <a href={link.href} key={link.href}>
+                      {link.label}
+                    </a>
+                  ))}
+                  <button className="profile-menu__button" onClick={handleSignOut} type="button">
+                    Sign out
+                  </button>
+                </div>
+              </details>
+            </>
           ) : (
             <>
               <details className="auth-menu">

@@ -15,6 +15,8 @@ export class ApiRoutes {
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";
   public static readonly updateProviderSettings = "/api/providers/settings";
   public static readonly providerReviews = "/api/providers/reviews";
+  public static readonly notifications = "/api/notifications";
+  public static readonly notificationsRead = "/api/notifications/read";
   public static readonly customerReviewOpportunities = "/api/customers/review-opportunities";
   public static readonly createBooking = "/api/bookings";
   public static readonly listBookings = "/api/bookings";

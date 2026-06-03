@@ -6,6 +6,7 @@ import {
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
   InstantQuoteRequest,
+  MarkNotificationsReadRequest,
   MarkBookingOnRouteRequest,
   CreatePaymentIntentRequest,
   ProcessReviewInvitesRequest,
@@ -44,6 +45,8 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/settings") ||
       (context.method === "GET" && context.path === "/api/providers/reviews") ||
       (context.method === "POST" && context.path === "/api/providers/reviews") ||
+      (context.method === "GET" && context.path === "/api/notifications") ||
+      (context.method === "POST" && context.path === "/api/notifications/read") ||
       (context.method === "POST" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
@@ -188,6 +191,22 @@ export class MarketplaceController implements ApiController {
         response,
         201,
         await this.platform.createProviderReview(identity.userId, context.body as CreateProviderReviewRequest)
+      );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/notifications") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.listNotifications(identity));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/notifications/read") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.markNotificationsRead(identity, context.body as MarkNotificationsReadRequest)
       );
       return;
     }

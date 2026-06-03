@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  AppNotification,
   CreateSupportTicketRequest,
   CrewMatchesResponse,
   SupportIssueType,
@@ -18,6 +19,8 @@ export function SupportScreen() {
   const { envelope, signOut } = useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
   const [subject, setSubject] = useState("");
@@ -34,9 +37,15 @@ export function SupportScreen() {
     try {
       const api = createCrewMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [nextMatches, nextTickets] = await Promise.all([api.getCrewMatches(), api.getSupportTickets()]);
+      const [nextMatches, nextTickets, notificationResponse] = await Promise.all([
+        api.getCrewMatches(),
+        api.getSupportTickets(),
+        api.getNotifications()
+      ]);
       setMatchesResponse(nextMatches);
       setSupportTickets(nextTickets);
+      setNotifications(notificationResponse.notifications);
+      setUnreadCount(notificationResponse.unreadCount);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load account.");
     }
@@ -83,6 +92,27 @@ export function SupportScreen() {
     }
   }
 
+  async function handleMarkNotificationsRead() {
+    if (!envelope?.session.token || unreadCount === 0) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const response = await api.markNotificationsRead({});
+      setNotifications(response.notifications);
+      setUnreadCount(response.unreadCount);
+      setStatusMessage("Notifications marked read.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update notifications.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Account" title="Earnings and help">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -103,6 +133,27 @@ export function SupportScreen() {
           {(matchesResponse?.crewMember.availableWeekdays ?? []).join(", ")} •{" "}
           {matchesResponse?.crewMember.willingToTravelMiles ?? 0} mile travel radius
         </Text>
+      </InfoCard>
+
+      <InfoCard title="Updates" description={`${unreadCount} unread`}>
+        <View style={styles.ticketStack}>
+          {notifications.slice(0, 4).map((notification) => (
+            <View key={notification.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.title}>{notification.title}</Text>
+                <Text style={styles.meta}>{notification.body}</Text>
+              </View>
+              <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
+            </View>
+          ))}
+        </View>
+        <Pressable
+          disabled={isWorking || unreadCount === 0}
+          onPress={() => void handleMarkNotificationsRead()}
+          style={styles.chip}
+        >
+          <Text style={styles.chipLabel}>Mark updates read</Text>
+        </Pressable>
       </InfoCard>
 
       <InfoCard title="Help" description="Fast support routes">

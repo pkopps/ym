@@ -523,6 +523,90 @@ body {
   font-weight: 700;
 }
 
+.notification-menu {
+  position: relative;
+}
+
+.notification-menu__panel {
+  position: absolute;
+  top: calc(100% + 0.9rem);
+  right: 0;
+  width: min(24rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: 24px;
+  border: 1px solid var(--ym-color-border);
+  background: rgba(255, 252, 246, 0.98);
+  box-shadow: 0 22px 44px rgba(10, 28, 20, 0.14);
+  z-index: 80;
+}
+
+.notification-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.notification-menu__mark-read {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ym-color-primary-strong);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.notification-menu__mark-read:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.notification-menu__state {
+  margin: 0;
+  color: var(--ym-color-ink-soft);
+}
+
+.notification-menu__list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.notification-menu__item {
+  appearance: none;
+  width: 100%;
+  border: 1px solid var(--ym-color-border);
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 18px;
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.9rem 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-menu__item--unread {
+  border-color: color-mix(in srgb, var(--ym-color-primary) 40%, var(--ym-color-border));
+  background: color-mix(in srgb, white 84%, var(--ym-color-primary) 16%);
+}
+
+.notification-menu__item-copy {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.notification-menu__item-copy strong {
+  color: var(--ym-color-ink);
+}
+
+.notification-menu__item-copy span,
+.notification-menu__item small {
+  color: var(--ym-color-ink-soft);
+}
+
 .hero {
   padding: var(--ym-space-8) 0 var(--ym-space-7);
   grid-template-columns: 1.1fr 0.9fr;

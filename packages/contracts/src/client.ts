@@ -1,4 +1,5 @@
 import {
+  AppNotification,
   AnalyticsEvent,
   AuthenticatedUserEnvelope,
   Booking,
@@ -14,7 +15,9 @@ import {
   GoogleAuthStartRequest,
   CurrentUserResponse,
   LoginRequest,
+  MarkNotificationsReadRequest,
   ListCustomerReviewOpportunitiesResponse,
+  NotificationListResponse,
   PlaceSearchResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
@@ -168,6 +171,16 @@ export class MarketplaceApiClient {
 
   public updateProviderSettings(payload: UpdateProviderSettingsRequest) {
     return this.postJson<ProviderProfile>(ApiRoutes.updateProviderSettings, payload);
+  }
+
+  public getNotifications(): Promise<NotificationListResponse> {
+    return this.getJson(ApiRoutes.notifications);
+  }
+
+  public markNotificationsRead(
+    payload: MarkNotificationsReadRequest = {}
+  ): Promise<NotificationListResponse> {
+    return this.postJson(ApiRoutes.notificationsRead, payload);
   }
 
   public updateCrewPreferences(payload: UpdateCrewPreferencesRequest) {

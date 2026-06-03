@@ -51,6 +51,7 @@ export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
 export type NotificationChannel = "email" | "in-app" | "push";
+export type AppNotificationCategory = "booking" | "staffing" | "review" | "support" | "account";
 export type CrewMemberSchedulePreference = "full-time" | "part-time" | "seasonal" | "flex";
 export type CrewMemberStatus = "available" | "assigned" | "off-duty";
 export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
@@ -393,6 +394,28 @@ export interface SupportTicket {
   issueType: SupportIssueType;
   status: SupportTicketStatus;
   createdAt: string;
+}
+
+export interface AppNotification {
+  id: string;
+  recipientId: string;
+  recipientRole: MarketplaceRole;
+  category: AppNotificationCategory;
+  title: string;
+  body: string;
+  actionHref?: string;
+  isRead: boolean;
+  createdAt: string;
+  readAt?: string;
+}
+
+export interface NotificationListResponse {
+  notifications: AppNotification[];
+  unreadCount: number;
+}
+
+export interface MarkNotificationsReadRequest {
+  notificationIds?: string[];
 }
 
 export interface RegisterUserRequest {
