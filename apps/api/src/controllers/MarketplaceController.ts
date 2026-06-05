@@ -68,6 +68,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/chat/customer-provider/messages") ||
       (context.method === "POST" && context.path === "/api/chat/customer-provider/messages") ||
       (context.method === "GET" && context.path === "/api/payments") ||
+      (context.method === "POST" && context.path === "/api/payments/webhook") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") ||
       (context.method === "POST" && context.path === "/api/payments/intent") ||
@@ -305,6 +306,23 @@ export class MarketplaceController implements ApiController {
     if (context.method === "GET" && context.path === "/api/payments") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(response, 200, await this.platform.listPaymentsForUser(identity));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/payments/webhook") {
+      const signatureHeader = context.headers["stripe-signature"];
+      if (!signatureHeader) {
+        sendJson(response, 400, {
+          message: "Stripe-Signature header is required."
+        });
+        return;
+      }
+
+      sendJson(
+        response,
+        200,
+        await this.platform.processStripeWebhook(context.rawBody ?? "", signatureHeader)
+      );
       return;
     }
 

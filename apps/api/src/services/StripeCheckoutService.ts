@@ -23,12 +23,21 @@ export interface VerifiedStripeCheckoutSession {
   failureReason?: string;
 }
 
+export interface StripeWebhookEvent {
+  type: string;
+  checkoutSessionId?: string;
+  paymentIntentId?: string;
+  paid?: boolean;
+  failureReason?: string;
+}
+
 export interface PaymentCheckoutGateway {
   isConfigured(): boolean;
   createCheckoutSession(
     input: CreateStripeCheckoutSessionInput
   ): Promise<CreatedStripeCheckoutSession>;
   verifyCheckoutSession(checkoutSessionId: string): Promise<VerifiedStripeCheckoutSession>;
+  parseWebhookEvent(rawBody: string, signature: string): Promise<StripeWebhookEvent>;
 }
 
 function prettifyCategory(category: string): string {
@@ -52,11 +61,16 @@ function buildReturnUrl(baseUrl: string, path: string, includeSessionPlaceholder
 
 export class StripeCheckoutService implements PaymentCheckoutGateway {
   private readonly stripe?: Stripe;
+  private readonly webhookSecret?: string;
 
-  public constructor(secretKey = process.env.STRIPE_SECRET_KEY) {
+  public constructor(
+    secretKey = process.env.STRIPE_SECRET_KEY,
+    webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  ) {
     if (secretKey) {
       this.stripe = new Stripe(secretKey);
     }
+    this.webhookSecret = webhookSecret;
   }
 
   public isConfigured(): boolean {
@@ -136,6 +150,37 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       paid: session.payment_status === "paid",
       failureReason:
         session.payment_status === "unpaid" ? "Stripe checkout has not been completed yet." : undefined
+    };
+  }
+
+  public async parseWebhookEvent(rawBody: string, signature: string): Promise<StripeWebhookEvent> {
+    if (!this.stripe || !this.webhookSecret) {
+      throw new HttpError(503, "Stripe webhook signing secret is not configured yet.");
+    }
+
+    if (!signature) {
+      throw new HttpError(400, "Stripe-Signature header is required.");
+    }
+
+    const event = await this.stripe.webhooks.constructEventAsync(rawBody, signature, this.webhookSecret);
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.expired"
+    ) {
+      const session = event.data.object as Stripe.Checkout.Session;
+      return {
+        type: event.type,
+        checkoutSessionId: session.id,
+        paymentIntentId:
+          typeof session.payment_intent === "string" ? session.payment_intent : undefined,
+        paid: session.payment_status === "paid",
+        failureReason:
+          event.type === "checkout.session.expired" ? "Stripe checkout expired." : undefined
+      };
+    }
+
+    return {
+      type: event.type
     };
   }
 }

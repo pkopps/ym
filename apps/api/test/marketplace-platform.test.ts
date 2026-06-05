@@ -45,6 +45,14 @@ function createFakeStripeGateway(): PaymentCheckoutGateway {
         paymentIntentId: "pi_test_123",
         paid: true
       };
+    },
+    async parseWebhookEvent() {
+      return {
+        type: "checkout.session.completed",
+        checkoutSessionId: "cs_test_123",
+        paymentIntentId: "pi_test_123",
+        paid: true
+      };
     }
   };
 }
@@ -294,6 +302,56 @@ test("customers can create and finalize Stripe checkout for their own bookings",
   assert.equal(finalized.processorPaymentIntentId, "pi_test_123");
   assert.ok(finalized.paidAt);
   assert.equal(finalized.refundable, true);
+});
+
+test("stripe webhook capture updates pending payments without a customer redirect", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-webhook@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Webhook payment test",
+    totalCents: 9800
+  });
+
+  const checkout = await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+  assert.equal(checkout.payment.status, "pending");
+
+  const webhook = await platform.processStripeWebhook("{}", "sig_test");
+  assert.equal(webhook.eventType, "checkout.session.completed");
+  assert.equal(webhook.paymentId, checkout.payment.id);
+
+  const payments = await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  });
+  assert.equal(payments[0]?.status, "captured");
 });
 
 test("review-first staffing creates pending crew matches that providers can approve", async () => {

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   Booking,
   CustomerProviderConversationThread,
+  PaymentRecord,
   CustomerReviewOpportunity,
   ReviewScore
 } from "@yardmatch/contracts";
@@ -33,6 +34,7 @@ export function BookingsScreen() {
   const { envelope } = useCustomerSession();
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [paymentsByBookingId, setPaymentsByBookingId] = useState<Record<string, PaymentRecord>>({});
   const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
   const [reviewOpportunities, setReviewOpportunities] = useState<CustomerReviewOpportunity[]>([]);
   const [selectedBookingId, setSelectedBookingId] = useState<string | undefined>();
@@ -86,9 +88,10 @@ export function BookingsScreen() {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
 
-      const [bookingList, reviewResponse] = await Promise.all([
+      const [bookingList, reviewResponse, payments] = await Promise.all([
         api.getBookings(),
-        api.getCustomerReviewOpportunities()
+        api.getCustomerReviewOpportunities(),
+        api.getPayments()
       ]);
 
       const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
@@ -111,6 +114,15 @@ export function BookingsScreen() {
         }, {})
       );
       setBookings(bookingList);
+      setPaymentsByBookingId(
+        payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
+          const current = accumulator[payment.bookingId];
+          if (!current || current.updatedAt < payment.updatedAt) {
+            accumulator[payment.bookingId] = payment;
+          }
+          return accumulator;
+        }, {})
+      );
       setReviewOpportunities(reviewResponse.opportunities);
       setSelectedBookingId(
         reviewResponse.opportunities.find((opportunity) => opportunity.canReviewNow)?.bookingId ??
@@ -249,6 +261,59 @@ export function BookingsScreen() {
     }
   }
 
+  function getPaymentRecord(bookingId: string) {
+    return paymentsByBookingId[bookingId];
+  }
+
+  function getPaymentLabel(payment?: PaymentRecord) {
+    if (!payment) {
+      return "Not paid";
+    }
+
+    if (payment.status === "captured") {
+      return "Paid";
+    }
+
+    if (payment.status === "pending") {
+      return "Checkout started";
+    }
+
+    if (payment.status === "failed") {
+      return "Payment needs attention";
+    }
+
+    if (payment.status === "refunded") {
+      return "Refunded";
+    }
+
+    return "Payment on file";
+  }
+
+  async function payWithStripe(booking: Booking) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const checkout = await api.createCheckoutSession({
+        bookingId: booking.id,
+        successPath: "/customer/dashboard?payment=stripe-success",
+        cancelPath: "/customer/dashboard?payment=stripe-cancelled"
+      });
+      setSubmittedMessage("Stripe checkout opened in your browser.");
+      await Linking.openURL(checkout.checkoutUrl);
+      await loadBookings();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open Stripe checkout.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Bookings" title="Manage services" description="Upcoming and past jobs.">
       <View style={styles.modeRow}>
@@ -273,6 +338,7 @@ export function BookingsScreen() {
                   <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
                   <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
                   <Text style={styles.bookingNote}>{booking.status}</Text>
+                  <Text style={styles.bookingMeta}>{getPaymentLabel(getPaymentRecord(booking.id))}</Text>
                   {booking.onRouteConfirmedAt ? (
                     <Text style={styles.bookingMeta}>Crew is on the way. Business chat is open.</Text>
                   ) : null}
@@ -290,6 +356,17 @@ export function BookingsScreen() {
                 <View style={styles.inlineActions}>
                   {booking.status === "requested" || booking.status === "confirmed" ? (
                     <>
+                      <Pressable
+                        disabled={isWorking || getPaymentRecord(booking.id)?.status === "captured"}
+                        onPress={() => void payWithStripe(booking)}
+                        style={styles.primaryAction}
+                      >
+                        <Text style={styles.primaryActionLabel}>
+                          {getPaymentRecord(booking.id)?.status === "pending"
+                            ? "Continue checkout"
+                            : "Pay with Stripe"}
+                        </Text>
+                      </Pressable>
                       <Pressable
                         disabled={isWorking}
                         onPress={() => void rescheduleBooking(booking)}
@@ -548,6 +625,16 @@ const styles = StyleSheet.create({
   },
   secondaryActionLabel: {
     color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  primaryAction: {
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  primaryActionLabel: {
+    color: "#ffffff",
     fontWeight: "700"
   },
   statusBadge: {

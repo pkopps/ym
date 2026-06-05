@@ -63,6 +63,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - Real customer card payments are now prepared through Stripe hosted Checkout.
 - To turn the real checkout path on locally, set:
   - `STRIPE_SECRET_KEY`
+  - `STRIPE_WEBHOOK_SECRET`
   - `APP_BASE_URL` (for Stripe success/cancel redirects, for example `http://localhost:3000`)
 
 ### Database setup commands

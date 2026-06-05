@@ -4,6 +4,7 @@ export interface RequestContext {
   method: string;
   path: string;
   body: unknown;
+  rawBody?: string;
   query: URLSearchParams;
   headers: Record<string, string | undefined>;
 }
@@ -44,6 +45,7 @@ export async function parseRequest(request: IncomingMessage): Promise<RequestCon
     method: request.method ?? "GET",
     path: url.pathname,
     body: parsedBody,
+    rawBody,
     query: url.searchParams,
     headers: Object.fromEntries(
       Object.entries(request.headers).map(([key, value]) => [

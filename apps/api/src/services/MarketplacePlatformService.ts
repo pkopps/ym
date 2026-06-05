@@ -1703,47 +1703,64 @@ export class MarketplacePlatformService {
     }
 
     const session = await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId);
-    const now = new Date().toISOString();
-
-    const updatedPayment = await this.repository.updatePayment(payment.id, {
-      status: session.paid ? "captured" : "failed",
-      refundable: session.paid,
-      processorPaymentIntentId: session.paymentIntentId ?? payment.processorPaymentIntentId,
-      failureReason: session.paid ? undefined : session.failureReason,
-      paidAt: session.paid ? now : undefined,
-      updatedAt: now
-    });
-
-    if (!updatedPayment) {
-      throw new HttpError(500, "Payment record could not be updated");
-    }
-
     if (session.paid) {
-      this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCaptured, booking.id, {
-        paymentId: updatedPayment.id,
-        amountCents: updatedPayment.amountCents,
-        processor: updatedPayment.processor
-      });
-      await this.createNotification({
-        recipientId: booking.customerId,
-        recipientRole: "customer",
-        category: "booking",
-        title: "Payment received",
-        body: "Your YardMatch payment went through successfully.",
-        actionHref: "/customer/dashboard"
-      });
-      await this.createNotification({
-        recipientId: booking.providerId,
-        recipientRole: "provider",
-        category: "booking",
-        title: "Customer payment received",
-        body: "A customer completed payment for an upcoming YardMatch booking.",
-        actionHref: "/provider/management"
-      });
-      return updatedPayment;
+      return this.capturePaymentRecord(payment, booking, session.paymentIntentId);
     }
 
+    await this.failPaymentRecord(payment, session.failureReason ?? "Stripe payment has not completed yet.");
     throw new HttpError(409, session.failureReason ?? "Stripe payment has not completed yet.");
+  }
+
+  public async processStripeWebhook(rawBody: string, signatureHeader: string): Promise<{
+    received: true;
+    eventType: string;
+    paymentId?: string;
+  }> {
+    const event = await this.stripeCheckout.parseWebhookEvent(rawBody, signatureHeader);
+
+    if (!event.checkoutSessionId) {
+      return {
+        received: true,
+        eventType: event.type
+      };
+    }
+
+    const payment = await this.repository.findPaymentByCheckoutSessionId(event.checkoutSessionId);
+    if (!payment) {
+      throw new HttpError(404, "Payment session not found");
+    }
+
+    const booking = await this.repository.findBookingById(payment.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (event.type === "checkout.session.completed" && event.paid) {
+      const updatedPayment = await this.capturePaymentRecord(payment, booking, event.paymentIntentId);
+      return {
+        received: true,
+        eventType: event.type,
+        paymentId: updatedPayment.id
+      };
+    }
+
+    if (event.type === "checkout.session.expired") {
+      const updatedPayment = await this.failPaymentRecord(
+        payment,
+        event.failureReason ?? "Stripe checkout expired."
+      );
+      return {
+        received: true,
+        eventType: event.type,
+        paymentId: updatedPayment.id
+      };
+    }
+
+    return {
+      received: true,
+      eventType: event.type,
+      paymentId: payment.id
+    };
   }
 
   public async createPaymentIntent(payload: CreatePaymentIntentRequest): Promise<PaymentRecord> {
@@ -2425,6 +2442,73 @@ export class MarketplacePlatformService {
       createdAt: new Date().toISOString(),
       readAt: undefined
     });
+  }
+
+  private async capturePaymentRecord(
+    payment: PaymentRecord,
+    booking: Booking,
+    paymentIntentId?: string
+  ): Promise<PaymentRecord> {
+    if (payment.status === "captured") {
+      return payment;
+    }
+
+    const now = new Date().toISOString();
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      status: "captured",
+      refundable: true,
+      processorPaymentIntentId: paymentIntentId ?? payment.processorPaymentIntentId,
+      failureReason: undefined,
+      paidAt: payment.paidAt ?? now,
+      updatedAt: now
+    });
+
+    if (!updatedPayment) {
+      throw new HttpError(500, "Payment record could not be updated");
+    }
+
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCaptured, booking.id, {
+      paymentId: updatedPayment.id,
+      amountCents: updatedPayment.amountCents,
+      processor: updatedPayment.processor
+    });
+    await this.createNotification({
+      recipientId: booking.customerId,
+      recipientRole: "customer",
+      category: "booking",
+      title: "Payment received",
+      body: "Your YardMatch payment went through successfully.",
+      actionHref: "/customer/dashboard"
+    });
+    await this.createNotification({
+      recipientId: booking.providerId,
+      recipientRole: "provider",
+      category: "booking",
+      title: "Customer payment received",
+      body: "A customer completed payment for an upcoming YardMatch booking.",
+      actionHref: "/provider/management"
+    });
+
+    return updatedPayment;
+  }
+
+  private async failPaymentRecord(payment: PaymentRecord, failureReason: string): Promise<PaymentRecord> {
+    if (payment.status === "captured") {
+      return payment;
+    }
+
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      status: "failed",
+      refundable: false,
+      failureReason,
+      updatedAt: new Date().toISOString()
+    });
+
+    if (!updatedPayment) {
+      throw new HttpError(500, "Payment record could not be updated");
+    }
+
+    return updatedPayment;
   }
 
   private estimateCrewHourlyRate(category: Booking["category"]): number {

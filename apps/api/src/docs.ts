@@ -831,6 +831,27 @@ export const apiSpec = {
         }
       }
     },
+    "/api/payments/webhook": {
+      post: {
+        tags: ["Payments"],
+        summary: "Receive Stripe webhook events",
+        description:
+          "Server-to-server Stripe webhook endpoint. Requires Stripe signature verification and is intended for production payment settlement updates.",
+        parameters: [
+          {
+            name: "Stripe-Signature",
+            in: "header",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Webhook event accepted" },
+          "400": { description: "Missing or invalid Stripe signature" },
+          "503": { description: "Stripe webhook secret is not configured yet" }
+        }
+      }
+    },
     "/api/payments/checkout-session": {
       post: {
         tags: ["Payments"],
