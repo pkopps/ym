@@ -698,6 +698,22 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return payment;
   }
 
+  public async findPaymentById(paymentId: string): Promise<PaymentRecord | undefined> {
+    const payment = await this.prisma.paymentRecord.findUnique({
+      where: { id: paymentId }
+    });
+    return payment ? this.mapPaymentRecord(payment) : undefined;
+  }
+
+  public async findPaymentByCheckoutSessionId(
+    checkoutSessionId: string
+  ): Promise<PaymentRecord | undefined> {
+    const payment = await this.prisma.paymentRecord.findFirst({
+      where: { checkoutSessionId }
+    });
+    return payment ? this.mapPaymentRecord(payment) : undefined;
+  }
+
   public async listPayments(): Promise<PaymentRecord[]> {
     const payments = await this.prisma.paymentRecord.findMany();
     return payments.map((payment: any) => this.mapPaymentRecord(payment));
@@ -1258,17 +1274,35 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     id: string;
     bookingId: string;
     amountCents: number;
+    currency: string;
     status: string;
+    processor: string;
     refundable: boolean;
+    checkoutSessionId: string | null;
+    checkoutSessionUrl: string | null;
+    processorPaymentIntentId: string | null;
     refundReason: string | null;
+    failureReason: string | null;
+    paidAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
   }): PaymentRecord {
     return {
       id: record.id,
       bookingId: record.bookingId,
       amountCents: record.amountCents,
+      currency: record.currency,
       status: record.status as PaymentRecord["status"],
+      processor: record.processor as PaymentRecord["processor"],
       refundable: record.refundable,
-      refundReason: record.refundReason ?? undefined
+      checkoutSessionId: record.checkoutSessionId ?? undefined,
+      checkoutSessionUrl: record.checkoutSessionUrl ?? undefined,
+      processorPaymentIntentId: record.processorPaymentIntentId ?? undefined,
+      refundReason: record.refundReason ?? undefined,
+      failureReason: record.failureReason ?? undefined,
+      paidAt: record.paidAt?.toISOString(),
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString()
     };
   }
 

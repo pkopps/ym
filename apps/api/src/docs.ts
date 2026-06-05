@@ -821,10 +821,69 @@ export const apiSpec = {
         }
       }
     },
+    "/api/payments": {
+      get: {
+        tags: ["Payments"],
+        summary: "List payments for the authenticated user",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Payments returned" }
+        }
+      }
+    },
+    "/api/payments/checkout-session": {
+      post: {
+        tags: ["Payments"],
+        summary: "Create a Stripe Checkout session for a booking",
+        description:
+          "Creates a hosted Stripe Checkout session for a customer-owned booking and returns the checkout URL.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                successPath: "/customer/dashboard?payment=stripe-success",
+                cancelPath: "/customer/dashboard?payment=stripe-cancelled"
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Stripe checkout session created" }
+        }
+      }
+    },
+    "/api/payments/checkout-session/finalize": {
+      post: {
+        tags: ["Payments"],
+        summary: "Finalize a Stripe Checkout session after redirect",
+        description:
+          "Verifies the Stripe Checkout session and marks the local YardMatch payment record as captured when Stripe reports a successful payment.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                checkoutSessionId: "cs_test_123"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment captured successfully" },
+          "409": { description: "Checkout exists but has not completed successfully yet" }
+        }
+      }
+    },
     "/api/payments/intent": {
       post: {
         tags: ["Payments"],
-        summary: "Authorize a payment intent for a booking",
+        summary: "Create an internal payment record",
+        description:
+          "Legacy/internal payment record creation path. Stripe Checkout should be used for real customer card payments.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

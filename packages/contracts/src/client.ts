@@ -9,6 +9,8 @@ import {
   CustomerProviderConversationThread,
   CrewMemberProfile,
   CompleteBookingRequest,
+  CreateCheckoutSessionRequest,
+  CreateCheckoutSessionResponse,
   CrewMatchesResponse,
   CrewOpportunity,
   CustomerProperty,
@@ -18,12 +20,14 @@ import {
   MarkNotificationsReadRequest,
   ListCustomerReviewOpportunitiesResponse,
   NotificationListResponse,
+  PaymentRecord,
   PlaceSearchResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
+  FinalizeCheckoutSessionRequest,
   InstantQuoteRequest,
   InstantQuoteResponse,
   CreatePaymentIntentRequest,
@@ -283,6 +287,20 @@ export class MarketplaceApiClient {
 
   public updateBookingAddress(payload: UpdateBookingAddressRequest) {
     return this.postJson(ApiRoutes.updateBookingAddress, payload);
+  }
+
+  public getPayments(): Promise<PaymentRecord[]> {
+    return this.getJson(ApiRoutes.listPayments);
+  }
+
+  public createCheckoutSession(
+    payload: CreateCheckoutSessionRequest
+  ): Promise<CreateCheckoutSessionResponse> {
+    return this.postJson(ApiRoutes.createCheckoutSession, payload);
+  }
+
+  public finalizeCheckoutSession(payload: FinalizeCheckoutSessionRequest): Promise<PaymentRecord> {
+    return this.postJson(ApiRoutes.finalizeCheckoutSession, payload);
   }
 
   public createPaymentIntent(payload: CreatePaymentIntentRequest) {

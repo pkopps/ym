@@ -235,12 +235,21 @@ model ReviewInvite {
 }
 
 model PaymentRecord {
-  id           String   @id
-  bookingId    String
-  amountCents  Int
-  status       String
-  refundable   Boolean
-  refundReason String?
+  id                     String   @id
+  bookingId              String
+  amountCents            Int
+  currency               String
+  status                 String
+  processor              String
+  refundable             Boolean
+  checkoutSessionId      String?
+  checkoutSessionUrl     String?
+  processorPaymentIntentId String?
+  refundReason           String?
+  failureReason          String?
+  paidAt                 DateTime?
+  createdAt              DateTime
+  updatedAt              DateTime
 
   @@map("payment_records")
 }

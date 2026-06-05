@@ -34,6 +34,9 @@ export class ApiRoutes {
   public static readonly providerCrewMessages = "/api/chat/provider-crew/messages";
   public static readonly customerProviderConversations = "/api/chat/customer-provider/threads";
   public static readonly customerProviderMessages = "/api/chat/customer-provider/messages";
+  public static readonly listPayments = "/api/payments";
+  public static readonly createCheckoutSession = "/api/payments/checkout-session";
+  public static readonly finalizeCheckoutSession = "/api/payments/checkout-session/finalize";
   public static readonly createPaymentIntent = "/api/payments/intent";
   public static readonly createRefund = "/api/payments/refund";
   public static readonly supportTickets = "/api/support/tickets";

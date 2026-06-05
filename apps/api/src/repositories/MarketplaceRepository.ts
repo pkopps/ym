@@ -67,6 +67,8 @@ export interface MarketplaceRepository {
   findProviderById(providerId: string): Promise<ProviderProfile | undefined>;
   updateProvider(providerId: string, updates: Partial<ProviderProfile>): Promise<ProviderProfile | undefined>;
   createPayment(payment: PaymentRecord): Promise<PaymentRecord>;
+  findPaymentById(paymentId: string): Promise<PaymentRecord | undefined>;
+  findPaymentByCheckoutSessionId(checkoutSessionId: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
   createSupportTicket(ticket: SupportTicket): Promise<SupportTicket>;

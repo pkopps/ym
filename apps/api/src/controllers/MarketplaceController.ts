@@ -2,6 +2,7 @@ import {
   CancelBookingRequest,
   ConfirmBookingRequest,
   CompleteBookingRequest,
+  CreateCheckoutSessionRequest,
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
@@ -9,6 +10,7 @@ import {
   MarkNotificationsReadRequest,
   MarkBookingOnRouteRequest,
   CreatePaymentIntentRequest,
+  FinalizeCheckoutSessionRequest,
   ProcessReviewInvitesRequest,
   CreateRefundRequest,
   ReviewCrewMatchRequest,
@@ -65,6 +67,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/chat/customer-provider/threads") ||
       (context.method === "GET" && context.path === "/api/chat/customer-provider/messages") ||
       (context.method === "POST" && context.path === "/api/chat/customer-provider/messages") ||
+      (context.method === "GET" && context.path === "/api/payments") ||
+      (context.method === "POST" && context.path === "/api/payments/checkout-session") ||
+      (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") ||
       (context.method === "POST" && context.path === "/api/payments/intent") ||
       (context.method === "POST" && context.path === "/api/payments/refund") ||
       (context.method === "GET" && context.path === "/api/calendar/feed")
@@ -297,6 +302,35 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "GET" && context.path === "/api/payments") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.listPaymentsForUser(identity));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/payments/checkout-session") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        201,
+        await this.platform.createCheckoutSession(identity.userId, context.body as CreateCheckoutSessionRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        200,
+        await this.platform.finalizeCheckoutSession(
+          identity.userId,
+          context.body as FinalizeCheckoutSessionRequest
+        )
+      );
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/payments/intent") {
       await requireRole(context, this.platform, "customer");
       sendJson(response, 201, await this.platform.createPaymentIntent(context.body as CreatePaymentIntentRequest));
@@ -304,8 +338,8 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/payments/refund") {
-      await requireRole(context, this.platform, "customer");
-      sendJson(response, 200, await this.platform.createRefund(context.body as CreateRefundRequest));
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.createRefund(identity, context.body as CreateRefundRequest));
       return;
     }
 

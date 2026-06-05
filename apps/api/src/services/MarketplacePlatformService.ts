@@ -22,10 +22,13 @@ import {
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
+  CreateCheckoutSessionRequest,
+  CreateCheckoutSessionResponse,
   InstantQuoteRequest,
   InstantQuoteResponse,
   ListCustomerReviewOpportunitiesResponse,
   CreatePaymentIntentRequest,
+  FinalizeCheckoutSessionRequest,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
   CreateRefundRequest,
@@ -74,6 +77,7 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { HttpError } from "../http";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
 import { PlaceSearchService } from "./PlaceSearchService";
+import { PaymentCheckoutGateway, StripeCheckoutService } from "./StripeCheckoutService";
 
 export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
@@ -86,11 +90,18 @@ export class MarketplacePlatformService {
   private readonly bookingAddressPolicy = new BookingAddressPolicyService(this.geoService);
   private readonly instantQuoteEngine = new InstantQuoteEngine();
   private readonly placeSearch = new PlaceSearchService(process.env.GOOGLE_MAPS_API_KEY);
+  private readonly stripeCheckout: PaymentCheckoutGateway;
+  private readonly appBaseUrl: string;
 
   public constructor(
     private readonly repository: MarketplaceRepository,
-    private readonly analytics: DataEngineeringLogger
-  ) {}
+    private readonly analytics: DataEngineeringLogger,
+    stripeCheckout: PaymentCheckoutGateway = new StripeCheckoutService(),
+    appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000"
+  ) {
+    this.stripeCheckout = stripeCheckout;
+    this.appBaseUrl = appBaseUrl;
+  }
 
   public async registerUser(
     payload: RegisterUserRequest,
@@ -1557,11 +1568,194 @@ export class MarketplacePlatformService {
     };
   }
 
+  public async listPaymentsForUser(actor: AuthIdentityRecord): Promise<PaymentRecord[]> {
+    const [payments, bookings, matches] = await Promise.all([
+      this.repository.listPayments(),
+      this.repository.listBookings(),
+      actor.role === "crew-member" ? this.repository.listCrewMatches() : Promise.resolve([])
+    ]);
+
+    return payments
+      .filter((payment) => {
+        const booking = bookings.find((candidate) => candidate.id === payment.bookingId);
+        if (!booking) {
+          return false;
+        }
+
+        if (actor.role === "customer") {
+          return booking.customerId === actor.userId;
+        }
+
+        if (actor.role === "provider") {
+          return booking.providerId === actor.userId;
+        }
+
+        return matches.some(
+          (match) =>
+            match.bookingId === booking.id &&
+            match.crewMemberId === actor.userId &&
+            match.status === "accepted"
+        );
+      })
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
+  public async createCheckoutSession(
+    customerId: string,
+    payload: CreateCheckoutSessionRequest
+  ): Promise<CreateCheckoutSessionResponse> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.customerId !== customerId) {
+      throw new HttpError(403, "Customers can only pay for their own bookings");
+    }
+
+    if (booking.status === "cancelled" || booking.status === "refunded") {
+      throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
+    }
+
+    const customer = await this.repository.findCustomerById(customerId);
+    if (!customer) {
+      throw new HttpError(404, "Customer not found");
+    }
+
+    const existingPayments = (await this.repository.listPayments()).filter(
+      (payment) => payment.bookingId === booking.id
+    );
+    const paidPayment = existingPayments.find((payment) => payment.status === "captured");
+    if (paidPayment) {
+      throw new HttpError(409, "This booking has already been paid.");
+    }
+
+    const session = await this.stripeCheckout.createCheckoutSession({
+      booking,
+      customer,
+      appBaseUrl: this.appBaseUrl,
+      successPath: payload.successPath ?? "/customer/dashboard?payment=stripe-success",
+      cancelPath: payload.cancelPath ?? "/customer/dashboard?payment=stripe-cancelled"
+    });
+
+    const now = new Date().toISOString();
+    const currentPayment = existingPayments[0];
+    const paymentBase: PaymentRecord = {
+      id: currentPayment?.id ?? crypto.randomUUID(),
+      bookingId: booking.id,
+      amountCents: booking.totalCents,
+      currency: "usd",
+      status: "pending",
+      processor: "stripe",
+      refundable: false,
+      checkoutSessionId: session.checkoutSessionId,
+      checkoutSessionUrl: session.checkoutUrl,
+      processorPaymentIntentId: session.paymentIntentId,
+      refundReason: currentPayment?.refundReason,
+      failureReason: undefined,
+      paidAt: undefined,
+      createdAt: currentPayment?.createdAt ?? now,
+      updatedAt: now
+    };
+
+    const payment = currentPayment
+      ? await this.repository.updatePayment(currentPayment.id, {
+          amountCents: paymentBase.amountCents,
+          currency: paymentBase.currency,
+          status: paymentBase.status,
+          processor: paymentBase.processor,
+          refundable: paymentBase.refundable,
+          checkoutSessionId: paymentBase.checkoutSessionId,
+          checkoutSessionUrl: paymentBase.checkoutSessionUrl,
+          processorPaymentIntentId: paymentBase.processorPaymentIntentId,
+          failureReason: paymentBase.failureReason,
+          paidAt: paymentBase.paidAt,
+          updatedAt: paymentBase.updatedAt
+        })
+      : await this.repository.createPayment(paymentBase);
+
+    if (!payment) {
+      throw new HttpError(500, "Payment record could not be created");
+    }
+
+    return {
+      checkoutUrl: session.checkoutUrl,
+      payment
+    };
+  }
+
+  public async finalizeCheckoutSession(
+    customerId: string,
+    payload: FinalizeCheckoutSessionRequest
+  ): Promise<PaymentRecord> {
+    const payment = await this.repository.findPaymentByCheckoutSessionId(payload.checkoutSessionId);
+    if (!payment) {
+      throw new HttpError(404, "Payment session not found");
+    }
+
+    const booking = await this.repository.findBookingById(payment.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.customerId !== customerId) {
+      throw new HttpError(403, "Customers can only finalize payments for their own bookings");
+    }
+
+    const session = await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId);
+    const now = new Date().toISOString();
+
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      status: session.paid ? "captured" : "failed",
+      refundable: session.paid,
+      processorPaymentIntentId: session.paymentIntentId ?? payment.processorPaymentIntentId,
+      failureReason: session.paid ? undefined : session.failureReason,
+      paidAt: session.paid ? now : undefined,
+      updatedAt: now
+    });
+
+    if (!updatedPayment) {
+      throw new HttpError(500, "Payment record could not be updated");
+    }
+
+    if (session.paid) {
+      this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCaptured, booking.id, {
+        paymentId: updatedPayment.id,
+        amountCents: updatedPayment.amountCents,
+        processor: updatedPayment.processor
+      });
+      await this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "booking",
+        title: "Payment received",
+        body: "Your YardMatch payment went through successfully.",
+        actionHref: "/customer/dashboard"
+      });
+      await this.createNotification({
+        recipientId: booking.providerId,
+        recipientRole: "provider",
+        category: "booking",
+        title: "Customer payment received",
+        body: "A customer completed payment for an upcoming YardMatch booking.",
+        actionHref: "/provider/management"
+      });
+      return updatedPayment;
+    }
+
+    throw new HttpError(409, session.failureReason ?? "Stripe payment has not completed yet.");
+  }
+
   public async createPaymentIntent(payload: CreatePaymentIntentRequest): Promise<PaymentRecord> {
+    const now = new Date().toISOString();
     const payment: PaymentRecord = {
       id: crypto.randomUUID(),
       bookingId: payload.bookingId,
       amountCents: payload.amountCents,
+      currency: payload.currency ?? "usd",
+      processor: "manual",
+      createdAt: now,
+      updatedAt: now,
       status: "authorized",
       refundable: true
     };
@@ -1572,11 +1766,37 @@ export class MarketplacePlatformService {
     return this.repository.createPayment(payment);
   }
 
-  public async createRefund(payload: CreateRefundRequest): Promise<PaymentRecord> {
+  public async createRefund(
+    requester: AuthIdentityRecord,
+    payload: CreateRefundRequest
+  ): Promise<PaymentRecord> {
+    const payment = await this.repository.findPaymentById(payload.paymentId);
+    if (!payment) {
+      throw new HttpError(404, "Payment not found");
+    }
+
+    const booking = await this.repository.findBookingById(payment.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (requester.role === "customer" && booking.customerId !== requester.userId) {
+      throw new HttpError(403, "Customers can only request refunds for their own bookings");
+    }
+
+    if (requester.role === "provider" && booking.providerId !== requester.userId) {
+      throw new HttpError(403, "Providers can only manage refunds for their own jobs");
+    }
+
+    if (requester.role === "crew-member") {
+      throw new HttpError(403, "Crew members cannot request refunds");
+    }
+
     const updatedPayment = await this.repository.updatePayment(payload.paymentId, {
       status: "refunded",
       refundReason: payload.reason,
-      refundable: false
+      refundable: false,
+      updatedAt: new Date().toISOString()
     });
 
     if (!updatedPayment) {

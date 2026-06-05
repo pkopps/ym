@@ -60,6 +60,10 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - Prisma/Postgres scaffolding is in place under [`apps/api/prisma`](</Users/patrickkopps/Documents/app/apps/api/prisma>).
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
+- Real customer card payments are now prepared through Stripe hosted Checkout.
+- To turn the real checkout path on locally, set:
+  - `STRIPE_SECRET_KEY`
+  - `APP_BASE_URL` (for Stripe success/cancel redirects, for example `http://localhost:3000`)
 
 ### Database setup commands
 

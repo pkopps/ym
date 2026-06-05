@@ -7,11 +7,13 @@ import {
   CustomerProperty,
   CustomerReviewOpportunity,
   InstantQuoteResponse,
+  PaymentRecord,
   ProviderProfile,
   SearchProvidersResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 
@@ -49,11 +51,13 @@ function toDateTimeLocalValue(iso: string) {
 }
 
 export function CustomerLiveDashboard() {
+  const searchParams = useSearchParams();
   const [sessionReady, setSessionReady] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
   const [customer, setCustomer] = useState<CustomerProfile | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [paymentsByBookingId, setPaymentsByBookingId] = useState<Record<string, PaymentRecord>>({});
   const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
   const [reviewOpportunities, setReviewOpportunities] = useState<CustomerReviewOpportunity[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
@@ -70,6 +74,7 @@ export function CustomerLiveDashboard() {
   const [activeChatBookingId, setActiveChatBookingId] = useState<string | undefined>();
   const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
   const [chatDraft, setChatDraft] = useState("");
+  const [paymentActionHandled, setPaymentActionHandled] = useState(false);
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
   const nextBooking = bookings
@@ -91,11 +96,12 @@ export function CustomerLiveDashboard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [meResponse, propertyList, bookingList, reviewResponse] = await Promise.all([
+    const [meResponse, propertyList, bookingList, reviewResponse, payments] = await Promise.all([
       api.getCurrentUser(),
       api.getCustomerProperties(),
       api.getBookings(),
-      api.getCustomerReviewOpportunities()
+      api.getCustomerReviewOpportunities(),
+      api.getPayments()
     ]);
 
     const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
@@ -132,6 +138,15 @@ export function CustomerLiveDashboard() {
         return accumulator;
       }, {})
     );
+    setPaymentsByBookingId(
+      payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
+        const current = accumulator[payment.bookingId];
+        if (!current || current.updatedAt < payment.updatedAt) {
+          accumulator[payment.bookingId] = payment;
+        }
+        return accumulator;
+      }, {})
+    );
     setReviewOpportunities(reviewResponse.opportunities);
     setSessionReady(true);
 
@@ -146,6 +161,59 @@ export function CustomerLiveDashboard() {
       setSessionReady(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (!sessionReady || paymentActionHandled) {
+      return;
+    }
+
+    const checkoutSessionId = searchParams.get("session_id");
+    const paymentState = searchParams.get("payment");
+
+    if (!checkoutSessionId && !paymentState) {
+      return;
+    }
+
+    const clearPaymentParams = () => {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete("session_id");
+      nextUrl.searchParams.delete("payment");
+      window.history.replaceState({}, "", nextUrl.toString());
+    };
+
+    if (paymentState === "stripe-cancelled") {
+      setBookingMessage("Stripe checkout cancelled.");
+      setPaymentActionHandled(true);
+      clearPaymentParams();
+      return;
+    }
+
+    if (!checkoutSessionId) {
+      return;
+    }
+
+    setPaymentActionHandled(true);
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+
+    void (async () => {
+      try {
+        const api = createAuthenticatedWebApiClient();
+        await api.finalizeCheckoutSession({
+          checkoutSessionId
+        });
+        await loadDashboard();
+        setBookingMessage("Stripe payment received.");
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Unable to confirm your Stripe payment right now."
+        );
+      } finally {
+        setLoadingState("idle");
+        clearPaymentParams();
+      }
+    })();
+  }, [paymentActionHandled, searchParams, sessionReady]);
 
   async function handleQuote() {
     if (!activeProperty) {
@@ -231,6 +299,27 @@ export function CustomerLiveDashboard() {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
     } finally {
+      setLoadingState("idle");
+    }
+  }
+
+  async function handleStartCheckout(booking: Booking) {
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+    setBookingMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const checkout = await api.createCheckoutSession({
+        bookingId: booking.id,
+        successPath: "/customer/dashboard?payment=stripe-success",
+        cancelPath: "/customer/dashboard?payment=stripe-cancelled"
+      });
+      window.location.assign(checkout.checkoutUrl);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to open Stripe checkout right now."
+      );
       setLoadingState("idle");
     }
   }
@@ -372,6 +461,34 @@ export function CustomerLiveDashboard() {
     );
   }
 
+  function getPaymentRecord(bookingId: string) {
+    return paymentsByBookingId[bookingId];
+  }
+
+  function getPaymentLabel(payment?: PaymentRecord) {
+    if (!payment) {
+      return "Not paid";
+    }
+
+    if (payment.status === "captured") {
+      return "Paid";
+    }
+
+    if (payment.status === "pending") {
+      return "Awaiting Stripe checkout";
+    }
+
+    if (payment.status === "failed") {
+      return "Payment needs attention";
+    }
+
+    if (payment.status === "refunded") {
+      return "Refunded";
+    }
+
+    return "Payment on file";
+  }
+
   return (
     <main className="container stack-lg">
       <section className="page-hero">
@@ -385,7 +502,7 @@ export function CustomerLiveDashboard() {
 
       {bookingMessage ? (
         <section className="card">
-          <h2>Booking confirmed</h2>
+          <h2>Update</h2>
           <p>{bookingMessage}</p>
         </section>
       ) : null}
@@ -567,6 +684,13 @@ export function CustomerLiveDashboard() {
                     <h3>Notes</h3>
                     <p>{booking.notes || "No extra notes."}</p>
                   </div>
+                  <div>
+                    <h3>Payment</h3>
+                    <p>{getPaymentLabel(getPaymentRecord(booking.id))}</p>
+                    {getPaymentRecord(booking.id)?.paidAt ? (
+                      <p>{formatDateTime(getPaymentRecord(booking.id)?.paidAt as string)}</p>
+                    ) : null}
+                  </div>
                 </div>
                 {booking.status === "requested" || booking.status === "confirmed" ? (
                   <>
@@ -606,6 +730,18 @@ export function CustomerLiveDashboard() {
                       </label>
                     </div>
                     <div className="cta-row" style={{ marginTop: "1rem" }}>
+                      <button
+                        className="button"
+                        disabled={
+                          loadingState === "loading" || getPaymentRecord(booking.id)?.status === "captured"
+                        }
+                        onClick={() => void handleStartCheckout(booking)}
+                        type="button"
+                      >
+                        {getPaymentRecord(booking.id)?.status === "pending"
+                          ? "Continue Stripe checkout"
+                          : "Pay with Stripe"}
+                      </button>
                       <button
                         className="button-secondary"
                         disabled={loadingState === "loading"}

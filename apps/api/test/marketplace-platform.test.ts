@@ -3,6 +3,7 @@ import test from "node:test";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
+import { PaymentCheckoutGateway } from "../src/services/StripeCheckoutService";
 
 function createAddress(
   line1 = "112 Garden Row",
@@ -24,6 +25,28 @@ function createAddress(
 
 function futureIso(hoursFromNow: number) {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
+}
+
+function createFakeStripeGateway(): PaymentCheckoutGateway {
+  return {
+    isConfigured() {
+      return true;
+    },
+    async createCheckoutSession() {
+      return {
+        checkoutSessionId: "cs_test_123",
+        checkoutUrl: "https://checkout.stripe.test/session/cs_test_123",
+        paymentIntentId: "pi_test_123"
+      };
+    },
+    async verifyCheckoutSession() {
+      return {
+        checkoutSessionId: "cs_test_123",
+        paymentIntentId: "pi_test_123",
+        paid: true
+      };
+    }
+  };
 }
 
 test("completed bookings unlock review invites and reject duplicate reviews", async () => {
@@ -216,6 +239,63 @@ test("customers can cancel and reschedule future requested bookings", async () =
   );
 });
 
+test("customers can create and finalize Stripe checkout for their own bookings", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-payments@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Stripe payment test",
+    totalCents: 7200
+  });
+
+  const checkout = await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+  assert.equal(checkout.payment.status, "pending");
+  assert.equal(checkout.payment.processor, "stripe");
+  assert.equal(checkout.checkoutUrl, "https://checkout.stripe.test/session/cs_test_123");
+
+  const beforeFinalize = await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  });
+  assert.equal(beforeFinalize.length, 1);
+  assert.equal(beforeFinalize[0]?.status, "pending");
+
+  const finalized = await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+  assert.equal(finalized.status, "captured");
+  assert.equal(finalized.processorPaymentIntentId, "pi_test_123");
+  assert.ok(finalized.paidAt);
+  assert.equal(finalized.refundable, true);
+});
+
 test("review-first staffing creates pending crew matches that providers can approve", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -253,7 +333,7 @@ test("review-first staffing creates pending crew matches that providers can appr
     role: "crew-member",
     address: createAddress("118 Garden Row", 30.2437, -97.7634),
     categories: ["mulch-installation", "lawn-mowing"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 25,
     winterWorkEnabled: true
   });
@@ -347,7 +427,7 @@ test("auto-accept staffing immediately creates accepted crew matches", async () 
     role: "crew-member",
     address: createAddress("110 Garden Row", 30.2433, -97.7636),
     categories: ["lawn-mowing"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
     willingToTravelMiles: 30
   });
   assert.equal(crew.role, "crew-member");
@@ -406,7 +486,7 @@ test("provider and crew can chat on a valid crew match while unrelated users are
     role: "crew-member",
     address: createAddress("118 Garden Row", 30.2437, -97.7634),
     categories: ["mulch-installation"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 25
   });
   assert.equal(crew.role, "crew-member");
@@ -419,7 +499,7 @@ test("provider and crew can chat on a valid crew match while unrelated users are
     role: "crew-member",
     address: createAddress("120 Garden Row", 30.2439, -97.7632),
     categories: ["mulch-installation"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 25
   });
   assert.equal(otherCrew.role, "crew-member");
@@ -518,7 +598,7 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
     role: "crew-member",
     address: createAddress("118 Garden Row", 30.2437, -97.7634),
     categories: ["mulch-installation"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 25
   });
   assert.equal(crew.role, "crew-member");
@@ -531,7 +611,7 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
     role: "crew-member",
     address: createAddress("120 Garden Row", 30.2439, -97.7632),
     categories: ["mulch-installation"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 25
   });
   assert.equal(otherCrew.role, "crew-member");
@@ -652,7 +732,7 @@ test("providers confirm bookings before crew can go on route or start work", asy
     role: "crew-member",
     address: createAddress("118 Garden Row", 30.2437, -97.7634),
     categories: ["lawn-mowing", "mulch-installation"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 25,
     winterWorkEnabled: true
   });
@@ -774,7 +854,7 @@ test("notifications track booking, staffing, and review milestones across roles"
     role: "crew-member",
     address: createAddress("118 Garden Row", 30.2437, -97.7634),
     categories: ["mulch-installation"],
-    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 25
   });
   assert.equal(crew.role, "crew-member");

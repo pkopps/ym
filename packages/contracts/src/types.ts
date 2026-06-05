@@ -43,7 +43,8 @@ export type BookingStatus =
   | "disputed"
   | "refunded";
 
-export type PaymentStatus = "authorized" | "captured" | "refunded" | "failed";
+export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "failed";
+export type PaymentProcessor = "manual" | "stripe";
 
 export type SupportTicketStatus = "open" | "triaged" | "resolved";
 export type SupportIssueType = "billing" | "service-quality" | "account" | "general";
@@ -380,9 +381,18 @@ export interface PaymentRecord {
   id: string;
   bookingId: string;
   amountCents: number;
+  currency: string;
   status: PaymentStatus;
+  processor: PaymentProcessor;
   refundable: boolean;
+  checkoutSessionId?: string;
+  checkoutSessionUrl?: string;
+  processorPaymentIntentId?: string;
   refundReason?: string;
+  failureReason?: string;
+  paidAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SupportTicket {
@@ -624,6 +634,22 @@ export interface InstantQuoteResponse {
 export interface CreatePaymentIntentRequest {
   bookingId: string;
   amountCents: number;
+  currency?: string;
+}
+
+export interface CreateCheckoutSessionRequest {
+  bookingId: string;
+  successPath?: string;
+  cancelPath?: string;
+}
+
+export interface CreateCheckoutSessionResponse {
+  checkoutUrl: string;
+  payment: PaymentRecord;
+}
+
+export interface FinalizeCheckoutSessionRequest {
+  checkoutSessionId: string;
 }
 
 export interface CreateRefundRequest {

@@ -18,6 +18,7 @@
     "@yardmatch/analytics": "0.1.0",
     "@yardmatch/contracts": "0.1.0",
     "@yardmatch/domain": "0.1.0",
-    "@yardmatch/observability": "0.1.0"
+    "@yardmatch/observability": "0.1.0",
+    "stripe": "^22.2.0"
   }
 }

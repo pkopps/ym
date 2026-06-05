@@ -258,6 +258,16 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return payment;
   }
 
+  public async findPaymentById(paymentId: string): Promise<PaymentRecord | undefined> {
+    return this.payments.find((payment) => payment.id === paymentId);
+  }
+
+  public async findPaymentByCheckoutSessionId(
+    checkoutSessionId: string
+  ): Promise<PaymentRecord | undefined> {
+    return this.payments.find((payment) => payment.checkoutSessionId === checkoutSessionId);
+  }
+
   public async listPayments(): Promise<PaymentRecord[]> {
     return [...this.payments];
   }
