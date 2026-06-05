@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  BookingArrivalTracking,
   CustomerProviderConversationThread,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 
 function formatCurrency(cents: number) {
@@ -30,6 +32,8 @@ export function ProviderLiveManagementBoard() {
   const [activeCustomerThread, setActiveCustomerThread] = useState<
     CustomerProviderConversationThread | undefined
   >();
+  const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
+  const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
   const [chatDraft, setChatDraft] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -121,6 +125,19 @@ export function ProviderLiveManagementBoard() {
       setActiveCustomerThread(thread);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to open this conversation.");
+    }
+  }
+
+  async function openArrivalTracking(bookingId: string) {
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const tracking = await api.getBookingTracking(bookingId);
+      setActiveTrackingBookingId(bookingId);
+      setActiveTracking(tracking);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open arrival tracking.");
     }
   }
 
@@ -403,6 +420,13 @@ export function ProviderLiveManagementBoard() {
                   >
                     Message customer
                   </button>
+                  <button
+                    className="button-secondary"
+                    onClick={() => void openArrivalTracking(job.bookingId)}
+                    type="button"
+                  >
+                    Track crew
+                  </button>
                   <a
                     className="button-secondary"
                     href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent("Customer job support")}`}
@@ -410,6 +434,13 @@ export function ProviderLiveManagementBoard() {
                     Get help
                   </a>
                 </div>
+                {activeTrackingBookingId === job.bookingId && activeTracking ? (
+                  <ArrivalTrackingPanel
+                    subtitle={job.customerName}
+                    title="Crew arrival route"
+                    tracking={activeTracking}
+                  />
+                ) : null}
               </div>
             ) : null}
           </article>

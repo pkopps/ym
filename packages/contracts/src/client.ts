@@ -2,6 +2,7 @@ import {
   AppNotification,
   AnalyticsEvent,
   AuthenticatedUserEnvelope,
+  BookingArrivalTracking,
   Booking,
   CancelBookingRequest,
   ConfirmBookingRequest,
@@ -283,6 +284,10 @@ export class MarketplaceApiClient {
 
   public markBookingOnRoute(payload: MarkBookingOnRouteRequest) {
     return this.postJson<Booking>(ApiRoutes.markBookingOnRoute, payload);
+  }
+
+  public getBookingTracking(bookingId: string): Promise<BookingArrivalTracking> {
+    return this.getJson(`${ApiRoutes.bookingTracking}?bookingId=${encodeURIComponent(bookingId)}`);
   }
 
   public updateBookingAddress(payload: UpdateBookingAddressRequest) {

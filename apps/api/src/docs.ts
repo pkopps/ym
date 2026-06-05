@@ -311,6 +311,27 @@ export const apiSpec = {
         }
       }
     },
+    "/api/bookings/tracking": {
+      get: {
+        tags: ["Bookings"],
+        summary: "Fetch live arrival tracking for a booking",
+        description:
+          "Returns a computed live arrival-tracking feed for the accepted crew member once the booking has been marked on route.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "bookingId",
+            in: "query",
+            required: true,
+            schema: { type: "string" }
+          }
+        ],
+        responses: {
+          "200": { description: "Computed arrival tracking returned" },
+          "403": { description: "User is not tied to this booking" }
+        }
+      }
+    },
     "/api/bookings/start": {
       post: {
         tags: ["Bookings"],

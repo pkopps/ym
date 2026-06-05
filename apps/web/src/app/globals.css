@@ -1992,6 +1992,89 @@ body {
   margin: 0;
 }
 
+.arrival-tracking {
+  margin-top: 1rem;
+  gap: 1rem;
+}
+
+.arrival-tracking__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.arrival-tracking__eta {
+  display: grid;
+  gap: 0.15rem;
+  justify-items: end;
+  text-align: right;
+}
+
+.arrival-tracking__eta strong {
+  font-size: 1.4rem;
+  color: var(--ym-color-ink);
+}
+
+.arrival-tracking__eta span {
+  color: var(--ym-color-ink-soft);
+  text-transform: capitalize;
+}
+
+.arrival-tracking__progress {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.arrival-tracking__progress-bar {
+  width: 100%;
+  height: 0.8rem;
+  border-radius: 999px;
+  background: rgba(18, 58, 44, 0.1);
+  overflow: hidden;
+}
+
+.arrival-tracking__progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--ym-color-primary), #6abf7d);
+}
+
+.arrival-tracking__progress-copy {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--ym-color-ink-soft);
+  font-size: 0.95rem;
+  flex-wrap: wrap;
+}
+
+.arrival-tracking__map-shell {
+  border-radius: 1.25rem;
+  overflow: hidden;
+  border: 1px solid rgba(18, 58, 44, 0.12);
+  background: #f4f1e7;
+}
+
+.arrival-tracking__map {
+  width: 100%;
+  height: 320px;
+  border: 0;
+}
+
+.arrival-tracking__details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.arrival-tracking__message {
+  color: var(--ym-color-ink-soft);
+  margin: 0;
+}
+
 .result-badge {
   display: inline-flex;
   align-items: center;
@@ -2530,6 +2613,7 @@ body {
   .customer-search-shell__grid,
   .property-guide__grid,
   .history-card__grid,
+  .arrival-tracking__details,
   .crew-opportunity-card__grid,
   .crew-schedule-grid,
   .calendar-slots--inline,
@@ -2557,6 +2641,11 @@ body {
   .provider-site-header__inner,
   .provider-menu__grid {
     grid-template-columns: 1fr;
+  }
+
+  .arrival-tracking__eta {
+    justify-items: start;
+    text-align: left;
   }
 
   .results-summary,

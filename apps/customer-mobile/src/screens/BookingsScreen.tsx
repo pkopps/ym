@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-nat
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  BookingArrivalTracking,
   Booking,
   CustomerProviderConversationThread,
   PaymentRecord,
@@ -48,6 +49,8 @@ export function BookingsScreen() {
   const [activeChatBookingId, setActiveChatBookingId] = useState<string | undefined>();
   const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
   const [chatDraft, setChatDraft] = useState("");
+  const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
+  const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
 
   const upcomingBookings = useMemo(
     () =>
@@ -261,6 +264,22 @@ export function BookingsScreen() {
     }
   }
 
+  async function openArrivalTracking(booking: Booking) {
+    if (!envelope?.session.token || !booking.onRouteConfirmedAt) {
+      return;
+    }
+
+    try {
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setTracking(await api.getBookingTracking(booking.id));
+      setActiveTrackingBookingId(booking.id);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load arrival tracking.");
+    }
+  }
+
   function getPaymentRecord(bookingId: string) {
     return paymentsByBookingId[bookingId];
   }
@@ -392,7 +411,32 @@ export function BookingsScreen() {
                       <Text style={styles.secondaryActionLabel}>Message business</Text>
                     </Pressable>
                   ) : null}
+                  {booking.onRouteConfirmedAt ? (
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void openArrivalTracking(booking)}
+                      style={styles.secondaryAction}
+                    >
+                      <Text style={styles.secondaryActionLabel}>Track crew</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
+                {booking.onRouteConfirmedAt &&
+                activeTrackingBookingId === booking.id &&
+                tracking ? (
+                  <View style={styles.trackingCard}>
+                    <Text style={styles.bookingTitle}>
+                      {tracking.etaMinutes ? `${tracking.etaMinutes} min away` : "At the property"}
+                    </Text>
+                    <Text style={styles.bookingMeta}>{tracking.message}</Text>
+                    <Text style={styles.bookingMeta}>
+                      {tracking.progressPercent}% complete •{" "}
+                      {tracking.remainingDistanceMiles !== undefined
+                        ? `${tracking.remainingDistanceMiles.toFixed(1)} miles left`
+                        : "Waiting for route"}
+                    </Text>
+                  </View>
+                ) : null}
                 {booking.onRouteConfirmedAt && activeChatBookingId === booking.id ? (
                   <View style={styles.chatStack}>
                     {(chatThread?.messages ?? []).map((message) => (
@@ -611,6 +655,12 @@ const styles = StyleSheet.create({
   },
   chatStack: {
     gap: BrandTokens.spacing.sm
+  },
+  trackingCard: {
+    gap: BrandTokens.spacing.xs,
+    borderRadius: BrandTokens.radius.md,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    padding: BrandTokens.spacing.md
   },
   chatBubble: {
     gap: BrandTokens.spacing.xs

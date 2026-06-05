@@ -753,6 +753,85 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
   );
 });
 
+test("arrival tracking shows a live route once the crew is on route", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-tracking@example.com",
+    password: "Password123!",
+    phone: "555-0900",
+    role: "provider",
+    companyName: "GreenStride Lawn",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  assert.equal(provider.role, "provider");
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-tracking@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  assert.equal(customer.role, "customer");
+
+  const crew = await platform.registerUser({
+    fullName: "Terry Crew",
+    email: "crew-tracking@example.com",
+    password: "Password123!",
+    phone: "555-0800",
+    role: "crew-member",
+    address: createAddress("118 Garden Row", 30.2437, -97.7634),
+    categories: ["mulch-installation"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 25
+  });
+  assert.equal(crew.role, "crew-member");
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Front beds and walkway border",
+    totalCents: 9200
+  });
+
+  const staffing = await platform.getProviderStaffingOverview(provider.id);
+  const crewMatch = staffing.jobs[0]?.matches.find((match) => match.crewMemberId === crew.id);
+  assert.ok(crewMatch);
+
+  await platform.reviewCrewMatch(provider.id, {
+    crewMatchId: crewMatch.id,
+    action: "accept"
+  });
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  const onRouteBooking = await platform.markBookingOnRoute(crew.id, { bookingId: booking.id });
+  assert.ok(onRouteBooking.onRouteConfirmedAt);
+
+  const oneMinuteLater = new Date(
+    new Date(onRouteBooking.onRouteConfirmedAt as string).getTime() + 1 * 60 * 1000
+  ).toISOString();
+  const tracking = await platform.getBookingArrivalTracking(
+    { userId: customer.id, email: customer.email, role: "customer" },
+    booking.id,
+    oneMinuteLater
+  );
+
+  assert.equal(tracking.status, "on-route");
+  assert.ok(tracking.currentPoint);
+  assert.ok((tracking.etaMinutes ?? 0) > 0);
+  assert.ok(tracking.progressPercent > 0);
+});
+
 test("providers confirm bookings before crew can go on route or start work", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

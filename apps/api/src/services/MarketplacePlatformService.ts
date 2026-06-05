@@ -4,6 +4,7 @@ import {
   AppNotification,
   AnalyticsEvent,
   CancelBookingRequest,
+  BookingArrivalTracking,
   CompleteBookingRequest,
   ConfirmBookingRequest,
   CrewAvailabilityDay,
@@ -634,6 +635,120 @@ export class MarketplacePlatformService {
     ]);
 
     return updatedBooking;
+  }
+
+  public async getBookingArrivalTracking(
+    actor: AuthIdentityRecord,
+    bookingId: string,
+    nowIso = new Date().toISOString()
+  ): Promise<BookingArrivalTracking> {
+    const booking = await this.repository.findBookingById(bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const matches = await this.repository.listCrewMatches();
+    const acceptedMatch = matches.find(
+      (match) => match.bookingId === booking.id && match.status === "accepted"
+    );
+
+    if (actor.role === "customer" && booking.customerId !== actor.userId) {
+      throw new HttpError(403, "Customers can only track their own bookings");
+    }
+
+    if (actor.role === "provider" && booking.providerId !== actor.userId) {
+      throw new HttpError(403, "Providers can only track their own jobs");
+    }
+
+    if (
+      actor.role === "crew-member" &&
+      (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId)
+    ) {
+      throw new HttpError(403, "Crew members can only track accepted assignments");
+    }
+
+    const crewMemberId = booking.onRouteConfirmedByCrewMemberId ?? acceptedMatch?.crewMemberId;
+    const crewMember = crewMemberId
+      ? await this.repository.findCrewMemberById(crewMemberId)
+      : undefined;
+
+    const baseTracking: BookingArrivalTracking = {
+      bookingId: booking.id,
+      status: "unavailable",
+      customerId: booking.customerId,
+      providerId: booking.providerId,
+      crewMemberId: crewMember?.id,
+      crewMemberName: crewMember?.fullName,
+      destination: booking.serviceAddress,
+      routeStartPoint: crewMember?.address.point,
+      progressPercent: 0,
+      lastComputedAt: nowIso,
+      message: "Tracking is not available for this booking yet."
+    };
+
+    if (!acceptedMatch || !crewMember) {
+      return {
+        ...baseTracking,
+        message: "No accepted crew member is assigned yet."
+      };
+    }
+
+    if (!booking.onRouteConfirmedAt) {
+      return {
+        ...baseTracking,
+        status: "not-started",
+        message: `${crewMember.fullName} is assigned, but has not marked this booking on route yet.`
+      };
+    }
+
+    const startedAt = new Date(booking.onRouteConfirmedAt).getTime();
+    const now = new Date(nowIso).getTime();
+    const totalDistanceMiles = this.geoService.distanceMiles(crewMember.address, booking.serviceAddress);
+    const totalTravelMinutes = Math.max(6, Math.min(45, Math.round((totalDistanceMiles / 22) * 60) + 4));
+    const elapsedMinutes = Math.max(0, (now - startedAt) / (1000 * 60));
+    const clampedProgress = Math.max(0, Math.min(1, elapsedMinutes / totalTravelMinutes));
+    const currentPoint = this.interpolatePoint(
+      crewMember.address.point,
+      booking.serviceAddress.point,
+      booking.status === "in-progress" || booking.status === "completed" ? 1 : clampedProgress
+    );
+
+    if (booking.status === "completed") {
+      return {
+        ...baseTracking,
+        status: "completed",
+        currentPoint: booking.serviceAddress.point,
+        progressPercent: 100,
+        remainingDistanceMiles: 0,
+        etaMinutes: 0,
+        unlockedAt: booking.onRouteConfirmedAt,
+        message: `${crewMember.fullName} already completed this service.`
+      };
+    }
+
+    if (booking.status === "in-progress" || clampedProgress >= 1) {
+      return {
+        ...baseTracking,
+        status: "arrived",
+        currentPoint: booking.serviceAddress.point,
+        progressPercent: 100,
+        remainingDistanceMiles: 0,
+        etaMinutes: 0,
+        unlockedAt: booking.onRouteConfirmedAt,
+        message: `${crewMember.fullName} has arrived at the property.`
+      };
+    }
+
+    return {
+      ...baseTracking,
+      status: "on-route",
+      currentPoint,
+      progressPercent: Math.round(clampedProgress * 100),
+      remainingDistanceMiles: Number((totalDistanceMiles * (1 - clampedProgress)).toFixed(1)),
+      etaMinutes: Math.max(1, Math.ceil(totalTravelMinutes - elapsedMinutes)),
+      unlockedAt: booking.onRouteConfirmedAt,
+      message: `${crewMember.fullName} is on the way.`
+    };
   }
 
   public async startBooking(crewMemberId: string, payload: StartBookingRequest): Promise<Booking> {
@@ -2425,6 +2540,19 @@ export class MarketplacePlatformService {
       .split("-")
       .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
       .join(" ");
+  }
+
+  private interpolatePoint(
+    origin: { latitude: number; longitude: number },
+    destination: { latitude: number; longitude: number },
+    progress: number
+  ) {
+    return {
+      latitude: Number((origin.latitude + (destination.latitude - origin.latitude) * progress).toFixed(6)),
+      longitude: Number(
+        (origin.longitude + (destination.longitude - origin.longitude) * progress).toFixed(6)
+      )
+    };
   }
 
   private async createNotification(

@@ -56,6 +56,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/start") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/on-route") ||
+      (context.method === "GET" && context.path === "/api/bookings/tracking") ||
       (context.method === "POST" && context.path === "/api/bookings/address") ||
       (context.method === "GET" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/review-invites/process") ||
@@ -284,6 +285,20 @@ export class MarketplaceController implements ApiController {
         200,
         await this.platform.markBookingOnRoute(identity.userId, context.body as MarkBookingOnRouteRequest)
       );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/bookings/tracking") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      const bookingId = context.query.get("bookingId");
+      if (!bookingId) {
+        sendJson(response, 400, {
+          message: "bookingId is required"
+        });
+        return;
+      }
+
+      sendJson(response, 200, await this.platform.getBookingArrivalTracking(identity, bookingId));
       return;
     }
 

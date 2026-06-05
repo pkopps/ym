@@ -58,6 +58,12 @@ export type CrewMemberStatus = "available" | "assigned" | "off-duty";
 export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 export type ProviderStaffingMode = "auto-accept" | "review-first";
 export type CrewMatchStatus = "pending-provider-review" | "accepted" | "denied";
+export type BookingArrivalTrackingStatus =
+  | "unavailable"
+  | "not-started"
+  | "on-route"
+  | "arrived"
+  | "completed";
 
 export interface GeoPoint {
   latitude: number;
@@ -332,6 +338,24 @@ export interface Booking {
   totalCents: number;
   reviewId?: string;
   addressChangeHistory: BookingAddressChangeRequest[];
+}
+
+export interface BookingArrivalTracking {
+  bookingId: string;
+  status: BookingArrivalTrackingStatus;
+  customerId: string;
+  providerId: string;
+  crewMemberId?: string;
+  crewMemberName?: string;
+  destination: Address;
+  currentPoint?: GeoPoint;
+  routeStartPoint?: GeoPoint;
+  progressPercent: number;
+  remainingDistanceMiles?: number;
+  etaMinutes?: number;
+  unlockedAt?: string;
+  lastComputedAt: string;
+  message: string;
 }
 
 export interface ProviderReview {

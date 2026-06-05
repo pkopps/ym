@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookingArrivalTracking,
   Booking,
   CustomerProviderConversationThread,
   CustomerProfile,
@@ -15,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 
 const serviceOptions: Array<{ label: string; value: ServiceCategory }> = [
@@ -75,6 +77,8 @@ export function CustomerLiveDashboard() {
   const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
   const [chatDraft, setChatDraft] = useState("");
   const [paymentActionHandled, setPaymentActionHandled] = useState(false);
+  const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
+  const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
   const nextBooking = bookings
@@ -402,6 +406,22 @@ export function CustomerLiveDashboard() {
       setChatThread(nextThread);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to open business chat right now.");
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
+  async function openArrivalTracking(bookingId: string) {
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const tracking = await api.getBookingTracking(bookingId);
+      setActiveTrackingBookingId(bookingId);
+      setActiveTracking(tracking);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load arrival tracking right now.");
     } finally {
       setLoadingState("idle");
     }
@@ -783,6 +803,14 @@ export function CustomerLiveDashboard() {
                       >
                         Message business
                       </button>
+                      <button
+                        className="button-secondary"
+                        disabled={loadingState === "loading"}
+                        onClick={() => void openArrivalTracking(booking.id)}
+                        type="button"
+                      >
+                        Track crew
+                      </button>
                       <a
                         className="button-secondary"
                         href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=service-quality&subject=${encodeURIComponent("On-route support")}`}
@@ -791,6 +819,13 @@ export function CustomerLiveDashboard() {
                       </a>
                     </div>
                   </div>
+                ) : null}
+                {activeTrackingBookingId === booking.id && activeTracking ? (
+                  <ArrivalTrackingPanel
+                    subtitle={providerNamesById[booking.providerId] ?? "Landscaping business"}
+                    title="Crew on the way"
+                    tracking={activeTracking}
+                  />
                 ) : null}
               </article>
             ))}

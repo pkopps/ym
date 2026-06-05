@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CustomerProviderConversationThread, ProviderStaffingOverview } from "@yardmatch/contracts";
+import {
+  BookingArrivalTracking,
+  CustomerProviderConversationThread,
+  ProviderStaffingOverview
+} from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
@@ -17,6 +21,8 @@ export function ScheduleScreen() {
   const [statusMessage, setStatusMessage] = useState("");
   const [activeBookingId, setActiveBookingId] = useState<string | undefined>();
   const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
+  const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
+  const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [chatDraft, setChatDraft] = useState("");
   const [isWorking, setIsWorking] = useState(false);
 
@@ -126,6 +132,21 @@ export function ScheduleScreen() {
     }
   }
 
+  async function openArrivalTracking(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setTracking(await api.getBookingTracking(bookingId));
+      setActiveTrackingBookingId(bookingId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open arrival tracking.");
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Schedule" title="Upcoming jobs">
       <View style={styles.modeRow}>
@@ -203,7 +224,32 @@ export function ScheduleScreen() {
                         <Text style={styles.chatButtonLabel}>Message customer</Text>
                       </Pressable>
                     ) : null}
+                    {job.onRouteConfirmedAt ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void openArrivalTracking(job.bookingId)}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Track crew</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
+                  {job.onRouteConfirmedAt &&
+                  activeTrackingBookingId === job.bookingId &&
+                  tracking ? (
+                    <View style={styles.trackingCard}>
+                      <Text style={styles.clientLabel}>
+                        {tracking.etaMinutes ? `${tracking.etaMinutes} min away` : "At the property"}
+                      </Text>
+                      <Text style={styles.metaLine}>{tracking.message}</Text>
+                      <Text style={styles.metaLine}>
+                        {tracking.progressPercent}% complete •{" "}
+                        {tracking.remainingDistanceMiles !== undefined
+                          ? `${tracking.remainingDistanceMiles.toFixed(1)} miles left`
+                          : "Waiting for route"}
+                      </Text>
+                    </View>
+                  ) : null}
                   {job.onRouteConfirmedAt && activeBookingId === job.bookingId ? (
                     <View style={styles.chatStack}>
                       {(chatThread?.messages ?? []).map((message) => (
@@ -356,6 +402,13 @@ const styles = StyleSheet.create({
   chatStack: {
     gap: BrandTokens.spacing.sm,
     marginTop: BrandTokens.spacing.sm
+  },
+  trackingCard: {
+    gap: BrandTokens.spacing.xs,
+    marginTop: BrandTokens.spacing.sm,
+    borderRadius: BrandTokens.radius.md,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    padding: BrandTokens.spacing.md
   },
   chatBubble: {
     gap: BrandTokens.spacing.xs
