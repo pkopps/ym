@@ -8,6 +8,12 @@ export interface StoredWebSession {
   email: string;
   userId: string;
   fullName: string;
+  expiresAtIso: string;
+}
+
+export function hasSessionExpired(expiresAtIso: string): boolean {
+  const expiry = Date.parse(expiresAtIso);
+  return Number.isNaN(expiry) || expiry <= Date.now();
 }
 
 export function getWebApiBaseUrl(): string {
@@ -29,8 +35,15 @@ export function loadStoredSession(): StoredWebSession | undefined {
   }
 
   try {
-    return JSON.parse(raw) as StoredWebSession;
+    const parsed = JSON.parse(raw) as StoredWebSession;
+    if (!parsed.expiresAtIso || hasSessionExpired(parsed.expiresAtIso)) {
+      clearStoredSession();
+      return undefined;
+    }
+
+    return parsed;
   } catch {
+    clearStoredSession();
     return undefined;
   }
 }

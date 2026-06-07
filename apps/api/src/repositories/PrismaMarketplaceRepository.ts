@@ -1195,7 +1195,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           userId: identity.id,
           email: identity.email,
           passwordHash: identity.passwordHash ?? undefined,
-          role: identity.role as AuthIdentityRecord["role"]
+          role: identity.role as AuthIdentityRecord["role"],
+          sessionVersion: identity.sessionVersion,
+          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
+          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
+          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
         }
       : undefined;
   }
@@ -1209,7 +1213,57 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           userId: identity.id,
           email: identity.email,
           passwordHash: identity.passwordHash ?? undefined,
-          role: identity.role as AuthIdentityRecord["role"]
+          role: identity.role as AuthIdentityRecord["role"],
+          sessionVersion: identity.sessionVersion,
+          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
+          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
+          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
+        }
+      : undefined;
+  }
+
+  public async updateAuthIdentity(
+    userId: string,
+    updates: Partial<AuthIdentityRecord>
+  ): Promise<AuthIdentityRecord | undefined> {
+    const identity = await this.prisma.userAccount.update({
+      where: { id: userId },
+      data: {
+        email: updates.email?.toLowerCase(),
+        passwordHash: "passwordHash" in updates ? updates.passwordHash ?? null : undefined,
+        sessionVersion: updates.sessionVersion,
+        resetPasswordCodeHash:
+          "resetPasswordCodeHash" in updates ? updates.resetPasswordCodeHash ?? null : undefined,
+        resetPasswordExpiresAt:
+          "resetPasswordExpiresAt" in updates
+            ? updates.resetPasswordExpiresAt
+              ? new Date(updates.resetPasswordExpiresAt)
+              : null
+            : undefined,
+        resetPasswordRequestedAt:
+          "resetPasswordRequestedAt" in updates
+            ? updates.resetPasswordRequestedAt
+              ? new Date(updates.resetPasswordRequestedAt)
+              : null
+            : undefined
+      }
+    }).catch((error: any) => {
+      if (error?.code === "P2025") {
+        return undefined;
+      }
+      throw error;
+    });
+
+    return identity
+      ? {
+          userId: identity.id,
+          email: identity.email,
+          passwordHash: identity.passwordHash ?? undefined,
+          role: identity.role as AuthIdentityRecord["role"],
+          sessionVersion: identity.sessionVersion,
+          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
+          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
+          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
         }
       : undefined;
   }

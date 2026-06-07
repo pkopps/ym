@@ -41,6 +41,8 @@ import {
   FinalizeCheckoutSessionRequest,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
+  RequestPasswordResetRequest,
+  RequestPasswordResetResponse,
   CreateRefundRequest,
   CreateSupportTicketRequest,
   UpdateSupportTicketRequest,
@@ -72,6 +74,7 @@ import {
   SearchProvidersRequest,
   SearchProvidersResponse,
   StartBookingRequest,
+  ConfirmPasswordResetRequest,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
   UpdateProviderSettingsRequest,
@@ -90,6 +93,13 @@ import {
   SchedulingService
 } from "@yardmatch/domain";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import {
+  PASSWORD_RESET_TTL_MINUTES,
+  generatePasswordResetCode,
+  hashPassword,
+  hashPasswordResetCode,
+  validatePasswordStrength
+} from "../auth";
 import { HttpError } from "../http";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
 import { NotificationDeliveryService } from "./NotificationDeliveryService";
@@ -228,6 +238,100 @@ export class MarketplacePlatformService {
       serviceRadiusMiles: provider.serviceRadiusMiles
     });
     return this.repository.createProvider(provider, passwordHash);
+  }
+
+  public async requestPasswordReset(
+    payload: RequestPasswordResetRequest
+  ): Promise<RequestPasswordResetResponse> {
+    const email = payload.email.trim().toLowerCase();
+    const identity = await this.repository.findAuthIdentityByEmail(email);
+
+    if (!identity?.passwordHash) {
+      return {
+        success: true,
+        message: "If that account exists, YardMatch has prepared a password reset code."
+      };
+    }
+
+    const resetCode = generatePasswordResetCode();
+    const expiresAtIso = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000).toISOString();
+    await this.repository.updateAuthIdentity(identity.userId, {
+      resetPasswordCodeHash: hashPasswordResetCode(email, resetCode),
+      resetPasswordExpiresAt: expiresAtIso,
+      resetPasswordRequestedAt: new Date().toISOString()
+    });
+
+    await this.createNotification({
+      recipientId: identity.userId,
+      recipientRole: identity.role,
+      category: "account",
+      title: "Password reset requested",
+      body: "Use the latest YardMatch password reset code to finish securing your account.",
+      actionHref: "/login"
+    });
+
+    return {
+      success: true,
+      message: "If that account exists, YardMatch has prepared a password reset code.",
+      expiresAtIso,
+      resetCodePreview: resetCode,
+      resetUrlPreview: `${this.appBaseUrl}/login?resetCode=${encodeURIComponent(resetCode)}&email=${encodeURIComponent(email)}`
+    };
+  }
+
+  public async confirmPasswordReset(
+    payload: ConfirmPasswordResetRequest
+  ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
+    const email = payload.email.trim().toLowerCase();
+    const identity = await this.repository.findAuthIdentityByEmail(email);
+
+    if (!identity?.passwordHash) {
+      throw new HttpError(400, "Invalid password reset code");
+    }
+
+    if (!identity.resetPasswordCodeHash || !identity.resetPasswordExpiresAt) {
+      throw new HttpError(400, "Password reset code has expired");
+    }
+
+    if (new Date(identity.resetPasswordExpiresAt).getTime() <= Date.now()) {
+      throw new HttpError(400, "Password reset code has expired");
+    }
+
+    const expectedHash = hashPasswordResetCode(email, payload.resetCode.trim());
+    if (expectedHash !== identity.resetPasswordCodeHash) {
+      throw new HttpError(400, "Invalid password reset code");
+    }
+
+    validatePasswordStrength(payload.newPassword);
+    const nextSessionVersion = (identity.sessionVersion ?? 1) + 1;
+    await this.repository.updateAuthIdentity(identity.userId, {
+      passwordHash: hashPassword(payload.newPassword),
+      sessionVersion: nextSessionVersion,
+      resetPasswordCodeHash: undefined,
+      resetPasswordExpiresAt: undefined,
+      resetPasswordRequestedAt: undefined
+    });
+
+    await this.createNotification({
+      recipientId: identity.userId,
+      recipientRole: identity.role,
+      category: "account",
+      title: "Password updated",
+      body: "Your YardMatch password was changed and older sessions were signed out.",
+      actionHref: "/login"
+    });
+
+    const updatedIdentity = await this.repository.findAuthIdentityByUserId(identity.userId);
+    if (!updatedIdentity) {
+      throw new HttpError(404, "User profile not found");
+    }
+
+    const user = await this.getUserByIdentity(updatedIdentity);
+    if (!user) {
+      throw new HttpError(404, "User profile not found");
+    }
+
+    return user;
   }
 
   public async searchPlaces(query: string): Promise<PlaceSearchResponse> {
@@ -2833,6 +2937,13 @@ export class MarketplacePlatformService {
 
   public async findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined> {
     return this.repository.findAuthIdentityByUserId(userId);
+  }
+
+  public async updateAuthIdentity(
+    userId: string,
+    updates: Partial<AuthIdentityRecord>
+  ): Promise<AuthIdentityRecord | undefined> {
+    return this.repository.updateAuthIdentity(userId, updates);
   }
 
   private async buildProviderStaffingSummaries(

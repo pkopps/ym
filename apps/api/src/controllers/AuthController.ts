@@ -1,15 +1,19 @@
 import {
   AuthenticatedUserEnvelope,
+  ConfirmPasswordResetRequest,
   CurrentUserResponse,
   GoogleAuthStartResponse,
   LoginRequest,
+  RequestPasswordResetRequest,
   RegisterUserRequest
 } from "@yardmatch/contracts";
 import {
   TOKEN_TTL_SECONDS,
+  getSessionExpiryIso,
   getBearerToken,
   hashPassword,
   signSessionToken,
+  validatePasswordStrength,
   verifyPassword,
   verifySessionToken
 } from "../auth";
@@ -23,6 +27,8 @@ export class AuthController implements ApiController {
     return (
       (context.method === "POST" && context.path === "/api/auth/register") ||
       (context.method === "POST" && context.path === "/api/auth/login") ||
+      (context.method === "POST" && context.path === "/api/auth/password-reset/request") ||
+      (context.method === "POST" && context.path === "/api/auth/password-reset/confirm") ||
       (context.method === "GET" && context.path === "/api/auth/me") ||
       (context.method === "GET" &&
         (context.path === "/api/auth/google/start" || context.path === "/api/auth/apple/start"))
@@ -78,9 +84,44 @@ export class AuthController implements ApiController {
           token: signSessionToken({
             userId: identity.userId,
             email: identity.email,
-            role: identity.role
+            role: identity.role,
+            sessionVersion: identity.sessionVersion
           }),
-          expiresInSeconds: TOKEN_TTL_SECONDS
+          expiresInSeconds: TOKEN_TTL_SECONDS,
+          expiresAtIso: getSessionExpiryIso(TOKEN_TTL_SECONDS)
+        },
+        user
+      };
+
+      sendJson(response, 200, result);
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/password-reset/request") {
+      const payload = context.body as RequestPasswordResetRequest;
+      const result = await this.platform.requestPasswordReset(payload);
+      sendJson(response, 200, result);
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/password-reset/confirm") {
+      const payload = context.body as ConfirmPasswordResetRequest;
+      const user = await this.platform.confirmPasswordReset(payload);
+      const identity = await this.platform.findAuthIdentityByUserId(user.id);
+      if (!identity) {
+        throw new HttpError(404, "User profile not found");
+      }
+
+      const result: AuthenticatedUserEnvelope = {
+        session: {
+          token: signSessionToken({
+            userId: identity.userId,
+            email: identity.email,
+            role: identity.role,
+            sessionVersion: identity.sessionVersion
+          }),
+          expiresInSeconds: TOKEN_TTL_SECONDS,
+          expiresAtIso: getSessionExpiryIso(TOKEN_TTL_SECONDS)
         },
         user
       };
@@ -105,6 +146,9 @@ export class AuthController implements ApiController {
       if (!identity) {
         throw new HttpError(401, "Unknown session");
       }
+      if (identity.sessionVersion !== session.sessionVersion) {
+        throw new HttpError(401, "Session has been replaced");
+      }
 
       const user = await this.platform.getUserByIdentity(identity);
       if (!user) {
@@ -119,6 +163,7 @@ export class AuthController implements ApiController {
     }
 
     const payload = context.body as RegisterUserRequest;
+    validatePasswordStrength(payload.password);
     const existingIdentity = await this.platform.findAuthIdentityByEmail(payload.email.trim().toLowerCase());
     if (existingIdentity) {
       throw new HttpError(409, "An account with that email already exists");
@@ -137,9 +182,11 @@ export class AuthController implements ApiController {
         token: signSessionToken({
           userId: user.id,
           email: user.email,
-          role: user.role
+          role: user.role,
+          sessionVersion: 1
         }),
-        expiresInSeconds: TOKEN_TTL_SECONDS
+        expiresInSeconds: TOKEN_TTL_SECONDS,
+        expiresAtIso: getSessionExpiryIso(TOKEN_TTL_SECONDS)
       },
       user
     };

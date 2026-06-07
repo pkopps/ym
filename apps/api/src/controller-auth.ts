@@ -21,6 +21,9 @@ export async function requireAuthenticatedIdentity(
   if (!identity) {
     throw new HttpError(401, "Unknown session");
   }
+  if (identity.sessionVersion !== session.sessionVersion) {
+    throw new HttpError(401, "Session has been replaced");
+  }
 
   return identity;
 }
@@ -36,7 +39,11 @@ export async function getOptionalAuthenticatedIdentity(
 
   try {
     const session = verifySessionToken(token);
-    return await platform.findAuthIdentityByUserId(session.userId);
+    const identity = await platform.findAuthIdentityByUserId(session.userId);
+    if (!identity || identity.sessionVersion !== session.sessionVersion) {
+      return undefined;
+    }
+    return identity;
   } catch {
     return undefined;
   }

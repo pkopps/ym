@@ -93,6 +93,51 @@ export const apiSpec = {
         }
       }
     },
+    "/api/auth/password-reset/request": {
+      post: {
+        tags: ["Auth"],
+        summary: "Request a password reset code",
+        description:
+          "Starts the YardMatch password recovery flow. In local development, the response includes a reset code preview so web and mobile flows can be tested before a real email/SMS provider is wired.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                email: "jordan@example.com"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Generic success response with local reset-code preview when available" }
+        }
+      }
+    },
+    "/api/auth/password-reset/confirm": {
+      post: {
+        tags: ["Auth"],
+        summary: "Confirm a password reset with the latest reset code",
+        description:
+          "Resets the password, clears the one-time reset code, increments the session version, and returns a fresh authenticated session.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                email: "jordan@example.com",
+                resetCode: "482913",
+                newPassword: "BetterPass123!"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Password updated and a fresh bearer session returned" },
+          "400": { description: "Invalid or expired reset code" }
+        }
+      }
+    },
     "/api/auth/me": {
       get: {
         tags: ["Auth"],

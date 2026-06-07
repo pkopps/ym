@@ -28,6 +28,10 @@ export interface AuthIdentityRecord {
   email: string;
   passwordHash?: string;
   role: CustomerProfile["role"] | ProviderProfile["role"] | CrewMemberProfile["role"];
+  sessionVersion: number;
+  resetPasswordCodeHash?: string;
+  resetPasswordExpiresAt?: string;
+  resetPasswordRequestedAt?: string;
 }
 
 export interface MarketplaceRepository {
@@ -121,4 +125,8 @@ export interface MarketplaceRepository {
   listCustomerProviderMessages(conversationId: string): Promise<CustomerProviderMessage[]>;
   findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined>;
   findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined>;
+  updateAuthIdentity(
+    userId: string,
+    updates: Partial<AuthIdentityRecord>
+  ): Promise<AuthIdentityRecord | undefined>;
 }

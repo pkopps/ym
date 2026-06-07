@@ -1,13 +1,15 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import type { RequestContext } from "./http";
 
 const DEV_JWT_SECRET = "yardmatch-dev-secret";
 export const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
+export const PASSWORD_RESET_TTL_MINUTES = 20;
 
 export interface SessionActor {
   userId: string;
   email: string;
   role: "customer" | "provider" | "crew-member";
+  sessionVersion: number;
 }
 
 interface JwtPayload extends SessionActor {
@@ -49,6 +51,31 @@ export function verifyPassword(password: string, storedHash: string): boolean {
   return timingSafeEqual(Buffer.from(originalKey, "hex"), Buffer.from(candidateKey, "hex"));
 }
 
+export function validatePasswordStrength(password: string): void {
+  const trimmed = password.trim();
+  if (trimmed.length < 8) {
+    throw new Error("Password must be at least 8 characters long");
+  }
+
+  if (!/[A-Z]/.test(trimmed) || !/[a-z]/.test(trimmed) || !/[0-9]/.test(trimmed)) {
+    throw new Error("Password must include uppercase, lowercase, and numeric characters");
+  }
+}
+
+export function getSessionExpiryIso(expiresInSeconds: number): string {
+  return new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+}
+
+export function generatePasswordResetCode(): string {
+  return String(randomInt(100000, 1000000));
+}
+
+export function hashPasswordResetCode(email: string, resetCode: string): string {
+  return createHash("sha256")
+    .update(`${email.trim().toLowerCase()}:${resetCode}:${getJwtSecret()}`)
+    .digest("hex");
+}
+
 export function signSessionToken(actor: SessionActor): string {
   const header = {
     alg: "HS256",
@@ -88,7 +115,8 @@ export function verifySessionToken(token: string): SessionActor {
   return {
     userId: parsedPayload.userId,
     email: parsedPayload.email,
-    role: parsedPayload.role
+    role: parsedPayload.role,
+    sessionVersion: parsedPayload.sessionVersion ?? 1
   };
 }
 

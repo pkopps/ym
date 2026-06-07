@@ -2,6 +2,8 @@ export class ApiRoutes {
   public static readonly register = "/api/auth/register";
   public static readonly login = "/api/auth/login";
   public static readonly currentUser = "/api/auth/me";
+  public static readonly requestPasswordReset = "/api/auth/password-reset/request";
+  public static readonly confirmPasswordReset = "/api/auth/password-reset/confirm";
   public static readonly googleAuthStart = "/api/auth/google/start";
   public static readonly appleAuthStart = "/api/auth/apple/start";
   public static readonly placeSearch = "/api/places/search";

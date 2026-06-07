@@ -31,8 +31,15 @@ export function CustomerAuthScreen({
   const [mode, setMode] = useState<AuthFlowMode>("login");
   const [email, setEmail] = useState("jordan@example.com");
   const [password, setPassword] = useState("YardMatch123!");
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [resetCodePreview, setResetCodePreview] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRequestingReset, setIsRequestingReset] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
   const authCopy = getModeCopy(mode);
   const tracker = getCustomerMobileTracker();
 
@@ -72,6 +79,48 @@ export function CustomerAuthScreen({
       setErrorMessage(error instanceof Error ? error.message : "Unable to log in right now.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleRequestReset = async () => {
+    try {
+      setIsRequestingReset(true);
+      setErrorMessage("");
+      setRecoveryMessage("");
+      const api = createCustomerMobileApiClient();
+      const result = await api.requestPasswordReset({
+        email: email.trim()
+      });
+      setShowRecovery(true);
+      setRecoveryMessage(result.message);
+      setResetCodePreview(result.resetCodePreview ?? "");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start password reset right now.");
+    } finally {
+      setIsRequestingReset(false);
+    }
+  };
+
+  const handleConfirmReset = async () => {
+    try {
+      setIsResettingPassword(true);
+      setErrorMessage("");
+      setRecoveryMessage("");
+      const api = createCustomerMobileApiClient();
+      const envelope = await api.confirmPasswordReset({
+        email: email.trim(),
+        resetCode: recoveryCode.trim(),
+        newPassword
+      });
+      if (envelope.user.role !== "customer") {
+        setErrorMessage("Use a customer account in the customer app.");
+        return;
+      }
+      onAuthenticated(envelope);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to reset the password right now.");
+    } finally {
+      setIsResettingPassword(false);
     }
   };
 
@@ -124,7 +173,58 @@ export function CustomerAuthScreen({
           <Text style={styles.primaryButtonLabel}>{isSubmitting ? "Working..." : authCopy.submitLabel}</Text>
         </Pressable>
 
+        <Pressable onPress={() => void handleRequestReset()} style={styles.linkButton}>
+          <Text style={styles.linkButtonLabel}>
+            {isRequestingReset ? "Sending reset code..." : "Forgot password?"}
+          </Text>
+        </Pressable>
+
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+        {showRecovery ? (
+          <View style={styles.recoveryCard}>
+            <Text style={styles.recoveryTitle}>Reset your password</Text>
+            <Text style={styles.helper}>Use the latest reset code for {email.trim() || "your account"}.</Text>
+            {recoveryMessage ? <Text style={styles.helper}>{recoveryMessage}</Text> : null}
+            {resetCodePreview ? <Text style={styles.helper}>Local preview code: {resetCodePreview}</Text> : null}
+            <View style={styles.fieldStack}>
+              <TextInput
+                onChangeText={setRecoveryCode}
+                placeholder="Reset code"
+                placeholderTextColor="#6e7d71"
+                style={styles.input}
+                value={recoveryCode}
+              />
+              <TextInput
+                onChangeText={setNewPassword}
+                placeholder="New password"
+                placeholderTextColor="#6e7d71"
+                secureTextEntry
+                style={styles.input}
+                value={newPassword}
+              />
+            </View>
+            <View style={styles.recoveryActions}>
+              <Pressable onPress={() => void handleConfirmReset()} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonLabel}>
+                  {isResettingPassword ? "Updating..." : "Reset password"}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setShowRecovery(false);
+                  setRecoveryCode("");
+                  setNewPassword("");
+                  setRecoveryMessage("");
+                  setResetCodePreview("");
+                }}
+                style={styles.linkButton}
+              >
+                <Text style={styles.linkButtonLabel}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.socialStack}>
           <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
@@ -244,6 +344,29 @@ const styles = StyleSheet.create({
   socialLabel: {
     color: BrandTokens.colors.ink,
     fontWeight: "700"
+  },
+  linkButton: {
+    alignItems: "center"
+  },
+  linkButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  recoveryCard: {
+    gap: BrandTokens.spacing.md,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.88)",
+    padding: BrandTokens.spacing.lg
+  },
+  recoveryTitle: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700",
+    fontSize: 18
+  },
+  recoveryActions: {
+    gap: BrandTokens.spacing.sm
   },
   helper: {
     color: BrandTokens.colors.inkSoft,

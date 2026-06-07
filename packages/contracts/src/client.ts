@@ -5,6 +5,7 @@ import {
   BookingArrivalTracking,
   Booking,
   CancelBookingRequest,
+  ConfirmPasswordResetRequest,
   ConfirmBookingRequest,
   CustomerProviderConversation,
   CustomerProviderConversationThread,
@@ -19,6 +20,8 @@ import {
   GoogleAuthStartRequest,
   CurrentUserResponse,
   LoginRequest,
+  RequestPasswordResetRequest,
+  RequestPasswordResetResponse,
   MarkNotificationsReadRequest,
   ListCustomerReviewOpportunitiesResponse,
   NotificationDeliveriesResponse,
@@ -76,6 +79,17 @@ export class MarketplaceApiClient {
     this.authToken = token;
   }
 
+  private async buildError(response: Response, path: string): Promise<Error> {
+    const fallback = `Request failed for ${path} with status ${response.status}`;
+
+    try {
+      const payload = (await response.json()) as { message?: string };
+      return new Error(payload.message || fallback);
+    } catch {
+      return new Error(fallback);
+    }
+  }
+
   // Shared clients use one JSON helper so browsers and React Native stay consistent.
   private async postJson<TResponse>(path: string, payload: unknown): Promise<TResponse> {
     const response = await fetch(`${this.baseUrl}${path}`, {
@@ -88,7 +102,7 @@ export class MarketplaceApiClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Request failed for ${path} with status ${response.status}`);
+      throw await this.buildError(response, path);
     }
 
     return (await response.json()) as TResponse;
@@ -105,7 +119,7 @@ export class MarketplaceApiClient {
     });
 
     if (!response.ok) {
-      throw new Error(`Request failed for ${path} with status ${response.status}`);
+      throw await this.buildError(response, path);
     }
 
     return (await response.json()) as TResponse;
@@ -117,6 +131,16 @@ export class MarketplaceApiClient {
 
   public login(payload: LoginRequest): Promise<AuthenticatedUserEnvelope> {
     return this.postJson(ApiRoutes.login, payload);
+  }
+
+  public requestPasswordReset(
+    payload: RequestPasswordResetRequest
+  ): Promise<RequestPasswordResetResponse> {
+    return this.postJson(ApiRoutes.requestPasswordReset, payload);
+  }
+
+  public confirmPasswordReset(payload: ConfirmPasswordResetRequest): Promise<AuthenticatedUserEnvelope> {
+    return this.postJson(ApiRoutes.confirmPasswordReset, payload);
   }
 
   public getCurrentUser(): Promise<CurrentUserResponse> {

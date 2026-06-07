@@ -75,6 +75,7 @@ test("auth controller registers, logs in, and returns the current user", async (
   const registered = registerResponse.readJson();
   assert.equal(registered.user.email, "jordan@example.com");
   assert.ok(registered.session.token);
+  assert.ok(registered.session.expiresAtIso);
 
   const loginResponse = createMockResponse();
   await controller.handle(
@@ -94,6 +95,7 @@ test("auth controller registers, logs in, and returns the current user", async (
   assert.equal(loginResponse.getStatusCode(), 200);
   const loggedIn = loginResponse.readJson();
   assert.ok(loggedIn.session.token);
+  assert.ok(loggedIn.session.expiresAtIso);
 
   const meResponse = createMockResponse();
   await controller.handle(
@@ -113,4 +115,104 @@ test("auth controller registers, logs in, and returns the current user", async (
   const currentUser = meResponse.readJson();
   assert.equal(currentUser.user.email, "jordan@example.com");
   assert.equal(currentUser.user.role, "customer");
+});
+
+test("password reset rotates sessions and signs the user back in", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+
+  const registerResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/register",
+      body: {
+        fullName: "Jordan Rivera",
+        email: "jordan@example.com",
+        password: "Password123!",
+        phone: "555-0200",
+        role: "customer",
+        propertyLabel: "Primary home",
+        address: createAddress()
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    registerResponse as never
+  );
+
+  const originalSession = registerResponse.readJson().session.token as string;
+
+  const requestResetResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/password-reset/request",
+      body: {
+        email: "jordan@example.com"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    requestResetResponse as never
+  );
+
+  assert.equal(requestResetResponse.getStatusCode(), 200);
+  const resetRequest = requestResetResponse.readJson();
+  assert.ok(resetRequest.resetCodePreview);
+
+  const confirmResetResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/password-reset/confirm",
+      body: {
+        email: "jordan@example.com",
+        resetCode: resetRequest.resetCodePreview,
+        newPassword: "BetterPass123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    confirmResetResponse as never
+  );
+
+  assert.equal(confirmResetResponse.getStatusCode(), 200);
+  const resetEnvelope = confirmResetResponse.readJson();
+  assert.ok(resetEnvelope.session.token);
+  assert.notEqual(resetEnvelope.session.token, originalSession);
+
+  const oldMeResponse = createMockResponse();
+  await assert.rejects(() =>
+    controller.handle(
+      {
+        method: "GET",
+        path: "/api/auth/me",
+        body: undefined,
+        query: new URLSearchParams(),
+        headers: {
+          authorization: `Bearer ${originalSession}`
+        }
+      },
+      oldMeResponse as never
+    )
+  );
+
+  const newMeResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "GET",
+      path: "/api/auth/me",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${resetEnvelope.session.token}`
+      }
+    },
+    newMeResponse as never
+  );
+
+  assert.equal(newMeResponse.getStatusCode(), 200);
+  assert.equal(newMeResponse.readJson().user.email, "jordan@example.com");
 });

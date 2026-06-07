@@ -8,17 +8,21 @@ datasource db {
 }
 
 model UserAccount {
-  id           String               @id
-  email        String               @unique
-  passwordHash String?
-  fullName     String
-  phone        String
-  role         String
-  address      Json
-  createdAt    DateTime             @default(now())
-  customer     CustomerProfile?
-  provider     ProviderBusinessProfile?
-  crewMember   CrewMemberProfile?
+  id                    String                 @id
+  email                 String                 @unique
+  passwordHash          String?
+  sessionVersion        Int                    @default(1)
+  resetPasswordCodeHash String?
+  resetPasswordExpiresAt DateTime?
+  resetPasswordRequestedAt DateTime?
+  fullName              String
+  phone                 String
+  role                  String
+  address               Json
+  createdAt             DateTime               @default(now())
+  customer              CustomerProfile?
+  provider              ProviderBusinessProfile?
+  crewMember            CrewMemberProfile?
 
   @@map("user_accounts")
 }

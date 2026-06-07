@@ -595,9 +595,28 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface RequestPasswordResetRequest {
+  email: string;
+}
+
+export interface RequestPasswordResetResponse {
+  success: true;
+  message: string;
+  expiresAtIso?: string;
+  resetCodePreview?: string;
+  resetUrlPreview?: string;
+}
+
+export interface ConfirmPasswordResetRequest {
+  email: string;
+  resetCode: string;
+  newPassword: string;
+}
+
 export interface AuthenticatedSession {
   token: string;
   expiresInSeconds: number;
+  expiresAtIso: string;
 }
 
 export interface AuthenticatedUserEnvelope {

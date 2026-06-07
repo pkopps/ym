@@ -485,6 +485,19 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.authIdentities.find((identity) => identity.userId === userId);
   }
 
+  public async updateAuthIdentity(
+    userId: string,
+    updates: Partial<AuthIdentityRecord>
+  ): Promise<AuthIdentityRecord | undefined> {
+    const identity = this.authIdentities.find((item) => item.userId === userId);
+    if (!identity) {
+      return undefined;
+    }
+
+    Object.assign(identity, updates);
+    return identity;
+  }
+
   private seedProviders(): void {
     const sampleAddresses: Address[] = [
       this.createAddress("145 Prospect Ave", "Brooklyn", "NY", "11215", 40.6681, -73.9836),
@@ -656,7 +669,8 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       userId,
       email,
       role,
-      passwordHash
+      passwordHash,
+      sessionVersion: 1
     });
   }
 }

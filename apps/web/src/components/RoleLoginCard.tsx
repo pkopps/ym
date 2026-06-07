@@ -40,8 +40,15 @@ export function RoleLoginCard({
   const router = useRouter();
   const [email, setEmail] = useState(roleCopy[role].demoEmail);
   const [password, setPassword] = useState(roleCopy[role].demoPassword);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState<string | undefined>();
+  const [resetCodePreview, setResetCodePreview] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isRequestingReset, setIsRequestingReset] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,7 +71,8 @@ export function RoleLoginCard({
         role: envelope.user.role,
         email: envelope.user.email,
         userId: envelope.user.id,
-        fullName: envelope.user.fullName
+        fullName: envelope.user.fullName,
+        expiresAtIso: envelope.session.expiresAtIso
       });
 
       router.push(roleCopy[role].redirectPath);
@@ -73,6 +81,58 @@ export function RoleLoginCard({
       setErrorMessage(error instanceof Error ? error.message : "Unable to log in right now.");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleRequestReset() {
+    setIsRequestingReset(true);
+    setErrorMessage(undefined);
+    setRecoveryMessage(undefined);
+
+    try {
+      const api = createWebApiClient();
+      const result = await api.requestPasswordReset({
+        email: email.trim()
+      });
+      setShowRecovery(true);
+      setResetCodePreview(result.resetCodePreview);
+      setRecoveryMessage(result.message);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start password reset right now.");
+    } finally {
+      setIsRequestingReset(false);
+    }
+  }
+
+  async function handleConfirmReset(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsResettingPassword(true);
+    setErrorMessage(undefined);
+    setRecoveryMessage(undefined);
+
+    try {
+      const api = createWebApiClient();
+      const envelope = await api.confirmPasswordReset({
+        email: email.trim(),
+        resetCode: recoveryCode.trim(),
+        newPassword
+      });
+
+      saveStoredSession({
+        token: envelope.session.token,
+        role: envelope.user.role,
+        email: envelope.user.email,
+        userId: envelope.user.id,
+        fullName: envelope.user.fullName,
+        expiresAtIso: envelope.session.expiresAtIso
+      });
+
+      router.push(roleCopy[role].redirectPath);
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to reset the password right now.");
+    } finally {
+      setIsResettingPassword(false);
     }
   }
 
@@ -112,6 +172,14 @@ export function RoleLoginCard({
           <button className="button" disabled={isSubmitting} type="submit">
             {isSubmitting ? "Logging in..." : "Log in"}
           </button>
+          <button
+            className="button-secondary"
+            disabled={isRequestingReset}
+            onClick={() => void handleRequestReset()}
+            type="button"
+          >
+            {isRequestingReset ? "Sending code..." : "Forgot password?"}
+          </button>
           <a className="button-secondary" href="/login">
             Back
           </a>
@@ -119,6 +187,57 @@ export function RoleLoginCard({
 
         <AuthIdentityOptions mode="login" role={role} />
       </form>
+
+      {showRecovery ? (
+        <form className="auth-form-stack" onSubmit={handleConfirmReset}>
+          <div className="list-panel">
+            <strong>Reset your password</strong>
+            <p>Enter the latest reset code for {email.trim() || "your account"} and choose a new password.</p>
+          </div>
+
+          {recoveryMessage ? (
+            <div className="list-panel">
+              <strong>Reset started</strong>
+              <p>{recoveryMessage}</p>
+              {resetCodePreview ? <p>Local preview code: {resetCodePreview}</p> : null}
+            </div>
+          ) : null}
+
+          <div className="form-grid">
+            <label className="form-field">
+              <span>Reset code</span>
+              <input onChange={(event) => setRecoveryCode(event.target.value)} value={recoveryCode} />
+            </label>
+            <label className="form-field">
+              <span>New password</span>
+              <input
+                onChange={(event) => setNewPassword(event.target.value)}
+                type="password"
+                value={newPassword}
+              />
+            </label>
+          </div>
+
+          <div className="cta-row">
+            <button className="button" disabled={isResettingPassword} type="submit">
+              {isResettingPassword ? "Updating..." : "Reset password"}
+            </button>
+            <button
+              className="button-secondary"
+              onClick={() => {
+                setShowRecovery(false);
+                setRecoveryCode("");
+                setNewPassword("");
+                setRecoveryMessage(undefined);
+                setResetCodePreview(undefined);
+              }}
+              type="button"
+            >
+              Close
+            </button>
+          </div>
+        </form>
+      ) : null}
     </section>
   );
 }
