@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as Location from "expo-location";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
@@ -30,6 +31,9 @@ export function ScheduleScreen() {
   const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [chatDraft, setChatDraft] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const routeSharingBookingIdRef = useRef<string | undefined>(undefined);
+  const activeTrackingBookingIdRef = useRef<string | undefined>(undefined);
 
   async function loadOverview() {
     if (!envelope?.session.token) {
@@ -56,10 +60,125 @@ export function ScheduleScreen() {
 
   const jobs = overview?.jobs ?? [];
   const calendarEvents = calendarOverview?.events ?? [];
+  const activeRouteJob = useMemo(
+    () =>
+      [...jobs]
+        .filter((job) => Boolean(job.onRouteConfirmedAt) && (job.status === "confirmed" || job.status === "in-progress"))
+        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
+    [jobs]
+  );
+
+  useEffect(() => {
+    activeTrackingBookingIdRef.current = activeTrackingBookingId;
+  }, [activeTrackingBookingId]);
 
   function buildLateEta(bookingIso: string, minutes: number) {
     return new Date(new Date(bookingIso).getTime() + minutes * 60_000).toISOString();
   }
+
+  function stopRouteLocationSharing() {
+    locationSubscriptionRef.current?.remove();
+    locationSubscriptionRef.current = null;
+    routeSharingBookingIdRef.current = undefined;
+  }
+
+  async function pushRouteLocation(bookingId: string, location: Location.LocationObject) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextTracking = await api.updateBookingRouteLocation({
+        bookingId,
+        point: {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude
+        },
+        capturedAtIso: new Date(location.timestamp).toISOString(),
+        speedMph:
+          typeof location.coords.speed === "number" && location.coords.speed >= 0
+            ? Number((location.coords.speed * 2.23694).toFixed(1))
+            : undefined,
+        accuracyMeters:
+          typeof location.coords.accuracy === "number" ? Number(location.coords.accuracy.toFixed(1)) : undefined
+      });
+
+      if (activeTrackingBookingIdRef.current === bookingId) {
+        setTracking(nextTracking);
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to share live route location.");
+    }
+  }
+
+  async function beginRouteLocationSharing(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    if (routeSharingBookingIdRef.current === bookingId && locationSubscriptionRef.current) {
+      return;
+    }
+
+    stopRouteLocationSharing();
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        routeSharingBookingIdRef.current = bookingId;
+        setStatusMessage(
+          "Route is live. Turn on location access for live customer map updates, or YardMatch will keep using estimated tracking."
+        );
+        return;
+      }
+
+      routeSharingBookingIdRef.current = bookingId;
+      setStatusMessage("Sharing your live route with the customer now.");
+
+      const currentPosition = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
+      });
+      await pushRouteLocation(bookingId, currentPosition);
+
+      locationSubscriptionRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 30_000,
+          distanceInterval: 50,
+          mayShowUserSettingsDialog: true
+        },
+        (nextPosition) => {
+          if (routeSharingBookingIdRef.current !== bookingId) {
+            return;
+          }
+
+          void pushRouteLocation(bookingId, nextPosition);
+        }
+      );
+    } catch (error) {
+      setStatusMessage(
+        "Route is live, but we could not start live location sharing. Customers will still see estimated tracking."
+      );
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start live route sharing.");
+    }
+  }
+
+  useEffect(() => {
+    if (!activeRouteJob?.bookingId) {
+      stopRouteLocationSharing();
+      return;
+    }
+
+    void beginRouteLocationSharing(activeRouteJob.bookingId);
+
+    return () => {
+      stopRouteLocationSharing();
+    };
+  }, [activeRouteJob?.bookingId, envelope?.session.token]);
+
+  useEffect(() => () => stopRouteLocationSharing(), []);
 
   async function completeJob(bookingId: string) {
     if (!envelope?.session.token) {
@@ -173,7 +292,7 @@ export function ScheduleScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.markBookingOnRoute({ bookingId });
-      setStatusMessage("Route started. The customer can now see live arrival tracking.");
+      setStatusMessage("Route started. Asking for live location so the customer can track your arrival.");
       await loadOverview();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
@@ -489,6 +608,19 @@ export function ScheduleScreen() {
                         {tracking.remainingDistanceMiles !== undefined
                           ? `${tracking.remainingDistanceMiles.toFixed(1)} miles left`
                           : "Waiting for route"}
+                      </Text>
+                      <Text style={styles.metaLine}>
+                        {tracking.source === "provider-device"
+                          ? tracking.isLiveLocationStale
+                            ? "Live location paused a few minutes ago."
+                            : `Live provider location${
+                                tracking.liveUpdatedAt
+                                  ? ` • updated ${new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, {
+                                      timeStyle: "short"
+                                    })}`
+                                  : ""
+                              }`
+                          : "Estimated route from provider base"}
                       </Text>
                     </View>
                   ) : null}

@@ -42,6 +42,30 @@ export function buildTrackingDetail(tracking: BookingArrivalTracking) {
     pieces.push(`${tracking.progressPercent}% of route covered`);
   }
 
+  if (tracking.source === "provider-device") {
+    pieces.push(
+      tracking.isLiveLocationStale
+        ? "Live provider location paused"
+        : tracking.liveUpdatedAt
+          ? `Live provider location updated ${new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, {
+              timeStyle: "short"
+            })}`
+          : "Live provider location"
+    );
+  } else if (tracking.source === "crew-device") {
+    pieces.push(
+      tracking.isLiveLocationStale
+        ? "Live crew location paused"
+        : tracking.liveUpdatedAt
+          ? `Live crew location updated ${new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, {
+              timeStyle: "short"
+            })}`
+          : "Live crew location"
+    );
+  } else {
+    pieces.push("Estimated from the scheduled route");
+  }
+
   return pieces.join(" • ");
 }
 

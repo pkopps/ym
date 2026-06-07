@@ -62,6 +62,7 @@ import {
   SupportOpsTicket,
   SupportTicket,
   ProviderCrewConversationThread,
+  UpdateBookingRouteLocationRequest,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
   UpdateProviderSettingsRequest,
@@ -349,6 +350,10 @@ export class MarketplaceApiClient {
 
   public markBookingOnRoute(payload: MarkBookingOnRouteRequest) {
     return this.postJson<Booking>(ApiRoutes.markBookingOnRoute, payload);
+  }
+
+  public updateBookingRouteLocation(payload: UpdateBookingRouteLocationRequest) {
+    return this.postJson<BookingArrivalTracking>(ApiRoutes.updateBookingRouteLocation, payload);
   }
 
   public markBookingLate(payload: MarkBookingLateRequest) {

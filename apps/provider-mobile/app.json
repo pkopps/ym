@@ -5,6 +5,26 @@
     "scheme": "yardmatch-provider",
     "version": "0.1.0",
     "orientation": "default",
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "YardMatch uses your location while you are heading to a property so customers can follow your live arrival ETA."
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "YardMatch uses your location while you are heading to a property so customers can follow your live arrival ETA."
+      }
+    },
+    "android": {
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
     "assetBundlePatterns": [
       "**/*"
     ]

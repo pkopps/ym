@@ -30,6 +30,7 @@ export class ApiRoutes {
   public static readonly startBooking = "/api/bookings/start";
   public static readonly completeBooking = "/api/bookings/complete";
   public static readonly markBookingOnRoute = "/api/bookings/on-route";
+  public static readonly updateBookingRouteLocation = "/api/bookings/route-location";
   public static readonly markBookingLate = "/api/bookings/late";
   public static readonly markBookingException = "/api/bookings/exception";
   public static readonly createBookingDispute = "/api/bookings/dispute";

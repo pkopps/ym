@@ -76,6 +76,7 @@ import {
   SearchProvidersResponse,
   StartBookingRequest,
   ConfirmPasswordResetRequest,
+  UpdateBookingRouteLocationRequest,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
   UpdateProviderSettingsRequest,
@@ -110,6 +111,7 @@ import { PaymentCheckoutGateway, StripeCheckoutService } from "./StripeCheckoutS
 export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
   private static readonly reviewInviteExpiryDays = 30;
+  private static readonly liveRouteLocationStaleMinutes = 5;
   private readonly geoService = new GeoService();
   private readonly providerMatcher = new ProviderMatchService(this.geoService);
   private readonly schedulingService = new SchedulingService();
@@ -835,6 +837,59 @@ export class MarketplacePlatformService {
     return updatedBooking;
   }
 
+  public async updateBookingRouteLocation(
+    actor: AuthIdentityRecord,
+    payload: UpdateBookingRouteLocationRequest
+  ): Promise<BookingArrivalTracking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const acceptedMatch = (await this.repository.listCrewMatches()).find(
+      (match) => match.bookingId === booking.id && match.status === "accepted"
+    );
+
+    if (actor.role === "provider" && booking.providerId !== actor.userId) {
+      throw new HttpError(403, "Providers can only share live route location for their own bookings");
+    }
+
+    if (actor.role === "crew-member") {
+      if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
+        throw new HttpError(403, "Only accepted crew members can share route location");
+      }
+    }
+
+    if (actor.role !== "provider" && actor.role !== "crew-member") {
+      throw new HttpError(403, "Only the provider or accepted crew member can share route location");
+    }
+
+    if (!booking.onRouteConfirmedAt) {
+      throw new HttpError(400, "Start the route before sharing live location");
+    }
+
+    const capturedAtIso = payload.capturedAtIso
+      ? new Date(payload.capturedAtIso).toISOString()
+      : new Date().toISOString();
+    if (Number.isNaN(new Date(capturedAtIso).getTime())) {
+      throw new HttpError(400, "capturedAtIso must be a valid ISO date when provided");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      routeLivePoint: payload.point,
+      routeLiveUpdatedAt: capturedAtIso,
+      routeLiveSource: actor.role === "provider" ? "provider-device" : "crew-device",
+      routeLiveSpeedMph: payload.speedMph,
+      routeLiveAccuracyMeters: payload.accuracyMeters
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be updated");
+    }
+
+    return this.getBookingArrivalTracking(actor, booking.id, capturedAtIso);
+  }
+
   public async markBookingLate(
     providerId: string,
     payload: MarkBookingLateRequest
@@ -1095,6 +1150,7 @@ export class MarketplacePlatformService {
       crewMemberName: routeLeaderName,
       destination: booking.serviceAddress,
       routeStartPoint: routeLeaderPoint,
+      source: "computed-origin",
       progressPercent: 0,
       lastComputedAt: nowIso,
       message: "Tracking is not available for this booking yet."
@@ -1128,18 +1184,53 @@ export class MarketplacePlatformService {
       : 0;
     const totalTravelMinutes = Math.max(6, Math.min(45, Math.round((totalDistanceMiles / 22) * 60) + 4));
     const elapsedMinutes = Math.max(0, (now - startedAt) / (1000 * 60));
-    const clampedProgress = Math.max(0, Math.min(1, elapsedMinutes / totalTravelMinutes));
-    const currentPoint = this.interpolatePoint(
-      routeLeaderPoint ?? booking.serviceAddress.point,
-      booking.serviceAddress.point,
-      booking.status === "in-progress" || booking.status === "completed" ? 1 : clampedProgress
-    );
+    const liveLocationAgeMinutes = booking.routeLiveUpdatedAt
+      ? Math.max(0, (now - new Date(booking.routeLiveUpdatedAt).getTime()) / (1000 * 60))
+      : undefined;
+    const hasLiveRoutePoint = Boolean(booking.routeLivePoint && booking.routeLiveUpdatedAt);
+    const isLiveLocationStale =
+      typeof liveLocationAgeMinutes === "number" &&
+      liveLocationAgeMinutes > MarketplacePlatformService.liveRouteLocationStaleMinutes;
+    const computedProgress =
+      booking.status === "in-progress" || booking.status === "completed"
+        ? 1
+        : Math.max(0, Math.min(1, elapsedMinutes / totalTravelMinutes));
+    const effectiveCurrentPoint = hasLiveRoutePoint
+      ? booking.routeLivePoint
+      : this.interpolatePoint(
+          routeLeaderPoint ?? booking.serviceAddress.point,
+          booking.serviceAddress.point,
+          computedProgress
+        );
+    const liveRemainingDistanceMiles = effectiveCurrentPoint
+      ? this.geoService.distanceMiles(
+          {
+            ...booking.serviceAddress,
+            point: effectiveCurrentPoint
+          },
+          booking.serviceAddress
+        )
+      : undefined;
+    const clampedProgress =
+      typeof liveRemainingDistanceMiles === "number" && totalDistanceMiles > 0
+        ? Math.max(0, Math.min(1, 1 - liveRemainingDistanceMiles / totalDistanceMiles))
+        : computedProgress;
+    const etaMinutesFromLivePoint =
+      typeof liveRemainingDistanceMiles === "number"
+        ? Math.max(
+            0,
+            Math.ceil((liveRemainingDistanceMiles / Math.max(10, booking.routeLiveSpeedMph ?? 22)) * 60)
+          )
+        : undefined;
 
     if (booking.status === "completed") {
       return {
         ...baseTracking,
         status: "completed",
         currentPoint: booking.serviceAddress.point,
+        source: hasLiveRoutePoint ? booking.routeLiveSource ?? "computed-origin" : "computed-origin",
+        liveUpdatedAt: booking.routeLiveUpdatedAt,
+        isLiveLocationStale,
         progressPercent: 100,
         remainingDistanceMiles: 0,
         etaMinutes: 0,
@@ -1153,6 +1244,9 @@ export class MarketplacePlatformService {
         ...baseTracking,
         status: "arrived",
         currentPoint: booking.serviceAddress.point,
+        source: hasLiveRoutePoint ? booking.routeLiveSource ?? "computed-origin" : "computed-origin",
+        liveUpdatedAt: booking.routeLiveUpdatedAt,
+        isLiveLocationStale,
         progressPercent: 100,
         remainingDistanceMiles: 0,
         etaMinutes: 0,
@@ -1164,12 +1258,25 @@ export class MarketplacePlatformService {
     return {
       ...baseTracking,
       status: "on-route",
-      currentPoint,
+      currentPoint: effectiveCurrentPoint,
+      source: hasLiveRoutePoint ? booking.routeLiveSource ?? "computed-origin" : "computed-origin",
+      liveUpdatedAt: booking.routeLiveUpdatedAt,
+      isLiveLocationStale,
       progressPercent: Math.round(clampedProgress * 100),
-      remainingDistanceMiles: Number((totalDistanceMiles * (1 - clampedProgress)).toFixed(1)),
-      etaMinutes: Math.max(1, Math.ceil(totalTravelMinutes - elapsedMinutes)),
+      remainingDistanceMiles:
+        typeof liveRemainingDistanceMiles === "number"
+          ? Number(liveRemainingDistanceMiles.toFixed(1))
+          : Number((totalDistanceMiles * (1 - clampedProgress)).toFixed(1)),
+      etaMinutes:
+        typeof etaMinutesFromLivePoint === "number"
+          ? Math.max(1, etaMinutesFromLivePoint)
+          : Math.max(1, Math.ceil(totalTravelMinutes - elapsedMinutes)),
       unlockedAt: booking.onRouteConfirmedAt,
-      message: `${routeLeaderName} is on the way.`
+      message: hasLiveRoutePoint
+        ? isLiveLocationStale
+          ? `${routeLeaderName} shared a live location, but it has not refreshed in a few minutes.`
+          : `${routeLeaderName} is on the way with live location updates.`
+        : `${routeLeaderName} is on the way.`
     };
   }
 

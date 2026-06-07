@@ -1160,6 +1160,21 @@ test("arrival tracking shows a live route once the crew is on route", async () =
   const oneMinuteLater = new Date(
     new Date(onRouteBooking.onRouteConfirmedAt as string).getTime() + 1 * 60 * 1000
   ).toISOString();
+  const liveTracking = await platform.updateBookingRouteLocation(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      point: {
+        latitude: 30.2438,
+        longitude: -97.76395
+      },
+      speedMph: 18,
+      capturedAtIso: oneMinuteLater
+    }
+  );
+  assert.equal(liveTracking.source, "provider-device");
+  assert.equal(liveTracking.isLiveLocationStale, false);
+
   const tracking = await platform.getBookingArrivalTracking(
     { userId: customer.id, email: customer.email, role: "customer" },
     booking.id,
@@ -1170,6 +1185,8 @@ test("arrival tracking shows a live route once the crew is on route", async () =
   assert.ok(tracking.currentPoint);
   assert.ok((tracking.etaMinutes ?? 0) > 0);
   assert.ok(tracking.progressPercent > 0);
+  assert.equal(tracking.source, "provider-device");
+  assert.equal(tracking.message.includes("live location"), true);
 });
 
 test("providers confirm bookings before crew can go on route or start work", async () => {

@@ -98,6 +98,20 @@ export function ArrivalTrackingPanel({
         <div className="list-panel">
           <h3>Crew</h3>
           <p>{tracking.crewMemberName ?? "Assigned crew member"}</p>
+          <p>
+            {tracking.source === "provider-device"
+              ? tracking.isLiveLocationStale
+                ? "Live provider location paused"
+                : "Live provider location"
+              : tracking.source === "crew-device"
+                ? tracking.isLiveLocationStale
+                  ? "Live crew location paused"
+                  : "Live crew location"
+                : "Estimated route"}
+          </p>
+          {tracking.liveUpdatedAt ? (
+            <p>Updated {new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, { timeStyle: "short" })}</p>
+          ) : null}
         </div>
         <div className="list-panel">
           <h3>Destination</h3>

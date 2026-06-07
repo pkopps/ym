@@ -76,6 +76,7 @@ export type BookingArrivalTrackingStatus =
   | "completed";
 export type BookingServiceWindowKey = "morning" | "afternoon" | "late-afternoon-night";
 export type ProviderCalendarEventSource = "yardmatch-booking" | "external-block";
+export type BookingRouteLocationSource = "computed-origin" | "provider-device" | "crew-device";
 export type BookingExceptionType =
   | "customer-no-show"
   | "customer-not-ready"
@@ -248,6 +249,11 @@ export interface ProviderStaffingJobSummary {
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
+  routeLivePoint?: GeoPoint;
+  routeLiveUpdatedAt?: string;
+  routeLiveSource?: BookingRouteLocationSource;
+  routeLiveSpeedMph?: number;
+  routeLiveAccuracyMeters?: number;
   disputedAt?: string;
   disputeReason?: string;
   disputedByRole?: "customer" | "provider";
@@ -389,6 +395,11 @@ export interface Booking {
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
+  routeLivePoint?: GeoPoint;
+  routeLiveUpdatedAt?: string;
+  routeLiveSource?: BookingRouteLocationSource;
+  routeLiveSpeedMph?: number;
+  routeLiveAccuracyMeters?: number;
   disputedAt?: string;
   disputeReason?: string;
   disputedByRole?: "customer" | "provider";
@@ -409,6 +420,9 @@ export interface BookingArrivalTracking {
   destination: Address;
   currentPoint?: GeoPoint;
   routeStartPoint?: GeoPoint;
+  source: BookingRouteLocationSource;
+  liveUpdatedAt?: string;
+  isLiveLocationStale?: boolean;
   progressPercent: number;
   remainingDistanceMiles?: number;
   etaMinutes?: number;
@@ -755,6 +769,14 @@ export interface SendCustomerProviderMessageRequest {
 
 export interface MarkBookingOnRouteRequest {
   bookingId: string;
+}
+
+export interface UpdateBookingRouteLocationRequest {
+  bookingId: string;
+  point: GeoPoint;
+  capturedAtIso?: string;
+  speedMph?: number;
+  accuracyMeters?: number;
 }
 
 export interface MarkBookingLateRequest {

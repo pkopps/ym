@@ -93,6 +93,17 @@ export function ArrivalTrackingModal({
             <Text style={styles.panelTitle}>{tracking.crewMemberName ?? "Assigned crew member"}</Text>
             <Text style={styles.panelText}>{tracking.message}</Text>
             {detail ? <Text style={styles.panelMeta}>{detail}</Text> : null}
+            <Text style={styles.panelMeta}>
+              {tracking.source === "provider-device"
+                ? tracking.isLiveLocationStale
+                  ? "Live provider location has not refreshed in a few minutes."
+                  : "This map is using the provider's live phone location."
+                : tracking.source === "crew-device"
+                  ? tracking.isLiveLocationStale
+                    ? "Live crew location has not refreshed in a few minutes."
+                    : "This map is using a crew member's live phone location."
+                  : "This map is using YardMatch's estimated route until live location is available."}
+            </Text>
           </View>
 
           <View style={styles.panel}>

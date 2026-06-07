@@ -125,6 +125,11 @@ model Booking {
   activeExceptionType  String?
   activeExceptionReportedAt DateTime?
   activeExceptionNotes String?
+  routeLivePoint       Json?
+  routeLiveUpdatedAt   DateTime?
+  routeLiveSource      String?
+  routeLiveSpeedMph    Float?
+  routeLiveAccuracyMeters Float?
   disputedAt           DateTime?
   disputeReason        String?
   disputedByRole       String?

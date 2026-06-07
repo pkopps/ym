@@ -11,6 +11,7 @@ import {
   MarkBookingExceptionRequest,
   MarkBookingLateRequest,
   MarkNotificationsReadRequest,
+  UpdateBookingRouteLocationRequest,
   UpdateNotificationPreferencesRequest,
   MarkBookingOnRouteRequest,
   CreatePaymentIntentRequest,
@@ -63,6 +64,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/start") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/on-route") ||
+      (context.method === "POST" && context.path === "/api/bookings/route-location") ||
       (context.method === "POST" && context.path === "/api/bookings/late") ||
       (context.method === "POST" && context.path === "/api/bookings/exception") ||
       (context.method === "POST" && context.path === "/api/bookings/dispute") ||
@@ -321,6 +323,19 @@ export class MarketplaceController implements ApiController {
         response,
         200,
         await this.platform.markBookingOnRoute(identity, context.body as MarkBookingOnRouteRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/route-location") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.updateBookingRouteLocation(
+          identity,
+          context.body as UpdateBookingRouteLocationRequest
+        )
       );
       return;
     }

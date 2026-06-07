@@ -430,12 +430,43 @@ export const apiSpec = {
         }
       }
     },
+    "/api/bookings/route-location": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Share a live route location update",
+        description:
+          "Accepts provider- or accepted-crew-device location pings for a booking that is already on route. Customer and provider tracking views will prefer these live points over the fallback computed route.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                point: {
+                  latitude: 30.2471,
+                  longitude: -97.7612
+                },
+                speedMph: 19,
+                accuracyMeters: 18,
+                capturedAtIso: "2026-06-07T16:12:00.000Z"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated live arrival tracking returned" },
+          "400": { description: "Route has not started or payload is invalid" },
+          "403": { description: "Only the provider or accepted crew member can share route location" }
+        }
+      }
+    },
     "/api/bookings/tracking": {
       get: {
         tags: ["Bookings"],
         summary: "Fetch live arrival tracking for a booking",
         description:
-          "Returns a computed live arrival-tracking feed for the default route leader once the booking has been marked on route. In v1 the provider is the route leader by default.",
+          "Returns device-backed arrival tracking when recent provider or accepted-crew location updates exist, falling back to the computed route model otherwise. In v1 the provider is the route leader by default.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {

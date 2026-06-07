@@ -401,6 +401,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           ? new Date(booking.activeExceptionReportedAt)
           : undefined,
         activeExceptionNotes: booking.activeExceptionNotes,
+        routeLivePoint: booking.routeLivePoint ? asJson(booking.routeLivePoint) : undefined,
+        routeLiveUpdatedAt: booking.routeLiveUpdatedAt ? new Date(booking.routeLiveUpdatedAt) : undefined,
+        routeLiveSource: booking.routeLiveSource,
+        routeLiveSpeedMph: booking.routeLiveSpeedMph,
+        routeLiveAccuracyMeters: booking.routeLiveAccuracyMeters,
         disputedAt: booking.disputedAt ? new Date(booking.disputedAt) : undefined,
         disputeReason: booking.disputeReason,
         disputedByRole: booking.disputedByRole,
@@ -479,6 +484,23 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
             : undefined,
         activeExceptionNotes:
           "activeExceptionNotes" in updates ? updates.activeExceptionNotes ?? null : undefined,
+        routeLivePoint:
+          "routeLivePoint" in updates
+            ? updates.routeLivePoint
+              ? asJson(updates.routeLivePoint)
+              : null
+            : undefined,
+        routeLiveUpdatedAt:
+          "routeLiveUpdatedAt" in updates
+            ? updates.routeLiveUpdatedAt
+              ? new Date(updates.routeLiveUpdatedAt)
+              : null
+            : undefined,
+        routeLiveSource: "routeLiveSource" in updates ? updates.routeLiveSource ?? null : undefined,
+        routeLiveSpeedMph:
+          "routeLiveSpeedMph" in updates ? updates.routeLiveSpeedMph ?? null : undefined,
+        routeLiveAccuracyMeters:
+          "routeLiveAccuracyMeters" in updates ? updates.routeLiveAccuracyMeters ?? null : undefined,
         disputedAt:
           "disputedAt" in updates
             ? updates.disputedAt
@@ -1440,6 +1462,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     activeExceptionType: string | null;
     activeExceptionReportedAt: Date | null;
     activeExceptionNotes: string | null;
+    routeLivePoint: unknown | null;
+    routeLiveUpdatedAt: Date | null;
+    routeLiveSource: string | null;
+    routeLiveSpeedMph: number | null;
+    routeLiveAccuracyMeters: number | null;
     disputedAt: Date | null;
     disputeReason: string | null;
     disputedByRole: string | null;
@@ -1468,6 +1495,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       activeExceptionType: record.activeExceptionType as Booking["activeExceptionType"],
       activeExceptionReportedAt: record.activeExceptionReportedAt?.toISOString(),
       activeExceptionNotes: record.activeExceptionNotes ?? undefined,
+      routeLivePoint: record.routeLivePoint ? readJson<Address["point"]>(record.routeLivePoint) : undefined,
+      routeLiveUpdatedAt: record.routeLiveUpdatedAt?.toISOString(),
+      routeLiveSource: record.routeLiveSource as Booking["routeLiveSource"],
+      routeLiveSpeedMph: record.routeLiveSpeedMph ?? undefined,
+      routeLiveAccuracyMeters: record.routeLiveAccuracyMeters ?? undefined,
       disputedAt: record.disputedAt?.toISOString(),
       disputeReason: record.disputeReason ?? undefined,
       disputedByRole: record.disputedByRole as Booking["disputedByRole"],
