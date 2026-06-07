@@ -13,7 +13,10 @@ import {
   CustomerProperty,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
+  ExternalCalendarBlock,
+  getExternalCalendarBlockLabel,
   PropertyMeasurementEstimate,
+  ProviderCalendarEvent,
   ProviderProfile
 } from "@yardmatch/contracts";
 
@@ -131,6 +134,107 @@ export class SchedulingService {
 
     lines.push("END:VCALENDAR");
     return lines.join("\n");
+  }
+
+  public buildProviderCombinedCalendarFeed(input: {
+    providerName: string;
+    bookings: Array<{
+      id: string;
+      category: Booking["category"];
+      customerName: string;
+      addressLine: string;
+      city: string;
+      state: string;
+      scheduledStartIso: string;
+      scheduledEndIso: string;
+      status: Booking["status"];
+      notes?: string;
+    }>;
+    externalBlocks: ExternalCalendarBlock[];
+  }): string {
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//YardMatch//ProviderSchedule//EN"];
+
+    for (const booking of input.bookings) {
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:${booking.id}@yardmatch.local`);
+      lines.push(`DTSTART:${booking.scheduledStartIso.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`);
+      lines.push(`DTEND:${booking.scheduledEndIso.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`);
+      lines.push(
+        `SUMMARY:${this.escapeIcsText(`${input.providerName}: ${this.titleCaseCategory(booking.category)} for ${booking.customerName}`)}`
+      );
+      lines.push(
+        `DESCRIPTION:${this.escapeIcsText(
+          `YardMatch booking. Status: ${booking.status}. ${booking.notes?.trim() || "Scheduled service."}`
+        )}`
+      );
+      lines.push(`LOCATION:${this.escapeIcsText(`${booking.addressLine}, ${booking.city}, ${booking.state}`)}`);
+      lines.push("END:VEVENT");
+    }
+
+    for (const block of input.externalBlocks) {
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:${block.id}@yardmatch-external.local`);
+      lines.push(`DTSTART:${block.startIso.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`);
+      lines.push(`DTEND:${block.endIso.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`);
+      lines.push(`SUMMARY:${this.escapeIcsText(`${input.providerName}: ${block.title}`)}`);
+      lines.push(
+        `DESCRIPTION:${this.escapeIcsText(
+          `${getExternalCalendarBlockLabel(block.blockType)}.${block.notes ? ` ${block.notes}` : ""}`
+        )}`
+      );
+      lines.push("END:VEVENT");
+    }
+
+    lines.push("END:VCALENDAR");
+    return lines.join("\n");
+  }
+
+  public buildProviderCalendarEvents(input: {
+    bookings: Array<{
+      id: string;
+      category: Booking["category"];
+      customerName: string;
+      addressLine: string;
+      city: string;
+      state: string;
+      scheduledStartIso: string;
+      scheduledEndIso: string;
+      status: Booking["status"];
+      notes?: string;
+    }>;
+    externalBlocks: ExternalCalendarBlock[];
+  }): ProviderCalendarEvent[] {
+    const bookingEvents: ProviderCalendarEvent[] = input.bookings.map((booking) => ({
+      id: booking.id,
+      source: "yardmatch-booking",
+      title: `${this.titleCaseCategory(booking.category)} for ${booking.customerName}`,
+      startIso: booking.scheduledStartIso,
+      endIso: booking.scheduledEndIso,
+      isBlockingAvailability: true,
+      addressLine: booking.addressLine,
+      city: booking.city,
+      state: booking.state,
+      status: booking.status,
+      customerName: booking.customerName,
+      bookingId: booking.id,
+      category: booking.category,
+      notes: booking.notes
+    }));
+
+    const externalEvents: ProviderCalendarEvent[] = input.externalBlocks.map((block) => ({
+      id: block.id,
+      source: "external-block",
+      title: block.title,
+      startIso: block.startIso,
+      endIso: block.endIso,
+      isBlockingAvailability: true,
+      blockType: block.blockType,
+      notes: block.notes
+    }));
+
+    return [...bookingEvents, ...externalEvents].sort((left, right) =>
+      left.startIso.localeCompare(right.startIso)
+    );
   }
 
   private titleCaseCategory(category: Booking["category"]): string {

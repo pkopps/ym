@@ -61,6 +61,7 @@ import {
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
   ProviderCalendarSubscriptionResponse,
+  ProviderCalendarOverviewResponse,
   PlaceSearchResponse,
   RegisterUserRequest,
   ReviewCrewMatchRequest,
@@ -2718,34 +2719,11 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Provider not found");
     }
 
-    const customers = await this.repository.listCustomers();
-    const bookings = (await this.repository.listBookings())
-      .filter(
-        (booking) =>
-          booking.providerId === providerId &&
-          booking.status !== "cancelled" &&
-          booking.status !== "refunded"
-      )
-      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
-      .map((booking) => {
-        const customer = customers.find((item) => item.id === booking.customerId);
-        return {
-          id: booking.id,
-          category: booking.category,
-          customerName: customer?.fullName ?? "YardMatch customer",
-          addressLine: booking.serviceAddress.line1,
-          city: booking.serviceAddress.city,
-          state: booking.serviceAddress.state,
-          scheduledStartIso: booking.scheduledStartIso,
-          scheduledEndIso: booking.scheduledEndIso,
-          status: booking.status,
-          notes: booking.notes
-        };
-      });
-
-    return this.schedulingService.buildProviderBookingCalendarFeed({
+    const bookings = await this.listProviderCalendarBookings(providerId);
+    return this.schedulingService.buildProviderCombinedCalendarFeed({
       providerName: provider.companyName,
-      bookings
+      bookings,
+      externalBlocks: this.getActiveExternalCalendarBlocks(provider)
     });
   }
 
@@ -2779,8 +2757,59 @@ export class MarketplacePlatformService {
       instructions: [
         "Apple Calendar and Outlook can subscribe directly with the webcal link.",
         "Google Calendar can subscribe to the feed URL from Add calendar by URL.",
-        "Manual outside-client and personal-time blocks can now reduce YardMatch availability."
+        "The feed includes YardMatch jobs plus your manual outside-client and personal blocks."
       ]
+    };
+  }
+
+  public async getProviderCalendarOverview(
+    providerId: string,
+    input?: {
+      fromIso?: string;
+      toIso?: string;
+    }
+  ): Promise<ProviderCalendarOverviewResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const windowStartIso = input?.fromIso
+      ? new Date(input.fromIso).toISOString()
+      : new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const windowEndIso = input?.toIso
+      ? new Date(input.toIso).toISOString()
+      : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
+    if (
+      Number.isNaN(new Date(windowStartIso).getTime()) ||
+      Number.isNaN(new Date(windowEndIso).getTime()) ||
+      new Date(windowEndIso).getTime() <= new Date(windowStartIso).getTime()
+    ) {
+      throw new HttpError(400, "Calendar overview window must use valid ISO dates with end after start");
+    }
+
+    const bookings = (await this.listProviderCalendarBookings(providerId)).filter((booking) =>
+      this.doIntervalsOverlap(booking.scheduledStartIso, booking.scheduledEndIso, windowStartIso, windowEndIso)
+    );
+    const externalBlocks = this.getActiveExternalCalendarBlocks(provider).filter((block) =>
+      this.doIntervalsOverlap(block.startIso, block.endIso, windowStartIso, windowEndIso)
+    );
+
+    const events = this.schedulingService.buildProviderCalendarEvents({
+      bookings,
+      externalBlocks
+    });
+
+    return {
+      providerId: provider.id,
+      providerName: provider.companyName,
+      windowStartIso,
+      windowEndIso,
+      totalEvents: events.length,
+      yardmatchJobCount: bookings.length,
+      externalBlockCount: externalBlocks.length,
+      events
     };
   }
 
@@ -2843,6 +2872,33 @@ export class MarketplacePlatformService {
         } satisfies ExternalCalendarBlock;
       })
       .sort((left, right) => left.startIso.localeCompare(right.startIso));
+  }
+
+  private async listProviderCalendarBookings(providerId: string) {
+    const customers = await this.repository.listCustomers();
+    return (await this.repository.listBookings())
+      .filter(
+        (booking) =>
+          booking.providerId === providerId &&
+          booking.status !== "cancelled" &&
+          booking.status !== "refunded"
+      )
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
+      .map((booking) => {
+        const customer = customers.find((item) => item.id === booking.customerId);
+        return {
+          id: booking.id,
+          category: booking.category,
+          customerName: customer?.fullName ?? "YardMatch customer",
+          addressLine: booking.serviceAddress.line1,
+          city: booking.serviceAddress.city,
+          state: booking.serviceAddress.state,
+          scheduledStartIso: booking.scheduledStartIso,
+          scheduledEndIso: booking.scheduledEndIso,
+          status: booking.status,
+          notes: booking.notes
+        };
+      });
   }
 
   private async ensureExternalCalendarBlocksDoNotConflict(provider: ProviderProfile): Promise<void> {

@@ -55,6 +55,7 @@ export class ApiRoutes {
   public static readonly getObservabilityOverview = "/api/observability/overview";
   public static readonly providerCalendar = "/api/calendar/feed";
   public static readonly providerCalendarSubscription = "/api/calendar/subscription";
+  public static readonly providerCalendarOverview = "/api/calendar/overview";
   public static readonly opsSupportTickets = "/api/support/ops/tickets";
   public static readonly opsSupportTicketsUpdate = "/api/support/ops/tickets/update";
 }

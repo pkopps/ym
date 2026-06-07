@@ -1524,7 +1524,7 @@ test("notification preferences can disable sms and review reminder delivery", as
   assert.ok(!deliveries.deliveries.some((delivery) => delivery.category === "review" && delivery.channel === "push"));
 });
 
-test("providers can get a subscribable calendar feed for booked YardMatch jobs", async () => {
+test("providers can get a subscribable calendar feed and merged overview for mixed schedule management", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
 
@@ -1561,9 +1561,33 @@ test("providers can get a subscribable calendar feed for booked YardMatch jobs",
     totalCents: 6200
   });
 
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: provider.serviceRadiusMiles,
+    staffingMode: provider.staffingMode,
+    sponsoredListingEnabled: provider.sponsoredListingEnabled,
+    externalEventsBlockingEnabled: true,
+    externalCalendarBlocks: [
+      {
+        title: "Direct client cleanup",
+        blockType: "off-platform-client",
+        startIso: futureIso(28),
+        endIso: futureIso(29),
+        notes: "Neighbor referral cleanup",
+        source: "manual"
+      }
+    ]
+  });
+
   const subscription = await platform.getProviderCalendarSubscription(provider.id);
   assert.ok(subscription.feedUrl.includes("/api/calendar/feed?token="));
   assert.ok(subscription.webcalUrl.startsWith("webcal://"));
+
+  const overview = await platform.getProviderCalendarOverview(provider.id);
+  assert.equal(overview.yardmatchJobCount, 1);
+  assert.equal(overview.externalBlockCount, 1);
+  assert.equal(overview.events.length, 2);
+  assert.equal(overview.events[0].source, "yardmatch-booking");
+  assert.equal(overview.events[1].source, "external-block");
 
   const token = new URL(subscription.feedUrl).searchParams.get("token");
   assert.ok(token);
@@ -1572,6 +1596,8 @@ test("providers can get a subscribable calendar feed for booked YardMatch jobs",
   assert.match(feed, /BEGIN:VCALENDAR/);
   assert.match(feed, /Calendar Lawn Co.: Lawn Mowing for Jordan Rivera/);
   assert.match(feed, /Calendar export test/);
+  assert.match(feed, /Calendar Lawn Co.: Direct client cleanup/);
+  assert.match(feed, /Neighbor referral cleanup/);
 });
 
 test("providers receive one timed departure reminder for confirmed upcoming jobs", async () => {

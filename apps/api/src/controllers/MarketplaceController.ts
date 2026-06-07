@@ -84,6 +84,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") ||
       (context.method === "POST" && context.path === "/api/payments/intent") ||
       (context.method === "POST" && context.path === "/api/payments/refund") ||
+      (context.method === "GET" && context.path === "/api/calendar/overview") ||
       (context.method === "GET" && context.path === "/api/calendar/subscription") ||
       (context.method === "GET" && context.path === "/api/calendar/feed")
     );
@@ -492,6 +493,19 @@ export class MarketplaceController implements ApiController {
     if (context.method === "GET" && context.path === "/api/calendar/subscription") {
       const identity = await requireRole(context, this.platform, "provider");
       sendJson(response, 200, await this.platform.getProviderCalendarSubscription(identity.userId));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/calendar/overview") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.getProviderCalendarOverview(identity.userId, {
+          fromIso: context.query.get("from") ?? undefined,
+          toIso: context.query.get("to") ?? undefined
+        })
+      );
       return;
     }
 

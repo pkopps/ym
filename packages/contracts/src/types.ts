@@ -75,6 +75,7 @@ export type BookingArrivalTrackingStatus =
   | "arrived"
   | "completed";
 export type BookingServiceWindowKey = "morning" | "afternoon" | "late-afternoon-night";
+export type ProviderCalendarEventSource = "yardmatch-booking" | "external-block";
 export type BookingExceptionType =
   | "customer-no-show"
   | "customer-not-ready"
@@ -566,6 +567,35 @@ export interface ProviderCalendarSubscriptionResponse {
   feedUrl: string;
   webcalUrl: string;
   instructions: string[];
+}
+
+export interface ProviderCalendarEvent {
+  id: string;
+  source: ProviderCalendarEventSource;
+  title: string;
+  startIso: string;
+  endIso: string;
+  isBlockingAvailability: boolean;
+  addressLine?: string;
+  city?: string;
+  state?: string;
+  status?: BookingStatus;
+  customerName?: string;
+  bookingId?: string;
+  category?: ServiceCategory;
+  blockType?: ExternalCalendarBlockType;
+  notes?: string;
+}
+
+export interface ProviderCalendarOverviewResponse {
+  providerId: string;
+  providerName: string;
+  windowStartIso: string;
+  windowEndIso: string;
+  totalEvents: number;
+  yardmatchJobCount: number;
+  externalBlockCount: number;
+  events: ProviderCalendarEvent[];
 }
 
 export interface RegisterUserRequest {

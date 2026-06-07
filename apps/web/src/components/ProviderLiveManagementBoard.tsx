@@ -8,6 +8,7 @@ import {
   formatBookingWindowSummary,
   getExternalCalendarBlockLabel,
   getBookingExceptionLabel,
+  ProviderCalendarOverviewResponse,
   ProviderCalendarSubscriptionResponse,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
@@ -56,6 +57,7 @@ export function ProviderLiveManagementBoard() {
   >();
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
+  const [calendarOverview, setCalendarOverview] = useState<ProviderCalendarOverviewResponse | undefined>();
   const [calendarSubscription, setCalendarSubscription] = useState<
     ProviderCalendarSubscriptionResponse | undefined
   >();
@@ -100,12 +102,14 @@ export function ProviderLiveManagementBoard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [nextOverview, nextCalendarSubscription] = await Promise.all([
+    const [nextOverview, nextCalendarSubscription, nextCalendarOverview] = await Promise.all([
       api.getProviderStaffingOverview(),
-      api.getProviderCalendarSubscription()
+      api.getProviderCalendarSubscription(),
+      api.getProviderCalendarOverview()
     ]);
     setOverview(nextOverview);
     setCalendarSubscription(nextCalendarSubscription);
+    setCalendarOverview(nextCalendarOverview);
     setSessionReady(true);
   }
 
@@ -518,6 +522,30 @@ export function ProviderLiveManagementBoard() {
                 <p key={instruction}>{instruction}</p>
               ))}
             </div>
+            {calendarOverview ? (
+              <div className="stack-md" style={{ paddingTop: "1rem" }}>
+                <div className="chip-row">
+                  <span>{calendarOverview.yardmatchJobCount} YardMatch jobs</span>
+                  <span>{calendarOverview.externalBlockCount} outside blocks</span>
+                  <span>{calendarOverview.totalEvents} total events</span>
+                </div>
+                {calendarOverview.events.slice(0, 8).map((event) => (
+                  <div className="list-panel" key={event.id}>
+                    <strong>{event.title}</strong>
+                    <p>
+                      {formatDateTime(event.startIso)} to {formatDateTime(event.endIso)}
+                    </p>
+                    <p>
+                      {event.source === "yardmatch-booking"
+                        ? `${event.customerName ?? "Customer"} • ${event.status?.replaceAll("-", " ")}`
+                        : `${getExternalCalendarBlockLabel(event.blockType ?? "off-platform-client")} • Outside block`}
+                    </p>
+                    {event.addressLine ? <p>{event.addressLine}</p> : null}
+                    {event.notes ? <p>{event.notes}</p> : null}
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </>
         ) : null}
         <div className="stack-md" style={{ paddingTop: "1.25rem" }}>

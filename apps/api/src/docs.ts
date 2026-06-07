@@ -1258,10 +1258,37 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Get provider calendar subscription details",
         description:
-          "Returns a subscribable ICS feed URL and webcal URL so providers can add YardMatch jobs to Apple Calendar, Google Calendar, Outlook, and other external scheduling tools, then layer manual outside-calendar blocks on top to protect YardMatch availability.",
+          "Returns a subscribable ICS feed URL and webcal URL so providers can add YardMatch jobs and manual outside-calendar blocks to Apple Calendar, Google Calendar, Outlook, and other external scheduling tools.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Provider calendar subscription details" }
+        }
+      }
+    },
+    "/api/calendar/overview": {
+      get: {
+        tags: ["Providers"],
+        summary: "Get a merged provider calendar timeline",
+        description:
+          "Returns a combined schedule view for the authenticated provider, merging YardMatch jobs with blocking outside-calendar entries so mixed books of business can be managed in one timeline.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "from",
+            in: "query",
+            required: false,
+            schema: { type: "string", format: "date-time" }
+          },
+          {
+            name: "to",
+            in: "query",
+            required: false,
+            schema: { type: "string", format: "date-time" }
+          }
+        ],
+        responses: {
+          "200": { description: "Merged provider calendar overview" },
+          "400": { description: "Invalid date range" }
         }
       }
     },

@@ -5,7 +5,9 @@ import {
   BookingArrivalTracking,
   CustomerProviderConversationThread,
   formatBookingWindowSummary,
+  getExternalCalendarBlockLabel,
   getBookingExceptionLabel,
+  ProviderCalendarOverviewResponse,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
@@ -19,6 +21,7 @@ export function ScheduleScreen() {
   const { envelope } = useProviderSession();
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
+  const [calendarOverview, setCalendarOverview] = useState<ProviderCalendarOverviewResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [activeBookingId, setActiveBookingId] = useState<string | undefined>();
@@ -36,7 +39,12 @@ export function ScheduleScreen() {
     try {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      setOverview(await api.getProviderStaffingOverview());
+      const [nextOverview, nextCalendarOverview] = await Promise.all([
+        api.getProviderStaffingOverview(),
+        api.getProviderCalendarOverview()
+      ]);
+      setOverview(nextOverview);
+      setCalendarOverview(nextCalendarOverview);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load schedule.");
     }
@@ -47,6 +55,7 @@ export function ScheduleScreen() {
   }, [envelope?.session.token]);
 
   const jobs = overview?.jobs ?? [];
+  const calendarEvents = calendarOverview?.events ?? [];
 
   function buildLateEta(bookingIso: string, minutes: number) {
     return new Date(new Date(bookingIso).getTime() + minutes * 60_000).toISOString();
@@ -260,22 +269,27 @@ export function ScheduleScreen() {
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       {viewMode === "calendar" ? (
-        <InfoCard title="This week" description="Crew-aware schedule blocks">
+        <InfoCard
+          title="This week"
+          description={`${calendarOverview?.yardmatchJobCount ?? jobs.length} YardMatch jobs • ${calendarOverview?.externalBlockCount ?? 0} outside blocks`}
+        >
           <View style={styles.list}>
-            {jobs.map((job) => (
-              <View key={job.bookingId} style={styles.dayCard}>
+            {calendarEvents.map((event) => (
+              <View key={event.id} style={styles.dayCard}>
                 <Text style={styles.dayLabel}>
-                  {new Date(job.scheduledStartIso).toLocaleDateString(undefined, { weekday: "short" })}
+                  {new Date(event.startIso).toLocaleDateString(undefined, { weekday: "short" })}
                 </Text>
                 <Text style={styles.timeLabel}>
-                  {formatBookingWindowSummary(job.scheduledStartIso)}
+                  {formatBookingWindowSummary(event.startIso)}
                 </Text>
-                <Text style={styles.clientLabel}>{job.customerName}</Text>
-                <Text style={styles.metaLine}>{job.category.replaceAll("-", " ")}</Text>
+                <Text style={styles.clientLabel}>{event.title}</Text>
                 <Text style={styles.metaLine}>
-                  {job.requiredCrewMembers} crew • {job.assignedCrewMembers} assigned • {job.crewGap} open
+                  {event.source === "yardmatch-booking"
+                    ? `${event.customerName ?? "Customer"} • ${event.status?.replaceAll("-", " ")}`
+                    : `${getExternalCalendarBlockLabel(event.blockType ?? "off-platform-client")} • Outside block`}
                 </Text>
-                <Text style={styles.statusLine}>{job.status.replaceAll("-", " ")}</Text>
+                {event.addressLine ? <Text style={styles.metaLine}>{event.addressLine}</Text> : null}
+                {event.notes ? <Text style={styles.metaLine}>{event.notes}</Text> : null}
               </View>
             ))}
           </View>

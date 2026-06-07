@@ -43,6 +43,7 @@ import {
   ObservabilityOverview,
   ProviderCrewConversation,
   ProviderCalendarSubscriptionResponse,
+  ProviderCalendarOverviewResponse,
   ProviderProfile,
   ProviderStaffingOverview,
   ProviderReview,
@@ -213,6 +214,19 @@ export class MarketplaceApiClient {
 
   public getProviderCalendarSubscription(): Promise<ProviderCalendarSubscriptionResponse> {
     return this.getJson(ApiRoutes.providerCalendarSubscription);
+  }
+
+  public getProviderCalendarOverview(fromIso?: string, toIso?: string): Promise<ProviderCalendarOverviewResponse> {
+    const query = new URLSearchParams();
+    if (fromIso) {
+      query.set("from", fromIso);
+    }
+    if (toIso) {
+      query.set("to", toIso);
+    }
+
+    const suffix = query.toString();
+    return this.getJson(`${ApiRoutes.providerCalendarOverview}${suffix ? `?${suffix}` : ""}`);
   }
 
   public getNotifications(): Promise<NotificationListResponse> {
