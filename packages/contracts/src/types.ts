@@ -48,22 +48,38 @@ export type PaymentProcessor = "manual" | "stripe";
 
 export type SupportTicketStatus = "open" | "triaged" | "resolved";
 export type SupportIssueType = "billing" | "service-quality" | "account" | "general";
+export type SupportBookingResolution =
+  | "restore-active-booking"
+  | "cancel-booking"
+  | "complete-booking";
 export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
-export type NotificationChannel = "email" | "in-app" | "push";
+export type NotificationChannel = "email" | "in-app" | "push" | "sms";
 export type AppNotificationCategory = "booking" | "staffing" | "review" | "support" | "account";
+export type NotificationDeliveryStatus = "queued" | "sent" | "failed" | "skipped";
 export type CrewMemberSchedulePreference = "full-time" | "part-time" | "seasonal" | "flex";
 export type CrewMemberStatus = "available" | "assigned" | "off-duty";
 export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 export type ProviderStaffingMode = "auto-accept" | "review-first";
 export type CrewMatchStatus = "pending-provider-review" | "accepted" | "denied";
+export type ExternalCalendarBlockType =
+  | "off-platform-client"
+  | "personal-time"
+  | "travel-buffer"
+  | "equipment-maintenance";
 export type BookingArrivalTrackingStatus =
   | "unavailable"
   | "not-started"
   | "on-route"
   | "arrived"
   | "completed";
+export type BookingServiceWindowKey = "morning" | "afternoon" | "late-afternoon-night";
+export type BookingExceptionType =
+  | "customer-no-show"
+  | "customer-not-ready"
+  | "unable-to-access-property"
+  | "service-could-not-be-completed";
 
 export interface GeoPoint {
   latitude: number;
@@ -91,6 +107,17 @@ export interface PlaceSearchResponse {
   suggestions: PlaceSuggestion[];
 }
 
+export interface ExternalCalendarBlock {
+  id: string;
+  title: string;
+  blockType: ExternalCalendarBlockType;
+  startIso: string;
+  endIso: string;
+  notes?: string;
+  source: "manual" | "calendar-import";
+  createdAt: string;
+}
+
 export interface CustomerProperty {
   id: string;
   label: string;
@@ -109,6 +136,10 @@ export interface CalendarConnection {
   provider: "apple" | "google" | "outlook";
   connected: boolean;
   externalCalendarId?: string;
+  feedToken?: string;
+  lastSyncedAt?: string;
+  externalEventsBlockingEnabled?: boolean;
+  externalBlocks?: ExternalCalendarBlock[];
 }
 
 export interface BaseUser {
@@ -210,6 +241,15 @@ export interface ProviderStaffingJobSummary {
   scheduledEndIso: string;
   onRouteConfirmedAt?: string;
   onRouteConfirmedByCrewMemberId?: string;
+  lateNoticeSentAt?: string;
+  lateEtaIso?: string;
+  lateReason?: string;
+  activeExceptionType?: BookingExceptionType;
+  activeExceptionReportedAt?: string;
+  activeExceptionNotes?: string;
+  disputedAt?: string;
+  disputeReason?: string;
+  disputedByRole?: "customer" | "provider";
   totalCents: number;
   requiredCrewMembers: number;
   assignedCrewMembers: number;
@@ -234,6 +274,15 @@ export interface CrewMatchSummary {
   scheduledEndIso: string;
   bookingStatus: BookingStatus;
   onRouteConfirmedAt?: string;
+  lateNoticeSentAt?: string;
+  lateEtaIso?: string;
+  lateReason?: string;
+  activeExceptionType?: BookingExceptionType;
+  activeExceptionReportedAt?: string;
+  activeExceptionNotes?: string;
+  disputedAt?: string;
+  disputeReason?: string;
+  disputedByRole?: "customer" | "provider";
   status: CrewMatchStatus;
   hourlyRateCents: number;
   canChat: boolean;
@@ -333,6 +382,15 @@ export interface Booking {
   status: BookingStatus;
   onRouteConfirmedAt?: string;
   onRouteConfirmedByCrewMemberId?: string;
+  lateNoticeSentAt?: string;
+  lateEtaIso?: string;
+  lateReason?: string;
+  activeExceptionType?: BookingExceptionType;
+  activeExceptionReportedAt?: string;
+  activeExceptionNotes?: string;
+  disputedAt?: string;
+  disputeReason?: string;
+  disputedByRole?: "customer" | "provider";
   completedAt?: string;
   notes: string;
   totalCents: number;
@@ -428,6 +486,18 @@ export interface SupportTicket {
   issueType: SupportIssueType;
   status: SupportTicketStatus;
   createdAt: string;
+  updatedAt: string;
+  triagedAt?: string;
+  resolvedAt?: string;
+  resolutionNotes?: string;
+  resolutionAction?: SupportBookingResolution;
+}
+
+export interface SupportOpsTicket {
+  ticket: SupportTicket;
+  booking?: Booking;
+  customerName?: string;
+  providerName?: string;
 }
 
 export interface AppNotification {
@@ -443,6 +513,40 @@ export interface AppNotification {
   readAt?: string;
 }
 
+export interface NotificationPreferences {
+  userId: string;
+  role: MarketplaceRole;
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  pushEnabled: boolean;
+  reviewRemindersEnabled: boolean;
+  updatedAt: string;
+}
+
+export interface UpdateNotificationPreferencesRequest {
+  emailEnabled?: boolean;
+  smsEnabled?: boolean;
+  pushEnabled?: boolean;
+  reviewRemindersEnabled?: boolean;
+}
+
+export interface NotificationDeliveryRecord {
+  id: string;
+  notificationId: string;
+  recipientId: string;
+  recipientRole: MarketplaceRole;
+  category: AppNotificationCategory;
+  channel: NotificationChannel;
+  destination: string;
+  provider: string;
+  status: NotificationDeliveryStatus;
+  title: string;
+  bodyPreview: string;
+  errorMessage?: string;
+  createdAt: string;
+  sentAt?: string;
+}
+
 export interface NotificationListResponse {
   notifications: AppNotification[];
   unreadCount: number;
@@ -450,6 +554,18 @@ export interface NotificationListResponse {
 
 export interface MarkNotificationsReadRequest {
   notificationIds?: string[];
+}
+
+export interface NotificationDeliveriesResponse {
+  deliveries: NotificationDeliveryRecord[];
+}
+
+export interface ProviderCalendarSubscriptionResponse {
+  providerId: string;
+  providerName: string;
+  feedUrl: string;
+  webcalUrl: string;
+  instructions: string[];
 }
 
 export interface RegisterUserRequest {
@@ -549,6 +665,17 @@ export interface UpdateProviderSettingsRequest {
   serviceRadiusMiles: number;
   staffingMode?: ProviderStaffingMode;
   sponsoredListingEnabled?: boolean;
+  externalEventsBlockingEnabled?: boolean;
+  externalCalendarBlocks?: Array<{
+    id?: string;
+    title: string;
+    blockType: ExternalCalendarBlockType;
+    startIso: string;
+    endIso: string;
+    notes?: string;
+    source?: "manual" | "calendar-import";
+    createdAt?: string;
+  }>;
 }
 
 export interface UpdateCrewPreferencesRequest {
@@ -579,6 +706,23 @@ export interface SendCustomerProviderMessageRequest {
 
 export interface MarkBookingOnRouteRequest {
   bookingId: string;
+}
+
+export interface MarkBookingLateRequest {
+  bookingId: string;
+  lateEtaIso: string;
+  reason?: string;
+}
+
+export interface MarkBookingExceptionRequest {
+  bookingId: string;
+  exceptionType: BookingExceptionType;
+  notes?: string;
+}
+
+export interface CreateBookingDisputeRequest {
+  bookingId: string;
+  reason: string;
 }
 
 export interface BookingAddressChangeRequest {
@@ -688,6 +832,13 @@ export interface CreateSupportTicketRequest {
   issueType: SupportIssueType;
 }
 
+export interface UpdateSupportTicketRequest {
+  ticketId: string;
+  status: SupportTicketStatus;
+  resolutionNotes?: string;
+  resolutionAction?: SupportBookingResolution;
+}
+
 export interface ConfirmBookingRequest {
   bookingId: string;
 }
@@ -708,6 +859,71 @@ export interface RescheduleBookingRequest {
   bookingId: string;
   scheduledStartIso: string;
   scheduledEndIso: string;
+}
+
+export function getBookingServiceWindow(startIso: string): {
+  key: BookingServiceWindowKey;
+  label: string;
+  rangeLabel: string;
+  arrivalLabel: string;
+} {
+  const hour = new Date(startIso).getHours();
+
+  if (hour < 12) {
+    return {
+      key: "morning",
+      label: "Morning",
+      rangeLabel: "7:00 AM - 12:00 PM",
+      arrivalLabel: "Morning arrival window"
+    };
+  }
+
+  if (hour < 16) {
+    return {
+      key: "afternoon",
+      label: "Afternoon",
+      rangeLabel: "12:00 PM - 4:00 PM",
+      arrivalLabel: "Afternoon arrival window"
+    };
+  }
+
+  return {
+    key: "late-afternoon-night",
+    label: "Late afternoon / evening",
+    rangeLabel: "4:00 PM - 8:00 PM",
+    arrivalLabel: "Late afternoon / evening window"
+  };
+}
+
+export function formatBookingWindowSummary(startIso: string): string {
+  const window = getBookingServiceWindow(startIso);
+  return `${window.label} • ${window.rangeLabel}`;
+}
+
+export function getBookingExceptionLabel(exceptionType: BookingExceptionType): string {
+  switch (exceptionType) {
+    case "customer-no-show":
+      return "Customer no-show";
+    case "customer-not-ready":
+      return "Customer not ready";
+    case "unable-to-access-property":
+      return "Unable to access property";
+    case "service-could-not-be-completed":
+      return "Service could not be completed";
+  }
+}
+
+export function getExternalCalendarBlockLabel(blockType: ExternalCalendarBlockType): string {
+  switch (blockType) {
+    case "off-platform-client":
+      return "Off-platform client";
+    case "personal-time":
+      return "Personal time";
+    case "travel-buffer":
+      return "Travel buffer";
+    case "equipment-maintenance":
+      return "Equipment maintenance";
+  }
 }
 
 export interface CreateProviderReviewRequest {

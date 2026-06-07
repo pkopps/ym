@@ -758,7 +758,7 @@ export const bookedBusinessShowcase: BookedBusinessShowcase[] = [
     mapY: 70,
     specialties: ["Lawn mowing", "Hedge trimming", "Mulch installation"],
     crewSizeLabel: "5-person crew",
-    fullyBookedLabel: "Every 2-hour block reserved",
+    fullyBookedLabel: "Morning, afternoon, and evening route windows reserved",
     slots: [
       { startLabel: "7:00 AM", endLabel: "9:00 AM", status: "booked" },
       { startLabel: "9:00 AM", endLabel: "11:00 AM", status: "booked" },

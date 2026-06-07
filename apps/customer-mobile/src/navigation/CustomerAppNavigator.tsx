@@ -27,7 +27,7 @@ export function CustomerAppNavigator() {
       />
     ),
     book: <BookServiceScreen />,
-    bookings: <BookingsScreen />,
+    bookings: <BookingsScreen onOpenAccount={() => setActiveTab("account")} />,
     account: <SupportScreen />
   }[activeTab];
 

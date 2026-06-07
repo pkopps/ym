@@ -7,6 +7,8 @@ import {
   CustomerProfile,
   CustomerProperty,
   CustomerReviewOpportunity,
+  formatBookingWindowSummary,
+  getBookingExceptionLabel,
   InstantQuoteResponse,
   PaymentRecord,
   ProviderProfile,
@@ -42,6 +44,13 @@ function formatDateTime(iso: string) {
   });
 }
 
+function formatEta(iso: string) {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
+
 function toDateTimeLocalValue(iso: string) {
   const value = new Date(iso);
   const year = value.getFullYear();
@@ -67,9 +76,11 @@ export function CustomerLiveDashboard() {
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
   const [loadingState, setLoadingState] = useState<"idle" | "loading">("idle");
+  const [providerSearchState, setProviderSearchState] = useState<"idle" | "loading" | "loaded">("idle");
   const [bookingMessage, setBookingMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
+  const [disputeDrafts, setDisputeDrafts] = useState<Record<string, string>>({});
   const [rescheduleDrafts, setRescheduleDrafts] = useState<
     Record<string, { start: string; end: string }>
   >({});
@@ -81,6 +92,11 @@ export function CustomerLiveDashboard() {
   const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
+  const providerCards = providerResults?.providers.map((provider) => ({
+    provider,
+    slot: providerResults.suggestedSlots.find((candidate) => candidate.providerId === provider.id)
+  })) ?? [];
+  const providersWithWindows = providerCards.filter((item) => item.slot);
   const nextBooking = bookings
     .filter(
       (booking) =>
@@ -238,6 +254,7 @@ export function CustomerLiveDashboard() {
       });
       setQuote(nextQuote);
       setProviderResults(undefined);
+      setProviderSearchState("idle");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to build a quote right now.");
     } finally {
@@ -253,6 +270,7 @@ export function CustomerLiveDashboard() {
 
     setLoadingState("loading");
     setErrorMessage(undefined);
+    setProviderSearchState("loading");
 
     try {
       const api = createAuthenticatedWebApiClient();
@@ -263,7 +281,9 @@ export function CustomerLiveDashboard() {
         estimatedDurationMinutes: quote?.estimatedDurationMinutes
       });
       setProviderResults(results);
+      setProviderSearchState("loaded");
     } catch (error) {
+      setProviderSearchState("idle");
       setErrorMessage(error instanceof Error ? error.message : "Unable to search providers right now.");
     } finally {
       setLoadingState("idle");
@@ -298,7 +318,7 @@ export function CustomerLiveDashboard() {
         notes: "Booked from the live YardMatch customer dashboard.",
         totalCents: quote.estimatedPriceCents
       });
-      setBookingMessage(`Booked ${provider.companyName} for ${formatDateTime(slot.startIso)}.`);
+      setBookingMessage(`Booked ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`);
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
@@ -390,6 +410,32 @@ export function CustomerLiveDashboard() {
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to reschedule this booking right now.");
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
+  async function handleOpenDispute(bookingId: string) {
+    const reason = (disputeDrafts[bookingId] ?? "").trim();
+    if (!reason) {
+      setErrorMessage("Tell us why you need to dispute this booking.");
+      return;
+    }
+
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+    setBookingMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.createBookingDispute({
+        bookingId,
+        reason
+      });
+      setBookingMessage("Dispute opened. YardMatch support now has the booking context.");
+      await loadDashboard();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open this dispute right now.");
     } finally {
       setLoadingState("idle");
     }
@@ -515,9 +561,21 @@ export function CustomerLiveDashboard() {
         <h1>Welcome back, {customer?.fullName?.split(" ")[0] ?? "there"}.</h1>
         <p>
           {nextBooking
-            ? `Next service ${formatDateTime(nextBooking.scheduledStartIso)} with ${providerNamesById[nextBooking.providerId] ?? "your landscaper"}`
+            ? `Next service ${formatBookingWindowSummary(nextBooking.scheduledStartIso)} with ${providerNamesById[nextBooking.providerId] ?? "your landscaper"}`
             : "You do not have an upcoming service yet."}
         </p>
+        {nextBooking?.lateEtaIso && !nextBooking.onRouteConfirmedAt ? (
+          <p>
+            Running behind. New target: {formatEta(nextBooking.lateEtaIso)}.
+            {nextBooking.lateReason ? ` ${nextBooking.lateReason}` : ""}
+          </p>
+        ) : null}
+        {nextBooking?.activeExceptionType ? (
+          <p>
+            Update: {getBookingExceptionLabel(nextBooking.activeExceptionType)}.
+            {nextBooking.activeExceptionNotes ? ` ${nextBooking.activeExceptionNotes}` : ""}
+          </p>
+        ) : null}
       </section>
 
       {bookingMessage ? (
@@ -638,10 +696,37 @@ export function CustomerLiveDashboard() {
 
       <section className="card">
         <h2>Nearby landscapers</h2>
-        {providerResults ? (
+        {providerSearchState === "loading" ? (
           <div className="stack-lg" style={{ paddingBottom: 0 }}>
-            {providerResults.providers.map((provider) => {
-              const slot = providerResults.suggestedSlots.find((candidate) => candidate.providerId === provider.id);
+            <article className="list-panel">
+              <h3>Checking nearby coverage</h3>
+              <p>Looking at route openings, service radius, and live availability for this property.</p>
+            </article>
+            <article className="list-panel">
+              <h3>This can take a moment</h3>
+              <p>If a lot of businesses serve your area, YardMatch sorts the closest openings first.</p>
+            </article>
+          </div>
+        ) : providerResults ? (
+          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            {providerResults.providers.length === 0 ? (
+              <article className="list-panel">
+                <h3>No landscaping businesses are live in this area yet.</h3>
+                <p>We do not have a provider serving this property right now. Try a nearby city or contact support so we can flag the area for expansion.</p>
+                <div className="cta-row">
+                  <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
+                    Request service in this area
+                  </a>
+                </div>
+              </article>
+            ) : null}
+            {providerResults.providers.length > 0 && providersWithWindows.length === 0 ? (
+              <article className="list-panel">
+                <h3>Businesses cover this area, but nothing is open in this window.</h3>
+                <p>Try another service window, another property, or check back later as route openings change throughout the day.</p>
+              </article>
+            ) : null}
+            {providerCards.map(({ provider, slot }) => {
               return (
                 <article className="list-panel" key={provider.id}>
                   <div className="search-result-title">
@@ -651,9 +736,10 @@ export function CustomerLiveDashboard() {
                   <p>
                     {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality
                   </p>
-                  <p>
-                    Radius {provider.serviceRadiusMiles} miles • {slot ? `Slot ${formatDateTime(slot.startIso)}` : "No open slot"}
-                  </p>
+                    <p>
+                      Radius {provider.serviceRadiusMiles} miles •{" "}
+                      {slot ? `${formatBookingWindowSummary(slot.startIso)} window` : "No open slot"}
+                    </p>
                   <div className="cta-row">
                     <button
                       className="button"
@@ -661,15 +747,20 @@ export function CustomerLiveDashboard() {
                       onClick={() => void handleCreateBooking(provider)}
                       type="button"
                     >
-                      Book this slot
+                      Book this window
                     </button>
                   </div>
+                  {!slot ? (
+                    <p style={{ marginTop: "0.75rem" }}>
+                      This business serves the area, but it does not have an open route window right now.
+                    </p>
+                  ) : null}
                 </article>
               );
             })}
           </div>
         ) : (
-          <p>Search after the quote to see live provider matches and bookable slots.</p>
+          <p>Search after the quote to see live provider matches and open route windows.</p>
         )}
       </section>
 
@@ -697,8 +788,8 @@ export function CustomerLiveDashboard() {
                   </div>
                   <div>
                     <h3>Schedule</h3>
+                    <p>{formatBookingWindowSummary(booking.scheduledStartIso)}</p>
                     <p>{formatDateTime(booking.scheduledStartIso)}</p>
-                    <p>{formatDateTime(booking.scheduledEndIso)}</p>
                   </div>
                   <div>
                     <h3>Notes</h3>
@@ -787,6 +878,59 @@ export function CustomerLiveDashboard() {
                     </div>
                   </>
                 ) : null}
+                {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
+                  <div className="list-panel" style={{ marginTop: "1rem" }}>
+                    <h3>Delay update</h3>
+                    <p>
+                      {providerNamesById[booking.providerId] ?? "The landscaping business"} is running behind.
+                    </p>
+                    <p>
+                      New target: {formatEta(booking.lateEtaIso)}.
+                      {booking.lateReason ? ` ${booking.lateReason}` : ""}
+                    </p>
+                  </div>
+                ) : null}
+                {booking.activeExceptionType ? (
+                  <div className="list-panel" style={{ marginTop: "1rem" }}>
+                    <h3>{getBookingExceptionLabel(booking.activeExceptionType)}</h3>
+                    <p>
+                      {providerNamesById[booking.providerId] ?? "The landscaping business"} flagged an issue with this
+                      visit.
+                    </p>
+                    <p>
+                      {booking.activeExceptionNotes ?? "Check in with the business or support to work out the next step."}
+                    </p>
+                    <div className="cta-row">
+                      <a
+                        className="button-secondary"
+                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=service-quality&subject=${encodeURIComponent(
+                          getBookingExceptionLabel(booking.activeExceptionType)
+                        )}`}
+                      >
+                        Get help
+                      </a>
+                    </div>
+                  </div>
+                ) : null}
+                {booking.status === "disputed" ? (
+                  <div className="list-panel" style={{ marginTop: "1rem" }}>
+                    <h3>Booking disputed</h3>
+                    <p>
+                      {booking.disputeReason ?? "A dispute was opened for this booking."}
+                    </p>
+                    <p>
+                      YardMatch support can now step in with the full booking context.
+                    </p>
+                    <div className="cta-row">
+                      <a
+                        className="button-secondary"
+                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=service-quality&subject=${encodeURIComponent("Disputed booking support")}`}
+                      >
+                        Open support
+                      </a>
+                    </div>
+                  </div>
+                ) : null}
                 {booking.onRouteConfirmedAt ? (
                   <div className="list-panel" style={{ marginTop: "1rem" }}>
                     <h3>Business chat</h3>
@@ -826,6 +970,41 @@ export function CustomerLiveDashboard() {
                     title="Crew on the way"
                     tracking={activeTracking}
                   />
+                ) : null}
+                {booking.status !== "cancelled" &&
+                booking.status !== "refunded" &&
+                booking.status !== "requested" &&
+                booking.status !== "disputed" ? (
+                  <div className="list-panel" style={{ marginTop: "1rem" }}>
+                    <h3>Need to dispute this service?</h3>
+                    <p>Open a formal dispute so YardMatch support can step in with the booking context attached.</p>
+                    <div className="form-grid" style={{ marginTop: "1rem" }}>
+                      <label className="form-field form-field--full">
+                        <span>Dispute reason</span>
+                        <textarea
+                          rows={3}
+                          value={disputeDrafts[booking.id] ?? ""}
+                          onChange={(event) =>
+                            setDisputeDrafts((current) => ({
+                              ...current,
+                              [booking.id]: event.target.value
+                            }))
+                          }
+                          placeholder="What went wrong with this service?"
+                        />
+                      </label>
+                    </div>
+                    <div className="cta-row" style={{ marginTop: "1rem" }}>
+                      <button
+                        className="button-secondary"
+                        disabled={loadingState === "loading"}
+                        onClick={() => void handleOpenDispute(booking.id)}
+                        type="button"
+                      >
+                        Open dispute
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
               </article>
             ))}

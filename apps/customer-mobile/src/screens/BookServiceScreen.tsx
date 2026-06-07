@@ -5,6 +5,7 @@ import {
   AvailabilitySlot,
   CreateCustomerPropertyRequest,
   CustomerProperty,
+  formatBookingWindowSummary,
   InstantQuoteResponse,
   ProviderProfile,
   ServiceCategory
@@ -37,6 +38,7 @@ export function BookServiceScreen() {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [searchState, setSearchState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [showPropertyForm, setShowPropertyForm] = useState(false);
 
   const activeProperty = useMemo(
@@ -80,15 +82,19 @@ export function BookServiceScreen() {
         category: selectedService,
         propertyId: activeProperty.id
       });
+      setQuote(nextQuote);
+      setProviders([]);
+      setSlots([]);
+      setSearchState("loading");
       const providerSearch = await api.searchProviders({
         address: activeProperty.address,
         categories: [selectedService],
         dateIso: new Date().toISOString(),
         estimatedDurationMinutes: nextQuote.estimatedDurationMinutes
       });
-      setQuote(nextQuote);
       setProviders(providerSearch.providers);
       setSlots(providerSearch.suggestedSlots);
+      setSearchState("loaded");
       void tracker.track(MarketplaceTelemetryEventCatalog.bookingRequested, {
         app: "customer",
         screen: "book",
@@ -96,6 +102,7 @@ export function BookServiceScreen() {
         property: activeProperty.label
       });
     } catch (error) {
+      setSearchState("error");
       setErrorMessage(error instanceof Error ? error.message : "Unable to build quote right now.");
     } finally {
       setIsWorking(false);
@@ -151,7 +158,7 @@ export function BookServiceScreen() {
         notes: "Booked from the mobile customer app.",
         totalCents: quote.estimatedPriceCents
       });
-      setMessage(`Booked ${provider.companyName}.`);
+      setMessage(`Booked ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
     } finally {
@@ -159,7 +166,12 @@ export function BookServiceScreen() {
     }
   }
 
-  const shortlist = providers.slice(0, 3);
+  const providerCards = providers.map((provider) => ({
+    provider,
+    slot: slots.find((item) => item.providerId === provider.id && !item.isBooked)
+  }));
+  const shortlist = providerCards.slice(0, 3);
+  const providersWithWindows = providerCards.filter((item) => item.slot);
 
   return (
     <ScreenShell eyebrow="Book" title="Start a new booking" description="Pick a service and property.">
@@ -241,10 +253,40 @@ export function BookServiceScreen() {
           </InfoCard>
 
           <InfoCard title="Nearby matches" description="Best next openings">
-            <View style={styles.providerStack}>
-              {shortlist.map((provider) => {
-                const slot = slots.find((item) => item.providerId === provider.id && !item.isBooked);
-                return (
+            {searchState === "loading" ? (
+              <View style={styles.providerStack}>
+                <Text style={styles.emptyState}>Checking nearby coverage, route openings, and live availability...</Text>
+                <Text style={styles.providerMeta}>If many businesses serve this area, sorting can take a moment.</Text>
+              </View>
+            ) : searchState === "error" ? (
+              <View style={styles.providerStack}>
+                <Text style={styles.emptyState}>We could not finish checking nearby providers.</Text>
+                <Text style={styles.providerMeta}>Please try again. Your quote is still here.</Text>
+              </View>
+            ) : providers.length === 0 ? (
+              <View style={styles.providerStack}>
+                <Text style={styles.emptyState}>No landscaping businesses are live in this area yet.</Text>
+                <Text style={styles.providerMeta}>Try another nearby city or check back later as YardMatch expands coverage.</Text>
+              </View>
+            ) : providersWithWindows.length === 0 ? (
+              <View style={styles.providerStack}>
+                <Text style={styles.emptyState}>Businesses serve this area, but nothing is open in this window.</Text>
+                <Text style={styles.providerMeta}>Try again later or switch to another service window.</Text>
+                {shortlist.map(({ provider }) => (
+                  <View key={provider.id} style={styles.providerRow}>
+                    <View style={styles.providerCopy}>
+                      <Text style={styles.providerName}>{provider.companyName}</Text>
+                      <Text style={styles.providerMeta}>
+                        {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
+                      </Text>
+                      <Text style={styles.providerMeta}>No open route window right now</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.providerStack}>
+                {shortlist.map(({ provider, slot }) => (
                   <View key={provider.id} style={styles.providerRow}>
                     <View style={styles.providerCopy}>
                       <Text style={styles.providerName}>{provider.companyName}</Text>
@@ -252,7 +294,7 @@ export function BookServiceScreen() {
                         {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
                       </Text>
                       <Text style={styles.providerMeta}>
-                        {slot ? new Date(slot.startIso).toLocaleString() : "No open slot"}
+                        {slot ? formatBookingWindowSummary(slot.startIso) : "No open slot"}
                       </Text>
                     </View>
                     <Pressable
@@ -263,9 +305,9 @@ export function BookServiceScreen() {
                       <Text style={styles.secondaryButtonLabel}>Book</Text>
                     </Pressable>
                   </View>
-                );
-              })}
-            </View>
+                ))}
+              </View>
+            )}
           </InfoCard>
         </>
       ) : null}

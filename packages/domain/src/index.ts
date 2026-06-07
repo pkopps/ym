@@ -94,6 +94,55 @@ export class SchedulingService {
     lines.push("END:VCALENDAR");
     return lines.join("\n");
   }
+
+  public buildProviderBookingCalendarFeed(input: {
+    providerName: string;
+    bookings: Array<{
+      id: string;
+      category: Booking["category"];
+      customerName: string;
+      addressLine: string;
+      city: string;
+      state: string;
+      scheduledStartIso: string;
+      scheduledEndIso: string;
+      status: Booking["status"];
+      notes?: string;
+    }>;
+  }): string {
+    const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//YardMatch//ProviderSchedule//EN"];
+
+    for (const booking of input.bookings) {
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:${booking.id}@yardmatch.local`);
+      lines.push(`DTSTART:${booking.scheduledStartIso.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`);
+      lines.push(`DTEND:${booking.scheduledEndIso.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`);
+      lines.push(
+        `SUMMARY:${this.escapeIcsText(`${input.providerName}: ${this.titleCaseCategory(booking.category)} for ${booking.customerName}`)}`
+      );
+      lines.push(
+        `DESCRIPTION:${this.escapeIcsText(
+          `Status: ${booking.status}. ${booking.notes?.trim() || "YardMatch booked service."}`
+        )}`
+      );
+      lines.push(`LOCATION:${this.escapeIcsText(`${booking.addressLine}, ${booking.city}, ${booking.state}`)}`);
+      lines.push("END:VEVENT");
+    }
+
+    lines.push("END:VCALENDAR");
+    return lines.join("\n");
+  }
+
+  private titleCaseCategory(category: Booking["category"]): string {
+    return category
+      .split("-")
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(" ");
+  }
+
+  private escapeIcsText(value: string): string {
+    return value.replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll(",", "\\,").replaceAll(";", "\\;");
+  }
 }
 
 export class BookingLifecycleService {

@@ -3,6 +3,12 @@
 import {
   BookingArrivalTracking,
   CustomerProviderConversationThread,
+  ExternalCalendarBlock,
+  ExternalCalendarBlockType,
+  formatBookingWindowSummary,
+  getExternalCalendarBlockLabel,
+  getBookingExceptionLabel,
+  ProviderCalendarSubscriptionResponse,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
@@ -24,6 +30,22 @@ function formatDateTime(iso: string) {
   });
 }
 
+function buildLateEta(bookingIso: string, minutes: number) {
+  return new Date(new Date(bookingIso).getTime() + minutes * 60_000).toISOString();
+}
+
+function formatLocalInputValue(date: Date) {
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
+const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
+  "off-platform-client",
+  "personal-time",
+  "travel-buffer",
+  "equipment-maintenance"
+];
+
 export function ProviderLiveManagementBoard() {
   const [sessionReady, setSessionReady] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -34,6 +56,18 @@ export function ProviderLiveManagementBoard() {
   >();
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
+  const [calendarSubscription, setCalendarSubscription] = useState<
+    ProviderCalendarSubscriptionResponse | undefined
+  >();
+  const [blockTitle, setBlockTitle] = useState("Off-platform client");
+  const [blockType, setBlockType] = useState<ExternalCalendarBlockType>("off-platform-client");
+  const [blockStartLocal, setBlockStartLocal] = useState(() =>
+    formatLocalInputValue(new Date(Date.now() + 24 * 60 * 60 * 1000))
+  );
+  const [blockEndLocal, setBlockEndLocal] = useState(() =>
+    formatLocalInputValue(new Date(Date.now() + 26 * 60 * 60 * 1000))
+  );
+  const [blockNotes, setBlockNotes] = useState("");
   const [chatDraft, setChatDraft] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -41,11 +75,20 @@ export function ProviderLiveManagementBoard() {
 
   const provider = overview?.provider;
   const jobs = overview?.jobs ?? [];
+  const calendarBlocks = provider?.calendarConnection.externalBlocks ?? [];
+  const externalBlockingEnabled = provider?.calendarConnection.externalEventsBlockingEnabled ?? false;
   const totalAssignedCrew = useMemo(
     () => jobs.reduce((sum, job) => sum + job.assignedCrewMembers, 0),
     [jobs]
   );
   const totalCrewGap = useMemo(() => jobs.reduce((sum, job) => sum + job.crewGap, 0), [jobs]);
+  const nextRouteJob = useMemo(
+    () =>
+      jobs
+        .filter((job) => job.status === "confirmed" && !job.onRouteConfirmedAt)
+        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
+    [jobs]
+  );
 
   async function loadProviderView() {
     const session = loadStoredSession();
@@ -57,8 +100,12 @@ export function ProviderLiveManagementBoard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const nextOverview = await api.getProviderStaffingOverview();
+    const [nextOverview, nextCalendarSubscription] = await Promise.all([
+      api.getProviderStaffingOverview(),
+      api.getProviderCalendarSubscription()
+    ]);
     setOverview(nextOverview);
+    setCalendarSubscription(nextCalendarSubscription);
     setSessionReady(true);
   }
 
@@ -115,6 +162,83 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
+  async function saveCalendarBlockingSettings(nextBlocks: ExternalCalendarBlock[], enabled = externalBlockingEnabled) {
+    if (!provider) {
+      return;
+    }
+
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.updateProviderSettings({
+        serviceRadiusMiles: provider.serviceRadiusMiles,
+        staffingMode: provider.staffingMode,
+        sponsoredListingEnabled: provider.sponsoredListingEnabled,
+        externalEventsBlockingEnabled: enabled,
+        externalCalendarBlocks: nextBlocks
+      });
+      setStatusMessage(
+        enabled
+          ? "Outside calendar blocks are now affecting YardMatch availability."
+          : "Outside calendar blocks are saved, but they are not affecting YardMatch availability yet."
+      );
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to update outside calendar blocking right now."
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleAddCalendarBlock() {
+    if (!provider) {
+      return;
+    }
+
+    const start = new Date(blockStartLocal);
+    const end = new Date(blockEndLocal);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      setErrorMessage("Choose a valid start and end time for the outside block.");
+      return;
+    }
+
+    await saveCalendarBlockingSettings(
+      [
+        ...calendarBlocks,
+        {
+          id: `manual-block-${Date.now()}`,
+          title: blockTitle.trim() || getExternalCalendarBlockLabel(blockType),
+          blockType,
+          startIso: start.toISOString(),
+          endIso: end.toISOString(),
+          notes: blockNotes.trim() || undefined,
+          source: "manual",
+          createdAt: new Date().toISOString()
+        }
+      ],
+      true
+    );
+
+    setBlockTitle("Off-platform client");
+    setBlockType("off-platform-client");
+    setBlockNotes("");
+  }
+
+  async function handleRemoveCalendarBlock(blockId: string) {
+    await saveCalendarBlockingSettings(calendarBlocks.filter((block) => block.id !== blockId));
+  }
+
+  async function handleToggleCalendarBlocking(enabled: boolean) {
+    await saveCalendarBlockingSettings(calendarBlocks, enabled);
+  }
+
   async function openCustomerChat(bookingId: string) {
     setErrorMessage(undefined);
 
@@ -153,6 +277,90 @@ export function ProviderLiveManagementBoard() {
       await loadProviderView();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to confirm this booking right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleStartRoute(bookingId: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.markBookingOnRoute({ bookingId });
+      setStatusMessage("Route started. Customer tracking and chat are now live.");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start this route right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleStartWork(bookingId: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.startBooking({ bookingId });
+      setStatusMessage("Work started.");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start work right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleMarkLate(bookingId: string, lateEtaIso: string, reason: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.markBookingLate({
+        bookingId,
+        lateEtaIso,
+        reason
+      });
+      setStatusMessage("Customer updated about the delay.");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to send the delay update right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleReportIssue(
+    bookingId: string,
+    exceptionType:
+      | "customer-no-show"
+      | "customer-not-ready"
+      | "unable-to-access-property"
+      | "service-could-not-be-completed",
+    notes: string
+  ) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.markBookingException({
+        bookingId,
+        exceptionType,
+        notes
+      });
+      setStatusMessage(`${getBookingExceptionLabel(exceptionType)} shared with the customer.`);
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to log that issue right now.");
     } finally {
       setIsWorking(false);
     }
@@ -288,6 +496,144 @@ export function ProviderLiveManagementBoard() {
         </article>
       </section>
 
+      <section className="card">
+        <span className="eyebrow">Calendar sync</span>
+        <h2>Keep YardMatch jobs in your outside calendar.</h2>
+        <p>
+          Subscribe to your YardMatch schedule in Apple Calendar, Google Calendar, or Outlook so booked jobs stay
+          visible alongside direct clients and personal blocks.
+        </p>
+        {calendarSubscription ? (
+          <>
+            <div className="cta-row">
+              <a className="button-secondary" href={calendarSubscription.feedUrl} target="_blank" rel="noreferrer">
+                Open feed URL
+              </a>
+              <a className="button-secondary" href={calendarSubscription.webcalUrl}>
+                Subscribe with webcal
+              </a>
+            </div>
+            <div className="stack-md" style={{ paddingTop: "1rem" }}>
+              {calendarSubscription.instructions.map((instruction) => (
+                <p key={instruction}>{instruction}</p>
+              ))}
+            </div>
+          </>
+        ) : null}
+        <div className="stack-md" style={{ paddingTop: "1.25rem" }}>
+          <div className="cta-row">
+            <button
+              className={externalBlockingEnabled ? "button" : "button-secondary"}
+              disabled={isWorking}
+              onClick={() => void handleToggleCalendarBlocking(true)}
+              type="button"
+            >
+              Outside blocks affect availability
+            </button>
+            <button
+              className={!externalBlockingEnabled ? "button" : "button-secondary"}
+              disabled={isWorking}
+              onClick={() => void handleToggleCalendarBlocking(false)}
+              type="button"
+            >
+              Save only, do not block yet
+            </button>
+          </div>
+          <div className="grid-two">
+            <label className="form-field">
+              <span>Block title</span>
+              <input
+                value={blockTitle}
+                onChange={(event) => setBlockTitle(event.target.value)}
+                placeholder="Direct client, personal time, travel buffer"
+              />
+            </label>
+            <label className="form-field">
+              <span>Block type</span>
+              <select value={blockType} onChange={(event) => setBlockType(event.target.value as ExternalCalendarBlockType)}>
+                {externalCalendarBlockOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {getExternalCalendarBlockLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Start</span>
+              <input type="datetime-local" value={blockStartLocal} onChange={(event) => setBlockStartLocal(event.target.value)} />
+            </label>
+            <label className="form-field">
+              <span>End</span>
+              <input type="datetime-local" value={blockEndLocal} onChange={(event) => setBlockEndLocal(event.target.value)} />
+            </label>
+          </div>
+          <label className="form-field form-field--full">
+            <span>Notes</span>
+            <textarea
+              rows={3}
+              value={blockNotes}
+              onChange={(event) => setBlockNotes(event.target.value)}
+              placeholder="Optional note for why this off-platform block should protect the calendar."
+            />
+          </label>
+          <div className="cta-row">
+            <button className="button-secondary" disabled={isWorking} onClick={() => void handleAddCalendarBlock()} type="button">
+              Add outside block
+            </button>
+          </div>
+          <div className="stack-md">
+            {calendarBlocks.length > 0 ? (
+              calendarBlocks.map((block) => (
+                <article className="card" key={block.id}>
+                  <span className="eyebrow">{getExternalCalendarBlockLabel(block.blockType)}</span>
+                  <h3>{block.title}</h3>
+                  <p>
+                    {formatDateTime(block.startIso)} to {formatDateTime(block.endIso)}
+                  </p>
+                  {block.notes ? <p>{block.notes}</p> : null}
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() => void handleRemoveCalendarBlock(block.id)}
+                      type="button"
+                    >
+                      Remove block
+                    </button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <p>No outside-client or personal blocks yet. Add one to keep YardMatch from opening that window.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {nextRouteJob ? (
+        <section className="card">
+          <span className="eyebrow">Leave soon</span>
+          <h2>{nextRouteJob.customerName}</h2>
+          <p>
+            {formatBookingWindowSummary(nextRouteJob.scheduledStartIso)} • {nextRouteJob.serviceAddress.line1}
+          </p>
+          <p>
+            In v1 the business owner starts the route for the job. Once you head out, customer
+            tracking goes live automatically.
+          </p>
+          <div className="cta-row">
+            <button
+              className="button"
+              disabled={isWorking}
+              onClick={() => void handleStartRoute(nextRouteJob.bookingId)}
+              type="button"
+            >
+              Start route
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="stack-lg">
         {jobs.map((job) => (
           <article className="history-card" key={job.bookingId}>
@@ -301,8 +647,8 @@ export function ProviderLiveManagementBoard() {
             <div className="history-card__grid">
               <div>
                 <h3>Schedule</h3>
+                <p>{formatBookingWindowSummary(job.scheduledStartIso)}</p>
                 <p>{formatDateTime(job.scheduledStartIso)}</p>
-                <p>{formatDateTime(job.scheduledEndIso)}</p>
               </div>
               <div>
                 <h3>Address</h3>
@@ -331,6 +677,72 @@ export function ProviderLiveManagementBoard() {
                   Confirm booking
                 </button>
               ) : null}
+              {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+                <>
+                  <button
+                    className="button"
+                    disabled={isWorking}
+                    onClick={() => void handleStartRoute(job.bookingId)}
+                    type="button"
+                  >
+                    Start route
+                  </button>
+                  <button
+                    className="button-secondary"
+                    disabled={isWorking}
+                    onClick={() =>
+                      void handleMarkLate(
+                        job.bookingId,
+                        buildLateEta(job.scheduledStartIso, 15),
+                        "Running about 15 minutes behind the route."
+                      )
+                    }
+                    type="button"
+                  >
+                    Running 15 min late
+                  </button>
+                  <button
+                    className="button-secondary"
+                    disabled={isWorking}
+                    onClick={() =>
+                      void handleMarkLate(
+                        job.bookingId,
+                        buildLateEta(job.scheduledStartIso, 30),
+                        "Running about 30 minutes behind the route."
+                      )
+                    }
+                    type="button"
+                  >
+                    Running 30 min late
+                  </button>
+                </>
+              ) : null}
+              {job.status === "confirmed" && job.onRouteConfirmedAt ? (
+                <button
+                  className="button-secondary"
+                  disabled={isWorking}
+                  onClick={() => void handleStartWork(job.bookingId)}
+                  type="button"
+                >
+                  Start work
+                </button>
+              ) : null}
+              {(job.status === "confirmed" || job.status === "in-progress") ? (
+                <button
+                  className="button-secondary"
+                  disabled={isWorking}
+                  onClick={() =>
+                    void handleReportIssue(
+                      job.bookingId,
+                      "customer-no-show",
+                      "The customer did not appear for the scheduled service window."
+                    )
+                  }
+                  type="button"
+                >
+                  Customer no-show
+                </button>
+              ) : null}
               {(job.status === "confirmed" || job.status === "in-progress") ? (
                 <button
                   className="button-secondary"
@@ -341,7 +753,101 @@ export function ProviderLiveManagementBoard() {
                   Complete job
                 </button>
               ) : null}
+              {(job.status === "confirmed" || job.status === "in-progress") ? (
+                <button
+                  className="button-secondary"
+                  disabled={isWorking}
+                  onClick={() =>
+                    void handleReportIssue(
+                      job.bookingId,
+                      "customer-not-ready",
+                      "The property owner is not ready for the scheduled service."
+                    )
+                  }
+                  type="button"
+                >
+                  Customer not ready
+                </button>
+              ) : null}
+              {(job.status === "confirmed" || job.status === "in-progress") ? (
+                <button
+                  className="button-secondary"
+                  disabled={isWorking}
+                  onClick={() =>
+                    void handleReportIssue(
+                      job.bookingId,
+                      "unable-to-access-property",
+                      "The crew could not safely access the property as scheduled."
+                    )
+                  }
+                  type="button"
+                >
+                  No access
+                </button>
+              ) : null}
+              {job.status === "in-progress" ? (
+                <button
+                  className="button-secondary"
+                  disabled={isWorking}
+                  onClick={() =>
+                    void handleReportIssue(
+                      job.bookingId,
+                      "service-could-not-be-completed",
+                      "The service could not be completed during this visit."
+                    )
+                  }
+                  type="button"
+                >
+                  Could not complete
+                </button>
+              ) : null}
             </div>
+
+            {job.lateEtaIso && !job.onRouteConfirmedAt ? (
+              <div className="list-panel">
+                <strong>Delay notice sent</strong>
+                <p>
+                  Customer now expects the team around {formatDateTime(job.lateEtaIso)}.
+                  {job.lateReason ? ` ${job.lateReason}` : ""}
+                </p>
+              </div>
+            ) : null}
+
+            {job.activeExceptionType ? (
+              <div className="list-panel">
+                <strong>{getBookingExceptionLabel(job.activeExceptionType)}</strong>
+                <p>
+                  Logged {job.activeExceptionReportedAt ? formatDateTime(job.activeExceptionReportedAt) : "just now"}.
+                  {job.activeExceptionNotes ? ` ${job.activeExceptionNotes}` : ""}
+                </p>
+                <div className="cta-row">
+                  <a
+                    className="button-secondary"
+                    href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(
+                      getBookingExceptionLabel(job.activeExceptionType)
+                    )}`}
+                  >
+                    Open support
+                  </a>
+                </div>
+              </div>
+            ) : null}
+            {job.status === "disputed" ? (
+              <div className="list-panel">
+                <strong>Booking disputed</strong>
+                <p>
+                  {job.disputeReason ?? "A dispute was opened on this job."}
+                </p>
+                <div className="cta-row">
+                  <a
+                    className="button-secondary"
+                    href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent("Disputed booking support")}`}
+                  >
+                    Open support
+                  </a>
+                </div>
+              </div>
+            ) : null}
 
             <div className="stack-md">
               {job.matches.length === 0 ? (
@@ -409,7 +915,7 @@ export function ProviderLiveManagementBoard() {
                 <div className="search-result-title">
                   <div>
                     <h3>Customer chat</h3>
-                    <p>Crew is on the way. Chat is now open with the property owner.</p>
+                    <p>The route is live. Chat is now open with the property owner.</p>
                   </div>
                 </div>
                 <div className="cta-row">

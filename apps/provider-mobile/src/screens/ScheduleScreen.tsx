@@ -4,6 +4,8 @@ import { BrandTokens } from "@yardmatch/branding";
 import {
   BookingArrivalTracking,
   CustomerProviderConversationThread,
+  formatBookingWindowSummary,
+  getBookingExceptionLabel,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
@@ -45,6 +47,10 @@ export function ScheduleScreen() {
   }, [envelope?.session.token]);
 
   const jobs = overview?.jobs ?? [];
+
+  function buildLateEta(bookingIso: string, minutes: number) {
+    return new Date(new Date(bookingIso).getTime() + minutes * 60_000).toISOString();
+  }
 
   async function completeJob(bookingId: string) {
     if (!envelope?.session.token) {
@@ -147,6 +153,102 @@ export function ScheduleScreen() {
     }
   }
 
+  async function startRoute(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.markBookingOnRoute({ bookingId });
+      setStatusMessage("Route started. The customer can now see live arrival tracking.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function startWork(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.startBooking({ bookingId });
+      setStatusMessage("Work started.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start work.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function markLate(bookingId: string, lateEtaIso: string, reason: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.markBookingLate({
+        bookingId,
+        lateEtaIso,
+        reason
+      });
+      setStatusMessage("Customer updated about the delay.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to send the delay update.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function reportIssue(
+    bookingId: string,
+    exceptionType:
+      | "customer-no-show"
+      | "customer-not-ready"
+      | "unable-to-access-property"
+      | "service-could-not-be-completed",
+    notes: string
+  ) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.markBookingException({
+        bookingId,
+        exceptionType,
+        notes
+      });
+      setStatusMessage(`${getBookingExceptionLabel(exceptionType)} shared with the customer.`);
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to log that issue.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Schedule" title="Upcoming jobs">
       <View style={styles.modeRow}>
@@ -166,7 +268,7 @@ export function ScheduleScreen() {
                   {new Date(job.scheduledStartIso).toLocaleDateString(undefined, { weekday: "short" })}
                 </Text>
                 <Text style={styles.timeLabel}>
-                  {new Date(job.scheduledStartIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
+                  {formatBookingWindowSummary(job.scheduledStartIso)}
                 </Text>
                 <Text style={styles.clientLabel}>{job.customerName}</Text>
                 <Text style={styles.metaLine}>{job.category.replaceAll("-", " ")}</Text>
@@ -186,15 +288,33 @@ export function ScheduleScreen() {
                 <View style={styles.jobCopy}>
                   <Text style={styles.clientLabel}>{job.customerName}</Text>
                   <Text style={styles.metaLine}>
-                    {new Date(job.scheduledStartIso).toLocaleString()}
+                    {formatBookingWindowSummary(job.scheduledStartIso)}
                   </Text>
+                  <Text style={styles.metaLine}>{new Date(job.scheduledStartIso).toLocaleString()}</Text>
                   <Text style={styles.metaLine}>{job.serviceAddress.line1}</Text>
                   <Text style={styles.metaLine}>
                     {job.category.replaceAll("-", " ")} • {job.assignedCrewMembers}/{job.requiredCrewMembers} crew
                   </Text>
                   <Text style={styles.statusLine}>{job.status.replaceAll("-", " ")}</Text>
                   {job.onRouteConfirmedAt ? (
-                    <Text style={styles.metaLine}>Crew is on the way. Customer chat is open.</Text>
+                    <Text style={styles.metaLine}>Route is live. Customer chat is open.</Text>
+                  ) : null}
+                  {job.lateEtaIso && !job.onRouteConfirmedAt ? (
+                    <Text style={styles.metaLine}>
+                      Delay notice sent for{" "}
+                      {new Date(job.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}.
+                    </Text>
+                  ) : null}
+                  {job.activeExceptionType ? (
+                    <Text style={styles.metaLine}>
+                      {getBookingExceptionLabel(job.activeExceptionType)}
+                      {job.activeExceptionNotes ? ` • ${job.activeExceptionNotes}` : ""}
+                    </Text>
+                  ) : null}
+                  {job.status === "disputed" ? (
+                    <Text style={styles.metaLine}>
+                      Disputed{job.disputeReason ? ` • ${job.disputeReason}` : ""}
+                    </Text>
                   ) : null}
                   <View style={styles.actionRow}>
                     {job.status === "requested" ? (
@@ -206,6 +326,69 @@ export function ScheduleScreen() {
                         <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Confirm booking"}</Text>
                       </Pressable>
                     ) : null}
+                    {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void startRoute(job.bookingId)}
+                        style={styles.completeButton}
+                      >
+                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                      </Pressable>
+                    ) : null}
+                    {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() =>
+                          void reportIssue(
+                            job.bookingId,
+                            "customer-no-show",
+                            "The customer did not appear for the scheduled service window."
+                          )
+                        }
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Customer no-show</Text>
+                      </Pressable>
+                    ) : null}
+                    {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() =>
+                          void markLate(
+                            job.bookingId,
+                            buildLateEta(job.scheduledStartIso, 15),
+                            "Running about 15 minutes behind the route."
+                          )
+                        }
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>+15 min</Text>
+                      </Pressable>
+                    ) : null}
+                    {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() =>
+                          void markLate(
+                            job.bookingId,
+                            buildLateEta(job.scheduledStartIso, 30),
+                            "Running about 30 minutes behind the route."
+                          )
+                        }
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>+30 min</Text>
+                      </Pressable>
+                    ) : null}
+                    {job.status === "confirmed" && job.onRouteConfirmedAt ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void startWork(job.bookingId)}
+                        style={styles.completeButton}
+                      >
+                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+                      </Pressable>
+                    ) : null}
                     {(job.status === "confirmed" || job.status === "in-progress") ? (
                       <Pressable
                         disabled={isWorking}
@@ -213,6 +396,51 @@ export function ScheduleScreen() {
                         style={styles.completeButton}
                       >
                         <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Complete job"}</Text>
+                      </Pressable>
+                    ) : null}
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() =>
+                          void reportIssue(
+                            job.bookingId,
+                            "customer-not-ready",
+                            "The property owner is not ready for the scheduled service."
+                          )
+                        }
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Customer not ready</Text>
+                      </Pressable>
+                    ) : null}
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() =>
+                          void reportIssue(
+                            job.bookingId,
+                            "unable-to-access-property",
+                            "The crew could not safely access the property as scheduled."
+                          )
+                        }
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>No access</Text>
+                      </Pressable>
+                    ) : null}
+                    {job.status === "in-progress" ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() =>
+                          void reportIssue(
+                            job.bookingId,
+                            "service-could-not-be-completed",
+                            "The service could not be completed during this visit."
+                          )
+                        }
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Could not complete</Text>
                       </Pressable>
                     ) : null}
                     {job.onRouteConfirmedAt ? (

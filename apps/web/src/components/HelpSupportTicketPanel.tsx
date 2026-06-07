@@ -204,6 +204,12 @@ export function HelpSupportTicketPanel() {
               {ticket.bookingId ? ` • ${ticket.bookingId}` : ""}
             </p>
             <p>{ticket.description}</p>
+            {ticket.resolutionNotes ? (
+              <p>
+                Resolution: {ticket.resolutionNotes}
+                {ticket.resolutionAction ? ` • ${ticket.resolutionAction.replaceAll("-", " ")}` : ""}
+              </p>
+            ) : null}
           </article>
         ))}
       </div>

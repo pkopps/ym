@@ -293,7 +293,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Mark a booking as on route",
         description:
-          "Used by an accepted crew member to confirm they are on the way. This unlocks customer-to-provider chat for the booking.",
+          "Used by the business owner by default, with accepted crew fallback for future delegation scenarios. This unlocks customer-to-provider chat and arrival tracking for the booking.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -307,7 +307,81 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated booking with on-route confirmation" },
-          "403": { description: "Only the accepted crew member can confirm on-route status" }
+          "403": { description: "Only the provider on the booking, or an accepted crew member fallback, can confirm on-route status" }
+        }
+      }
+    },
+    "/api/bookings/late": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Send a running-late update for a booking",
+        description:
+          "Lets the provider send a low-friction delay update to the customer before arrival. Customer-facing timing stays window-based even though internal scheduling remains exact.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                lateEtaIso: "2026-06-05T18:15:00.000Z",
+                reason: "Finishing the prior property."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with a fresh delay notice" },
+          "403": { description: "Only the booking provider can send delay updates" }
+        }
+      }
+    },
+    "/api/bookings/exception": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Report a booking issue",
+        description:
+          "Lets the provider flag an active booking with a customer-facing issue such as a customer no-show, the customer not being ready, being unable to access the property, or being unable to complete the service.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                exceptionType: "unable-to-access-property",
+                notes: "Gate was locked and no one answered."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with an active service issue" },
+          "403": { description: "Only the booking provider can report service issues" }
+        }
+      }
+    },
+    "/api/bookings/dispute": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Open a booking dispute",
+        description:
+          "Lets the authenticated customer or provider move a booking into disputed status and automatically attach support context for YardMatch operations.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                reason: "The completed service missed multiple agreed areas and needs review."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Booking marked disputed and support context created" },
+          "403": { description: "Only the customer or provider tied to the booking can dispute it" }
         }
       }
     },
@@ -316,7 +390,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Fetch live arrival tracking for a booking",
         description:
-          "Returns a computed live arrival-tracking feed for the accepted crew member once the booking has been marked on route.",
+          "Returns a computed live arrival-tracking feed for the default route leader once the booking has been marked on route. In v1 the provider is the route leader by default.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -337,7 +411,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Start work on a confirmed booking",
         description:
-          "Used by an accepted crew member after they have marked the booking on route. This moves the booking into in-progress status.",
+          "Used by the business owner by default after the route has started. Accepted crew can be supported later for delegated route-leader scenarios. This moves the booking into in-progress status.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -351,7 +425,7 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated booking in in-progress status" },
-          "403": { description: "Only the accepted crew member can start work" }
+          "403": { description: "Only the provider on the booking, or an accepted crew member fallback, can start work" }
         }
       }
     },
@@ -445,7 +519,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Update provider business settings",
         description:
-          "Lets a landscaping business owner change the service radius used to match against each customer property address and choose whether matched crew members are auto-accepted or reviewed first.",
+          "Lets a landscaping business owner change the service radius used to match against each customer property address, choose whether matched crew members are auto-accepted or reviewed first, and manage outside-calendar blocking that protects YardMatch availability from direct clients or personal time.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -454,7 +528,17 @@ export const apiSpec = {
               example: {
                 serviceRadiusMiles: 20,
                 staffingMode: "review-first",
-                sponsoredListingEnabled: true
+                sponsoredListingEnabled: true,
+                externalEventsBlockingEnabled: true,
+                externalCalendarBlocks: [
+                  {
+                    title: "Direct client visit",
+                    blockType: "off-platform-client",
+                    startIso: "2026-06-12T13:00:00.000Z",
+                    endIso: "2026-06-12T15:00:00.000Z",
+                    notes: "Outside YardMatch client"
+                  }
+                ]
               }
             }
           }
@@ -567,6 +651,53 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated notification list with unread count" }
+        }
+      }
+    },
+    "/api/notifications/preferences": {
+      get: {
+        tags: ["Observability"],
+        summary: "Get notification delivery preferences",
+        description:
+          "Returns the authenticated user's persisted delivery preferences for push, email, SMS, and review reminders.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Notification preferences" }
+        }
+      },
+      post: {
+        tags: ["Observability"],
+        summary: "Update notification delivery preferences",
+        description:
+          "Updates the authenticated user's delivery preferences. In-app notifications remain available even if external channels are turned off.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                pushEnabled: true,
+                emailEnabled: true,
+                smsEnabled: false,
+                reviewRemindersEnabled: true
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated notification preferences" }
+        }
+      }
+    },
+    "/api/notifications/deliveries": {
+      get: {
+        tags: ["Observability"],
+        summary: "List recent external notification deliveries",
+        description:
+          "Returns recent push, email, and SMS delivery records for the authenticated user. This first version uses mock local providers so the app can exercise delivery workflows before vendor keys are added.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Recent delivery activity" }
         }
       }
     },
@@ -995,6 +1126,41 @@ export const apiSpec = {
         }
       }
     },
+    "/api/support/ops/tickets": {
+      get: {
+        tags: ["Support"],
+        summary: "List the internal support operations queue",
+        description:
+          "Returns support tickets with linked booking and participant context so operations can triage disputes, no-shows, and service issues.",
+        responses: {
+          "200": { description: "Support operations queue" }
+        }
+      }
+    },
+    "/api/support/ops/tickets/update": {
+      post: {
+        tags: ["Support"],
+        summary: "Triages or resolves a support ticket",
+        description:
+          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                ticketId: "ticket_123",
+                status: "resolved",
+                resolutionAction: "restore-active-booking",
+                resolutionNotes: "Support confirmed the booking should continue as scheduled."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated support ticket" }
+        }
+      }
+    },
     "/api/analytics/events": {
       post: {
         tags: ["Observability"],
@@ -1025,10 +1191,32 @@ export const apiSpec = {
     "/api/calendar/feed": {
       get: {
         tags: ["Providers"],
-        summary: "Get provider availability as an ICS feed",
+        summary: "Get provider schedule as an ICS feed",
+        parameters: [
+          {
+            in: "query",
+            name: "token",
+            required: false,
+            schema: { type: "string" },
+            description:
+              "Optional public feed token for external iCal subscriptions. When present, no bearer token is required."
+          }
+        ],
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "ICS calendar feed" }
+        }
+      }
+    },
+    "/api/calendar/subscription": {
+      get: {
+        tags: ["Providers"],
+        summary: "Get provider calendar subscription details",
+        description:
+          "Returns a subscribable ICS feed URL and webcal URL so providers can add YardMatch jobs to Apple Calendar, Google Calendar, Outlook, and other external scheduling tools, then layer manual outside-calendar blocks on top to protect YardMatch availability.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Provider calendar subscription details" }
         }
       }
     },

@@ -5,6 +5,8 @@ import {
   AppNotification,
   CreateSupportTicketRequest,
   CrewMatchesResponse,
+  NotificationDeliveryRecord,
+  NotificationPreferences,
   SupportIssueType,
   SupportTicket
 } from "@yardmatch/contracts";
@@ -20,6 +22,8 @@ export function SupportScreen() {
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [deliveries, setDeliveries] = useState<NotificationDeliveryRecord[]>([]);
+  const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
@@ -37,15 +41,19 @@ export function SupportScreen() {
     try {
       const api = createCrewMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [nextMatches, nextTickets, notificationResponse] = await Promise.all([
+      const [nextMatches, nextTickets, notificationResponse, nextPreferences, nextDeliveries] = await Promise.all([
         api.getCrewMatches(),
         api.getSupportTickets(),
-        api.getNotifications()
+        api.getNotifications(),
+        api.getNotificationPreferences(),
+        api.getNotificationDeliveries()
       ]);
       setMatchesResponse(nextMatches);
       setSupportTickets(nextTickets);
       setNotifications(notificationResponse.notifications);
       setUnreadCount(notificationResponse.unreadCount);
+      setPreferences(nextPreferences);
+      setDeliveries(nextDeliveries.deliveries);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load account.");
     }
@@ -113,6 +121,30 @@ export function SupportScreen() {
     }
   }
 
+  async function updateNotificationPreferences(
+    updates: Partial<Pick<NotificationPreferences, "pushEnabled" | "emailEnabled" | "smsEnabled">>
+  ) {
+    if (!envelope?.session.token || !preferences) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextPreferences = await api.updateNotificationPreferences(updates);
+      setPreferences(nextPreferences);
+      setStatusMessage("Delivery preferences updated.");
+      const nextDeliveries = await api.getNotificationDeliveries();
+      setDeliveries(nextDeliveries.deliveries);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update delivery preferences.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Account" title="Earnings and help">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -154,6 +186,49 @@ export function SupportScreen() {
         >
           <Text style={styles.chipLabel}>Mark updates read</Text>
         </Pressable>
+        <View style={styles.issueRow}>
+          <Pressable
+            disabled={isWorking}
+            onPress={() => void updateNotificationPreferences({ pushEnabled: !(preferences?.pushEnabled ?? true) })}
+            style={[styles.chip, (preferences?.pushEnabled ?? true) && styles.chipActive]}
+          >
+            <Text style={[styles.chipLabel, (preferences?.pushEnabled ?? true) && styles.chipLabelActive]}>
+              Push {(preferences?.pushEnabled ?? true) ? "on" : "off"}
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={isWorking}
+            onPress={() => void updateNotificationPreferences({ emailEnabled: !(preferences?.emailEnabled ?? true) })}
+            style={[styles.chip, (preferences?.emailEnabled ?? true) && styles.chipActive]}
+          >
+            <Text style={[styles.chipLabel, (preferences?.emailEnabled ?? true) && styles.chipLabelActive]}>
+              Email {(preferences?.emailEnabled ?? true) ? "on" : "off"}
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={isWorking}
+            onPress={() => void updateNotificationPreferences({ smsEnabled: !(preferences?.smsEnabled ?? true) })}
+            style={[styles.chip, (preferences?.smsEnabled ?? true) && styles.chipActive]}
+          >
+            <Text style={[styles.chipLabel, (preferences?.smsEnabled ?? true) && styles.chipLabelActive]}>
+              SMS {(preferences?.smsEnabled ?? true) ? "on" : "off"}
+            </Text>
+          </Pressable>
+        </View>
+      </InfoCard>
+
+      <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
+        <View style={styles.ticketStack}>
+          {deliveries.slice(0, 4).map((delivery) => (
+            <View key={delivery.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.title}>{delivery.channel.toUpperCase()} • {delivery.title}</Text>
+                <Text style={styles.meta}>{delivery.destination}</Text>
+              </View>
+              <Text style={styles.meta}>{delivery.status}</Text>
+            </View>
+          ))}
+        </View>
       </InfoCard>
 
       <InfoCard title="Help" description="Fast support routes">

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { ProviderStaffingOverview } from "@yardmatch/contracts";
+import { ProviderStaffingOverview, ProviderStaffingJobSummary } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
@@ -9,7 +9,13 @@ import { createProviderMobileApiClient } from "../lib/api";
 import { getProviderMobileTracker } from "../lib/tracking";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
-export function DashboardScreen({ onOpenCrew }: { onOpenCrew?: () => void }) {
+export function DashboardScreen({
+  onOpenCrew,
+  onOpenSchedule
+}: {
+  onOpenCrew?: () => void;
+  onOpenSchedule?: () => void;
+}) {
   const tracker = getProviderMobileTracker();
   const { envelope } = useProviderSession();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
@@ -21,6 +27,13 @@ export function DashboardScreen({ onOpenCrew }: { onOpenCrew?: () => void }) {
   );
   const totalCrewGap = useMemo(
     () => overview?.jobs.reduce((sum, job) => sum + job.crewGap, 0) ?? 0,
+    [overview]
+  );
+  const departureReminderJob = useMemo(
+    () =>
+      (overview?.jobs ?? [])
+        .filter((job) => job.status === "confirmed" && !job.onRouteConfirmedAt)
+        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
     [overview]
   );
 
@@ -67,6 +80,21 @@ export function DashboardScreen({ onOpenCrew }: { onOpenCrew?: () => void }) {
         </InfoCard>
       ) : null}
 
+      {departureReminderJob ? (
+        <InfoCard
+          title="Time to head out soon"
+          description={buildDepartureSummary(departureReminderJob)}
+        >
+          <Text style={styles.alertText}>
+            In v1 the business owner starts the route for the crew. Tap into Schedule when you are
+            ready to head to the property.
+          </Text>
+          <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonLabel}>Open schedule</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
+
       <View style={styles.statGrid}>
         <StatCard label="Jobs" value={`${overview?.jobs.length ?? 0}`} />
         <StatCard label="Crew assigned" value={`${totalAssignedCrew}`} />
@@ -96,6 +124,10 @@ export function DashboardScreen({ onOpenCrew }: { onOpenCrew?: () => void }) {
       </InfoCard>
     </ScreenShell>
   );
+}
+
+function buildDepartureSummary(job: ProviderStaffingJobSummary) {
+  return `${job.customerName} • ${new Date(job.scheduledStartIso).toLocaleDateString()} • ${new Date(job.scheduledStartIso).toLocaleTimeString([], { timeStyle: "short" })}`;
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {

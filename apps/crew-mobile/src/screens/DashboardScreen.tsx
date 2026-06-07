@@ -42,24 +42,6 @@ export function DashboardScreen({
     void loadMatches();
   }, [envelope?.session.token]);
 
-  async function confirmOnRoute() {
-    if (!envelope?.session.token || !acceptedMatch) {
-      return;
-    }
-
-    try {
-      const api = createCrewMobileApiClient();
-      api.setAuthToken(envelope.session.token);
-      setIsWorking(true);
-      await api.markBookingOnRoute({ bookingId: acceptedMatch.bookingId });
-      setStatusMessage("On-route confirmed. Customer chat is now open for the business owner.");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm on-route status.");
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
   async function startWork() {
     if (!envelope?.session.token || !acceptedMatch) {
       return;
@@ -102,13 +84,9 @@ export function DashboardScreen({
               </View>
             ) : null}
             {acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void confirmOnRoute()}
-                style={styles.primaryButton}
-              >
-                <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Confirm on route"}</Text>
-              </Pressable>
+              <View style={styles.waitingBadge}>
+                <Text style={styles.waitingBadgeLabel}>Business owner will start the route</Text>
+              </View>
             ) : null}
             {acceptedMatch.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt ? (
               <Pressable

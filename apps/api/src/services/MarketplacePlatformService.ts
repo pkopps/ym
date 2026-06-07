@@ -13,8 +13,16 @@ import {
   CustomerProviderConversation,
   CustomerProviderConversationThread,
   CustomerProviderMessage,
+  getBookingExceptionLabel,
+  formatBookingWindowSummary,
+  getBookingServiceWindow,
+  MarkBookingExceptionRequest,
+  MarkBookingLateRequest,
   MarkBookingOnRouteRequest,
   MarkNotificationsReadRequest,
+  NotificationChannel,
+  NotificationDeliveriesResponse,
+  NotificationDeliveryRecord,
   ProviderCrewConversation,
   ProviderCrewConversationThread,
   ProviderCrewMessage,
@@ -23,6 +31,7 @@ import {
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
+  CreateBookingDisputeRequest,
   CreateCheckoutSessionRequest,
   CreateCheckoutSessionResponse,
   InstantQuoteRequest,
@@ -34,6 +43,7 @@ import {
   ProcessReviewInvitesResponse,
   CreateRefundRequest,
   CreateSupportTicketRequest,
+  UpdateSupportTicketRequest,
   Booking,
   CrewMemberProfile,
   CustomerProperty,
@@ -41,11 +51,14 @@ import {
   CustomerProfile,
   CurrentUserResponse,
   NotificationListResponse,
+  NotificationPreferences,
   PaymentRecord,
   ProviderProfile,
+  ExternalCalendarBlock,
   ProviderReview,
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
+  ProviderCalendarSubscriptionResponse,
   PlaceSearchResponse,
   RegisterUserRequest,
   ReviewCrewMatchRequest,
@@ -60,8 +73,10 @@ import {
   SearchProvidersResponse,
   StartBookingRequest,
   UpdateCrewPreferencesRequest,
+  UpdateNotificationPreferencesRequest,
   UpdateProviderSettingsRequest,
   SupportTicket,
+  SupportOpsTicket,
   UpdateBookingAddressRequest,
   UpdateBookingAddressResponse
 } from "@yardmatch/contracts";
@@ -77,6 +92,7 @@ import {
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { HttpError } from "../http";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
+import { NotificationDeliveryService } from "./NotificationDeliveryService";
 import { PlaceSearchService } from "./PlaceSearchService";
 import { PaymentCheckoutGateway, StripeCheckoutService } from "./StripeCheckoutService";
 
@@ -91,8 +107,10 @@ export class MarketplacePlatformService {
   private readonly bookingAddressPolicy = new BookingAddressPolicyService(this.geoService);
   private readonly instantQuoteEngine = new InstantQuoteEngine();
   private readonly placeSearch = new PlaceSearchService(process.env.GOOGLE_MAPS_API_KEY);
+  private readonly notificationDelivery = new NotificationDeliveryService();
   private readonly stripeCheckout: PaymentCheckoutGateway;
   private readonly appBaseUrl: string;
+  private readonly apiBaseUrl: string;
 
   public constructor(
     private readonly repository: MarketplaceRepository,
@@ -102,6 +120,8 @@ export class MarketplacePlatformService {
   ) {
     this.stripeCheckout = stripeCheckout;
     this.appBaseUrl = appBaseUrl;
+    this.apiBaseUrl =
+      process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? "4000"}`;
   }
 
   public async registerUser(
@@ -215,6 +235,7 @@ export class MarketplacePlatformService {
   }
 
   public async listNotifications(identity: AuthIdentityRecord): Promise<NotificationListResponse> {
+    await this.ensureTimedNotifications(identity);
     const notifications = (await this.repository.listNotificationsByRecipient(identity.userId))
       .filter((notification) => notification.recipientRole === identity.role)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -229,6 +250,7 @@ export class MarketplacePlatformService {
     identity: AuthIdentityRecord,
     payload: MarkNotificationsReadRequest
   ): Promise<NotificationListResponse> {
+    await this.ensureTimedNotifications(identity);
     const notifications = (await this.repository.listNotificationsByRecipient(identity.userId)).filter(
       (notification) => notification.recipientRole === identity.role
     );
@@ -250,6 +272,40 @@ export class MarketplacePlatformService {
     );
 
     return this.listNotifications(identity);
+  }
+
+  public async getNotificationPreferences(identity: AuthIdentityRecord): Promise<NotificationPreferences> {
+    return this.ensureNotificationPreferences(identity);
+  }
+
+  public async updateNotificationPreferences(
+    identity: AuthIdentityRecord,
+    payload: UpdateNotificationPreferencesRequest
+  ): Promise<NotificationPreferences> {
+    const current = await this.ensureNotificationPreferences(identity);
+    const updatedAt = new Date().toISOString();
+
+    return this.repository.upsertNotificationPreferences({
+      ...current,
+      emailEnabled: payload.emailEnabled ?? current.emailEnabled,
+      smsEnabled: payload.smsEnabled ?? current.smsEnabled,
+      pushEnabled: payload.pushEnabled ?? current.pushEnabled,
+      reviewRemindersEnabled: payload.reviewRemindersEnabled ?? current.reviewRemindersEnabled,
+      updatedAt
+    });
+  }
+
+  public async listNotificationDeliveries(
+    identity: AuthIdentityRecord
+  ): Promise<NotificationDeliveriesResponse> {
+    await this.ensureTimedNotifications(identity);
+    const deliveries = (await this.repository.listNotificationDeliveriesByRecipient(identity.userId))
+      .filter((delivery) => delivery.recipientRole === identity.role)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+    return {
+      deliveries
+    };
   }
 
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
@@ -276,7 +332,10 @@ export class MarketplacePlatformService {
     const suggestedSlots = (
       await Promise.all(
         matchingProviders.map(async (provider) => {
-          const providerSlots = await this.repository.listSlotsByProvider(provider.id);
+          const providerSlots = this.filterProviderSlotsAgainstExternalBlocks(
+            provider,
+            await this.repository.listSlotsByProvider(provider.id)
+          );
 
           if (!payload.estimatedDurationMinutes) {
             return providerSlots.filter((slot) => !slot.isBooked);
@@ -443,11 +502,20 @@ export class MarketplacePlatformService {
             providerPhone: provider.phone,
             category: booking.category,
             serviceAddress: booking.serviceAddress,
-            scheduledStartIso: booking.scheduledStartIso,
-            scheduledEndIso: booking.scheduledEndIso,
-            bookingStatus: booking.status,
-            onRouteConfirmedAt: booking.onRouteConfirmedAt,
-            status: match.status,
+          scheduledStartIso: booking.scheduledStartIso,
+          scheduledEndIso: booking.scheduledEndIso,
+          bookingStatus: booking.status,
+          onRouteConfirmedAt: booking.onRouteConfirmedAt,
+          lateNoticeSentAt: booking.lateNoticeSentAt,
+          lateEtaIso: booking.lateEtaIso,
+          lateReason: booking.lateReason,
+          activeExceptionType: booking.activeExceptionType,
+          activeExceptionReportedAt: booking.activeExceptionReportedAt,
+          activeExceptionNotes: booking.activeExceptionNotes,
+          disputedAt: booking.disputedAt,
+          disputeReason: booking.disputeReason,
+          disputedByRole: booking.disputedByRole,
+          status: match.status,
             hourlyRateCents: match.hourlyRateCents,
             canChat: match.status === "pending-provider-review" || match.status === "accepted",
             summary:
@@ -580,7 +648,7 @@ export class MarketplacePlatformService {
   }
 
   public async markBookingOnRoute(
-    crewMemberId: string,
+    actor: AuthIdentityRecord,
     payload: MarkBookingOnRouteRequest
   ): Promise<Booking> {
     const booking = await this.repository.findBookingById(payload.bookingId);
@@ -591,23 +659,40 @@ export class MarketplacePlatformService {
     const acceptedMatch = (await this.repository.listCrewMatches()).find(
       (match) =>
         match.bookingId === booking.id &&
-        match.crewMemberId === crewMemberId &&
         match.status === "accepted"
     );
-    if (!acceptedMatch) {
-      throw new HttpError(403, "Only accepted crew members can confirm they are on route");
+
+    if (actor.role === "provider" && booking.providerId !== actor.userId) {
+      throw new HttpError(403, "Providers can only start the route for their own bookings");
+    }
+
+    if (actor.role === "crew-member") {
+      if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
+        throw new HttpError(403, "Only accepted crew members can confirm they are on route");
+      }
+    }
+
+    if (actor.role !== "provider" && actor.role !== "crew-member") {
+      throw new HttpError(403, "Only the provider or accepted crew member can confirm on-route status");
     }
 
     if (booking.status !== "confirmed" && booking.status !== "in-progress") {
       throw new HttpError(
         400,
-        "Bookings must be confirmed before a crew member can mark them on route"
+        "Bookings must be confirmed before the route can be started"
       );
+    }
+
+    if (booking.onRouteConfirmedAt) {
+      return booking;
     }
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       onRouteConfirmedAt: new Date().toISOString(),
-      onRouteConfirmedByCrewMemberId: crewMemberId
+      onRouteConfirmedByCrewMemberId: actor.role === "crew-member" ? actor.userId : undefined,
+      lateNoticeSentAt: undefined,
+      lateEtaIso: undefined,
+      lateReason: undefined
     });
 
     if (!updatedBooking) {
@@ -615,22 +700,239 @@ export class MarketplacePlatformService {
     }
 
     const provider = await this.repository.findProviderById(booking.providerId);
+    const routeLeaderLabel =
+      actor.role === "provider"
+        ? provider?.companyName ?? "Your landscaping business"
+        : (await this.repository.findCrewMemberById(actor.userId))?.fullName ?? "Your landscaping business";
+
     await Promise.all([
       this.createNotification({
         recipientId: booking.customerId,
         recipientRole: "customer",
         category: "booking",
         title: "Your crew is on the way",
-        body: `${provider?.companyName ?? "Your landscaping business"} is heading to your property now.`,
-        actionHref: "/customer/dashboard"
+        body: `${routeLeaderLabel} is heading to your property now.`,
+        actionHref: `/customer/dashboard?bookingId=${booking.id}&tracking=1`
       }),
       this.createNotification({
         recipientId: booking.providerId,
         recipientRole: "provider",
         category: "staffing",
-        title: "Crew confirmed on route",
-        body: "Your assigned crew member marked this job on route.",
-        actionHref: "/provider/management"
+        title: actor.role === "provider" ? "Route started" : "Crew confirmed on route",
+        body:
+          actor.role === "provider"
+            ? "You marked this job on route and customer tracking is now live."
+            : "Your assigned crew member marked this job on route.",
+        actionHref: `/provider/management?bookingId=${booking.id}&tracking=1`
+      })
+    ]);
+
+    return updatedBooking;
+  }
+
+  public async markBookingLate(
+    providerId: string,
+    payload: MarkBookingLateRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.providerId !== providerId) {
+      throw new HttpError(403, "Only the booking provider can send a delay update");
+    }
+
+    if (
+      booking.status === "completed" ||
+      booking.status === "cancelled" ||
+      booking.status === "refunded"
+    ) {
+      throw new HttpError(400, "Delay updates are only available for active bookings");
+    }
+
+    const lateEta = new Date(payload.lateEtaIso);
+    if (Number.isNaN(lateEta.getTime())) {
+      throw new HttpError(400, "A valid updated ETA is required");
+    }
+
+    if (lateEta.getTime() <= Date.now()) {
+      throw new HttpError(400, "Updated ETA must be in the future");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      lateNoticeSentAt: new Date().toISOString(),
+      lateEtaIso: lateEta.toISOString(),
+      lateReason: payload.reason?.trim() || undefined
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be updated");
+    }
+
+    const provider = await this.repository.findProviderById(booking.providerId);
+    const window = getBookingServiceWindow(booking.scheduledStartIso);
+    const etaText = lateEta.toLocaleTimeString([], { timeStyle: "short" });
+    const reasonText = payload.reason?.trim() ? ` Reason: ${payload.reason.trim()}` : "";
+
+    await this.createNotification({
+      recipientId: booking.customerId,
+      recipientRole: "customer",
+      category: "booking",
+      title: "Your provider is running late",
+      body: `${provider?.companyName ?? "Your landscaping business"} now expects to arrive in the ${window.label.toLowerCase()} window, around ${etaText}.${reasonText}`,
+      actionHref: `/customer/dashboard?bookingId=${booking.id}&late=1`
+    });
+
+    return updatedBooking;
+  }
+
+  public async markBookingException(
+    providerId: string,
+    payload: MarkBookingExceptionRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.providerId !== providerId) {
+      throw new HttpError(403, "Only the booking provider can report a service issue");
+    }
+
+    if (
+      booking.status === "completed" ||
+      booking.status === "cancelled" ||
+      booking.status === "refunded"
+    ) {
+      throw new HttpError(400, "Service issues are only available for active bookings");
+    }
+
+    const exceptionLabel = getBookingExceptionLabel(payload.exceptionType);
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      activeExceptionType: payload.exceptionType,
+      activeExceptionReportedAt: new Date().toISOString(),
+      activeExceptionNotes: payload.notes?.trim() || undefined
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be updated");
+    }
+
+    const provider = await this.repository.findProviderById(providerId);
+    const reasonText = payload.notes?.trim() ? ` ${payload.notes.trim()}` : "";
+
+    await Promise.all([
+      this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title: exceptionLabel,
+        body: `${provider?.companyName ?? "Your landscaping business"} reported: ${exceptionLabel}.${reasonText}`,
+        actionHref: `/customer/dashboard?bookingId=${booking.id}&issue=${payload.exceptionType}`
+      }),
+      this.createNotification({
+        recipientId: providerId,
+        recipientRole: "provider",
+        category: "support",
+        title: "Issue logged on booking",
+        body: `${exceptionLabel} was saved on this booking. Support can now see the issue context.`,
+        actionHref: `/provider/management?bookingId=${booking.id}&issue=${payload.exceptionType}`
+      })
+    ]);
+
+    return updatedBooking;
+  }
+
+  public async createBookingDispute(
+    requester: AuthIdentityRecord,
+    payload: CreateBookingDisputeRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (requester.role === "customer" && booking.customerId !== requester.userId) {
+      throw new HttpError(403, "Customers can only dispute their own bookings");
+    }
+
+    if (requester.role === "provider" && booking.providerId !== requester.userId) {
+      throw new HttpError(403, "Providers can only dispute their own jobs");
+    }
+
+    if (booking.status === "cancelled" || booking.status === "refunded") {
+      throw new HttpError(400, "Cancelled or refunded bookings cannot be disputed");
+    }
+
+    if (booking.status === "requested") {
+      throw new HttpError(400, "Requested bookings must be confirmed before they can be disputed");
+    }
+
+    if (requester.role === "crew-member") {
+      throw new HttpError(403, "Crew members cannot open booking disputes");
+    }
+
+    const reason = payload.reason.trim();
+    if (!reason) {
+      throw new HttpError(400, "A dispute reason is required");
+    }
+
+    if (booking.status === "disputed") {
+      return booking;
+    }
+
+    const disputedAt = new Date().toISOString();
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      status: "disputed",
+      disputedAt,
+      disputeReason: reason,
+      disputedByRole: requester.role
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be disputed");
+    }
+
+    await this.createSupportTicket(
+      { userId: requester.userId, role: requester.role },
+      {
+        bookingId: booking.id,
+        issueType: "service-quality",
+        subject: `Booking dispute: ${this.titleCaseCategory(booking.category)}`,
+        description: reason
+      }
+    );
+
+    const customer = await this.repository.findCustomerById(booking.customerId);
+    const provider = await this.repository.findProviderById(booking.providerId);
+    const actorLabel =
+      requester.role === "customer"
+        ? customer?.fullName ?? "The customer"
+        : provider?.companyName ?? "The landscaping business";
+
+    await Promise.all([
+      this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title: requester.role === "customer" ? "Dispute opened" : "Provider opened a dispute",
+        body:
+          requester.role === "customer"
+            ? "Your dispute has been logged and support now has the booking context."
+            : `${actorLabel} opened a dispute for this booking. YardMatch support can now step in.`,
+        actionHref: `/customer/dashboard?bookingId=${booking.id}&issue=dispute`
+      }),
+      this.createNotification({
+        recipientId: booking.providerId,
+        recipientRole: "provider",
+        category: "support",
+        title: requester.role === "provider" ? "Dispute opened" : "Customer opened a dispute",
+        body:
+          requester.role === "provider"
+            ? "Your dispute has been logged and support now has the booking context."
+            : `${actorLabel} opened a dispute for this booking. YardMatch support can now step in.`,
+        actionHref: `/provider/management?bookingId=${booking.id}&issue=dispute`
       })
     ]);
 
@@ -647,6 +949,7 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
+    const provider = await this.repository.findProviderById(booking.providerId);
     const matches = await this.repository.listCrewMatches();
     const acceptedMatch = matches.find(
       (match) => match.bookingId === booking.id && match.status === "accepted"
@@ -668,9 +971,15 @@ export class MarketplacePlatformService {
     }
 
     const crewMemberId = booking.onRouteConfirmedByCrewMemberId ?? acceptedMatch?.crewMemberId;
-    const crewMember = crewMemberId
-      ? await this.repository.findCrewMemberById(crewMemberId)
-      : undefined;
+    const crewMember = crewMemberId ? await this.repository.findCrewMemberById(crewMemberId) : undefined;
+    const routeLeaderPoint =
+      booking.onRouteConfirmedByCrewMemberId && crewMember
+        ? crewMember.address.point
+        : provider?.address.point ?? crewMember?.address.point;
+    const routeLeaderName =
+      booking.onRouteConfirmedByCrewMemberId && crewMember
+        ? crewMember.fullName
+        : provider?.companyName ?? crewMember?.fullName ?? "Your landscaping business";
 
     const baseTracking: BookingArrivalTracking = {
       bookingId: booking.id,
@@ -678,18 +987,18 @@ export class MarketplacePlatformService {
       customerId: booking.customerId,
       providerId: booking.providerId,
       crewMemberId: crewMember?.id,
-      crewMemberName: crewMember?.fullName,
+      crewMemberName: routeLeaderName,
       destination: booking.serviceAddress,
-      routeStartPoint: crewMember?.address.point,
+      routeStartPoint: routeLeaderPoint,
       progressPercent: 0,
       lastComputedAt: nowIso,
       message: "Tracking is not available for this booking yet."
     };
 
-    if (!acceptedMatch || !crewMember) {
+    if (!provider && !crewMember) {
       return {
         ...baseTracking,
-        message: "No accepted crew member is assigned yet."
+        message: "No route leader is assigned yet."
       };
     }
 
@@ -697,18 +1006,26 @@ export class MarketplacePlatformService {
       return {
         ...baseTracking,
         status: "not-started",
-        message: `${crewMember.fullName} is assigned, but has not marked this booking on route yet.`
+        message: `${routeLeaderName} is assigned, but has not started the route yet.`
       };
     }
 
     const startedAt = new Date(booking.onRouteConfirmedAt).getTime();
     const now = new Date(nowIso).getTime();
-    const totalDistanceMiles = this.geoService.distanceMiles(crewMember.address, booking.serviceAddress);
+    const totalDistanceMiles = routeLeaderPoint
+      ? this.geoService.distanceMiles(
+          {
+            ...booking.serviceAddress,
+            point: routeLeaderPoint
+          },
+          booking.serviceAddress
+        )
+      : 0;
     const totalTravelMinutes = Math.max(6, Math.min(45, Math.round((totalDistanceMiles / 22) * 60) + 4));
     const elapsedMinutes = Math.max(0, (now - startedAt) / (1000 * 60));
     const clampedProgress = Math.max(0, Math.min(1, elapsedMinutes / totalTravelMinutes));
     const currentPoint = this.interpolatePoint(
-      crewMember.address.point,
+      routeLeaderPoint ?? booking.serviceAddress.point,
       booking.serviceAddress.point,
       booking.status === "in-progress" || booking.status === "completed" ? 1 : clampedProgress
     );
@@ -722,7 +1039,7 @@ export class MarketplacePlatformService {
         remainingDistanceMiles: 0,
         etaMinutes: 0,
         unlockedAt: booking.onRouteConfirmedAt,
-        message: `${crewMember.fullName} already completed this service.`
+        message: `${routeLeaderName} already completed this service.`
       };
     }
 
@@ -735,7 +1052,7 @@ export class MarketplacePlatformService {
         remainingDistanceMiles: 0,
         etaMinutes: 0,
         unlockedAt: booking.onRouteConfirmedAt,
-        message: `${crewMember.fullName} has arrived at the property.`
+        message: `${routeLeaderName} has arrived at the property.`
       };
     }
 
@@ -747,11 +1064,11 @@ export class MarketplacePlatformService {
       remainingDistanceMiles: Number((totalDistanceMiles * (1 - clampedProgress)).toFixed(1)),
       etaMinutes: Math.max(1, Math.ceil(totalTravelMinutes - elapsedMinutes)),
       unlockedAt: booking.onRouteConfirmedAt,
-      message: `${crewMember.fullName} is on the way.`
+      message: `${routeLeaderName} is on the way.`
     };
   }
 
-  public async startBooking(crewMemberId: string, payload: StartBookingRequest): Promise<Booking> {
+  public async startBooking(actor: AuthIdentityRecord, payload: StartBookingRequest): Promise<Booking> {
     const booking = await this.repository.findBookingById(payload.bookingId);
     if (!booking) {
       throw new HttpError(404, "Booking not found");
@@ -760,11 +1077,21 @@ export class MarketplacePlatformService {
     const acceptedMatch = (await this.repository.listCrewMatches()).find(
       (match) =>
         match.bookingId === booking.id &&
-        match.crewMemberId === crewMemberId &&
         match.status === "accepted"
     );
-    if (!acceptedMatch) {
-      throw new HttpError(403, "Only accepted crew members can start this booking");
+
+    if (actor.role === "provider" && booking.providerId !== actor.userId) {
+      throw new HttpError(403, "Providers can only start their own bookings");
+    }
+
+    if (actor.role === "crew-member") {
+      if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
+        throw new HttpError(403, "Only accepted crew members can start this booking");
+      }
+    }
+
+    if (actor.role !== "provider" && actor.role !== "crew-member") {
+      throw new HttpError(403, "Only the provider or accepted crew member can start this booking");
     }
 
     if (booking.status === "in-progress") {
@@ -780,7 +1107,13 @@ export class MarketplacePlatformService {
     }
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
-      status: "in-progress"
+      status: "in-progress",
+      lateNoticeSentAt: undefined,
+      lateEtaIso: undefined,
+      lateReason: undefined,
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined
     });
 
     if (!updatedBooking) {
@@ -790,7 +1123,7 @@ export class MarketplacePlatformService {
     this.analytics.record({
       id: crypto.randomUUID(),
       name: MarketplaceTelemetryEventCatalog.crewCheckInCompleted,
-      actorId: crewMemberId,
+      actorId: actor.userId,
       occurredAt: new Date().toISOString(),
       properties: {
         bookingId: booking.id,
@@ -992,11 +1325,32 @@ export class MarketplacePlatformService {
       throw new Error("staffingMode must be auto-accept or review-first");
     }
 
+    const nextCalendarConnection = {
+      ...provider.calendarConnection,
+      externalEventsBlockingEnabled:
+        payload.externalEventsBlockingEnabled ??
+        provider.calendarConnection.externalEventsBlockingEnabled ??
+        false,
+      externalBlocks: this.normalizeExternalCalendarBlocks(
+        payload.externalCalendarBlocks ?? provider.calendarConnection.externalBlocks ?? []
+      )
+    };
+
+    await this.ensureExternalCalendarBlocksDoNotConflict({
+      ...provider,
+      serviceRadiusMiles: normalizedRadius,
+      staffingMode,
+      sponsoredListingEnabled:
+        payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
+      calendarConnection: nextCalendarConnection
+    });
+
     const updatedProvider = await this.repository.updateProvider(provider.id, {
       serviceRadiusMiles: normalizedRadius,
       staffingMode,
       sponsoredListingEnabled:
-        payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled
+        payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
+      calendarConnection: nextCalendarConnection
     });
 
     if (!updatedProvider) {
@@ -1013,6 +1367,14 @@ export class MarketplacePlatformService {
         staffingMode,
         sponsoredListingEnabled:
           payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
+        externalEventsBlockingEnabled:
+          payload.externalEventsBlockingEnabled ??
+          provider.calendarConnection.externalEventsBlockingEnabled ??
+          false,
+        externalCalendarBlockCount:
+          payload.externalCalendarBlocks?.length ??
+          provider.calendarConnection.externalBlocks?.length ??
+          0,
         city: provider.address.city
       }
     });
@@ -1153,7 +1515,10 @@ export class MarketplacePlatformService {
     const completedAt = booking.completedAt ?? new Date().toISOString();
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       status: "completed",
-      completedAt
+      completedAt,
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined
     });
 
     if (!updatedBooking) {
@@ -1324,6 +1689,13 @@ export class MarketplacePlatformService {
       ...payload,
       serviceAddress: selectedProperty?.address ?? payload.serviceAddress
     });
+
+    await this.assertProviderWindowIsAvailable(
+      payload.providerId,
+      payload.scheduledStartIso,
+      payload.scheduledEndIso
+    );
+
     const result = await this.repository.createBooking(booking);
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, customerId, {
@@ -1361,7 +1733,10 @@ export class MarketplacePlatformService {
     }
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
-      status: "cancelled"
+      status: "cancelled",
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined
     });
 
     if (!updatedBooking) {
@@ -1430,7 +1805,13 @@ export class MarketplacePlatformService {
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       scheduledStartIso: payload.scheduledStartIso,
-      scheduledEndIso: payload.scheduledEndIso
+      scheduledEndIso: payload.scheduledEndIso,
+      lateNoticeSentAt: undefined,
+      lateEtaIso: undefined,
+      lateReason: undefined,
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined
     });
 
     if (!updatedBooking) {
@@ -1982,7 +2363,8 @@ export class MarketplacePlatformService {
       description: payload.description,
       issueType: payload.issueType,
       status: "open",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.supportTicketOpened, requester.userId, {
@@ -2000,8 +2382,153 @@ export class MarketplacePlatformService {
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
+  public async listOpsSupportTickets(): Promise<SupportOpsTicket[]> {
+    const [tickets, bookings, customers, providers] = await Promise.all([
+      this.repository.listSupportTickets(),
+      this.repository.listBookings(),
+      this.repository.listCustomers(),
+      this.repository.listProviders()
+    ]);
+
+    return tickets
+      .map((ticket) => {
+        const booking = ticket.bookingId
+          ? bookings.find((candidate) => candidate.id === ticket.bookingId)
+          : undefined;
+        const customer = booking
+          ? customers.find((candidate) => candidate.id === booking.customerId)
+          : undefined;
+        const provider = booking
+          ? providers.find((candidate) => candidate.id === booking.providerId)
+          : undefined;
+
+        return {
+          ticket,
+          booking,
+          customerName: customer?.fullName,
+          providerName: provider?.companyName
+        } satisfies SupportOpsTicket;
+      })
+      .sort((left, right) => right.ticket.createdAt.localeCompare(left.ticket.createdAt));
+  }
+
+  public async updateSupportTicketForOps(
+    payload: UpdateSupportTicketRequest
+  ): Promise<SupportTicket> {
+    const ticket = (await this.repository.listSupportTickets()).find(
+      (candidate) => candidate.id === payload.ticketId
+    );
+    if (!ticket) {
+      throw new HttpError(404, "Support ticket not found");
+    }
+
+    const now = new Date().toISOString();
+    const resolutionNotes = payload.resolutionNotes?.trim() || undefined;
+    if (payload.status === "resolved" && !resolutionNotes) {
+      throw new HttpError(400, "Resolution notes are required when resolving a support ticket");
+    }
+
+    if (ticket.bookingId) {
+      const booking = await this.repository.findBookingById(ticket.bookingId);
+      if (booking) {
+        if (payload.status === "resolved") {
+          await this.applySupportResolutionToBooking(booking, payload.resolutionAction);
+        } else if (payload.status === "triaged" && booking.status === "disputed") {
+          await this.createNotification({
+            recipientId: booking.customerId,
+            recipientRole: "customer",
+            category: "support",
+            title: "Dispute under review",
+            body: "YardMatch support has triaged your dispute and is reviewing next steps.",
+            actionHref: `/customer/dashboard?bookingId=${booking.id}&issue=dispute`
+          });
+        }
+      }
+    }
+
+    const updatedTicket = await this.repository.updateSupportTicket(ticket.id, {
+      status: payload.status,
+      updatedAt: now,
+      triagedAt: payload.status === "triaged" ? ticket.triagedAt ?? now : ticket.triagedAt,
+      resolvedAt: payload.status === "resolved" ? now : ticket.resolvedAt,
+      resolutionNotes,
+      resolutionAction: payload.status === "resolved" ? payload.resolutionAction : undefined
+    });
+
+    if (!updatedTicket) {
+      throw new HttpError(500, "Support ticket could not be updated");
+    }
+
+    return updatedTicket;
+  }
+
   public createAnalyticsEvent(payload: AnalyticsEvent): AnalyticsEvent {
     return this.analytics.record(payload);
+  }
+
+  private async applySupportResolutionToBooking(
+    booking: Booking,
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
+  ): Promise<void> {
+    const action = resolutionAction ?? "restore-active-booking";
+
+    const baseUpdates: Partial<Booking> = {
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined,
+      disputeReason: undefined,
+      disputedAt: undefined,
+      disputedByRole: undefined
+    };
+
+    if (action === "cancel-booking") {
+      await this.repository.updateBooking(booking.id, {
+        ...baseUpdates,
+        status: "cancelled"
+      });
+      await this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title: "Support resolved your booking issue",
+        body: "YardMatch support closed the ticket and cancelled the booking.",
+        actionHref: `/customer/dashboard?bookingId=${booking.id}`
+      });
+      return;
+    }
+
+    if (action === "complete-booking") {
+      await this.repository.updateBooking(booking.id, {
+        ...baseUpdates,
+        status: "completed",
+        completedAt: booking.completedAt ?? new Date().toISOString()
+      });
+      await this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title: "Support resolved your booking issue",
+        body: "YardMatch support closed the ticket and marked the service complete.",
+        actionHref: `/customer/dashboard?bookingId=${booking.id}`
+      });
+      return;
+    }
+
+    const restoredStatus: Booking["status"] =
+      booking.onRouteConfirmedAt || booking.completedAt ? "in-progress" : "confirmed";
+
+    await this.repository.updateBooking(booking.id, {
+      ...baseUpdates,
+      status: restoredStatus
+    });
+    await this.createNotification({
+      recipientId: booking.customerId,
+      recipientRole: "customer",
+      category: "support",
+      title: "Support resolved your booking issue",
+      body: "YardMatch support reviewed the issue and restored the booking to the active schedule.",
+      actionHref: `/customer/dashboard?bookingId=${booking.id}`
+    });
   }
 
   public async processReviewInvites(
@@ -2082,7 +2609,208 @@ export class MarketplacePlatformService {
   }
 
   public async buildCalendarFeed(providerId: string): Promise<string> {
-    return this.schedulingService.buildCalendarFeed(await this.repository.listSlotsByProvider(providerId));
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const customers = await this.repository.listCustomers();
+    const bookings = (await this.repository.listBookings())
+      .filter(
+        (booking) =>
+          booking.providerId === providerId &&
+          booking.status !== "cancelled" &&
+          booking.status !== "refunded"
+      )
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
+      .map((booking) => {
+        const customer = customers.find((item) => item.id === booking.customerId);
+        return {
+          id: booking.id,
+          category: booking.category,
+          customerName: customer?.fullName ?? "YardMatch customer",
+          addressLine: booking.serviceAddress.line1,
+          city: booking.serviceAddress.city,
+          state: booking.serviceAddress.state,
+          scheduledStartIso: booking.scheduledStartIso,
+          scheduledEndIso: booking.scheduledEndIso,
+          status: booking.status,
+          notes: booking.notes
+        };
+      });
+
+    return this.schedulingService.buildProviderBookingCalendarFeed({
+      providerName: provider.companyName,
+      bookings
+    });
+  }
+
+  public async buildCalendarFeedByToken(feedToken: string): Promise<string> {
+    const provider = (await this.repository.listProviders()).find(
+      (item) => item.calendarConnection.feedToken === feedToken
+    );
+
+    if (!provider) {
+      throw new HttpError(404, "Calendar feed not found");
+    }
+
+    return this.buildCalendarFeed(provider.id);
+  }
+
+  public async getProviderCalendarSubscription(
+    providerId: string
+  ): Promise<ProviderCalendarSubscriptionResponse> {
+    const provider = await this.ensureProviderCalendarFeedToken(providerId);
+    const token = provider.calendarConnection.feedToken;
+    if (!token) {
+      throw new HttpError(500, "Calendar feed token could not be created");
+    }
+
+    const feedUrl = `${this.apiBaseUrl}${"/api/calendar/feed"}?token=${encodeURIComponent(token)}`;
+    return {
+      providerId: provider.id,
+      providerName: provider.companyName,
+      feedUrl,
+      webcalUrl: feedUrl.replace(/^http/, "webcal"),
+      instructions: [
+        "Apple Calendar and Outlook can subscribe directly with the webcal link.",
+        "Google Calendar can subscribe to the feed URL from Add calendar by URL.",
+        "Manual outside-client and personal-time blocks can now reduce YardMatch availability."
+      ]
+    };
+  }
+
+  private filterProviderSlotsAgainstExternalBlocks(
+    provider: ProviderProfile,
+    slots: Array<{ startIso: string; endIso: string; isBooked: boolean; providerId: string; id: string }>
+  ) {
+    const blocks = this.getActiveExternalCalendarBlocks(provider);
+    if (blocks.length === 0) {
+      return slots;
+    }
+
+    return slots.filter(
+      (slot) =>
+        !blocks.some((block) =>
+          this.doIntervalsOverlap(slot.startIso, slot.endIso, block.startIso, block.endIso)
+        )
+    );
+  }
+
+  private getActiveExternalCalendarBlocks(provider: ProviderProfile): ExternalCalendarBlock[] {
+    if (!provider.calendarConnection.externalEventsBlockingEnabled) {
+      return [];
+    }
+
+    return [...(provider.calendarConnection.externalBlocks ?? [])].sort((left, right) =>
+      left.startIso.localeCompare(right.startIso)
+    );
+  }
+
+  private normalizeExternalCalendarBlocks(
+    blocks: UpdateProviderSettingsRequest["externalCalendarBlocks"]
+  ): ExternalCalendarBlock[] {
+    return [...(blocks ?? [])]
+      .map((block) => {
+        const title = block.title.trim();
+        if (!title) {
+          throw new HttpError(400, "Each external calendar block needs a title");
+        }
+
+        const startTime = new Date(block.startIso);
+        const endTime = new Date(block.endIso);
+        if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+          throw new HttpError(400, "External calendar block times must be valid ISO dates");
+        }
+
+        if (endTime.getTime() <= startTime.getTime()) {
+          throw new HttpError(400, "Each external calendar block must end after it starts");
+        }
+
+        return {
+          id: block.id ?? crypto.randomUUID(),
+          title,
+          blockType: block.blockType,
+          startIso: startTime.toISOString(),
+          endIso: endTime.toISOString(),
+          notes: block.notes?.trim() || undefined,
+          source: block.source ?? "manual",
+          createdAt: block.createdAt ?? new Date().toISOString()
+        } satisfies ExternalCalendarBlock;
+      })
+      .sort((left, right) => left.startIso.localeCompare(right.startIso));
+  }
+
+  private async ensureExternalCalendarBlocksDoNotConflict(provider: ProviderProfile): Promise<void> {
+    const blocks = this.getActiveExternalCalendarBlocks(provider);
+    if (blocks.length === 0) {
+      return;
+    }
+
+    const bookings = (await this.repository.listBookings()).filter(
+      (booking) =>
+        booking.providerId === provider.id &&
+        booking.status !== "cancelled" &&
+        booking.status !== "completed" &&
+        booking.status !== "refunded"
+    );
+
+    const conflictingBlock = blocks.find((block) =>
+      bookings.some((booking) =>
+        this.doIntervalsOverlap(
+          block.startIso,
+          block.endIso,
+          booking.scheduledStartIso,
+          booking.scheduledEndIso
+        )
+      )
+    );
+
+    if (conflictingBlock) {
+      throw new HttpError(
+        400,
+        `The block "${conflictingBlock.title}" overlaps an existing YardMatch job. Adjust the block window or reschedule the booked service first.`
+      );
+    }
+  }
+
+  private async assertProviderWindowIsAvailable(
+    providerId: string,
+    scheduledStartIso: string,
+    scheduledEndIso: string
+  ): Promise<void> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const overlapsExternalBlock = this.getActiveExternalCalendarBlocks(provider).some((block) =>
+      this.doIntervalsOverlap(
+        block.startIso,
+        block.endIso,
+        scheduledStartIso,
+        scheduledEndIso
+      )
+    );
+
+    if (overlapsExternalBlock) {
+      throw new HttpError(
+        409,
+        "That service window is no longer available. The provider may be booked or blocked by an outside calendar event."
+      );
+    }
+  }
+
+  private doIntervalsOverlap(
+    leftStartIso: string,
+    leftEndIso: string,
+    rightStartIso: string,
+    rightEndIso: string
+  ): boolean {
+    return (
+      new Date(leftStartIso).getTime() < new Date(rightEndIso).getTime() &&
+      new Date(rightStartIso).getTime() < new Date(leftEndIso).getTime()
+    );
   }
 
   public async getUserByIdentity(
@@ -2122,7 +2850,10 @@ export class MarketplacePlatformService {
       .filter(
         (booking) =>
           booking.providerId === provider.id &&
-          (booking.status === "requested" || booking.status === "confirmed" || booking.status === "in-progress")
+          (booking.status === "requested" ||
+            booking.status === "confirmed" ||
+            booking.status === "in-progress" ||
+            booking.status === "disputed")
       )
       .map((booking) => {
         const customer = customers.find((item) => item.id === booking.customerId);
@@ -2143,6 +2874,15 @@ export class MarketplacePlatformService {
           scheduledEndIso: booking.scheduledEndIso,
           onRouteConfirmedAt: booking.onRouteConfirmedAt,
           onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
+          lateNoticeSentAt: booking.lateNoticeSentAt,
+          lateEtaIso: booking.lateEtaIso,
+          lateReason: booking.lateReason,
+          activeExceptionType: booking.activeExceptionType,
+          activeExceptionReportedAt: booking.activeExceptionReportedAt,
+          activeExceptionNotes: booking.activeExceptionNotes,
+          disputedAt: booking.disputedAt,
+          disputeReason: booking.disputeReason,
+          disputedByRole: booking.disputedByRole,
           totalCents: booking.totalCents,
           requiredCrewMembers,
           assignedCrewMembers,
@@ -2542,6 +3282,15 @@ export class MarketplacePlatformService {
       .join(" ");
   }
 
+  private formatBookingWindowWithDate(iso: string): string {
+    const dateLabel = new Date(iso).toLocaleDateString([], {
+      weekday: "short",
+      month: "short",
+      day: "numeric"
+    });
+    return `${dateLabel} • ${formatBookingWindowSummary(iso)}`;
+  }
+
   private interpolatePoint(
     origin: { latitude: number; longitude: number },
     destination: { latitude: number; longitude: number },
@@ -2558,7 +3307,7 @@ export class MarketplacePlatformService {
   private async createNotification(
     payload: Omit<AppNotification, "id" | "isRead" | "createdAt">
   ): Promise<void> {
-    await this.repository.createNotification({
+    const notification = await this.repository.createNotification({
       id: crypto.randomUUID(),
       recipientId: payload.recipientId,
       recipientRole: payload.recipientRole,
@@ -2570,6 +3319,251 @@ export class MarketplacePlatformService {
       createdAt: new Date().toISOString(),
       readAt: undefined
     });
+
+    await this.queueNotificationDeliveries(notification);
+  }
+
+  private async ensureNotificationPreferences(
+    identity: AuthIdentityRecord
+  ): Promise<NotificationPreferences> {
+    const existing = await this.repository.getNotificationPreferences(identity.userId);
+    if (existing) {
+      return existing;
+    }
+
+    const nowIso = new Date().toISOString();
+    return this.repository.upsertNotificationPreferences({
+      userId: identity.userId,
+      role: identity.role,
+      emailEnabled: true,
+      smsEnabled: true,
+      pushEnabled: true,
+      reviewRemindersEnabled: true,
+      updatedAt: nowIso
+    });
+  }
+
+  private async queueNotificationDeliveries(notification: AppNotification): Promise<void> {
+    const identity = await this.repository.findAuthIdentityByUserId(notification.recipientId);
+    if (!identity) {
+      return;
+    }
+
+    const preferences = await this.ensureNotificationPreferences(identity);
+    const channels = this.getExternalNotificationChannels(notification.category, preferences);
+    if (channels.length === 0) {
+      return;
+    }
+
+    const destinationProfile = await this.getNotificationDestinationProfile(identity);
+    if (!destinationProfile) {
+      return;
+    }
+
+    await Promise.all(
+      channels.map(async (channel) => {
+        const delivery = await this.repository.createNotificationDelivery({
+          id: crypto.randomUUID(),
+          notificationId: notification.id,
+          recipientId: notification.recipientId,
+          recipientRole: notification.recipientRole,
+          category: notification.category,
+          channel,
+          destination: this.getNotificationDestination(channel, destinationProfile),
+          provider: "queued",
+          status: "queued",
+          title: notification.title,
+          bodyPreview: notification.body.slice(0, 160),
+          createdAt: new Date().toISOString(),
+          sentAt: undefined,
+          errorMessage: undefined
+        });
+
+        await this.dispatchNotificationDelivery(delivery);
+      })
+    );
+  }
+
+  private getExternalNotificationChannels(
+    category: AppNotification["category"],
+    preferences: NotificationPreferences
+  ): NotificationChannel[] {
+    if (category === "review") {
+      return preferences.reviewRemindersEnabled && preferences.pushEnabled ? ["push"] : [];
+    }
+
+    const channels: NotificationChannel[] = [];
+    if (preferences.pushEnabled) {
+      channels.push("push");
+    }
+    if (preferences.emailEnabled) {
+      channels.push("email");
+    }
+    if (preferences.smsEnabled && (category === "booking" || category === "staffing" || category === "support")) {
+      channels.push("sms");
+    }
+    return channels;
+  }
+
+  private async getNotificationDestinationProfile(identity: AuthIdentityRecord): Promise<{
+    email: string;
+    phone: string;
+  } | undefined> {
+    if (identity.role === "customer") {
+      const customer = await this.repository.findCustomerById(identity.userId);
+      if (!customer) {
+        return undefined;
+      }
+      return {
+        email: customer.email,
+        phone: customer.phone
+      };
+    }
+
+    if (identity.role === "provider") {
+      const provider = await this.repository.findProviderById(identity.userId);
+      if (!provider) {
+        return undefined;
+      }
+      return {
+        email: provider.email,
+        phone: provider.phone
+      };
+    }
+
+    const crewMember = await this.repository.findCrewMemberById(identity.userId);
+    if (!crewMember) {
+      return undefined;
+    }
+
+    return {
+      email: crewMember.email,
+      phone: crewMember.phone
+    };
+  }
+
+  private getNotificationDestination(
+    channel: NotificationChannel,
+    profile: { email: string; phone: string }
+  ): string {
+    if (channel === "email") {
+      return profile.email;
+    }
+
+    if (channel === "sms") {
+      return profile.phone;
+    }
+
+    return "local-device";
+  }
+
+  private async dispatchNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<void> {
+    try {
+      const dispatch = await this.notificationDelivery.dispatch({
+        channel: delivery.channel,
+        destination: delivery.destination,
+        title: delivery.title,
+        body: delivery.bodyPreview
+      });
+
+      await this.repository.updateNotificationDelivery(delivery.id, {
+        provider: dispatch.provider,
+        status: "sent",
+        sentAt: dispatch.sentAt,
+        errorMessage: undefined
+      });
+    } catch (error) {
+      await this.repository.updateNotificationDelivery(delivery.id, {
+        provider: `mock-${delivery.channel}`,
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Notification delivery failed."
+      });
+    }
+  }
+
+  private async ensureTimedNotifications(identity: AuthIdentityRecord): Promise<void> {
+    if (identity.role !== "provider") {
+      return;
+    }
+
+    await this.ensureProviderDepartureReminders(identity.userId);
+  }
+
+  private async ensureProviderDepartureReminders(providerId: string): Promise<void> {
+    const [bookings, notifications] = await Promise.all([
+      this.repository.listBookings(),
+      this.repository.listNotificationsByRecipient(providerId)
+    ]);
+
+    const now = Date.now();
+    const existingReminderActions = new Set(
+      notifications
+        .filter((notification) => notification.recipientRole === "provider")
+        .map((notification) => notification.actionHref)
+        .filter((actionHref): actionHref is string => Boolean(actionHref))
+    );
+
+    await Promise.all(
+      bookings
+        .filter(
+          (booking) =>
+            booking.providerId === providerId &&
+            booking.status === "confirmed" &&
+            !booking.onRouteConfirmedAt
+        )
+        .map(async (booking) => {
+          const scheduledStart = new Date(booking.scheduledStartIso).getTime();
+          const minutesUntilStart = Math.round((scheduledStart - now) / (1000 * 60));
+          if (minutesUntilStart < 0 || minutesUntilStart > 60) {
+            return;
+          }
+
+          const actionHref = `/provider/management?bookingId=${booking.id}&reminder=departure`;
+          if (existingReminderActions.has(actionHref)) {
+            return;
+          }
+
+          const customer = await this.repository.findCustomerById(booking.customerId);
+          const leadText =
+            minutesUntilStart <= 15
+              ? `Leave now for ${customer?.fullName ?? "your next customer"}.`
+              : `Plan to head out in about ${minutesUntilStart} minutes.`;
+
+          await this.createNotification({
+            recipientId: providerId,
+            recipientRole: "provider",
+            category: "booking",
+            title: "Time to head out soon",
+            body: `${leadText} ${booking.serviceAddress.line1} • ${this.formatBookingWindowWithDate(booking.scheduledStartIso)}`,
+            actionHref
+          });
+        })
+    );
+  }
+
+  private async ensureProviderCalendarFeedToken(providerId: string): Promise<ProviderProfile> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    if (provider.calendarConnection.feedToken) {
+      return provider;
+    }
+
+    const updatedProvider = await this.repository.updateProvider(providerId, {
+      calendarConnection: {
+        ...provider.calendarConnection,
+        feedToken: crypto.randomUUID(),
+        lastSyncedAt: new Date().toISOString()
+      }
+    });
+
+    if (!updatedProvider) {
+      throw new HttpError(500, "Calendar feed token could not be saved");
+    }
+
+    return updatedProvider;
   }
 
   private async capturePaymentRecord(

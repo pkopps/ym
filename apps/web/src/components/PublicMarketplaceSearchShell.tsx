@@ -14,10 +14,12 @@ export function PublicMarketplaceSearchShell() {
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [hasFinishedSearch, setHasFinishedSearch] = useState(false);
 
   useEffect(() => {
     if (areaQuery.trim().length < 2) {
       setSuggestions([]);
+      setHasFinishedSearch(false);
       return;
     }
 
@@ -35,6 +37,7 @@ export function PublicMarketplaceSearchShell() {
           setSuggestions([]);
         })
         .finally(() => {
+          setHasFinishedSearch(true);
           setIsSearching(false);
         });
     }, 220);
@@ -110,6 +113,13 @@ export function PublicMarketplaceSearchShell() {
                 );
               })}
             </div>
+          ) : areaQuery.trim().length >= 3 && hasFinishedSearch ? (
+            <div className="customer-search-shell__suggestions">
+              <div className="customer-search-shell__suggestion customer-search-shell__suggestion--static">
+                <strong>No suggested area yet.</strong>
+                <span>You can still search with the city, ZIP, or address you typed.</span>
+              </div>
+            </div>
           ) : areaQuery.trim().length >= 2 && isSearching ? (
             <div className="customer-search-shell__suggestions">
               <div className="customer-search-shell__suggestion customer-search-shell__suggestion--static">
@@ -119,7 +129,7 @@ export function PublicMarketplaceSearchShell() {
           ) : null}
         </label>
         <button className="button customer-search-shell__action" onClick={handleSubmit} type="button">
-          Search services
+          {isSearching ? "Checking area..." : "Search services"}
         </button>
       </div>
     </div>

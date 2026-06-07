@@ -115,6 +115,15 @@ model Booking {
   status               String
   onRouteConfirmedAt   DateTime?
   onRouteConfirmedByCrewMemberId String?
+  lateNoticeSentAt     DateTime?
+  lateEtaIso           DateTime?
+  lateReason           String?
+  activeExceptionType  String?
+  activeExceptionReportedAt DateTime?
+  activeExceptionNotes String?
+  disputedAt           DateTime?
+  disputeReason        String?
+  disputedByRole       String?
   completedAt          DateTime?
   notes                String
   totalCents           Int
@@ -263,6 +272,11 @@ model SupportTicket {
   issueType   String
   status      String
   createdAt   DateTime
+  updatedAt   DateTime
+  triagedAt   DateTime?
+  resolvedAt  DateTime?
+  resolutionNotes String?
+  resolutionAction String?
 
   @@map("support_tickets")
 }
@@ -281,4 +295,38 @@ model AppNotification {
 
   @@index([recipientId, createdAt])
   @@map("app_notifications")
+}
+
+model NotificationPreference {
+  userId                  String   @id
+  role                    String
+  emailEnabled            Boolean  @default(true)
+  smsEnabled              Boolean  @default(true)
+  pushEnabled             Boolean  @default(true)
+  reviewRemindersEnabled  Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime
+
+  @@map("notification_preferences")
+}
+
+model NotificationDelivery {
+  id            String   @id
+  notificationId String
+  recipientId   String
+  recipientRole String
+  category      String
+  channel       String
+  destination   String
+  provider      String
+  status        String
+  title         String
+  bodyPreview   String
+  errorMessage  String?
+  createdAt     DateTime
+  sentAt        DateTime?
+
+  @@index([recipientId, createdAt])
+  @@index([notificationId])
+  @@map("notification_deliveries")
 }

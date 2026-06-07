@@ -103,23 +103,6 @@ export function CrewLiveDashboard() {
     }
   }
 
-  async function confirmOnRoute(bookingId: string) {
-    setIsWorking(true);
-    setErrorMessage(undefined);
-    setStatusMessage(undefined);
-
-    try {
-      const api = createAuthenticatedWebApiClient();
-      await api.markBookingOnRoute({ bookingId });
-      setStatusMessage("On-route confirmed. The property owner can now chat with the business.");
-      await loadCrewView();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm on-route status.");
-    } finally {
-      setIsWorking(false);
-    }
-  }
-
   async function startWork(bookingId: string) {
     setIsWorking(true);
     setErrorMessage(undefined);
@@ -320,14 +303,7 @@ export function CrewLiveDashboard() {
                     <span className="result-badge">Waiting on business confirmation</span>
                   ) : null}
                   {match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt ? (
-                    <button
-                      className="button"
-                      disabled={isWorking}
-                      onClick={() => void confirmOnRoute(match.bookingId)}
-                      type="button"
-                    >
-                      Confirm on route
-                    </button>
+                    <span className="result-badge">Business owner starts the route</span>
                   ) : null}
                   {match.bookingStatus === "confirmed" && match.onRouteConfirmedAt ? (
                     <button

@@ -17,6 +17,8 @@ export class ApiRoutes {
   public static readonly providerReviews = "/api/providers/reviews";
   public static readonly notifications = "/api/notifications";
   public static readonly notificationsRead = "/api/notifications/read";
+  public static readonly notificationPreferences = "/api/notifications/preferences";
+  public static readonly notificationDeliveries = "/api/notifications/deliveries";
   public static readonly customerReviewOpportunities = "/api/customers/review-opportunities";
   public static readonly createBooking = "/api/bookings";
   public static readonly listBookings = "/api/bookings";
@@ -26,6 +28,9 @@ export class ApiRoutes {
   public static readonly startBooking = "/api/bookings/start";
   public static readonly completeBooking = "/api/bookings/complete";
   public static readonly markBookingOnRoute = "/api/bookings/on-route";
+  public static readonly markBookingLate = "/api/bookings/late";
+  public static readonly markBookingException = "/api/bookings/exception";
+  public static readonly createBookingDispute = "/api/bookings/dispute";
   public static readonly bookingTracking = "/api/bookings/tracking";
   public static readonly updateBookingAddress = "/api/bookings/address";
   public static readonly processReviewInvites = "/api/review-invites/process";
@@ -47,4 +52,7 @@ export class ApiRoutes {
   public static readonly createSessionHeartbeat = "/api/observability/session-heartbeat";
   public static readonly getObservabilityOverview = "/api/observability/overview";
   public static readonly providerCalendar = "/api/calendar/feed";
+  public static readonly providerCalendarSubscription = "/api/calendar/subscription";
+  public static readonly opsSupportTickets = "/api/support/ops/tickets";
+  public static readonly opsSupportTicketsUpdate = "/api/support/ops/tickets/update";
 }

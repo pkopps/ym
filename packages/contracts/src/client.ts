@@ -12,6 +12,7 @@ import {
   CompleteBookingRequest,
   CreateCheckoutSessionRequest,
   CreateCheckoutSessionResponse,
+  CreateBookingDisputeRequest,
   CrewMatchesResponse,
   CrewOpportunity,
   CustomerProperty,
@@ -20,7 +21,9 @@ import {
   LoginRequest,
   MarkNotificationsReadRequest,
   ListCustomerReviewOpportunitiesResponse,
+  NotificationDeliveriesResponse,
   NotificationListResponse,
+  NotificationPreferences,
   PaymentRecord,
   PlaceSearchResponse,
   ProcessReviewInvitesRequest,
@@ -36,11 +39,14 @@ import {
   CreateSupportTicketRequest,
   ObservabilityOverview,
   ProviderCrewConversation,
+  ProviderCalendarSubscriptionResponse,
   ProviderProfile,
   ProviderStaffingOverview,
   ProviderReview,
   RegisterUserRequest,
   MarkBookingOnRouteRequest,
+  MarkBookingLateRequest,
+  MarkBookingExceptionRequest,
   ReviewCrewMatchRequest,
   RescheduleBookingRequest,
   SendCustomerProviderMessageRequest,
@@ -49,10 +55,13 @@ import {
   SessionHeartbeatRequest,
   SearchProvidersRequest,
   SearchProvidersResponse,
+  SupportOpsTicket,
   SupportTicket,
   ProviderCrewConversationThread,
   UpdateCrewPreferencesRequest,
+  UpdateNotificationPreferencesRequest,
   UpdateProviderSettingsRequest,
+  UpdateSupportTicketRequest,
   UpdateBookingAddressRequest,
   StartBookingRequest
 } from "./types";
@@ -178,6 +187,10 @@ export class MarketplaceApiClient {
     return this.postJson<ProviderProfile>(ApiRoutes.updateProviderSettings, payload);
   }
 
+  public getProviderCalendarSubscription(): Promise<ProviderCalendarSubscriptionResponse> {
+    return this.getJson(ApiRoutes.providerCalendarSubscription);
+  }
+
   public getNotifications(): Promise<NotificationListResponse> {
     return this.getJson(ApiRoutes.notifications);
   }
@@ -186,6 +199,20 @@ export class MarketplaceApiClient {
     payload: MarkNotificationsReadRequest = {}
   ): Promise<NotificationListResponse> {
     return this.postJson(ApiRoutes.notificationsRead, payload);
+  }
+
+  public getNotificationPreferences(): Promise<NotificationPreferences> {
+    return this.getJson(ApiRoutes.notificationPreferences);
+  }
+
+  public updateNotificationPreferences(
+    payload: UpdateNotificationPreferencesRequest
+  ): Promise<NotificationPreferences> {
+    return this.postJson(ApiRoutes.notificationPreferences, payload);
+  }
+
+  public getNotificationDeliveries(): Promise<NotificationDeliveriesResponse> {
+    return this.getJson(ApiRoutes.notificationDeliveries);
   }
 
   public updateCrewPreferences(payload: UpdateCrewPreferencesRequest) {
@@ -286,6 +313,18 @@ export class MarketplaceApiClient {
     return this.postJson<Booking>(ApiRoutes.markBookingOnRoute, payload);
   }
 
+  public markBookingLate(payload: MarkBookingLateRequest) {
+    return this.postJson<Booking>(ApiRoutes.markBookingLate, payload);
+  }
+
+  public markBookingException(payload: MarkBookingExceptionRequest) {
+    return this.postJson<Booking>(ApiRoutes.markBookingException, payload);
+  }
+
+  public createBookingDispute(payload: CreateBookingDisputeRequest) {
+    return this.postJson<Booking>(ApiRoutes.createBookingDispute, payload);
+  }
+
   public getBookingTracking(bookingId: string): Promise<BookingArrivalTracking> {
     return this.getJson(`${ApiRoutes.bookingTracking}?bookingId=${encodeURIComponent(bookingId)}`);
   }
@@ -322,6 +361,14 @@ export class MarketplaceApiClient {
 
   public getSupportTickets(): Promise<SupportTicket[]> {
     return this.getJson(ApiRoutes.supportTickets);
+  }
+
+  public getOpsSupportTickets(): Promise<SupportOpsTicket[]> {
+    return this.getJson(ApiRoutes.opsSupportTickets);
+  }
+
+  public updateOpsSupportTicket(payload: UpdateSupportTicketRequest): Promise<SupportTicket> {
+    return this.postJson(ApiRoutes.opsSupportTicketsUpdate, payload);
   }
 
   public processReviewInvites(

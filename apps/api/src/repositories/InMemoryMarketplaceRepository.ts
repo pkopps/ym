@@ -12,6 +12,8 @@ import {
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
+  NotificationDeliveryRecord,
+  NotificationPreferences,
   PaymentRecord,
   ProviderProfile,
   ProviderReview,
@@ -31,6 +33,8 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly reviewInvites: ReviewInvite[] = [];
   private readonly supportTickets: SupportTicket[] = [];
   private readonly notifications: AppNotification[] = [];
+  private readonly notificationPreferences: NotificationPreferences[] = [];
+  private readonly notificationDeliveries: NotificationDeliveryRecord[] = [];
   private readonly crewMatches: CrewMatchCandidate[] = [];
   private readonly providerCrewConversations: ProviderCrewConversation[] = [];
   private readonly providerCrewMessages: ProviderCrewMessage[] = [];
@@ -295,6 +299,19 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return [...this.supportTickets];
   }
 
+  public async updateSupportTicket(
+    ticketId: string,
+    updates: Partial<SupportTicket>
+  ): Promise<SupportTicket | undefined> {
+    const ticket = this.supportTickets.find((item) => item.id === ticketId);
+    if (!ticket) {
+      return undefined;
+    }
+
+    Object.assign(ticket, updates);
+    return ticket;
+  }
+
   public async createNotification(notification: AppNotification): Promise<AppNotification> {
     this.notifications.push(notification);
     return notification;
@@ -317,6 +334,51 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
     Object.assign(notification, updates);
     return notification;
+  }
+
+  public async getNotificationPreferences(recipientId: string): Promise<NotificationPreferences | undefined> {
+    return this.notificationPreferences.find((item) => item.userId === recipientId);
+  }
+
+  public async upsertNotificationPreferences(
+    preferences: NotificationPreferences
+  ): Promise<NotificationPreferences> {
+    const current = this.notificationPreferences.find((item) => item.userId === preferences.userId);
+    if (current) {
+      Object.assign(current, preferences);
+      return current;
+    }
+
+    this.notificationPreferences.push(preferences);
+    return preferences;
+  }
+
+  public async createNotificationDelivery(
+    delivery: NotificationDeliveryRecord
+  ): Promise<NotificationDeliveryRecord> {
+    this.notificationDeliveries.push(delivery);
+    return delivery;
+  }
+
+  public async listNotificationDeliveriesByRecipient(
+    recipientId: string
+  ): Promise<NotificationDeliveryRecord[]> {
+    return this.notificationDeliveries
+      .filter((delivery) => delivery.recipientId === recipientId)
+      .map((delivery) => ({ ...delivery }));
+  }
+
+  public async updateNotificationDelivery(
+    deliveryId: string,
+    updates: Partial<NotificationDeliveryRecord>
+  ): Promise<NotificationDeliveryRecord | undefined> {
+    const delivery = this.notificationDeliveries.find((item) => item.id === deliveryId);
+    if (!delivery) {
+      return undefined;
+    }
+
+    Object.assign(delivery, updates);
+    return delivery;
   }
 
   public async createProviderCrewConversation(

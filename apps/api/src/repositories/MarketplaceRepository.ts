@@ -13,9 +13,12 @@ import {
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
+  NotificationDeliveryRecord,
+  NotificationPreferences,
   PaymentRecord,
   ProviderProfile,
   ProviderReview,
+  SupportOpsTicket,
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
@@ -73,12 +76,21 @@ export interface MarketplaceRepository {
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
   createSupportTicket(ticket: SupportTicket): Promise<SupportTicket>;
   listSupportTickets(): Promise<SupportTicket[]>;
+  updateSupportTicket(ticketId: string, updates: Partial<SupportTicket>): Promise<SupportTicket | undefined>;
   createNotification(notification: AppNotification): Promise<AppNotification>;
   listNotificationsByRecipient(recipientId: string): Promise<AppNotification[]>;
   updateNotification(
     notificationId: string,
     updates: Partial<AppNotification>
   ): Promise<AppNotification | undefined>;
+  getNotificationPreferences(recipientId: string): Promise<NotificationPreferences | undefined>;
+  upsertNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferences>;
+  createNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<NotificationDeliveryRecord>;
+  listNotificationDeliveriesByRecipient(recipientId: string): Promise<NotificationDeliveryRecord[]>;
+  updateNotificationDelivery(
+    deliveryId: string,
+    updates: Partial<NotificationDeliveryRecord>
+  ): Promise<NotificationDeliveryRecord | undefined>;
   createProviderCrewConversation(conversation: ProviderCrewConversation): Promise<ProviderCrewConversation>;
   findProviderCrewConversationById(conversationId: string): Promise<ProviderCrewConversation | undefined>;
   findProviderCrewConversationByCrewMatchId(

@@ -6,14 +6,18 @@ import {
   BookingArrivalTracking,
   Booking,
   CustomerProviderConversationThread,
+  formatBookingWindowSummary,
+  getBookingExceptionLabel,
   PaymentRecord,
   CustomerReviewOpportunity,
   ReviewScore
 } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCustomerMobileApiClient } from "../lib/api";
+import { buildTrackingSummary } from "../lib/arrivalTracking";
 import { getCustomerMobileTracker } from "../lib/tracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
@@ -30,7 +34,11 @@ function addOneDay(iso: string) {
   return new Date(new Date(iso).getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
-export function BookingsScreen() {
+export function BookingsScreen({
+  onOpenAccount
+}: {
+  onOpenAccount?: () => void;
+}) {
   const tracker = getCustomerMobileTracker();
   const { envelope } = useCustomerSession();
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
@@ -43,6 +51,7 @@ export function BookingsScreen() {
   const [timelinessRating, setTimelinessRating] = useState<ReviewScore>(5);
   const [detailRating, setDetailRating] = useState<ReviewScore>(5);
   const [reviewText, setReviewText] = useState("");
+  const [disputeDrafts, setDisputeDrafts] = useState<Record<string, string>>({});
   const [submittedMessage, setSubmittedMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -51,6 +60,7 @@ export function BookingsScreen() {
   const [chatDraft, setChatDraft] = useState("");
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
+  const [isTrackingModalVisible, setIsTrackingModalVisible] = useState(false);
 
   const upcomingBookings = useMemo(
     () =>
@@ -59,7 +69,9 @@ export function BookingsScreen() {
           (booking) =>
             booking.status === "requested" ||
             booking.status === "confirmed" ||
-            booking.status === "in-progress"
+            booking.status === "in-progress" ||
+            (booking.status === "disputed" &&
+              new Date(booking.scheduledStartIso).getTime() >= Date.now())
         )
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso)),
     [bookings]
@@ -72,7 +84,9 @@ export function BookingsScreen() {
           (booking) =>
             booking.status === "completed" ||
             booking.status === "cancelled" ||
-            booking.status === "refunded"
+            booking.status === "refunded" ||
+            (booking.status === "disputed" &&
+              new Date(booking.scheduledStartIso).getTime() < Date.now())
         )
         .sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso)),
     [bookings]
@@ -218,6 +232,36 @@ export function BookingsScreen() {
     }
   }
 
+  async function openDispute(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    const reason = (disputeDrafts[bookingId] ?? "").trim();
+    if (!reason) {
+      setErrorMessage("Add a dispute reason first.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.createBookingDispute({
+        bookingId,
+        reason
+      });
+      setSubmittedMessage("Dispute opened. YardMatch support now has the booking context.");
+      await loadBookings();
+      onOpenAccount?.();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open this dispute.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function openCustomerChat(booking: Booking) {
     if (!envelope?.session.token || !booking.onRouteConfirmedAt) {
       return;
@@ -275,9 +319,20 @@ export function BookingsScreen() {
       api.setAuthToken(envelope.session.token);
       setTracking(await api.getBookingTracking(booking.id));
       setActiveTrackingBookingId(booking.id);
+      setIsTrackingModalVisible(true);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load arrival tracking.");
     }
+  }
+
+  async function refreshArrivalTracking() {
+    if (!envelope?.session.token || !activeTrackingBookingId) {
+      return;
+    }
+
+    const api = createCustomerMobileApiClient();
+    api.setAuthToken(envelope.session.token);
+    setTracking(await api.getBookingTracking(activeTrackingBookingId));
   }
 
   function getPaymentRecord(bookingId: string) {
@@ -354,12 +409,35 @@ export function BookingsScreen() {
                 <View style={styles.bookingCopy}>
                   <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
                   <Text style={styles.bookingMeta}>{providerNamesById[booking.providerId] ?? "Landscaping business"}</Text>
+                  <Text style={styles.bookingMeta}>{formatBookingWindowSummary(booking.scheduledStartIso)}</Text>
                   <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
                   <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
                   <Text style={styles.bookingNote}>{booking.status}</Text>
                   <Text style={styles.bookingMeta}>{getPaymentLabel(getPaymentRecord(booking.id))}</Text>
+                  {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
+                    <Text style={styles.bookingMeta}>
+                      Running behind • now around{" "}
+                      {new Date(booking.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
+                      {booking.lateReason ? ` • ${booking.lateReason}` : ""}
+                    </Text>
+                  ) : null}
+                  {booking.activeExceptionType ? (
+                    <Text style={styles.bookingMeta}>
+                      {getBookingExceptionLabel(booking.activeExceptionType)}
+                      {booking.activeExceptionNotes ? ` • ${booking.activeExceptionNotes}` : ""}
+                    </Text>
+                  ) : null}
+                  {booking.status === "disputed" ? (
+                    <Text style={styles.bookingMeta}>
+                      Disputed{booking.disputeReason ? ` • ${booking.disputeReason}` : ""}
+                    </Text>
+                  ) : null}
                   {booking.onRouteConfirmedAt ? (
-                    <Text style={styles.bookingMeta}>Crew is on the way. Business chat is open.</Text>
+                    <Text style={styles.bookingMeta}>
+                      {activeTrackingBookingId === booking.id && tracking
+                        ? `${buildTrackingSummary(tracking)} • Business chat is open`
+                        : "Crew is on the way. Business chat is open."}
+                    </Text>
                   ) : null}
                 </View>
                 <StatusBadge
@@ -368,9 +446,11 @@ export function BookingsScreen() {
                       ? "Confirmed"
                       : booking.status === "in-progress"
                         ? "In progress"
+                        : booking.status === "disputed"
+                          ? "Disputed"
                         : "Requested"
                   }
-                  tone="success"
+                  tone={booking.status === "disputed" ? "warning" : "success"}
                 />
                 <View style={styles.inlineActions}>
                   {booking.status === "requested" || booking.status === "confirmed" ? (
@@ -420,23 +500,41 @@ export function BookingsScreen() {
                       <Text style={styles.secondaryActionLabel}>Track crew</Text>
                     </Pressable>
                   ) : null}
+                  {booking.activeExceptionType ? (
+                    <Pressable
+                      onPress={() => onOpenAccount?.()}
+                      style={styles.secondaryAction}
+                    >
+                      <Text style={styles.secondaryActionLabel}>Open account support</Text>
+                    </Pressable>
+                  ) : null}
+                  {booking.status !== "cancelled" &&
+                  booking.status !== "refunded" &&
+                  booking.status !== "requested" &&
+                  booking.status !== "disputed" ? (
+                    <>
+                      <TextInput
+                        onChangeText={(value) =>
+                          setDisputeDrafts((current) => ({
+                            ...current,
+                            [booking.id]: value
+                          }))
+                        }
+                        placeholder="Why are you disputing this service?"
+                        placeholderTextColor={BrandTokens.colors.muted}
+                        style={styles.input}
+                        value={disputeDrafts[booking.id] ?? ""}
+                      />
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void openDispute(booking.id)}
+                        style={styles.secondaryAction}
+                      >
+                        <Text style={styles.secondaryActionLabel}>Open dispute</Text>
+                      </Pressable>
+                    </>
+                  ) : null}
                 </View>
-                {booking.onRouteConfirmedAt &&
-                activeTrackingBookingId === booking.id &&
-                tracking ? (
-                  <View style={styles.trackingCard}>
-                    <Text style={styles.bookingTitle}>
-                      {tracking.etaMinutes ? `${tracking.etaMinutes} min away` : "At the property"}
-                    </Text>
-                    <Text style={styles.bookingMeta}>{tracking.message}</Text>
-                    <Text style={styles.bookingMeta}>
-                      {tracking.progressPercent}% complete •{" "}
-                      {tracking.remainingDistanceMiles !== undefined
-                        ? `${tracking.remainingDistanceMiles.toFixed(1)} miles left`
-                        : "Waiting for route"}
-                    </Text>
-                  </View>
-                ) : null}
                 {booking.onRouteConfirmedAt && activeChatBookingId === booking.id ? (
                   <View style={styles.chatStack}>
                     {(chatThread?.messages ?? []).map((message) => (
@@ -484,9 +582,18 @@ export function BookingsScreen() {
                     <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
                     <Text style={styles.bookingMeta}>{providerNamesById[booking.providerId] ?? "Landscaping business"}</Text>
                     <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
+                    {booking.disputeReason ? (
+                      <Text style={styles.bookingMeta}>{booking.disputeReason}</Text>
+                    ) : null}
                   </View>
                   <StatusBadge
-                    label={booking.status === "completed" ? "Done" : booking.status}
+                    label={
+                      booking.status === "completed"
+                        ? "Done"
+                        : booking.status === "disputed"
+                          ? "Disputed"
+                          : booking.status
+                    }
                     tone={booking.status === "completed" ? "success" : "warning"}
                   />
                 </Pressable>
@@ -518,6 +625,15 @@ export function BookingsScreen() {
           )}
         </>
       )}
+      <ArrivalTrackingModal
+        onClose={() => setIsTrackingModalVisible(false)}
+        onRefresh={() => void refreshArrivalTracking()}
+        providerName={
+          providerNamesById[bookings.find((booking) => booking.id === activeTrackingBookingId)?.providerId ?? ""]
+        }
+        tracking={tracking}
+        visible={isTrackingModalVisible && Boolean(tracking)}
+      />
     </ScreenShell>
   );
 }
@@ -655,12 +771,6 @@ const styles = StyleSheet.create({
   },
   chatStack: {
     gap: BrandTokens.spacing.sm
-  },
-  trackingCard: {
-    gap: BrandTokens.spacing.xs,
-    borderRadius: BrandTokens.radius.md,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    padding: BrandTokens.spacing.md
   },
   chatBubble: {
     gap: BrandTokens.spacing.xs

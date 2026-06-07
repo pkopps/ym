@@ -3,29 +3,36 @@ import { StyleSheet, Switch, Text, View, Pressable, TextInput } from "react-nati
 import { BrandTokens } from "@yardmatch/branding";
 import {
   AppNotification,
+  BookingArrivalTracking,
   Booking,
   CreateCustomerPropertyRequest,
   CreateSupportTicketRequest,
   CustomerProperty,
+  NotificationDeliveryRecord,
+  NotificationPreferences,
   SupportIssueType,
   SupportTicket
 } from "@yardmatch/contracts";
+import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCustomerMobileApiClient } from "../lib/api";
+import { findTrackableBooking, parseTrackingBookingId } from "../lib/arrivalTracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
 export function SupportScreen() {
-  const [pushEnabled, setPushEnabled] = useState(true);
-  const [reviewRemindersEnabled, setReviewRemindersEnabled] = useState(true);
+  const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [deliveries, setDeliveries] = useState<NotificationDeliveryRecord[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
+  const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
   const [subject, setSubject] = useState("");
@@ -43,19 +50,47 @@ export function SupportScreen() {
     try {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [nextProperties, nextBookings, nextTickets, notificationResponse] = await Promise.all([
+      const [nextProperties, nextBookings, nextTickets, notificationResponse, nextPreferences, nextDeliveries] = await Promise.all([
         api.getCustomerProperties(),
         api.getBookings(),
         api.getSupportTickets(),
-        api.getNotifications()
+        api.getNotifications(),
+        api.getNotificationPreferences(),
+        api.getNotificationDeliveries()
       ]);
       setProperties(nextProperties);
       setBookings(nextBookings);
       setSupportTickets(nextTickets);
       setNotifications(notificationResponse.notifications);
       setUnreadCount(notificationResponse.unreadCount);
+      setPreferences(nextPreferences);
+      setDeliveries(nextDeliveries.deliveries);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
+    }
+  }
+
+  async function handleUpdatePreferences(
+    updates: Partial<Pick<NotificationPreferences, "pushEnabled" | "emailEnabled" | "smsEnabled" | "reviewRemindersEnabled">>
+  ) {
+    if (!envelope?.session.token || !preferences) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextPreferences = await api.updateNotificationPreferences(updates);
+      setPreferences(nextPreferences);
+      setStatusMessage("Delivery preferences updated.");
+      const nextDeliveries = await api.getNotificationDeliveries();
+      setDeliveries(nextDeliveries.deliveries);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update notification preferences.");
+    } finally {
+      setIsWorking(false);
     }
   }
 
@@ -97,6 +132,44 @@ export function SupportScreen() {
     } finally {
       setIsWorking(false);
     }
+  }
+
+  async function openTrackingFromNotification(notification: AppNotification) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    const fallbackBookingId = findTrackableBooking(bookings)?.id;
+    const bookingId =
+      parseTrackingBookingId(notification.actionHref) ??
+      (notification.title.toLowerCase().includes("on the way") ? fallbackBookingId : undefined);
+
+    if (!bookingId) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setTracking(await api.getBookingTracking(bookingId));
+      setActiveTrackingBookingId(bookingId);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open arrival tracking.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function refreshTracking() {
+    if (!envelope?.session.token || !activeTrackingBookingId) {
+      return;
+    }
+
+    const api = createCustomerMobileApiClient();
+    api.setAuthToken(envelope.session.token);
+    setTracking(await api.getBookingTracking(activeTrackingBookingId));
   }
 
   async function handleSetDefault(propertyId: string) {
@@ -185,13 +258,21 @@ export function SupportScreen() {
         <Text style={styles.meta}>{unreadCount} unread</Text>
         <View style={styles.list}>
           {notifications.slice(0, 4).map((notification) => (
-            <View key={notification.id} style={styles.ticketRow}>
+            <Pressable
+              key={notification.id}
+              onPress={() => void openTrackingFromNotification(notification)}
+              style={styles.ticketRow}
+            >
               <View style={styles.copy}>
                 <Text style={styles.title}>{notification.title}</Text>
                 <Text style={styles.meta}>{notification.body}</Text>
+                {parseTrackingBookingId(notification.actionHref) ||
+                notification.title.toLowerCase().includes("on the way") ? (
+                  <Text style={styles.notificationLink}>Open live map</Text>
+                ) : null}
               </View>
               <Text style={styles.badge}>{notification.isRead ? "Read" : "New"}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
         <Pressable
@@ -203,14 +284,41 @@ export function SupportScreen() {
         </Pressable>
         <PreferenceRow
           label="Push for upcoming services"
-          value={pushEnabled}
-          onValueChange={setPushEnabled}
+          value={preferences?.pushEnabled ?? true}
+          onValueChange={(value) => void handleUpdatePreferences({ pushEnabled: value })}
+        />
+        <PreferenceRow
+          label="Email updates"
+          value={preferences?.emailEnabled ?? true}
+          onValueChange={(value) => void handleUpdatePreferences({ emailEnabled: value })}
+        />
+        <PreferenceRow
+          label="SMS updates"
+          value={preferences?.smsEnabled ?? true}
+          onValueChange={(value) => void handleUpdatePreferences({ smsEnabled: value })}
         />
         <PreferenceRow
           label="Review reminders"
-          value={reviewRemindersEnabled}
-          onValueChange={setReviewRemindersEnabled}
+          value={preferences?.reviewRemindersEnabled ?? true}
+          onValueChange={(value) => void handleUpdatePreferences({ reviewRemindersEnabled: value })}
         />
+      </InfoCard>
+
+      <InfoCard title="Delivery activity" description="What YardMatch already sent">
+        <View style={styles.list}>
+          {deliveries.slice(0, 4).map((delivery) => (
+            <View key={delivery.id} style={styles.ticketRow}>
+              <View style={styles.copy}>
+                <Text style={styles.title}>
+                  {delivery.channel.toUpperCase()} • {delivery.title}
+                </Text>
+                <Text style={styles.meta}>{delivery.destination}</Text>
+                <Text style={styles.meta}>{delivery.provider}</Text>
+              </View>
+              <Text style={styles.badge}>{delivery.status}</Text>
+            </View>
+          ))}
+        </View>
       </InfoCard>
 
       <InfoCard title="Payments" description="Saved here for later">
@@ -301,6 +409,16 @@ export function SupportScreen() {
           <Text style={styles.logoutButtonLabel}>Log out</Text>
         </Pressable>
       </InfoCard>
+
+      <ArrivalTrackingModal
+        onClose={() => {
+          setTracking(undefined);
+          setActiveTrackingBookingId(undefined);
+        }}
+        onRefresh={() => void refreshTracking()}
+        tracking={tracking}
+        visible={Boolean(tracking && activeTrackingBookingId)}
+      />
     </ScreenShell>
   );
 }
@@ -436,5 +554,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: BrandTokens.spacing.md
+  },
+  notificationLink: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
   }
 });

@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { Booking, CustomerProperty, CustomerReviewOpportunity } from "@yardmatch/contracts";
+import {
+  Booking,
+  BookingArrivalTracking,
+  CustomerProperty,
+  CustomerReviewOpportunity,
+  formatBookingWindowSummary
+} from "@yardmatch/contracts";
+import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCustomerMobileApiClient } from "../lib/api";
+import { buildTrackingDetail, buildTrackingSummary, findTrackableBooking } from "../lib/arrivalTracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
 function formatDateTime(iso: string) {
@@ -26,6 +34,9 @@ export function DashboardScreen({
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
   const [reviewOpportunities, setReviewOpportunities] = useState<CustomerReviewOpportunity[]>([]);
+  const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
+  const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
+  const [isTrackingModalVisible, setIsTrackingModalVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const nextBooking = useMemo(
@@ -42,6 +53,17 @@ export function DashboardScreen({
   );
   const activeProperty = properties.find((property) => property.isDefault) ?? properties[0];
   const reviewReady = reviewOpportunities.find((opportunity) => opportunity.canReviewNow);
+
+  async function loadTracking(bookingId: string, token = envelope?.session.token) {
+    if (!token) {
+      return;
+    }
+
+    const api = createCustomerMobileApiClient();
+    api.setAuthToken(token);
+    setTracking(await api.getBookingTracking(bookingId));
+    setActiveTrackingBookingId(bookingId);
+  }
 
   async function loadHome() {
     if (!envelope?.session.token) {
@@ -67,6 +89,19 @@ export function DashboardScreen({
       setBookings(bookingList);
       setProperties(nextProperties);
       setReviewOpportunities(reviewResponse.opportunities);
+      const trackableBooking = findTrackableBooking(bookingList);
+      if (trackableBooking) {
+        try {
+          await loadTracking(trackableBooking.id, envelope.session.token);
+        } catch {
+          setTracking(undefined);
+          setActiveTrackingBookingId(undefined);
+        }
+      } else {
+        setTracking(undefined);
+        setActiveTrackingBookingId(undefined);
+        setIsTrackingModalVisible(false);
+      }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
     }
@@ -75,6 +110,18 @@ export function DashboardScreen({
   useEffect(() => {
     void loadHome();
   }, [envelope?.session.token]);
+
+  useEffect(() => {
+    if (!activeTrackingBookingId || !envelope?.session.token) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      void loadTracking(activeTrackingBookingId, envelope.session.token).catch(() => undefined);
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [activeTrackingBookingId, envelope?.session.token]);
 
   return (
     <ScreenShell eyebrow="Home" title="Your next service">
@@ -96,14 +143,37 @@ export function DashboardScreen({
         <StatCard label="Saved homes" value={`${properties.length}`} />
       </View>
 
+      {tracking && activeTrackingBookingId ? (
+        <Pressable onPress={() => setIsTrackingModalVisible(true)}>
+          <InfoCard
+            title={buildTrackingSummary(tracking)}
+            description={providerNamesById[bookings.find((booking) => booking.id === activeTrackingBookingId)?.providerId ?? ""] ?? "Crew on the way"}
+          >
+            <Text style={styles.primaryLine}>{tracking.message}</Text>
+            {buildTrackingDetail(tracking) ? (
+              <Text style={styles.secondaryLine}>{buildTrackingDetail(tracking)}</Text>
+            ) : null}
+            <Pressable onPress={() => setIsTrackingModalVisible(true)} style={styles.linkButton}>
+              <Text style={styles.linkButtonLabel}>Open full map</Text>
+            </Pressable>
+          </InfoCard>
+        </Pressable>
+      ) : null}
+
       {nextBooking ? (
         <InfoCard
           title={nextBooking.category.replaceAll("-", " ")}
-          description={formatDateTime(nextBooking.scheduledStartIso)}
+          description={formatBookingWindowSummary(nextBooking.scheduledStartIso)}
         >
           <Text style={styles.primaryLine}>{providerNamesById[nextBooking.providerId] ?? "Landscaping business"}</Text>
           <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
           <Text style={styles.noteLine}>{nextBooking.status.replaceAll("-", " ")}</Text>
+          {nextBooking.lateEtaIso && !nextBooking.onRouteConfirmedAt ? (
+            <Text style={styles.secondaryLine}>
+              Running behind • now around{" "}
+              {new Date(nextBooking.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
+            </Text>
+          ) : null}
           <Pressable onPress={onOpenBookings} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>Open bookings</Text>
           </Pressable>
@@ -131,6 +201,22 @@ export function DashboardScreen({
           </Pressable>
         </InfoCard>
       ) : null}
+
+      <ArrivalTrackingModal
+        onClose={() => setIsTrackingModalVisible(false)}
+        onRefresh={
+          activeTrackingBookingId
+            ? () => {
+                void loadTracking(activeTrackingBookingId);
+              }
+            : undefined
+        }
+        providerName={
+          providerNamesById[bookings.find((booking) => booking.id === activeTrackingBookingId)?.providerId ?? ""]
+        }
+        tracking={tracking}
+        visible={isTrackingModalVisible && Boolean(tracking)}
+      />
     </ScreenShell>
   );
 }

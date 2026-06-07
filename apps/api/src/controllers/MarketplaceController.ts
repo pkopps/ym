@@ -6,8 +6,12 @@ import {
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
+  CreateBookingDisputeRequest,
   InstantQuoteRequest,
+  MarkBookingExceptionRequest,
+  MarkBookingLateRequest,
   MarkNotificationsReadRequest,
+  UpdateNotificationPreferencesRequest,
   MarkBookingOnRouteRequest,
   CreatePaymentIntentRequest,
   FinalizeCheckoutSessionRequest,
@@ -49,6 +53,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/reviews") ||
       (context.method === "GET" && context.path === "/api/notifications") ||
       (context.method === "POST" && context.path === "/api/notifications/read") ||
+      (context.method === "GET" && context.path === "/api/notifications/preferences") ||
+      (context.method === "POST" && context.path === "/api/notifications/preferences") ||
+      (context.method === "GET" && context.path === "/api/notifications/deliveries") ||
       (context.method === "POST" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
@@ -56,6 +63,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/start") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/on-route") ||
+      (context.method === "POST" && context.path === "/api/bookings/late") ||
+      (context.method === "POST" && context.path === "/api/bookings/exception") ||
+      (context.method === "POST" && context.path === "/api/bookings/dispute") ||
       (context.method === "GET" && context.path === "/api/bookings/tracking") ||
       (context.method === "POST" && context.path === "/api/bookings/address") ||
       (context.method === "GET" && context.path === "/api/bookings") ||
@@ -74,6 +84,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") ||
       (context.method === "POST" && context.path === "/api/payments/intent") ||
       (context.method === "POST" && context.path === "/api/payments/refund") ||
+      (context.method === "GET" && context.path === "/api/calendar/subscription") ||
       (context.method === "GET" && context.path === "/api/calendar/feed")
     );
   }
@@ -218,6 +229,31 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "GET" && context.path === "/api/notifications/preferences") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.getNotificationPreferences(identity));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/notifications/preferences") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.updateNotificationPreferences(
+          identity,
+          context.body as UpdateNotificationPreferencesRequest
+        )
+      );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/notifications/deliveries") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.listNotificationDeliveries(identity));
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/bookings") {
       const identity = await requireRole(context, this.platform, "customer");
       sendJson(
@@ -259,11 +295,11 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/bookings/start") {
-      const identity = await requireRole(context, this.platform, "crew-member");
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(
         response,
         200,
-        await this.platform.startBooking(identity.userId, context.body as StartBookingRequest)
+        await this.platform.startBooking(identity, context.body as StartBookingRequest)
       );
       return;
     }
@@ -279,11 +315,41 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/bookings/on-route") {
-      const identity = await requireRole(context, this.platform, "crew-member");
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(
         response,
         200,
-        await this.platform.markBookingOnRoute(identity.userId, context.body as MarkBookingOnRouteRequest)
+        await this.platform.markBookingOnRoute(identity, context.body as MarkBookingOnRouteRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/late") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.markBookingLate(identity.userId, context.body as MarkBookingLateRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/exception") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.markBookingException(identity.userId, context.body as MarkBookingExceptionRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/dispute") {
+      const identity = await requireRole(context, this.platform, ["customer", "provider"]);
+      sendJson(
+        response,
+        200,
+        await this.platform.createBookingDispute(identity, context.body as CreateBookingDisputeRequest)
       );
       return;
     }
@@ -423,6 +489,12 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "GET" && context.path === "/api/calendar/subscription") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.getProviderCalendarSubscription(identity.userId));
+      return;
+    }
+
     if (context.method === "GET" && context.path === "/api/chat/customer-provider/threads") {
       const identity = await requireRole(context, this.platform, ["customer", "provider"]);
       sendJson(response, 200, await this.platform.listCustomerProviderConversations(identity));
@@ -453,6 +525,12 @@ export class MarketplaceController implements ApiController {
           context.body as SendCustomerProviderMessageRequest
         )
       );
+      return;
+    }
+
+    const feedToken = context.query.get("token");
+    if (feedToken) {
+      sendText(response, 200, await this.platform.buildCalendarFeedByToken(feedToken));
       return;
     }
 

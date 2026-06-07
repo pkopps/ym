@@ -48,6 +48,11 @@ The next phases focus on operational reliability, real-world delivery, and launc
   - SMS
   - email
 - Add reminders and retry logic for critical events
+- Add delivery observability and provider selection for:
+  - APNs / FCM push
+  - Twilio or equivalent SMS
+  - transactional email ESP
+- Add notification preference management across web and mobile with production delivery verification
 
 ### Payments baseline
 
@@ -66,6 +71,16 @@ The next phases focus on operational reliability, real-world delivery, and launc
   - service area
   - staffing mode
   - acceptance windows
+- Make YardMatch scheduling interoperable with outside calendars so providers can manage:
+  - YardMatch clients
+  - direct/off-platform clients
+  - personal calendar blocks
+- Expand calendar sync beyond the current feed into:
+  - subscribable iCal / ICS feeds
+  - Google Calendar sync
+  - Apple Calendar / iCal subscription support
+  - Outlook support
+  - external-event blocking so outside appointments reduce YardMatch availability automatically
 
 ### Arrival and live service tracking
 
@@ -119,7 +134,6 @@ The next phases focus on operational reliability, real-world delivery, and launc
 
 - Provider verification and onboarding automation
 - Richer business profile controls
-- Calendar integrations
 - Team permissions
 - Partnership and affiliate deal workflows
 
@@ -127,25 +141,27 @@ The next phases focus on operational reliability, real-world delivery, and launc
 
 1. Real auth completion
 2. Notification delivery beyond in-app
-3. Fulfillment edge cases and operational states
-4. Turn on real Stripe keys and finish payment/payout depth
-5. Upgrade computed arrival tracking to real device-backed tracking
-6. Internal ops/admin layer
-7. Search/ranking optimization
+3. Calendar interoperability and outside-client schedule blocking
+4. Fulfillment edge cases and operational states
+5. Turn on real Stripe keys and finish payment/payout depth
+6. Upgrade computed arrival tracking to real device-backed tracking
+7. Internal ops/admin layer
+8. Search/ranking optimization
 
 ## Arrival Tracking Notes
 
 The first version of arrival tracking is intentionally lightweight:
 
-- crew marks the booking `on route`
-- the backend computes a live route position from crew base location toward the service property
+- the business owner is the default route leader and marks the booking `on route`
+- the backend computes a live route position from the route leader's base location toward the service property
 - customers and providers can view ETA, progress, remaining distance, and a live map-style arrival panel
 
 The next upgrade path is:
 
-- device-backed live location updates from the crew mobile app
+- device-backed live location updates from the active route leader mobile app
 - stronger ETA recalculation
 - better route confidence and exception handling when progress stalls
+- delegated route leadership when the owner is not traveling with the crew
 
 ## Payments Notes
 
@@ -158,3 +174,18 @@ Current direction:
 - then refunds, provider payouts, and crew payouts
 
 That sequence gives YardMatch a reliable core payments path before expanding into a full marketplace money movement layer.
+
+## Calendar Interoperability Notes
+
+YardMatch should eventually act like the scheduling source of truth for providers without forcing them to abandon outside work.
+
+Target direction:
+
+- publish a clean subscribable iCal / ICS feed for YardMatch jobs
+- support one-way subscription into Apple Calendar, Google Calendar, and Outlook
+- support two-way or semi-synced blocking where outside events can reduce YardMatch availability
+- distinguish between:
+  - YardMatch jobs
+  - direct/off-platform clients
+  - personal blocked time
+- make it easy for providers to manage a mixed book of business from one calendar workflow

@@ -1,4 +1,8 @@
-import { AnalyticsEvent, CreateSupportTicketRequest } from "@yardmatch/contracts";
+import {
+  AnalyticsEvent,
+  CreateSupportTicketRequest,
+  UpdateSupportTicketRequest
+} from "@yardmatch/contracts";
 import { requireAuthenticatedIdentity } from "../controller-auth";
 import { ApiController, RequestContext, sendJson } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
@@ -10,11 +14,27 @@ export class SupportController implements ApiController {
     return (
       (context.method === "GET" && context.path === "/api/support/tickets") ||
       (context.method === "POST" && context.path === "/api/support/tickets") ||
+      (context.method === "GET" && context.path === "/api/support/ops/tickets") ||
+      (context.method === "POST" && context.path === "/api/support/ops/tickets/update") ||
       (context.method === "POST" && context.path === "/api/analytics/events")
     );
   }
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
+    if (context.path === "/api/support/ops/tickets") {
+      sendJson(response, 200, await this.platform.listOpsSupportTickets());
+      return;
+    }
+
+    if (context.path === "/api/support/ops/tickets/update") {
+      sendJson(
+        response,
+        200,
+        await this.platform.updateSupportTicketForOps(context.body as UpdateSupportTicketRequest)
+      );
+      return;
+    }
+
     if (context.path === "/api/support/tickets") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
       if (context.method === "GET") {

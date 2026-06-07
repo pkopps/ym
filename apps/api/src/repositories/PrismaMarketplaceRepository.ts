@@ -14,6 +14,8 @@ import {
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
+  NotificationDeliveryRecord,
+  NotificationPreferences,
   PaymentRecord,
   ProviderProfile,
   ProviderReview,
@@ -391,6 +393,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         status: booking.status,
         onRouteConfirmedAt: booking.onRouteConfirmedAt ? new Date(booking.onRouteConfirmedAt) : undefined,
         onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
+        lateNoticeSentAt: booking.lateNoticeSentAt ? new Date(booking.lateNoticeSentAt) : undefined,
+        lateEtaIso: booking.lateEtaIso ? new Date(booking.lateEtaIso) : undefined,
+        lateReason: booking.lateReason,
+        activeExceptionType: booking.activeExceptionType,
+        activeExceptionReportedAt: booking.activeExceptionReportedAt
+          ? new Date(booking.activeExceptionReportedAt)
+          : undefined,
+        activeExceptionNotes: booking.activeExceptionNotes,
+        disputedAt: booking.disputedAt ? new Date(booking.disputedAt) : undefined,
+        disputeReason: booking.disputeReason,
+        disputedByRole: booking.disputedByRole,
         completedAt: booking.completedAt ? new Date(booking.completedAt) : undefined,
         notes: booking.notes,
         totalCents: booking.totalCents,
@@ -433,19 +446,57 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         scheduledStartIso: updates.scheduledStartIso ? new Date(updates.scheduledStartIso) : undefined,
         scheduledEndIso: updates.scheduledEndIso ? new Date(updates.scheduledEndIso) : undefined,
         status: updates.status,
-        onRouteConfirmedAt: updates.onRouteConfirmedAt
-          ? new Date(updates.onRouteConfirmedAt)
-          : updates.onRouteConfirmedAt === undefined
-            ? undefined
-            : null,
+        onRouteConfirmedAt:
+          "onRouteConfirmedAt" in updates
+            ? updates.onRouteConfirmedAt
+              ? new Date(updates.onRouteConfirmedAt)
+              : null
+            : undefined,
         onRouteConfirmedByCrewMemberId:
-          updates.onRouteConfirmedByCrewMemberId === undefined
-            ? undefined
-            : updates.onRouteConfirmedByCrewMemberId,
-        completedAt: updates.completedAt ? new Date(updates.completedAt) : updates.completedAt === undefined ? undefined : null,
+          "onRouteConfirmedByCrewMemberId" in updates
+            ? updates.onRouteConfirmedByCrewMemberId ?? null
+            : undefined,
+        lateNoticeSentAt:
+          "lateNoticeSentAt" in updates
+            ? updates.lateNoticeSentAt
+              ? new Date(updates.lateNoticeSentAt)
+              : null
+            : undefined,
+        lateEtaIso:
+          "lateEtaIso" in updates
+            ? updates.lateEtaIso
+              ? new Date(updates.lateEtaIso)
+              : null
+            : undefined,
+        lateReason: "lateReason" in updates ? updates.lateReason ?? null : undefined,
+        activeExceptionType:
+          "activeExceptionType" in updates ? updates.activeExceptionType ?? null : undefined,
+        activeExceptionReportedAt:
+          "activeExceptionReportedAt" in updates
+            ? updates.activeExceptionReportedAt
+              ? new Date(updates.activeExceptionReportedAt)
+              : null
+            : undefined,
+        activeExceptionNotes:
+          "activeExceptionNotes" in updates ? updates.activeExceptionNotes ?? null : undefined,
+        disputedAt:
+          "disputedAt" in updates
+            ? updates.disputedAt
+              ? new Date(updates.disputedAt)
+              : null
+            : undefined,
+        disputeReason: "disputeReason" in updates ? updates.disputeReason ?? null : undefined,
+        disputedByRole:
+          "disputedByRole" in updates ? updates.disputedByRole ?? null : undefined,
+        completedAt:
+          "completedAt" in updates
+            ? updates.completedAt
+              ? new Date(updates.completedAt)
+              : null
+            : undefined,
         notes: updates.notes,
         totalCents: updates.totalCents,
-        reviewId: updates.reviewId,
+        reviewId: "reviewId" in updates ? updates.reviewId ?? null : undefined,
         addressChangeHistory: updates.addressChangeHistory ? asJson(updates.addressChangeHistory) : undefined
       }
     });
@@ -741,7 +792,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     await this.prisma.supportTicket.create({
       data: {
         ...ticket,
-        createdAt: new Date(ticket.createdAt)
+        createdAt: new Date(ticket.createdAt),
+        updatedAt: new Date(ticket.updatedAt),
+        triagedAt: ticket.triagedAt ? new Date(ticket.triagedAt) : undefined,
+        resolvedAt: ticket.resolvedAt ? new Date(ticket.resolvedAt) : undefined,
+        resolutionNotes: ticket.resolutionNotes,
+        resolutionAction: ticket.resolutionAction
       }
     });
     return ticket;
@@ -751,11 +807,50 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     const tickets = await this.prisma.supportTicket.findMany({
       orderBy: { createdAt: "desc" }
     });
-    return tickets.map((ticket: any) => ({
-      ...ticket,
-      bookingId: ticket.bookingId ?? undefined,
-      createdAt: ticket.createdAt.toISOString()
-    }));
+    return tickets.map((ticket: any) => this.mapSupportTicket(ticket));
+  }
+
+  public async updateSupportTicket(
+    ticketId: string,
+    updates: Partial<SupportTicket>
+  ): Promise<SupportTicket | undefined> {
+    const current = await this.prisma.supportTicket.findUnique({
+      where: { id: ticketId }
+    });
+
+    if (!current) {
+      return undefined;
+    }
+
+    const ticket = await this.prisma.supportTicket.update({
+      where: { id: ticketId },
+      data: {
+        bookingId: updates.bookingId,
+        requesterId: updates.requesterId,
+        subject: updates.subject,
+        description: updates.description,
+        issueType: updates.issueType,
+        status: updates.status,
+        createdAt: updates.createdAt ? new Date(updates.createdAt) : undefined,
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined,
+        triagedAt: updates.triagedAt
+          ? new Date(updates.triagedAt)
+          : updates.triagedAt === undefined
+            ? undefined
+            : null,
+        resolvedAt: updates.resolvedAt
+          ? new Date(updates.resolvedAt)
+          : updates.resolvedAt === undefined
+            ? undefined
+            : null,
+        resolutionNotes:
+          updates.resolutionNotes === undefined ? undefined : updates.resolutionNotes,
+        resolutionAction:
+          updates.resolutionAction === undefined ? undefined : updates.resolutionAction
+      }
+    });
+
+    return this.mapSupportTicket(ticket);
   }
 
   public async createNotification(notification: AppNotification): Promise<AppNotification> {
@@ -807,6 +902,105 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       }
     });
     return this.mapAppNotification(notification);
+  }
+
+  public async getNotificationPreferences(
+    recipientId: string
+  ): Promise<NotificationPreferences | undefined> {
+    const preferences = await this.prisma.notificationPreference.findUnique({
+      where: { userId: recipientId }
+    });
+
+    return preferences ? this.mapNotificationPreferences(preferences) : undefined;
+  }
+
+  public async upsertNotificationPreferences(
+    preferences: NotificationPreferences
+  ): Promise<NotificationPreferences> {
+    const record = await this.prisma.notificationPreference.upsert({
+      where: { userId: preferences.userId },
+      create: {
+        userId: preferences.userId,
+        role: preferences.role,
+        emailEnabled: preferences.emailEnabled,
+        smsEnabled: preferences.smsEnabled,
+        pushEnabled: preferences.pushEnabled,
+        reviewRemindersEnabled: preferences.reviewRemindersEnabled,
+        createdAt: new Date(preferences.updatedAt),
+        updatedAt: new Date(preferences.updatedAt)
+      },
+      update: {
+        role: preferences.role,
+        emailEnabled: preferences.emailEnabled,
+        smsEnabled: preferences.smsEnabled,
+        pushEnabled: preferences.pushEnabled,
+        reviewRemindersEnabled: preferences.reviewRemindersEnabled,
+        updatedAt: new Date(preferences.updatedAt)
+      }
+    });
+
+    return this.mapNotificationPreferences(record);
+  }
+
+  public async createNotificationDelivery(
+    delivery: NotificationDeliveryRecord
+  ): Promise<NotificationDeliveryRecord> {
+    await this.prisma.notificationDelivery.create({
+      data: {
+        id: delivery.id,
+        notificationId: delivery.notificationId,
+        recipientId: delivery.recipientId,
+        recipientRole: delivery.recipientRole,
+        category: delivery.category,
+        channel: delivery.channel,
+        destination: delivery.destination,
+        provider: delivery.provider,
+        status: delivery.status,
+        title: delivery.title,
+        bodyPreview: delivery.bodyPreview,
+        errorMessage: delivery.errorMessage,
+        createdAt: new Date(delivery.createdAt),
+        sentAt: delivery.sentAt ? new Date(delivery.sentAt) : null
+      }
+    });
+    return delivery;
+  }
+
+  public async listNotificationDeliveriesByRecipient(
+    recipientId: string
+  ): Promise<NotificationDeliveryRecord[]> {
+    const deliveries = await this.prisma.notificationDelivery.findMany({
+      where: { recipientId },
+      orderBy: { createdAt: "desc" }
+    });
+    return deliveries.map((delivery: any) => this.mapNotificationDelivery(delivery));
+  }
+
+  public async updateNotificationDelivery(
+    deliveryId: string,
+    updates: Partial<NotificationDeliveryRecord>
+  ): Promise<NotificationDeliveryRecord | undefined> {
+    const current = await this.prisma.notificationDelivery.findUnique({
+      where: { id: deliveryId }
+    });
+    if (!current) {
+      return undefined;
+    }
+
+    const delivery = await this.prisma.notificationDelivery.update({
+      where: { id: deliveryId },
+      data: {
+        provider: updates.provider,
+        status: updates.status,
+        destination: updates.destination,
+        title: updates.title,
+        bodyPreview: updates.bodyPreview,
+        errorMessage: updates.errorMessage,
+        sentAt: updates.sentAt ? new Date(updates.sentAt) : updates.sentAt === undefined ? undefined : null
+      }
+    });
+
+    return this.mapNotificationDelivery(delivery);
   }
 
   public async createProviderCrewConversation(
@@ -1186,6 +1380,15 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     status: string;
     onRouteConfirmedAt: Date | null;
     onRouteConfirmedByCrewMemberId: string | null;
+    lateNoticeSentAt: Date | null;
+    lateEtaIso: Date | null;
+    lateReason: string | null;
+    activeExceptionType: string | null;
+    activeExceptionReportedAt: Date | null;
+    activeExceptionNotes: string | null;
+    disputedAt: Date | null;
+    disputeReason: string | null;
+    disputedByRole: string | null;
     completedAt: Date | null;
     notes: string;
     totalCents: number;
@@ -1205,6 +1408,15 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       status: record.status as Booking["status"],
       onRouteConfirmedAt: record.onRouteConfirmedAt?.toISOString(),
       onRouteConfirmedByCrewMemberId: record.onRouteConfirmedByCrewMemberId ?? undefined,
+      lateNoticeSentAt: record.lateNoticeSentAt?.toISOString(),
+      lateEtaIso: record.lateEtaIso?.toISOString(),
+      lateReason: record.lateReason ?? undefined,
+      activeExceptionType: record.activeExceptionType as Booking["activeExceptionType"],
+      activeExceptionReportedAt: record.activeExceptionReportedAt?.toISOString(),
+      activeExceptionNotes: record.activeExceptionNotes ?? undefined,
+      disputedAt: record.disputedAt?.toISOString(),
+      disputeReason: record.disputeReason ?? undefined,
+      disputedByRole: record.disputedByRole as Booking["disputedByRole"],
       completedAt: record.completedAt?.toISOString(),
       notes: record.notes,
       totalCents: record.totalCents,
@@ -1242,6 +1454,38 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       completedAt: record.completedAt?.toISOString(),
       expiresAtIso: record.expiresAtIso.toISOString(),
       deepLinkPath: record.deepLinkPath
+    };
+  }
+
+  private mapSupportTicket(record: {
+    id: string;
+    bookingId: string | null;
+    requesterId: string;
+    subject: string;
+    description: string;
+    issueType: string;
+    status: string;
+    createdAt: Date;
+    updatedAt: Date;
+    triagedAt: Date | null;
+    resolvedAt: Date | null;
+    resolutionNotes: string | null;
+    resolutionAction: string | null;
+  }): SupportTicket {
+    return {
+      id: record.id,
+      bookingId: record.bookingId ?? undefined,
+      requesterId: record.requesterId,
+      subject: record.subject,
+      description: record.description,
+      issueType: record.issueType as SupportTicket["issueType"],
+      status: record.status as SupportTicket["status"],
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      triagedAt: record.triagedAt?.toISOString(),
+      resolvedAt: record.resolvedAt?.toISOString(),
+      resolutionNotes: record.resolutionNotes ?? undefined,
+      resolutionAction: record.resolutionAction as SupportTicket["resolutionAction"]
     };
   }
 
@@ -1399,6 +1643,60 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       isRead: record.isRead,
       createdAt: record.createdAt.toISOString(),
       readAt: record.readAt?.toISOString()
+    };
+  }
+
+  private mapNotificationPreferences(record: {
+    userId: string;
+    role: string;
+    emailEnabled: boolean;
+    smsEnabled: boolean;
+    pushEnabled: boolean;
+    reviewRemindersEnabled: boolean;
+    updatedAt: Date;
+  }): NotificationPreferences {
+    return {
+      userId: record.userId,
+      role: record.role as NotificationPreferences["role"],
+      emailEnabled: record.emailEnabled,
+      smsEnabled: record.smsEnabled,
+      pushEnabled: record.pushEnabled,
+      reviewRemindersEnabled: record.reviewRemindersEnabled,
+      updatedAt: record.updatedAt.toISOString()
+    };
+  }
+
+  private mapNotificationDelivery(record: {
+    id: string;
+    notificationId: string;
+    recipientId: string;
+    recipientRole: string;
+    category: string;
+    channel: string;
+    destination: string;
+    provider: string;
+    status: string;
+    title: string;
+    bodyPreview: string;
+    errorMessage: string | null;
+    createdAt: Date;
+    sentAt: Date | null;
+  }): NotificationDeliveryRecord {
+    return {
+      id: record.id,
+      notificationId: record.notificationId,
+      recipientId: record.recipientId,
+      recipientRole: record.recipientRole as NotificationDeliveryRecord["recipientRole"],
+      category: record.category as NotificationDeliveryRecord["category"],
+      channel: record.channel as NotificationDeliveryRecord["channel"],
+      destination: record.destination,
+      provider: record.provider,
+      status: record.status as NotificationDeliveryRecord["status"],
+      title: record.title,
+      bodyPreview: record.bodyPreview,
+      errorMessage: record.errorMessage ?? undefined,
+      createdAt: record.createdAt.toISOString(),
+      sentAt: record.sentAt?.toISOString()
     };
   }
 

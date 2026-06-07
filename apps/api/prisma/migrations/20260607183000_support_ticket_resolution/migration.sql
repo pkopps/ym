@@ -1,0 +1,6 @@
+ALTER TABLE "support_tickets"
+ADD COLUMN "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ADD COLUMN "triagedAt" TIMESTAMP(3),
+ADD COLUMN "resolvedAt" TIMESTAMP(3),
+ADD COLUMN "resolutionNotes" TEXT,
+ADD COLUMN "resolutionAction" TEXT;

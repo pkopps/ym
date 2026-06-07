@@ -20,7 +20,12 @@ export function ProviderAppNavigator() {
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
 
   const screen = {
-    dashboard: <DashboardScreen onOpenCrew={() => setActiveTab("crew")} />,
+    dashboard: (
+      <DashboardScreen
+        onOpenCrew={() => setActiveTab("crew")}
+        onOpenSchedule={() => setActiveTab("schedule")}
+      />
+    ),
     schedule: <ScheduleScreen />,
     crew: <ClientsScreen />,
     account: <SupportScreen />
