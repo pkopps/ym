@@ -79,6 +79,10 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - Notification delivery can also use real vendor integrations when configured:
   - Resend for transactional email
   - Twilio for SMS
+- The internal ops dashboard now includes notification delivery health:
+  - `GET /api/notifications/ops/health`
+  - `POST /api/notifications/ops/retry-due`
+  - overdue retries, exhausted failures, and noisy providers are surfaced there
 - To turn device push on in development builds, set:
   - `EXPO_PUBLIC_EXPO_PROJECT_ID` in the mobile apps
   - push credentials for the Expo project / native app IDs

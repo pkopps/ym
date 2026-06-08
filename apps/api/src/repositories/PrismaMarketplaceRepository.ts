@@ -1002,6 +1002,13 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return deliveries.map((delivery: any) => this.mapNotificationDelivery(delivery));
   }
 
+  public async listAllNotificationDeliveries(): Promise<NotificationDeliveryRecord[]> {
+    const deliveries = await this.prisma.notificationDelivery.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+    return deliveries.map((delivery: any) => this.mapNotificationDelivery(delivery));
+  }
+
   public async updateNotificationDelivery(
     deliveryId: string,
     updates: Partial<NotificationDeliveryRecord>

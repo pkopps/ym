@@ -94,6 +94,7 @@ export interface MarketplaceRepository {
   upsertNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferences>;
   createNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<NotificationDeliveryRecord>;
   listNotificationDeliveriesByRecipient(recipientId: string): Promise<NotificationDeliveryRecord[]>;
+  listAllNotificationDeliveries(): Promise<NotificationDeliveryRecord[]>;
   updateNotificationDelivery(
     deliveryId: string,
     updates: Partial<NotificationDeliveryRecord>

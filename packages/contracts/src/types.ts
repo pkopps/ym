@@ -677,6 +677,47 @@ export interface NotificationDeliveriesResponse {
   deliveries: NotificationDeliveryRecord[];
 }
 
+export interface NotificationOpsChannelHealth {
+  channel: NotificationChannel;
+  provider: string;
+  totalDeliveries: number;
+  deliveriesLast24Hours: number;
+  sentCount: number;
+  failedCount: number;
+  queuedCount: number;
+  pendingRetryCount: number;
+  overdueRetryCount: number;
+  lastAttemptAt?: string;
+}
+
+export interface NotificationOpsAlert {
+  severity: "info" | "warning" | "critical";
+  title: string;
+  detail: string;
+}
+
+export interface NotificationOpsHealthResponse {
+  generatedAt: string;
+  totalDeliveries: number;
+  deliveriesLast24Hours: number;
+  sentLast24Hours: number;
+  failedLast24Hours: number;
+  queuedCount: number;
+  pendingRetryCount: number;
+  overdueRetryCount: number;
+  exhaustedFailureCount: number;
+  channels: NotificationOpsChannelHealth[];
+  recentFailures: NotificationDeliveryRecord[];
+  alerts: NotificationOpsAlert[];
+}
+
+export interface NotificationOpsRetrySweepResponse {
+  retriedCount: number;
+  sentCount: number;
+  failedCount: number;
+  remainingOverdueCount: number;
+}
+
 export interface ProviderCalendarSubscriptionResponse {
   providerId: string;
   providerName: string;

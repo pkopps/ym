@@ -870,6 +870,28 @@ export const apiSpec = {
         }
       }
     },
+    "/api/notifications/ops/health": {
+      get: {
+        tags: ["Observability"],
+        summary: "Get notification delivery health for ops",
+        description:
+          "Returns aggregate delivery counts, overdue retries, exhausted failures, recent failed notifications, and channel/provider breakdowns so the internal ops dashboard can spot delivery issues quickly.",
+        responses: {
+          "200": { description: "Notification delivery health overview" }
+        }
+      }
+    },
+    "/api/notifications/ops/retry-due": {
+      post: {
+        tags: ["Observability"],
+        summary: "Trigger an ops retry sweep for overdue notification deliveries",
+        description:
+          "Retries all notification deliveries whose scheduled retry time has already passed, then returns the sweep outcome so ops can confirm whether failures recovered or still need attention.",
+        responses: {
+          "200": { description: "Retry sweep result" }
+        }
+      }
+    },
     "/api/bookings": {
       get: {
         tags: ["Bookings"],

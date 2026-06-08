@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { MarketplaceApiClient, ObservabilityOverview } from "@yardmatch/contracts";
 import { getWebApiBaseUrl } from "../../lib/api";
+import { NotificationOpsBoard } from "../../components/NotificationOpsBoard";
 import { OpsSupportQueue } from "../../components/OpsSupportQueue";
 
 export const metadata: Metadata = {
@@ -124,6 +125,7 @@ export default async function OpsPage() {
         </article>
       </section>
 
+      <NotificationOpsBoard />
       <OpsSupportQueue />
     </main>
   );

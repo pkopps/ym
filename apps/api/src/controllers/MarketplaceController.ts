@@ -64,6 +64,8 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/notifications/deliveries") ||
       (context.method === "POST" && context.path === "/api/notifications/devices") ||
       (context.method === "POST" && context.path === "/api/notifications/devices/remove") ||
+      (context.method === "GET" && context.path === "/api/notifications/ops/health") ||
+      (context.method === "POST" && context.path === "/api/notifications/ops/retry-due") ||
       (context.method === "POST" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
@@ -279,6 +281,16 @@ export class MarketplaceController implements ApiController {
     if (context.method === "POST" && context.path === "/api/notifications/devices/remove") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(response, 200, await this.platform.removePushDevice(identity, context.body as RemovePushDeviceRequest));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/notifications/ops/health") {
+      sendJson(response, 200, await this.platform.getNotificationOpsHealth());
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/notifications/ops/retry-due") {
+      sendJson(response, 200, await this.platform.retryDueNotificationDeliveriesForOps());
       return;
     }
 

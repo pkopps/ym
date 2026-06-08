@@ -370,6 +370,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       .map((delivery) => ({ ...delivery }));
   }
 
+  public async listAllNotificationDeliveries(): Promise<NotificationDeliveryRecord[]> {
+    return this.notificationDeliveries.map((delivery) => ({ ...delivery }));
+  }
+
   public async updateNotificationDelivery(
     deliveryId: string,
     updates: Partial<NotificationDeliveryRecord>

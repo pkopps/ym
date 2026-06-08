@@ -1950,6 +1950,100 @@ test("configured Twilio SMS delivery failures create retryable records", async (
   }
 });
 
+test("ops notification health surfaces overdue retries and can run a retry sweep", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const now = Date.now();
+
+  await repository.createNotificationDelivery({
+    id: "delivery_sent_1",
+    notificationId: "notification_sent_1",
+    recipientId: "customer-1",
+    recipientRole: "customer",
+    category: "booking",
+    channel: "email",
+    destination: "customer@example.com",
+    provider: "mock-email",
+    status: "sent",
+    title: "Your booking is confirmed",
+    bodyPreview: "Your booking is confirmed.",
+    errorMessage: undefined,
+    attemptCount: 1,
+    createdAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
+    lastAttemptAt: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
+    nextRetryAt: undefined,
+    sentAt: new Date(now - 2 * 60 * 60 * 1000).toISOString()
+  });
+
+  await repository.createNotificationDelivery({
+    id: "delivery_failed_retry",
+    notificationId: "notification_failed_retry",
+    recipientId: "provider-1",
+    recipientRole: "provider",
+    category: "booking",
+    channel: "sms",
+    destination: "+15555550123",
+    provider: "twilio",
+    status: "failed",
+    title: "Route should start soon",
+    bodyPreview: "Time to head out soon.",
+    errorMessage: "twilio unavailable",
+    attemptCount: 1,
+    createdAt: new Date(now - 90 * 60 * 1000).toISOString(),
+    lastAttemptAt: new Date(now - 30 * 60 * 1000).toISOString(),
+    nextRetryAt: new Date(now - 5 * 60 * 1000).toISOString(),
+    sentAt: undefined
+  });
+
+  await repository.createNotificationDelivery({
+    id: "delivery_failed_exhausted",
+    notificationId: "notification_failed_exhausted",
+    recipientId: "crew-1",
+    recipientRole: "crew-member",
+    category: "staffing",
+    channel: "push",
+    destination: "local-device",
+    provider: "mock-push",
+    status: "failed",
+    title: "You have a new crew match",
+    bodyPreview: "Open the app to review it.",
+    errorMessage: "device offline",
+    attemptCount: 3,
+    createdAt: new Date(now - 3 * 60 * 60 * 1000).toISOString(),
+    lastAttemptAt: new Date(now - 70 * 60 * 1000).toISOString(),
+    nextRetryAt: undefined,
+    sentAt: undefined
+  });
+
+  const health = await platform.getNotificationOpsHealth();
+  assert.equal(health.totalDeliveries, 3);
+  assert.equal(health.deliveriesLast24Hours, 3);
+  assert.equal(health.overdueRetryCount, 1);
+  assert.equal(health.exhaustedFailureCount, 1);
+  assert.ok(health.channels.some((channel) => channel.channel === "sms" && channel.overdueRetryCount === 1));
+  assert.ok(
+    health.alerts.some(
+      (alert) => alert.severity === "critical" && /overdue notification retries/i.test(alert.title)
+    )
+  );
+
+  const retrySweep = await platform.retryDueNotificationDeliveriesForOps();
+  assert.equal(retrySweep.retriedCount, 1);
+  assert.equal(retrySweep.sentCount + retrySweep.failedCount, 1);
+  assert.equal(retrySweep.remainingOverdueCount, 0);
+
+  const refreshedHealth = await platform.getNotificationOpsHealth();
+  assert.equal(refreshedHealth.overdueRetryCount, 0);
+  const retriedSmsDelivery = (await repository.listAllNotificationDeliveries()).find(
+    (delivery) => delivery.id === "delivery_failed_retry"
+  );
+  assert.equal(retriedSmsDelivery?.attemptCount, 2);
+  assert.ok(
+    !retriedSmsDelivery?.nextRetryAt || Date.parse(retriedSmsDelivery.nextRetryAt) > Date.now()
+  );
+});
+
 test("providers can get a subscribable calendar feed and merged overview for mixed schedule management", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

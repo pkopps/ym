@@ -28,6 +28,8 @@ import {
   ListCustomerReviewOpportunitiesResponse,
   NotificationDeliveriesResponse,
   NotificationListResponse,
+  NotificationOpsHealthResponse,
+  NotificationOpsRetrySweepResponse,
   NotificationPreferences,
   PushDevice,
   PaymentRecord,
@@ -301,6 +303,14 @@ export class MarketplaceApiClient {
 
   public getNotificationDeliveries(): Promise<NotificationDeliveriesResponse> {
     return this.getJson(ApiRoutes.notificationDeliveries);
+  }
+
+  public getNotificationOpsHealth(): Promise<NotificationOpsHealthResponse> {
+    return this.getJson(ApiRoutes.notificationOpsHealth);
+  }
+
+  public retryDueNotificationDeliveriesForOps(): Promise<NotificationOpsRetrySweepResponse> {
+    return this.postJson(ApiRoutes.notificationOpsRetryDue, {});
   }
 
   public registerPushDevice(payload: RegisterPushDeviceRequest): Promise<PushDevice> {

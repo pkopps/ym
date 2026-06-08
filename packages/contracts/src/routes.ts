@@ -24,6 +24,8 @@ export class ApiRoutes {
   public static readonly notificationDeliveries = "/api/notifications/deliveries";
   public static readonly notificationPushDevices = "/api/notifications/devices";
   public static readonly notificationPushDevicesRemove = "/api/notifications/devices/remove";
+  public static readonly notificationOpsHealth = "/api/notifications/ops/health";
+  public static readonly notificationOpsRetryDue = "/api/notifications/ops/retry-due";
   public static readonly customerReviewOpportunities = "/api/customers/review-opportunities";
   public static readonly createBooking = "/api/bookings";
   public static readonly listBookings = "/api/bookings";

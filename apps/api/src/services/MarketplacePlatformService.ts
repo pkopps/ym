@@ -24,6 +24,10 @@ import {
   NotificationChannel,
   NotificationDeliveriesResponse,
   NotificationDeliveryRecord,
+  NotificationOpsAlert,
+  NotificationOpsChannelHealth,
+  NotificationOpsHealthResponse,
+  NotificationOpsRetrySweepResponse,
   ProviderCrewConversation,
   ProviderCrewConversationThread,
   ProviderCrewMessage,
@@ -428,6 +432,86 @@ export class MarketplacePlatformService {
 
     return {
       deliveries
+    };
+  }
+
+  public async getNotificationOpsHealth(): Promise<NotificationOpsHealthResponse> {
+    const now = Date.now();
+    const last24Hours = now - 24 * 60 * 60 * 1000;
+    const deliveries = (await this.repository.listAllNotificationDeliveries()).sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt)
+    );
+    const deliveriesLast24Hours = deliveries.filter((delivery) => Date.parse(delivery.createdAt) >= last24Hours);
+    const failedDeliveries = deliveries.filter((delivery) => delivery.status === "failed");
+    const queuedCount = deliveries.filter((delivery) => delivery.status === "queued").length;
+    const pendingRetryDeliveries = failedDeliveries.filter((delivery) => Boolean(delivery.nextRetryAt));
+    const overdueRetryDeliveries = pendingRetryDeliveries.filter(
+      (delivery) => Date.parse(delivery.nextRetryAt as string) <= now
+    );
+    const exhaustedFailureCount = failedDeliveries.filter((delivery) => !delivery.nextRetryAt).length;
+    const sentLast24Hours = deliveries.filter((delivery) => {
+      const sentAt = delivery.sentAt ?? delivery.lastAttemptAt;
+      return Boolean(sentAt) && Date.parse(sentAt as string) >= last24Hours && delivery.status === "sent";
+    }).length;
+    const failedLast24Hours = failedDeliveries.filter((delivery) => {
+      const failedAt = delivery.lastAttemptAt ?? delivery.createdAt;
+      return Date.parse(failedAt) >= last24Hours;
+    }).length;
+    const channels = this.buildNotificationOpsChannelHealth(deliveries, now, last24Hours);
+    const alerts = this.buildNotificationOpsAlerts({
+      deliveriesLast24Hours: deliveriesLast24Hours.length,
+      failedLast24Hours,
+      pendingRetryCount: pendingRetryDeliveries.length,
+      overdueRetryCount: overdueRetryDeliveries.length,
+      exhaustedFailureCount,
+      channels
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totalDeliveries: deliveries.length,
+      deliveriesLast24Hours: deliveriesLast24Hours.length,
+      sentLast24Hours,
+      failedLast24Hours,
+      queuedCount,
+      pendingRetryCount: pendingRetryDeliveries.length,
+      overdueRetryCount: overdueRetryDeliveries.length,
+      exhaustedFailureCount,
+      channels,
+      recentFailures: failedDeliveries.slice(0, 8),
+      alerts
+    };
+  }
+
+  public async retryDueNotificationDeliveriesForOps(): Promise<NotificationOpsRetrySweepResponse> {
+    const dueDeliveries = await this.listDueNotificationDeliveries();
+    if (dueDeliveries.length === 0) {
+      return {
+        retriedCount: 0,
+        sentCount: 0,
+        failedCount: 0,
+        remainingOverdueCount: 0
+      };
+    }
+
+    await Promise.all(dueDeliveries.map((delivery) => this.dispatchNotificationDelivery(delivery)));
+
+    const updatedDeliveries = await this.repository.listAllNotificationDeliveries();
+    const updatedById = new Map(updatedDeliveries.map((delivery) => [delivery.id, delivery]));
+    const retried = dueDeliveries
+      .map((delivery) => updatedById.get(delivery.id))
+      .filter((delivery): delivery is NotificationDeliveryRecord => Boolean(delivery));
+
+    return {
+      retriedCount: retried.length,
+      sentCount: retried.filter((delivery) => delivery.status === "sent").length,
+      failedCount: retried.filter((delivery) => delivery.status === "failed").length,
+      remainingOverdueCount: updatedDeliveries.filter(
+        (delivery) =>
+          delivery.status === "failed" &&
+          delivery.nextRetryAt &&
+          Date.parse(delivery.nextRetryAt) <= Date.now()
+      ).length
     };
   }
 
@@ -4264,16 +4348,145 @@ export class MarketplacePlatformService {
     return new Date(Date.now() + retryMinutes * 60 * 1000).toISOString();
   }
 
-  private async retryDueNotificationDeliveries(identity: AuthIdentityRecord): Promise<void> {
-    const deliveries = (await this.repository.listNotificationDeliveriesByRecipient(identity.userId)).filter(
+  private async listDueNotificationDeliveries(): Promise<NotificationDeliveryRecord[]> {
+    return (await this.repository.listAllNotificationDeliveries()).filter(
       (delivery) =>
-        delivery.recipientRole === identity.role &&
         delivery.status === "failed" &&
         delivery.nextRetryAt &&
         Date.parse(delivery.nextRetryAt) <= Date.now()
     );
+  }
+
+  private async retryDueNotificationDeliveries(identity: AuthIdentityRecord): Promise<void> {
+    const deliveries = (await this.listDueNotificationDeliveries()).filter(
+      (delivery) => delivery.recipientId === identity.userId && delivery.recipientRole === identity.role
+    );
 
     await Promise.all(deliveries.map((delivery) => this.dispatchNotificationDelivery(delivery)));
+  }
+
+  private buildNotificationOpsChannelHealth(
+    deliveries: NotificationDeliveryRecord[],
+    now: number,
+    last24Hours: number
+  ): NotificationOpsChannelHealth[] {
+    const groups = new Map<string, NotificationOpsChannelHealth>();
+
+    for (const delivery of deliveries) {
+      const key = `${delivery.channel}:${delivery.provider}`;
+      const existing = groups.get(key) ?? {
+        channel: delivery.channel,
+        provider: delivery.provider,
+        totalDeliveries: 0,
+        deliveriesLast24Hours: 0,
+        sentCount: 0,
+        failedCount: 0,
+        queuedCount: 0,
+        pendingRetryCount: 0,
+        overdueRetryCount: 0,
+        lastAttemptAt: undefined
+      };
+
+      existing.totalDeliveries += 1;
+      if (Date.parse(delivery.createdAt) >= last24Hours) {
+        existing.deliveriesLast24Hours += 1;
+      }
+      if (delivery.status === "sent") {
+        existing.sentCount += 1;
+      }
+      if (delivery.status === "failed") {
+        existing.failedCount += 1;
+      }
+      if (delivery.status === "queued") {
+        existing.queuedCount += 1;
+      }
+      if (delivery.nextRetryAt) {
+        existing.pendingRetryCount += 1;
+        if (Date.parse(delivery.nextRetryAt) <= now) {
+          existing.overdueRetryCount += 1;
+        }
+      }
+
+      const candidateAttemptAt = delivery.lastAttemptAt ?? delivery.sentAt ?? delivery.createdAt;
+      if (!existing.lastAttemptAt || candidateAttemptAt > existing.lastAttemptAt) {
+        existing.lastAttemptAt = candidateAttemptAt;
+      }
+
+      groups.set(key, existing);
+    }
+
+    return [...groups.values()].sort((left, right) => {
+      if (right.failedCount !== left.failedCount) {
+        return right.failedCount - left.failedCount;
+      }
+      return right.totalDeliveries - left.totalDeliveries;
+    });
+  }
+
+  private buildNotificationOpsAlerts(input: {
+    deliveriesLast24Hours: number;
+    failedLast24Hours: number;
+    pendingRetryCount: number;
+    overdueRetryCount: number;
+    exhaustedFailureCount: number;
+    channels: NotificationOpsChannelHealth[];
+  }): NotificationOpsAlert[] {
+    const alerts: NotificationOpsAlert[] = [];
+
+    if (input.overdueRetryCount > 0) {
+      alerts.push({
+        severity: "critical",
+        title: "Overdue notification retries need attention",
+        detail: `${input.overdueRetryCount} delivery attempt${input.overdueRetryCount === 1 ? "" : "s"} should have retried already but are still waiting.`
+      });
+    }
+
+    if (input.exhaustedFailureCount > 0) {
+      alerts.push({
+        severity: "warning",
+        title: "Some deliveries exhausted retry attempts",
+        detail: `${input.exhaustedFailureCount} delivery failure${input.exhaustedFailureCount === 1 ? "" : "s"} no longer have a retry scheduled and may need manual follow-up.`
+      });
+    }
+
+    const noisyChannels = input.channels.filter((channel) => channel.failedCount >= 3 || channel.overdueRetryCount > 0);
+    if (noisyChannels.length > 0) {
+      alerts.push({
+        severity: "warning",
+        title: "One or more delivery channels are noisy",
+        detail: noisyChannels
+          .slice(0, 3)
+          .map(
+            (channel) =>
+              `${channel.provider} ${channel.channel} (${channel.failedCount} failed${channel.overdueRetryCount > 0 ? `, ${channel.overdueRetryCount} overdue` : ""})`
+          )
+          .join(" • ")
+      });
+    }
+
+    const mockProviders = [...new Set(input.channels.filter((channel) => channel.provider.startsWith("mock-")).map((channel) => channel.provider))];
+    if (mockProviders.length > 0) {
+      alerts.push({
+        severity: "info",
+        title: "Mock notification providers are still active",
+        detail: `${mockProviders.join(", ")} are still being used in this environment, so those channels are not yet production-grade.`
+      });
+    }
+
+    if (alerts.length === 0) {
+      const failureRate =
+        input.deliveriesLast24Hours > 0 ? Math.round((input.failedLast24Hours / input.deliveriesLast24Hours) * 100) : 0;
+      alerts.push({
+        severity: "info",
+        title: "Delivery health looks stable",
+        detail:
+          input.deliveriesLast24Hours > 0
+            ? `${input.failedLast24Hours} failed out of ${input.deliveriesLast24Hours} deliveries in the last 24 hours (${failureRate}% failure rate), with ${input.pendingRetryCount} retryable item${input.pendingRetryCount === 1 ? "" : "s"} in flight.`
+            : "No notification deliveries have been recorded in the last 24 hours."
+      });
+    }
+
+    return alerts;
   }
 
   private async ensureTimedNotifications(identity: AuthIdentityRecord): Promise<void> {

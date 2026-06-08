@@ -48,11 +48,13 @@ Already done:
 - real Twilio SMS integration when configured
 - retry metadata for failed push sends
 - retry logic for real push, email, and SMS delivery attempts
+- ops notification-health dashboard coverage for overdue retries, exhausted failures, and noisy channels
+- manual ops retry sweep for overdue notification deliveries
+- existing booking, staffing, support, and review events already fan out through the external delivery pipeline when channels are enabled
 
 - Replace mock delivery providers with real vendor integrations for:
   - APNs / FCM push and/or production Expo push rollout beyond Expo tokens
-- Add production delivery observability and alerting
-- Turn the existing departure / on-route / issue / review events into true device notifications
+- Add environment-level delivery alerting beyond the internal ops dashboard
 
 ### Payments and payouts depth
 
