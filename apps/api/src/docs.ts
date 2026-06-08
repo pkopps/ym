@@ -819,7 +819,7 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "List recent external notification deliveries",
         description:
-          "Returns recent push, email, and SMS delivery records for the authenticated user, including retry metadata for push sends that can be attempted again.",
+          "Returns recent push, email, and SMS delivery records for the authenticated user, including retry metadata for real Expo, Resend, and Twilio sends that can be attempted again.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Recent delivery activity" }

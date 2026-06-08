@@ -4105,23 +4105,7 @@ export class MarketplacePlatformService {
   }
 
   private getFailedDeliveryProvider(channel: NotificationChannel, destination: string): string {
-    if (channel === "push" && destination.startsWith("ExponentPushToken[")) {
-      return "expo-push";
-    }
-
-    if (channel === "email") {
-      return "mock-email";
-    }
-
-    if (channel === "sms") {
-      return "mock-sms";
-    }
-
-    if (channel === "push") {
-      return "mock-push";
-    }
-
-    return "in-app";
+    return this.notificationDelivery.getProviderName(channel, destination);
   }
 
   private shouldRetryNotificationDelivery(
@@ -4129,15 +4113,7 @@ export class MarketplacePlatformService {
     destination: string,
     attemptCount: number
   ): boolean {
-    if (attemptCount >= 3) {
-      return false;
-    }
-
-    if (channel === "push") {
-      return destination.startsWith("ExponentPushToken[");
-    }
-
-    return false;
+    return attemptCount < 3 && this.notificationDelivery.supportsRetry(channel, destination);
   }
 
   private buildNotificationRetryAt(attemptCount: number): string {

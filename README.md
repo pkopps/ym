@@ -71,9 +71,18 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - device registration through `POST /api/notifications/devices`
   - Expo push-token delivery attempts
   - retry metadata on failed push sends
+- Notification delivery can also use real vendor integrations when configured:
+  - Resend for transactional email
+  - Twilio for SMS
 - To turn device push on in development builds, set:
   - `EXPO_PUBLIC_EXPO_PROJECT_ID` in the mobile apps
   - push credentials for the Expo project / native app IDs
+- To turn real email/SMS delivery on locally, set:
+  - `RESEND_API_KEY`
+  - `NOTIFICATION_EMAIL_FROM`
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_FROM_NUMBER`
 - Prisma/Postgres scaffolding is in place under [`apps/api/prisma`](</Users/patrickkopps/Documents/app/apps/api/prisma>).
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.

@@ -1615,6 +1615,185 @@ test("registered Expo push devices create retryable push deliveries", async () =
   assert.ok(pushDelivery?.nextRetryAt);
 });
 
+test("configured Resend email delivery uses the real email provider path", async () => {
+  const originalResendApiKey = process.env.RESEND_API_KEY;
+  const originalNotificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM;
+  const originalFetch = globalThis.fetch;
+
+  process.env.RESEND_API_KEY = "re_test_123";
+  process.env.NOTIFICATION_EMAIL_FROM = "YardMatch <alerts@yardmatch.example>";
+
+  let recordedAuthorization = "";
+  let recordedBody = "";
+
+  globalThis.fetch = (async (_input, init) => {
+    recordedAuthorization = String(init?.headers && "Authorization" in init.headers ? init.headers.Authorization : "");
+    recordedBody = String(init?.body ?? "");
+    return {
+      ok: true,
+      json: async () => ({
+        id: "email_123"
+      })
+    } as Response;
+  }) as typeof globalThis.fetch;
+
+  try {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const provider = await platform.registerUser({
+      fullName: "Ariana Flores",
+      email: "provider-email@example.com",
+      password: "Password123!",
+      phone: "555-3830",
+      role: "provider",
+      companyName: "Inbox Lawn Co.",
+      categories: ["lawn-mowing"],
+      serviceRadiusMiles: 25,
+      address: createAddress("1400 Provider Way", 30.244, -97.764)
+    });
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-email@example.com",
+      password: "Password123!",
+      phone: "555-3840",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress("112 Garden Row", 30.2435, -97.7638)
+    });
+
+    await platform.updateNotificationPreferences(
+      {
+        userId: provider.id,
+        email: provider.email,
+        role: "provider"
+      },
+      {
+        pushEnabled: false,
+        smsEnabled: false,
+        emailEnabled: true
+      }
+    );
+
+    await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "lawn-mowing",
+      scheduledStartIso: futureIso(24),
+      scheduledEndIso: futureIso(25),
+      notes: "Resend delivery test",
+      totalCents: 6200
+    });
+
+    const deliveries = await platform.listNotificationDeliveries({
+      userId: provider.id,
+      email: provider.email,
+      role: "provider"
+    });
+    const emailDelivery = deliveries.deliveries.find((delivery) => delivery.channel === "email");
+
+    assert.ok(emailDelivery);
+    assert.equal(emailDelivery?.provider, "resend");
+    assert.equal(emailDelivery?.status, "sent");
+    assert.equal(emailDelivery?.attemptCount, 1);
+    assert.equal(emailDelivery?.sentAt ? typeof emailDelivery.sentAt : "undefined", "string");
+    assert.match(recordedAuthorization, /^Bearer re_test_123$/);
+    assert.match(recordedBody, /alerts@yardmatch\.example/);
+    assert.match(recordedBody, /New booking request/);
+  } finally {
+    process.env.RESEND_API_KEY = originalResendApiKey;
+    process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("configured Twilio SMS delivery failures create retryable records", async () => {
+  const originalTwilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const originalTwilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  const originalTwilioFromNumber = process.env.TWILIO_FROM_NUMBER;
+  const originalFetch = globalThis.fetch;
+
+  process.env.TWILIO_ACCOUNT_SID = "AC123456789";
+  process.env.TWILIO_AUTH_TOKEN = "twilio-secret";
+  process.env.TWILIO_FROM_NUMBER = "+15555550100";
+
+  globalThis.fetch = (async () => {
+    throw new Error("twilio unavailable");
+  }) as typeof globalThis.fetch;
+
+  try {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const provider = await platform.registerUser({
+      fullName: "Ariana Flores",
+      email: "provider-sms@example.com",
+      password: "Password123!",
+      phone: "+15555550330",
+      role: "provider",
+      companyName: "Text Lawn Co.",
+      categories: ["lawn-mowing"],
+      serviceRadiusMiles: 25,
+      address: createAddress("1400 Provider Way", 30.244, -97.764)
+    });
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-sms@example.com",
+      password: "Password123!",
+      phone: "+15555550340",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress("112 Garden Row", 30.2435, -97.7638)
+    });
+
+    await platform.updateNotificationPreferences(
+      {
+        userId: provider.id,
+        email: provider.email,
+        role: "provider"
+      },
+      {
+        pushEnabled: false,
+        emailEnabled: false,
+        smsEnabled: true
+      }
+    );
+
+    await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "lawn-mowing",
+      scheduledStartIso: futureIso(24),
+      scheduledEndIso: futureIso(25),
+      notes: "Twilio delivery retry test",
+      totalCents: 6200
+    });
+
+    const deliveries = await platform.listNotificationDeliveries({
+      userId: provider.id,
+      email: provider.email,
+      role: "provider"
+    });
+    const smsDelivery = deliveries.deliveries.find((delivery) => delivery.channel === "sms");
+
+    assert.ok(smsDelivery);
+    assert.equal(smsDelivery?.provider, "twilio");
+    assert.equal(smsDelivery?.status, "failed");
+    assert.equal(smsDelivery?.attemptCount, 1);
+    assert.ok(smsDelivery?.nextRetryAt);
+    assert.match(smsDelivery?.errorMessage ?? "", /twilio unavailable/i);
+  } finally {
+    process.env.TWILIO_ACCOUNT_SID = originalTwilioAccountSid;
+    process.env.TWILIO_AUTH_TOKEN = originalTwilioAuthToken;
+    process.env.TWILIO_FROM_NUMBER = originalTwilioFromNumber;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("providers can get a subscribable calendar feed and merged overview for mixed schedule management", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

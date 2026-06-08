@@ -38,13 +38,13 @@ Already done:
 - persisted external delivery records
 - mobile push-device registration endpoints
 - Expo push-token support for mobile devices
+- real Resend email integration when configured
+- real Twilio SMS integration when configured
 - retry metadata for failed push sends
+- retry logic for real push, email, and SMS delivery attempts
 
 - Replace mock delivery providers with real vendor integrations for:
-  - APNs / FCM push and/or production Expo push rollout
-  - SMS via Twilio or equivalent
-  - transactional email ESP
-- Add retry logic and delivery failure handling
+  - APNs / FCM push and/or production Expo push rollout beyond Expo tokens
 - Add production delivery observability and alerting
 - Turn the existing departure / on-route / issue / review events into true device notifications
 

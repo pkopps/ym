@@ -15,12 +15,26 @@ export interface NotificationDispatchResult {
 }
 
 export class NotificationDeliveryService {
+  private readonly resendApiKey = process.env.RESEND_API_KEY?.trim();
+  private readonly notificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM?.trim();
+  private readonly twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
+  private readonly twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim();
+  private readonly twilioFromNumber = process.env.TWILIO_FROM_NUMBER?.trim();
+
   public async dispatch(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
     if (input.channel === "push" && input.destination.startsWith("ExponentPushToken[")) {
       return this.dispatchExpoPush(input);
     }
 
-    const provider = this.getProviderName(input.channel);
+    if (input.channel === "email" && this.hasResendConfig()) {
+      return this.dispatchResendEmail(input);
+    }
+
+    if (input.channel === "sms" && this.hasTwilioConfig()) {
+      return this.dispatchTwilioSms(input);
+    }
+
+    const provider = this.getProviderName(input.channel, input.destination);
     return {
       provider,
       sentAt: new Date().toISOString(),
@@ -28,13 +42,17 @@ export class NotificationDeliveryService {
     };
   }
 
-  private getProviderName(channel: NotificationChannel): string {
+  public getProviderName(channel: NotificationChannel, destination?: string): string {
+    if (channel === "push" && destination?.startsWith("ExponentPushToken[")) {
+      return "expo-push";
+    }
+
     if (channel === "email") {
-      return "mock-email";
+      return this.hasResendConfig() ? "resend" : "mock-email";
     }
 
     if (channel === "sms") {
-      return "mock-sms";
+      return this.hasTwilioConfig() ? "twilio" : "mock-sms";
     }
 
     if (channel === "push") {
@@ -42,6 +60,19 @@ export class NotificationDeliveryService {
     }
 
     return "in-app";
+  }
+
+  public supportsRetry(channel: NotificationChannel, destination?: string): boolean {
+    const provider = this.getProviderName(channel, destination);
+    return provider === "expo-push" || provider === "resend" || provider === "twilio";
+  }
+
+  private hasResendConfig(): boolean {
+    return Boolean(this.resendApiKey && this.notificationEmailFrom);
+  }
+
+  private hasTwilioConfig(): boolean {
+    return Boolean(this.twilioAccountSid && this.twilioAuthToken && this.twilioFromNumber);
   }
 
   private async dispatchExpoPush(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
@@ -81,6 +112,88 @@ export class NotificationDeliveryService {
       provider: "expo-push",
       sentAt: new Date().toISOString(),
       externalId: payload.data?.id ?? `expo-push_${crypto.randomUUID()}`
+    };
+  }
+
+  private async dispatchResendEmail(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.resendApiKey}`
+      },
+      body: JSON.stringify({
+        from: this.notificationEmailFrom,
+        to: [input.destination],
+        subject: input.title,
+        text: input.body
+      })
+    });
+
+    if (!response.ok) {
+      const payload = await response.text();
+      throw new Error(`Resend request failed with status ${response.status}: ${payload.slice(0, 200)}`);
+    }
+
+    const payload = (await response.json()) as {
+      id?: string;
+      error?: {
+        message?: string;
+      };
+    };
+
+    if (payload.error?.message) {
+      throw new Error(payload.error.message);
+    }
+
+    return {
+      provider: "resend",
+      sentAt: new Date().toISOString(),
+      externalId: payload.id ?? `resend_${crypto.randomUUID()}`
+    };
+  }
+
+  private async dispatchTwilioSms(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
+    const accountSid = this.twilioAccountSid as string;
+    const authToken = this.twilioAuthToken as string;
+    const fromNumber = this.twilioFromNumber as string;
+    const body = input.body === input.title ? input.body : `${input.title}\n${input.body}`;
+    const response = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`
+        },
+        body: new URLSearchParams({
+          To: input.destination,
+          From: fromNumber,
+          Body: body
+        }).toString()
+      }
+    );
+
+    if (!response.ok) {
+      const payload = await response.text();
+      throw new Error(`Twilio request failed with status ${response.status}: ${payload.slice(0, 200)}`);
+    }
+
+    const payload = (await response.json()) as {
+      sid?: string;
+      message?: string;
+      status?: string;
+      code?: number;
+    };
+
+    if (payload.code || payload.status === "failed") {
+      throw new Error(payload.message ?? "Twilio SMS delivery failed.");
+    }
+
+    return {
+      provider: "twilio",
+      sentAt: new Date().toISOString(),
+      externalId: payload.sid ?? `twilio_${crypto.randomUUID()}`
     };
   }
 }
