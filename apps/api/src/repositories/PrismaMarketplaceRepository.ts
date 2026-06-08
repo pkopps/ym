@@ -767,7 +767,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
 
   public async createPayment(payment: PaymentRecord): Promise<PaymentRecord> {
     await this.prisma.paymentRecord.create({
-      data: payment
+      data: {
+        ...payment,
+        refundRequestedAt: payment.refundRequestedAt ? new Date(payment.refundRequestedAt) : undefined,
+        refundReviewedAt: payment.refundReviewedAt ? new Date(payment.refundReviewedAt) : undefined,
+        paidAt: payment.paidAt ? new Date(payment.paidAt) : undefined,
+        createdAt: new Date(payment.createdAt),
+        updatedAt: new Date(payment.updatedAt)
+      }
     });
     return payment;
   }
@@ -806,7 +813,23 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
 
     const payment = await this.prisma.paymentRecord.update({
       where: { id: paymentId },
-      data: updates
+      data: {
+        ...updates,
+        refundRequestedAt:
+          updates.refundRequestedAt
+            ? new Date(updates.refundRequestedAt)
+            : updates.refundRequestedAt === undefined
+              ? undefined
+              : null,
+        refundReviewedAt:
+          updates.refundReviewedAt
+            ? new Date(updates.refundReviewedAt)
+            : updates.refundReviewedAt === undefined
+              ? undefined
+              : null,
+        paidAt: updates.paidAt ? new Date(updates.paidAt) : updates.paidAt === undefined ? undefined : null,
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined
+      }
     });
     return this.mapPaymentRecord(payment);
   }
@@ -1720,6 +1743,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     checkoutSessionUrl: string | null;
     processorPaymentIntentId: string | null;
     refundReason: string | null;
+    refundReviewStatus: string | null;
+    refundRequestedAt: Date | null;
+    refundRequestedByRole: string | null;
+    refundReviewedAt: Date | null;
+    refundReviewedByRole: string | null;
+    refundDecisionNotes: string | null;
     failureReason: string | null;
     paidAt: Date | null;
     createdAt: Date;
@@ -1737,6 +1766,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       checkoutSessionUrl: record.checkoutSessionUrl ?? undefined,
       processorPaymentIntentId: record.processorPaymentIntentId ?? undefined,
       refundReason: record.refundReason ?? undefined,
+      refundReviewStatus: record.refundReviewStatus as PaymentRecord["refundReviewStatus"],
+      refundRequestedAt: record.refundRequestedAt?.toISOString(),
+      refundRequestedByRole: record.refundRequestedByRole as PaymentRecord["refundRequestedByRole"],
+      refundReviewedAt: record.refundReviewedAt?.toISOString(),
+      refundReviewedByRole: record.refundReviewedByRole as PaymentRecord["refundReviewedByRole"],
+      refundDecisionNotes: record.refundDecisionNotes ?? undefined,
       failureReason: record.failureReason ?? undefined,
       paidAt: record.paidAt?.toISOString(),
       createdAt: record.createdAt.toISOString(),

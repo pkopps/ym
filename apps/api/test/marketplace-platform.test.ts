@@ -724,7 +724,7 @@ test("provider payout ledger shows completed jobs waiting on customer payment", 
   assert.equal(ledger.pendingCustomerPaymentCents, 7200);
 });
 
-test("provider and crew payout ledgers reflect scheduled earnings and refund reversals", async () => {
+test("refund review requests hold payouts until ops approves the refund", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(
     repository,
@@ -828,6 +828,30 @@ test("provider and crew payout ledgers reflect scheduled earnings and refund rev
     }
   );
 
+  const heldProviderLedger = await platform.getProviderPayoutLedger(provider.id);
+  assert.equal(
+    heldProviderLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
+    "on-hold"
+  );
+
+  const heldCrewLedger = await platform.getCrewPayoutLedger(crewMember.id);
+  assert.equal(
+    heldCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
+    "on-hold"
+  );
+
+  const refundTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "billing"
+  );
+  assert.ok(refundTicket);
+
+  await platform.updateSupportTicketForOps({
+    ticketId: refundTicket?.ticket.id ?? "",
+    status: "resolved",
+    resolutionAction: "approve-refund",
+    resolutionNotes: "Support approved the refund review after checking the booking."
+  });
+
   const reversedProviderLedger = await platform.getProviderPayoutLedger(provider.id);
   assert.equal(
     reversedProviderLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
@@ -838,6 +862,87 @@ test("provider and crew payout ledgers reflect scheduled earnings and refund rev
   assert.equal(
     reversedCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
     "reversed"
+  );
+});
+
+test("ops can deny a refund review and return payouts to the normal schedule", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-refund-denied@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Refund denial test",
+    totalCents: 7200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  const payment = (await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  }))[0];
+  assert.ok(payment);
+
+  await platform.createRefund(
+    {
+      userId: customer.id,
+      email: customer.email,
+      role: "customer"
+    },
+    {
+      paymentId: payment?.id ?? "",
+      reason: "Please review this payment."
+    }
+  );
+
+  const refundTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "billing"
+  );
+  assert.ok(refundTicket);
+
+  await platform.updateSupportTicketForOps({
+    ticketId: refundTicket?.ticket.id ?? "",
+    status: "resolved",
+    resolutionAction: "deny-refund",
+    resolutionNotes: "Support verified the work and kept the payment captured."
+  });
+
+  const updatedPayment = await repository.findPaymentById(payment?.id ?? "");
+  assert.equal(updatedPayment?.status, "captured");
+  assert.equal(updatedPayment?.refundReviewStatus, "denied");
+  assert.equal(updatedPayment?.refundable, true);
+
+  const providerLedger = await platform.getProviderPayoutLedger(provider.id);
+  assert.equal(
+    providerLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
+    "scheduled"
   );
 });
 

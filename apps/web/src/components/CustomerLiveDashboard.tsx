@@ -82,6 +82,7 @@ export function CustomerLiveDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const [disputeDrafts, setDisputeDrafts] = useState<Record<string, string>>({});
+  const [refundDrafts, setRefundDrafts] = useState<Record<string, string>>({});
   const [rescheduleDrafts, setRescheduleDrafts] = useState<
     Record<string, { start: string; end: string }>
   >({});
@@ -447,6 +448,39 @@ export function CustomerLiveDashboard() {
     }
   }
 
+  async function handleRequestRefundReview(bookingId: string) {
+    const payment = getPaymentRecord(bookingId);
+    const reason = (refundDrafts[bookingId] ?? "").trim();
+
+    if (!payment) {
+      setErrorMessage("There is no payment on file for this booking yet.");
+      return;
+    }
+
+    if (!reason) {
+      setErrorMessage("Tell us why you need a refund review.");
+      return;
+    }
+
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+    setBookingMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.createRefund({
+        paymentId: payment.id,
+        reason
+      });
+      setBookingMessage("Refund review requested. YardMatch support now has the payment and booking context.");
+      await loadDashboard();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to request a refund review right now.");
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
   async function openCustomerChat(bookingId: string) {
     setLoadingState("loading");
     setErrorMessage(undefined);
@@ -542,6 +576,14 @@ export function CustomerLiveDashboard() {
       return "Not paid";
     }
 
+    if (payment.refundReviewStatus === "requested") {
+      return "Refund review in progress";
+    }
+
+    if (payment.refundReviewStatus === "denied") {
+      return "Refund request denied";
+    }
+
     if (payment.status === "captured") {
       return "Paid";
     }
@@ -559,6 +601,10 @@ export function CustomerLiveDashboard() {
     }
 
     return "Payment on file";
+  }
+
+  function canRequestRefundReview(booking: Booking, payment?: PaymentRecord) {
+    return booking.status === "completed" && payment?.status === "captured" && payment.refundable;
   }
 
   return (
@@ -1010,6 +1056,50 @@ export function CustomerLiveDashboard() {
                         Open dispute
                       </button>
                     </div>
+                  </div>
+                ) : null}
+                {(canRequestRefundReview(booking, getPaymentRecord(booking.id)) ||
+                  getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
+                  getPaymentRecord(booking.id)?.refundReviewStatus === "denied") ? (
+                  <div className="list-panel" style={{ marginTop: "1rem" }}>
+                    <h3>Refund review</h3>
+                    <p>
+                      {getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
+                        ? "YardMatch support is reviewing this refund request. Payouts stay on hold until the review is resolved."
+                        : getPaymentRecord(booking.id)?.refundReviewStatus === "denied"
+                          ? `The last refund review was denied.${getPaymentRecord(booking.id)?.refundDecisionNotes ? ` ${getPaymentRecord(booking.id)?.refundDecisionNotes}` : ""}`
+                          : "If this completed service needs a billing review, send a refund request with the reason below."}
+                    </p>
+                    {getPaymentRecord(booking.id)?.refundReviewStatus !== "requested" ? (
+                      <>
+                        <div className="form-grid" style={{ marginTop: "1rem" }}>
+                          <label className="form-field form-field--full">
+                            <span>Refund reason</span>
+                            <textarea
+                              rows={3}
+                              value={refundDrafts[booking.id] ?? ""}
+                              onChange={(event) =>
+                                setRefundDrafts((current) => ({
+                                  ...current,
+                                  [booking.id]: event.target.value
+                                }))
+                              }
+                              placeholder="Why should YardMatch review this payment?"
+                            />
+                          </label>
+                        </div>
+                        <div className="cta-row" style={{ marginTop: "1rem" }}>
+                          <button
+                            className="button-secondary"
+                            disabled={loadingState === "loading" || !canRequestRefundReview(booking, getPaymentRecord(booking.id))}
+                            onClick={() => void handleRequestRefundReview(booking.id)}
+                            type="button"
+                          >
+                            Request refund review
+                          </button>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </article>

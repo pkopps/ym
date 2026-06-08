@@ -45,8 +45,11 @@ export type BookingStatus =
 
 export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "failed";
 export type PaymentProcessor = "manual" | "stripe";
+export type RefundReviewStatus = "requested" | "approved" | "denied";
+export type RefundActorRole = "customer" | "provider" | "ops";
 export type PayoutLedgerStatus =
   | "awaiting-customer-payment"
+  | "on-hold"
   | "scheduled"
   | "ready"
   | "paid"
@@ -57,7 +60,9 @@ export type SupportIssueType = "billing" | "service-quality" | "account" | "gene
 export type SupportBookingResolution =
   | "restore-active-booking"
   | "cancel-booking"
-  | "complete-booking";
+  | "complete-booking"
+  | "approve-refund"
+  | "deny-refund";
 export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
@@ -509,6 +514,12 @@ export interface PaymentRecord {
   checkoutSessionUrl?: string;
   processorPaymentIntentId?: string;
   refundReason?: string;
+  refundReviewStatus?: RefundReviewStatus;
+  refundRequestedAt?: string;
+  refundRequestedByRole?: RefundActorRole;
+  refundReviewedAt?: string;
+  refundReviewedByRole?: RefundActorRole;
+  refundDecisionNotes?: string;
   failureReason?: string;
   paidAt?: string;
   createdAt: string;
@@ -587,6 +598,7 @@ export interface SupportTicket {
 export interface SupportOpsTicket {
   ticket: SupportTicket;
   booking?: Booking;
+  payment?: PaymentRecord;
   customerName?: string;
   providerName?: string;
 }

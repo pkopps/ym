@@ -54,6 +54,10 @@ export function ProviderPaymentsBoard() {
     () => ledger?.entries.filter((entry) => entry.status === "scheduled") ?? [],
     [ledger?.entries]
   );
+  const heldEntries = useMemo(
+    () => ledger?.entries.filter((entry) => entry.status === "on-hold") ?? [],
+    [ledger?.entries]
+  );
 
   if (!sessionReady) {
     return (
@@ -162,7 +166,7 @@ export function ProviderPaymentsBoard() {
                     className={`provider-staffing-badge ${
                       entry.status === "ready"
                         ? "provider-staffing-badge--healthy"
-                        : entry.status === "reversed"
+                        : entry.status === "reversed" || entry.status === "on-hold"
                           ? "provider-staffing-badge--warning"
                           : ""
                     }`}
@@ -185,8 +189,8 @@ export function ProviderPaymentsBoard() {
             </div>
           </div>
 
-          {readyEntries.length + scheduledEntries.length > 0 ? (
-            [...readyEntries, ...scheduledEntries].map((entry) => (
+          {readyEntries.length + scheduledEntries.length + heldEntries.length > 0 ? (
+            [...readyEntries, ...scheduledEntries, ...heldEntries].map((entry) => (
               <div className="provider-payout-row" key={`${entry.id}-crew`}>
                 <div>
                   <strong>{entry.crewMembersAssigned} assigned crew member{entry.crewMembersAssigned === 1 ? "" : "s"}</strong>
@@ -199,7 +203,11 @@ export function ProviderPaymentsBoard() {
                   <strong>{formatCurrency(entry.crewShareCents)}</strong>
                   <span
                     className={`provider-staffing-badge ${
-                      entry.status === "ready" ? "provider-staffing-badge--healthy" : ""
+                      entry.status === "ready"
+                        ? "provider-staffing-badge--healthy"
+                        : entry.status === "on-hold"
+                          ? "provider-staffing-badge--warning"
+                          : ""
                     }`}
                   >
                     {entry.status.replaceAll("-", " ")}

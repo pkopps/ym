@@ -52,6 +52,7 @@ export function BookingsScreen({
   const [detailRating, setDetailRating] = useState<ReviewScore>(5);
   const [reviewText, setReviewText] = useState("");
   const [disputeDrafts, setDisputeDrafts] = useState<Record<string, string>>({});
+  const [refundDrafts, setRefundDrafts] = useState<Record<string, string>>({});
   const [submittedMessage, setSubmittedMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -262,6 +263,43 @@ export function BookingsScreen({
     }
   }
 
+  async function requestRefundReview(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    const payment = getPaymentRecord(bookingId);
+    const reason = (refundDrafts[bookingId] ?? "").trim();
+
+    if (!payment) {
+      setErrorMessage("There is no payment on file for this booking yet.");
+      return;
+    }
+
+    if (!reason) {
+      setErrorMessage("Add a refund reason first.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.createRefund({
+        paymentId: payment.id,
+        reason
+      });
+      setSubmittedMessage("Refund review requested. YardMatch support now has the payment and booking context.");
+      await loadBookings();
+      onOpenAccount?.();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to request a refund review.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function openCustomerChat(booking: Booking) {
     if (!envelope?.session.token || !booking.onRouteConfirmedAt) {
       return;
@@ -344,6 +382,14 @@ export function BookingsScreen({
       return "Not paid";
     }
 
+    if (payment.refundReviewStatus === "requested") {
+      return "Refund review in progress";
+    }
+
+    if (payment.refundReviewStatus === "denied") {
+      return "Refund request denied";
+    }
+
     if (payment.status === "captured") {
       return "Paid";
     }
@@ -361,6 +407,10 @@ export function BookingsScreen({
     }
 
     return "Payment on file";
+  }
+
+  function canRequestRefundReview(booking: Booking, payment?: PaymentRecord) {
+    return booking.status === "completed" && payment?.status === "captured" && payment.refundable;
   }
 
   async function payWithStripe(booking: Booking) {
@@ -531,6 +581,48 @@ export function BookingsScreen({
                         style={styles.secondaryAction}
                       >
                         <Text style={styles.secondaryActionLabel}>Open dispute</Text>
+                      </Pressable>
+                    </>
+                  ) : null}
+                  {(canRequestRefundReview(booking, getPaymentRecord(booking.id)) ||
+                    getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
+                    getPaymentRecord(booking.id)?.refundReviewStatus === "denied") ? (
+                    <>
+                      <TextInput
+                        editable={getPaymentRecord(booking.id)?.refundReviewStatus !== "requested"}
+                        onChangeText={(value) =>
+                          setRefundDrafts((current) => ({
+                            ...current,
+                            [booking.id]: value
+                          }))
+                        }
+                        placeholder={
+                          getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
+                            ? "Refund review in progress"
+                            : "Why should YardMatch review this payment?"
+                        }
+                        placeholderTextColor={BrandTokens.colors.muted}
+                        style={styles.input}
+                        value={
+                          getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
+                            ? getPaymentRecord(booking.id)?.refundReason ?? ""
+                            : refundDrafts[booking.id] ?? ""
+                        }
+                      />
+                      <Pressable
+                        disabled={
+                          isWorking ||
+                          getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
+                          !canRequestRefundReview(booking, getPaymentRecord(booking.id))
+                        }
+                        onPress={() => void requestRefundReview(booking.id)}
+                        style={styles.secondaryAction}
+                      >
+                        <Text style={styles.secondaryActionLabel}>
+                          {getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
+                            ? "Refund review open"
+                            : "Request refund review"}
+                        </Text>
                       </Pressable>
                     </>
                   ) : null}

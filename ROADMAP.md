@@ -62,6 +62,9 @@ Already done:
 
 - internal provider payout ledger derived from real bookings, payments, crew matches, and refunds
 - internal crew payout ledger derived from accepted completed work
+- customer refund-review requests tied directly to real bookings and payments
+- ops approval / denial of refund reviews from the internal support queue
+- provider and crew payouts automatically move on hold while a refund review is open
 
 - Turn on real Stripe credentials in development and staging
 - Verify production-style webhook handling end to end
@@ -112,6 +115,7 @@ Still left:
 ### Financial and internal ops tooling
 
 - Refund overrides for ops
+- richer refund reporting and exception summaries
 - Provider verification workflow
 - Richer booking intervention controls
 - Deeper dispute evidence and resolution flows
@@ -195,11 +199,12 @@ Already done:
 - customer web + mobile payment entry points
 - provider payout ledger visibility
 - crew payout ledger visibility
+- refund review workflow with ops approval / denial and payout holds
 
 Still left:
 
 - real secrets and live processor verification
-- refunds
+- live Stripe refund synchronization
 - payout disbursement rules and rails
 
 ### Calendar

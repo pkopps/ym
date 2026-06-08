@@ -3,6 +3,7 @@
 import {
   MarketplaceApiClient,
   SupportOpsTicket,
+  SupportTicket,
   SupportTicketStatus
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
@@ -36,7 +37,7 @@ export function OpsSupportQueue() {
   async function updateTicket(
     ticketId: string,
     status: SupportTicketStatus,
-    resolutionAction?: "restore-active-booking" | "cancel-booking" | "complete-booking",
+    resolutionAction?: SupportTicket["resolutionAction"],
     resolutionNotes?: string
   ) {
     try {
@@ -53,7 +54,11 @@ export function OpsSupportQueue() {
       setStatusMessage(
         status === "triaged"
           ? "Ticket triaged."
-          : "Ticket resolved and booking state updated."
+          : resolutionAction === "approve-refund"
+            ? "Refund approved and payment reversed."
+            : resolutionAction === "deny-refund"
+              ? "Refund review denied and payment left captured."
+              : "Ticket resolved and booking state updated."
       );
       await loadQueue();
     } catch (error) {
@@ -75,7 +80,7 @@ export function OpsSupportQueue() {
       {errorMessage ? <p>{errorMessage}</p> : null}
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
         {tickets.length > 0 ? (
-          tickets.map(({ ticket, booking, customerName, providerName }) => (
+          tickets.map(({ ticket, booking, payment, customerName, providerName }) => (
             <article className="list-panel" key={ticket.id}>
               <div className="search-result-title">
                 <div>
@@ -102,6 +107,13 @@ export function OpsSupportQueue() {
                     {booking.disputeReason ? ` • dispute: ${booking.disputeReason}` : ""}
                     {booking.activeExceptionType ? ` • issue: ${booking.activeExceptionType}` : ""}
                   </p>
+                  {payment ? (
+                    <p>
+                      Payment: {payment.status}
+                      {payment.refundReviewStatus ? ` • refund review ${payment.refundReviewStatus}` : ""}
+                      {payment.refundReason ? ` • reason: ${payment.refundReason}` : ""}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               {ticket.resolutionNotes ? <p>Resolution: {ticket.resolutionNotes}</p> : null}
@@ -116,7 +128,41 @@ export function OpsSupportQueue() {
                     Mark triaged
                   </button>
                 ) : null}
-                {ticket.status !== "resolved" ? (
+                {ticket.status !== "resolved" && ticket.issueType === "billing" && payment?.refundReviewStatus === "requested" ? (
+                  <>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void updateTicket(
+                          ticket.id,
+                          "resolved",
+                          "approve-refund",
+                          "Support approved the refund review and reversed the customer payment."
+                        )
+                      }
+                      type="button"
+                    >
+                      Approve refund
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void updateTicket(
+                          ticket.id,
+                          "resolved",
+                          "deny-refund",
+                          "Support reviewed the refund request and kept the payment captured."
+                        )
+                      }
+                      type="button"
+                    >
+                      Deny refund
+                    </button>
+                  </>
+                ) : null}
+                {ticket.status !== "resolved" && ticket.issueType !== "billing" ? (
                   <>
                     <button
                       className="button-secondary"

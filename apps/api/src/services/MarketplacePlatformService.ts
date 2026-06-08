@@ -2632,6 +2632,12 @@ export class MarketplacePlatformService {
       checkoutSessionUrl: session.checkoutUrl,
       processorPaymentIntentId: session.paymentIntentId,
       refundReason: currentPayment?.refundReason,
+      refundReviewStatus: currentPayment?.refundReviewStatus,
+      refundRequestedAt: currentPayment?.refundRequestedAt,
+      refundRequestedByRole: currentPayment?.refundRequestedByRole,
+      refundReviewedAt: currentPayment?.refundReviewedAt,
+      refundReviewedByRole: currentPayment?.refundReviewedByRole,
+      refundDecisionNotes: currentPayment?.refundDecisionNotes,
       failureReason: undefined,
       paidAt: undefined,
       createdAt: currentPayment?.createdAt ?? now,
@@ -2648,6 +2654,13 @@ export class MarketplacePlatformService {
           checkoutSessionId: paymentBase.checkoutSessionId,
           checkoutSessionUrl: paymentBase.checkoutSessionUrl,
           processorPaymentIntentId: paymentBase.processorPaymentIntentId,
+          refundReason: paymentBase.refundReason,
+          refundReviewStatus: paymentBase.refundReviewStatus,
+          refundRequestedAt: paymentBase.refundRequestedAt,
+          refundRequestedByRole: paymentBase.refundRequestedByRole,
+          refundReviewedAt: paymentBase.refundReviewedAt,
+          refundReviewedByRole: paymentBase.refundReviewedByRole,
+          refundDecisionNotes: paymentBase.refundDecisionNotes,
           failureReason: paymentBase.failureReason,
           paidAt: paymentBase.paidAt,
           updatedAt: paymentBase.updatedAt
@@ -2754,7 +2767,13 @@ export class MarketplacePlatformService {
       createdAt: now,
       updatedAt: now,
       status: "authorized",
-      refundable: true
+      refundable: true,
+      refundReviewStatus: undefined,
+      refundRequestedAt: undefined,
+      refundRequestedByRole: undefined,
+      refundReviewedAt: undefined,
+      refundReviewedByRole: undefined,
+      refundDecisionNotes: undefined
     };
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentAuthorized, payload.bookingId, {
@@ -2789,20 +2808,95 @@ export class MarketplacePlatformService {
       throw new HttpError(403, "Crew members cannot request refunds");
     }
 
+    if (payment.status !== "captured") {
+      throw new HttpError(400, "Only captured customer payments can enter refund review");
+    }
+
+    if (booking.status === "refunded") {
+      throw new HttpError(409, "This booking has already been refunded");
+    }
+
+    const existingRefundTicket = (await this.repository.listSupportTickets()).find(
+      (ticket) =>
+        ticket.bookingId === booking.id &&
+        ticket.issueType === "billing" &&
+        ticket.status !== "resolved"
+    );
+    if (existingRefundTicket) {
+      throw new HttpError(409, "A refund review is already open for this booking");
+    }
+
+    if (payment.refundReviewStatus === "requested") {
+      throw new HttpError(409, "A refund review is already in progress for this payment");
+    }
+
+    const now = new Date().toISOString();
+    const reason = payload.reason.trim();
+    if (!reason) {
+      throw new HttpError(400, "A refund reason is required");
+    }
+
     const updatedPayment = await this.repository.updatePayment(payload.paymentId, {
-      status: "refunded",
-      refundReason: payload.reason,
+      refundReason: reason,
+      refundReviewStatus: "requested",
+      refundRequestedAt: now,
+      refundRequestedByRole: requester.role === "provider" ? "provider" : "customer",
+      refundReviewedAt: undefined,
+      refundReviewedByRole: undefined,
+      refundDecisionNotes: undefined,
       refundable: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: now
     });
 
     if (!updatedPayment) {
       throw new Error("Payment not found");
     }
 
+    await this.createSupportTicket(
+      {
+        userId: requester.userId,
+        role: requester.role
+      },
+      {
+        bookingId: booking.id,
+        issueType: "billing",
+        subject: "Refund review requested",
+        description: `${requester.role === "provider" ? "Provider" : "Customer"} requested a refund review. Reason: ${reason}`
+      }
+    );
+
+    const requesterLabel = requester.role === "provider" ? "The business owner" : "The customer";
+    await Promise.all([
+      this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title:
+          requester.role === "customer"
+            ? "Refund review requested"
+            : "Provider requested a refund review",
+        body:
+          requester.role === "customer"
+            ? "YardMatch support is reviewing your refund request."
+            : "The provider asked YardMatch support to review this booking for a refund.",
+        actionHref: `/customer/dashboard?bookingId=${booking.id}`
+      }),
+      this.createNotification({
+        recipientId: booking.providerId,
+        recipientRole: "provider",
+        category: "support",
+        title:
+          requester.role === "provider"
+            ? "Refund review requested"
+            : "Customer requested a refund review",
+        body: `${requesterLabel} asked YardMatch support to review this booking for a refund.`,
+        actionHref: `/provider/management?bookingId=${booking.id}`
+      })
+    ]);
+
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.refundRequested, updatedPayment.bookingId, {
       paymentId: updatedPayment.id,
-      reason: payload.reason
+      reason
     });
     return updatedPayment;
   }
@@ -2867,9 +2961,10 @@ export class MarketplacePlatformService {
   }
 
   public async listOpsSupportTickets(): Promise<SupportOpsTicket[]> {
-    const [tickets, bookings, customers, providers] = await Promise.all([
+    const [tickets, bookings, payments, customers, providers] = await Promise.all([
       this.repository.listSupportTickets(),
       this.repository.listBookings(),
+      this.repository.listPayments(),
       this.repository.listCustomers(),
       this.repository.listProviders()
     ]);
@@ -2878,6 +2973,9 @@ export class MarketplacePlatformService {
       .map((ticket) => {
         const booking = ticket.bookingId
           ? bookings.find((candidate) => candidate.id === ticket.bookingId)
+          : undefined;
+        const payment = booking
+          ? payments.find((candidate) => candidate.bookingId === booking.id)
           : undefined;
         const customer = booking
           ? customers.find((candidate) => candidate.id === booking.customerId)
@@ -2889,6 +2987,7 @@ export class MarketplacePlatformService {
         return {
           ticket,
           booking,
+          payment,
           customerName: customer?.fullName,
           providerName: provider?.companyName
         } satisfies SupportOpsTicket;
@@ -2916,7 +3015,11 @@ export class MarketplacePlatformService {
       const booking = await this.repository.findBookingById(ticket.bookingId);
       if (booking) {
         if (payload.status === "resolved") {
-          await this.applySupportResolutionToBooking(booking, payload.resolutionAction);
+          if (payload.resolutionAction === "approve-refund" || payload.resolutionAction === "deny-refund") {
+            await this.applySupportResolutionToRefund(booking, payload.resolutionAction, resolutionNotes as string);
+          } else {
+            await this.applySupportResolutionToBooking(booking, payload.resolutionAction);
+          }
         } else if (payload.status === "triaged" && booking.status === "disputed") {
           await this.createNotification({
             recipientId: booking.customerId,
@@ -2926,6 +3029,26 @@ export class MarketplacePlatformService {
             body: "YardMatch support has triaged your dispute and is reviewing next steps.",
             actionHref: `/customer/dashboard?bookingId=${booking.id}&issue=dispute`
           });
+        }
+        if (payload.status === "triaged" && ticket.issueType === "billing") {
+          await Promise.all([
+            this.createNotification({
+              recipientId: booking.customerId,
+              recipientRole: "customer",
+              category: "support",
+              title: "Refund review under review",
+              body: "YardMatch support triaged your refund request and is reviewing next steps.",
+              actionHref: `/customer/dashboard?bookingId=${booking.id}`
+            }),
+            this.createNotification({
+              recipientId: booking.providerId,
+              recipientRole: "provider",
+              category: "support",
+              title: "Refund review under review",
+              body: "YardMatch support triaged the refund request tied to this booking.",
+              actionHref: `/provider/management?bookingId=${booking.id}`
+            })
+          ]);
         }
       }
     }
@@ -3013,6 +3136,101 @@ export class MarketplacePlatformService {
       body: "YardMatch support reviewed the issue and restored the booking to the active schedule.",
       actionHref: `/customer/dashboard?bookingId=${booking.id}`
     });
+  }
+
+  private async applySupportResolutionToRefund(
+    booking: Booking,
+    resolutionAction: "approve-refund" | "deny-refund",
+    resolutionNotes: string
+  ): Promise<void> {
+    const payment = (await this.repository.listPayments())
+      .filter((candidate) => candidate.bookingId === booking.id)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+
+    if (!payment) {
+      throw new HttpError(404, "Payment record not found for this booking");
+    }
+
+    if (payment.refundReviewStatus !== "requested") {
+      throw new HttpError(409, "There is no active refund review to resolve for this payment");
+    }
+
+    const now = new Date().toISOString();
+
+    if (resolutionAction === "approve-refund") {
+      const updatedPayment = await this.repository.updatePayment(payment.id, {
+        status: "refunded",
+        refundable: false,
+        refundReviewStatus: "approved",
+        refundReviewedAt: now,
+        refundReviewedByRole: "ops",
+        refundDecisionNotes: resolutionNotes,
+        updatedAt: now
+      });
+      if (!updatedPayment) {
+        throw new HttpError(500, "Payment record could not be updated");
+      }
+
+      await this.repository.updateBooking(booking.id, {
+        status: "refunded"
+      });
+
+      this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.refundCompleted, booking.id, {
+        paymentId: updatedPayment.id
+      });
+
+      await Promise.all([
+        this.createNotification({
+          recipientId: booking.customerId,
+          recipientRole: "customer",
+          category: "support",
+          title: "Refund approved",
+          body: "YardMatch support approved this refund request and reversed the customer payment.",
+          actionHref: `/customer/dashboard?bookingId=${booking.id}`
+        }),
+        this.createNotification({
+          recipientId: booking.providerId,
+          recipientRole: "provider",
+          category: "support",
+          title: "Refund approved",
+          body: "YardMatch support approved the refund review tied to this booking.",
+          actionHref: `/provider/management?bookingId=${booking.id}`
+        })
+      ]);
+      return;
+    }
+
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      status: "captured",
+      refundable: true,
+      refundReviewStatus: "denied",
+      refundReviewedAt: now,
+      refundReviewedByRole: "ops",
+      refundDecisionNotes: resolutionNotes,
+      updatedAt: now
+    });
+    if (!updatedPayment) {
+      throw new HttpError(500, "Payment record could not be updated");
+    }
+
+    await Promise.all([
+      this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title: "Refund request denied",
+        body: "YardMatch support reviewed this refund request and left the payment in place.",
+        actionHref: `/customer/dashboard?bookingId=${booking.id}`
+      }),
+      this.createNotification({
+        recipientId: booking.providerId,
+        recipientRole: "provider",
+        category: "support",
+        title: "Refund request denied",
+        body: "YardMatch support closed the refund review and kept the payment captured.",
+        actionHref: `/provider/management?bookingId=${booking.id}`
+      })
+    ]);
   }
 
   public async processReviewInvites(
@@ -4681,6 +4899,10 @@ export class MarketplacePlatformService {
       return "reversed";
     }
 
+    if (payment?.refundReviewStatus === "requested") {
+      return "on-hold";
+    }
+
     if (payment?.status !== "captured") {
       return "awaiting-customer-payment";
     }
@@ -4720,6 +4942,10 @@ export class MarketplacePlatformService {
       return "Customer payment still needs to clear before provider earnings can settle.";
     }
 
+    if (status === "on-hold") {
+      return `A refund review is open for this booking, so provider payout is on hold. Latest note: ${payment?.refundReason ?? "Refund review requested."}`;
+    }
+
     if (assignedCrewCount === 0) {
       return status === "ready"
         ? "No crew share is attached to this job, so the full provider net is ready."
@@ -4741,6 +4967,10 @@ export class MarketplacePlatformService {
 
     if (status === "awaiting-customer-payment") {
       return "Customer payment still needs to clear before this crew payout can move forward.";
+    }
+
+    if (status === "on-hold") {
+      return `A refund review is open for this booking, so crew payout is on hold. Latest note: ${payment?.refundReason ?? "Refund review requested."}`;
     }
 
     return status === "ready"

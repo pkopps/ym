@@ -266,6 +266,12 @@ model PaymentRecord {
   checkoutSessionUrl     String?
   processorPaymentIntentId String?
   refundReason           String?
+  refundReviewStatus     String?
+  refundRequestedAt      DateTime?
+  refundRequestedByRole  String?
+  refundReviewedAt       DateTime?
+  refundReviewedByRole   String?
+  refundDecisionNotes    String?
   failureReason          String?
   paidAt                 DateTime?
   createdAt              DateTime

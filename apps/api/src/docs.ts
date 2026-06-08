@@ -1292,7 +1292,9 @@ export const apiSpec = {
     "/api/payments/refund": {
       post: {
         tags: ["Payments"],
-        summary: "Request or execute a refund",
+        summary: "Request a refund review",
+        description:
+          "Creates a billing review for a captured customer payment, opens a support ticket, and puts provider/crew payouts on hold until ops approves or denies the refund.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1306,7 +1308,7 @@ export const apiSpec = {
           }
         },
         responses: {
-          "200": { description: "Payment refunded" }
+          "200": { description: "Refund review requested on the payment record" }
         }
       }
     },
@@ -1346,7 +1348,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "List the internal support operations queue",
         description:
-          "Returns support tickets with linked booking and participant context so operations can triage disputes, no-shows, and service issues.",
+          "Returns support tickets with linked booking, payment, and participant context so operations can triage disputes, refund reviews, no-shows, and service issues.",
         responses: {
           "200": { description: "Support operations queue" }
         }
@@ -1357,7 +1359,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Triages or resolves a support ticket",
         description:
-          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking.",
+          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment.",
         requestBody: {
           required: true,
           content: {
@@ -1365,8 +1367,8 @@ export const apiSpec = {
               example: {
                 ticketId: "ticket_123",
                 status: "resolved",
-                resolutionAction: "restore-active-booking",
-                resolutionNotes: "Support confirmed the booking should continue as scheduled."
+                resolutionAction: "approve-refund",
+                resolutionNotes: "Support approved the refund review after checking the booking."
               }
             }
           }
