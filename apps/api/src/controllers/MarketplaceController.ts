@@ -88,6 +88,8 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/chat/customer-provider/messages") ||
       (context.method === "POST" && context.path === "/api/chat/customer-provider/messages") ||
       (context.method === "GET" && context.path === "/api/payments") ||
+      (context.method === "GET" && context.path === "/api/payouts/provider") ||
+      (context.method === "GET" && context.path === "/api/payouts/crew") ||
       (context.method === "POST" && context.path === "/api/payments/webhook") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") ||
@@ -426,6 +428,18 @@ export class MarketplaceController implements ApiController {
     if (context.method === "GET" && context.path === "/api/payments") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(response, 200, await this.platform.listPaymentsForUser(identity));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/payouts/provider") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.getProviderPayoutLedger(identity.userId));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/payouts/crew") {
+      const identity = await requireRole(context, this.platform, "crew-member");
+      sendJson(response, 200, await this.platform.getCrewPayoutLedger(identity.userId));
       return;
     }
 

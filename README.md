@@ -92,6 +92,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
 - Real customer card payments are now prepared through Stripe hosted Checkout.
+- Provider and crew payout ledgers now read from real completed bookings, captured customer payments, accepted crew matches, and refund state.
 - To turn the real checkout path on locally, set:
   - `STRIPE_SECRET_KEY`
   - `STRIPE_WEBHOOK_SECRET`

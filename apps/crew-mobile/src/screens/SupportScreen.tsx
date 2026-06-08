@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-nati
 import { BrandTokens } from "@yardmatch/branding";
 import {
   AppNotification,
+  CrewPayoutLedgerResponse,
   CreateSupportTicketRequest,
   CrewMatchesResponse,
   NotificationDeliveryRecord,
@@ -17,6 +18,13 @@ import { useCrewSession } from "../session/CrewSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD"
+  }).format(cents / 100);
+}
+
 export function SupportScreen() {
   const { biometricAvailable, biometricEnabled, biometricLabel, envelope, setBiometricEnabled, signOut } =
     useCrewSession();
@@ -25,6 +33,7 @@ export function SupportScreen() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [deliveries, setDeliveries] = useState<NotificationDeliveryRecord[]>([]);
   const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
+  const [payoutLedger, setPayoutLedger] = useState<CrewPayoutLedgerResponse | undefined>();
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
@@ -42,12 +51,13 @@ export function SupportScreen() {
     try {
       const api = createCrewMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [nextMatches, nextTickets, notificationResponse, nextPreferences, nextDeliveries] = await Promise.all([
+      const [nextMatches, nextTickets, notificationResponse, nextPreferences, nextDeliveries, nextPayoutLedger] = await Promise.all([
         api.getCrewMatches(),
         api.getSupportTickets(),
         api.getNotifications(),
         api.getNotificationPreferences(),
-        api.getNotificationDeliveries()
+        api.getNotificationDeliveries(),
+        api.getCrewPayoutLedger()
       ]);
       setMatchesResponse(nextMatches);
       setSupportTickets(nextTickets);
@@ -55,6 +65,7 @@ export function SupportScreen() {
       setUnreadCount(notificationResponse.unreadCount);
       setPreferences(nextPreferences);
       setDeliveries(nextDeliveries.deliveries);
+      setPayoutLedger(nextPayoutLedger);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load account.");
     }
@@ -172,8 +183,28 @@ export function SupportScreen() {
         <StatCard label="Pending" value={`${totalPending}`} />
       </View>
 
-      <InfoCard title="Payouts" description="Weekly direct deposit">
-        <Text style={styles.meta}>Business owners handle payout release after service completion.</Text>
+      <InfoCard title="Payouts" description="Live earnings ledger">
+        <Text style={styles.meta}>
+          Ready now: {formatCurrency(payoutLedger?.totalReadyCents ?? 0)} • Scheduled:{" "}
+          {formatCurrency(payoutLedger?.totalScheduledCents ?? 0)}
+        </Text>
+        <Text style={styles.meta}>
+          Waiting on customer payment: {formatCurrency(payoutLedger?.pendingCustomerPaymentCents ?? 0)}
+        </Text>
+        <View style={styles.ticketStack}>
+          {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
+            <View key={entry.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.title}>{entry.providerCompanyName}</Text>
+                <Text style={styles.meta}>
+                  {entry.serviceLabel} • {formatCurrency(entry.amountCents)}
+                </Text>
+                <Text style={styles.meta}>{entry.note}</Text>
+              </View>
+              <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
+            </View>
+          ))}
+        </View>
       </InfoCard>
 
       <InfoCard title="Account basics" description="Keep details up to date">

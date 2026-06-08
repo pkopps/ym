@@ -10,6 +10,7 @@ import {
   getExternalCalendarBlockLabel,
   NotificationDeliveryRecord,
   NotificationPreferences,
+  ProviderPayoutLedgerResponse,
   ProviderCalendarImportsResponse,
   ProviderCalendarSubscriptionResponse,
   ProviderProfile,
@@ -36,6 +37,13 @@ function formatLocalDateTimeValue(date: Date) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD"
+  }).format(cents / 100);
+}
+
 export function SupportScreen() {
   const {
     biometricAvailable,
@@ -54,6 +62,7 @@ export function SupportScreen() {
   const [calendarSubscription, setCalendarSubscription] =
     useState<ProviderCalendarSubscriptionResponse | undefined>();
   const [calendarImports, setCalendarImports] = useState<ProviderCalendarImportsResponse | undefined>();
+  const [payoutLedger, setPayoutLedger] = useState<ProviderPayoutLedgerResponse | undefined>();
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
@@ -91,7 +100,8 @@ export function SupportScreen() {
         nextPreferences,
         nextDeliveries,
         nextCalendarSubscription,
-        nextCalendarImports
+        nextCalendarImports,
+        nextPayoutLedger
       ] = await Promise.all([
         api.getCurrentUser(),
         api.getProviderStaffingOverview(),
@@ -100,7 +110,8 @@ export function SupportScreen() {
         api.getNotificationPreferences(),
         api.getNotificationDeliveries(),
         api.getProviderCalendarSubscription(),
-        api.getProviderCalendarImports()
+        api.getProviderCalendarImports(),
+        api.getProviderPayoutLedger()
       ]);
       setProvider(me.user as ProviderProfile);
       setOverview(nextOverview);
@@ -111,6 +122,7 @@ export function SupportScreen() {
       setDeliveries(nextDeliveries.deliveries);
       setCalendarSubscription(nextCalendarSubscription);
       setCalendarImports(nextCalendarImports);
+      setPayoutLedger(nextPayoutLedger);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load settings.");
     }
@@ -451,8 +463,29 @@ export function SupportScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="Payouts" description="Weekly direct deposit is still the default">
-        <Text style={styles.meta}>Crew payout depth stays web-first for now so the field app stays lighter.</Text>
+      <InfoCard title="Payouts" description="Live earnings and crew-share ledger">
+        <Text style={styles.meta}>
+          Ready now: {formatCurrency(payoutLedger?.totalNetReadyCents ?? 0)} • Scheduled:{" "}
+          {formatCurrency(payoutLedger?.totalNetScheduledCents ?? 0)}
+        </Text>
+        <Text style={styles.meta}>
+          Waiting on customer payment: {formatCurrency(payoutLedger?.pendingCustomerPaymentCents ?? 0)} • Crew reserved:{" "}
+          {formatCurrency(payoutLedger?.totalCrewOwedCents ?? 0)}
+        </Text>
+        <View style={styles.ticketStack}>
+          {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
+            <View key={entry.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.title}>{entry.customerName}</Text>
+                <Text style={styles.meta}>
+                  {entry.serviceLabel} • {formatCurrency(entry.providerNetAmountCents)}
+                </Text>
+                <Text style={styles.meta}>{entry.note}</Text>
+              </View>
+              <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
+            </View>
+          ))}
+        </View>
       </InfoCard>
 
       <InfoCard title="Calendar sync" description="Keep YardMatch work alongside outside clients">

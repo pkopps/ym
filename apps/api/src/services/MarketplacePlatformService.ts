@@ -3,6 +3,7 @@ import {
   ActiveSession,
   AppNotification,
   AnalyticsEvent,
+  Address,
   CancelBookingRequest,
   BookingArrivalTracking,
   CompleteBookingRequest,
@@ -26,7 +27,11 @@ import {
   ProviderCrewConversation,
   ProviderCrewConversationThread,
   ProviderCrewMessage,
+  ProviderPayoutLedgerEntry,
+  ProviderPayoutLedgerResponse,
   CrewOpportunity,
+  CrewPayoutLedgerEntry,
+  CrewPayoutLedgerResponse,
   CustomerReviewOpportunity,
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
@@ -2353,6 +2358,144 @@ export class MarketplacePlatformService {
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
+  public async getProviderPayoutLedger(providerId: string): Promise<ProviderPayoutLedgerResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const [bookings, payments, matches, customers] = await Promise.all([
+      this.repository.listBookings(),
+      this.repository.listPayments(),
+      this.repository.listCrewMatches(),
+      this.repository.listCustomers()
+    ]);
+
+    const entries = bookings
+      .filter((booking) => booking.providerId === providerId && this.isPayoutRelevantBooking(booking))
+      .map((booking) => {
+        const payment = payments.find((candidate) => candidate.bookingId === booking.id);
+        const acceptedMatches = matches.filter(
+          (match) => match.bookingId === booking.id && match.status === "accepted"
+        );
+        const customer = customers.find((candidate) => candidate.id === booking.customerId);
+        const crewShareCents = acceptedMatches.reduce(
+          (sum, match) => sum + this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents),
+          0
+        );
+        const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
+        const availableAtIso = this.getPayoutAvailabilityIso(booking, payoutStatus);
+        const providerNetAmountCents = Math.max(booking.totalCents - crewShareCents, 0);
+
+        const entry: ProviderPayoutLedgerEntry = {
+          id: `provider-payout-${booking.id}`,
+          bookingId: booking.id,
+          customerName: customer?.fullName ?? "Customer",
+          serviceDateIso: booking.scheduledStartIso,
+          serviceLabel: this.titleCaseCategory(booking.category),
+          addressLine: this.formatAddressLine(booking.serviceAddress),
+          grossAmountCents: booking.totalCents,
+          crewShareCents,
+          providerNetAmountCents,
+          crewMembersAssigned: acceptedMatches.length,
+          paymentId: payment?.id,
+          paymentStatus: payment?.status,
+          status: payoutStatus,
+          availableAtIso,
+          note: this.buildProviderPayoutNote(payoutStatus, payment, acceptedMatches.length)
+        };
+
+        return entry;
+      })
+      .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso));
+
+    return {
+      providerId,
+      totalGrossCapturedCents: entries
+        .filter((entry) => entry.paymentStatus === "captured")
+        .reduce((sum, entry) => sum + entry.grossAmountCents, 0),
+      totalNetReadyCents: entries
+        .filter((entry) => entry.status === "ready")
+        .reduce((sum, entry) => sum + entry.providerNetAmountCents, 0),
+      totalNetScheduledCents: entries
+        .filter((entry) => entry.status === "scheduled")
+        .reduce((sum, entry) => sum + entry.providerNetAmountCents, 0),
+      totalCrewOwedCents: entries
+        .filter((entry) => entry.status !== "reversed")
+        .reduce((sum, entry) => sum + entry.crewShareCents, 0),
+      pendingCustomerPaymentCents: entries
+        .filter((entry) => entry.status === "awaiting-customer-payment")
+        .reduce((sum, entry) => sum + entry.grossAmountCents, 0),
+      entries
+    };
+  }
+
+  public async getCrewPayoutLedger(crewMemberId: string): Promise<CrewPayoutLedgerResponse> {
+    const crewMember = await this.repository.findCrewMemberById(crewMemberId);
+    if (!crewMember) {
+      throw new HttpError(404, "Crew member not found");
+    }
+
+    const [matches, bookings, payments, providers] = await Promise.all([
+      this.repository.listCrewMatches(),
+      this.repository.listBookings(),
+      this.repository.listPayments(),
+      this.repository.listProviders()
+    ]);
+
+    const entries = matches
+      .filter((match) => match.crewMemberId === crewMemberId && match.status === "accepted")
+      .map((match) => {
+        const booking = bookings.find((candidate) => candidate.id === match.bookingId);
+        if (!booking || !this.isPayoutRelevantBooking(booking)) {
+          return undefined;
+        }
+
+        const payment = payments.find((candidate) => candidate.bookingId === booking.id);
+        const provider = providers.find((candidate) => candidate.id === booking.providerId);
+        const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
+        const availableAtIso = this.getPayoutAvailabilityIso(booking, payoutStatus);
+        const amountCents = this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents);
+
+        const entry: CrewPayoutLedgerEntry = {
+          id: `crew-payout-${match.id}`,
+          bookingId: booking.id,
+          providerId: booking.providerId,
+          providerCompanyName: provider?.companyName ?? "Provider",
+          serviceDateIso: booking.scheduledStartIso,
+          serviceLabel: this.titleCaseCategory(booking.category),
+          addressLine: this.formatAddressLine(booking.serviceAddress),
+          amountCents,
+          paymentId: payment?.id,
+          paymentStatus: payment?.status,
+          status: payoutStatus,
+          availableAtIso,
+          note: this.buildCrewPayoutNote(payoutStatus, payment)
+        };
+
+        return entry;
+      })
+      .filter((entry): entry is CrewPayoutLedgerEntry => Boolean(entry))
+      .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso));
+
+    return {
+      crewMemberId,
+      totalReadyCents: entries
+        .filter((entry) => entry.status === "ready")
+        .reduce((sum, entry) => sum + entry.amountCents, 0),
+      totalScheduledCents: entries
+        .filter((entry) => entry.status === "scheduled")
+        .reduce((sum, entry) => sum + entry.amountCents, 0),
+      totalPaidCents: entries
+        .filter((entry) => entry.status === "paid")
+        .reduce((sum, entry) => sum + entry.amountCents, 0),
+      pendingCustomerPaymentCents: entries
+        .filter((entry) => entry.status === "awaiting-customer-payment")
+        .reduce((sum, entry) => sum + entry.amountCents, 0),
+      entries
+    };
+  }
+
   public async createCheckoutSession(
     customerId: string,
     payload: CreateCheckoutSessionRequest
@@ -4303,5 +4446,92 @@ export class MarketplacePlatformService {
     };
 
     return rateByCategory[category];
+  }
+
+  private isPayoutRelevantBooking(booking: Booking): boolean {
+    return booking.status === "completed" || booking.status === "refunded";
+  }
+
+  private estimateCrewMatchPayoutCents(booking: Booking, hourlyRateCents: number): number {
+    const durationHours = Math.max(
+      1,
+      (Date.parse(booking.scheduledEndIso) - Date.parse(booking.scheduledStartIso)) / (60 * 60 * 1000)
+    );
+    return Math.round(hourlyRateCents * durationHours);
+  }
+
+  private getPayoutLedgerStatus(
+    booking: Booking,
+    payment?: PaymentRecord
+  ): ProviderPayoutLedgerEntry["status"] {
+    if (booking.status === "refunded" || payment?.status === "refunded") {
+      return "reversed";
+    }
+
+    if (payment?.status !== "captured") {
+      return "awaiting-customer-payment";
+    }
+
+    const completedAtMs = Date.parse(booking.completedAt ?? booking.scheduledEndIso);
+    const readyAtMs = completedAtMs + 48 * 60 * 60 * 1000;
+    return readyAtMs <= Date.now() ? "ready" : "scheduled";
+  }
+
+  private getPayoutAvailabilityIso(
+    booking: Booking,
+    status: ProviderPayoutLedgerEntry["status"]
+  ): string | undefined {
+    if (status !== "scheduled" && status !== "ready") {
+      return undefined;
+    }
+
+    return new Date(
+      Date.parse(booking.completedAt ?? booking.scheduledEndIso) + 48 * 60 * 60 * 1000
+    ).toISOString();
+  }
+
+  private formatAddressLine(address: Address): string {
+    return `${address.line1}, ${address.city}, ${address.state} ${address.postalCode}`;
+  }
+
+  private buildProviderPayoutNote(
+    status: ProviderPayoutLedgerEntry["status"],
+    payment: PaymentRecord | undefined,
+    assignedCrewCount: number
+  ): string {
+    if (status === "reversed") {
+      return "Customer payment was refunded, so provider payout is reversed.";
+    }
+
+    if (status === "awaiting-customer-payment") {
+      return "Customer payment still needs to clear before provider earnings can settle.";
+    }
+
+    if (assignedCrewCount === 0) {
+      return status === "ready"
+        ? "No crew share is attached to this job, so the full provider net is ready."
+        : "No crew share is attached to this job. The provider net is scheduled for weekly payout.";
+    }
+
+    return status === "ready"
+      ? `Crew share has been reserved and the provider net is ready. Payment status: ${payment?.status ?? "unknown"}.`
+      : `Crew share has been reserved and the provider net is scheduled for weekly payout. Payment status: ${payment?.status ?? "unknown"}.`;
+  }
+
+  private buildCrewPayoutNote(
+    status: CrewPayoutLedgerEntry["status"],
+    payment?: PaymentRecord
+  ): string {
+    if (status === "reversed") {
+      return "Customer payment was refunded, so this crew payout was reversed.";
+    }
+
+    if (status === "awaiting-customer-payment") {
+      return "Customer payment still needs to clear before this crew payout can move forward.";
+    }
+
+    return status === "ready"
+      ? `This payout is ready based on the completed service and captured customer payment (${payment?.status ?? "unknown"}).`
+      : `This payout is scheduled to move after the standard post-service hold period. Payment status: ${payment?.status ?? "unknown"}.`;
   }
 }

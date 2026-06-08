@@ -685,6 +685,162 @@ test("stripe webhook capture updates pending payments without a customer redirec
   assert.equal(payments[0]?.status, "captured");
 });
 
+test("provider payout ledger shows completed jobs waiting on customer payment", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-payout-pending@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Pending payout state test",
+    totalCents: 7200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+
+  const ledger = await platform.getProviderPayoutLedger(provider.id);
+  const entry = ledger.entries.find((candidate) => candidate.bookingId === booking.id);
+
+  assert.ok(entry);
+  assert.equal(entry?.status, "awaiting-customer-payment");
+  assert.equal(entry?.grossAmountCents, 7200);
+  assert.equal(ledger.pendingCustomerPaymentCents, 7200);
+});
+
+test("provider and crew payout ledgers reflect scheduled earnings and refund reversals", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-payout-ready@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-payout-ready@example.com",
+    password: "Password123!",
+    phone: "555-0300",
+    role: "provider",
+    companyName: "Ledger Lawn Co.",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const crewMember = await platform.registerUser({
+    fullName: "Marco Crew",
+    email: "crew-payout-ready@example.com",
+    password: "Password123!",
+    phone: "555-0400",
+    role: "crew-member",
+    address: createAddress("118 Garden Row", 30.2437, -97.7634),
+    categories: ["mulch-installation"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 25
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Ready payout state test",
+    totalCents: 9600
+  });
+
+  const staffing = await platform.getProviderStaffingOverview(provider.id);
+  const acceptedMatch = staffing.jobs
+    .find((job) => job.bookingId === booking.id)
+    ?.matches.find((match) => match.crewMemberId === crewMember.id);
+  assert.ok(acceptedMatch);
+  await platform.reviewCrewMatch(provider.id, {
+    crewMatchId: acceptedMatch?.id ?? "",
+    action: "accept"
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+
+  await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+  await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  const providerLedger = await platform.getProviderPayoutLedger(provider.id);
+  const providerEntry = providerLedger.entries.find((candidate) => candidate.bookingId === booking.id);
+  assert.ok(providerEntry);
+  assert.equal(providerEntry?.status, "scheduled");
+  assert.ok((providerEntry?.crewShareCents ?? 0) > 0);
+  assert.ok((providerEntry?.providerNetAmountCents ?? 0) >= 0);
+  assert.ok(providerLedger.totalNetScheduledCents >= (providerEntry?.providerNetAmountCents ?? 0));
+
+  const crewLedger = await platform.getCrewPayoutLedger(crewMember.id);
+  const crewEntry = crewLedger.entries.find((candidate) => candidate.bookingId === booking.id);
+  assert.ok(crewEntry);
+  assert.equal(crewEntry?.status, "scheduled");
+  assert.ok((crewEntry?.amountCents ?? 0) > 0);
+
+  const payment = (await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  }))[0];
+  assert.ok(payment);
+
+  await platform.createRefund(
+    {
+      userId: customer.id,
+      email: customer.email,
+      role: "customer"
+    },
+    {
+      paymentId: payment?.id ?? "",
+      reason: "Customer requested a refund review."
+    }
+  );
+
+  const reversedProviderLedger = await platform.getProviderPayoutLedger(provider.id);
+  assert.equal(
+    reversedProviderLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
+    "reversed"
+  );
+
+  const reversedCrewLedger = await platform.getCrewPayoutLedger(crewMember.id);
+  assert.equal(
+    reversedCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
+    "reversed"
+  );
+});
+
 test("review-first staffing creates pending crew matches that providers can approve", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

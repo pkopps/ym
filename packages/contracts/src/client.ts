@@ -31,6 +31,7 @@ import {
   NotificationPreferences,
   PushDevice,
   PaymentRecord,
+  ProviderPayoutLedgerResponse,
   PlaceSearchResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
@@ -71,6 +72,7 @@ import {
   ProviderCrewConversationThread,
   SyncExternalCalendarImportRequest,
   UpdateBookingRouteLocationRequest,
+  CrewPayoutLedgerResponse,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
   UpdateProviderSettingsRequest,
@@ -433,6 +435,14 @@ export class MarketplaceApiClient {
 
   public getPayments(): Promise<PaymentRecord[]> {
     return this.getJson(ApiRoutes.listPayments);
+  }
+
+  public getProviderPayoutLedger(): Promise<ProviderPayoutLedgerResponse> {
+    return this.getJson(ApiRoutes.providerPayoutLedger);
+  }
+
+  public getCrewPayoutLedger(): Promise<CrewPayoutLedgerResponse> {
+    return this.getJson(ApiRoutes.crewPayoutLedger);
   }
 
   public createCheckoutSession(

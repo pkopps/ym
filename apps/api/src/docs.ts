@@ -1152,6 +1152,30 @@ export const apiSpec = {
         }
       }
     },
+    "/api/payouts/provider": {
+      get: {
+        tags: ["Payments"],
+        summary: "Get the provider payout ledger",
+        description:
+          "Returns a provider-facing ledger built from completed bookings, captured customer payments, accepted crew matches, and refund state so business owners can see gross earnings, crew share, and current payout readiness.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Provider payout ledger returned" }
+        }
+      }
+    },
+    "/api/payouts/crew": {
+      get: {
+        tags: ["Payments"],
+        summary: "Get the crew payout ledger",
+        description:
+          "Returns a crew-facing ledger built from accepted matches on completed jobs, including whether the payout is still waiting on customer payment, scheduled, ready, paid, or reversed by a refund.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Crew payout ledger returned" }
+        }
+      }
+    },
     "/api/payments/webhook": {
       post: {
         tags: ["Payments"],

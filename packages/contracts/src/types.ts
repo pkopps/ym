@@ -45,6 +45,12 @@ export type BookingStatus =
 
 export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "failed";
 export type PaymentProcessor = "manual" | "stripe";
+export type PayoutLedgerStatus =
+  | "awaiting-customer-payment"
+  | "scheduled"
+  | "ready"
+  | "paid"
+  | "reversed";
 
 export type SupportTicketStatus = "open" | "triaged" | "resolved";
 export type SupportIssueType = "billing" | "service-quality" | "account" | "general";
@@ -507,6 +513,59 @@ export interface PaymentRecord {
   paidAt?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProviderPayoutLedgerEntry {
+  id: string;
+  bookingId: string;
+  customerName: string;
+  serviceDateIso: string;
+  serviceLabel: string;
+  addressLine: string;
+  grossAmountCents: number;
+  crewShareCents: number;
+  providerNetAmountCents: number;
+  crewMembersAssigned: number;
+  paymentId?: string;
+  paymentStatus?: PaymentStatus;
+  status: PayoutLedgerStatus;
+  availableAtIso?: string;
+  note: string;
+}
+
+export interface ProviderPayoutLedgerResponse {
+  providerId: string;
+  totalGrossCapturedCents: number;
+  totalNetReadyCents: number;
+  totalNetScheduledCents: number;
+  totalCrewOwedCents: number;
+  pendingCustomerPaymentCents: number;
+  entries: ProviderPayoutLedgerEntry[];
+}
+
+export interface CrewPayoutLedgerEntry {
+  id: string;
+  bookingId: string;
+  providerId: string;
+  providerCompanyName: string;
+  serviceDateIso: string;
+  serviceLabel: string;
+  addressLine: string;
+  amountCents: number;
+  paymentId?: string;
+  paymentStatus?: PaymentStatus;
+  status: PayoutLedgerStatus;
+  availableAtIso?: string;
+  note: string;
+}
+
+export interface CrewPayoutLedgerResponse {
+  crewMemberId: string;
+  totalReadyCents: number;
+  totalScheduledCents: number;
+  totalPaidCents: number;
+  pendingCustomerPaymentCents: number;
+  entries: CrewPayoutLedgerEntry[];
 }
 
 export interface SupportTicket {

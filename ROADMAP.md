@@ -56,11 +56,14 @@ Already done:
 
 ### Payments and payouts depth
 
+Already done:
+
+- internal provider payout ledger derived from real bookings, payments, crew matches, and refunds
+- internal crew payout ledger derived from accepted completed work
+
 - Turn on real Stripe credentials in development and staging
 - Verify production-style webhook handling end to end
 - Add real refund handling synchronized with Stripe
-- Add provider payout ledger
-- Add crew payout ledger
 - Define weekly / instant payout rules where applicable
 
 ## Phase 2: Needed For Launch
@@ -188,13 +191,14 @@ Already done:
 - Stripe Checkout API shape
 - webhook-ready settlement flow
 - customer web + mobile payment entry points
+- provider payout ledger visibility
+- crew payout ledger visibility
 
 Still left:
 
 - real secrets and live processor verification
 - refunds
-- provider payouts
-- crew payouts
+- payout disbursement rules and rails
 
 ### Calendar
 
