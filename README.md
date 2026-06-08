@@ -51,6 +51,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `GET /api/auth/me`
 - Google and Apple social auth now use real OAuth start/callback flows plus:
   - `POST /api/auth/social/complete`
+- All three mobile apps now finish both password signup and social-first signup natively in-app instead of bouncing first-time users to the web.
 - Web sessions now:
   - persist across refreshes
   - synchronize across browser tabs

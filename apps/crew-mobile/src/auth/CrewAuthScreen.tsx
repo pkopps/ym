@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
 import { openAuthSessionAsync } from "expo-web-browser";
 import { BrandTokens } from "@yardmatch/branding";
-import { AuthenticatedUserEnvelope, AuthFlowMode } from "@yardmatch/contracts";
+import {
+  Address,
+  AuthenticatedUserEnvelope,
+  AuthFlowMode,
+  PlaceSuggestion
+} from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { createCrewMobileApiClient } from "../lib/api";
 import { getCrewMobileTracker } from "../lib/tracking";
@@ -26,9 +31,30 @@ function getModeCopy(mode: AuthFlowMode) {
 
 const crewRedirectUri = "yardmatch-crew://auth/complete";
 
-function getCrewWebBaseUrl() {
-  const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-  return runtimeEnv?.EXPO_PUBLIC_APP_BASE_URL ?? "http://localhost:3000";
+function buildEstimatedPoint(state: string, postalCode: string) {
+  const normalizedState = state.trim().toUpperCase();
+  const stateSignal =
+    normalizedState.split("").reduce((sum, character) => sum + character.charCodeAt(0), 0) % 40;
+  const zipDigits = Number(postalCode.replace(/\D/g, "").slice(0, 5) || "10001");
+
+  return {
+    latitude: Number((25 + stateSignal * 0.5 + (zipDigits % 90) * 0.02).toFixed(5)),
+    longitude: Number((-124 + stateSignal * 0.6 + (zipDigits % 120) * 0.03).toFixed(5))
+  };
+}
+
+function createEmptyAddress(): Address {
+  return {
+    line1: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "US",
+    point: {
+      latitude: 0,
+      longitude: 0
+    }
+  };
 }
 
 export function CrewAuthScreen({
@@ -45,12 +71,51 @@ export function CrewAuthScreen({
   const [resetCodePreview, setResetCodePreview] = useState("");
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [pendingSignupUrl, setPendingSignupUrl] = useState("");
+  const [fullName, setFullName] = useState("Crew Member");
+  const [phone, setPhone] = useState("555-0102");
+  const [addressQuery, setAddressQuery] = useState("");
+  const [address, setAddress] = useState<Address>(createEmptyAddress());
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
+  const [isSearching, setIsSearching] = useState(false);
+  const [pendingSignupToken, setPendingSignupToken] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const authCopy = getModeCopy(mode);
   const tracker = getCrewMobileTracker();
+  const isCompletingSocialSignup = pendingSignupToken.length > 0;
+  const canSubmitSignup =
+    fullName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    phone.trim().length > 0 &&
+    address.line1.trim().length > 0 &&
+    address.city.trim().length > 0 &&
+    address.state.trim().length > 0 &&
+    address.postalCode.trim().length > 0 &&
+    (isCompletingSocialSignup || password.trim().length > 0);
+
+  useEffect(() => {
+    if (mode !== "signup" || addressQuery.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setIsSearching(true);
+      createCrewMobileApiClient()
+        .searchPlaces(addressQuery)
+        .then((response) => setSuggestions(response.suggestions))
+        .catch(() => setSuggestions([]))
+        .finally(() => setIsSearching(false));
+    }, 220);
+
+    return () => clearTimeout(timeoutId);
+  }, [addressQuery, mode]);
+
+  function clearPendingSignupState() {
+    setPendingSignupToken("");
+  }
 
   const handleAuth = async (method: "password" | "google" | "apple") => {
     void tracker.track(MarketplaceTelemetryEventCatalog.mobileAuthCompleted, {
@@ -63,7 +128,7 @@ export function CrewAuthScreen({
       try {
         setIsSubmitting(true);
         setErrorMessage("");
-        setPendingSignupUrl("");
+        clearPendingSignupState();
         const api = createCrewMobileApiClient();
         const startUrl =
           method === "google"
@@ -107,12 +172,19 @@ export function CrewAuthScreen({
         }
 
         if (status === "pending-signup") {
-          const webUrl = new URL("/auth/complete", getCrewWebBaseUrl());
-          callbackUrl.searchParams.forEach((value, key) => {
-            webUrl.searchParams.set(key, value);
-          });
-          setPendingSignupUrl(webUrl.toString());
-          setErrorMessage("Finish the last few crew profile details on the web, then come back to the app.");
+          const pendingToken = callbackUrl.searchParams.get("pendingToken");
+          const socialEmail = callbackUrl.searchParams.get("email");
+          const socialFullName = callbackUrl.searchParams.get("fullName");
+          if (!pendingToken || !socialEmail) {
+            throw new Error("The social signup callback was missing the account details we need.");
+          }
+          setMode("signup");
+          setPendingSignupToken(pendingToken);
+          setEmail(socialEmail);
+          if (socialFullName) {
+            setFullName(socialFullName);
+          }
+          setErrorMessage("");
           return;
         }
 
@@ -127,15 +199,15 @@ export function CrewAuthScreen({
       return;
     }
 
-    if (mode !== "login") {
-      setErrorMessage("Mobile signup is not wired yet. Use Google or Apple above, or finish signup on the web.");
+    if (mode === "signup") {
+      await handleSignupSubmit();
       return;
     }
 
     try {
       setIsSubmitting(true);
       setErrorMessage("");
-      setPendingSignupUrl("");
+      clearPendingSignupState();
       const api = createCrewMobileApiClient();
       const envelope = await api.login({
         email: email.trim(),
@@ -150,6 +222,60 @@ export function CrewAuthScreen({
       onAuthenticated(envelope);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to log in right now.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSignupSubmit = async () => {
+    if (!canSubmitSignup) {
+      setErrorMessage("Add your contact and home-base details so we can finish the account.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setErrorMessage("");
+      const api = createCrewMobileApiClient();
+      const normalizedAddress: Address = {
+        ...address,
+        state: address.state.trim().toUpperCase(),
+        postalCode: address.postalCode.trim(),
+        point:
+          selectedSuggestion &&
+          selectedSuggestion.address.line1.toLowerCase() === address.line1.trim().toLowerCase() &&
+          selectedSuggestion.address.city.toLowerCase() === address.city.trim().toLowerCase() &&
+          selectedSuggestion.address.state.toLowerCase() === address.state.trim().toLowerCase() &&
+          selectedSuggestion.address.postalCode === address.postalCode.trim()
+            ? selectedSuggestion.address.point
+            : buildEstimatedPoint(address.state, address.postalCode)
+      };
+
+      const envelope = pendingSignupToken
+        ? await api.completeSocialSignup({
+            pendingToken: pendingSignupToken,
+            fullName: fullName.trim(),
+            phone: phone.trim(),
+            role: "crew-member",
+            address: normalizedAddress
+          })
+        : await api.registerUser({
+            fullName: fullName.trim(),
+            email: email.trim(),
+            password,
+            phone: phone.trim(),
+            role: "crew-member",
+            address: normalizedAddress
+          });
+
+      if (envelope.user.role !== "crew-member") {
+        setErrorMessage("Use a crew account in the crew app.");
+        return;
+      }
+
+      onAuthenticated(envelope);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to finish signup right now.");
     } finally {
       setIsSubmitting(false);
     }
@@ -214,7 +340,12 @@ export function CrewAuthScreen({
             return (
               <Pressable
                 key={value}
-                onPress={() => setMode(value)}
+                onPress={() => {
+                  setMode(value);
+                  if (value === "login") {
+                    clearPendingSignupState();
+                  }
+                }}
                 style={[styles.modeButton, isActive && styles.modeButtonActive]}
               >
                 <Text style={[styles.modeLabel, isActive && styles.modeLabelActive]}>
@@ -234,33 +365,154 @@ export function CrewAuthScreen({
             style={styles.input}
             value={email}
           />
-          <TextInput
-            onChangeText={setPassword}
-            placeholder="Password"
-            placeholderTextColor="#6e7d71"
-            secureTextEntry
-            style={styles.input}
-            value={password}
-          />
+          {!isCompletingSocialSignup ? (
+            <TextInput
+              onChangeText={setPassword}
+              placeholder="Password"
+              placeholderTextColor="#6e7d71"
+              secureTextEntry
+              style={styles.input}
+              value={password}
+            />
+          ) : null}
         </View>
 
-        <Pressable onPress={() => handleAuth("password")} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonLabel}>{isSubmitting ? "Working..." : authCopy.submitLabel}</Text>
-        </Pressable>
+        {mode === "signup" ? (
+          <View style={styles.fieldStack}>
+            {isCompletingSocialSignup ? (
+              <View style={styles.inlineNotice}>
+                <Text style={styles.noticeTitle}>Finish your crew account</Text>
+                <Text style={styles.helper}>We already verified {email.trim()}. Add your contact details to continue.</Text>
+              </View>
+            ) : null}
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={setFullName}
+              placeholder="Full name"
+              placeholderTextColor="#6e7d71"
+              style={styles.input}
+              value={fullName}
+            />
+            <TextInput
+              keyboardType="phone-pad"
+              onChangeText={setPhone}
+              placeholder="Phone number"
+              placeholderTextColor="#6e7d71"
+              style={styles.input}
+              value={phone}
+            />
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={(value) => {
+                setAddressQuery(value);
+                setSelectedSuggestion(undefined);
+              }}
+              placeholder="Search city or town"
+              placeholderTextColor="#6e7d71"
+              style={styles.input}
+              value={addressQuery}
+            />
+            {suggestions.length > 0 ? (
+              <View style={styles.suggestionStack}>
+                {suggestions.map((suggestion) => (
+                  <Pressable
+                    key={suggestion.id}
+                    onPress={() => {
+                      setAddressQuery(suggestion.label);
+                      setAddress(suggestion.address);
+                      setSelectedSuggestion(suggestion);
+                      setSuggestions([]);
+                    }}
+                    style={styles.suggestionRow}
+                  >
+                    <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
+                    <Text style={styles.suggestionMeta}>
+                      {suggestion.source === "google-geocoding" ? "Google" : "Suggested area"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : addressQuery.trim().length >= 2 && isSearching ? (
+              <Text style={styles.helper}>Searching nearby areas…</Text>
+            ) : null}
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={(value) =>
+                setAddress((current) => ({
+                  ...current,
+                  line1: value
+                }))
+              }
+              placeholder="Home address"
+              placeholderTextColor="#6e7d71"
+              style={styles.input}
+              value={address.line1}
+            />
+            <View style={styles.inlineRow}>
+              <TextInput
+                autoCapitalize="words"
+                onChangeText={(value) =>
+                  setAddress((current) => ({
+                    ...current,
+                    city: value
+                  }))
+                }
+                placeholder="City"
+                placeholderTextColor="#6e7d71"
+                style={[styles.input, styles.inlineInput]}
+                value={address.city}
+              />
+              <TextInput
+                autoCapitalize="characters"
+                maxLength={2}
+                onChangeText={(value) =>
+                  setAddress((current) => ({
+                    ...current,
+                    state: value
+                  }))
+                }
+                placeholder="ST"
+                placeholderTextColor="#6e7d71"
+                style={[styles.input, styles.stateInput]}
+                value={address.state}
+              />
+              <TextInput
+                keyboardType="number-pad"
+                maxLength={10}
+                onChangeText={(value) =>
+                  setAddress((current) => ({
+                    ...current,
+                    postalCode: value
+                  }))
+                }
+                placeholder="ZIP"
+                placeholderTextColor="#6e7d71"
+                style={[styles.input, styles.zipInput]}
+                value={address.postalCode}
+              />
+            </View>
+          </View>
+        ) : null}
 
-        <Pressable onPress={() => void handleRequestReset()} style={styles.linkButton}>
-          <Text style={styles.linkButtonLabel}>
-            {isRequestingReset ? "Sending reset code..." : "Forgot password?"}
+        <Pressable onPress={() => handleAuth("password")} style={styles.primaryButton}>
+          <Text style={styles.primaryButtonLabel}>
+            {isSubmitting
+              ? "Working..."
+              : isCompletingSocialSignup
+                ? "Finish account"
+                : authCopy.submitLabel}
           </Text>
         </Pressable>
 
-        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-
-        {pendingSignupUrl ? (
-          <Pressable onPress={() => void openAuthSessionAsync(pendingSignupUrl)} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Finish social signup on the web</Text>
+        {mode === "login" ? (
+          <Pressable onPress={() => void handleRequestReset()} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>
+              {isRequestingReset ? "Sending reset code..." : "Forgot password?"}
+            </Text>
           </Pressable>
         ) : null}
+
+        {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
         {showRecovery ? (
           <View style={styles.recoveryCard}>
@@ -318,7 +570,11 @@ export function CrewAuthScreen({
           </Pressable>
         </View>
 
-        <Text style={styles.helper}>Skills, travel radius, and equipment preferences come after sign in.</Text>
+        <Text style={styles.helper}>
+          {mode === "signup"
+            ? "You can set skills, travel radius, and availability right after sign up."
+            : "Skills, travel radius, and equipment preferences come after sign in."}
+        </Text>
       </View>
     </ScrollView>
   );
@@ -387,6 +643,10 @@ const styles = StyleSheet.create({
   fieldStack: {
     gap: BrandTokens.spacing.md
   },
+  inlineRow: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm
+  },
   input: {
     borderWidth: 1,
     borderColor: BrandTokens.colors.border,
@@ -395,6 +655,47 @@ const styles = StyleSheet.create({
     paddingVertical: BrandTokens.spacing.md,
     backgroundColor: "rgba(255,255,255,0.96)",
     color: BrandTokens.colors.ink
+  },
+  inlineInput: {
+    flex: 1
+  },
+  stateInput: {
+    width: 72
+  },
+  zipInput: {
+    width: 92
+  },
+  suggestionStack: {
+    gap: BrandTokens.spacing.xs
+  },
+  suggestionRow: {
+    gap: BrandTokens.spacing.xs,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  suggestionTitle: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
+  },
+  suggestionMeta: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12
+  },
+  inlineNotice: {
+    gap: BrandTokens.spacing.xs,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(242, 247, 243, 0.95)",
+    padding: BrandTokens.spacing.md
+  },
+  noticeTitle: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
   },
   primaryButton: {
     alignItems: "center",

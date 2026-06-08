@@ -24,12 +24,13 @@ What remains now is mostly launch-hardening, real third-party delivery, money mo
 
 Already done:
 
+- Google auth backend/web/mobile flow when configured
+- Apple auth backend/web/mobile flow when configured
+- native mobile signup completion for password and social-first account creation
 - web session persistence across refreshes
 - web multi-tab session sync and logout propagation
 - browser session invalidation when the API returns `401`
 
-- Finish real Google authentication
-- Finish real Apple authentication
 - Add stronger re-auth for sensitive actions later, especially:
   - payout settings
   - bank changes
