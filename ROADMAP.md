@@ -2,67 +2,64 @@
 
 ## Purpose
 
-This roadmap captures the highest-impact work remaining to turn YardMatch from a strong functional prototype into a reliable marketplace for:
+This roadmap reflects the work that is still meaningfully left after the current backend, web, and mobile marketplace passes.
 
-- property owners
-- landscaping business owners
-- crew members
+YardMatch already supports a real core loop:
 
-The current product already supports the core marketplace loop:
+- customer search, quote, booking, cancel, reschedule, and review
+- provider confirmation, route start, work start, completion, late notices, and exception reporting
+- crew matching, staffing review, accepted work visibility, and availability management
+- customer/provider chat after route start
+- support tickets, disputes, ops resolution, in-app notifications, and delivery preferences
+- Stripe-ready checkout plumbing
+- provider calendar feed, outside blocking, merged schedule views
+- device-backed provider arrival tracking
+- secure mobile session persistence with optional biometric unlock
 
-- customer search and booking
-- provider staffing review and crew matching
-- crew on-route and start-work flow
-- customer/provider chat after on-route
-- reviews, support, notifications, and Stripe-ready checkout plumbing
+What remains now is mostly launch-hardening, real third-party delivery, money movement depth, and more sophisticated provider operations.
 
-The next phases focus on operational reliability, real-world delivery, and launch readiness.
+## Phase 1: Highest Priority Remaining Work
 
-## Phase 1: Must-Have Before Beta
+### Real auth completion
 
-### Core trust and access
+- Finish real Google authentication
+- Finish real Apple authentication
+- Tighten web session persistence and multi-tab logout behavior
+- Add stronger re-auth for sensitive actions later, especially:
+  - payout settings
+  - bank changes
+  - payment-method changes
 
-- Finish real Google and Apple authentication
-- Add password reset and account recovery
-- Harden session expiration and logout behavior across web and mobile
+### Real notification delivery
 
-### Address and property intelligence
+Already done:
 
-- Improve place search and geocoding quality
-- Normalize addresses consistently before matching and booking
-- Increase confidence and explainability of property measurement / quote logic
+- persisted in-app notifications and delivery preferences
+- persisted external delivery records
+- mobile push-device registration endpoints
+- Expo push-token support for mobile devices
+- retry metadata for failed push sends
 
-### Fulfillment operations
-
-- Expand booking lifecycle handling for:
-  - late crew arrival
-  - no-show
-  - unable-to-access-property
-  - service could not be completed
-- Add customer/provider support flows tied directly to those lifecycle states
-
-### Notifications delivery
-
-- Add real delivery channels for:
-  - push
-  - SMS
-  - email
-- Add reminders and retry logic for critical events
-- Add delivery observability and provider selection for:
-  - APNs / FCM push
-  - Twilio or equivalent SMS
+- Replace mock delivery providers with real vendor integrations for:
+  - APNs / FCM push and/or production Expo push rollout
+  - SMS via Twilio or equivalent
   - transactional email ESP
-- Add notification preference management across web and mobile with production delivery verification
+- Add retry logic and delivery failure handling
+- Add production delivery observability and alerting
+- Turn the existing departure / on-route / issue / review events into true device notifications
 
-### Payments baseline
+### Payments and payouts depth
 
-- Keep Stripe Checkout as the first real payment rail
 - Turn on real Stripe credentials in development and staging
-- Add production webhook verification and end-to-end smoke coverage
+- Verify production-style webhook handling end to end
+- Add real refund handling synchronized with Stripe
+- Add provider payout ledger
+- Add crew payout ledger
+- Define weekly / instant payout rules where applicable
 
 ## Phase 2: Needed For Launch
 
-### Provider operations depth
+### Provider scheduling and dispatch depth
 
 - Route-aware daily scheduling
 - Crew/day load balancing
@@ -71,121 +68,139 @@ The next phases focus on operational reliability, real-world delivery, and launc
   - service area
   - staffing mode
   - acceptance windows
-- Make YardMatch scheduling interoperable with outside calendars so providers can manage:
-  - YardMatch clients
-  - direct/off-platform clients
-  - personal calendar blocks
-- Expand calendar sync beyond the current feed into:
-  - subscribable iCal / ICS feeds
-  - Google Calendar sync
-  - Apple Calendar / iCal subscription support
-  - Outlook support
-  - external-event blocking so outside appointments reduce YardMatch availability automatically
+  - dispatch timing / route-leader behavior
 
-### Arrival and live service tracking
+### Calendar interoperability, part 2
 
-- Upgrade computed arrival tracking to true device-backed live location sharing
-- Add better ETA recalculation
-- Add arrival confirmation and “work started” visibility on both web and mobile
-- Add customer-facing route confidence messaging and fallback handling
+Already done:
 
-### Financial operations
+- subscribable ICS feed
+- merged provider calendar view
+- manual outside-client / personal block handling
+- outside blocks reducing YardMatch availability
 
-- Real refunds with Stripe synchronization
-- Provider payout ledger
-- Crew payout ledger
-- Weekly / instant payout rules where applicable
+Still left:
 
-### Internal ops tooling
+- Google Calendar sync polish
+- Apple Calendar / iCal subscription polish
+- stronger external sync behavior for mixed books of business
+- optional deeper two-way sync later, if it proves worth the added complexity
 
-- Admin tools for:
-  - booking intervention
-  - refund override
-  - support triage
-  - dispute resolution
-  - provider verification
+### Search, address, and quote intelligence
 
-## Phase 3: Nice To Have After Launch
-
-### Marketplace optimization
-
-- Better search and ranking based on:
+- Improve geocoding quality beyond the current fallback + basic place search setup
+- Normalize addresses more aggressively before matching and booking
+- Improve explainability and confidence of quote / property measurement logic
+- Improve provider ranking using:
   - reliability
   - conversion
-  - property fit
+  - service fit
   - distance and travel burden
-  - sponsored placement controls
+  - sponsored placement rules
+
+### Financial and internal ops tooling
+
+- Refund overrides for ops
+- Provider verification workflow
+- Richer booking intervention controls
+- Deeper dispute evidence and resolution flows
+- Audit-friendly internal tooling for support and financial exceptions
+
+## Phase 3: Nice To Have After Launch
 
 ### Customer experience polish
 
 - Recurring service subscriptions
-- Saved preferences and rebooking shortcuts
-- Better arrival/tracking notifications
-- Richer post-service follow-up and loyalty loops
+- Saved preferences and faster rebooking loops
+- Better post-service loyalty and follow-up flows
+- Richer customer-facing arrival/tracking notifications
 
 ### Crew operations polish
 
-- Performance and attendance summaries
-- More detailed availability constraints
+- Performance summaries
+- Attendance history
+- Richer availability constraints
 - Crew earnings and payout history
-- Better assignment and schedule forecasting
+- Better assignment forecasting
 
-### Growth and business tools
+### Provider business tooling
 
-- Provider verification and onboarding automation
-- Richer business profile controls
 - Team permissions
-- Partnership and affiliate deal workflows
+- Richer business profile controls
+- Onboarding automation
+- Partnership / affiliate workflows
+
+## What Is Already Done
+
+The following items are no longer roadmap gaps and should be treated as completed foundation:
+
+- password reset and account recovery
+- mobile secure session persistence
+- optional biometric unlock on mobile
+- place search baseline
+- in-app notifications and preference management
+- support ticketing and dispute flows
+- provider late notices and service exception handling
+- provider ops queue and dispute resolution UI
+- Stripe Checkout scaffold and webhook plumbing
+- provider ICS export and outside-calendar blocking
+- external iCal calendar import into provider availability blocking
+- device-backed provider live route tracking
 
 ## Recommended Execution Order
 
-1. Real auth completion
-2. Notification delivery beyond in-app
-3. Calendar interoperability and outside-client schedule blocking
-4. Fulfillment edge cases and operational states
-5. Turn on real Stripe keys and finish payment/payout depth
-6. Upgrade computed arrival tracking to real device-backed tracking
-7. Internal ops/admin layer
-8. Search/ranking optimization
+1. Real notification delivery beyond in-app
+2. Real Google / Apple auth
+3. Turn on real Stripe keys and finish refund / payout depth
+4. Google / Apple calendar sync polish
+5. Route-aware scheduling and load balancing
+6. Search / ranking / quote intelligence improvements
+7. Richer ops and financial admin tooling
+8. Post-launch loyalty, subscriptions, and deeper business tooling
 
-## Arrival Tracking Notes
+## Notes
 
-The first version of arrival tracking is intentionally lightweight:
+### Arrival tracking
 
-- the business owner is the default route leader and marks the booking `on route`
-- the backend computes a live route position from the route leader's base location toward the service property
-- customers and providers can view ETA, progress, remaining distance, and a live map-style arrival panel
+Already done:
 
-The next upgrade path is:
+- provider-led route start
+- customer-facing arrival banner + full map
+- provider-device-backed live tracking
+- fallback to estimated route when live location is unavailable
 
-- device-backed live location updates from the active route leader mobile app
+Still left:
+
+- background location behavior if desired later
 - stronger ETA recalculation
-- better route confidence and exception handling when progress stalls
 - delegated route leadership when the owner is not traveling with the crew
 
-## Payments Notes
+### Payments
 
-Stripe is on the roadmap as the long-term payment system of record for customer payments.
+Already done:
 
-Current direction:
+- Stripe Checkout API shape
+- webhook-ready settlement flow
+- customer web + mobile payment entry points
 
-- hosted Stripe Checkout first
-- verified webhook-based settlement
-- then refunds, provider payouts, and crew payouts
+Still left:
 
-That sequence gives YardMatch a reliable core payments path before expanding into a full marketplace money movement layer.
+- real secrets and live processor verification
+- refunds
+- provider payouts
+- crew payouts
 
-## Calendar Interoperability Notes
+### Calendar
 
-YardMatch should eventually act like the scheduling source of truth for providers without forcing them to abandon outside work.
+Already done:
 
-Target direction:
+- provider subscription endpoint
+- public ICS feed
+- merged provider calendar timeline
+- external blocking against YardMatch availability
+- external iCal feed import for outside calendars
 
-- publish a clean subscribable iCal / ICS feed for YardMatch jobs
-- support one-way subscription into Apple Calendar, Google Calendar, and Outlook
-- support two-way or semi-synced blocking where outside events can reduce YardMatch availability
-- distinguish between:
-  - YardMatch jobs
-  - direct/off-platform clients
-  - personal blocked time
-- make it easy for providers to manage a mixed book of business from one calendar workflow
+Still left:
+
+- deeper Google / Apple calendar interoperability
+- sync polish for mixed on-platform and off-platform schedules

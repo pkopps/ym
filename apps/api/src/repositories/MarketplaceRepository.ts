@@ -16,6 +16,7 @@ import {
   NotificationDeliveryRecord,
   NotificationPreferences,
   PaymentRecord,
+  PushDevice,
   ProviderProfile,
   ProviderReview,
   SupportOpsTicket,
@@ -27,6 +28,8 @@ export interface AuthIdentityRecord {
   userId: string;
   email: string;
   passwordHash?: string;
+  googleSubject?: string;
+  appleSubject?: string;
   role: CustomerProfile["role"] | ProviderProfile["role"] | CrewMemberProfile["role"];
   sessionVersion: number;
   resetPasswordCodeHash?: string;
@@ -95,6 +98,9 @@ export interface MarketplaceRepository {
     deliveryId: string,
     updates: Partial<NotificationDeliveryRecord>
   ): Promise<NotificationDeliveryRecord | undefined>;
+  upsertPushDevice(device: PushDevice): Promise<PushDevice>;
+  deactivatePushDevice(token: string): Promise<boolean>;
+  listActivePushDevicesByRecipient(recipientId: string, role: PushDevice["role"]): Promise<PushDevice[]>;
   createProviderCrewConversation(conversation: ProviderCrewConversation): Promise<ProviderCrewConversation>;
   findProviderCrewConversationById(conversationId: string): Promise<ProviderCrewConversation | undefined>;
   findProviderCrewConversationByCrewMatchId(
@@ -124,6 +130,10 @@ export interface MarketplaceRepository {
   createCustomerProviderMessage(message: CustomerProviderMessage): Promise<CustomerProviderMessage>;
   listCustomerProviderMessages(conversationId: string): Promise<CustomerProviderMessage[]>;
   findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined>;
+  findAuthIdentityByProvider(
+    provider: "google" | "apple",
+    subject: string
+  ): Promise<AuthIdentityRecord | undefined>;
   findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined>;
   updateAuthIdentity(
     userId: string,

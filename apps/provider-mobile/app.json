@@ -7,16 +7,26 @@
     "orientation": "default",
     "plugins": [
       [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "YardMatch uses Face ID so you can quickly reopen the provider app on this device."
+        }
+      ],
+      [
         "expo-location",
         {
           "locationWhenInUsePermission": "YardMatch uses your location while you are heading to a property so customers can follow your live arrival ETA."
         }
-      ]
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-notifications"
     ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "YardMatch uses your location while you are heading to a property so customers can follow your live arrival ETA."
+        "NSLocationWhenInUseUsageDescription": "YardMatch uses your location while you are heading to a property so customers can follow your live arrival ETA.",
+        "NSFaceIDUsageDescription": "YardMatch uses Face ID so you can quickly reopen the provider app on this device."
       }
     },
     "android": {

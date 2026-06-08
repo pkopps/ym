@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   AppNotification,
@@ -18,7 +18,8 @@ import { useCrewSession } from "../session/CrewSessionContext";
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
 export function SupportScreen() {
-  const { envelope, signOut } = useCrewSession();
+  const { biometricAvailable, biometricEnabled, biometricLabel, envelope, setBiometricEnabled, signOut } =
+    useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -145,6 +146,22 @@ export function SupportScreen() {
     }
   }
 
+  async function handleBiometricToggle(nextValue: boolean) {
+    const updated = await setBiometricEnabled(nextValue);
+    if (updated) {
+      setStatusMessage(
+        nextValue
+          ? `${biometricLabel} will be used when you reopen the crew app.`
+          : "Biometric unlock turned off for this app."
+      );
+      return;
+    }
+
+    if (nextValue) {
+      setErrorMessage(`Unable to enable ${biometricLabel} right now.`);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Account" title="Earnings and help">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -165,6 +182,26 @@ export function SupportScreen() {
           {(matchesResponse?.crewMember.availableWeekdays ?? []).join(", ")} •{" "}
           {matchesResponse?.crewMember.willingToTravelMiles ?? 0} mile travel radius
         </Text>
+      </InfoCard>
+
+      <InfoCard title="App lock" description="Keep your work app quick to open, but not wide open">
+        <View style={styles.switchRow}>
+          <View style={styles.ticketCopy}>
+            <Text style={styles.title}>Use {biometricLabel}</Text>
+            <Text style={styles.meta}>
+              {biometricAvailable
+                ? "Ask for biometric unlock after the app has been away for about a minute."
+                : "Face ID or another enrolled biometric method is not available on this device yet."}
+            </Text>
+          </View>
+          <Switch
+            disabled={!biometricAvailable || isWorking}
+            onValueChange={(value) => {
+              void handleBiometricToggle(value);
+            }}
+            value={biometricEnabled}
+          />
+        </View>
       </InfoCard>
 
       <InfoCard title="Updates" description={`${unreadCount} unread`}>
@@ -414,6 +451,12 @@ const styles = StyleSheet.create({
   ticketCopy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
   },
   logoutButton: {
     alignItems: "center",

@@ -15,6 +15,7 @@ import {
   NotificationDeliveryRecord,
   NotificationPreferences,
   PaymentRecord,
+  PushDevice,
   ProviderProfile,
   ProviderReview,
   ReviewInvite,
@@ -35,6 +36,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly notifications: AppNotification[] = [];
   private readonly notificationPreferences: NotificationPreferences[] = [];
   private readonly notificationDeliveries: NotificationDeliveryRecord[] = [];
+  private readonly pushDevices: PushDevice[] = [];
   private readonly crewMatches: CrewMatchCandidate[] = [];
   private readonly providerCrewConversations: ProviderCrewConversation[] = [];
   private readonly providerCrewMessages: ProviderCrewMessage[] = [];
@@ -381,6 +383,37 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return delivery;
   }
 
+  public async upsertPushDevice(device: PushDevice): Promise<PushDevice> {
+    const existing = this.pushDevices.find((item) => item.token === device.token);
+    if (existing) {
+      Object.assign(existing, device);
+      return existing;
+    }
+
+    this.pushDevices.push(device);
+    return device;
+  }
+
+  public async deactivatePushDevice(token: string): Promise<boolean> {
+    const device = this.pushDevices.find((item) => item.token === token);
+    if (!device) {
+      return false;
+    }
+
+    device.isActive = false;
+    device.updatedAt = new Date().toISOString();
+    return true;
+  }
+
+  public async listActivePushDevicesByRecipient(
+    recipientId: string,
+    role: PushDevice["role"]
+  ): Promise<PushDevice[]> {
+    return this.pushDevices
+      .filter((device) => device.userId === recipientId && device.role === role && device.isActive)
+      .map((device) => ({ ...device }));
+  }
+
   public async createProviderCrewConversation(
     conversation: ProviderCrewConversation
   ): Promise<ProviderCrewConversation> {
@@ -479,6 +512,15 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined> {
     return this.authIdentities.find((identity) => identity.email.toLowerCase() === email.toLowerCase());
+  }
+
+  public async findAuthIdentityByProvider(
+    provider: "google" | "apple",
+    subject: string
+  ): Promise<AuthIdentityRecord | undefined> {
+    return this.authIdentities.find((identity) =>
+      provider === "google" ? identity.googleSubject === subject : identity.appleSubject === subject
+    );
   }
 
   public async findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined> {
@@ -670,6 +712,8 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       email,
       role,
       passwordHash,
+      googleSubject: undefined,
+      appleSubject: undefined,
       sessionVersion: 1
     });
   }

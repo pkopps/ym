@@ -17,6 +17,7 @@ import {
   NotificationDeliveryRecord,
   NotificationPreferences,
   PaymentRecord,
+  PushDevice,
   ProviderProfile,
   ProviderReview,
   ReviewInvite,
@@ -981,7 +982,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         title: delivery.title,
         bodyPreview: delivery.bodyPreview,
         errorMessage: delivery.errorMessage,
+        attemptCount: delivery.attemptCount,
         createdAt: new Date(delivery.createdAt),
+        lastAttemptAt: delivery.lastAttemptAt ? new Date(delivery.lastAttemptAt) : null,
+        nextRetryAt: delivery.nextRetryAt ? new Date(delivery.nextRetryAt) : null,
         sentAt: delivery.sentAt ? new Date(delivery.sentAt) : null
       }
     });
@@ -1018,11 +1022,77 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         title: updates.title,
         bodyPreview: updates.bodyPreview,
         errorMessage: updates.errorMessage,
+        attemptCount: updates.attemptCount,
+        lastAttemptAt:
+          updates.lastAttemptAt ? new Date(updates.lastAttemptAt) : updates.lastAttemptAt === undefined ? undefined : null,
+        nextRetryAt:
+          updates.nextRetryAt ? new Date(updates.nextRetryAt) : updates.nextRetryAt === undefined ? undefined : null,
         sentAt: updates.sentAt ? new Date(updates.sentAt) : updates.sentAt === undefined ? undefined : null
       }
     });
 
     return this.mapNotificationDelivery(delivery);
+  }
+
+  public async upsertPushDevice(device: PushDevice): Promise<PushDevice> {
+    const record = await this.prisma.pushDevice.upsert({
+      where: { token: device.token },
+      create: {
+        id: device.id,
+        userId: device.userId,
+        role: device.role,
+        platform: device.platform,
+        provider: device.provider,
+        token: device.token,
+        isActive: device.isActive,
+        createdAt: new Date(device.createdAt),
+        updatedAt: new Date(device.updatedAt),
+        lastSeenAt: new Date(device.lastSeenAt)
+      },
+      update: {
+        userId: device.userId,
+        role: device.role,
+        platform: device.platform,
+        provider: device.provider,
+        isActive: device.isActive,
+        updatedAt: new Date(device.updatedAt),
+        lastSeenAt: new Date(device.lastSeenAt)
+      }
+    });
+    return this.mapPushDevice(record);
+  }
+
+  public async deactivatePushDevice(token: string): Promise<boolean> {
+    const record = await this.prisma.pushDevice
+      .update({
+        where: { token },
+        data: {
+          isActive: false,
+          updatedAt: new Date()
+        }
+      })
+      .catch((error: any) => {
+        if (error?.code === "P2025") {
+          return undefined;
+        }
+        throw error;
+      });
+    return Boolean(record);
+  }
+
+  public async listActivePushDevicesByRecipient(
+    recipientId: string,
+    role: PushDevice["role"]
+  ): Promise<PushDevice[]> {
+    const records = await this.prisma.pushDevice.findMany({
+      where: {
+        userId: recipientId,
+        role,
+        isActive: true
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+    return records.map((record: any) => this.mapPushDevice(record));
   }
 
   public async createProviderCrewConversation(
@@ -1217,6 +1287,31 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           userId: identity.id,
           email: identity.email,
           passwordHash: identity.passwordHash ?? undefined,
+          googleSubject: identity.googleSubject ?? undefined,
+          appleSubject: identity.appleSubject ?? undefined,
+          role: identity.role as AuthIdentityRecord["role"],
+          sessionVersion: identity.sessionVersion,
+          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
+          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
+          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
+        }
+      : undefined;
+  }
+
+  public async findAuthIdentityByProvider(
+    provider: "google" | "apple",
+    subject: string
+  ): Promise<AuthIdentityRecord | undefined> {
+    const identity = await this.prisma.userAccount.findFirst({
+      where: provider === "google" ? { googleSubject: subject } : { appleSubject: subject }
+    });
+    return identity
+      ? {
+          userId: identity.id,
+          email: identity.email,
+          passwordHash: identity.passwordHash ?? undefined,
+          googleSubject: identity.googleSubject ?? undefined,
+          appleSubject: identity.appleSubject ?? undefined,
           role: identity.role as AuthIdentityRecord["role"],
           sessionVersion: identity.sessionVersion,
           resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
@@ -1235,6 +1330,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           userId: identity.id,
           email: identity.email,
           passwordHash: identity.passwordHash ?? undefined,
+          googleSubject: identity.googleSubject ?? undefined,
+          appleSubject: identity.appleSubject ?? undefined,
           role: identity.role as AuthIdentityRecord["role"],
           sessionVersion: identity.sessionVersion,
           resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
@@ -1253,6 +1350,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       data: {
         email: updates.email?.toLowerCase(),
         passwordHash: "passwordHash" in updates ? updates.passwordHash ?? null : undefined,
+        googleSubject: "googleSubject" in updates ? updates.googleSubject ?? null : undefined,
+        appleSubject: "appleSubject" in updates ? updates.appleSubject ?? null : undefined,
         sessionVersion: updates.sessionVersion,
         resetPasswordCodeHash:
           "resetPasswordCodeHash" in updates ? updates.resetPasswordCodeHash ?? null : undefined,
@@ -1281,6 +1380,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           userId: identity.id,
           email: identity.email,
           passwordHash: identity.passwordHash ?? undefined,
+          googleSubject: identity.googleSubject ?? undefined,
+          appleSubject: identity.appleSubject ?? undefined,
           role: identity.role as AuthIdentityRecord["role"],
           sessionVersion: identity.sessionVersion,
           resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
@@ -1765,7 +1866,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     title: string;
     bodyPreview: string;
     errorMessage: string | null;
+    attemptCount: number;
     createdAt: Date;
+    lastAttemptAt: Date | null;
+    nextRetryAt: Date | null;
     sentAt: Date | null;
   }): NotificationDeliveryRecord {
     return {
@@ -1781,8 +1885,37 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       title: record.title,
       bodyPreview: record.bodyPreview,
       errorMessage: record.errorMessage ?? undefined,
+      attemptCount: record.attemptCount,
       createdAt: record.createdAt.toISOString(),
+      lastAttemptAt: record.lastAttemptAt?.toISOString(),
+      nextRetryAt: record.nextRetryAt?.toISOString(),
       sentAt: record.sentAt?.toISOString()
+    };
+  }
+
+  private mapPushDevice(record: {
+    id: string;
+    userId: string;
+    role: string;
+    platform: string;
+    provider: string;
+    token: string;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    lastSeenAt: Date;
+  }): PushDevice {
+    return {
+      id: record.id,
+      userId: record.userId,
+      role: record.role as PushDevice["role"],
+      platform: record.platform as PushDevice["platform"],
+      provider: record.provider as PushDevice["provider"],
+      token: record.token,
+      isActive: record.isActive,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      lastSeenAt: record.lastSeenAt.toISOString()
     };
   }
 

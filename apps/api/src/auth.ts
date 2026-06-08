@@ -17,6 +17,13 @@ interface JwtPayload extends SessionActor {
   exp: number;
 }
 
+interface SignedPurposePayload<TPayload> {
+  purpose: string;
+  payload: TPayload;
+  iat: number;
+  exp: number;
+}
+
 function base64UrlEncode(value: string | Buffer): string {
   return Buffer.from(value)
     .toString("base64")
@@ -33,6 +40,16 @@ function base64UrlDecode(value: string): string {
 
 function getJwtSecret(): string {
   return process.env.JWT_SECRET?.trim() || DEV_JWT_SECRET;
+}
+
+function verifyHmacSignature(unsignedToken: string, providedSignature: string): void {
+  const expectedSignature = createHmac("sha256", getJwtSecret()).update(unsignedToken).digest("base64url");
+  const providedBuffer = Buffer.from(providedSignature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+
+  if (providedBuffer.length !== expectedBuffer.length || !timingSafeEqual(providedBuffer, expectedBuffer)) {
+    throw new Error("Invalid bearer token");
+  }
 }
 
 export function hashPassword(password: string): string {
@@ -94,6 +111,50 @@ export function signSessionToken(actor: SessionActor): string {
   return `${unsignedToken}.${signature}`;
 }
 
+export function signScopedToken<TPayload>(
+  purpose: string,
+  payload: TPayload,
+  expiresInSeconds: number
+): string {
+  const header = {
+    alg: "HS256",
+    typ: "JWT"
+  };
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const signedPayload: SignedPurposePayload<TPayload> = {
+    purpose,
+    payload,
+    iat: issuedAt,
+    exp: issuedAt + expiresInSeconds
+  };
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(signedPayload));
+  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
+  const signature = createHmac("sha256", getJwtSecret()).update(unsignedToken).digest("base64url");
+  return `${unsignedToken}.${signature}`;
+}
+
+export function verifyScopedToken<TPayload>(token: string, expectedPurpose: string): TPayload {
+  const [encodedHeader, encodedPayload, providedSignature] = token.split(".");
+  if (!encodedHeader || !encodedPayload || !providedSignature) {
+    throw new Error("Malformed bearer token");
+  }
+
+  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
+  verifyHmacSignature(unsignedToken, providedSignature);
+
+  const parsedPayload = JSON.parse(base64UrlDecode(encodedPayload)) as SignedPurposePayload<TPayload>;
+  const now = Math.floor(Date.now() / 1000);
+  if (parsedPayload.exp <= now) {
+    throw new Error("Expired bearer token");
+  }
+  if (parsedPayload.purpose !== expectedPurpose) {
+    throw new Error("Invalid bearer token");
+  }
+
+  return parsedPayload.payload;
+}
+
 export function verifySessionToken(token: string): SessionActor {
   const [encodedHeader, encodedPayload, providedSignature] = token.split(".");
   if (!encodedHeader || !encodedPayload || !providedSignature) {
@@ -101,10 +162,7 @@ export function verifySessionToken(token: string): SessionActor {
   }
 
   const unsignedToken = `${encodedHeader}.${encodedPayload}`;
-  const expectedSignature = createHmac("sha256", getJwtSecret()).update(unsignedToken).digest("base64url");
-  if (!timingSafeEqual(Buffer.from(providedSignature), Buffer.from(expectedSignature))) {
-    throw new Error("Invalid bearer token");
-  }
+  verifyHmacSignature(unsignedToken, providedSignature);
 
   const parsedPayload = JSON.parse(base64UrlDecode(encodedPayload)) as JwtPayload;
   const now = Math.floor(Date.now() / 1000);

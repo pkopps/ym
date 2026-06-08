@@ -11,6 +11,8 @@ model UserAccount {
   id                    String                 @id
   email                 String                 @unique
   passwordHash          String?
+  googleSubject         String?                @unique
+  appleSubject          String?                @unique
   sessionVersion        Int                    @default(1)
   resetPasswordCodeHash String?
   resetPasswordExpiresAt DateTime?
@@ -332,10 +334,29 @@ model NotificationDelivery {
   title         String
   bodyPreview   String
   errorMessage  String?
+  attemptCount  Int      @default(0)
   createdAt     DateTime
+  lastAttemptAt DateTime?
+  nextRetryAt   DateTime?
   sentAt        DateTime?
 
   @@index([recipientId, createdAt])
   @@index([notificationId])
   @@map("notification_deliveries")
+}
+
+model PushDevice {
+  id         String   @id
+  userId     String
+  role       String
+  platform   String
+  provider   String
+  token      String   @unique
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime
+  lastSeenAt DateTime
+
+  @@index([userId, role, isActive])
+  @@map("push_devices")
 }

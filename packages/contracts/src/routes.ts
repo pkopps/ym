@@ -4,6 +4,7 @@ export class ApiRoutes {
   public static readonly currentUser = "/api/auth/me";
   public static readonly requestPasswordReset = "/api/auth/password-reset/request";
   public static readonly confirmPasswordReset = "/api/auth/password-reset/confirm";
+  public static readonly completeSocialSignup = "/api/auth/social/complete";
   public static readonly googleAuthStart = "/api/auth/google/start";
   public static readonly appleAuthStart = "/api/auth/apple/start";
   public static readonly placeSearch = "/api/places/search";
@@ -21,6 +22,8 @@ export class ApiRoutes {
   public static readonly notificationsRead = "/api/notifications/read";
   public static readonly notificationPreferences = "/api/notifications/preferences";
   public static readonly notificationDeliveries = "/api/notifications/deliveries";
+  public static readonly notificationPushDevices = "/api/notifications/devices";
+  public static readonly notificationPushDevicesRemove = "/api/notifications/devices/remove";
   public static readonly customerReviewOpportunities = "/api/customers/review-opportunities";
   public static readonly createBooking = "/api/bookings";
   public static readonly listBookings = "/api/bookings";
@@ -57,6 +60,9 @@ export class ApiRoutes {
   public static readonly providerCalendar = "/api/calendar/feed";
   public static readonly providerCalendarSubscription = "/api/calendar/subscription";
   public static readonly providerCalendarOverview = "/api/calendar/overview";
+  public static readonly providerCalendarImports = "/api/calendar/imports";
+  public static readonly providerCalendarImportsSync = "/api/calendar/imports/sync";
+  public static readonly providerCalendarImportsRemove = "/api/calendar/imports/remove";
   public static readonly opsSupportTickets = "/api/support/ops/tickets";
   public static readonly opsSupportTicketsUpdate = "/api/support/ops/tickets/update";
 }

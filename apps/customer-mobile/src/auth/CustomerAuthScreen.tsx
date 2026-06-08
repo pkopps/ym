@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
+import { openAuthSessionAsync } from "expo-web-browser";
 import { BrandTokens } from "@yardmatch/branding";
 import { AuthenticatedUserEnvelope, AuthFlowMode } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
@@ -23,6 +24,13 @@ function getModeCopy(mode: AuthFlowMode) {
       };
 }
 
+const customerRedirectUri = "yardmatch-customer://auth/complete";
+
+function getCustomerWebBaseUrl() {
+  const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  return runtimeEnv?.EXPO_PUBLIC_APP_BASE_URL ?? "http://localhost:3000";
+}
+
 export function CustomerAuthScreen({
   onAuthenticated
 }: {
@@ -37,6 +45,7 @@ export function CustomerAuthScreen({
   const [resetCodePreview, setResetCodePreview] = useState("");
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [pendingSignupUrl, setPendingSignupUrl] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
@@ -51,18 +60,82 @@ export function CustomerAuthScreen({
     });
 
     if (method !== "password") {
-      setErrorMessage("Google and Apple sign-in are still mobile placeholders.");
+      try {
+        setIsSubmitting(true);
+        setErrorMessage("");
+        setPendingSignupUrl("");
+        const api = createCustomerMobileApiClient();
+        const startUrl =
+          method === "google"
+            ? api.getGoogleAuthStartUrl({
+                role: "customer",
+                mode,
+                redirectUri: customerRedirectUri
+              })
+            : api.getAppleAuthStartUrl({
+                role: "customer",
+                mode,
+                redirectUri: customerRedirectUri
+              });
+        const result = await openAuthSessionAsync(startUrl, customerRedirectUri);
+        if (result.type !== "success" || !result.url) {
+          return;
+        }
+
+        const callbackUrl = new URL(result.url);
+        const status = callbackUrl.searchParams.get("authStatus");
+        if (status === "success") {
+          const token = callbackUrl.searchParams.get("token");
+          const expiresAtIso = callbackUrl.searchParams.get("expiresAtIso");
+          if (!token || !expiresAtIso) {
+            throw new Error("The social sign-in callback was missing session details.");
+          }
+          api.setAuthToken(token);
+          const currentUser = await api.getCurrentUser();
+          if (currentUser.user.role !== "customer") {
+            throw new Error("Use a customer account in the customer app.");
+          }
+          onAuthenticated({
+            session: {
+              token,
+              expiresAtIso,
+              expiresInSeconds: Math.max(0, Math.round((Date.parse(expiresAtIso) - Date.now()) / 1000))
+            },
+            user: currentUser.user
+          });
+          return;
+        }
+
+        if (status === "pending-signup") {
+          const webUrl = new URL("/auth/complete", getCustomerWebBaseUrl());
+          callbackUrl.searchParams.forEach((value, key) => {
+            webUrl.searchParams.set(key, value);
+          });
+          setPendingSignupUrl(webUrl.toString());
+          setErrorMessage("Finish the last few account details on the web, then come back to the app.");
+          return;
+        }
+
+        throw new Error(
+          callbackUrl.searchParams.get("message") ?? "Unable to finish the social sign-in right now."
+        );
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to finish social sign-in right now.");
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
 
     if (mode !== "login") {
-      setErrorMessage("Mobile signup is not wired yet. Use the web signup flow for now.");
+      setErrorMessage("Mobile signup is not wired yet. Use Google or Apple above, or finish signup on the web.");
       return;
     }
 
     try {
       setIsSubmitting(true);
       setErrorMessage("");
+      setPendingSignupUrl("");
       const api = createCustomerMobileApiClient();
       const envelope = await api.login({
         email: email.trim(),
@@ -180,6 +253,12 @@ export function CustomerAuthScreen({
         </Pressable>
 
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+
+        {pendingSignupUrl ? (
+          <Pressable onPress={() => void openAuthSessionAsync(pendingSignupUrl)} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Finish social signup on the web</Text>
+          </Pressable>
+        ) : null}
 
         {showRecovery ? (
           <View style={styles.recoveryCard}>

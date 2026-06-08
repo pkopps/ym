@@ -40,7 +40,8 @@ export function SupportScreen() {
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const { envelope, signOut } = useCustomerSession();
+  const { biometricAvailable, biometricEnabled, biometricLabel, envelope, setBiometricEnabled, signOut } =
+    useCustomerSession();
 
   async function loadAccount() {
     if (!envelope?.session.token) {
@@ -224,6 +225,22 @@ export function SupportScreen() {
     void loadAccount();
   }, [envelope?.session.token]);
 
+  async function handleBiometricToggle(nextValue: boolean) {
+    const updated = await setBiometricEnabled(nextValue);
+    if (updated) {
+      setStatusMessage(
+        nextValue
+          ? `${biometricLabel} will be used when you reopen the customer app.`
+          : "Biometric unlock turned off for this app."
+      );
+      return;
+    }
+
+    if (nextValue) {
+      setErrorMessage(`Unable to enable ${biometricLabel} right now.`);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Account" title="Your account">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -252,6 +269,26 @@ export function SupportScreen() {
           ))}
         </View>
         <CustomerPropertyForm isWorking={isWorking} onSubmit={handleCreateProperty} submitLabel="Add property" />
+      </InfoCard>
+
+      <InfoCard title="App lock" description="Keep the customer app easy to reopen, but protected">
+        <View style={styles.switchRow}>
+          <View style={styles.copy}>
+            <Text style={styles.title}>Use {biometricLabel}</Text>
+            <Text style={styles.meta}>
+              {biometricAvailable
+                ? "Ask for biometric unlock after the app has been away for about a minute."
+                : "Face ID or another enrolled biometric method is not available on this device yet."}
+            </Text>
+          </View>
+          <Switch
+            disabled={!biometricAvailable || isWorking}
+            onValueChange={(value) => {
+              void handleBiometricToggle(value);
+            }}
+            value={biometricEnabled}
+          />
+        </View>
       </InfoCard>
 
       <InfoCard title="Notifications" description="Only what matters">
@@ -525,6 +562,12 @@ const styles = StyleSheet.create({
   },
   chipLabelActive: {
     color: "#ffffff"
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
   },
   input: {
     borderRadius: BrandTokens.radius.sm,

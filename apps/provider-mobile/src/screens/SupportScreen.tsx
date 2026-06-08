@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   AppNotification,
+  CreateExternalCalendarImportRequest,
   CreateSupportTicketRequest,
+  ExternalCalendarProvider,
   ExternalCalendarBlockType,
   getExternalCalendarBlockLabel,
   NotificationDeliveryRecord,
   NotificationPreferences,
+  ProviderCalendarImportsResponse,
   ProviderCalendarSubscriptionResponse,
   ProviderProfile,
   ProviderStaffingOverview,
@@ -26,6 +29,7 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "travel-buffer",
   "equipment-maintenance"
 ];
+const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
 
 function formatLocalDateTimeValue(date: Date) {
   const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
@@ -33,7 +37,14 @@ function formatLocalDateTimeValue(date: Date) {
 }
 
 export function SupportScreen() {
-  const { envelope, signOut } = useProviderSession();
+  const {
+    biometricAvailable,
+    biometricEnabled,
+    biometricLabel,
+    envelope,
+    setBiometricEnabled,
+    signOut
+  } = useProviderSession();
   const [provider, setProvider] = useState<ProviderProfile | undefined>();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
   const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
@@ -42,6 +53,7 @@ export function SupportScreen() {
   const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
   const [calendarSubscription, setCalendarSubscription] =
     useState<ProviderCalendarSubscriptionResponse | undefined>();
+  const [calendarImports, setCalendarImports] = useState<ProviderCalendarImportsResponse | undefined>();
   const [unreadCount, setUnreadCount] = useState(0);
   const [selectedIssueType, setSelectedIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
@@ -49,6 +61,9 @@ export function SupportScreen() {
   const [description, setDescription] = useState("");
   const [blockTitle, setBlockTitle] = useState("Off-platform client");
   const [blockType, setBlockType] = useState<ExternalCalendarBlockType>("off-platform-client");
+  const [importTitle, setImportTitle] = useState("Google Calendar - Outside work");
+  const [importProvider, setImportProvider] = useState<ExternalCalendarProvider>("google");
+  const [importFeedUrl, setImportFeedUrl] = useState("");
   const [blockStartText, setBlockStartText] = useState(() =>
     formatLocalDateTimeValue(new Date(Date.now() + 24 * 60 * 60 * 1000))
   );
@@ -68,14 +83,24 @@ export function SupportScreen() {
     try {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [me, nextOverview, nextTickets, notificationResponse, nextPreferences, nextDeliveries, nextCalendarSubscription] = await Promise.all([
+      const [
+        me,
+        nextOverview,
+        nextTickets,
+        notificationResponse,
+        nextPreferences,
+        nextDeliveries,
+        nextCalendarSubscription,
+        nextCalendarImports
+      ] = await Promise.all([
         api.getCurrentUser(),
         api.getProviderStaffingOverview(),
         api.getSupportTickets(),
         api.getNotifications(),
         api.getNotificationPreferences(),
         api.getNotificationDeliveries(),
-        api.getProviderCalendarSubscription()
+        api.getProviderCalendarSubscription(),
+        api.getProviderCalendarImports()
       ]);
       setProvider(me.user as ProviderProfile);
       setOverview(nextOverview);
@@ -85,6 +110,7 @@ export function SupportScreen() {
       setPreferences(nextPreferences);
       setDeliveries(nextDeliveries.deliveries);
       setCalendarSubscription(nextCalendarSubscription);
+      setCalendarImports(nextCalendarImports);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load settings.");
     }
@@ -200,6 +226,75 @@ export function SupportScreen() {
     });
   }
 
+  async function handleCreateCalendarImport() {
+    if (!envelope?.session.token || !importTitle.trim() || !importFeedUrl.trim()) {
+      setErrorMessage("Add a calendar title and feed URL first.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextImports = await api.createProviderCalendarImport({
+        title: importTitle.trim(),
+        provider: importProvider,
+        feedUrl: importFeedUrl.trim()
+      } satisfies CreateExternalCalendarImportRequest);
+      setCalendarImports(nextImports);
+      setImportFeedUrl("");
+      setStatusMessage("Outside calendar synced into YardMatch.");
+      await loadProvider();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to import that calendar.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleSyncCalendarImport(subscriptionId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextImports = await api.syncProviderCalendarImport({ subscriptionId });
+      setCalendarImports(nextImports);
+      setStatusMessage("Outside calendar import refreshed.");
+      await loadProvider();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh that calendar.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleRemoveCalendarImport(subscriptionId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextImports = await api.removeProviderCalendarImport({ subscriptionId });
+      setCalendarImports(nextImports);
+      setStatusMessage("Outside calendar removed.");
+      await loadProvider();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to remove that calendar.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function handleCreateSupportTicket() {
     if (!envelope?.session.token || subject.trim().length === 0 || description.trim().length === 0) {
       return;
@@ -272,6 +367,22 @@ export function SupportScreen() {
     }
   }
 
+  async function handleBiometricToggle(nextValue: boolean) {
+    const updated = await setBiometricEnabled(nextValue);
+    if (updated) {
+      setStatusMessage(
+        nextValue
+          ? `${biometricLabel} will be used when you reopen the provider app.`
+          : "Biometric unlock turned off for this app."
+      );
+      return;
+    }
+
+    if (nextValue) {
+      setErrorMessage(`Unable to enable ${biometricLabel} right now.`);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Account" title="Settings and payouts">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -294,6 +405,26 @@ export function SupportScreen() {
           >
             <Text style={styles.secondaryButtonLabel}>+5</Text>
           </Pressable>
+        </View>
+      </InfoCard>
+
+      <InfoCard title="App lock" description="Keep the operations app fast, but harder to peek into">
+        <View style={styles.switchRow}>
+          <View style={styles.ticketCopy}>
+            <Text style={styles.title}>Use {biometricLabel}</Text>
+            <Text style={styles.meta}>
+              {biometricAvailable
+                ? "Ask for biometric unlock after the app has been away for about a minute."
+                : "Face ID or another enrolled biometric method is not available on this device yet."}
+            </Text>
+          </View>
+          <Switch
+            disabled={!biometricAvailable || isWorking}
+            onValueChange={(value) => {
+              void handleBiometricToggle(value);
+            }}
+            value={biometricEnabled}
+          />
         </View>
       </InfoCard>
 
@@ -326,7 +457,7 @@ export function SupportScreen() {
 
       <InfoCard title="Calendar sync" description="Keep YardMatch work alongside outside clients">
         <Text style={styles.meta}>
-          Subscribe to your YardMatch schedule in Apple Calendar, Google Calendar, or Outlook so booked jobs show up
+          Subscribe to your YardMatch schedule in Apple Calendar or Google Calendar so booked jobs show up
           next to direct clients and personal blocks.
         </Text>
         <View style={styles.ticketStack}>
@@ -351,6 +482,81 @@ export function SupportScreen() {
           >
             <Text style={styles.secondaryButtonLabel}>Subscribe with webcal</Text>
           </Pressable>
+        </View>
+        <View style={styles.ticketStack}>
+          <Text style={styles.valueText}>Import an outside calendar feed</Text>
+          <Text style={styles.meta}>
+            Paste a Google, Apple, or generic iCal feed URL and YardMatch will pull those events in as blocking time.
+          </Text>
+          <TextInput
+            value={importTitle}
+            onChangeText={setImportTitle}
+            placeholder="Imported calendar title"
+            placeholderTextColor={BrandTokens.colors.inkSoft}
+            style={styles.input}
+          />
+          <View style={styles.issueRow}>
+            {externalCalendarImportProviders.map((option) => (
+              <Pressable
+                key={option}
+                disabled={isWorking}
+                onPress={() => setImportProvider(option)}
+                style={[styles.secondaryButton, importProvider === option && styles.secondaryButtonActive]}
+              >
+                <Text
+                  style={[
+                    styles.secondaryButtonLabel,
+                    importProvider === option && styles.secondaryButtonLabelActive
+                  ]}
+                >
+                  {option === "ical" ? "iCal" : option.charAt(0).toUpperCase() + option.slice(1)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput
+            value={importFeedUrl}
+            onChangeText={setImportFeedUrl}
+            placeholder="Paste an external feed URL"
+            placeholderTextColor={BrandTokens.colors.inkSoft}
+            style={styles.input}
+            autoCapitalize="none"
+          />
+          <Pressable disabled={isWorking} onPress={() => void handleCreateCalendarImport()} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonLabel}>Import outside calendar</Text>
+          </Pressable>
+          {(calendarImports?.subscriptions ?? []).map((subscription) => (
+            <View key={subscription.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}>
+                <Text style={styles.valueText}>{subscription.title}</Text>
+                <Text style={styles.meta}>
+                  {subscription.provider === "ical"
+                    ? "Generic iCal feed"
+                    : `${subscription.provider.charAt(0).toUpperCase()}${subscription.provider.slice(1)} Calendar`}{" "}
+                  • {subscription.importedEventCount} imported events
+                </Text>
+                {subscription.lastSyncedAt ? (
+                  <Text style={styles.meta}>Synced {new Date(subscription.lastSyncedAt).toLocaleString()}</Text>
+                ) : null}
+              </View>
+              <View style={styles.ticketStack}>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void handleSyncCalendarImport(subscription.id)}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Sync</Text>
+                </Pressable>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void handleRemoveCalendarImport(subscription.id)}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
         </View>
         <View style={styles.ticketStack}>
           <Text style={styles.meta}>
@@ -654,6 +860,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700"
   },
+  title: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
+  },
   meta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
@@ -692,6 +902,12 @@ const styles = StyleSheet.create({
   ticketCopy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
+  },
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
   },
   primaryButton: {
     alignItems: "center",

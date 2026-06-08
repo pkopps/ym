@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { signScopedToken } from "../src/auth";
 import { AuthController } from "../src/controllers/AuthController";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
@@ -215,4 +216,115 @@ test("password reset rotates sessions and signs the user back in", async () => {
 
   assert.equal(newMeResponse.getStatusCode(), 200);
   assert.equal(newMeResponse.readJson().user.email, "jordan@example.com");
+});
+
+test("social signup completion creates a new customer account", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+  const pendingToken = signScopedToken(
+    "yardmatch-social-signup",
+    {
+      provider: "google",
+      subject: "google-subject-123",
+      email: "social@example.com",
+      fullName: "Jordan Social",
+      role: "customer",
+      mode: "signup"
+    },
+    60 * 30
+  );
+
+  const response = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/social/complete",
+      body: {
+        pendingToken,
+        role: "customer",
+        fullName: "Jordan Social",
+        phone: "555-0222",
+        address: createAddress()
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    response as never
+  );
+
+  assert.equal(response.getStatusCode(), 201);
+  const envelope = response.readJson();
+  assert.equal(envelope.user.email, "social@example.com");
+  assert.equal(envelope.user.role, "customer");
+  assert.ok(envelope.session.token);
+
+  const identity = await platform.findAuthIdentityByProvider("google", "google-subject-123");
+  assert.ok(identity);
+  assert.equal(identity?.email, "social@example.com");
+});
+
+test("social signup completion links an existing account with the same email", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+
+  const registerResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/register",
+      body: {
+        fullName: "Jordan Rivera",
+        email: "jordan@example.com",
+        password: "Password123!",
+        phone: "555-0200",
+        role: "customer",
+        propertyLabel: "Primary home",
+        address: createAddress()
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    registerResponse as never
+  );
+
+  const pendingToken = signScopedToken(
+    "yardmatch-social-signup",
+    {
+      provider: "apple",
+      subject: "apple-subject-456",
+      email: "jordan@example.com",
+      fullName: "Jordan Rivera",
+      role: "customer",
+      mode: "signup"
+    },
+    60 * 30
+  );
+
+  const response = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/social/complete",
+      body: {
+        pendingToken,
+        role: "customer",
+        fullName: "Jordan Rivera",
+        phone: "555-0200",
+        address: createAddress()
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    response as never
+  );
+
+  assert.equal(response.getStatusCode(), 200);
+  const envelope = response.readJson();
+  assert.equal(envelope.user.email, "jordan@example.com");
+
+  const identity = await platform.findAuthIdentityByProvider("apple", "apple-subject-456");
+  assert.ok(identity);
+  assert.equal(identity?.email, "jordan@example.com");
 });

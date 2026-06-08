@@ -154,7 +154,7 @@ export const apiSpec = {
         tags: ["Auth"],
         summary: "Start Google auth for signup or login",
         description:
-          "Shared Google auth entry point for customer, provider, and crew-member flows. The current scaffold redirects directly into the matching YardMatch web experience.",
+          "Starts the Google OAuth redirect for customer, provider, and crew-member flows. Pass a custom redirectUri when handing the finished session back to a mobile app.",
         parameters: [
           {
             name: "role",
@@ -167,10 +167,16 @@ export const apiSpec = {
             in: "query",
             required: true,
             schema: { type: "string", enum: ["signup", "login"] }
+          },
+          {
+            name: "redirectUri",
+            in: "query",
+            required: false,
+            schema: { type: "string" }
           }
         ],
         responses: {
-          "302": { description: "Redirects into the role-specific YardMatch flow" }
+          "302": { description: "Redirects into Google sign-in and then back into YardMatch" }
         }
       }
     },
@@ -179,7 +185,7 @@ export const apiSpec = {
         tags: ["Auth"],
         summary: "Start Apple auth for signup or login",
         description:
-          "Shared Apple auth entry point for customer, provider, and crew-member flows. The current scaffold redirects directly into the matching YardMatch web experience.",
+          "Starts the Apple OAuth redirect for customer, provider, and crew-member flows. Pass a custom redirectUri when handing the finished session back to a mobile app.",
         parameters: [
           {
             name: "role",
@@ -192,10 +198,53 @@ export const apiSpec = {
             in: "query",
             required: true,
             schema: { type: "string", enum: ["signup", "login"] }
+          },
+          {
+            name: "redirectUri",
+            in: "query",
+            required: false,
+            schema: { type: "string" }
           }
         ],
         responses: {
-          "302": { description: "Redirects into the role-specific YardMatch flow" }
+          "302": { description: "Redirects into Apple sign-in and then back into YardMatch" }
+        }
+      }
+    },
+    "/api/auth/social/complete": {
+      post: {
+        tags: ["Auth"],
+        summary: "Finish a first-time social signup",
+        description:
+          "Completes signup after Google or Apple has verified the email but YardMatch still needs the user’s phone and service address.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                pendingToken: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                role: "customer",
+                fullName: "Jordan Rivera",
+                phone: "555-0100",
+                address: {
+                  line1: "145 Prospect Ave",
+                  city: "Brooklyn",
+                  state: "NY",
+                  postalCode: "11215",
+                  country: "US",
+                  point: {
+                    latitude: 40.6681,
+                    longitude: -73.9836
+                  }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Linked an existing YardMatch account and returned a fresh session" },
+          "201": { description: "Created a new YardMatch account and returned a fresh session" },
+          "401": { description: "Pending social signup token is invalid or expired" }
         }
       }
     },
@@ -770,10 +819,54 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "List recent external notification deliveries",
         description:
-          "Returns recent push, email, and SMS delivery records for the authenticated user. This first version uses mock local providers so the app can exercise delivery workflows before vendor keys are added.",
+          "Returns recent push, email, and SMS delivery records for the authenticated user, including retry metadata for push sends that can be attempted again.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Recent delivery activity" }
+        }
+      }
+    },
+    "/api/notifications/devices": {
+      post: {
+        tags: ["Observability"],
+        summary: "Register a push-capable mobile device",
+        description:
+          "Registers an Expo push token for the authenticated user so booking, route, issue, and review events can fan out to the device.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                platform: "ios",
+                provider: "expo",
+                token: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Registered push device" }
+        }
+      }
+    },
+    "/api/notifications/devices/remove": {
+      post: {
+        tags: ["Observability"],
+        summary: "Deactivate a previously registered push device",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                token: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Push device removed" }
         }
       }
     },
@@ -1289,7 +1382,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Get provider calendar subscription details",
         description:
-          "Returns a subscribable ICS feed URL and webcal URL so providers can add YardMatch jobs and manual outside-calendar blocks to Apple Calendar, Google Calendar, Outlook, and other external scheduling tools.",
+          "Returns a subscribable ICS feed URL and webcal URL so providers can add YardMatch jobs and manual outside-calendar blocks to Apple Calendar, Google Calendar, and other iCal-compatible scheduling tools.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Provider calendar subscription details" }
@@ -1320,6 +1413,84 @@ export const apiSpec = {
         responses: {
           "200": { description: "Merged provider calendar overview" },
           "400": { description: "Invalid date range" }
+        }
+      }
+    },
+    "/api/calendar/imports": {
+      get: {
+        tags: ["Providers"],
+        summary: "List imported outside calendars",
+        description:
+          "Returns the provider's external iCal subscriptions and how many imported events they are currently contributing to availability blocking.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "External calendar imports" }
+        }
+      },
+      post: {
+        tags: ["Providers"],
+        summary: "Add an outside calendar import",
+        description:
+          "Lets a provider paste a Google, Apple, or generic iCal feed URL so outside events can be pulled into YardMatch and block availability automatically.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                title: "Google Calendar - Direct clients",
+                provider: "google",
+                feedUrl: "https://calendar.google.com/calendar/ical/example/public/basic.ics"
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "External calendar import created and synced" }
+        }
+      }
+    },
+    "/api/calendar/imports/sync": {
+      post: {
+        tags: ["Providers"],
+        summary: "Sync an outside calendar import",
+        description:
+          "Fetches the latest iCal events for a saved external calendar subscription and updates the imported blocking events in YardMatch.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                subscriptionId: "external-calendar-subscription-id"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "External calendar import synced" }
+        }
+      }
+    },
+    "/api/calendar/imports/remove": {
+      post: {
+        tags: ["Providers"],
+        summary: "Remove an outside calendar import",
+        description:
+          "Deletes a saved external calendar subscription and removes the imported blocking events tied to that feed.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                subscriptionId: "external-calendar-subscription-id"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "External calendar import removed" }
         }
       }
     },

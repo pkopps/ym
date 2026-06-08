@@ -6,6 +6,7 @@ import {
   Booking,
   CancelBookingRequest,
   ConfirmPasswordResetRequest,
+  CompleteSocialSignupRequest,
   ConfirmBookingRequest,
   CustomerProviderConversation,
   CustomerProviderConversationThread,
@@ -14,6 +15,7 @@ import {
   CreateCheckoutSessionRequest,
   CreateCheckoutSessionResponse,
   CreateBookingDisputeRequest,
+  CreateExternalCalendarImportRequest,
   CrewMatchesResponse,
   CrewOpportunity,
   CustomerProperty,
@@ -27,6 +29,7 @@ import {
   NotificationDeliveriesResponse,
   NotificationListResponse,
   NotificationPreferences,
+  PushDevice,
   PaymentRecord,
   PlaceSearchResponse,
   ProcessReviewInvitesRequest,
@@ -43,15 +46,19 @@ import {
   ObservabilityOverview,
   ProviderCrewConversation,
   ProviderCalendarSubscriptionResponse,
+  ProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
   ProviderProfile,
   ProviderStaffingOverview,
   ProviderReview,
   RegisterUserRequest,
+  RegisterPushDeviceRequest,
   MarkBookingOnRouteRequest,
   MarkBookingLateRequest,
   MarkBookingExceptionRequest,
   ReviewCrewMatchRequest,
+  RemovePushDeviceRequest,
+  RemoveExternalCalendarImportRequest,
   RescheduleBookingRequest,
   SendCustomerProviderMessageRequest,
   SendProviderCrewMessageRequest,
@@ -62,6 +69,7 @@ import {
   SupportOpsTicket,
   SupportTicket,
   ProviderCrewConversationThread,
+  SyncExternalCalendarImportRequest,
   UpdateBookingRouteLocationRequest,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
@@ -154,6 +162,9 @@ export class MarketplaceApiClient {
       role: payload.role,
       mode: payload.mode
     });
+    if (payload.redirectUri) {
+      query.set("redirectUri", payload.redirectUri);
+    }
 
     return `${this.baseUrl}${ApiRoutes.googleAuthStart}?${query.toString()}`;
   }
@@ -163,8 +174,15 @@ export class MarketplaceApiClient {
       role: payload.role,
       mode: payload.mode
     });
+    if (payload.redirectUri) {
+      query.set("redirectUri", payload.redirectUri);
+    }
 
     return `${this.baseUrl}${ApiRoutes.appleAuthStart}?${query.toString()}`;
+  }
+
+  public completeSocialSignup(payload: CompleteSocialSignupRequest): Promise<AuthenticatedUserEnvelope> {
+    return this.postJson(ApiRoutes.completeSocialSignup, payload);
   }
 
   public searchPlaces(query: string): Promise<PlaceSearchResponse> {
@@ -230,6 +248,22 @@ export class MarketplaceApiClient {
     return this.getJson(`${ApiRoutes.providerCalendarOverview}${suffix ? `?${suffix}` : ""}`);
   }
 
+  public getProviderCalendarImports(): Promise<ProviderCalendarImportsResponse> {
+    return this.getJson(ApiRoutes.providerCalendarImports);
+  }
+
+  public createProviderCalendarImport(payload: CreateExternalCalendarImportRequest) {
+    return this.postJson<ProviderCalendarImportsResponse>(ApiRoutes.providerCalendarImports, payload);
+  }
+
+  public syncProviderCalendarImport(payload: SyncExternalCalendarImportRequest) {
+    return this.postJson<ProviderCalendarImportsResponse>(ApiRoutes.providerCalendarImportsSync, payload);
+  }
+
+  public removeProviderCalendarImport(payload: RemoveExternalCalendarImportRequest) {
+    return this.postJson<ProviderCalendarImportsResponse>(ApiRoutes.providerCalendarImportsRemove, payload);
+  }
+
   public getNotifications(): Promise<NotificationListResponse> {
     return this.getJson(ApiRoutes.notifications);
   }
@@ -252,6 +286,14 @@ export class MarketplaceApiClient {
 
   public getNotificationDeliveries(): Promise<NotificationDeliveriesResponse> {
     return this.getJson(ApiRoutes.notificationDeliveries);
+  }
+
+  public registerPushDevice(payload: RegisterPushDeviceRequest): Promise<PushDevice> {
+    return this.postJson(ApiRoutes.notificationPushDevices, payload);
+  }
+
+  public removePushDevice(payload: RemovePushDeviceRequest): Promise<{ success: true }> {
+    return this.postJson(ApiRoutes.notificationPushDevicesRemove, payload);
   }
 
   public updateCrewPreferences(payload: UpdateCrewPreferencesRequest) {

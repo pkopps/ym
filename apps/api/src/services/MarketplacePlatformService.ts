@@ -32,6 +32,7 @@ import {
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
   CreateBookingDisputeRequest,
+  CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
   CreateCheckoutSessionResponse,
   InstantQuoteRequest,
@@ -55,16 +56,20 @@ import {
   NotificationListResponse,
   NotificationPreferences,
   PaymentRecord,
+  PushDevice,
   ProviderProfile,
   ExternalCalendarBlock,
+  ExternalCalendarSubscription,
   ProviderReview,
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
   ProviderCalendarSubscriptionResponse,
+  ProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
   PlaceSearchResponse,
   RegisterUserRequest,
   ReviewCrewMatchRequest,
+  RemoveExternalCalendarImportRequest,
   RescheduleBookingRequest,
   ReviewInvite,
   ReviewInviteDispatch,
@@ -79,9 +84,12 @@ import {
   UpdateBookingRouteLocationRequest,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
+  RegisterPushDeviceRequest,
+  RemovePushDeviceRequest,
   UpdateProviderSettingsRequest,
   SupportTicket,
   SupportOpsTicket,
+  SyncExternalCalendarImportRequest,
   UpdateBookingAddressRequest,
   UpdateBookingAddressResponse
 } from "@yardmatch/contracts";
@@ -138,7 +146,7 @@ export class MarketplacePlatformService {
   }
 
   public async registerUser(
-    payload: RegisterUserRequest,
+    payload: Omit<RegisterUserRequest, "password"> & Partial<Pick<RegisterUserRequest, "password">>,
     passwordHash?: string
   ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
     const now = new Date().toISOString();
@@ -343,6 +351,7 @@ export class MarketplacePlatformService {
 
   public async listNotifications(identity: AuthIdentityRecord): Promise<NotificationListResponse> {
     await this.ensureTimedNotifications(identity);
+    await this.retryDueNotificationDeliveries(identity);
     const notifications = (await this.repository.listNotificationsByRecipient(identity.userId))
       .filter((notification) => notification.recipientRole === identity.role)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -358,6 +367,7 @@ export class MarketplacePlatformService {
     payload: MarkNotificationsReadRequest
   ): Promise<NotificationListResponse> {
     await this.ensureTimedNotifications(identity);
+    await this.retryDueNotificationDeliveries(identity);
     const notifications = (await this.repository.listNotificationsByRecipient(identity.userId)).filter(
       (notification) => notification.recipientRole === identity.role
     );
@@ -406,6 +416,7 @@ export class MarketplacePlatformService {
     identity: AuthIdentityRecord
   ): Promise<NotificationDeliveriesResponse> {
     await this.ensureTimedNotifications(identity);
+    await this.retryDueNotificationDeliveries(identity);
     const deliveries = (await this.repository.listNotificationDeliveriesByRecipient(identity.userId))
       .filter((delivery) => delivery.recipientRole === identity.role)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -413,6 +424,40 @@ export class MarketplacePlatformService {
     return {
       deliveries
     };
+  }
+
+  public async registerPushDevice(
+    identity: AuthIdentityRecord,
+    payload: RegisterPushDeviceRequest
+  ): Promise<PushDevice> {
+    if (payload.provider !== "expo") {
+      throw new HttpError(400, "Unsupported push provider.");
+    }
+    if (!payload.token.trim()) {
+      throw new HttpError(400, "Push token is required.");
+    }
+
+    const nowIso = new Date().toISOString();
+    return this.repository.upsertPushDevice({
+      id: crypto.randomUUID(),
+      userId: identity.userId,
+      role: identity.role,
+      platform: payload.platform,
+      provider: payload.provider,
+      token: payload.token.trim(),
+      isActive: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      lastSeenAt: nowIso
+    });
+  }
+
+  public async removePushDevice(
+    identity: AuthIdentityRecord,
+    payload: RemovePushDeviceRequest
+  ): Promise<{ success: true }> {
+    await this.repository.deactivatePushDevice(payload.token.trim());
+    return { success: true };
   }
 
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
@@ -2869,6 +2914,129 @@ export class MarketplacePlatformService {
     };
   }
 
+  public async getProviderCalendarImports(providerId: string): Promise<ProviderCalendarImportsResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    return {
+      providerId: provider.id,
+      subscriptions: [...(provider.calendarConnection.externalSubscriptions ?? [])].sort((left, right) =>
+        left.title.localeCompare(right.title)
+      ),
+      importedBlockCount: (provider.calendarConnection.externalBlocks ?? []).filter(
+        (block) => block.source === "calendar-import"
+      ).length
+    };
+  }
+
+  public async createProviderCalendarImport(
+    providerId: string,
+    payload: CreateExternalCalendarImportRequest
+  ): Promise<ProviderCalendarImportsResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const title = payload.title.trim();
+    const feedUrl = payload.feedUrl.trim();
+    if (!title) {
+      throw new HttpError(400, "Calendar import title is required");
+    }
+
+    if (!/^https?:\/\/|^webcal:\/\//i.test(feedUrl) && !/^data:text\/calendar/i.test(feedUrl)) {
+      throw new HttpError(400, "Calendar import feedUrl must be an http, https, webcal, or data URL");
+    }
+
+    const subscription: ExternalCalendarSubscription = {
+      id: crypto.randomUUID(),
+      title,
+      provider: payload.provider,
+      feedUrl,
+      importedEventCount: 0,
+      syncStatus: "active"
+    };
+
+    const nextSubscriptions = [...(provider.calendarConnection.externalSubscriptions ?? []), subscription];
+    const imported = await this.syncExternalCalendarSubscription(provider, subscription, nextSubscriptions);
+    return {
+      providerId,
+      subscriptions: imported.calendarConnection.externalSubscriptions ?? [],
+      importedBlockCount: (imported.calendarConnection.externalBlocks ?? []).filter(
+        (block) => block.source === "calendar-import"
+      ).length
+    };
+  }
+
+  public async syncProviderCalendarImport(
+    providerId: string,
+    payload: SyncExternalCalendarImportRequest
+  ): Promise<ProviderCalendarImportsResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const subscription = (provider.calendarConnection.externalSubscriptions ?? []).find(
+      (item) => item.id === payload.subscriptionId
+    );
+    if (!subscription) {
+      throw new HttpError(404, "Calendar import not found");
+    }
+
+    const updatedProvider = await this.syncExternalCalendarSubscription(
+      provider,
+      subscription,
+      provider.calendarConnection.externalSubscriptions ?? []
+    );
+    return {
+      providerId,
+      subscriptions: updatedProvider.calendarConnection.externalSubscriptions ?? [],
+      importedBlockCount: (updatedProvider.calendarConnection.externalBlocks ?? []).filter(
+        (block) => block.source === "calendar-import"
+      ).length
+    };
+  }
+
+  public async removeProviderCalendarImport(
+    providerId: string,
+    payload: RemoveExternalCalendarImportRequest
+  ): Promise<ProviderCalendarImportsResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const nextSubscriptions = (provider.calendarConnection.externalSubscriptions ?? []).filter(
+      (item) => item.id !== payload.subscriptionId
+    );
+    const nextBlocks = (provider.calendarConnection.externalBlocks ?? []).filter(
+      (block) => block.subscriptionId !== payload.subscriptionId
+    );
+
+    const updatedProvider = await this.repository.updateProvider(providerId, {
+      calendarConnection: {
+        ...provider.calendarConnection,
+        externalSubscriptions: nextSubscriptions,
+        externalBlocks: nextBlocks
+      }
+    });
+
+    if (!updatedProvider) {
+      throw new HttpError(500, "Calendar import could not be removed");
+    }
+
+    return {
+      providerId,
+      subscriptions: updatedProvider.calendarConnection.externalSubscriptions ?? [],
+      importedBlockCount: (updatedProvider.calendarConnection.externalBlocks ?? []).filter(
+        (block) => block.source === "calendar-import"
+      ).length
+    };
+  }
+
   public async getProviderCalendarOverview(
     providerId: string,
     input?: {
@@ -2947,6 +3115,150 @@ export class MarketplacePlatformService {
     );
   }
 
+  private async syncExternalCalendarSubscription(
+    provider: ProviderProfile,
+    subscription: ExternalCalendarSubscription,
+    allSubscriptions: ExternalCalendarSubscription[]
+  ): Promise<ProviderProfile> {
+    const icsBody = await this.fetchExternalCalendarFeed(subscription.feedUrl);
+    const importedBlocks = this.parseExternalCalendarFeed({
+      icsBody,
+      subscriptionId: subscription.id,
+      title: subscription.title
+    });
+    const manualBlocks = (provider.calendarConnection.externalBlocks ?? []).filter(
+      (block) => block.source !== "calendar-import" && block.subscriptionId !== subscription.id
+    );
+    const nextBlocks = this.normalizeExternalCalendarBlocks([...manualBlocks, ...importedBlocks]);
+    const nextSubscriptions = allSubscriptions.map((item) =>
+      item.id === subscription.id
+        ? {
+            ...item,
+            importedEventCount: importedBlocks.length,
+            lastSyncedAt: new Date().toISOString(),
+            syncStatus: "active" as const,
+            lastError: undefined
+          }
+        : item
+    );
+
+    await this.ensureExternalCalendarBlocksDoNotConflict({
+      ...provider,
+      calendarConnection: {
+        ...provider.calendarConnection,
+        externalBlocks: nextBlocks,
+        externalSubscriptions: nextSubscriptions
+      }
+    });
+
+    const updatedProvider = await this.repository.updateProvider(provider.id, {
+      calendarConnection: {
+        ...provider.calendarConnection,
+        externalBlocks: nextBlocks,
+        externalSubscriptions: nextSubscriptions,
+        lastSyncedAt: new Date().toISOString()
+      }
+    });
+
+    if (!updatedProvider) {
+      throw new HttpError(500, "Calendar import could not be synced");
+    }
+
+    return updatedProvider;
+  }
+
+  private async fetchExternalCalendarFeed(feedUrl: string): Promise<string> {
+    const normalizedUrl = feedUrl.replace(/^webcal:\/\//i, "https://");
+    const response = await fetch(normalizedUrl);
+    if (!response.ok) {
+      throw new HttpError(400, `Calendar feed returned ${response.status}`);
+    }
+
+    return response.text();
+  }
+
+  private parseExternalCalendarFeed(input: {
+    icsBody: string;
+    subscriptionId: string;
+    title: string;
+  }): ExternalCalendarBlock[] {
+    const unfolded = input.icsBody.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "");
+    const events = unfolded.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) ?? [];
+    const now = Date.now();
+    const oneYearFromNow = now + 366 * 24 * 60 * 60 * 1000;
+
+    const importedBlocks: ExternalCalendarBlock[] = [];
+
+    for (const event of events) {
+        const summary = this.readIcsValue(event, "SUMMARY") ?? input.title;
+        const description = this.readIcsValue(event, "DESCRIPTION");
+        const dtStart = this.readIcsDate(event, "DTSTART");
+        const dtEnd = this.readIcsDate(event, "DTEND");
+        if (!dtStart || !dtEnd || dtEnd.getTime() <= dtStart.getTime()) {
+          continue;
+        }
+
+        if (dtEnd.getTime() < now - 24 * 60 * 60 * 1000 || dtStart.getTime() > oneYearFromNow) {
+          continue;
+        }
+
+        const normalizedTitle = summary.trim() || input.title;
+        importedBlocks.push({
+          id: `${input.subscriptionId}:${this.readIcsValue(event, "UID") ?? crypto.randomUUID()}`,
+          title: normalizedTitle,
+          blockType: "off-platform-client" as const,
+          startIso: dtStart.toISOString(),
+          endIso: dtEnd.toISOString(),
+          notes: description?.trim() || `Imported from ${input.title}`,
+          source: "calendar-import" as const,
+          createdAt: new Date().toISOString(),
+          subscriptionId: input.subscriptionId
+        } satisfies ExternalCalendarBlock);
+    }
+
+    return importedBlocks.sort((left, right) => left.startIso.localeCompare(right.startIso));
+  }
+
+  private readIcsValue(eventBlock: string, propertyName: string): string | undefined {
+    const match = eventBlock.match(new RegExp(`^${propertyName}(?:;[^:]+)?:([^\r\n]+)$`, "m"));
+    return match?.[1]
+      ?.replaceAll("\\n", "\n")
+      .replaceAll("\\,", ",")
+      .replaceAll("\\;", ";")
+      .replaceAll("\\\\", "\\");
+  }
+
+  private readIcsDate(eventBlock: string, propertyName: "DTSTART" | "DTEND"): Date | undefined {
+    const match = eventBlock.match(new RegExp(`^${propertyName}((?:;[^:]+)?):([^\r\n]+)$`, "m"));
+    if (!match) {
+      return undefined;
+    }
+
+    const parameters = match[1] ?? "";
+    const rawValue = match[2]?.trim();
+    if (!rawValue) {
+      return undefined;
+    }
+
+    if (parameters.includes("VALUE=DATE")) {
+      const year = Number(rawValue.slice(0, 4));
+      const month = Number(rawValue.slice(4, 6)) - 1;
+      const day = Number(rawValue.slice(6, 8));
+      return new Date(Date.UTC(year, month, day));
+    }
+
+    const normalized = rawValue.endsWith("Z") ? rawValue.slice(0, -1) : rawValue;
+    const year = Number(normalized.slice(0, 4));
+    const month = Number(normalized.slice(4, 6)) - 1;
+    const day = Number(normalized.slice(6, 8));
+    const hour = Number(normalized.slice(9, 11) || "0");
+    const minute = Number(normalized.slice(11, 13) || "0");
+    const second = Number(normalized.slice(13, 15) || "0");
+    return rawValue.endsWith("Z")
+      ? new Date(Date.UTC(year, month, day, hour, minute, second))
+      : new Date(year, month, day, hour, minute, second);
+  }
+
   private normalizeExternalCalendarBlocks(
     blocks: UpdateProviderSettingsRequest["externalCalendarBlocks"]
   ): ExternalCalendarBlock[] {
@@ -2975,7 +3287,8 @@ export class MarketplacePlatformService {
           endIso: endTime.toISOString(),
           notes: block.notes?.trim() || undefined,
           source: block.source ?? "manual",
-          createdAt: block.createdAt ?? new Date().toISOString()
+          createdAt: block.createdAt ?? new Date().toISOString(),
+          subscriptionId: block.subscriptionId
         } satisfies ExternalCalendarBlock;
       })
       .sort((left, right) => left.startIso.localeCompare(right.startIso));
@@ -3098,6 +3411,13 @@ export class MarketplacePlatformService {
     return this.repository.findAuthIdentityByEmail(email);
   }
 
+  public async findAuthIdentityByProvider(
+    provider: "google" | "apple",
+    subject: string
+  ): Promise<AuthIdentityRecord | undefined> {
+    return this.repository.findAuthIdentityByProvider(provider, subject);
+  }
+
   public async findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined> {
     return this.repository.findAuthIdentityByUserId(userId);
   }
@@ -3107,6 +3427,14 @@ export class MarketplacePlatformService {
     updates: Partial<AuthIdentityRecord>
   ): Promise<AuthIdentityRecord | undefined> {
     return this.repository.updateAuthIdentity(userId, updates);
+  }
+
+  public getAppBaseUrl(): string {
+    return this.appBaseUrl;
+  }
+
+  public getApiBaseUrl(): string {
+    return this.apiBaseUrl;
   }
 
   private async buildProviderStaffingSummaries(
@@ -3649,6 +3977,9 @@ export class MarketplacePlatformService {
           title: notification.title,
           bodyPreview: notification.body.slice(0, 160),
           createdAt: new Date().toISOString(),
+          attemptCount: 0,
+          lastAttemptAt: undefined,
+          nextRetryAt: undefined,
           sentAt: undefined,
           errorMessage: undefined
         });
@@ -3682,7 +4013,12 @@ export class MarketplacePlatformService {
   private async getNotificationDestinationProfile(identity: AuthIdentityRecord): Promise<{
     email: string;
     phone: string;
+    pushTokens: string[];
   } | undefined> {
+    const pushTokens = (
+      await this.repository.listActivePushDevicesByRecipient(identity.userId, identity.role as PushDevice["role"])
+    ).map((device) => device.token);
+
     if (identity.role === "customer") {
       const customer = await this.repository.findCustomerById(identity.userId);
       if (!customer) {
@@ -3690,7 +4026,8 @@ export class MarketplacePlatformService {
       }
       return {
         email: customer.email,
-        phone: customer.phone
+        phone: customer.phone,
+        pushTokens
       };
     }
 
@@ -3701,7 +4038,8 @@ export class MarketplacePlatformService {
       }
       return {
         email: provider.email,
-        phone: provider.phone
+        phone: provider.phone,
+        pushTokens
       };
     }
 
@@ -3712,13 +4050,14 @@ export class MarketplacePlatformService {
 
     return {
       email: crewMember.email,
-      phone: crewMember.phone
+      phone: crewMember.phone,
+      pushTokens
     };
   }
 
   private getNotificationDestination(
     channel: NotificationChannel,
-    profile: { email: string; phone: string }
+    profile: { email: string; phone: string; pushTokens: string[] }
   ): string {
     if (channel === "email") {
       return profile.email;
@@ -3728,10 +4067,12 @@ export class MarketplacePlatformService {
       return profile.phone;
     }
 
-    return "local-device";
+    return profile.pushTokens[0] ?? "local-device";
   }
 
   private async dispatchNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<void> {
+    const attemptCount = delivery.attemptCount + 1;
+    const lastAttemptAt = new Date().toISOString();
     try {
       const dispatch = await this.notificationDelivery.dispatch({
         channel: delivery.channel,
@@ -3743,16 +4084,77 @@ export class MarketplacePlatformService {
       await this.repository.updateNotificationDelivery(delivery.id, {
         provider: dispatch.provider,
         status: "sent",
+        attemptCount,
+        lastAttemptAt,
+        nextRetryAt: undefined,
         sentAt: dispatch.sentAt,
         errorMessage: undefined
       });
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Notification delivery failed.";
+      const shouldRetry = this.shouldRetryNotificationDelivery(delivery.channel, delivery.destination, attemptCount);
       await this.repository.updateNotificationDelivery(delivery.id, {
-        provider: `mock-${delivery.channel}`,
+        provider: this.getFailedDeliveryProvider(delivery.channel, delivery.destination),
         status: "failed",
-        errorMessage: error instanceof Error ? error.message : "Notification delivery failed."
+        attemptCount,
+        lastAttemptAt,
+        nextRetryAt: shouldRetry ? this.buildNotificationRetryAt(attemptCount) : undefined,
+        errorMessage
       });
     }
+  }
+
+  private getFailedDeliveryProvider(channel: NotificationChannel, destination: string): string {
+    if (channel === "push" && destination.startsWith("ExponentPushToken[")) {
+      return "expo-push";
+    }
+
+    if (channel === "email") {
+      return "mock-email";
+    }
+
+    if (channel === "sms") {
+      return "mock-sms";
+    }
+
+    if (channel === "push") {
+      return "mock-push";
+    }
+
+    return "in-app";
+  }
+
+  private shouldRetryNotificationDelivery(
+    channel: NotificationChannel,
+    destination: string,
+    attemptCount: number
+  ): boolean {
+    if (attemptCount >= 3) {
+      return false;
+    }
+
+    if (channel === "push") {
+      return destination.startsWith("ExponentPushToken[");
+    }
+
+    return false;
+  }
+
+  private buildNotificationRetryAt(attemptCount: number): string {
+    const retryMinutes = attemptCount === 1 ? 1 : attemptCount === 2 ? 5 : 15;
+    return new Date(Date.now() + retryMinutes * 60 * 1000).toISOString();
+  }
+
+  private async retryDueNotificationDeliveries(identity: AuthIdentityRecord): Promise<void> {
+    const deliveries = (await this.repository.listNotificationDeliveriesByRecipient(identity.userId)).filter(
+      (delivery) =>
+        delivery.recipientRole === identity.role &&
+        delivery.status === "failed" &&
+        delivery.nextRetryAt &&
+        Date.parse(delivery.nextRetryAt) <= Date.now()
+    );
+
+    await Promise.all(deliveries.map((delivery) => this.dispatchNotificationDelivery(delivery)));
   }
 
   private async ensureTimedNotifications(identity: AuthIdentityRecord): Promise<void> {

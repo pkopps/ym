@@ -2,12 +2,15 @@
 
 import {
   BookingArrivalTracking,
+  CreateExternalCalendarImportRequest,
   CustomerProviderConversationThread,
   ExternalCalendarBlock,
   ExternalCalendarBlockType,
+  ExternalCalendarProvider,
   formatBookingWindowSummary,
   getExternalCalendarBlockLabel,
   getBookingExceptionLabel,
+  ProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
   ProviderCalendarSubscriptionResponse,
   ProviderStaffingOverview
@@ -46,6 +49,7 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "travel-buffer",
   "equipment-maintenance"
 ];
+const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
 
 export function ProviderLiveManagementBoard() {
   const [sessionReady, setSessionReady] = useState(false);
@@ -61,8 +65,12 @@ export function ProviderLiveManagementBoard() {
   const [calendarSubscription, setCalendarSubscription] = useState<
     ProviderCalendarSubscriptionResponse | undefined
   >();
+  const [calendarImports, setCalendarImports] = useState<ProviderCalendarImportsResponse | undefined>();
   const [blockTitle, setBlockTitle] = useState("Off-platform client");
   const [blockType, setBlockType] = useState<ExternalCalendarBlockType>("off-platform-client");
+  const [importTitle, setImportTitle] = useState("Google Calendar - Outside work");
+  const [importProvider, setImportProvider] = useState<ExternalCalendarProvider>("google");
+  const [importFeedUrl, setImportFeedUrl] = useState("");
   const [blockStartLocal, setBlockStartLocal] = useState(() =>
     formatLocalInputValue(new Date(Date.now() + 24 * 60 * 60 * 1000))
   );
@@ -102,14 +110,16 @@ export function ProviderLiveManagementBoard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [nextOverview, nextCalendarSubscription, nextCalendarOverview] = await Promise.all([
+    const [nextOverview, nextCalendarSubscription, nextCalendarOverview, nextCalendarImports] = await Promise.all([
       api.getProviderStaffingOverview(),
       api.getProviderCalendarSubscription(),
-      api.getProviderCalendarOverview()
+      api.getProviderCalendarOverview(),
+      api.getProviderCalendarImports()
     ]);
     setOverview(nextOverview);
     setCalendarSubscription(nextCalendarSubscription);
     setCalendarOverview(nextCalendarOverview);
+    setCalendarImports(nextCalendarImports);
     setSessionReady(true);
   }
 
@@ -241,6 +251,70 @@ export function ProviderLiveManagementBoard() {
 
   async function handleToggleCalendarBlocking(enabled: boolean) {
     await saveCalendarBlockingSettings(calendarBlocks, enabled);
+  }
+
+  async function handleCreateCalendarImport() {
+    if (!importTitle.trim() || !importFeedUrl.trim()) {
+      setErrorMessage("Add a calendar title and feed URL first.");
+      return;
+    }
+
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const nextImports = await api.createProviderCalendarImport({
+        title: importTitle.trim(),
+        provider: importProvider,
+        feedUrl: importFeedUrl.trim()
+      } satisfies CreateExternalCalendarImportRequest);
+      setCalendarImports(nextImports);
+      setStatusMessage("Outside calendar synced into YardMatch.");
+      setImportFeedUrl("");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to import that calendar right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleSyncCalendarImport(subscriptionId: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const nextImports = await api.syncProviderCalendarImport({ subscriptionId });
+      setCalendarImports(nextImports);
+      setStatusMessage("Outside calendar import refreshed.");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh that calendar right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleRemoveCalendarImport(subscriptionId: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const nextImports = await api.removeProviderCalendarImport({ subscriptionId });
+      setCalendarImports(nextImports);
+      setStatusMessage("Outside calendar removed.");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to remove that calendar right now.");
+    } finally {
+      setIsWorking(false);
+    }
   }
 
   async function openCustomerChat(bookingId: string) {
@@ -504,7 +578,7 @@ export function ProviderLiveManagementBoard() {
         <span className="eyebrow">Calendar sync</span>
         <h2>Keep YardMatch jobs in your outside calendar.</h2>
         <p>
-          Subscribe to your YardMatch schedule in Apple Calendar, Google Calendar, or Outlook so booked jobs stay
+          Subscribe to your YardMatch schedule in Apple Calendar or Google Calendar so booked jobs stay
           visible alongside direct clients and personal blocks.
         </p>
         {calendarSubscription ? (
@@ -549,6 +623,80 @@ export function ProviderLiveManagementBoard() {
           </>
         ) : null}
         <div className="stack-md" style={{ paddingTop: "1.25rem" }}>
+          <div className="grid-two">
+            <label className="form-field">
+              <span>Imported calendar title</span>
+              <input
+                value={importTitle}
+                onChange={(event) => setImportTitle(event.target.value)}
+                placeholder="Google Calendar - Outside work"
+              />
+            </label>
+            <label className="form-field">
+              <span>Calendar type</span>
+              <select
+                value={importProvider}
+                onChange={(event) => setImportProvider(event.target.value as ExternalCalendarProvider)}
+              >
+                {externalCalendarImportProviders.map((option) => (
+                  <option key={option} value={option}>
+                    {option === "ical" ? "Generic iCal feed" : `${option.charAt(0).toUpperCase()}${option.slice(1)} Calendar`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="form-field form-field--full">
+            <span>External feed URL</span>
+            <input
+              value={importFeedUrl}
+              onChange={(event) => setImportFeedUrl(event.target.value)}
+              placeholder="Paste a Google, Apple, or generic iCal feed URL"
+            />
+          </label>
+          <div className="cta-row">
+            <button className="button-secondary" disabled={isWorking} onClick={() => void handleCreateCalendarImport()} type="button">
+              Import outside calendar
+            </button>
+          </div>
+          {calendarImports?.subscriptions.length ? (
+            <div className="stack-md">
+              {calendarImports.subscriptions.map((subscription) => (
+                <article className="card" key={subscription.id}>
+                  <span className="eyebrow">
+                    {subscription.provider === "ical"
+                      ? "Generic iCal feed"
+                      : `${subscription.provider.charAt(0).toUpperCase()}${subscription.provider.slice(1)} Calendar`}
+                  </span>
+                  <h3>{subscription.title}</h3>
+                  <p>{subscription.feedUrl}</p>
+                  <p>
+                    {subscription.importedEventCount} imported events
+                    {subscription.lastSyncedAt ? ` • synced ${formatDateTime(subscription.lastSyncedAt)}` : ""}
+                  </p>
+                  {subscription.lastError ? <p>{subscription.lastError}</p> : null}
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() => void handleSyncCalendarImport(subscription.id)}
+                      type="button"
+                    >
+                      Sync now
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() => void handleRemoveCalendarImport(subscription.id)}
+                      type="button"
+                    >
+                      Remove feed
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
           <div className="cta-row">
             <button
               className={externalBlockingEnabled ? "button" : "button-secondary"}

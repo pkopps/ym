@@ -3,11 +3,19 @@ import { AuthenticatedUserEnvelope } from "@yardmatch/contracts";
 
 export interface CrewSessionState {
   envelope?: AuthenticatedUserEnvelope;
+  biometricEnabled: boolean;
+  biometricAvailable: boolean;
+  biometricLabel: string;
+  setBiometricEnabled: (enabled: boolean) => Promise<boolean>;
   signOut: () => void;
 }
 
 const CrewSessionContext = createContext<CrewSessionState>({
   envelope: undefined,
+  biometricEnabled: false,
+  biometricAvailable: false,
+  biometricLabel: "device biometrics",
+  setBiometricEnabled: async () => false,
   signOut: () => undefined
 });
 

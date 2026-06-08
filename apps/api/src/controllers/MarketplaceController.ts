@@ -2,6 +2,7 @@ import {
   CancelBookingRequest,
   ConfirmBookingRequest,
   CompleteBookingRequest,
+  CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
@@ -11,6 +12,7 @@ import {
   MarkBookingExceptionRequest,
   MarkBookingLateRequest,
   MarkNotificationsReadRequest,
+  RegisterPushDeviceRequest,
   UpdateBookingRouteLocationRequest,
   UpdateNotificationPreferencesRequest,
   MarkBookingOnRouteRequest,
@@ -19,10 +21,13 @@ import {
   ProcessReviewInvitesRequest,
   CreateRefundRequest,
   ReviewCrewMatchRequest,
+  RemovePushDeviceRequest,
+  RemoveExternalCalendarImportRequest,
   SendCustomerProviderMessageRequest,
   SendProviderCrewMessageRequest,
   SetDefaultCustomerPropertyRequest,
   SearchProvidersRequest,
+  SyncExternalCalendarImportRequest,
   StartBookingRequest,
   RescheduleBookingRequest,
   UpdateCrewPreferencesRequest,
@@ -57,6 +62,8 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/notifications/preferences") ||
       (context.method === "POST" && context.path === "/api/notifications/preferences") ||
       (context.method === "GET" && context.path === "/api/notifications/deliveries") ||
+      (context.method === "POST" && context.path === "/api/notifications/devices") ||
+      (context.method === "POST" && context.path === "/api/notifications/devices/remove") ||
       (context.method === "POST" && context.path === "/api/bookings") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
@@ -88,6 +95,10 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/payments/refund") ||
       (context.method === "GET" && context.path === "/api/calendar/overview") ||
       (context.method === "GET" && context.path === "/api/calendar/subscription") ||
+      (context.method === "GET" && context.path === "/api/calendar/imports") ||
+      (context.method === "POST" && context.path === "/api/calendar/imports") ||
+      (context.method === "POST" && context.path === "/api/calendar/imports/sync") ||
+      (context.method === "POST" && context.path === "/api/calendar/imports/remove") ||
       (context.method === "GET" && context.path === "/api/calendar/feed")
     );
   }
@@ -254,6 +265,18 @@ export class MarketplaceController implements ApiController {
     if (context.method === "GET" && context.path === "/api/notifications/deliveries") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(response, 200, await this.platform.listNotificationDeliveries(identity));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/notifications/devices") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.registerPushDevice(identity, context.body as RegisterPushDeviceRequest));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/notifications/devices/remove") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.removePushDevice(identity, context.body as RemovePushDeviceRequest));
       return;
     }
 
@@ -520,6 +543,51 @@ export class MarketplaceController implements ApiController {
           fromIso: context.query.get("from") ?? undefined,
           toIso: context.query.get("to") ?? undefined
         })
+      );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/calendar/imports") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.getProviderCalendarImports(identity.userId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/calendar/imports") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        201,
+        await this.platform.createProviderCalendarImport(
+          identity.userId,
+          context.body as CreateExternalCalendarImportRequest
+        )
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/calendar/imports/sync") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.syncProviderCalendarImport(
+          identity.userId,
+          context.body as SyncExternalCalendarImportRequest
+        )
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/calendar/imports/remove") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.removeProviderCalendarImport(
+          identity.userId,
+          context.body as RemoveExternalCalendarImportRequest
+        )
       );
       return;
     }

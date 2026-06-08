@@ -49,6 +49,16 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `POST /api/auth/register`
   - `POST /api/auth/login`
   - `GET /api/auth/me`
+- Google and Apple social auth now use real OAuth start/callback flows plus:
+  - `POST /api/auth/social/complete`
+- To turn Google and Apple auth on locally, set:
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `APPLE_CLIENT_ID`
+  - `APPLE_TEAM_ID`
+  - `APPLE_KEY_ID`
+  - `APPLE_PRIVATE_KEY`
+  - `APP_BASE_URL` (for example `http://localhost:3000`)
 - Protected customer/provider routes now derive identity from the bearer token instead of trusting caller-supplied IDs.
 - The API keeps the current route families, but ownership is enforced for:
   - customer properties
@@ -57,6 +67,13 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - provider-side booking completion
   - post-service reviews
   - support tickets
+- Mobile push-notification plumbing now supports:
+  - device registration through `POST /api/notifications/devices`
+  - Expo push-token delivery attempts
+  - retry metadata on failed push sends
+- To turn device push on in development builds, set:
+  - `EXPO_PUBLIC_EXPO_PROJECT_ID` in the mobile apps
+  - push credentials for the Expo project / native app IDs
 - Prisma/Postgres scaffolding is in place under [`apps/api/prisma`](</Users/patrickkopps/Documents/app/apps/api/prisma>).
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.

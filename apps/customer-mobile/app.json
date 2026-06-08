@@ -7,6 +7,17 @@
     "orientation": "default",
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "plugins": [
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "YardMatch uses Face ID so you can quickly reopen the customer app on this device."
+        }
+      ],
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-notifications"
     ]
   }
 }

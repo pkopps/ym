@@ -1541,6 +1541,80 @@ test("notification preferences can disable sms and review reminder delivery", as
   assert.ok(!deliveries.deliveries.some((delivery) => delivery.category === "review" && delivery.channel === "push"));
 });
 
+test("registered Expo push devices create retryable push deliveries", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-push@example.com",
+    password: "Password123!",
+    phone: "555-3810",
+    role: "provider",
+    companyName: "Push Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-push@example.com",
+    password: "Password123!",
+    phone: "555-3820",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  await platform.registerPushDevice(
+    {
+      userId: provider.id,
+      email: provider.email,
+      role: "provider"
+    },
+    {
+      platform: "ios",
+      provider: "expo",
+      token: "ExponentPushToken[providerpush123]"
+    }
+  );
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new Error("push delivery offline");
+  }) as typeof globalThis.fetch;
+
+  try {
+    await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "lawn-mowing",
+      scheduledStartIso: futureIso(24),
+      scheduledEndIso: futureIso(25),
+      notes: "Push delivery retry test",
+      totalCents: 6200
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const deliveries = await platform.listNotificationDeliveries({
+    userId: provider.id,
+    email: provider.email,
+    role: "provider"
+  });
+  const pushDelivery = deliveries.deliveries.find((delivery) => delivery.channel === "push");
+
+  assert.ok(pushDelivery);
+  assert.equal(pushDelivery?.destination, "ExponentPushToken[providerpush123]");
+  assert.equal(pushDelivery?.provider, "expo-push");
+  assert.equal(pushDelivery?.status, "failed");
+  assert.equal(pushDelivery?.attemptCount, 1);
+  assert.ok(pushDelivery?.nextRetryAt);
+});
+
 test("providers can get a subscribable calendar feed and merged overview for mixed schedule management", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -1615,6 +1689,114 @@ test("providers can get a subscribable calendar feed and merged overview for mix
   assert.match(feed, /Calendar export test/);
   assert.match(feed, /Calendar Lawn Co.: Direct client cleanup/);
   assert.match(feed, /Neighbor referral cleanup/);
+});
+
+test("providers can import an external iCal feed and use it to block YardMatch availability", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-calendar-import@example.com",
+    password: "Password123!",
+    phone: "555-3920",
+    role: "provider",
+    companyName: "Import Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-calendar-import@example.com",
+    password: "Password123!",
+    phone: "555-3930",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const importStart = futureIso(48);
+  const importEnd = futureIso(49);
+  const rawFeed = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "BEGIN:VEVENT",
+    "UID:outside-client-1@example.com",
+    `DTSTART:${importStart.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
+    `DTEND:${importEnd.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
+    "SUMMARY:Outside cleanup route",
+    "DESCRIPTION:Imported from Google Calendar",
+    "END:VEVENT",
+    "END:VCALENDAR"
+  ].join("\n");
+  const feedUrl = `data:text/calendar;charset=utf-8,${encodeURIComponent(rawFeed)}`;
+
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: provider.serviceRadiusMiles,
+    staffingMode: provider.staffingMode,
+    sponsoredListingEnabled: provider.sponsoredListingEnabled,
+    externalEventsBlockingEnabled: true,
+    externalCalendarBlocks: []
+  });
+
+  const imports = await platform.createProviderCalendarImport(provider.id, {
+    title: "Google Calendar - Outside work",
+    provider: "google",
+    feedUrl
+  });
+  assert.equal(imports.subscriptions.length, 1);
+  assert.equal(imports.importedBlockCount, 1);
+  assert.equal(imports.subscriptions[0]?.importedEventCount, 1);
+
+  const providerAfterImport = await platform.getProviderProfile(provider.id);
+  const importedBlock = providerAfterImport.calendarConnection.externalBlocks?.find(
+    (block) => block.source === "calendar-import"
+  );
+  assert.ok(importedBlock);
+  assert.equal(importedBlock?.title, "Outside cleanup route");
+
+  const matchingSlots = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: importStart,
+    estimatedDurationMinutes: 45
+  });
+
+  assert.ok(matchingSlots.providers.some((item) => item.id === provider.id));
+  assert.ok(
+    !matchingSlots.suggestedSlots.some(
+      (slot) =>
+        slot.providerId === provider.id &&
+        slot.startIso === importStart &&
+        slot.endIso === importEnd
+    )
+  );
+
+  const overview = await platform.getProviderCalendarOverview(provider.id);
+  assert.ok(
+    overview.events.some((event) => event.source === "external-block" && event.title === "Outside cleanup route")
+  );
+
+  const synced = await platform.syncProviderCalendarImport(provider.id, {
+    subscriptionId: imports.subscriptions[0].id
+  });
+  assert.equal(synced.subscriptions[0]?.importedEventCount, 1);
+
+  const removed = await platform.removeProviderCalendarImport(provider.id, {
+    subscriptionId: imports.subscriptions[0].id
+  });
+  assert.equal(removed.subscriptions.length, 0);
+
+  const matchingSlotsAfterRemoval = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: importStart,
+    estimatedDurationMinutes: 45
+  });
+
+  assert.ok(matchingSlotsAfterRemoval.providers.some((item) => item.id === provider.id));
 });
 
 test("providers receive one timed departure reminder for confirmed upcoming jobs", async () => {

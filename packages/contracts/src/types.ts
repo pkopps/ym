@@ -58,6 +58,8 @@ export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" |
 export type NotificationChannel = "email" | "in-app" | "push" | "sms";
 export type AppNotificationCategory = "booking" | "staffing" | "review" | "support" | "account";
 export type NotificationDeliveryStatus = "queued" | "sent" | "failed" | "skipped";
+export type PushDevicePlatform = "ios" | "android";
+export type PushDeviceProvider = "expo";
 export type CrewMemberSchedulePreference = "full-time" | "part-time" | "seasonal" | "flex";
 export type CrewMemberStatus = "available" | "assigned" | "off-duty";
 export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
@@ -68,6 +70,8 @@ export type ExternalCalendarBlockType =
   | "personal-time"
   | "travel-buffer"
   | "equipment-maintenance";
+export type ExternalCalendarProvider = "google" | "apple" | "ical";
+export type ExternalCalendarSubscriptionStatus = "active" | "error";
 export type BookingArrivalTrackingStatus =
   | "unavailable"
   | "not-started"
@@ -118,6 +122,18 @@ export interface ExternalCalendarBlock {
   notes?: string;
   source: "manual" | "calendar-import";
   createdAt: string;
+  subscriptionId?: string;
+}
+
+export interface ExternalCalendarSubscription {
+  id: string;
+  title: string;
+  provider: ExternalCalendarProvider;
+  feedUrl: string;
+  importedEventCount: number;
+  lastSyncedAt?: string;
+  syncStatus: ExternalCalendarSubscriptionStatus;
+  lastError?: string;
 }
 
 export interface CustomerProperty {
@@ -142,6 +158,7 @@ export interface CalendarConnection {
   lastSyncedAt?: string;
   externalEventsBlockingEnabled?: boolean;
   externalBlocks?: ExternalCalendarBlock[];
+  externalSubscriptions?: ExternalCalendarSubscription[];
 }
 
 export interface BaseUser {
@@ -538,6 +555,29 @@ export interface NotificationPreferences {
   updatedAt: string;
 }
 
+export interface PushDevice {
+  id: string;
+  userId: string;
+  role: MarketplaceRole;
+  platform: PushDevicePlatform;
+  provider: PushDeviceProvider;
+  token: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastSeenAt: string;
+}
+
+export interface RegisterPushDeviceRequest {
+  platform: PushDevicePlatform;
+  provider: PushDeviceProvider;
+  token: string;
+}
+
+export interface RemovePushDeviceRequest {
+  token: string;
+}
+
 export interface UpdateNotificationPreferencesRequest {
   emailEnabled?: boolean;
   smsEnabled?: boolean;
@@ -558,7 +598,10 @@ export interface NotificationDeliveryRecord {
   title: string;
   bodyPreview: string;
   errorMessage?: string;
+  attemptCount: number;
   createdAt: string;
+  lastAttemptAt?: string;
+  nextRetryAt?: string;
   sentAt?: string;
 }
 
@@ -610,6 +653,12 @@ export interface ProviderCalendarOverviewResponse {
   yardmatchJobCount: number;
   externalBlockCount: number;
   events: ProviderCalendarEvent[];
+}
+
+export interface ProviderCalendarImportsResponse {
+  providerId: string;
+  subscriptions: ExternalCalendarSubscription[];
+  importedBlockCount: number;
 }
 
 export interface RegisterUserRequest {
@@ -675,6 +724,7 @@ export interface CurrentUserResponse {
 export interface GoogleAuthStartRequest {
   role: MarketplaceRole;
   mode: AuthFlowMode;
+  redirectUri?: string;
 }
 
 export interface GoogleAuthStartResponse {
@@ -682,7 +732,38 @@ export interface GoogleAuthStartResponse {
   role: MarketplaceRole;
   mode: AuthFlowMode;
   redirectUrl: string;
-  status: "demo-redirect";
+  status: "oauth-redirect";
+}
+
+export interface SocialAuthPendingIdentity {
+  provider: AuthProvider;
+  role: MarketplaceRole;
+  mode: AuthFlowMode;
+  pendingToken: string;
+  email: string;
+  fullName: string;
+  expiresAtIso: string;
+}
+
+export interface CompleteSocialSignupRequest {
+  pendingToken: string;
+  fullName: string;
+  phone: string;
+  role: MarketplaceRole;
+  address: Address;
+  companyName?: string;
+  bio?: string;
+  yearsExperience?: number;
+  serviceRadiusMiles?: number;
+  categories?: ServiceCategory[];
+  propertyNotes?: string;
+  lawnSizeSqFt?: number;
+  propertyLabel?: string;
+  availableWeekdays?: CrewAvailabilityDay[];
+  willingToTravelMiles?: number;
+  preferredSchedule?: CrewMemberSchedulePreference;
+  hasOwnEquipment?: boolean;
+  winterWorkEnabled?: boolean;
 }
 
 export interface SearchProvidersRequest {
@@ -738,7 +819,22 @@ export interface UpdateProviderSettingsRequest {
     notes?: string;
     source?: "manual" | "calendar-import";
     createdAt?: string;
+    subscriptionId?: string;
   }>;
+}
+
+export interface CreateExternalCalendarImportRequest {
+  title: string;
+  provider: ExternalCalendarProvider;
+  feedUrl: string;
+}
+
+export interface SyncExternalCalendarImportRequest {
+  subscriptionId: string;
+}
+
+export interface RemoveExternalCalendarImportRequest {
+  subscriptionId: string;
 }
 
 export interface UpdateCrewPreferencesRequest {
