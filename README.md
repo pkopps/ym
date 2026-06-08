@@ -51,6 +51,10 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `GET /api/auth/me`
 - Google and Apple social auth now use real OAuth start/callback flows plus:
   - `POST /api/auth/social/complete`
+- Web sessions now:
+  - persist across refreshes
+  - synchronize across browser tabs
+  - clear automatically if a tab receives a `401` for an expired or replaced session
 - To turn Google and Apple auth on locally, set:
   - `GOOGLE_OAUTH_CLIENT_ID`
   - `GOOGLE_OAUTH_CLIENT_SECRET`

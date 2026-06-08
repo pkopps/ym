@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
+import { clearStoredSession, StoredWebSession } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 import { NotificationMenu } from "./NotificationMenu";
 
 const links = [
@@ -34,11 +34,7 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
 };
 
 export function NavBar() {
-  const [session, setSession] = useState<StoredWebSession | undefined>();
-
-  useEffect(() => {
-    setSession(loadStoredSession());
-  }, []);
+  const { session } = useStoredWebSession();
 
   function handleSignOut() {
     clearStoredSession();

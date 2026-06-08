@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
+import { clearStoredSession } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 import { NotificationMenu } from "./NotificationMenu";
 
 const profileLinks = [
@@ -13,14 +13,10 @@ const profileLinks = [
 
 export function CustomerAppHeader() {
   const pathname = usePathname();
-  const [session, setSession] = useState<StoredWebSession | undefined>();
+  const { session } = useStoredWebSession();
   const currentSectionLabel = pathname.startsWith("/customer/history")
     ? "Service history"
     : "Property dashboard";
-
-  useEffect(() => {
-    setSession(loadStoredSession());
-  }, []);
 
   function handleSignOut() {
     clearStoredSession();

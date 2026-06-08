@@ -6,7 +6,8 @@ import {
   ServiceCategory
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
-import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 
 const allDays: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const skillOptions: ServiceCategory[] = [
@@ -34,7 +35,7 @@ function formatDateTime(iso: string) {
 }
 
 export function CrewLiveDashboard() {
-  const [sessionReady, setSessionReady] = useState(false);
+  const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -49,10 +50,8 @@ export function CrewLiveDashboard() {
   );
 
   async function loadCrewView() {
-    const session = loadStoredSession();
     if (!session || session.role !== "crew-member") {
       setAccessDenied(true);
-      setSessionReady(true);
       return;
     }
 
@@ -60,15 +59,22 @@ export function CrewLiveDashboard() {
     const api = createAuthenticatedWebApiClient();
     const nextMatches = await api.getCrewMatches();
     setMatchesResponse(nextMatches);
-    setSessionReady(true);
   }
 
   useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+
+    if (!session || session.role !== "crew-member") {
+      setAccessDenied(true);
+      return;
+    }
+
     void loadCrewView().catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load the crew dashboard.");
-      setSessionReady(true);
     });
-  }, []);
+  }, [sessionReady, session?.token, session?.role]);
 
   async function handleSavePreferences(next: {
     availableWeekdays?: CrewAvailabilityDay[];

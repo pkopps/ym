@@ -17,7 +17,8 @@ import {
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 
@@ -63,7 +64,7 @@ function toDateTimeLocalValue(iso: string) {
 
 export function CustomerLiveDashboard() {
   const searchParams = useSearchParams();
-  const [sessionReady, setSessionReady] = useState(false);
+  const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [customer, setCustomer] = useState<CustomerProfile | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
@@ -107,10 +108,8 @@ export function CustomerLiveDashboard() {
     .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0];
 
   async function loadDashboard() {
-    const session = loadStoredSession();
     if (!session || session.role !== "customer") {
       setAccessDenied(true);
-      setSessionReady(true);
       return;
     }
 
@@ -168,7 +167,6 @@ export function CustomerLiveDashboard() {
       }, {})
     );
     setReviewOpportunities(reviewResponse.opportunities);
-    setSessionReady(true);
 
     if (!selectedPropertyId && propertyList[0]) {
       setSelectedPropertyId(propertyList[0].id);
@@ -176,11 +174,19 @@ export function CustomerLiveDashboard() {
   }
 
   useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+
+    if (!session || session.role !== "customer") {
+      setAccessDenied(true);
+      return;
+    }
+
     void loadDashboard().catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load your customer account.");
-      setSessionReady(true);
     });
-  }, []);
+  }, [sessionReady, session?.token, session?.role]);
 
   useEffect(() => {
     if (!sessionReady || paymentActionHandled) {

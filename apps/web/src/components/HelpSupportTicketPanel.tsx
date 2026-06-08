@@ -6,8 +6,9 @@ import {
   SupportIssueType,
   SupportTicket
 } from "@yardmatch/contracts";
-import { useEffect, useMemo, useState } from "react";
-import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { useEffect, useState } from "react";
+import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 
 const issueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
@@ -24,7 +25,7 @@ function formatDate(iso: string) {
 }
 
 export function HelpSupportTicketPanel() {
-  const [sessionReady, setSessionReady] = useState(false);
+  const { session, sessionReady } = useStoredWebSession();
   const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
@@ -35,12 +36,8 @@ export function HelpSupportTicketPanel() {
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
 
-  const session = useMemo(() => loadStoredSession(), []);
-
   async function loadSupportView() {
-    const currentSession = loadStoredSession();
-    if (!currentSession) {
-      setSessionReady(true);
+    if (!session) {
       return;
     }
 
@@ -49,7 +46,7 @@ export function HelpSupportTicketPanel() {
       const [nextTickets, options] = await Promise.all([
         api.getSupportTickets(),
         (async () => {
-          if (currentSession.role === "crew-member") {
+          if (session.role === "crew-member") {
             const matches = await api.getCrewMatches();
             return matches.matches.map((match) => ({
               id: match.bookingId,
@@ -67,10 +64,8 @@ export function HelpSupportTicketPanel() {
 
       setTickets(nextTickets);
       setBookingOptions(options);
-      setSessionReady(true);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load support.");
-      setSessionReady(true);
     }
   }
 
@@ -93,8 +88,12 @@ export function HelpSupportTicketPanel() {
         setSubject(subjectParam);
       }
     }
+    if (!sessionReady) {
+      return;
+    }
+
     void loadSupportView();
-  }, []);
+  }, [sessionReady, session?.token, session?.role]);
 
   async function handleSubmit() {
     if (!session || subject.trim().length === 0 || description.trim().length === 0) {

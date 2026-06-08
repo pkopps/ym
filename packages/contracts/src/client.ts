@@ -82,11 +82,16 @@ import { ApiRoutes } from "./routes";
 
 export class MarketplaceApiClient {
   private authToken?: string;
+  private onUnauthorized?: (error: Error) => void;
 
   public constructor(private readonly baseUrl: string) {}
 
   public setAuthToken(token: string | undefined): void {
     this.authToken = token;
+  }
+
+  public setUnauthorizedHandler(handler: ((error: Error) => void) | undefined): void {
+    this.onUnauthorized = handler;
   }
 
   private async buildError(response: Response, path: string): Promise<Error> {
@@ -112,7 +117,11 @@ export class MarketplaceApiClient {
     });
 
     if (!response.ok) {
-      throw await this.buildError(response, path);
+      const error = await this.buildError(response, path);
+      if (response.status === 401) {
+        this.onUnauthorized?.(error);
+      }
+      throw error;
     }
 
     return (await response.json()) as TResponse;
@@ -129,7 +138,11 @@ export class MarketplaceApiClient {
     });
 
     if (!response.ok) {
-      throw await this.buildError(response, path);
+      const error = await this.buildError(response, path);
+      if (response.status === 401) {
+        this.onUnauthorized?.(error);
+      }
+      throw error;
     }
 
     return (await response.json()) as TResponse;

@@ -16,7 +16,8 @@ import {
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
-import { createAuthenticatedWebApiClient, loadStoredSession } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 
@@ -52,7 +53,7 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
 const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
 
 export function ProviderLiveManagementBoard() {
-  const [sessionReady, setSessionReady] = useState(false);
+  const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
   const [activeBookingId, setActiveBookingId] = useState<string | undefined>();
@@ -101,10 +102,8 @@ export function ProviderLiveManagementBoard() {
   );
 
   async function loadProviderView() {
-    const session = loadStoredSession();
     if (!session || session.role !== "provider") {
       setAccessDenied(true);
-      setSessionReady(true);
       return;
     }
 
@@ -120,15 +119,22 @@ export function ProviderLiveManagementBoard() {
     setCalendarSubscription(nextCalendarSubscription);
     setCalendarOverview(nextCalendarOverview);
     setCalendarImports(nextCalendarImports);
-    setSessionReady(true);
   }
 
   useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+
+    if (!session || session.role !== "provider") {
+      setAccessDenied(true);
+      return;
+    }
+
     void loadProviderView().catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load the provider portal.");
-      setSessionReady(true);
     });
-  }, []);
+  }, [sessionReady, session?.token, session?.role]);
 
   async function handleReviewMatch(crewMatchId: string, action: "accept" | "deny") {
     setIsWorking(true);

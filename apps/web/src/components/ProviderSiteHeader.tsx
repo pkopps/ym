@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { clearStoredSession, loadStoredSession, StoredWebSession } from "../lib/api";
+import { clearStoredSession } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 import { NotificationMenu } from "./NotificationMenu";
 
 const productColumns = [
@@ -103,12 +104,10 @@ const learnLinks = [
 
 export function ProviderSiteHeader() {
   const [openMenu, setOpenMenu] = useState<null | "learn" | "marketplace" | "products">(null);
-  const [session, setSession] = useState<StoredWebSession | undefined>();
+  const { session } = useStoredWebSession();
   const navRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    setSession(loadStoredSession());
-
     function handlePointerDown(event: MouseEvent) {
       if (!navRef.current?.contains(event.target as Node)) {
         setOpenMenu(null);

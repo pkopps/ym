@@ -22,9 +22,14 @@ What remains now is mostly launch-hardening, real third-party delivery, money mo
 
 ### Real auth completion
 
+Already done:
+
+- web session persistence across refreshes
+- web multi-tab session sync and logout propagation
+- browser session invalidation when the API returns `401`
+
 - Finish real Google authentication
 - Finish real Apple authentication
-- Tighten web session persistence and multi-tab logout behavior
 - Add stronger re-auth for sensitive actions later, especially:
   - payout settings
   - bank changes
