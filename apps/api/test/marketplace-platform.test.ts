@@ -1077,7 +1077,7 @@ test("auto-accept staffing immediately creates accepted crew matches", async () 
     role: "crew-member",
     address: createAddress("110 Garden Row", 30.2433, -97.7636),
     categories: ["lawn-mowing"],
-    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     willingToTravelMiles: 30
   });
   assert.equal(crew.role, "crew-member");
@@ -2291,6 +2291,12 @@ test("providers can import an external iCal feed and use it to block YardMatch a
   assert.ok(importedBlock);
   assert.equal(importedBlock?.title, "Outside cleanup route");
 
+  await platform.reviewProviderVerification({
+    providerId: provider.id,
+    action: "approve",
+    notes: "Calendar import test provider can be shown in search."
+  });
+
   const matchingSlots = await platform.searchProviders({
     address: createAddress("112 Garden Row", 30.2435, -97.7638),
     categories: ["lawn-mowing"],
@@ -2393,4 +2399,53 @@ test("providers receive one timed departure reminder for confirmed upcoming jobs
     (notification) => notification.title === "Time to head out soon"
   );
   assert.equal(secondDepartureReminders.length, 1);
+});
+
+test("new providers stay out of public search until ops approves verification", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Casey Warner",
+    email: "provider-verification@example.com",
+    password: "Password123!",
+    phone: "555-4400",
+    role: "provider",
+    companyName: "Warner Grounds",
+    categories: ["lawn-mowing", "leaf-blowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("118 Maple Ave", 30.2438, -97.7639)
+  });
+  assert.equal(provider.role, "provider");
+  assert.equal(provider.verificationStatus, "pending-review");
+
+  const queueBeforeReview = await platform.listProviderVerificationQueue();
+  assert.ok(queueBeforeReview.some((item) => item.provider.id === provider.id));
+
+  const searchBeforeApproval = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: futureIso(48),
+    estimatedDurationMinutes: 45
+  });
+  assert.equal(searchBeforeApproval.providers.some((item) => item.id === provider.id), false);
+
+  const approvedProvider = await platform.reviewProviderVerification({
+    providerId: provider.id,
+    action: "approve",
+    notes: "Business profile is complete and ready to go live."
+  });
+  assert.equal(approvedProvider.verificationStatus, "verified");
+  assert.ok(approvedProvider.verificationReviewedAt);
+
+  const queueAfterReview = await platform.listProviderVerificationQueue();
+  assert.equal(queueAfterReview.some((item) => item.provider.id === provider.id), false);
+
+  const searchAfterApproval = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: futureIso(48),
+    estimatedDurationMinutes: 45
+  });
+  assert.equal(searchAfterApproval.providers.some((item) => item.id === provider.id), true);
 });

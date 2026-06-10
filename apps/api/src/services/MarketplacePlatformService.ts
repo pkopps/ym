@@ -67,6 +67,7 @@ import {
   PaymentRecord,
   PushDevice,
   ProviderProfile,
+  ProviderVerificationQueueItem,
   ExternalCalendarBlock,
   ExternalCalendarSubscription,
   ProviderReview,
@@ -77,6 +78,7 @@ import {
   ProviderCalendarOverviewResponse,
   PlaceSearchResponse,
   RegisterUserRequest,
+  ReviewProviderVerificationRequest,
   ReviewCrewMatchRequest,
   RemoveExternalCalendarImportRequest,
   RescheduleBookingRequest,
@@ -241,6 +243,8 @@ export class MarketplacePlatformService {
       yearsExperience: payload.yearsExperience ?? 1,
       serviceRadiusMiles: payload.serviceRadiusMiles ?? 15,
       staffingMode: "review-first",
+      verificationStatus: "pending-review",
+      verificationSubmittedAt: now,
       sponsoredListingEnabled: false,
       categories: payload.categories ?? ["lawn-mowing"],
       rating: 5,
@@ -562,6 +566,7 @@ export class MarketplacePlatformService {
         (await this.repository
           .listProviders())
           .filter((provider) =>
+            provider.verificationStatus === "verified" &&
             payload.categories.some((category) => provider.categories.includes(category))
           )
       )
@@ -616,6 +621,78 @@ export class MarketplacePlatformService {
     }
 
     return provider;
+  }
+
+  public async listProviderVerificationQueue(): Promise<ProviderVerificationQueueItem[]> {
+    const [providers, bookings] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listBookings()
+    ]);
+
+    return providers
+      .filter((provider) => provider.verificationStatus !== "verified")
+      .map((provider) => ({
+        provider,
+        openBookingCount: bookings.filter(
+          (booking) =>
+            booking.providerId === provider.id &&
+            booking.status !== "completed" &&
+            booking.status !== "cancelled" &&
+            booking.status !== "refunded"
+        ).length,
+        reviewCount: provider.reviewCount
+      }))
+      .sort((left, right) => {
+        const rightSubmitted = right.provider.verificationSubmittedAt ?? right.provider.createdAt;
+        const leftSubmitted = left.provider.verificationSubmittedAt ?? left.provider.createdAt;
+        return rightSubmitted.localeCompare(leftSubmitted);
+      });
+  }
+
+  public async reviewProviderVerification(
+    payload: ReviewProviderVerificationRequest
+  ): Promise<ProviderProfile> {
+    const provider = await this.repository.findProviderById(payload.providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const notes = payload.notes?.trim();
+    if (payload.action === "reject" && !notes) {
+      throw new HttpError(400, "Notes are required when rejecting a provider verification");
+    }
+
+    const updatedProvider = await this.repository.updateProvider(provider.id, {
+      verificationStatus: payload.action === "approve" ? "verified" : "rejected",
+      verificationReviewedAt: new Date().toISOString(),
+      verificationNotes:
+        notes ??
+        (payload.action === "approve"
+          ? "Ops verified the business profile for public marketplace visibility."
+          : provider.verificationNotes)
+    });
+
+    if (!updatedProvider) {
+      throw new HttpError(500, "Provider verification could not be updated");
+    }
+
+    await this.createNotification({
+      recipientId: updatedProvider.id,
+      recipientRole: "provider",
+      category: "account",
+      title:
+        payload.action === "approve"
+          ? "Business verification approved"
+          : "Business verification needs updates",
+      body:
+        payload.action === "approve"
+          ? "Your business is now verified and visible in YardMatch search results."
+          : notes ??
+            "Ops reviewed the business profile and left notes before it can go live in search.",
+      actionHref: "/provider/management"
+    });
+
+    return updatedProvider;
   }
 
   public async updateCrewPreferences(

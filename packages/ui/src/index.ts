@@ -1,8 +1,7 @@
 import { CustomerReviewOpportunity, ServiceCategory } from "@yardmatch/contracts";
 
 export interface BookedCalendarSlotShowcase {
-  startLabel: string;
-  endLabel: string;
+  windowLabel: string;
   status: "booked";
 }
 
@@ -672,10 +671,9 @@ export const bookedBusinessShowcase: BookedBusinessShowcase[] = [
     crewSizeLabel: "3-person crew",
     fullyBookedLabel: "Fully booked today",
     slots: [
-      { startLabel: "8:00 AM", endLabel: "10:00 AM", status: "booked" },
-      { startLabel: "10:00 AM", endLabel: "12:00 PM", status: "booked" },
-      { startLabel: "12:00 PM", endLabel: "2:00 PM", status: "booked" },
-      { startLabel: "2:00 PM", endLabel: "4:00 PM", status: "booked" }
+      { windowLabel: "Morning", status: "booked" },
+      { windowLabel: "Afternoon", status: "booked" },
+      { windowLabel: "Late afternoon / evening", status: "booked" }
     ]
   },
   {
@@ -694,10 +692,9 @@ export const bookedBusinessShowcase: BookedBusinessShowcase[] = [
     crewSizeLabel: "2-person crew",
     fullyBookedLabel: "Booked solid on route",
     slots: [
-      { startLabel: "7:00 AM", endLabel: "9:00 AM", status: "booked" },
-      { startLabel: "9:00 AM", endLabel: "11:00 AM", status: "booked" },
-      { startLabel: "11:00 AM", endLabel: "1:00 PM", status: "booked" },
-      { startLabel: "1:00 PM", endLabel: "3:00 PM", status: "booked" }
+      { windowLabel: "Morning", status: "booked" },
+      { windowLabel: "Afternoon", status: "booked" },
+      { windowLabel: "Late afternoon / evening", status: "booked" }
     ]
   },
   {
@@ -716,10 +713,9 @@ export const bookedBusinessShowcase: BookedBusinessShowcase[] = [
     crewSizeLabel: "4-person crew",
     fullyBookedLabel: "No same-day openings",
     slots: [
-      { startLabel: "8:00 AM", endLabel: "10:00 AM", status: "booked" },
-      { startLabel: "10:00 AM", endLabel: "12:00 PM", status: "booked" },
-      { startLabel: "12:00 PM", endLabel: "2:00 PM", status: "booked" },
-      { startLabel: "2:00 PM", endLabel: "4:00 PM", status: "booked" }
+      { windowLabel: "Morning", status: "booked" },
+      { windowLabel: "Afternoon", status: "booked" },
+      { windowLabel: "Late afternoon / evening", status: "booked" }
     ]
   },
   {
@@ -738,10 +734,9 @@ export const bookedBusinessShowcase: BookedBusinessShowcase[] = [
     crewSizeLabel: "2-person crew",
     fullyBookedLabel: "Booked through the afternoon",
     slots: [
-      { startLabel: "6:00 AM", endLabel: "8:00 AM", status: "booked" },
-      { startLabel: "8:00 AM", endLabel: "10:00 AM", status: "booked" },
-      { startLabel: "10:00 AM", endLabel: "12:00 PM", status: "booked" },
-      { startLabel: "12:00 PM", endLabel: "2:00 PM", status: "booked" }
+      { windowLabel: "Morning", status: "booked" },
+      { windowLabel: "Afternoon", status: "booked" },
+      { windowLabel: "Late afternoon / evening", status: "booked" }
     ]
   },
   {
@@ -760,10 +755,9 @@ export const bookedBusinessShowcase: BookedBusinessShowcase[] = [
     crewSizeLabel: "5-person crew",
     fullyBookedLabel: "Morning, afternoon, and evening route windows reserved",
     slots: [
-      { startLabel: "7:00 AM", endLabel: "9:00 AM", status: "booked" },
-      { startLabel: "9:00 AM", endLabel: "11:00 AM", status: "booked" },
-      { startLabel: "11:00 AM", endLabel: "1:00 PM", status: "booked" },
-      { startLabel: "1:00 PM", endLabel: "3:00 PM", status: "booked" }
+      { windowLabel: "Morning", status: "booked" },
+      { windowLabel: "Afternoon", status: "booked" },
+      { windowLabel: "Late afternoon / evening", status: "booked" }
     ]
   },
   {
@@ -782,10 +776,9 @@ export const bookedBusinessShowcase: BookedBusinessShowcase[] = [
     crewSizeLabel: "3-person winter crew",
     fullyBookedLabel: "Route fully committed",
     slots: [
-      { startLabel: "6:00 AM", endLabel: "8:00 AM", status: "booked" },
-      { startLabel: "8:00 AM", endLabel: "10:00 AM", status: "booked" },
-      { startLabel: "10:00 AM", endLabel: "12:00 PM", status: "booked" },
-      { startLabel: "12:00 PM", endLabel: "2:00 PM", status: "booked" }
+      { windowLabel: "Morning", status: "booked" },
+      { windowLabel: "Afternoon", status: "booked" },
+      { windowLabel: "Late afternoon / evening", status: "booked" }
     ]
   }
 ];

@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
+import { ProviderMowerScrollStrip } from "../../../components/ProviderMowerScrollStrip";
 
 export const metadata: Metadata = {
   title: "Business owner sign up"
@@ -106,33 +108,33 @@ export default function ProviderSignupLandingPage() {
 
       <div className="provider-sections">
         {providerSections.map((section, index) => (
-          <section
-            className={`provider-story provider-story--${index % 2 === 0 ? "mint" : "sand"}`}
-            key={section.title}
-          >
-            <div className="container provider-story__grid">
-              <div className={`provider-story__image-wrap ${index % 2 === 1 ? "provider-story__image-wrap--reverse" : ""}`}>
-                <img alt={section.imageAlt} className="provider-story__image" src={section.image} />
+          <Fragment key={section.title}>
+            <section className={`provider-story provider-story--${index % 2 === 0 ? "mint" : "sand"}`}>
+              <div className="container provider-story__grid">
+                <div className={`provider-story__image-wrap ${index % 2 === 1 ? "provider-story__image-wrap--reverse" : ""}`}>
+                  <img alt={section.imageAlt} className="provider-story__image" src={section.image} />
+                </div>
+                <div className="provider-story__copy">
+                  <span className="eyebrow">{section.eyebrow}</span>
+                  <h2>{section.title}</h2>
+                  <p>{section.body}</p>
+                  <ul className="provider-story__list">
+                    {section.bullets.map((bullet) => (
+                      <li key={bullet}>{bullet}</li>
+                    ))}
+                  </ul>
+                  {"ctaHref" in section && section.ctaHref ? (
+                    <div className="cta-row">
+                      <a className="button-secondary" href={section.ctaHref}>
+                        {section.ctaLabel}
+                      </a>
+                    </div>
+                  ) : null}
+                </div>
               </div>
-              <div className="provider-story__copy">
-                <span className="eyebrow">{section.eyebrow}</span>
-                <h2>{section.title}</h2>
-                <p>{section.body}</p>
-                <ul className="provider-story__list">
-                  {section.bullets.map((bullet) => (
-                    <li key={bullet}>{bullet}</li>
-                  ))}
-                </ul>
-                {"ctaHref" in section && section.ctaHref ? (
-                  <div className="cta-row">
-                    <a className="button-secondary" href={section.ctaHref}>
-                      {section.ctaLabel}
-                    </a>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </section>
+            </section>
+            {index === 1 ? <ProviderMowerScrollStrip /> : null}
+          </Fragment>
         ))}
       </div>
 

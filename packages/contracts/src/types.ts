@@ -75,6 +75,7 @@ export type CrewMemberSchedulePreference = "full-time" | "part-time" | "seasonal
 export type CrewMemberStatus = "available" | "assigned" | "off-duty";
 export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 export type ProviderStaffingMode = "auto-accept" | "review-first";
+export type ProviderVerificationStatus = "pending-review" | "verified" | "rejected";
 export type CrewMatchStatus = "pending-provider-review" | "accepted" | "denied";
 export type ExternalCalendarBlockType =
   | "off-platform-client"
@@ -197,6 +198,10 @@ export interface ProviderProfile extends BaseUser {
   yearsExperience: number;
   serviceRadiusMiles: number;
   staffingMode?: ProviderStaffingMode;
+  verificationStatus: ProviderVerificationStatus;
+  verificationSubmittedAt?: string;
+  verificationReviewedAt?: string;
+  verificationNotes?: string;
   sponsoredListingEnabled: boolean;
   categories: ServiceCategory[];
   rating: number;
@@ -603,6 +608,12 @@ export interface SupportOpsTicket {
   providerName?: string;
 }
 
+export interface ProviderVerificationQueueItem {
+  provider: ProviderProfile;
+  openBookingCount: number;
+  reviewCount: number;
+}
+
 export interface AppNotification {
   id: string;
   recipientId: string;
@@ -933,6 +944,12 @@ export interface UpdateProviderSettingsRequest {
     createdAt?: string;
     subscriptionId?: string;
   }>;
+}
+
+export interface ReviewProviderVerificationRequest {
+  providerId: string;
+  action: "approve" | "reject";
+  notes?: string;
 }
 
 export interface CreateExternalCalendarImportRequest {

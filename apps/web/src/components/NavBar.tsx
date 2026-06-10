@@ -45,10 +45,14 @@ export function NavBar() {
     <header className="site-header">
       <div className="container site-header__inner">
         <a href="/" className="brand-lockup">
-          <span className="brand-lockup__mark">YM</span>
-          <span>
-            <strong>YardMatch</strong>
-            <small>Book, run, or join landscaping crews</small>
+          <span className="brand-lockup__logo-frame" aria-hidden="true">
+            <img
+              alt="Green Rain"
+              className="brand-lockup__logo"
+              height={60}
+              src="/media/logo_with_words.png"
+              width={220}
+            />
           </span>
         </a>
         <nav aria-label="Primary navigation">

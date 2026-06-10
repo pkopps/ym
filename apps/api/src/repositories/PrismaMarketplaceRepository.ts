@@ -140,6 +140,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           yearsExperience: provider.yearsExperience,
           serviceRadiusMiles: provider.serviceRadiusMiles,
           staffingMode: provider.staffingMode,
+          verificationStatus: provider.verificationStatus,
+          verificationSubmittedAt: provider.verificationSubmittedAt
+            ? new Date(provider.verificationSubmittedAt)
+            : undefined,
+          verificationReviewedAt: provider.verificationReviewedAt
+            ? new Date(provider.verificationReviewedAt)
+            : undefined,
+          verificationNotes: provider.verificationNotes,
           sponsoredListingEnabled: provider.sponsoredListingEnabled,
           categories: provider.categories,
           rating: provider.rating,
@@ -751,6 +759,19 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           yearsExperience: updates.yearsExperience,
           serviceRadiusMiles: updates.serviceRadiusMiles,
           staffingMode: updates.staffingMode,
+          verificationStatus: updates.verificationStatus,
+          verificationSubmittedAt: updates.verificationSubmittedAt
+            ? new Date(updates.verificationSubmittedAt)
+            : updates.verificationSubmittedAt === undefined
+              ? undefined
+              : null,
+          verificationReviewedAt: updates.verificationReviewedAt
+            ? new Date(updates.verificationReviewedAt)
+            : updates.verificationReviewedAt === undefined
+              ? undefined
+              : null,
+          verificationNotes:
+            updates.verificationNotes === undefined ? undefined : updates.verificationNotes,
           sponsoredListingEnabled: updates.sponsoredListingEnabled,
           categories: updates.categories,
           rating: updates.rating,
@@ -1492,6 +1513,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       yearsExperience: number;
       serviceRadiusMiles: number;
       staffingMode?: string;
+      verificationStatus?: string;
+      verificationSubmittedAt?: Date | null;
+      verificationReviewedAt?: Date | null;
+      verificationNotes?: string | null;
       sponsoredListingEnabled: boolean;
       categories: string[];
       rating: number;
@@ -1514,6 +1539,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       yearsExperience: profile.yearsExperience,
       serviceRadiusMiles: profile.serviceRadiusMiles,
       staffingMode: (profile.staffingMode as ProviderProfile["staffingMode"] | undefined) ?? "review-first",
+      verificationStatus:
+        (profile.verificationStatus as ProviderProfile["verificationStatus"] | undefined) ??
+        "verified",
+      verificationSubmittedAt: profile.verificationSubmittedAt?.toISOString(),
+      verificationReviewedAt: profile.verificationReviewedAt?.toISOString(),
+      verificationNotes: profile.verificationNotes ?? undefined,
       sponsoredListingEnabled: profile.sponsoredListingEnabled,
       categories: profile.categories as ProviderProfile["categories"],
       rating: profile.rating,

@@ -268,6 +268,38 @@ export const apiSpec = {
         }
       }
     },
+    "/api/providers/verification/queue": {
+      get: {
+        tags: ["Providers"],
+        summary: "List providers waiting on verification review",
+        description:
+          "Returns provider businesses that are still pending review or were sent back for updates before they can appear in public search.",
+        responses: {
+          "200": { description: "Provider verification queue" }
+        }
+      }
+    },
+    "/api/providers/verification/review": {
+      post: {
+        tags: ["Providers"],
+        summary: "Approve or reject a provider business for public visibility",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                providerId: "provider_123",
+                action: "approve",
+                notes: "Business profile looks good and can go live."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated provider verification status" }
+        }
+      }
+    },
     "/api/customers/properties": {
       get: {
         tags: ["Customers"],
@@ -611,6 +643,8 @@ export const apiSpec = {
       post: {
         tags: ["Providers"],
         summary: "Search nearby providers",
+        description:
+          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services.",
         requestBody: {
           required: true,
           content: {

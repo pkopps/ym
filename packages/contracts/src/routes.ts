@@ -13,6 +13,8 @@ export class ApiRoutes {
   public static readonly createInstantQuote = "/api/quotes/instant";
   public static readonly searchProviders = "/api/providers/search";
   public static readonly providerProfile = "/api/providers/profile";
+  public static readonly providerVerificationQueue = "/api/providers/verification/queue";
+  public static readonly providerVerificationReview = "/api/providers/verification/review";
   public static readonly crewOpportunities = "/api/crew/opportunities";
   public static readonly providerStaffingOverview = "/api/providers/staffing";
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";

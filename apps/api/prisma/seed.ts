@@ -45,6 +45,10 @@ async function main() {
       yearsExperience: 7,
       serviceRadiusMiles: 18,
       staffingMode: "review-first" as const,
+      verificationStatus: "verified" as const,
+      verificationSubmittedAt: now,
+      verificationReviewedAt: now,
+      verificationNotes: "Seeded local provider verification for development.",
       sponsoredListingEnabled: true,
       categories: ["lawn-mowing", "seasonal-cleanup", "weed-control", "leaf-blowing", "gutter-cleaning", "snow-shoveling"],
       rating: 4.9,
@@ -70,6 +74,10 @@ async function main() {
       yearsExperience: 12,
       serviceRadiusMiles: 24,
       staffingMode: "review-first" as const,
+      verificationStatus: "verified" as const,
+      verificationSubmittedAt: now,
+      verificationReviewedAt: now,
+      verificationNotes: "Seeded local provider verification for development.",
       sponsoredListingEnabled: false,
       categories: ["lawn-mowing", "hedge-trimming", "mulch-installation", "fertilization", "aeration", "snow-blowing"],
       rating: 4.8,
@@ -145,6 +153,14 @@ async function main() {
           yearsExperience: provider.yearsExperience,
           serviceRadiusMiles: provider.serviceRadiusMiles,
           staffingMode: provider.staffingMode,
+          verificationStatus: provider.verificationStatus,
+          verificationSubmittedAt: provider.verificationSubmittedAt
+            ? new Date(provider.verificationSubmittedAt)
+            : null,
+          verificationReviewedAt: provider.verificationReviewedAt
+            ? new Date(provider.verificationReviewedAt)
+            : null,
+          verificationNotes: provider.verificationNotes,
           sponsoredListingEnabled: provider.sponsoredListingEnabled,
           categories: provider.categories,
           rating: provider.rating,

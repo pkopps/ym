@@ -532,6 +532,37 @@ export function ProviderLiveManagementBoard() {
         </section>
       ) : null}
 
+      {provider ? (
+        <section className="card">
+          <span className="eyebrow">Business verification</span>
+          <h2>
+            {provider.verificationStatus === "verified"
+              ? "Your business is verified and visible in search."
+              : provider.verificationStatus === "rejected"
+                ? "Your business needs a quick profile update before going live."
+                : "Your business is pending review before it appears in search."}
+          </h2>
+          <p>
+            {provider.verificationStatus === "verified"
+              ? "Customers can now discover this business in public YardMatch search results."
+              : provider.verificationStatus === "rejected"
+                ? provider.verificationNotes ??
+                  "Ops left review notes for this business before it can be shown to customers."
+                : "Ops will review the business profile, service area, and marketplace details before customers can book."}
+          </p>
+          <div className="chip-row">
+            <span>Status: {provider.verificationStatus.replaceAll("-", " ")}</span>
+            <span>
+              Submitted:{" "}
+              {formatDateTime(provider.verificationSubmittedAt ?? provider.createdAt)}
+            </span>
+            {provider.verificationReviewedAt ? (
+              <span>Reviewed: {formatDateTime(provider.verificationReviewedAt)}</span>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
+
       <section className={`provider-capacity-alert ${totalCrewGap > 0 ? "provider-capacity-alert--warning" : ""}`}>
         <div>
           <span className="eyebrow">Live staffing</span>

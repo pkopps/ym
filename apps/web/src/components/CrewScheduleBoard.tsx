@@ -1,9 +1,13 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useMemo, useState } from "react";
 import { crewAssignments } from "@yardmatch/ui";
 
 type ScheduleView = "calendar" | "list";
+const calendarStartHour = 6;
+const calendarEndHour = 18;
+const calendarHourSpan = calendarEndHour - calendarStartHour;
 
 function buildGoogleCalendarUrl({
   title,
@@ -58,6 +62,42 @@ function buildAppleCalendarData({
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
 }
 
+function buildGoogleMapsDirectionsUrl(addressLine: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressLine)}`;
+}
+
+function buildAppleMapsDirectionsUrl(addressLine: string) {
+  return `https://maps.apple.com/?q=${encodeURIComponent(addressLine)}`;
+}
+
+function parseTimeLabelToRange(timeLabel: string) {
+  const [startLabel, endLabel] = timeLabel.split(" - ");
+  return {
+    startMinutes: parseClockToMinutes(startLabel),
+    endMinutes: parseClockToMinutes(endLabel)
+  };
+}
+
+function parseClockToMinutes(label: string) {
+  const [timePart, meridiem] = label.trim().split(" ");
+  const [rawHours, rawMinutes] = timePart.split(":").map(Number);
+  let hours = rawHours % 12;
+  if (meridiem.toUpperCase() === "PM") {
+    hours += 12;
+  }
+  return hours * 60 + rawMinutes;
+}
+
+function formatCalendarHour(hour: number) {
+  if (hour === 12) {
+    return "12 PM";
+  }
+  if (hour > 12) {
+    return `${hour - 12} PM`;
+  }
+  return `${hour} AM`;
+}
+
 export function CrewScheduleBoard() {
   const [view, setView] = useState<ScheduleView>("calendar");
 
@@ -76,8 +116,38 @@ export function CrewScheduleBoard() {
           details: `${assignment.notes} Crew lead: ${assignment.crewLead}. ${assignment.equipmentLabel}.`,
           location: assignment.addressLine,
           startDate: assignment.isoDate
-        })
+        }),
+        googleMapsUrl: buildGoogleMapsDirectionsUrl(assignment.addressLine),
+        appleMapsUrl: buildAppleMapsDirectionsUrl(assignment.addressLine),
+        ...parseTimeLabelToRange(assignment.timeLabel)
       })),
+    []
+  );
+
+  const calendarDays = useMemo(
+    () =>
+      assignments
+        .slice()
+        .sort((left, right) => left.isoDate.localeCompare(right.isoDate))
+        .map((assignment) => ({
+          isoDate: assignment.isoDate,
+          dateLabel: assignment.dateLabel,
+          dayLabel: assignment.dayLabel,
+          monthLabel: assignment.monthLabel,
+          assignments: [assignment]
+        })),
+    [assignments]
+  );
+
+  const timeMarkers = useMemo(
+    () =>
+      Array.from({ length: calendarHourSpan + 1 }, (_, index) => {
+        const hour = calendarStartHour + index;
+        return {
+          hour,
+          label: formatCalendarHour(hour)
+        };
+      }),
     []
   );
 
@@ -128,29 +198,85 @@ export function CrewScheduleBoard() {
       </section>
 
       {view === "calendar" ? (
-        <section className="crew-schedule-grid">
-          {assignments.map((assignment) => (
-            <article className="crew-calendar-card" key={assignment.id}>
-              <div className="crew-calendar-card__date">
-                <strong>{assignment.dayLabel}</strong>
-                <span>{assignment.monthLabel}</span>
-              </div>
-              <div className="crew-calendar-card__body">
-                <h3>{assignment.businessName}</h3>
-                <p>{assignment.serviceLabel}</p>
-                <p>{assignment.timeLabel}</p>
-                <p>{assignment.addressLine}</p>
-                <div className="cta-row">
-                  <a className="button-secondary" href={assignment.googleUrl} rel="noreferrer" target="_blank">
-                    Add to Google
-                  </a>
-                  <a className="button-secondary" download={`${assignment.id}.ics`} href={assignment.appleUrl}>
-                    Add to Apple
-                  </a>
+        <section className="crew-calendar-board">
+          <div className="crew-calendar-board__header">
+            <span className="eyebrow">Week view</span>
+            <p>Shift cards are placed on a day grid so you can scan when each crew block starts and ends.</p>
+          </div>
+          <div className="crew-calendar-board__shell">
+            <div className="crew-calendar-board__time-rail" aria-hidden="true">
+              {timeMarkers.map((marker) => (
+                <div className="crew-calendar-board__time-marker" key={marker.hour}>
+                  <span>{marker.label}</span>
                 </div>
-              </div>
-            </article>
-          ))}
+              ))}
+            </div>
+            <div className="crew-calendar-board__days">
+              {calendarDays.map((day) => (
+                <article className="crew-calendar-day" key={day.isoDate}>
+                  <header className="crew-calendar-day__header">
+                    <strong>{day.dayLabel}</strong>
+                    <span>{day.monthLabel}</span>
+                  </header>
+                  <div className="crew-calendar-day__grid" style={{ "--calendar-hours": String(calendarHourSpan) } as CSSProperties}>
+                    {timeMarkers.slice(0, -1).map((marker) => (
+                      <div className="crew-calendar-day__hour" key={`${day.isoDate}-${marker.hour}`} />
+                    ))}
+                    {day.assignments.map((assignment) => {
+                      const topPercent =
+                        ((assignment.startMinutes - calendarStartHour * 60) / (calendarHourSpan * 60)) * 100;
+                      const heightPercent =
+                        ((assignment.endMinutes - assignment.startMinutes) / (calendarHourSpan * 60)) * 100;
+
+                      return (
+                        <div
+                          className="crew-calendar-shift"
+                          key={assignment.id}
+                          style={{
+                            top: `${topPercent}%`,
+                            height: `${heightPercent}%`
+                          }}
+                        >
+                          <span className="crew-calendar-shift__time">{assignment.timeLabel}</span>
+                          <h3>{assignment.businessName}</h3>
+                          <p>{assignment.serviceLabel}</p>
+                          <p>{assignment.addressLine}</p>
+                          <div className="crew-calendar-shift__meta">
+                            <span>{assignment.expectedEarnings}</span>
+                            <span>{assignment.crewLead}</span>
+                          </div>
+                          <div className="crew-calendar-shift__actions">
+                            <a
+                              className="button-secondary crew-mobile-directions"
+                              href={assignment.googleMapsUrl}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Google Maps
+                            </a>
+                            <a
+                              className="button-secondary crew-mobile-directions"
+                              href={assignment.appleMapsUrl}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              Apple Maps
+                            </a>
+                            <a className="button-secondary" href={assignment.googleUrl} rel="noreferrer" target="_blank">
+                              Google
+                            </a>
+                            <a className="button-secondary" download={`${assignment.id}.ics`} href={assignment.appleUrl}>
+                              Apple
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
         </section>
       ) : (
         <section className="stack-lg">
@@ -178,6 +304,22 @@ export function CrewScheduleBoard() {
                   <h3>Location</h3>
                   <p>{assignment.addressLine}</p>
                   <div className="cta-row">
+                    <a
+                      className="button-secondary crew-mobile-directions"
+                      href={assignment.googleMapsUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Google Maps
+                    </a>
+                    <a
+                      className="button-secondary crew-mobile-directions"
+                      href={assignment.appleMapsUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Apple Maps
+                    </a>
                     <a className="button-secondary" href={assignment.googleUrl} rel="noreferrer" target="_blank">
                       Google
                     </a>

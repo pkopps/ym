@@ -34,6 +34,7 @@ import {
   PushDevice,
   PaymentRecord,
   ProviderPayoutLedgerResponse,
+  ProviderVerificationQueueItem,
   PlaceSearchResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
@@ -60,6 +61,7 @@ import {
   MarkBookingLateRequest,
   MarkBookingExceptionRequest,
   ReviewCrewMatchRequest,
+  ReviewProviderVerificationRequest,
   RemovePushDeviceRequest,
   RemoveExternalCalendarImportRequest,
   RescheduleBookingRequest,
@@ -230,6 +232,14 @@ export class MarketplaceApiClient {
     return this.getJson<ProviderProfile>(
       `${ApiRoutes.providerProfile}?providerId=${encodeURIComponent(providerId)}`
     );
+  }
+
+  public getProviderVerificationQueue(): Promise<ProviderVerificationQueueItem[]> {
+    return this.getJson(ApiRoutes.providerVerificationQueue);
+  }
+
+  public reviewProviderVerification(payload: ReviewProviderVerificationRequest) {
+    return this.postJson<ProviderProfile>(ApiRoutes.providerVerificationReview, payload);
   }
 
   public getCrewOpportunities(): Promise<CrewOpportunity[]> {

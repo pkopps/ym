@@ -44,7 +44,10 @@ export function BookedBusinessResults({
           </div>
         </div>
         <div className="business-showcase-list">
-          {bookedBusinessShowcase.map((business) => (
+          {bookedBusinessShowcase.map((business) => {
+            const visibleSlots = business.slots.filter((slot) => slot.windowLabel.trim().length > 0);
+
+            return (
             <article className="calendar-card calendar-card--condensed" key={business.name}>
               <div className="calendar-card__header">
                 <div className="calendar-card__identity">
@@ -86,17 +89,16 @@ export function BookedBusinessResults({
                 ))}
               </div>
               <div className="calendar-slots calendar-slots--inline">
-                {business.slots.map((slot) => (
-                  <div className="calendar-slot calendar-slot--booked" key={`${business.name}-${slot.startLabel}`}>
-                    <span>
-                      {slot.startLabel} - {slot.endLabel}
-                    </span>
+                {visibleSlots.map((slot) => (
+                  <div className="calendar-slot calendar-slot--booked" key={`${business.name}-${slot.windowLabel}`}>
+                    <span>{slot.windowLabel}</span>
                     <strong>Booked</strong>
                   </div>
                 ))}
               </div>
             </article>
-          ))}
+          );
+          })}
         </div>
       </div>
 

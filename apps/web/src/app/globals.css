@@ -212,6 +212,24 @@ body {
   gap: var(--ym-space-3);
 }
 
+.brand-lockup__logo-frame {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10rem;
+  height: 2.8rem;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.brand-lockup__logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
 .brand-lockup__mark {
   display: grid;
   place-items: center;
@@ -641,42 +659,30 @@ body {
   align-items: start;
 }
 
+.home-service-scroller__track {
+  display: grid;
+  grid-auto-rows: 1.08em;
+  transform: translateY(0);
+  transition: transform 420ms cubic-bezier(0.7, 0, 0.3, 1);
+}
+
 .home-service-scroller__item {
   display: block;
   line-height: 1.02;
   white-space: nowrap;
   color: var(--ym-color-primary-strong);
-  transition:
-    transform 450ms cubic-bezier(0.7, 0, 0.3, 1),
-    opacity 450ms cubic-bezier(0.7, 0, 0.3, 1);
 }
 
-.home-service-scroller__item--current {
-  position: relative;
-  transform: translateY(0);
-  opacity: 1;
-}
-
-.home-service-scroller__item--next {
-  position: absolute;
-  left: 0;
-  top: 0;
-  transform: translateY(110%);
-  opacity: 0;
+.home-service-scroller__item--winter {
+  color: #3a74d8;
 }
 
 .home-hero__carousels {
   margin-top: var(--ym-space-3);
 }
 
-.home-service-scroller.is-animating .home-service-scroller__item--current {
-  transform: translateY(-110%);
-  opacity: 0;
-}
-
-.home-service-scroller.is-animating .home-service-scroller__item--next {
-  transform: translateY(0);
-  opacity: 1;
+.home-service-scroller.is-animating .home-service-scroller__track {
+  transform: translateY(-1.08em);
 }
 
 .hero-rail,
@@ -744,6 +750,37 @@ body {
   height: 3.5rem;
   border-radius: 16px;
   object-fit: cover;
+}
+
+.tool-illustration-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ym-space-4);
+}
+
+.tool-illustration-card {
+  display: grid;
+  gap: var(--ym-space-3);
+  padding: var(--ym-space-4);
+  border-radius: 30px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(247, 245, 239, 0.98));
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  box-shadow: var(--ym-shadow-soft);
+}
+
+.tool-illustration-card__image-wrap {
+  display: grid;
+  place-items: center;
+  min-height: 13rem;
+  padding: var(--ym-space-2);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(244, 237, 222, 0.96), rgba(255, 250, 240, 0.98));
+}
+
+.tool-illustration-card__image {
+  width: min(100%, 11rem);
+  height: auto;
+  object-fit: contain;
 }
 
 .app-banner {
@@ -1690,6 +1727,137 @@ body {
   flex-wrap: wrap;
 }
 
+.crew-calendar-board {
+  display: grid;
+  gap: var(--ym-space-4);
+  padding: var(--ym-space-5);
+  border-radius: 32px;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 245, 239, 0.98));
+  box-shadow: var(--ym-shadow-soft);
+}
+
+.crew-calendar-board__header,
+.crew-calendar-board__header p {
+  margin: 0;
+}
+
+.crew-calendar-board__shell {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: var(--ym-space-4);
+  align-items: start;
+}
+
+.crew-calendar-board__time-rail {
+  display: grid;
+  gap: 0;
+  padding-top: 4.1rem;
+}
+
+.crew-calendar-board__time-marker {
+  height: 4.8rem;
+  display: flex;
+  align-items: start;
+  justify-content: flex-end;
+  padding-right: var(--ym-space-2);
+  color: var(--ym-color-ink-soft);
+  font-size: 0.84rem;
+}
+
+.crew-calendar-board__days {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ym-space-4);
+}
+
+.crew-calendar-day {
+  display: grid;
+  gap: var(--ym-space-3);
+}
+
+.crew-calendar-day__header {
+  display: grid;
+  gap: 0.25rem;
+  padding: var(--ym-space-3) var(--ym-space-4);
+  border-radius: 22px;
+  background: rgba(244, 237, 222, 0.9);
+  border: 1px solid rgba(20, 40, 29, 0.08);
+}
+
+.crew-calendar-day__header strong,
+.crew-calendar-day__header span {
+  margin: 0;
+}
+
+.crew-calendar-day__header span {
+  color: var(--ym-color-ink-soft);
+}
+
+.crew-calendar-day__grid {
+  --calendar-hours: 12;
+  position: relative;
+  min-height: 57.6rem;
+  border-radius: 26px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(250, 247, 241, 0.98));
+  border: 1px solid rgba(20, 40, 29, 0.08);
+}
+
+.crew-calendar-day__hour {
+  height: calc(57.6rem / var(--calendar-hours));
+  border-top: 1px solid rgba(20, 40, 29, 0.06);
+}
+
+.crew-calendar-day__hour:first-child {
+  border-top: 0;
+}
+
+.crew-calendar-shift {
+  position: absolute;
+  left: 0.9rem;
+  right: 0.9rem;
+  display: grid;
+  gap: var(--ym-space-2);
+  padding: var(--ym-space-3);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(47, 125, 76, 0.18), rgba(143, 214, 148, 0.22));
+  border: 1px solid rgba(47, 125, 76, 0.18);
+  box-shadow: 0 16px 28px rgba(47, 125, 76, 0.12);
+}
+
+.crew-calendar-shift h3,
+.crew-calendar-shift p,
+.crew-calendar-shift__meta span,
+.crew-calendar-shift__time {
+  margin: 0;
+}
+
+.crew-calendar-shift__time {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ym-color-primary-strong);
+}
+
+.crew-calendar-shift__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.9rem;
+  color: var(--ym-color-ink-soft);
+  font-size: 0.84rem;
+}
+
+.crew-calendar-shift__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.crew-mobile-directions {
+  display: none;
+}
+
 .crew-schedule-grid {
   display: grid;
   gap: var(--ym-space-4);
@@ -2147,6 +2315,33 @@ body {
   color: var(--ym-color-primary-strong);
 }
 
+.chip-row__button {
+  appearance: none;
+  border: 0;
+  background: var(--ym-color-surface-strong);
+  border-radius: 999px;
+  padding: var(--ym-space-2) var(--ym-space-3);
+  color: var(--ym-color-primary-strong);
+  cursor: pointer;
+  font: inherit;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+
+.chip-row__button:hover,
+.chip-row__button:focus-visible {
+  background: rgba(211, 231, 255, 0.96);
+  box-shadow: 0 10px 24px rgba(21, 72, 54, 0.12);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.chip-row__button--winter {
+  color: #3a74d8;
+}
+
 .page-hero {
   padding: var(--ym-space-7) 0 var(--ym-space-5);
 }
@@ -2308,6 +2503,72 @@ body {
   border-radius: 999px;
   background: var(--ym-color-primary);
   box-shadow: 0 0 0 0.32rem rgba(47, 125, 76, 0.12);
+}
+
+.provider-mower-strip {
+  padding: 0 0 var(--ym-space-7);
+  background: linear-gradient(180deg, rgba(246, 231, 189, 0.4), rgba(255, 255, 255, 0));
+}
+
+.provider-mower-strip__inner {
+  display: grid;
+}
+
+.provider-mower-strip__track {
+  position: relative;
+  min-height: 14rem;
+  padding: var(--ym-space-5);
+  border-radius: 40px;
+  overflow: hidden;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  background:
+    radial-gradient(circle at 18% 28%, rgba(255, 238, 192, 0.85), transparent 26%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 236, 218, 0.92));
+  box-shadow: var(--ym-shadow-soft);
+}
+
+.provider-mower-strip__grass {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2.6rem;
+  pointer-events: none;
+}
+
+.provider-mower-strip__grass--back {
+  bottom: 2.25rem;
+  background:
+    radial-gradient(circle at 8% 90%, rgba(143, 214, 148, 0.8), transparent 20%),
+    radial-gradient(circle at 24% 88%, rgba(47, 125, 76, 0.42), transparent 18%),
+    radial-gradient(circle at 42% 86%, rgba(143, 214, 148, 0.76), transparent 22%),
+    radial-gradient(circle at 64% 88%, rgba(47, 125, 76, 0.38), transparent 18%),
+    radial-gradient(circle at 86% 90%, rgba(143, 214, 148, 0.82), transparent 20%);
+  opacity: 0.88;
+}
+
+.provider-mower-strip__grass--front {
+  bottom: 0;
+  height: 4rem;
+  background:
+    linear-gradient(180deg, rgba(162, 208, 130, 0.08), rgba(123, 176, 96, 0.5)),
+    radial-gradient(circle at 12% 100%, rgba(123, 176, 96, 0.88), transparent 22%),
+    radial-gradient(circle at 35% 100%, rgba(90, 153, 73, 0.9), transparent 20%),
+    radial-gradient(circle at 58% 100%, rgba(123, 176, 96, 0.84), transparent 22%),
+    radial-gradient(circle at 80% 100%, rgba(90, 153, 73, 0.9), transparent 20%);
+}
+
+.provider-mower-strip__mower {
+  position: absolute;
+  bottom: 1rem;
+  width: min(20rem, 36vw);
+  will-change: transform;
+}
+
+.provider-mower-strip__mower-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 16px 22px rgba(20, 40, 29, 0.18));
 }
 
 .auth-form-stack,
@@ -2604,6 +2865,7 @@ body {
 @media (max-width: 900px) {
   .hero,
   .app-banner,
+  .tool-illustration-row,
   .grid-two,
   .grid-three,
   .provider-hero,
@@ -2615,6 +2877,8 @@ body {
   .history-card__grid,
   .arrival-tracking__details,
   .crew-opportunity-card__grid,
+  .crew-calendar-board__shell,
+  .crew-calendar-board__days,
   .crew-schedule-grid,
   .calendar-slots--inline,
   .form-grid,
@@ -2692,13 +2956,39 @@ body {
     transform: rotate(6deg);
   }
 
+  .crew-calendar-board__time-rail {
+    display: none;
+  }
+
+  .crew-calendar-day__grid {
+    min-height: 24rem;
+  }
+
+  .crew-mobile-directions {
+    display: inline-flex;
+  }
+
   .provider-story:nth-child(even) .provider-story__image-wrap,
   .provider-story:nth-child(even) .provider-story__copy {
     order: initial;
   }
 
+  .provider-mower-strip__track {
+    min-height: 11rem;
+  }
+
+  .provider-mower-strip__mower {
+    width: min(16rem, 52vw);
+  }
+
   .hero-carousel__header {
     align-items: start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .tool-illustration-row {
+    grid-template-columns: 1fr;
   }
 }

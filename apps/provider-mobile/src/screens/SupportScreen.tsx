@@ -400,6 +400,33 @@ export function SupportScreen() {
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
+      {provider ? (
+        <InfoCard
+          title={
+            provider.verificationStatus === "verified"
+              ? "Business verified"
+              : provider.verificationStatus === "rejected"
+                ? "Business profile needs updates"
+                : "Business review in progress"
+          }
+          description={
+            provider.verificationStatus === "verified"
+              ? "This business is live in YardMatch search."
+              : provider.verificationStatus === "rejected"
+                ? provider.verificationNotes ??
+                  "Ops reviewed the business profile and left a note before it can go live."
+                : "Ops will review this business before it appears in customer search."
+          }
+        >
+          <Text style={styles.meta}>
+            Submitted {new Date(provider.verificationSubmittedAt ?? provider.createdAt).toLocaleDateString()}.
+            {provider.verificationReviewedAt
+              ? ` Reviewed ${new Date(provider.verificationReviewedAt).toLocaleDateString()}.`
+              : ""}
+          </Text>
+        </InfoCard>
+      ) : null}
+
       <InfoCard title="Service radius" description="Measured from customer property addresses">
         <View style={styles.stepRow}>
           <Pressable

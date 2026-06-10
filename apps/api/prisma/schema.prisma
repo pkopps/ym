@@ -65,6 +65,10 @@ model ProviderBusinessProfile {
   yearsExperience           Int
   serviceRadiusMiles        Int
   staffingMode              String   @default("review-first")
+  verificationStatus        String   @default("pending-review")
+  verificationSubmittedAt   DateTime?
+  verificationReviewedAt    DateTime?
+  verificationNotes         String?
   sponsoredListingEnabled   Boolean  @default(false)
   categories                String[]
   rating                    Float

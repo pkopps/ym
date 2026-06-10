@@ -1,11 +1,20 @@
+"use client";
+
 import {
   bookedBusinessShowcase,
   faqItems,
   serviceCategoryLabels
 } from "@yardmatch/ui";
+import { PlaceSuggestion, ServiceCategory } from "@yardmatch/contracts";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { BookedBusinessResults } from "./BookedBusinessResults";
 import { HomeServiceScroller } from "./HomeServiceScroller";
-import { PublicMarketplaceSearchShell } from "./PublicMarketplaceSearchShell";
+import { landscapingToolIllustrations } from "../lib/landscapingToolIllustrations";
+import {
+  buildCustomerListingsSearchParams,
+  PublicMarketplaceSearchShell
+} from "./PublicMarketplaceSearchShell";
 import { StructuredData } from "./StructuredData";
 
 const topRatedLandscapers = bookedBusinessShowcase
@@ -31,6 +40,21 @@ const rotatingServices = [
 ] as const;
 
 export function PublicCustomerMarketplacePage() {
+  const router = useRouter();
+  const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
+  const [areaQuery, setAreaQuery] = useState("Brooklyn, NY");
+  const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
+
+  function handleSearch(service: ServiceCategory, suggestion?: PlaceSuggestion) {
+    const params = buildCustomerListingsSearchParams({
+      areaQuery,
+      selectedService: service,
+      selectedSuggestion: suggestion
+    });
+
+    router.push(`/customer/listings?${params.toString()}`);
+  }
+
   return (
     <main>
       <StructuredData
@@ -54,7 +78,15 @@ export function PublicCustomerMarketplacePage() {
             <HomeServiceScroller services={rotatingServices} />
           </h1>
           <p>Search by service and area first. Create an account only when you need to manage the booking.</p>
-          <PublicMarketplaceSearchShell />
+          <PublicMarketplaceSearchShell
+            areaQuery={areaQuery}
+            onAreaQueryChange={setAreaQuery}
+            onSearch={handleSearch}
+            onSelectedServiceChange={setSelectedService}
+            onSelectedSuggestionChange={setSelectedSuggestion}
+            selectedService={selectedService}
+            selectedSuggestion={selectedSuggestion}
+          />
           <div className="cta-row">
             <a className="button-secondary" href="/customer/listings">
               Browse local pros
@@ -67,8 +99,19 @@ export function PublicCustomerMarketplacePage() {
             </a>
           </div>
           <div className="chip-row" style={{ marginTop: "1.5rem" }}>
-            {Object.values(serviceCategoryLabels).map((label) => (
-              <span key={label}>{label}</span>
+            {Object.entries(serviceCategoryLabels).map(([value, label]) => (
+              <button
+                className={`chip-row__button${label === "Snow shoveling" ? " chip-row__button--winter" : ""}`}
+                key={value}
+                onClick={() => {
+                  const nextService = value as ServiceCategory;
+                  setSelectedService(nextService);
+                  handleSearch(nextService, selectedSuggestion);
+                }}
+                type="button"
+              >
+                {label}
+              </button>
             ))}
           </div>
           <div className="hero-rail home-hero__carousels">
@@ -121,6 +164,24 @@ export function PublicCustomerMarketplacePage() {
         </div>
       </section>
 
+      <section className="container stack-lg">
+        <div className="tool-illustration-row">
+          {landscapingToolIllustrations.map((illustration) => (
+            <article className="tool-illustration-card" key={illustration.id}>
+              <div className="tool-illustration-card__image-wrap">
+                <img
+                  alt={illustration.alt}
+                  className="tool-illustration-card__image"
+                  height={240}
+                  src={illustration.src}
+                  width={240}
+                />
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
       <section className="container app-banner">
         <div className="app-banner__content">
           <span className="eyebrow">Mobile apps</span>
@@ -162,20 +223,20 @@ export function PublicCustomerMarketplacePage() {
               </div>
               <div className="app-banner__screen-card">
                 <strong>GreenStride Lawn Co.</strong>
-                <p>9:00 AM mow and edge</p>
+                <p>Morning mow and edge</p>
                 <div className="app-banner__slots">
-                  <span>9:00</span>
-                  <span>11:00</span>
-                  <span>1:00</span>
+                  <span>Morning</span>
+                  <span>Afternoon</span>
+                  <span>Late afternoon / evening</span>
                 </div>
               </div>
               <div className="app-banner__screen-card">
                 <strong>Blue Harbor Outdoor</strong>
-                <p>2:30 PM hedge trim</p>
+                <p>Late afternoon hedge trim</p>
                 <div className="app-banner__slots">
-                  <span>2:30</span>
-                  <span>4:00</span>
-                  <span>5:30</span>
+                  <span>Morning</span>
+                  <span>Afternoon</span>
+                  <span>Late afternoon / evening</span>
                 </div>
               </div>
             </div>

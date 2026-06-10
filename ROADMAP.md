@@ -65,6 +65,7 @@ Already done:
 - customer refund-review requests tied directly to real bookings and payments
 - ops approval / denial of refund reviews from the internal support queue
 - provider and crew payouts automatically move on hold while a refund review is open
+- provider verification workflow with an ops review queue and provider-facing status visibility
 
 - Turn on real Stripe credentials in development and staging
 - Verify production-style webhook handling end to end
@@ -78,6 +79,9 @@ Already done:
 - Route-aware daily scheduling
 - Crew/day load balancing
 - Better job-level staffing recommendations
+- AI ops assistant for provider-side changes, for example:
+  - "Change my afternoon appointment to night and send a notification to the property owner"
+  - reschedule, notify, and crew/provider coordination actions from natural-language requests
 - More provider controls for:
   - service area
   - staffing mode
@@ -116,7 +120,6 @@ Still left:
 
 - Refund overrides for ops
 - richer refund reporting and exception summaries
-- Provider verification workflow
 - Richer booking intervention controls
 - Deeper dispute evidence and resolution flows
 - Audit-friendly internal tooling for support and financial exceptions
@@ -157,6 +160,7 @@ The following items are no longer roadmap gaps and should be treated as complete
 - support ticketing and dispute flows
 - provider late notices and service exception handling
 - provider ops queue and dispute resolution UI
+- provider verification review queue
 - Stripe Checkout scaffold and webhook plumbing
 - provider ICS export and outside-calendar blocking
 - external iCal calendar import into provider availability blocking
@@ -174,6 +178,20 @@ The following items are no longer roadmap gaps and should be treated as complete
 8. Post-launch loyalty, subscriptions, and deeper business tooling
 
 ## Notes
+
+### Known bugs
+
+- Homepage hero service rotator still has an unresolved flicker / double-advance issue:
+  - example: `leaf blowing` rolls into `weed whacking`, briefly flashes the next value, then snaps back
+  - this needs a cleaner animation/state model before more homepage polish work lands there
+- Public navbar logo still needs a proper asset/layout pass:
+  - the new wordmark PNG has a large square canvas and can still affect header balance unexpectedly
+  - fix later with either a cropped export or a dedicated header-safe logo treatment
+
+### Branding
+
+- Tentative future name change under consideration: `GreenRain`
+- Keep product, domain, and asset naming flexible until the brand decision is finalized
 
 ### Arrival tracking
 

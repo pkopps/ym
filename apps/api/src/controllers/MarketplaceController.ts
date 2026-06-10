@@ -5,6 +5,7 @@ import {
   CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
   CreateProviderReviewRequest,
+  ReviewProviderVerificationRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
   CreateBookingDisputeRequest,
@@ -51,6 +52,8 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/places/search") ||
       (context.method === "POST" && context.path === "/api/providers/search") ||
       (context.method === "GET" && context.path === "/api/providers/profile") ||
+      (context.method === "GET" && context.path === "/api/providers/verification/queue") ||
+      (context.method === "POST" && context.path === "/api/providers/verification/review") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
@@ -177,6 +180,20 @@ export class MarketplaceController implements ApiController {
       }
 
       sendJson(response, 200, await this.platform.getProviderProfile(providerId));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/providers/verification/queue") {
+      sendJson(response, 200, await this.platform.listProviderVerificationQueue());
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/verification/review") {
+      sendJson(
+        response,
+        200,
+        await this.platform.reviewProviderVerification(context.body as ReviewProviderVerificationRequest)
+      );
       return;
     }
 

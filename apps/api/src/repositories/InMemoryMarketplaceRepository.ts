@@ -565,6 +565,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         yearsExperience: 7,
         serviceRadiusMiles: 18,
         staffingMode: "review-first",
+        verificationStatus: "verified",
+        verificationSubmittedAt: new Date().toISOString(),
+        verificationReviewedAt: new Date().toISOString(),
+        verificationNotes: "Seeded local provider verification for development.",
         sponsoredListingEnabled: true,
         categories: [
           "lawn-mowing",
@@ -597,6 +601,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         yearsExperience: 12,
         serviceRadiusMiles: 24,
         staffingMode: "review-first",
+        verificationStatus: "verified",
+        verificationSubmittedAt: new Date().toISOString(),
+        verificationReviewedAt: new Date().toISOString(),
+        verificationNotes: "Seeded local provider verification for development.",
         sponsoredListingEnabled: false,
         categories: [
           "lawn-mowing",
@@ -629,6 +637,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         yearsExperience: 10,
         serviceRadiusMiles: 30,
         staffingMode: "review-first",
+        verificationStatus: "verified",
+        verificationSubmittedAt: new Date().toISOString(),
+        verificationReviewedAt: new Date().toISOString(),
+        verificationNotes: "Seeded local provider verification for development.",
         sponsoredListingEnabled: true,
         categories: [
           "seasonal-cleanup",

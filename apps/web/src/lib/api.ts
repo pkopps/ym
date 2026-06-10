@@ -3,6 +3,8 @@ import { MarketplaceApiClient } from "@yardmatch/contracts";
 const authStorageKey = "yardmatch-web-session";
 const sessionChangeEventName = "yardmatch-web-session-change";
 const sessionChannelName = "yardmatch-web-session";
+let cachedSessionRawValue: string | null | undefined;
+let cachedSessionValue: StoredWebSession | undefined;
 
 export type WebSessionChangeReason = "saved" | "cleared" | "expired" | "invalidated";
 
@@ -33,7 +35,8 @@ export function loadStoredSession(): StoredWebSession | undefined {
     return undefined;
   }
 
-  return readStoredSessionState().session;
+  const state = readStoredSessionState();
+  return getStableStoredSession(state.session);
 }
 
 export function cleanupStoredSessionIfInvalid(): void {
@@ -91,6 +94,8 @@ export function saveStoredSession(session: StoredWebSession): void {
   }
 
   window.localStorage.setItem(authStorageKey, JSON.stringify(session));
+  cachedSessionRawValue = undefined;
+  cachedSessionValue = undefined;
   dispatchStoredSessionChange("saved");
 }
 
@@ -100,6 +105,8 @@ export function clearStoredSession(reason: WebSessionChangeReason = "cleared"): 
   }
 
   window.localStorage.removeItem(authStorageKey);
+  cachedSessionRawValue = null;
+  cachedSessionValue = undefined;
   dispatchStoredSessionChange(reason);
 }
 
@@ -174,4 +181,25 @@ function createSessionBroadcastChannel(): BroadcastChannel | undefined {
     __yardmatchSessionChannel?: BroadcastChannel;
   }).__yardmatchSessionChannel = channel;
   return channel;
+}
+
+function getStableStoredSession(session: StoredWebSession | undefined): StoredWebSession | undefined {
+  if (typeof window === "undefined") {
+    return session;
+  }
+
+  const raw = window.localStorage.getItem(authStorageKey);
+  if (!raw) {
+    cachedSessionRawValue = null;
+    cachedSessionValue = undefined;
+    return undefined;
+  }
+
+  if (cachedSessionRawValue === raw) {
+    return cachedSessionValue;
+  }
+
+  cachedSessionRawValue = raw;
+  cachedSessionValue = session;
+  return cachedSessionValue;
 }
