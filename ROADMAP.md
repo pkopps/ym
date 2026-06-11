@@ -66,6 +66,7 @@ Already done:
 - ops approval / denial of refund reviews from the internal support queue
 - provider and crew payouts automatically move on hold while a refund review is open
 - provider verification workflow with an ops review queue and provider-facing status visibility
+- richer refund reporting and exception summaries in the ops dashboard
 
 - Turn on real Stripe credentials in development and staging
 - Verify production-style webhook handling end to end
@@ -76,8 +77,16 @@ Already done:
 
 ### Provider scheduling and dispatch depth
 
-- Route-aware daily scheduling
-- Crew/day load balancing
+Already done:
+
+- route-aware provider dispatch planning inside the calendar overview:
+  - per-day route load summaries
+  - crew gap visibility
+  - estimated route miles
+  - morning / afternoon / late-afternoon pressure by window
+  - day-level recommendations when routes look overloaded
+
+- Automated crew/day load balancing
 - Better job-level staffing recommendations
 - AI ops assistant for provider-side changes, for example:
   - "Change my afternoon appointment to night and send a notification to the property owner"
@@ -109,19 +118,21 @@ Still left:
 - Improve geocoding quality beyond the current fallback + basic place search setup
 - Normalize addresses more aggressively before matching and booking
 - Improve explainability and confidence of quote / property measurement logic
-- Improve provider ranking using:
-  - reliability
-  - conversion
-  - service fit
-  - distance and travel burden
-  - sponsored placement rules
+- Improve provider ranking further beyond the current score-and-explanation model:
+  - conversion signals once they are trustworthy enough to use
+  - richer service-fit weighting across more complex requests
+  - stronger long-term reliability signals and calibration
+  - continued tuning of distance and travel-burden tradeoffs
 
 ### Financial and internal ops tooling
 
 - Refund overrides for ops
-- richer refund reporting and exception summaries
-- Richer booking intervention controls
-- Deeper dispute evidence and resolution flows
+- Richer booking intervention controls beyond the current ops action console
+- Deeper dispute evidence and resolution flows beyond the current photo workflow
+- Evidence workflow improvements beyond the shipped before/after photo requirement:
+  - expand evidence types beyond photos alone
+  - add cleaner evidence review and annotation tools for ops
+  - strengthen evidence linkage into disputes, bad reviews, refund reviews, and service-quality support workflows
 - Audit-friendly internal tooling for support and financial exceptions
 
 ## Phase 3: Nice To Have After Launch
@@ -164,6 +175,7 @@ The following items are no longer roadmap gaps and should be treated as complete
 - Stripe Checkout scaffold and webhook plumbing
 - provider ICS export and outside-calendar blocking
 - external iCal calendar import into provider availability blocking
+- provider dispatch planning summaries for day load, route miles, and window pressure
 - device-backed provider live route tracking
 
 ## Recommended Execution Order
@@ -172,7 +184,7 @@ The following items are no longer roadmap gaps and should be treated as complete
 2. Real Google / Apple auth
 3. Turn on real Stripe keys and finish refund / payout depth
 4. Google / Apple calendar sync polish
-5. Route-aware scheduling and load balancing
+5. Automated load balancing and deeper dispatch controls
 6. Search / ranking / quote intelligence improvements
 7. Richer ops and financial admin tooling
 8. Post-launch loyalty, subscriptions, and deeper business tooling
@@ -218,6 +230,8 @@ Already done:
 - provider payout ledger visibility
 - crew payout ledger visibility
 - refund review workflow with ops approval / denial and payout holds
+- ops booking intervention console for notes, reschedules, cancel/restore/complete actions, and audit trail history
+- required before-work and after-work photo evidence with booking-level timestamps and actor attribution
 
 Still left:
 
@@ -239,3 +253,17 @@ Still left:
 
 - deeper Google / Apple calendar interoperability
 - sync polish for mixed on-platform and off-platform schedules
+
+### Scheduling
+
+Already done:
+
+- provider dispatch planning summaries in web/mobile calendar views
+- per-day crew gap visibility
+- route-mile estimates and day/window pressure summaries
+
+Still left:
+
+- automated crew/day load balancing
+- better job-level staffing recommendations
+- provider dispatch controls beyond the current route-planning summaries

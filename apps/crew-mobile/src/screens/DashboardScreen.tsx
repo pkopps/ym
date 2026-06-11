@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import * as ImagePicker from "expo-image-picker";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { CrewMatchesResponse } from "@yardmatch/contracts";
@@ -61,6 +62,50 @@ export function DashboardScreen({
     }
   }
 
+  async function captureEvidencePhoto(phase: "before" | "after") {
+    if (!envelope?.session.token || !acceptedMatch) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setErrorMessage("Camera access is required to capture service photos.");
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        base64: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.5
+      });
+
+      if (result.canceled || !result.assets[0]?.base64) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.addBookingEvidence({
+        bookingId: acceptedMatch.bookingId,
+        phase,
+        imageDataUrl: `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`
+      });
+      setStatusMessage(
+        phase === "before" ? "Before photo saved to the job record." : "After photo saved to the job record."
+      );
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to capture that service photo.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Today" title="Your next shift">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -77,7 +122,32 @@ export function DashboardScreen({
             {acceptedMatch.serviceAddress.city}, {acceptedMatch.serviceAddress.state}
           </Text>
           <Text style={styles.meta}>Status: {acceptedMatch.bookingStatus.replaceAll("-", " ")}</Text>
+          <Text style={styles.meta}>
+            Evidence • before {acceptedMatch.beforeEvidenceCount} • after {acceptedMatch.afterEvidenceCount}
+          </Text>
           <View style={styles.buttonRow}>
+            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void captureEvidencePhoto("before")}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>
+                  {acceptedMatch.beforeEvidenceCount > 0 ? "Add before photo" : "Capture before photo"}
+                </Text>
+              </Pressable>
+            ) : null}
+            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void captureEvidencePhoto("after")}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>
+                  {acceptedMatch.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
+                </Text>
+              </Pressable>
+            ) : null}
             {acceptedMatch.bookingStatus === "requested" ? (
               <View style={styles.waitingBadge}>
                 <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation</Text>
@@ -151,6 +221,7 @@ const styles = StyleSheet.create({
   },
   buttonRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: BrandTokens.spacing.md,
     marginTop: BrandTokens.spacing.sm
   },

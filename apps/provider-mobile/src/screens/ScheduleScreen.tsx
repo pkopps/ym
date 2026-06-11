@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
@@ -17,6 +18,26 @@ import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
 type ViewMode = "calendar" | "list";
+
+function formatMinutesAsHours(minutes: number) {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = minutes / 60;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hrs`;
+}
+
+function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") {
+  switch (status) {
+    case "comfortable":
+      return "Balanced";
+    case "watch":
+      return "Watch closely";
+    case "overloaded":
+      return "Overloaded";
+  }
+}
 
 export function ScheduleScreen() {
   const { envelope } = useProviderSession();
@@ -377,6 +398,51 @@ export function ScheduleScreen() {
     }
   }
 
+  async function captureEvidencePhoto(bookingId: string, phase: "before" | "after") {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setErrorMessage("Camera access is required to capture service photos.");
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        base64: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.5
+      });
+
+      if (result.canceled || !result.assets[0]?.base64) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const mimeType = asset.mimeType ?? "image/jpeg";
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.addBookingEvidence({
+        bookingId,
+        phase,
+        imageDataUrl: `data:${mimeType};base64,${asset.base64}`
+      });
+      setStatusMessage(
+        phase === "before" ? "Before photo saved to the job record." : "After photo saved to the job record."
+      );
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to capture that service photo.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Schedule" title="Upcoming jobs">
       <View style={styles.modeRow}>
@@ -393,6 +459,46 @@ export function ScheduleScreen() {
           description={`${calendarOverview?.yardmatchJobCount ?? jobs.length} YardMatch jobs • ${calendarOverview?.externalBlockCount ?? 0} outside blocks`}
         >
           <View style={styles.list}>
+            {calendarOverview?.dispatchDays?.map((day) => (
+              <View key={day.dateIso} style={styles.dispatchCard}>
+                <View style={styles.dispatchHeader}>
+                  <Text style={styles.clientLabel}>{day.dayLabel}</Text>
+                  <Text style={styles.dispatchStatus}>{formatRouteStatusLabel(day.routeStatus)}</Text>
+                </View>
+                <Text style={styles.metaLine}>
+                  {day.yardmatchJobCount} jobs • {day.totalCrewAssigned}/{day.totalCrewRequired} crew •{" "}
+                  {day.estimatedDriveMiles} mi
+                </Text>
+                <Text style={styles.metaLine}>
+                  {formatMinutesAsHours(day.bookedMinutes)} booked
+                  {day.externalBlockCount ? ` • ${formatMinutesAsHours(day.blockedMinutes)} outside blocks` : ""}
+                </Text>
+                {day.firstStopAddressLine ? (
+                  <Text style={styles.metaLine}>First stop: {day.firstStopAddressLine}</Text>
+                ) : null}
+                <View style={styles.windowList}>
+                  {day.windowSummaries.map((window) => (
+                    <View key={`${day.dateIso}-${window.windowKey}`} style={styles.windowCard}>
+                      <Text style={styles.timeLabel}>{window.label}</Text>
+                      <Text style={styles.metaLine}>
+                        {window.yardmatchJobCount} jobs • {window.totalCrewAssigned}/{window.totalCrewRequired} crew
+                        {window.crewGap ? ` • gap ${window.crewGap}` : ""}
+                      </Text>
+                      <Text style={styles.metaLine}>
+                        {window.externalBlockCount
+                          ? `${window.externalBlockCount} outside blocks • ${formatMinutesAsHours(window.blockedMinutes)}`
+                          : `${formatMinutesAsHours(window.bookedMinutes)} booked`}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                {day.recommendations.map((recommendation) => (
+                  <Text key={recommendation} style={styles.metaLine}>
+                    - {recommendation}
+                  </Text>
+                ))}
+              </View>
+            ))}
             {calendarEvents.map((event) => (
               <View key={event.id} style={styles.dayCard}>
                 <Text style={styles.dayLabel}>
@@ -428,6 +534,9 @@ export function ScheduleScreen() {
                   <Text style={styles.metaLine}>
                     {job.category.replaceAll("-", " ")} • {job.assignedCrewMembers}/{job.requiredCrewMembers} crew
                   </Text>
+                  <Text style={styles.metaLine}>
+                    Evidence • before {job.beforeEvidenceCount} • after {job.afterEvidenceCount}
+                  </Text>
                   <Text style={styles.statusLine}>{job.status.replaceAll("-", " ")}</Text>
                   {job.onRouteConfirmedAt ? (
                     <Text style={styles.metaLine}>Route is live. Customer chat is open.</Text>
@@ -450,6 +559,28 @@ export function ScheduleScreen() {
                     </Text>
                   ) : null}
                   <View style={styles.actionRow}>
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void captureEvidencePhoto(job.bookingId, "before")}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>
+                          {job.beforeEvidenceCount > 0 ? "Add before photo" : "Capture before photo"}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void captureEvidencePhoto(job.bookingId, "after")}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>
+                          {job.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
+                        </Text>
+                      </Pressable>
+                    ) : null}
                     {job.status === "requested" ? (
                       <Pressable
                         disabled={isWorking}
@@ -704,6 +835,36 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: BrandTokens.spacing.md
+  },
+  dispatchCard: {
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    padding: BrandTokens.spacing.md,
+    gap: BrandTokens.spacing.xs,
+    backgroundColor: "rgba(245,252,247,0.98)"
+  },
+  dispatchHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: BrandTokens.spacing.sm
+  },
+  dispatchStatus: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  windowList: {
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.xs
+  },
+  windowCard: {
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    padding: BrandTokens.spacing.sm,
+    gap: 2
   },
   dayCard: {
     borderRadius: BrandTokens.radius.sm,

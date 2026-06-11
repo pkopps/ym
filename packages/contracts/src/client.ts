@@ -1,4 +1,5 @@
 import {
+  AddBookingEvidenceRequest,
   AppNotification,
   AnalyticsEvent,
   AuthenticatedUserEnvelope,
@@ -31,6 +32,7 @@ import {
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse,
   NotificationPreferences,
+  OpsFinancialExceptionSummaryResponse,
   PushDevice,
   PaymentRecord,
   ProviderPayoutLedgerResponse,
@@ -45,6 +47,8 @@ import {
   InstantQuoteRequest,
   InstantQuoteResponse,
   CreatePaymentIntentRequest,
+  CreateOpsRefundOverrideRequest,
+  CreateOpsBookingInterventionRequest,
   CreateRefundRequest,
   CreateSupportTicketRequest,
   ObservabilityOverview,
@@ -441,6 +445,10 @@ export class MarketplaceApiClient {
     return this.postJson<Booking>(ApiRoutes.markBookingException, payload);
   }
 
+  public addBookingEvidence(payload: AddBookingEvidenceRequest) {
+    return this.postJson<Booking>(ApiRoutes.addBookingEvidence, payload);
+  }
+
   public createBookingDispute(payload: CreateBookingDisputeRequest) {
     return this.postJson<Booking>(ApiRoutes.createBookingDispute, payload);
   }
@@ -493,6 +501,18 @@ export class MarketplaceApiClient {
 
   public getOpsSupportTickets(): Promise<SupportOpsTicket[]> {
     return this.getJson(ApiRoutes.opsSupportTickets);
+  }
+
+  public getOpsSupportSummary(): Promise<OpsFinancialExceptionSummaryResponse> {
+    return this.getJson(ApiRoutes.opsSupportSummary);
+  }
+
+  public createOpsRefundOverride(payload: CreateOpsRefundOverrideRequest): Promise<PaymentRecord> {
+    return this.postJson(ApiRoutes.opsRefundOverride, payload);
+  }
+
+  public createOpsBookingIntervention(payload: CreateOpsBookingInterventionRequest): Promise<Booking> {
+    return this.postJson(ApiRoutes.opsBookingIntervention, payload);
   }
 
   public updateOpsSupportTicket(payload: UpdateSupportTicketRequest): Promise<SupportTicket> {

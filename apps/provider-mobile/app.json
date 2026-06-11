@@ -6,6 +6,7 @@
     "version": "0.1.0",
     "orientation": "default",
     "plugins": [
+      "expo-dev-client",
       [
         "expo-local-authentication",
         {
@@ -24,12 +25,14 @@
     ],
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.yardmatch.provider",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "YardMatch uses your location while you are heading to a property so customers can follow your live arrival ETA.",
         "NSFaceIDUsageDescription": "YardMatch uses Face ID so you can quickly reopen the provider app on this device."
       }
     },
     "android": {
+      "package": "com.yardmatch.provider",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION"

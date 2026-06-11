@@ -568,7 +568,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Start work on a confirmed booking",
         description:
-          "Used by the business owner by default after the route has started. Accepted crew can be supported later for delegated route-leader scenarios. This moves the booking into in-progress status.",
+          "Used by the business owner by default after the route has started. Accepted crew can be supported later for delegated route-leader scenarios. This moves the booking into in-progress status and requires at least one before-work photo.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -583,6 +583,32 @@ export const apiSpec = {
         responses: {
           "200": { description: "Updated booking in in-progress status" },
           "403": { description: "Only the provider on the booking, or an accepted crew member fallback, can start work" }
+        }
+      }
+    },
+    "/api/bookings/evidence": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Attach before or after service photos to a booking",
+        description:
+          "Stores booking-linked photo evidence with phase, timestamp, and actor attribution. Providers and accepted crew members can attach before-work or after-work photos while the booking is active.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                phase: "before",
+                imageDataUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD...",
+                note: "Front yard before trimming"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with attached service evidence" },
+          "403": { description: "Only the provider or accepted crew member can attach evidence" }
         }
       }
     },
@@ -644,7 +670,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services.",
+          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, distance, reliability history, availability, and sponsored placement, with an explanation payload for each ranked provider.",
         requestBody: {
           required: true,
           content: {
@@ -926,6 +952,32 @@ export const apiSpec = {
         }
       }
     },
+    "/api/support/ops/bookings/intervene": {
+      post: {
+        tags: ["Support"],
+        summary: "Perform a direct ops intervention on a booking",
+        description:
+          "Lets customer service add an internal intervention note, reschedule a booking, or directly restore, cancel, or complete the booking while appending an audit trail to the booking record.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                ticketId: "support_ticket_123",
+                action: "reschedule-booking",
+                note: "Customer approved moving the job to tomorrow afternoon after a storm delay.",
+                scheduledStartIso: "2026-06-15T18:00:00.000Z",
+                scheduledEndIso: "2026-06-15T20:00:00.000Z"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with intervention audit trail" }
+        }
+      }
+    },
     "/api/bookings": {
       get: {
         tags: ["Bookings"],
@@ -976,7 +1028,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Mark a booking complete and schedule the delayed review invite",
         description:
-          "Completing a booking creates a review invite scheduled to send 48 hours later by default.",
+          "Completing a booking creates a review invite scheduled to send 48 hours later by default and requires at least one after-work photo.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1388,6 +1440,40 @@ export const apiSpec = {
         }
       }
     },
+    "/api/support/ops/summary": {
+      get: {
+        tags: ["Support"],
+        summary: "Get refund and field-exception summary data for operations",
+        description:
+          "Returns aggregate metrics and detailed rows for open refund reviews, payout holds, disputed jobs, and active booking exceptions so operations can spot where service and billing risk is concentrating.",
+        responses: {
+          "200": { description: "Support operations financial and exception summary" }
+        }
+      }
+    },
+    "/api/support/ops/refund-override": {
+      post: {
+        tags: ["Support"],
+        summary: "Open a refund review from customer service",
+        description:
+          "Lets internal ops open a refund review on a captured payment from an existing billing ticket, even if the customer or provider did not start the refund-review flow themselves.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                ticketId: "ticket_123",
+                paymentId: "payment_123",
+                reason: "Customer service opened a refund review after checking a billing complaint."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Payment moved into refund review by customer service" }
+        }
+      }
+    },
     "/api/support/ops/tickets/update": {
       post: {
         tags: ["Support"],
@@ -1476,7 +1562,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Get a merged provider calendar timeline",
         description:
-          "Returns a combined schedule view for the authenticated provider, merging YardMatch jobs with blocking outside-calendar entries so mixed books of business can be managed in one timeline.",
+          "Returns a combined schedule view for the authenticated provider, merging YardMatch jobs with blocking outside-calendar entries so mixed books of business can be managed in one timeline. The response also includes dispatch-planning summaries for day load, crew gaps, route miles, and morning/afternoon/evening pressure.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {

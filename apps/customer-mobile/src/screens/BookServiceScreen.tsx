@@ -7,7 +7,7 @@ import {
   CustomerProperty,
   formatBookingWindowSummary,
   InstantQuoteResponse,
-  ProviderProfile,
+  SearchProviderResult,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
@@ -33,7 +33,7 @@ export function BookServiceScreen() {
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
-  const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [providers, setProviders] = useState<SearchProviderResult[]>([]);
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -92,7 +92,7 @@ export function BookServiceScreen() {
         dateIso: new Date().toISOString(),
         estimatedDurationMinutes: nextQuote.estimatedDurationMinutes
       });
-      setProviders(providerSearch.providers);
+      setProviders(providerSearch.rankedProviders);
       setSlots(providerSearch.suggestedSlots);
       setSearchState("loaded");
       void tracker.track(MarketplaceTelemetryEventCatalog.bookingRequested, {
@@ -132,12 +132,14 @@ export function BookServiceScreen() {
     }
   }
 
-  async function handleCreateBooking(provider: ProviderProfile) {
+  async function handleCreateBooking(provider: SearchProviderResult) {
     if (!quote || !activeProperty || !envelope?.session.token) {
       return;
     }
 
-    const slot = slots.find((item) => item.providerId === provider.id && !item.isBooked);
+    const slot =
+      provider.suggestedSlot ??
+      slots.find((item) => item.providerId === provider.provider.id && !item.isBooked);
     if (!slot) {
       setErrorMessage("No open slot is available for that provider.");
       return;
@@ -149,7 +151,7 @@ export function BookServiceScreen() {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.createBooking({
-        providerId: provider.id,
+        providerId: provider.provider.id,
         serviceAddress: activeProperty.address,
         servicePropertyId: activeProperty.id,
         category: selectedService,
@@ -158,7 +160,9 @@ export function BookServiceScreen() {
         notes: "Booked from the mobile customer app.",
         totalCents: quote.estimatedPriceCents
       });
-      setMessage(`Booked ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`);
+      setMessage(
+        `Booked ${provider.provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
+      );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
     } finally {
@@ -166,9 +170,10 @@ export function BookServiceScreen() {
     }
   }
 
-  const providerCards = providers.map((provider) => ({
-    provider,
-    slot: slots.find((item) => item.providerId === provider.id && !item.isBooked)
+  const providerCards = providers.map((ranking) => ({
+    provider: ranking.provider,
+    ranking,
+    slot: ranking.suggestedSlot ?? slots.find((item) => item.providerId === ranking.provider.id && !item.isBooked)
   }));
   const shortlist = providerCards.slice(0, 3);
   const providersWithWindows = providerCards.filter((item) => item.slot);
@@ -272,12 +277,15 @@ export function BookServiceScreen() {
               <View style={styles.providerStack}>
                 <Text style={styles.emptyState}>Businesses serve this area, but nothing is open in this window.</Text>
                 <Text style={styles.providerMeta}>Try again later or switch to another service window.</Text>
-                {shortlist.map(({ provider }) => (
+                {shortlist.map(({ provider, ranking }) => (
                   <View key={provider.id} style={styles.providerRow}>
                     <View style={styles.providerCopy}>
                       <Text style={styles.providerName}>{provider.companyName}</Text>
                       <Text style={styles.providerMeta}>
                         {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {ranking.distanceMiles.toFixed(1)} mi away • {ranking.reasons.join(" • ")}
                       </Text>
                       <Text style={styles.providerMeta}>No open route window right now</Text>
                     </View>
@@ -286,7 +294,7 @@ export function BookServiceScreen() {
               </View>
             ) : (
               <View style={styles.providerStack}>
-                {shortlist.map(({ provider, slot }) => (
+                {shortlist.map(({ provider, ranking, slot }) => (
                   <View key={provider.id} style={styles.providerRow}>
                     <View style={styles.providerCopy}>
                       <Text style={styles.providerName}>{provider.companyName}</Text>
@@ -294,12 +302,15 @@ export function BookServiceScreen() {
                         {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
                       </Text>
                       <Text style={styles.providerMeta}>
+                        {ranking.distanceMiles.toFixed(1)} mi away • {ranking.reasons.join(" • ")}
+                      </Text>
+                      <Text style={styles.providerMeta}>
                         {slot ? formatBookingWindowSummary(slot.startIso) : "No open slot"}
                       </Text>
                     </View>
                     <Pressable
                       disabled={isWorking || !slot}
-                      onPress={() => void handleCreateBooking(provider)}
+                      onPress={() => void handleCreateBooking(ranking)}
                       style={styles.secondaryButton}
                     >
                       <Text style={styles.secondaryButtonLabel}>Book</Text>

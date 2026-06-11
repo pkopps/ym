@@ -40,6 +40,7 @@ export class ApiRoutes {
   public static readonly updateBookingRouteLocation = "/api/bookings/route-location";
   public static readonly markBookingLate = "/api/bookings/late";
   public static readonly markBookingException = "/api/bookings/exception";
+  public static readonly addBookingEvidence = "/api/bookings/evidence";
   public static readonly createBookingDispute = "/api/bookings/dispute";
   public static readonly bookingTracking = "/api/bookings/tracking";
   public static readonly updateBookingAddress = "/api/bookings/address";
@@ -71,4 +72,7 @@ export class ApiRoutes {
   public static readonly providerCalendarImportsRemove = "/api/calendar/imports/remove";
   public static readonly opsSupportTickets = "/api/support/ops/tickets";
   public static readonly opsSupportTicketsUpdate = "/api/support/ops/tickets/update";
+  public static readonly opsSupportSummary = "/api/support/ops/summary";
+  public static readonly opsRefundOverride = "/api/support/ops/refund-override";
+  public static readonly opsBookingIntervention = "/api/support/ops/bookings/intervene";
 }

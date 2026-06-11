@@ -1,4 +1,5 @@
 import {
+  AddBookingEvidenceRequest,
   CancelBookingRequest,
   ConfirmBookingRequest,
   CompleteBookingRequest,
@@ -74,6 +75,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
       (context.method === "POST" && context.path === "/api/bookings/confirm") ||
       (context.method === "POST" && context.path === "/api/bookings/start") ||
+      (context.method === "POST" && context.path === "/api/bookings/evidence") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/on-route") ||
       (context.method === "POST" && context.path === "/api/bookings/route-location") ||
@@ -357,6 +359,16 @@ export class MarketplaceController implements ApiController {
         response,
         200,
         await this.platform.startBooking(identity, context.body as StartBookingRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/evidence") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.addBookingEvidence(identity, context.body as AddBookingEvidenceRequest)
       );
       return;
     }

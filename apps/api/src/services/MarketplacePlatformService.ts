@@ -1,13 +1,17 @@
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
+  AddBookingEvidenceRequest,
   AppNotification,
   AnalyticsEvent,
   Address,
+  AvailabilitySlot,
+  BookingEvidencePhoto,
   CancelBookingRequest,
   BookingArrivalTracking,
   CompleteBookingRequest,
   ConfirmBookingRequest,
+  CreateOpsBookingInterventionRequest,
   CrewAvailabilityDay,
   CrewMatchCandidate,
   CrewMatchesResponse,
@@ -28,6 +32,9 @@ import {
   NotificationOpsChannelHealth,
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse,
+  OpsBookingExceptionSummaryItem,
+  OpsFinancialExceptionSummaryResponse,
+  OpsRefundSummaryItem,
   ProviderCrewConversation,
   ProviderCrewConversationThread,
   ProviderCrewMessage,
@@ -48,6 +55,7 @@ import {
   InstantQuoteResponse,
   ListCustomerReviewOpportunitiesResponse,
   CreatePaymentIntentRequest,
+  CreateOpsRefundOverrideRequest,
   FinalizeCheckoutSessionRequest,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
@@ -57,6 +65,7 @@ import {
   CreateSupportTicketRequest,
   UpdateSupportTicketRequest,
   Booking,
+  BookingInterventionRecord,
   CrewMemberProfile,
   CustomerProperty,
   ObservabilityOverview,
@@ -89,6 +98,7 @@ import {
   SetDefaultCustomerPropertyRequest,
   SessionHeartbeatRequest,
   SearchProvidersRequest,
+  SearchProviderResult,
   SearchProvidersResponse,
   StartBookingRequest,
   ConfirmPasswordResetRequest,
@@ -560,42 +570,76 @@ export class MarketplacePlatformService {
       city: payload.address.city
     });
 
-    const matchingProviders = this.providerMatcher
-      .rankProviders(
-        payload.address,
-        (await this.repository
-          .listProviders())
-          .filter((provider) =>
-            provider.verificationStatus === "verified" &&
-            payload.categories.some((category) => provider.categories.includes(category))
-          )
-      )
-      .filter(
-        (provider) =>
-          this.geoService.distanceMiles(payload.address, provider.address) <= provider.serviceRadiusMiles
-      );
+    const [providers, bookings] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listBookings()
+    ]);
 
-    const suggestedSlots = (
+    const rankedCandidates = (
       await Promise.all(
-        matchingProviders.map(async (provider) => {
-          const providerSlots = this.filterProviderSlotsAgainstExternalBlocks(
-            provider,
-            await this.repository.listSlotsByProvider(provider.id)
-          );
+        providers
+          .filter(
+            (provider) =>
+              provider.verificationStatus === "verified" &&
+              payload.categories.some((category) => provider.categories.includes(category))
+          )
+          .map(async (provider) => {
+            const distanceMiles = this.geoService.distanceMiles(payload.address, provider.address);
+            if (distanceMiles > provider.serviceRadiusMiles) {
+              return undefined;
+            }
 
-          if (!payload.estimatedDurationMinutes) {
-            return providerSlots.filter((slot) => !slot.isBooked);
-          }
+            const providerSlots = this.filterProviderSlotsAgainstExternalBlocks(
+              provider,
+              await this.repository.listSlotsByProvider(provider.id)
+            );
 
-          const firstMatchingSlot = this.schedulingService.findFirstAvailableSlot(
-            providerSlots,
-            payload.estimatedDurationMinutes
-          );
+            const matchingSlots = payload.estimatedDurationMinutes
+              ? (() => {
+                  const firstMatchingSlot = this.schedulingService.findFirstAvailableSlot(
+                    providerSlots,
+                    payload.estimatedDurationMinutes
+                  );
+                  return firstMatchingSlot ? [firstMatchingSlot] : [];
+                })()
+              : providerSlots.filter((slot) => !slot.isBooked);
 
-          return firstMatchingSlot ? [firstMatchingSlot] : [];
-        })
+            const suggestedSlot = matchingSlots[0];
+            const providerBookings = bookings.filter((booking) => booking.providerId === provider.id);
+            const ranking = this.buildSearchProviderRanking(
+              payload,
+              provider,
+              providerBookings,
+              distanceMiles,
+              suggestedSlot
+            );
+
+            return {
+              ranking,
+              matchingSlots
+            };
+          })
       )
-    ).flat();
+    )
+      .filter(
+        (candidate): candidate is { ranking: SearchProviderResult; matchingSlots: AvailabilitySlot[] } =>
+          Boolean(candidate)
+      )
+      .sort((left, right) => {
+        if (right.ranking.score !== left.ranking.score) {
+          return right.ranking.score - left.ranking.score;
+        }
+
+        if (left.ranking.distanceMiles !== right.ranking.distanceMiles) {
+          return left.ranking.distanceMiles - right.ranking.distanceMiles;
+        }
+
+        return right.ranking.provider.rating - left.ranking.provider.rating;
+      });
+
+    const suggestedSlots = rankedCandidates.flatMap((candidate) => candidate.matchingSlots);
+    const rankedProviders = rankedCandidates.map((candidate) => candidate.ranking);
+    const matchingProviders = rankedProviders.map((candidate) => candidate.provider);
 
     this.analytics.record({
       id: crypto.randomUUID(),
@@ -610,6 +654,7 @@ export class MarketplacePlatformService {
 
     return {
       providers: matchingProviders,
+      rankedProviders,
       suggestedSlots
     };
   }
@@ -833,6 +878,8 @@ export class MarketplacePlatformService {
           disputedAt: booking.disputedAt,
           disputeReason: booking.disputeReason,
           disputedByRole: booking.disputedByRole,
+          beforeEvidenceCount: this.countBookingEvidence(booking, "before"),
+          afterEvidenceCount: this.countBookingEvidence(booking, "after"),
           status: match.status,
             hourlyRateCents: match.hourlyRateCents,
             canChat: match.status === "pending-provider-review" || match.status === "accepted",
@@ -1154,6 +1201,67 @@ export class MarketplacePlatformService {
       body: `${provider?.companyName ?? "Your landscaping business"} now expects to arrive in the ${window.label.toLowerCase()} window, around ${etaText}.${reasonText}`,
       actionHref: `/customer/dashboard?bookingId=${booking.id}&late=1`
     });
+
+    return updatedBooking;
+  }
+
+  public async addBookingEvidence(
+    actor: AuthIdentityRecord,
+    payload: AddBookingEvidenceRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const acceptedMatch = (await this.repository.listCrewMatches()).find(
+      (match) => match.bookingId === booking.id && match.status === "accepted"
+    );
+
+    if (actor.role === "provider" && booking.providerId !== actor.userId) {
+      throw new HttpError(403, "Providers can only attach evidence to their own bookings");
+    }
+
+    if (actor.role === "crew-member") {
+      if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
+        throw new HttpError(403, "Only accepted crew members can attach booking evidence");
+      }
+    }
+
+    if (actor.role !== "provider" && actor.role !== "crew-member") {
+      throw new HttpError(403, "Only providers and accepted crew members can attach booking evidence");
+    }
+
+    if (booking.status === "completed" || booking.status === "cancelled" || booking.status === "refunded") {
+      throw new HttpError(400, "Evidence can only be attached while the booking is still active");
+    }
+
+    const imageDataUrl = payload.imageDataUrl.trim();
+    if (!imageDataUrl.startsWith("data:image/")) {
+      throw new HttpError(400, "Booking evidence must be provided as an image data URL");
+    }
+
+    if (imageDataUrl.length > 2_000_000) {
+      throw new HttpError(400, "Booking evidence image is too large");
+    }
+
+    const evidence: BookingEvidencePhoto = {
+      id: crypto.randomUUID(),
+      phase: payload.phase,
+      imageDataUrl,
+      capturedAt: new Date().toISOString(),
+      capturedByRole: actor.role,
+      capturedByUserId: actor.userId,
+      note: payload.note?.trim() || undefined
+    };
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      serviceEvidence: [...booking.serviceEvidence, evidence]
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking evidence could not be saved");
+    }
 
     return updatedBooking;
   }
@@ -1527,6 +1635,10 @@ export class MarketplacePlatformService {
 
     if (!booking.onRouteConfirmedAt) {
       throw new HttpError(400, "Confirm on route before starting work");
+    }
+
+    if (this.countBookingEvidence(booking, "before") < 1) {
+      throw new HttpError(400, "Capture at least one before photo before starting work");
     }
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
@@ -1932,6 +2044,10 @@ export class MarketplacePlatformService {
       booking.status !== "in-progress"
     ) {
       throw new Error("Bookings must be confirmed before the provider can complete them");
+    }
+
+    if (this.countBookingEvidence(booking, "after") < 1) {
+      throw new Error("Capture at least one after photo before completing the booking");
     }
 
     const wasAlreadyCompleted = booking.status === "completed" && Boolean(booking.completedAt);
@@ -2978,6 +3094,208 @@ export class MarketplacePlatformService {
     return updatedPayment;
   }
 
+  public async createOpsRefundOverride(
+    payload: CreateOpsRefundOverrideRequest
+  ): Promise<PaymentRecord> {
+    const ticket = (await this.repository.listSupportTickets()).find(
+      (candidate) => candidate.id === payload.ticketId
+    );
+    if (!ticket) {
+      throw new HttpError(404, "Support ticket not found");
+    }
+
+    if (ticket.issueType !== "billing") {
+      throw new HttpError(400, "Refund overrides can only start from billing tickets");
+    }
+
+    if (ticket.status === "resolved") {
+      throw new HttpError(409, "Resolved tickets cannot open a new refund review");
+    }
+
+    const payment = await this.repository.findPaymentById(payload.paymentId);
+    if (!payment) {
+      throw new HttpError(404, "Payment not found");
+    }
+
+    const booking = await this.repository.findBookingById(payment.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (ticket.bookingId && ticket.bookingId !== booking.id) {
+      throw new HttpError(400, "This billing ticket is not tied to the selected payment");
+    }
+
+    if (payment.status !== "captured") {
+      throw new HttpError(400, "Only captured customer payments can enter refund review");
+    }
+
+    if (booking.status === "refunded") {
+      throw new HttpError(409, "This booking has already been refunded");
+    }
+
+    if (payment.refundReviewStatus === "requested") {
+      throw new HttpError(409, "A refund review is already in progress for this payment");
+    }
+
+    const reason = payload.reason.trim();
+    if (!reason) {
+      throw new HttpError(400, "A refund reason is required");
+    }
+
+    const now = new Date().toISOString();
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      refundReason: reason,
+      refundReviewStatus: "requested",
+      refundRequestedAt: now,
+      refundRequestedByRole: "ops",
+      refundReviewedAt: undefined,
+      refundReviewedByRole: undefined,
+      refundDecisionNotes: undefined,
+      refundable: false,
+      updatedAt: now
+    });
+
+    if (!updatedPayment) {
+      throw new HttpError(500, "Payment could not be updated for refund review");
+    }
+
+    await this.repository.updateSupportTicket(ticket.id, {
+      updatedAt: now,
+      description: `${ticket.description}\n\nCustomer service opened a refund review override. Reason: ${reason}`
+    });
+
+    await Promise.all([
+      this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title: "Customer service opened a refund review",
+        body: "YardMatch support opened a refund review on this booking and is reviewing next steps.",
+        actionHref: `/customer/dashboard?bookingId=${booking.id}`
+      }),
+      this.createNotification({
+        recipientId: booking.providerId,
+        recipientRole: "provider",
+        category: "support",
+        title: "Customer service opened a refund review",
+        body: "YardMatch support opened a refund review tied to this booking.",
+        actionHref: `/provider/management?bookingId=${booking.id}`
+      })
+    ]);
+
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.refundRequested, updatedPayment.bookingId, {
+      paymentId: updatedPayment.id,
+      reason,
+      openedBy: "ops"
+    });
+
+    return updatedPayment;
+  }
+
+  public async createOpsBookingIntervention(
+    payload: CreateOpsBookingInterventionRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const note = payload.note.trim();
+    if (!note) {
+      throw new HttpError(400, "An intervention note is required");
+    }
+
+    const ticket = payload.ticketId
+      ? (await this.repository.listSupportTickets()).find((candidate) => candidate.id === payload.ticketId)
+      : undefined;
+    if (payload.ticketId && !ticket) {
+      throw new HttpError(404, "Support ticket not found");
+    }
+    if (ticket?.bookingId && ticket.bookingId !== booking.id) {
+      throw new HttpError(400, "This support ticket is not tied to the selected booking");
+    }
+
+    const now = new Date().toISOString();
+    let scheduledStartIso = payload.scheduledStartIso;
+    let scheduledEndIso = payload.scheduledEndIso;
+
+    if (payload.action === "reschedule-booking") {
+      if (!scheduledStartIso || !scheduledEndIso) {
+        throw new HttpError(400, "A new start and end time are required to reschedule the booking");
+      }
+
+      const startMs = Date.parse(scheduledStartIso);
+      const endMs = Date.parse(scheduledEndIso);
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+        throw new HttpError(400, "A valid booking window is required");
+      }
+
+      if (startMs <= Date.now()) {
+        throw new HttpError(400, "Rescheduled bookings must stay in the future");
+      }
+    } else {
+      scheduledStartIso = undefined;
+      scheduledEndIso = undefined;
+    }
+
+    if (
+      booking.status === "cancelled" &&
+      payload.action !== "restore-active-booking" &&
+      payload.action !== "add-note"
+    ) {
+      throw new HttpError(409, "Cancelled bookings cannot take that intervention");
+    }
+
+    if (
+      booking.status === "refunded" &&
+      payload.action !== "add-note"
+    ) {
+      throw new HttpError(409, "Refunded bookings cannot take that intervention");
+    }
+
+    const intervention: BookingInterventionRecord = {
+      id: crypto.randomUUID(),
+      action: payload.action,
+      createdAt: now,
+      actorRole: "ops",
+      actorUserId: "ops-system",
+      note,
+      ticketId: payload.ticketId,
+      previousStatus: booking.status,
+      nextStatus: this.getInterventionNextStatus(booking, payload.action),
+      previousScheduledStartIso: booking.scheduledStartIso,
+      previousScheduledEndIso: booking.scheduledEndIso,
+      nextScheduledStartIso: scheduledStartIso,
+      nextScheduledEndIso: scheduledEndIso
+    };
+
+    const updatedBooking = await this.applyOpsBookingIntervention(booking, payload, intervention, now);
+
+    if (ticket) {
+      await this.repository.updateSupportTicket(ticket.id, {
+        updatedAt: now,
+        triagedAt: ticket.triagedAt ?? (ticket.status === "open" ? now : undefined),
+        status: ticket.status === "open" ? "triaged" : ticket.status,
+        description: `${ticket.description}\n\nOps intervention: ${payload.action}. Note: ${note}`
+      });
+    }
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.supportTicketOpened,
+      actorId: booking.id,
+      occurredAt: now,
+      properties: {
+        bookingId: booking.id,
+        interventionAction: payload.action,
+        ticketId: payload.ticketId ?? "none"
+      }
+    });
+
+    return updatedBooking;
+  }
+
   public async createSupportTicket(
     requester: { userId: string; role: "customer" | "provider" | "crew-member" },
     payload: CreateSupportTicketRequest
@@ -3072,6 +3390,90 @@ export class MarketplacePlatformService {
       .sort((left, right) => right.ticket.createdAt.localeCompare(left.ticket.createdAt));
   }
 
+  public async getOpsFinancialExceptionSummary(): Promise<OpsFinancialExceptionSummaryResponse> {
+    const [tickets, bookings, payments, customers, providers] = await Promise.all([
+      this.repository.listSupportTickets(),
+      this.repository.listBookings(),
+      this.repository.listPayments(),
+      this.repository.listCustomers(),
+      this.repository.listProviders()
+    ]);
+
+    const customerById = new Map(customers.map((customer) => [customer.id, customer]));
+    const providerById = new Map(providers.map((provider) => [provider.id, provider]));
+    const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    const refundReviews = payments
+      .filter((payment) => payment.refundReviewStatus === "requested")
+      .map((payment) => {
+        const booking = bookingById.get(payment.bookingId);
+        const customer = booking ? customerById.get(booking.customerId) : undefined;
+        const provider = booking ? providerById.get(booking.providerId) : undefined;
+        return {
+          bookingId: payment.bookingId,
+          paymentId: payment.id,
+          customerName: customer?.fullName,
+          providerName: provider?.companyName,
+          amountCents: payment.amountCents,
+          bookingStatus: booking?.status ?? "completed",
+          paymentStatus: payment.status,
+          refundReviewStatus: payment.refundReviewStatus,
+          refundReason: payment.refundReason,
+          refundRequestedAt: payment.refundRequestedAt,
+          refundRequestedByRole: payment.refundRequestedByRole
+        } satisfies OpsRefundSummaryItem;
+      })
+      .sort((left, right) =>
+        (right.refundRequestedAt ?? "").localeCompare(left.refundRequestedAt ?? "")
+      );
+
+    const activeExceptions = bookings
+      .filter(
+        (booking) =>
+          Boolean(booking.activeExceptionType) &&
+          booking.status !== "completed" &&
+          booking.status !== "cancelled" &&
+          booking.status !== "refunded"
+      )
+      .map((booking) => {
+        const customer = customerById.get(booking.customerId);
+        const provider = providerById.get(booking.providerId);
+        return {
+          bookingId: booking.id,
+          customerName: customer?.fullName,
+          providerName: provider?.companyName,
+          category: booking.category,
+          bookingStatus: booking.status,
+          exceptionType: booking.activeExceptionType as OpsBookingExceptionSummaryItem["exceptionType"],
+          reportedAt: booking.activeExceptionReportedAt,
+          notes: booking.activeExceptionNotes
+        } satisfies OpsBookingExceptionSummaryItem;
+      })
+      .sort((left, right) => (right.reportedAt ?? "").localeCompare(left.reportedAt ?? ""));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      refundReviewOpenCount: refundReviews.length,
+      refundedAmountLast30DaysCents: payments
+        .filter(
+          (payment) =>
+            payment.status === "refunded" &&
+            payment.refundReviewedAt &&
+            new Date(payment.refundReviewedAt).getTime() >= thirtyDaysAgo
+        )
+        .reduce((sum, payment) => sum + payment.amountCents, 0),
+      payoutHoldCount: payments.filter((payment) => payment.refundReviewStatus === "requested").length,
+      activeBookingExceptionCount: activeExceptions.length,
+      disputedBookingCount: bookings.filter((booking) => booking.status === "disputed").length,
+      openBillingTicketCount: tickets.filter(
+        (ticket) => ticket.issueType === "billing" && ticket.status !== "resolved"
+      ).length,
+      refundReviews,
+      activeExceptions
+    };
+  }
+
   public async updateSupportTicketForOps(
     payload: UpdateSupportTicketRequest
   ): Promise<SupportTicket> {
@@ -3144,6 +3546,184 @@ export class MarketplacePlatformService {
     }
 
     return updatedTicket;
+  }
+
+  private getInterventionNextStatus(
+    booking: Booking,
+    action: CreateOpsBookingInterventionRequest["action"]
+  ): Booking["status"] | undefined {
+    if (action === "cancel-booking") {
+      return "cancelled";
+    }
+
+    if (action === "complete-booking") {
+      return "completed";
+    }
+
+    if (action === "restore-active-booking") {
+      return booking.onRouteConfirmedAt || booking.completedAt ? "in-progress" : "confirmed";
+    }
+
+    if (action === "reschedule-booking") {
+      return "confirmed";
+    }
+
+    return undefined;
+  }
+
+  private async applyOpsBookingIntervention(
+    booking: Booking,
+    payload: CreateOpsBookingInterventionRequest,
+    intervention: BookingInterventionRecord,
+    now: string
+  ): Promise<Booking> {
+    const baseUpdates: Partial<Booking> = {
+      interventions: [...booking.interventions, intervention]
+    };
+
+    if (payload.action === "add-note") {
+      const notedBooking = await this.repository.updateBooking(booking.id, baseUpdates);
+      if (!notedBooking) {
+        throw new HttpError(500, "Booking intervention note could not be saved");
+      }
+      return notedBooking;
+    }
+
+    if (payload.action === "reschedule-booking") {
+      const rescheduledBooking = await this.repository.updateBooking(booking.id, {
+        ...baseUpdates,
+        scheduledStartIso: payload.scheduledStartIso,
+        scheduledEndIso: payload.scheduledEndIso,
+        status: "confirmed",
+        onRouteConfirmedAt: undefined,
+        onRouteConfirmedByCrewMemberId: undefined,
+        lateNoticeSentAt: undefined,
+        lateEtaIso: undefined,
+        lateReason: undefined,
+        activeExceptionType: undefined,
+        activeExceptionReportedAt: undefined,
+        activeExceptionNotes: undefined,
+        disputedAt: undefined,
+        disputeReason: undefined,
+        disputedByRole: undefined,
+        completedAt: undefined
+      });
+      if (!rescheduledBooking) {
+        throw new HttpError(500, "Booking could not be rescheduled");
+      }
+
+      await this.notifyOpsBookingIntervention(
+        booking,
+        "Support rescheduled your booking",
+        `YardMatch support moved this booking to ${this.formatBookingWindowWithDate(payload.scheduledStartIso ?? booking.scheduledStartIso)}.`
+      );
+      return rescheduledBooking;
+    }
+
+    if (payload.action === "cancel-booking") {
+      const cancelledBooking = await this.repository.updateBooking(booking.id, {
+        ...baseUpdates,
+        status: "cancelled",
+        activeExceptionType: undefined,
+        activeExceptionReportedAt: undefined,
+        activeExceptionNotes: undefined,
+        disputedAt: undefined,
+        disputeReason: undefined,
+        disputedByRole: undefined
+      });
+      if (!cancelledBooking) {
+        throw new HttpError(500, "Booking could not be cancelled");
+      }
+
+      await this.notifyOpsBookingIntervention(
+        booking,
+        "Support cancelled your booking",
+        "YardMatch support cancelled this booking after review."
+      );
+      return cancelledBooking;
+    }
+
+    if (payload.action === "complete-booking") {
+      const completedBooking = await this.repository.updateBooking(booking.id, {
+        ...baseUpdates,
+        status: "completed",
+        completedAt: booking.completedAt ?? now,
+        activeExceptionType: undefined,
+        activeExceptionReportedAt: undefined,
+        activeExceptionNotes: undefined,
+        disputedAt: undefined,
+        disputeReason: undefined,
+        disputedByRole: undefined
+      });
+      if (!completedBooking) {
+        throw new HttpError(500, "Booking could not be completed");
+      }
+
+      const existingInvite = await this.repository.findReviewInviteByBookingId(booking.id);
+      if (!existingInvite) {
+        const customer = await this.repository.findCustomerById(booking.customerId);
+        if (customer) {
+          await this.repository.createReviewInvite(
+            this.buildReviewInvite(completedBooking, customer.email, completedBooking.completedAt ?? now)
+          );
+        }
+      }
+
+      await this.notifyOpsBookingIntervention(
+        booking,
+        "Support marked your booking complete",
+        "YardMatch support reviewed the service record and marked this booking complete."
+      );
+      return completedBooking;
+    }
+
+    const restoredStatus: Booking["status"] =
+      booking.onRouteConfirmedAt || booking.completedAt ? "in-progress" : "confirmed";
+    const restoredBooking = await this.repository.updateBooking(booking.id, {
+      ...baseUpdates,
+      status: restoredStatus,
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined,
+      disputedAt: undefined,
+      disputeReason: undefined,
+      disputedByRole: undefined
+    });
+    if (!restoredBooking) {
+      throw new HttpError(500, "Booking could not be restored");
+    }
+
+    await this.notifyOpsBookingIntervention(
+      booking,
+      "Support restored your booking",
+      "YardMatch support reviewed the issue and restored this booking to the active schedule."
+    );
+    return restoredBooking;
+  }
+
+  private async notifyOpsBookingIntervention(
+    booking: Booking,
+    customerTitle: string,
+    body: string
+  ): Promise<void> {
+    await Promise.all([
+      this.createNotification({
+        recipientId: booking.customerId,
+        recipientRole: "customer",
+        category: "support",
+        title: customerTitle,
+        body,
+        actionHref: `/customer/dashboard?bookingId=${booking.id}`
+      }),
+      this.createNotification({
+        recipientId: booking.providerId,
+        recipientRole: "provider",
+        category: "support",
+        title: customerTitle,
+        body,
+        actionHref: `/provider/management?bookingId=${booking.id}`
+      })
+    ]);
   }
 
   public createAnalyticsEvent(payload: AnalyticsEvent): AnalyticsEvent {
@@ -3586,7 +4166,28 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Calendar overview window must use valid ISO dates with end after start");
     }
 
-    const bookings = (await this.listProviderCalendarBookings(providerId)).filter((booking) =>
+    const [staffingSummaries, rawBookings] = await Promise.all([
+      this.buildProviderStaffingSummaries(provider),
+      this.repository.listBookings()
+    ]);
+    const bookingNotesById = new Map(rawBookings.map((booking) => [booking.id, booking.notes]));
+    const bookings = staffingSummaries
+      .map((job) => ({
+        id: job.bookingId,
+        category: job.category,
+        customerName: job.customerName,
+        addressLine: job.serviceAddress.line1,
+        city: job.serviceAddress.city,
+        state: job.serviceAddress.state,
+        scheduledStartIso: job.scheduledStartIso,
+        scheduledEndIso: job.scheduledEndIso,
+        status: job.status,
+        notes: bookingNotesById.get(job.bookingId),
+        serviceAddress: job.serviceAddress,
+        requiredCrewMembers: job.requiredCrewMembers,
+        assignedCrewMembers: job.assignedCrewMembers
+      }))
+      .filter((booking) =>
       this.doIntervalsOverlap(booking.scheduledStartIso, booking.scheduledEndIso, windowStartIso, windowEndIso)
     );
     const externalBlocks = this.getActiveExternalCalendarBlocks(provider).filter((block) =>
@@ -3594,6 +4195,22 @@ export class MarketplacePlatformService {
     );
 
     const events = this.schedulingService.buildProviderCalendarEvents({
+      bookings: bookings.map((booking) => ({
+        id: booking.id,
+        category: booking.category,
+        customerName: booking.customerName,
+        addressLine: booking.addressLine,
+        city: booking.city,
+        state: booking.state,
+        scheduledStartIso: booking.scheduledStartIso,
+        scheduledEndIso: booking.scheduledEndIso,
+        status: booking.status,
+        notes: booking.notes
+      })),
+      externalBlocks
+    });
+    const dispatchDays = this.schedulingService.buildProviderDispatchDays({
+      providerAddress: provider.address,
       bookings,
       externalBlocks
     });
@@ -3606,6 +4223,7 @@ export class MarketplacePlatformService {
       totalEvents: events.length,
       yardmatchJobCount: bookings.length,
       externalBlockCount: externalBlocks.length,
+      dispatchDays,
       events
     };
   }
@@ -4007,6 +4625,8 @@ export class MarketplacePlatformService {
           disputedAt: booking.disputedAt,
           disputeReason: booking.disputeReason,
           disputedByRole: booking.disputedByRole,
+          beforeEvidenceCount: this.countBookingEvidence(booking, "before"),
+          afterEvidenceCount: this.countBookingEvidence(booking, "after"),
           totalCents: booking.totalCents,
           requiredCrewMembers,
           assignedCrewMembers,
@@ -4404,6 +5024,96 @@ export class MarketplacePlatformService {
       .split("-")
       .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
       .join(" ");
+  }
+
+  private countBookingEvidence(booking: Booking, phase: BookingEvidencePhoto["phase"]): number {
+    return booking.serviceEvidence.filter((photo) => photo.phase === phase).length;
+  }
+
+  private buildSearchProviderRanking(
+    payload: SearchProvidersRequest,
+    provider: ProviderProfile,
+    providerBookings: Booking[],
+    distanceMiles: number,
+    suggestedSlot?: AvailabilitySlot
+  ): SearchProviderResult {
+    const matchedCategories = payload.categories.filter((category) => provider.categories.includes(category));
+    const completedBookings = providerBookings.filter((booking) => booking.status === "completed").length;
+    const disputedBookings = providerBookings.filter((booking) => booking.status === "disputed").length;
+    const refundedBookings = providerBookings.filter((booking) => booking.status === "refunded").length;
+    const activeExceptionBookings = providerBookings.filter((booking) => Boolean(booking.activeExceptionType)).length;
+    const issueRate =
+      (disputedBookings + refundedBookings + activeExceptionBookings) /
+      Math.max(providerBookings.length, 1);
+
+    const factors = {
+      serviceFit: Math.round((matchedCategories.length / Math.max(payload.categories.length, 1)) * 25),
+      distance: Math.round(
+        Math.max(0, 1 - distanceMiles / Math.max(provider.serviceRadiusMiles, 1)) * 22
+      ),
+      reliability: Math.round(
+        (provider.rating / 5) * 16 +
+          (provider.timelinessRating / 5) * 12 +
+          (provider.attentionToDetailRating / 5) * 8 +
+          (Math.min(provider.reviewCount, 100) / 100) * 4 +
+          (Math.min(completedBookings, 75) / 75) * 5
+      ),
+      experience: Math.round((Math.min(provider.yearsExperience, 15) / 15) * 6),
+      availability: suggestedSlot ? 8 : 0,
+      sponsorship: provider.sponsoredListingEnabled ? 5 : 0,
+      issuePenalty: Math.round(
+        Math.min(disputedBookings * 5 + refundedBookings * 4 + activeExceptionBookings * 3 + issueRate * 12, 20)
+      )
+    };
+
+    const score = Math.max(
+      0,
+      factors.serviceFit +
+        factors.distance +
+        factors.reliability +
+        factors.experience +
+        factors.availability +
+        factors.sponsorship -
+        factors.issuePenalty
+    );
+
+    const reasons: string[] = [];
+    if (suggestedSlot) {
+      reasons.push("Open route window available");
+    }
+    if (matchedCategories.length === payload.categories.length && payload.categories.length > 0) {
+      reasons.push(
+        payload.categories.length > 1 ? "Covers all requested services" : "Matches the requested service"
+      );
+    }
+    if (distanceMiles <= 5) {
+      reasons.push("Close to the property");
+    }
+    if (provider.timelinessRating >= 4.8) {
+      reasons.push("High punctuality rating");
+    }
+    if (provider.rating >= 4.8 && provider.reviewCount >= 50) {
+      reasons.push("Strong reliability and review history");
+    }
+    if (provider.yearsExperience >= 10) {
+      reasons.push("Deep local experience");
+    }
+    if (provider.sponsoredListingEnabled) {
+      reasons.push("Sponsored placement");
+    }
+    if (reasons.length === 0) {
+      reasons.push("Serves this property area");
+    }
+
+    return {
+      provider,
+      score,
+      distanceMiles: Number(distanceMiles.toFixed(1)),
+      hasOpenSlot: Boolean(suggestedSlot),
+      suggestedSlot,
+      reasons: reasons.slice(0, 3),
+      factors
+    };
   }
 
   private formatBookingWindowWithDate(iso: string): string {

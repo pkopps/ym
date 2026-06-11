@@ -63,6 +63,12 @@ export type SupportBookingResolution =
   | "complete-booking"
   | "approve-refund"
   | "deny-refund";
+export type OpsBookingInterventionAction =
+  | "add-note"
+  | "reschedule-booking"
+  | "restore-active-booking"
+  | "cancel-booking"
+  | "complete-booking";
 export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
@@ -92,7 +98,9 @@ export type BookingArrivalTrackingStatus =
   | "completed";
 export type BookingServiceWindowKey = "morning" | "afternoon" | "late-afternoon-night";
 export type ProviderCalendarEventSource = "yardmatch-booking" | "external-block";
+export type ProviderDispatchRouteStatus = "comfortable" | "watch" | "overloaded";
 export type BookingRouteLocationSource = "computed-origin" | "provider-device" | "crew-device";
+export type BookingEvidencePhase = "before" | "after";
 export type BookingExceptionType =
   | "customer-no-show"
   | "customer-not-ready"
@@ -290,6 +298,8 @@ export interface ProviderStaffingJobSummary {
   disputedAt?: string;
   disputeReason?: string;
   disputedByRole?: "customer" | "provider";
+  beforeEvidenceCount: number;
+  afterEvidenceCount: number;
   totalCents: number;
   requiredCrewMembers: number;
   assignedCrewMembers: number;
@@ -323,6 +333,8 @@ export interface CrewMatchSummary {
   disputedAt?: string;
   disputeReason?: string;
   disputedByRole?: "customer" | "provider";
+  beforeEvidenceCount: number;
+  afterEvidenceCount: number;
   status: CrewMatchStatus;
   hourlyRateCents: number;
   canChat: boolean;
@@ -440,7 +452,35 @@ export interface Booking {
   notes: string;
   totalCents: number;
   reviewId?: string;
+  serviceEvidence: BookingEvidencePhoto[];
+  interventions: BookingInterventionRecord[];
   addressChangeHistory: BookingAddressChangeRequest[];
+}
+
+export interface BookingInterventionRecord {
+  id: string;
+  action: OpsBookingInterventionAction;
+  createdAt: string;
+  actorRole: "ops";
+  actorUserId: string;
+  note: string;
+  ticketId?: string;
+  previousStatus?: BookingStatus;
+  nextStatus?: BookingStatus;
+  previousScheduledStartIso?: string;
+  previousScheduledEndIso?: string;
+  nextScheduledStartIso?: string;
+  nextScheduledEndIso?: string;
+}
+
+export interface BookingEvidencePhoto {
+  id: string;
+  phase: BookingEvidencePhase;
+  imageDataUrl: string;
+  capturedAt: string;
+  capturedByRole: "provider" | "crew-member";
+  capturedByUserId: string;
+  note?: string;
 }
 
 export interface BookingArrivalTracking {
@@ -608,6 +648,43 @@ export interface SupportOpsTicket {
   providerName?: string;
 }
 
+export interface OpsRefundSummaryItem {
+  bookingId: string;
+  paymentId: string;
+  customerName?: string;
+  providerName?: string;
+  amountCents: number;
+  bookingStatus: BookingStatus;
+  paymentStatus: PaymentStatus;
+  refundReviewStatus?: RefundReviewStatus;
+  refundReason?: string;
+  refundRequestedAt?: string;
+  refundRequestedByRole?: RefundActorRole;
+}
+
+export interface OpsBookingExceptionSummaryItem {
+  bookingId: string;
+  customerName?: string;
+  providerName?: string;
+  category: ServiceCategory;
+  bookingStatus: BookingStatus;
+  exceptionType: BookingExceptionType;
+  reportedAt?: string;
+  notes?: string;
+}
+
+export interface OpsFinancialExceptionSummaryResponse {
+  generatedAt: string;
+  refundReviewOpenCount: number;
+  refundedAmountLast30DaysCents: number;
+  payoutHoldCount: number;
+  activeBookingExceptionCount: number;
+  disputedBookingCount: number;
+  openBillingTicketCount: number;
+  refundReviews: OpsRefundSummaryItem[];
+  activeExceptions: OpsBookingExceptionSummaryItem[];
+}
+
 export interface ProviderVerificationQueueItem {
   provider: ProviderProfile;
   openBookingCount: number;
@@ -767,6 +844,37 @@ export interface ProviderCalendarEvent {
   notes?: string;
 }
 
+export interface ProviderDispatchWindowSummary {
+  windowKey: BookingServiceWindowKey;
+  label: string;
+  yardmatchJobCount: number;
+  externalBlockCount: number;
+  totalCrewRequired: number;
+  totalCrewAssigned: number;
+  crewGap: number;
+  bookedMinutes: number;
+  blockedMinutes: number;
+}
+
+export interface ProviderDispatchDaySummary {
+  dateIso: string;
+  dayLabel: string;
+  yardmatchJobCount: number;
+  externalBlockCount: number;
+  totalCrewRequired: number;
+  totalCrewAssigned: number;
+  crewGap: number;
+  bookedMinutes: number;
+  blockedMinutes: number;
+  estimatedDriveMiles: number;
+  firstJobStartIso?: string;
+  lastJobEndIso?: string;
+  firstStopAddressLine?: string;
+  routeStatus: ProviderDispatchRouteStatus;
+  recommendations: string[];
+  windowSummaries: ProviderDispatchWindowSummary[];
+}
+
 export interface ProviderCalendarOverviewResponse {
   providerId: string;
   providerName: string;
@@ -775,6 +883,7 @@ export interface ProviderCalendarOverviewResponse {
   totalEvents: number;
   yardmatchJobCount: number;
   externalBlockCount: number;
+  dispatchDays: ProviderDispatchDaySummary[];
   events: ProviderCalendarEvent[];
 }
 
@@ -898,7 +1007,26 @@ export interface SearchProvidersRequest {
 
 export interface SearchProvidersResponse {
   providers: ProviderProfile[];
+  rankedProviders: SearchProviderResult[];
   suggestedSlots: AvailabilitySlot[];
+}
+
+export interface SearchProviderResult {
+  provider: ProviderProfile;
+  score: number;
+  distanceMiles: number;
+  hasOpenSlot: boolean;
+  suggestedSlot?: AvailabilitySlot;
+  reasons: string[];
+  factors: {
+    serviceFit: number;
+    distance: number;
+    reliability: number;
+    experience: number;
+    availability: number;
+    sponsorship: number;
+    issuePenalty: number;
+  };
 }
 
 export interface CreateBookingRequest {
@@ -1016,6 +1144,13 @@ export interface MarkBookingExceptionRequest {
   notes?: string;
 }
 
+export interface AddBookingEvidenceRequest {
+  bookingId: string;
+  phase: BookingEvidencePhase;
+  imageDataUrl: string;
+  note?: string;
+}
+
 export interface CreateBookingDisputeRequest {
   bookingId: string;
   reason: string;
@@ -1121,6 +1256,12 @@ export interface CreateRefundRequest {
   reason: string;
 }
 
+export interface CreateOpsRefundOverrideRequest {
+  ticketId: string;
+  paymentId: string;
+  reason: string;
+}
+
 export interface CreateSupportTicketRequest {
   bookingId?: string;
   subject: string;
@@ -1133,6 +1274,15 @@ export interface UpdateSupportTicketRequest {
   status: SupportTicketStatus;
   resolutionNotes?: string;
   resolutionAction?: SupportBookingResolution;
+}
+
+export interface CreateOpsBookingInterventionRequest {
+  bookingId: string;
+  ticketId?: string;
+  action: OpsBookingInterventionAction;
+  note: string;
+  scheduledStartIso?: string;
+  scheduledEndIso?: string;
 }
 
 export interface ConfirmBookingRequest {

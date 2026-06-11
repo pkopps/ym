@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  CreateOpsBookingInterventionRequest,
   MarketplaceApiClient,
+  CreateOpsRefundOverrideRequest,
   SupportOpsTicket,
   SupportTicket,
   SupportTicketStatus
@@ -16,8 +18,19 @@ function formatDateTime(iso: string) {
   });
 }
 
+function formatDateTimeLocalInput(iso: string) {
+  const value = new Date(iso);
+  const offsetMinutes = value.getTimezoneOffset();
+  const local = new Date(value.getTime() - offsetMinutes * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 export function OpsSupportQueue() {
   const [tickets, setTickets] = useState<SupportOpsTicket[]>([]);
+  const [refundOverrideDrafts, setRefundOverrideDrafts] = useState<Record<string, string>>({});
+  const [interventionDrafts, setInterventionDrafts] = useState<
+    Record<string, { note: string; scheduledStartLocal: string; scheduledEndLocal: string }>
+  >({});
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
@@ -68,6 +81,111 @@ export function OpsSupportQueue() {
     }
   }
 
+  async function openRefundOverride(ticketId: string, paymentId: string) {
+    const reason = (refundOverrideDrafts[ticketId] ?? "").trim();
+    if (!reason) {
+      setErrorMessage("A refund reason is required before customer service opens a refund review.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setStatusMessage(undefined);
+      setErrorMessage(undefined);
+      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      await api.createOpsRefundOverride({
+        ticketId,
+        paymentId,
+        reason
+      } satisfies CreateOpsRefundOverrideRequest);
+      setRefundOverrideDrafts((current) => ({
+        ...current,
+        [ticketId]: ""
+      }));
+      setStatusMessage("Customer service opened a refund review and placed payouts on hold.");
+      await loadQueue();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open that refund review.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  function getInterventionDraft(ticket: SupportOpsTicket) {
+    if (!ticket.booking) {
+      return {
+        note: "",
+        scheduledStartLocal: "",
+        scheduledEndLocal: ""
+      };
+    }
+
+    return (
+      interventionDrafts[ticket.ticket.id] ?? {
+        note: "",
+        scheduledStartLocal: formatDateTimeLocalInput(ticket.booking.scheduledStartIso),
+        scheduledEndLocal: formatDateTimeLocalInput(ticket.booking.scheduledEndIso)
+      }
+    );
+  }
+
+  async function applyIntervention(
+    ticket: SupportOpsTicket,
+    action: CreateOpsBookingInterventionRequest["action"]
+  ) {
+    if (!ticket.booking) {
+      setErrorMessage("This support ticket is not tied to a booking.");
+      return;
+    }
+
+    const draft = getInterventionDraft(ticket);
+    const note = draft.note.trim();
+    if (!note) {
+      setErrorMessage("An ops intervention note is required.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setStatusMessage(undefined);
+      setErrorMessage(undefined);
+      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      await api.createOpsBookingIntervention({
+        bookingId: ticket.booking.id,
+        ticketId: ticket.ticket.id,
+        action,
+        note,
+        scheduledStartIso:
+          action === "reschedule-booking" ? new Date(draft.scheduledStartLocal).toISOString() : undefined,
+        scheduledEndIso:
+          action === "reschedule-booking" ? new Date(draft.scheduledEndLocal).toISOString() : undefined
+      } satisfies CreateOpsBookingInterventionRequest);
+      setStatusMessage(
+        action === "add-note"
+          ? "Ops note saved to the booking history."
+          : action === "reschedule-booking"
+            ? "Booking rescheduled and customers/providers notified."
+            : action === "cancel-booking"
+              ? "Booking cancelled through ops intervention."
+              : action === "complete-booking"
+                ? "Booking completed through ops intervention."
+                : "Booking restored to the active schedule."
+      );
+      setInterventionDrafts((current) => ({
+        ...current,
+        [ticket.ticket.id]: {
+          ...draft,
+          note: ""
+        }
+      }));
+      await loadQueue();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to apply that booking intervention.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <section className="card">
       <span className="eyebrow">Support queue</span>
@@ -107,6 +225,43 @@ export function OpsSupportQueue() {
                     {booking.disputeReason ? ` • dispute: ${booking.disputeReason}` : ""}
                     {booking.activeExceptionType ? ` • issue: ${booking.activeExceptionType}` : ""}
                   </p>
+                  <p>
+                    Evidence: before{" "}
+                    {booking.serviceEvidence.filter((photo) => photo.phase === "before").length} • after{" "}
+                    {booking.serviceEvidence.filter((photo) => photo.phase === "after").length}
+                  </p>
+                  {booking.serviceEvidence.length > 0 ? (
+                    <div className="stack-md">
+                      {(["before", "after"] as const).map((phase) => {
+                        const photos = booking.serviceEvidence.filter((photo) => photo.phase === phase);
+                        if (photos.length === 0) {
+                          return null;
+                        }
+
+                        return (
+                          <div key={phase} className="stack-md">
+                            <p>{phase === "before" ? "Before-work photos" : "After-work photos"}</p>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
+                              {photos.slice(0, 3).map((photo) => (
+                                <img
+                                  alt={`${phase} evidence`}
+                                  key={photo.id}
+                                  src={photo.imageDataUrl}
+                                  style={{
+                                    width: "7rem",
+                                    height: "7rem",
+                                    objectFit: "cover",
+                                    borderRadius: "1rem",
+                                    border: "1px solid rgba(21, 54, 47, 0.12)"
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                   {payment ? (
                     <p>
                       Payment: {payment.status}
@@ -117,6 +272,145 @@ export function OpsSupportQueue() {
                 </div>
               ) : null}
               {ticket.resolutionNotes ? <p>Resolution: {ticket.resolutionNotes}</p> : null}
+              {booking ? (
+                <div className="stack-md">
+                  <label>
+                    Ops intervention note
+                    <textarea
+                      onChange={(event) =>
+                        setInterventionDrafts((current) => ({
+                          ...current,
+                          [ticket.id]: {
+                            ...getInterventionDraft({ ticket, booking, payment, customerName, providerName }),
+                            note: event.target.value
+                          }
+                        }))
+                      }
+                      rows={3}
+                      value={getInterventionDraft({ ticket, booking, payment, customerName, providerName }).note}
+                    />
+                  </label>
+                  <div className="grid-two">
+                    <label>
+                      New start
+                      <input
+                        onChange={(event) =>
+                          setInterventionDrafts((current) => ({
+                            ...current,
+                            [ticket.id]: {
+                              ...getInterventionDraft({ ticket, booking, payment, customerName, providerName }),
+                              scheduledStartLocal: event.target.value
+                            }
+                          }))
+                        }
+                        type="datetime-local"
+                        value={getInterventionDraft({ ticket, booking, payment, customerName, providerName }).scheduledStartLocal}
+                      />
+                    </label>
+                    <label>
+                      New end
+                      <input
+                        onChange={(event) =>
+                          setInterventionDrafts((current) => ({
+                            ...current,
+                            [ticket.id]: {
+                              ...getInterventionDraft({ ticket, booking, payment, customerName, providerName }),
+                              scheduledEndLocal: event.target.value
+                            }
+                          }))
+                        }
+                        type="datetime-local"
+                        value={getInterventionDraft({ ticket, booking, payment, customerName, providerName }).scheduledEndLocal}
+                      />
+                    </label>
+                  </div>
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() => void applyIntervention({ ticket, booking, payment, customerName, providerName }, "add-note")}
+                      type="button"
+                    >
+                      Save note
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void applyIntervention(
+                          { ticket, booking, payment, customerName, providerName },
+                          "reschedule-booking"
+                        )
+                      }
+                      type="button"
+                    >
+                      Reschedule
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void applyIntervention(
+                          { ticket, booking, payment, customerName, providerName },
+                          "restore-active-booking"
+                        )
+                      }
+                      type="button"
+                    >
+                      Restore active
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void applyIntervention(
+                          { ticket, booking, payment, customerName, providerName },
+                          "complete-booking"
+                        )
+                      }
+                      type="button"
+                    >
+                      Complete booking
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void applyIntervention(
+                          { ticket, booking, payment, customerName, providerName },
+                          "cancel-booking"
+                        )
+                      }
+                      type="button"
+                    >
+                      Cancel booking
+                    </button>
+                  </div>
+                  {booking.interventions.length > 0 ? (
+                    <div className="stack-md">
+                      <p>Intervention history</p>
+                      {booking.interventions
+                        .slice()
+                        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+                        .map((intervention) => (
+                          <article className="list-panel" key={intervention.id}>
+                            <h3>{intervention.action.replaceAll("-", " ")}</h3>
+                            <p>{formatDateTime(intervention.createdAt)}</p>
+                            <p>{intervention.note}</p>
+                            {intervention.nextScheduledStartIso ? (
+                              <p>
+                                New window: {formatDateTime(intervention.nextScheduledStartIso)}
+                                {intervention.nextScheduledEndIso
+                                  ? ` to ${formatDateTime(intervention.nextScheduledEndIso)}`
+                                  : ""}
+                              </p>
+                            ) : null}
+                          </article>
+                        ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="cta-row">
                 {ticket.status === "open" ? (
                   <button
@@ -161,6 +455,34 @@ export function OpsSupportQueue() {
                       Deny refund
                     </button>
                   </>
+                ) : null}
+                {ticket.status !== "resolved" &&
+                ticket.issueType === "billing" &&
+                payment?.status === "captured" &&
+                payment.refundReviewStatus !== "requested" ? (
+                  <div className="stack-md">
+                    <label>
+                      Customer service refund note
+                      <textarea
+                        onChange={(event) =>
+                          setRefundOverrideDrafts((current) => ({
+                            ...current,
+                            [ticket.id]: event.target.value
+                          }))
+                        }
+                        rows={3}
+                        value={refundOverrideDrafts[ticket.id] ?? ""}
+                      />
+                    </label>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() => void openRefundOverride(ticket.id, payment.id)}
+                      type="button"
+                    >
+                      Open refund review
+                    </button>
+                  </div>
                 ) : null}
                 {ticket.status !== "resolved" && ticket.issueType !== "billing" ? (
                   <>

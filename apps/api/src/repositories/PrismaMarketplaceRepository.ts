@@ -422,6 +422,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         notes: booking.notes,
         totalCents: booking.totalCents,
         reviewId: booking.reviewId,
+        serviceEvidence: asJson(booking.serviceEvidence),
+        interventions: asJson(booking.interventions),
         addressChangeHistory: asJson(booking.addressChangeHistory)
       }
     });
@@ -528,6 +530,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         notes: updates.notes,
         totalCents: updates.totalCents,
         reviewId: "reviewId" in updates ? updates.reviewId ?? null : undefined,
+        serviceEvidence: updates.serviceEvidence ? asJson(updates.serviceEvidence) : undefined,
+        interventions: updates.interventions ? asJson(updates.interventions) : undefined,
         addressChangeHistory: updates.addressChangeHistory ? asJson(updates.addressChangeHistory) : undefined
       }
     });
@@ -1636,6 +1640,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     notes: string;
     totalCents: number;
     reviewId: string | null;
+    serviceEvidence: unknown;
+    interventions: unknown;
     addressChangeHistory: unknown;
   }): Booking {
     return {
@@ -1669,6 +1675,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       notes: record.notes,
       totalCents: record.totalCents,
       reviewId: record.reviewId ?? undefined,
+      serviceEvidence: readJson<Booking["serviceEvidence"]>(record.serviceEvidence),
+      interventions: readJson<Booking["interventions"]>(record.interventions),
       addressChangeHistory: readJson<BookingAddressChangeRequest[]>(record.addressChangeHistory)
     };
   }

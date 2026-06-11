@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { MarketplaceApiClient, ObservabilityOverview } from "@yardmatch/contracts";
 import { getWebApiBaseUrl } from "../../lib/api";
 import { NotificationOpsBoard } from "../../components/NotificationOpsBoard";
+import { OpsFinancialExceptionBoard } from "../../components/OpsFinancialExceptionBoard";
 import { OpsProviderVerificationQueue } from "../../components/OpsProviderVerificationQueue";
 import { OpsSupportQueue } from "../../components/OpsSupportQueue";
 
@@ -127,6 +128,7 @@ export default async function OpsPage() {
       </section>
 
       <NotificationOpsBoard />
+      <OpsFinancialExceptionBoard />
       <OpsProviderVerificationQueue />
       <OpsSupportQueue />
     </main>

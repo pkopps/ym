@@ -143,6 +143,8 @@ model Booking {
   notes                String
   totalCents           Int
   reviewId             String?
+  serviceEvidence      Json
+  interventions        Json
   addressChangeHistory Json
 
   @@map("bookings")

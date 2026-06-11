@@ -94,10 +94,20 @@ export function CustomerLiveDashboard() {
   const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
-  const providerCards = providerResults?.providers.map((provider) => ({
-    provider,
-    slot: providerResults.suggestedSlots.find((candidate) => candidate.providerId === provider.id)
-  })) ?? [];
+  const providerCards =
+    providerResults?.rankedProviders.map((result) => ({
+      provider: result.provider,
+      ranking: result,
+      slot:
+        result.suggestedSlot ??
+        providerResults.suggestedSlots.find((candidate) => candidate.providerId === result.provider.id)
+    })) ??
+    providerResults?.providers.map((provider) => ({
+      provider,
+      ranking: undefined,
+      slot: providerResults.suggestedSlots.find((candidate) => candidate.providerId === provider.id)
+    })) ??
+    [];
   const providersWithWindows = providerCards.filter((item) => item.slot);
   const nextBooking = bookings
     .filter(
@@ -778,7 +788,7 @@ export function CustomerLiveDashboard() {
                 <p>Try another service window, another property, or check back later as route openings change throughout the day.</p>
               </article>
             ) : null}
-            {providerCards.map(({ provider, slot }) => {
+            {providerCards.map(({ provider, ranking, slot }) => {
               return (
                 <article className="list-panel" key={provider.id}>
                   <div className="search-result-title">
@@ -788,6 +798,11 @@ export function CustomerLiveDashboard() {
                   <p>
                     {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality
                   </p>
+                  {ranking ? (
+                    <p>
+                      {ranking.distanceMiles.toFixed(1)} miles away • {ranking.reasons.join(" • ")}
+                    </p>
+                  ) : null}
                     <p>
                       Radius {provider.serviceRadiusMiles} miles •{" "}
                       {slot ? `${formatBookingWindowSummary(slot.startIso)} window` : "No open slot"}

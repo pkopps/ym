@@ -1,5 +1,7 @@
 import {
   AnalyticsEvent,
+  CreateOpsBookingInterventionRequest,
+  CreateOpsRefundOverrideRequest,
   CreateSupportTicketRequest,
   UpdateSupportTicketRequest
 } from "@yardmatch/contracts";
@@ -14,15 +16,41 @@ export class SupportController implements ApiController {
     return (
       (context.method === "GET" && context.path === "/api/support/tickets") ||
       (context.method === "POST" && context.path === "/api/support/tickets") ||
+      (context.method === "GET" && context.path === "/api/support/ops/summary") ||
       (context.method === "GET" && context.path === "/api/support/ops/tickets") ||
       (context.method === "POST" && context.path === "/api/support/ops/tickets/update") ||
+      (context.method === "POST" && context.path === "/api/support/ops/refund-override") ||
+      (context.method === "POST" && context.path === "/api/support/ops/bookings/intervene") ||
       (context.method === "POST" && context.path === "/api/analytics/events")
     );
   }
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
+    if (context.path === "/api/support/ops/summary") {
+      sendJson(response, 200, await this.platform.getOpsFinancialExceptionSummary());
+      return;
+    }
+
     if (context.path === "/api/support/ops/tickets") {
       sendJson(response, 200, await this.platform.listOpsSupportTickets());
+      return;
+    }
+
+    if (context.path === "/api/support/ops/refund-override") {
+      sendJson(
+        response,
+        200,
+        await this.platform.createOpsRefundOverride(context.body as CreateOpsRefundOverrideRequest)
+      );
+      return;
+    }
+
+    if (context.path === "/api/support/ops/bookings/intervene") {
+      sendJson(
+        response,
+        200,
+        await this.platform.createOpsBookingIntervention(context.body as CreateOpsBookingInterventionRequest)
+      );
       return;
     }
 

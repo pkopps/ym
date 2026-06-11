@@ -17,6 +17,9 @@ import {
   getExternalCalendarBlockLabel,
   PropertyMeasurementEstimate,
   ProviderCalendarEvent,
+  ProviderDispatchDaySummary,
+  ProviderDispatchRouteStatus,
+  ProviderDispatchWindowSummary,
   ProviderProfile
 } from "@yardmatch/contracts";
 
@@ -237,6 +240,107 @@ export class SchedulingService {
     );
   }
 
+  public buildProviderDispatchDays(input: {
+    providerAddress: Address;
+    bookings: Array<{
+      id: string;
+      category: Booking["category"];
+      customerName: string;
+      addressLine: string;
+      city: string;
+      state: string;
+      scheduledStartIso: string;
+      scheduledEndIso: string;
+      status: Booking["status"];
+      notes?: string;
+      serviceAddress: Address;
+      requiredCrewMembers: number;
+      assignedCrewMembers: number;
+    }>;
+    externalBlocks: ExternalCalendarBlock[];
+  }): ProviderDispatchDaySummary[] {
+    const grouped = new Map<
+      string,
+      {
+        bookings: typeof input.bookings;
+        externalBlocks: ExternalCalendarBlock[];
+      }
+    >();
+
+    for (const booking of input.bookings) {
+      const key = this.localDateKey(booking.scheduledStartIso);
+      const current = grouped.get(key) ?? { bookings: [], externalBlocks: [] };
+      current.bookings.push(booking);
+      grouped.set(key, current);
+    }
+
+    for (const block of input.externalBlocks) {
+      const key = this.localDateKey(block.startIso);
+      const current = grouped.get(key) ?? { bookings: [], externalBlocks: [] };
+      current.externalBlocks.push(block);
+      grouped.set(key, current);
+    }
+
+    return [...grouped.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([dayKey, dayGroup]) => {
+        const sortedBookings = [...dayGroup.bookings].sort((left, right) =>
+          left.scheduledStartIso.localeCompare(right.scheduledStartIso)
+        );
+        const firstBooking = sortedBookings[0];
+        const lastBooking = sortedBookings.at(-1);
+        const bookedMinutes = sortedBookings.reduce(
+          (sum, booking) =>
+            sum + (new Date(booking.scheduledEndIso).getTime() - new Date(booking.scheduledStartIso).getTime()) / 60_000,
+          0
+        );
+        const blockedMinutes = dayGroup.externalBlocks.reduce(
+          (sum, block) => sum + (new Date(block.endIso).getTime() - new Date(block.startIso).getTime()) / 60_000,
+          0
+        );
+        const totalCrewRequired = sortedBookings.reduce((sum, booking) => sum + booking.requiredCrewMembers, 0);
+        const totalCrewAssigned = sortedBookings.reduce((sum, booking) => sum + booking.assignedCrewMembers, 0);
+        const crewGap = Math.max(totalCrewRequired - totalCrewAssigned, 0);
+        const estimatedDriveMiles = this.estimateDailyRouteMiles(input.providerAddress, sortedBookings);
+        const windowSummaries = this.buildDispatchWindowSummaries({
+          dayKey,
+          bookings: sortedBookings,
+          externalBlocks: dayGroup.externalBlocks
+        });
+        const routeStatus = this.getDispatchRouteStatus({
+          crewGap,
+          yardmatchJobCount: sortedBookings.length,
+          estimatedDriveMiles,
+          blockedMinutes
+        });
+
+        return {
+          dateIso: `${dayKey}T00:00:00.000Z`,
+          dayLabel: this.formatDispatchDayLabel(dayKey),
+          yardmatchJobCount: sortedBookings.length,
+          externalBlockCount: dayGroup.externalBlocks.length,
+          totalCrewRequired,
+          totalCrewAssigned,
+          crewGap,
+          bookedMinutes,
+          blockedMinutes,
+          estimatedDriveMiles,
+          firstJobStartIso: firstBooking?.scheduledStartIso,
+          lastJobEndIso: lastBooking?.scheduledEndIso,
+          firstStopAddressLine: firstBooking?.addressLine,
+          routeStatus,
+          recommendations: this.buildDispatchRecommendations({
+            routeStatus,
+            crewGap,
+            estimatedDriveMiles,
+            yardmatchJobCount: sortedBookings.length,
+            externalBlockCount: dayGroup.externalBlocks.length
+          }),
+          windowSummaries
+        };
+      });
+  }
+
   private titleCaseCategory(category: Booking["category"]): string {
     return category
       .split("-")
@@ -246,6 +350,207 @@ export class SchedulingService {
 
   private escapeIcsText(value: string): string {
     return value.replaceAll("\\", "\\\\").replaceAll("\n", "\\n").replaceAll(",", "\\,").replaceAll(";", "\\;");
+  }
+
+  private buildDispatchWindowSummaries(input: {
+    dayKey: string;
+    bookings: Array<{
+      scheduledStartIso: string;
+      scheduledEndIso: string;
+      requiredCrewMembers: number;
+      assignedCrewMembers: number;
+    }>;
+    externalBlocks: ExternalCalendarBlock[];
+  }): ProviderDispatchWindowSummary[] {
+    const windows: ProviderDispatchWindowSummary[] = [
+      {
+        windowKey: "morning",
+        label: "Morning",
+        yardmatchJobCount: 0,
+        externalBlockCount: 0,
+        totalCrewRequired: 0,
+        totalCrewAssigned: 0,
+        crewGap: 0,
+        bookedMinutes: 0,
+        blockedMinutes: 0
+      },
+      {
+        windowKey: "afternoon",
+        label: "Afternoon",
+        yardmatchJobCount: 0,
+        externalBlockCount: 0,
+        totalCrewRequired: 0,
+        totalCrewAssigned: 0,
+        crewGap: 0,
+        bookedMinutes: 0,
+        blockedMinutes: 0
+      },
+      {
+        windowKey: "late-afternoon-night",
+        label: "Late afternoon / evening",
+        yardmatchJobCount: 0,
+        externalBlockCount: 0,
+        totalCrewRequired: 0,
+        totalCrewAssigned: 0,
+        crewGap: 0,
+        bookedMinutes: 0,
+        blockedMinutes: 0
+      }
+    ];
+
+    const windowByKey = new Map(windows.map((window) => [window.windowKey, window]));
+
+    for (const booking of input.bookings) {
+      const windowKey = this.getServiceWindowKey(booking.scheduledStartIso);
+      const summary = windowByKey.get(windowKey);
+      if (!summary) {
+        continue;
+      }
+
+      summary.yardmatchJobCount += 1;
+      summary.totalCrewRequired += booking.requiredCrewMembers;
+      summary.totalCrewAssigned += booking.assignedCrewMembers;
+      summary.crewGap = Math.max(summary.totalCrewRequired - summary.totalCrewAssigned, 0);
+      summary.bookedMinutes +=
+        (new Date(booking.scheduledEndIso).getTime() - new Date(booking.scheduledStartIso).getTime()) / 60_000;
+    }
+
+    for (const block of input.externalBlocks) {
+      for (const summary of windows) {
+        const overlapMinutes = this.getWindowOverlapMinutes(input.dayKey, summary.windowKey, block.startIso, block.endIso);
+        if (overlapMinutes > 0) {
+          summary.externalBlockCount += 1;
+          summary.blockedMinutes += overlapMinutes;
+        }
+      }
+    }
+
+    return windows;
+  }
+
+  private getDispatchRouteStatus(input: {
+    crewGap: number;
+    yardmatchJobCount: number;
+    estimatedDriveMiles: number;
+    blockedMinutes: number;
+  }): ProviderDispatchRouteStatus {
+    if (
+      input.crewGap > 0 ||
+      input.yardmatchJobCount >= 5 ||
+      input.estimatedDriveMiles >= 40 ||
+      input.blockedMinutes >= 240
+    ) {
+      return "overloaded";
+    }
+
+    if (
+      input.yardmatchJobCount >= 3 ||
+      input.estimatedDriveMiles >= 22 ||
+      input.blockedMinutes >= 120
+    ) {
+      return "watch";
+    }
+
+    return "comfortable";
+  }
+
+  private buildDispatchRecommendations(input: {
+    routeStatus: ProviderDispatchRouteStatus;
+    crewGap: number;
+    estimatedDriveMiles: number;
+    yardmatchJobCount: number;
+    externalBlockCount: number;
+  }): string[] {
+    const recommendations: string[] = [];
+
+    if (input.crewGap > 0) {
+      recommendations.push(
+        `Add ${input.crewGap} more crew ${input.crewGap === 1 ? "slot" : "slots"} or rebalance accepted jobs.`
+      );
+    }
+    if (input.estimatedDriveMiles >= 22) {
+      recommendations.push("Consider shifting one stop or adding a travel buffer.");
+    }
+    if (input.externalBlockCount > 0 && input.yardmatchJobCount > 0) {
+      recommendations.push("Outside calendar blocks are tightening this route.");
+    }
+    if (recommendations.length === 0) {
+      recommendations.push(
+        input.routeStatus === "comfortable"
+          ? "This day looks balanced."
+          : "Keep an eye on this day as bookings change."
+      );
+    }
+
+    return recommendations.slice(0, 3);
+  }
+
+  private estimateDailyRouteMiles(
+    providerAddress: Address,
+    bookings: Array<{
+      serviceAddress: Address;
+    }>
+  ): number {
+    if (bookings.length === 0) {
+      return 0;
+    }
+
+    let miles = 0;
+    let currentAddress = providerAddress;
+    for (const booking of bookings) {
+      miles += new GeoService().distanceMiles(currentAddress, booking.serviceAddress);
+      currentAddress = booking.serviceAddress;
+    }
+
+    return Number(miles.toFixed(1));
+  }
+
+  private localDateKey(iso: string): string {
+    const date = new Date(iso);
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  private formatDispatchDayLabel(dayKey: string): string {
+    const date = new Date(`${dayKey}T12:00:00`);
+    return date.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric"
+    });
+  }
+
+  private getServiceWindowKey(iso: string): ProviderDispatchWindowSummary["windowKey"] {
+    const hour = new Date(iso).getHours();
+    if (hour < 12) {
+      return "morning";
+    }
+    if (hour < 16) {
+      return "afternoon";
+    }
+    return "late-afternoon-night";
+  }
+
+  private getWindowOverlapMinutes(
+    dayKey: string,
+    windowKey: ProviderDispatchWindowSummary["windowKey"],
+    startIso: string,
+    endIso: string
+  ): number {
+    const [startHour, endHour] =
+      windowKey === "morning" ? [7, 12] : windowKey === "afternoon" ? [12, 16] : [16, 20];
+    const windowStart = new Date(`${dayKey}T00:00:00`);
+    windowStart.setHours(startHour, 0, 0, 0);
+    const windowEnd = new Date(`${dayKey}T00:00:00`);
+    windowEnd.setHours(endHour, 0, 0, 0);
+    const eventStart = new Date(startIso);
+    const eventEnd = new Date(endIso);
+
+    const overlapStart = Math.max(windowStart.getTime(), eventStart.getTime());
+    const overlapEnd = Math.min(windowEnd.getTime(), eventEnd.getTime());
+    return overlapEnd > overlapStart ? Math.round((overlapEnd - overlapStart) / 60_000) : 0;
   }
 }
 
@@ -265,6 +570,8 @@ export class BookingLifecycleService {
       status: "requested",
       notes: payload.notes,
       totalCents: payload.totalCents,
+      serviceEvidence: [],
+      interventions: [],
       addressChangeHistory: []
     };
   }

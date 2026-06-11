@@ -44,6 +44,26 @@ function formatLocalInputValue(date: Date) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
+function formatMinutesAsHours(minutes: number) {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = minutes / 60;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hrs`;
+}
+
+function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") {
+  switch (status) {
+    case "comfortable":
+      return "Balanced";
+    case "watch":
+      return "Watch closely";
+    case "overloaded":
+      return "Overloaded";
+  }
+}
+
 const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "off-platform-client",
   "personal-time",
@@ -86,6 +106,7 @@ export function ProviderLiveManagementBoard() {
 
   const provider = overview?.provider;
   const jobs = overview?.jobs ?? [];
+  const dispatchDays = calendarOverview?.dispatchDays ?? [];
   const calendarBlocks = provider?.calendarConnection.externalBlocks ?? [];
   const externalBlockingEnabled = provider?.calendarConnection.externalEventsBlockingEnabled ?? false;
   const totalAssignedCrew = useMemo(
@@ -640,6 +661,53 @@ export function ProviderLiveManagementBoard() {
                   <span>{calendarOverview.externalBlockCount} outside blocks</span>
                   <span>{calendarOverview.totalEvents} total events</span>
                 </div>
+                {dispatchDays.length ? (
+                  <div className="stack-md">
+                    <h3>Dispatch plan</h3>
+                    <div className="grid-two">
+                      {dispatchDays.map((day) => (
+                        <article className="card" key={day.dateIso}>
+                          <div className="chip-row" style={{ justifyContent: "space-between" }}>
+                            <span>{day.dayLabel}</span>
+                            <span>{formatRouteStatusLabel(day.routeStatus)}</span>
+                          </div>
+                          <p>
+                            {day.yardmatchJobCount} jobs • {day.totalCrewAssigned}/{day.totalCrewRequired} crew •{" "}
+                            {day.estimatedDriveMiles} mi route
+                          </p>
+                          <p>
+                            {formatMinutesAsHours(day.bookedMinutes)} booked
+                            {day.externalBlockCount ? ` • ${formatMinutesAsHours(day.blockedMinutes)} outside blocks` : ""}
+                          </p>
+                          {day.firstStopAddressLine ? <p>First stop: {day.firstStopAddressLine}</p> : null}
+                          <div className="stack-md">
+                            {day.windowSummaries.map((window) => (
+                              <div className="list-panel" key={`${day.dateIso}-${window.windowKey}`}>
+                                <strong>{window.label}</strong>
+                                <p>
+                                  {window.yardmatchJobCount} jobs • {window.totalCrewAssigned}/{window.totalCrewRequired} crew
+                                  {window.crewGap ? ` • gap ${window.crewGap}` : ""}
+                                </p>
+                                {window.externalBlockCount ? (
+                                  <p>
+                                    {window.externalBlockCount} outside blocks • {formatMinutesAsHours(window.blockedMinutes)}
+                                  </p>
+                                ) : (
+                                  <p>{formatMinutesAsHours(window.bookedMinutes)} booked</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="stack-md">
+                            {day.recommendations.map((recommendation) => (
+                              <p key={recommendation}>{recommendation}</p>
+                            ))}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {calendarOverview.events.slice(0, 8).map((event) => (
                   <div className="list-panel" key={event.id}>
                     <strong>{event.title}</strong>
