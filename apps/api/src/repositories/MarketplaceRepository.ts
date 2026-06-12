@@ -17,6 +17,7 @@ import {
   NotificationPreferences,
   PaymentRecord,
   PushDevice,
+  RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
   SupportOpsTicket,
@@ -58,6 +59,13 @@ export interface MarketplaceRepository {
   listBookings(): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking | undefined>;
+  createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
+  listRecurringServicePlans(): Promise<RecurringServicePlan[]>;
+  findRecurringServicePlanById(planId: string): Promise<RecurringServicePlan | undefined>;
+  updateRecurringServicePlan(
+    planId: string,
+    updates: Partial<RecurringServicePlan>
+  ): Promise<RecurringServicePlan | undefined>;
   createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate>;
   listCrewMatches(): Promise<CrewMatchCandidate[]>;
   updateCrewMatch(matchId: string, updates: Partial<CrewMatchCandidate>): Promise<CrewMatchCandidate | undefined>;

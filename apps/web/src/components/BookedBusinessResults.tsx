@@ -23,8 +23,14 @@ export function BookedBusinessResults({
           <div className="results-summary__copy">
             <strong>{bookedBusinessSearchContext.resultCountLabel}</strong>
             <span>
-              {serviceLabel ? `${serviceLabel} near ${searchAreaLabel ?? bookedBusinessSearchContext.userAddressLabel}` : bookedBusinessSearchContext.dateRangeLabel}
+              {serviceLabel
+                ? `${serviceLabel} near ${searchAreaLabel ?? bookedBusinessSearchContext.userAddressLabel}`
+                : bookedBusinessSearchContext.dateRangeLabel}
             </span>
+            <small>
+              These businesses already have packed calendars, but they help set expectations for
+              pricing, route density, and who is active in the area.
+            </small>
           </div>
           <div className="results-summary__actions">
             {allowMapToggle ? (
@@ -88,6 +94,15 @@ export function BookedBusinessResults({
                   <span key={specialty}>{specialty}</span>
                 ))}
               </div>
+              <div className="calendar-card__metric-row">
+                <span>{business.rating} stars</span>
+                <span>{business.distanceMiles} mi away</span>
+                <span>{business.crewSizeLabel}</span>
+              </div>
+              <p className="calendar-card__note">
+                Best known for {business.specialties.slice(0, 2).join(" and ").toLowerCase()} jobs in{" "}
+                {business.city}.
+              </p>
               <div className="calendar-slots calendar-slots--inline">
                 {visibleSlots.map((slot) => (
                   <div className="calendar-slot calendar-slot--booked" key={`${business.name}-${slot.windowLabel}`}>

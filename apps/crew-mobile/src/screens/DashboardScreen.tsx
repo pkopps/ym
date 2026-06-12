@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { CrewMatchesResponse } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
@@ -106,6 +106,48 @@ export function DashboardScreen({
     }
   }
 
+  async function cancelAcceptedAssignment() {
+    if (!envelope?.session.token || !acceptedMatch) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setIsWorking(true);
+      setErrorMessage("");
+      await api.cancelCrewMatch({
+        crewMatchId: acceptedMatch.id,
+        reason: "Crew member cancelled from the mobile crew dashboard."
+      });
+      setStatusMessage("Assignment cancelled. The business owner was notified.");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel this assignment.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  function confirmCancelAcceptedAssignment() {
+    if (!acceptedMatch) {
+      return;
+    }
+
+    Alert.alert(
+      "Cancel accepted assignment?",
+      "Backing out of an accepted shift can negatively affect your reliability score, which may reduce your chances of being selected for future crews.",
+      [
+        { text: "Keep assignment", style: "cancel" },
+        {
+          text: "Cancel assignment",
+          style: "destructive",
+          onPress: () => void cancelAcceptedAssignment()
+        }
+      ]
+    );
+  }
+
   return (
     <ScreenShell eyebrow="Today" title="Your next shift">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
@@ -122,6 +164,7 @@ export function DashboardScreen({
             {acceptedMatch.serviceAddress.city}, {acceptedMatch.serviceAddress.state}
           </Text>
           <Text style={styles.meta}>Status: {acceptedMatch.bookingStatus.replaceAll("-", " ")}</Text>
+          <Text style={styles.meta}>Reliability call-offs on record: {matchesResponse?.crewMember.cancellationCount ?? 0}</Text>
           <Text style={styles.meta}>
             Evidence • before {acceptedMatch.beforeEvidenceCount} • after {acceptedMatch.afterEvidenceCount}
           </Text>
@@ -172,6 +215,16 @@ export function DashboardScreen({
                 <Text style={styles.waitingBadgeLabel}>Job in progress</Text>
               </View>
             ) : null}
+            {(acceptedMatch.bookingStatus === "requested" ||
+              (acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt)) ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={confirmCancelAcceptedAssignment}
+                style={styles.dangerButton}
+              >
+                <Text style={styles.dangerButtonLabel}>Cancel assignment</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => void Linking.openURL(`tel:${acceptedMatch.providerPhone}`)}
               style={styles.secondaryButton}
@@ -195,6 +248,7 @@ export function DashboardScreen({
       <View style={styles.statRow}>
         <StatCard label="Accepted" value={`${matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0}`} />
         <StatCard label="Pending" value={`${matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0}`} />
+        <StatCard label="Call-offs" value={`${matchesResponse?.crewMember.cancellationCount ?? 0}`} />
       </View>
 
     </ScreenShell>
@@ -246,6 +300,19 @@ const styles = StyleSheet.create({
   },
   secondaryButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  dangerButton: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#b25555",
+    backgroundColor: "#fff3f1",
+    paddingVertical: BrandTokens.spacing.md
+  },
+  dangerButtonLabel: {
+    color: "#a03838",
     fontWeight: "700"
   },
   waitingBadge: {

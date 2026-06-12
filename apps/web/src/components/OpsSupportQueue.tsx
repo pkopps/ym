@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  BookingEvidenceReviewStatus,
   CreateOpsBookingInterventionRequest,
   MarketplaceApiClient,
   CreateOpsRefundOverrideRequest,
+  ReviewBookingEvidenceForOpsRequest,
   SupportOpsTicket,
   SupportTicket,
   SupportTicketStatus
@@ -30,6 +32,9 @@ export function OpsSupportQueue() {
   const [refundOverrideDrafts, setRefundOverrideDrafts] = useState<Record<string, string>>({});
   const [interventionDrafts, setInterventionDrafts] = useState<
     Record<string, { note: string; scheduledStartLocal: string; scheduledEndLocal: string }>
+  >({});
+  const [evidenceReviewDrafts, setEvidenceReviewDrafts] = useState<
+    Record<string, { reviewStatus: BookingEvidenceReviewStatus; reviewNotes: string }>
   >({});
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -129,6 +134,15 @@ export function OpsSupportQueue() {
     );
   }
 
+  function getEvidenceReviewDraft(ticketId: string, evidenceId: string) {
+    return (
+      evidenceReviewDrafts[`${ticketId}:${evidenceId}`] ?? {
+        reviewStatus: "inconclusive" as BookingEvidenceReviewStatus,
+        reviewNotes: ""
+      }
+    );
+  }
+
   async function applyIntervention(
     ticket: SupportOpsTicket,
     action: CreateOpsBookingInterventionRequest["action"]
@@ -181,6 +195,38 @@ export function OpsSupportQueue() {
       await loadQueue();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to apply that booking intervention.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function reviewEvidence(
+    ticket: SupportOpsTicket,
+    evidenceId: string
+  ) {
+    if (!ticket.booking) {
+      setErrorMessage("This support ticket is not tied to a booking.");
+      return;
+    }
+
+    const draft = getEvidenceReviewDraft(ticket.ticket.id, evidenceId);
+
+    try {
+      setIsWorking(true);
+      setStatusMessage(undefined);
+      setErrorMessage(undefined);
+      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      await api.reviewBookingEvidenceForOps({
+        bookingId: ticket.booking.id,
+        ticketId: ticket.ticket.id,
+        evidenceId,
+        reviewStatus: draft.reviewStatus,
+        reviewNotes: draft.reviewNotes.trim() || undefined
+      } satisfies ReviewBookingEvidenceForOpsRequest);
+      setStatusMessage("Evidence review saved to the booking record.");
+      await loadQueue();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save that evidence review.");
     } finally {
       setIsWorking(false);
     }
@@ -243,18 +289,84 @@ export function OpsSupportQueue() {
                             <p>{phase === "before" ? "Before-work photos" : "After-work photos"}</p>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
                               {photos.slice(0, 3).map((photo) => (
-                                <img
-                                  alt={`${phase} evidence`}
+                                <div
                                   key={photo.id}
-                                  src={photo.imageDataUrl}
                                   style={{
-                                    width: "7rem",
-                                    height: "7rem",
-                                    objectFit: "cover",
-                                    borderRadius: "1rem",
-                                    border: "1px solid rgba(21, 54, 47, 0.12)"
+                                    display: "grid",
+                                    gap: "0.5rem",
+                                    width: "12rem"
                                   }}
-                                />
+                                >
+                                  <img
+                                    alt={`${phase} evidence`}
+                                    src={photo.imageDataUrl}
+                                    style={{
+                                      width: "7rem",
+                                      height: "7rem",
+                                      objectFit: "cover",
+                                      borderRadius: "1rem",
+                                      border: "1px solid rgba(21, 54, 47, 0.12)"
+                                    }}
+                                  />
+                                  <p style={{ margin: 0, fontSize: "0.9rem" }}>
+                                    {photo.capturedByRole} • {formatDateTime(photo.capturedAt)}
+                                  </p>
+                                  {photo.note ? <p style={{ margin: 0 }}>{photo.note}</p> : null}
+                                  {photo.reviewStatus ? (
+                                    <p className="warning-copy" style={{ margin: 0 }}>
+                                      Ops review: {photo.reviewStatus.replaceAll("-", " ")}
+                                      {photo.reviewNotes ? ` • ${photo.reviewNotes}` : ""}
+                                    </p>
+                                  ) : null}
+                                  <label>
+                                    Evidence review
+                                    <select
+                                      onChange={(event) =>
+                                        setEvidenceReviewDrafts((current) => ({
+                                          ...current,
+                                          [`${ticket.id}:${photo.id}`]: {
+                                            ...getEvidenceReviewDraft(ticket.id, photo.id),
+                                            reviewStatus: event.target.value as BookingEvidenceReviewStatus
+                                          }
+                                        }))
+                                      }
+                                      value={getEvidenceReviewDraft(ticket.id, photo.id).reviewStatus}
+                                    >
+                                      <option value="supports-provider">Supports provider</option>
+                                      <option value="supports-customer">Supports customer</option>
+                                      <option value="inconclusive">Inconclusive</option>
+                                    </select>
+                                  </label>
+                                  <label>
+                                    Ops evidence notes
+                                    <textarea
+                                      onChange={(event) =>
+                                        setEvidenceReviewDrafts((current) => ({
+                                          ...current,
+                                          [`${ticket.id}:${photo.id}`]: {
+                                            ...getEvidenceReviewDraft(ticket.id, photo.id),
+                                            reviewNotes: event.target.value
+                                          }
+                                        }))
+                                      }
+                                      rows={2}
+                                      value={getEvidenceReviewDraft(ticket.id, photo.id).reviewNotes}
+                                    />
+                                  </label>
+                                  <button
+                                    className="button-secondary"
+                                    disabled={isWorking}
+                                    onClick={() =>
+                                      void reviewEvidence(
+                                        { ticket, booking, payment, customerName, providerName },
+                                        photo.id
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    Save evidence review
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           </div>

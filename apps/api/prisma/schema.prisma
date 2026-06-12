@@ -65,6 +65,9 @@ model ProviderBusinessProfile {
   yearsExperience           Int
   serviceRadiusMiles        Int
   staffingMode              String   @default("review-first")
+  crewReviewLeadHours       Int      @default(24)
+  departureReminderLeadMinutes Int   @default(60)
+  routeLeaderMode           String   @default("provider-only")
   verificationStatus        String   @default("pending-review")
   verificationSubmittedAt   DateTime?
   verificationReviewedAt    DateTime?
@@ -94,6 +97,8 @@ model CrewMemberProfile {
   winterWorkEnabled     Boolean  @default(false)
   rating                Float
   completedJobs         Int
+  cancellationCount     Int      @default(0)
+  lastCancellationAt    DateTime?
   status                String
   assignedProviderId    String?
   user                  UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -116,6 +121,8 @@ model Booking {
   id                   String   @id
   customerId           String
   providerId           String
+  recurringPlanId      String?
+  recurringOccurrenceIndex Int?
   serviceAddress       Json
   servicePropertyId    String?
   category             String
@@ -150,6 +157,30 @@ model Booking {
   @@map("bookings")
 }
 
+model RecurringServicePlan {
+  id                     String   @id
+  customerId             String
+  providerId             String
+  serviceAddress         Json
+  servicePropertyId      String?
+  category               String
+  frequency              String
+  requestedAt            DateTime
+  notes                  String
+  totalCents             Int
+  status                 String
+  anchorScheduledStartIso DateTime
+  anchorScheduledEndIso  DateTime
+  lastGeneratedBookingId String?
+  lastGeneratedAt        DateTime?
+  lastSchedulingAttemptAt DateTime?
+  lastSchedulingError    String?
+  cancelledAt           DateTime?
+  cancellationReason    String?
+
+  @@map("recurring_service_plans")
+}
+
 model CrewMatch {
   id             String   @id
   bookingId      String
@@ -167,6 +198,8 @@ model CrewMatch {
   autoAccepted   Boolean @default(false)
   distanceMiles  Float
   hourlyRateCents Int
+  cancellationReason String?
+  cancelledAt    DateTime?
   createdAt      DateTime
   reviewedAt     DateTime?
 

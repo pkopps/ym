@@ -85,17 +85,33 @@ Already done:
   - estimated route miles
   - morning / afternoon / late-afternoon pressure by window
   - day-level recommendations when routes look overloaded
+- automated crew/day load balancing:
+  - same-day recommendation load is tracked while crew matches are generated
+  - strong crew are no longer suggested indefinitely across every same-day job
+  - later jobs fall back to fresher available crew before overloading the same few people
+- better job-level staffing recommendations:
+  - crew candidates now rank by fit instead of pure distance
+  - overlapping accepted jobs are filtered out of new recommendations
+  - providers can see recommendation labels, scores, and reasons in staffing review surfaces
+- baseline provider dispatch controls:
+  - service radius tuning
+  - staffing mode selection
+  - staffing review reminder timing
+  - departure reminder timing
+  - route-leader mode that can stay provider-only or allow accepted-crew fallback
+- baseline provider assistant natural-language scheduling help:
+  - providers can preview a plain-language reschedule command
+  - ambiguous commands can return matching appointments for explicit selection
+  - confirmed commands can move a booking to a broader window and notify the customer automatically
 
-- Automated crew/day load balancing
-- Better job-level staffing recommendations
-- AI ops assistant for provider-side changes, for example:
-  - "Change my afternoon appointment to night and send a notification to the property owner"
-  - reschedule, notify, and crew/provider coordination actions from natural-language requests
+- Broaden the provider assistant beyond the shipped reschedule baseline:
+  - richer crew/provider coordination actions from natural-language requests
+  - more complex multi-step scheduling changes
+  - deeper assistant support for dispatch reasoning and route management
 - More provider controls for:
-  - service area
-  - staffing mode
   - acceptance windows
-  - dispatch timing / route-leader behavior
+  - richer dispatch timing and routing heuristics
+  - more nuanced route-leader/delegation behavior across multiple crews
 
 ### Calendar interoperability, part 2
 
@@ -105,6 +121,11 @@ Already done:
 - merged provider calendar view
 - manual outside-client / personal block handling
 - outside blocks reducing YardMatch availability
+- external calendar sync health for mixed books of business:
+  - stale or broken outside feeds are surfaced back to the provider
+  - failed imports persist as saved subscriptions with error state instead of disappearing
+  - providers can see when outside blocks are saved but not actually reducing YardMatch availability
+  - providers can see when outside blocks overlap existing YardMatch jobs and create double-booking risk
 
 Still left:
 
@@ -115,8 +136,15 @@ Still left:
 
 ### Search, address, and quote intelligence
 
+Already done:
+
+- backend address normalization across customer signup, saved properties, quoting, and booking snapshots
+- quote explainability improvements:
+  - normalized-address feedback
+  - measurement source breakdowns
+  - confidence reasons that explain whether the estimate is leaning on saved property data, customer answers, or heuristics
+
 - Improve geocoding quality beyond the current fallback + basic place search setup
-- Normalize addresses more aggressively before matching and booking
 - Improve explainability and confidence of quote / property measurement logic
 - Improve provider ranking further beyond the current score-and-explanation model:
   - conversion signals once they are trustworthy enough to use
@@ -131,13 +159,21 @@ Still left:
 - Deeper dispute evidence and resolution flows beyond the current photo workflow
 - Evidence workflow improvements beyond the shipped before/after photo requirement:
   - expand evidence types beyond photos alone
-  - add cleaner evidence review and annotation tools for ops
-  - strengthen evidence linkage into disputes, bad reviews, refund reviews, and service-quality support workflows
+  - cleaner evidence review and annotation tools for ops are now in place on booking photos
+  - strengthen evidence linkage even further into disputes, bad reviews, refund reviews, and service-quality support workflows
 - Audit-friendly internal tooling for support and financial exceptions
 
 ## Phase 3: Nice To Have After Launch
 
 ### Customer experience polish
+
+Already done:
+
+- recurring service plan baseline for customers, including:
+  - weekly or biweekly recurring maintenance scheduling
+  - repeat lawn mowing / cleanup plans without rebuilding the booking each time
+  - automatic generation of the next recurring visit after the current one is completed
+  - customer visibility into active recurring plans and upcoming visits
 
 - Recurring service subscriptions
 - Saved preferences and faster rebooking loops
@@ -145,6 +181,13 @@ Still left:
 - Richer customer-facing arrival/tracking notifications
 
 ### Crew operations polish
+
+Already done:
+
+- cancellation accountability messaging for crew members:
+  - crew members now see a warning before cancelling an accepted assignment
+  - the warning explains that repeated cancellations can hurt reliability standing
+  - accepted-assignment cancellations now lower future staffing priority through recommendation penalties
 
 - Performance summaries
 - Attendance history
@@ -166,7 +209,11 @@ The following items are no longer roadmap gaps and should be treated as complete
 - password reset and account recovery
 - mobile secure session persistence
 - optional biometric unlock on mobile
+- public customer web baseline polish, including a responsive homepage and live listings backed by provider search
+- role-aware public login entry surfaces for customers, providers, and crew members
 - place search baseline
+- backend address normalization for customer properties, quotes, and booking snapshots
+- quote explainability with measurement sources and confidence reasons
 - in-app notifications and preference management
 - support ticketing and dispute flows
 - provider late notices and service exception handling
@@ -175,8 +222,10 @@ The following items are no longer roadmap gaps and should be treated as complete
 - Stripe Checkout scaffold and webhook plumbing
 - provider ICS export and outside-calendar blocking
 - external iCal calendar import into provider availability blocking
+- provider calendar sync health for stale feeds, failed imports, and blocking-risk visibility
 - provider dispatch planning summaries for day load, route miles, and window pressure
 - device-backed provider live route tracking
+- customer recurring service plans with automatic next-visit generation
 
 ## Recommended Execution Order
 
@@ -193,12 +242,10 @@ The following items are no longer roadmap gaps and should be treated as complete
 
 ### Known bugs
 
-- Homepage hero service rotator still has an unresolved flicker / double-advance issue:
-  - example: `leaf blowing` rolls into `weed whacking`, briefly flashes the next value, then snaps back
-  - this needs a cleaner animation/state model before more homepage polish work lands there
-- Public navbar logo still needs a proper asset/layout pass:
-  - the new wordmark PNG has a large square canvas and can still affect header balance unexpectedly
-  - fix later with either a cropped export or a dedicated header-safe logo treatment
+- No current homepage bug is being tracked here as a launch blocker after the rotator rewrite.
+- Continue visual QA on:
+  - public homepage hero animation timing
+  - responsive header spacing on smaller screens
 
 ### Branding
 
@@ -232,6 +279,7 @@ Already done:
 - refund review workflow with ops approval / denial and payout holds
 - ops booking intervention console for notes, reschedules, cancel/restore/complete actions, and audit trail history
 - required before-work and after-work photo evidence with booking-level timestamps and actor attribution
+- ops evidence review and annotation directly on booking photos inside the support queue
 
 Still left:
 
@@ -261,9 +309,15 @@ Already done:
 - provider dispatch planning summaries in web/mobile calendar views
 - per-day crew gap visibility
 - route-mile estimates and day/window pressure summaries
+- provider dispatch controls for:
+  - service radius tuning
+  - staffing mode selection
+  - staffing review reminder timing
+  - departure reminder timing
+  - provider-only versus accepted-crew-fallback route leadership
 
 Still left:
 
-- automated crew/day load balancing
-- better job-level staffing recommendations
-- provider dispatch controls beyond the current route-planning summaries
+- AI-assisted dispatch changes
+- richer acceptance windows and routing heuristics
+- more nuanced delegated route leadership across multiple crews

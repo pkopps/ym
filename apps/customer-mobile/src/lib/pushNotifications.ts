@@ -16,7 +16,16 @@ function getExpoProjectId(): string | undefined {
   return runtimeEnv?.EXPO_PUBLIC_EXPO_PROJECT_ID;
 }
 
+function isPushDisabledForLocalDeviceBuild(): boolean {
+  const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  return runtimeEnv?.EXPO_PUBLIC_DISABLE_PUSH_FOR_LOCAL_DEVICE === "1";
+}
+
 export async function registerCustomerPushDevice(sessionToken: string): Promise<void> {
+  if (isPushDisabledForLocalDeviceBuild()) {
+    return;
+  }
+
   const projectId = getExpoProjectId();
   if (!projectId) {
     return;

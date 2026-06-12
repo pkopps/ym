@@ -255,6 +255,18 @@ export function BookServiceScreen() {
             description={`${quote.estimatedDurationMinutes} minutes • ${quote.estimatedCrewSize} crew`}
           >
             <Text style={styles.quoteSummary}>{quote.estimateSummary}</Text>
+            <Text style={styles.providerMeta}>{quote.normalizedAddress.displayLabel}</Text>
+            <Text style={styles.providerMeta}>
+              Turf source {quote.measurementSources.turfSqFt} • Shrubs source {quote.measurementSources.shrubBedSqFt}
+            </Text>
+            {quote.normalizedAddress.wasNormalized ? (
+              <Text style={styles.providerMeta}>We cleaned up the address format before matching and quoting.</Text>
+            ) : null}
+            {quote.confidenceReasons.map((reason) => (
+              <Text key={`${reason.impact}-${reason.label}`} style={styles.providerMeta}>
+                {reason.label}: {reason.detail}
+              </Text>
+            ))}
           </InfoCard>
 
           <InfoCard title="Nearby matches" description="Best next openings">

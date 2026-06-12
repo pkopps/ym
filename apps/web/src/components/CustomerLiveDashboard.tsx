@@ -12,6 +12,8 @@ import {
   InstantQuoteResponse,
   PaymentRecord,
   ProviderProfile,
+  RecurringServiceFrequency,
+  RecurringServicePlanSummary,
   SearchProvidersResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
@@ -62,6 +64,10 @@ function toDateTimeLocalValue(iso: string) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+function formatRecurringFrequency(frequency: RecurringServiceFrequency) {
+  return frequency === "biweekly" ? "Every 2 weeks" : "Every week";
+}
+
 export function CustomerLiveDashboard() {
   const searchParams = useSearchParams();
   const { session, sessionReady } = useStoredWebSession();
@@ -78,6 +84,8 @@ export function CustomerLiveDashboard() {
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
   const [loadingState, setLoadingState] = useState<"idle" | "loading">("idle");
   const [providerSearchState, setProviderSearchState] = useState<"idle" | "loading" | "loaded">("idle");
+  const [selectedCadence, setSelectedCadence] = useState<"one-time" | RecurringServiceFrequency>("one-time");
+  const [recurringPlans, setRecurringPlans] = useState<RecurringServicePlanSummary[]>([]);
   const [bookingMessage, setBookingMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
@@ -126,12 +134,13 @@ export function CustomerLiveDashboard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [meResponse, propertyList, bookingList, reviewResponse, payments] = await Promise.all([
+    const [meResponse, propertyList, bookingList, reviewResponse, payments, recurringPlanResponse] = await Promise.all([
       api.getCurrentUser(),
       api.getCustomerProperties(),
       api.getBookings(),
       api.getCustomerReviewOpportunities(),
-      api.getPayments()
+      api.getPayments(),
+      api.getRecurringServicePlans()
     ]);
 
     const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
@@ -178,6 +187,7 @@ export function CustomerLiveDashboard() {
       }, {})
     );
     setReviewOpportunities(reviewResponse.opportunities);
+    setRecurringPlans(recurringPlanResponse.plans);
 
     if (!selectedPropertyId && propertyList[0]) {
       setSelectedPropertyId(propertyList[0].id);
@@ -325,17 +335,38 @@ export function CustomerLiveDashboard() {
 
     try {
       const api = createAuthenticatedWebApiClient();
-      await api.createBooking({
-        providerId: provider.id,
-        serviceAddress: activeProperty.address,
-        servicePropertyId: activeProperty.id,
-        category: selectedCategory,
-        scheduledStartIso: slot.startIso,
-        scheduledEndIso: slot.endIso,
-        notes: "Booked from the live YardMatch customer dashboard.",
-        totalCents: quote.estimatedPriceCents
-      });
-      setBookingMessage(`Booked ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`);
+      if (selectedCadence === "one-time") {
+        await api.createBooking({
+          providerId: provider.id,
+          serviceAddress: activeProperty.address,
+          servicePropertyId: activeProperty.id,
+          category: selectedCategory,
+          scheduledStartIso: slot.startIso,
+          scheduledEndIso: slot.endIso,
+          notes: "Booked from the live YardMatch customer dashboard.",
+          totalCents: quote.estimatedPriceCents
+        });
+        setBookingMessage(
+          `Booked ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
+        );
+      } else {
+        const recurringPlan = await api.createRecurringServicePlan({
+          providerId: provider.id,
+          serviceAddress: activeProperty.address,
+          servicePropertyId: activeProperty.id,
+          category: selectedCategory,
+          scheduledStartIso: slot.startIso,
+          scheduledEndIso: slot.endIso,
+          notes: "Recurring service plan started from the live YardMatch customer dashboard.",
+          totalCents: quote.estimatedPriceCents,
+          frequency: selectedCadence
+        });
+        setBookingMessage(
+          `Started an ${formatRecurringFrequency(selectedCadence).toLowerCase()} plan with ${provider.companyName}. First visit requested for ${formatBookingWindowSummary(
+            recurringPlan.initialBooking.scheduledStartIso
+          )}.`
+        );
+      }
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
@@ -400,6 +431,28 @@ export function CustomerLiveDashboard() {
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to cancel this booking right now.");
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
+  async function handleCancelRecurringPlan(planId: string) {
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+    setBookingMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.cancelRecurringServicePlan({
+        planId,
+        reason: "Customer cancelled the recurring service plan from the dashboard."
+      });
+      setBookingMessage("Recurring plan cancelled.");
+      await loadDashboard();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to cancel this recurring plan right now."
+      );
     } finally {
       setLoadingState("idle");
     }
@@ -708,6 +761,19 @@ export function CustomerLiveDashboard() {
                 ))}
               </select>
             </label>
+            <label className="form-field">
+              <span>Cadence</span>
+              <select
+                onChange={(event) =>
+                  setSelectedCadence(event.target.value as "one-time" | RecurringServiceFrequency)
+                }
+                value={selectedCadence}
+              >
+                <option value="one-time">One-time visit</option>
+                <option value="weekly">Every week</option>
+                <option value="biweekly">Every 2 weeks</option>
+              </select>
+            </label>
           </div>
           <div className="cta-row" style={{ marginTop: "1rem" }}>
             <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} type="button">
@@ -744,6 +810,23 @@ export function CustomerLiveDashboard() {
                 <p>
                   Turf {quote.measurements.turfSqFt} sq ft • Shrubs {quote.measurements.shrubBedSqFt} sq ft
                 </p>
+                <p>
+                  Turf source {quote.measurementSources.turfSqFt} • Shrubs source {quote.measurementSources.shrubBedSqFt}
+                </p>
+              </article>
+              <article className="list-panel">
+                <h3>Confidence notes</h3>
+                <p>{quote.normalizedAddress.displayLabel}</p>
+                {quote.normalizedAddress.wasNormalized ? (
+                  <p>We cleaned up the address format before matching and quoting.</p>
+                ) : null}
+                <div className="stack-sm" style={{ paddingBottom: 0 }}>
+                  {quote.confidenceReasons.map((reason) => (
+                    <p key={`${reason.impact}-${reason.label}`}>
+                      <strong>{reason.label}</strong> {reason.detail}
+                    </p>
+                  ))}
+                </div>
               </article>
               <article className="list-panel">
                 <h3>Summary</h3>
@@ -814,7 +897,7 @@ export function CustomerLiveDashboard() {
                       onClick={() => void handleCreateBooking(provider)}
                       type="button"
                     >
-                      Book this window
+                      {selectedCadence === "one-time" ? "Book this window" : "Start recurring plan"}
                     </button>
                   </div>
                   {!slot ? (
@@ -828,6 +911,53 @@ export function CustomerLiveDashboard() {
           </div>
         ) : (
           <p>Search after the quote to see live provider matches and open route windows.</p>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Recurring plans</h2>
+        {recurringPlans.length ? (
+          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            {recurringPlans.map((summary) => (
+              <article className="list-panel" key={summary.plan.id}>
+                <div className="search-result-title">
+                  <h3>{summary.providerName}</h3>
+                  <span className="result-badge">
+                    {summary.plan.status === "active"
+                      ? formatRecurringFrequency(summary.plan.frequency)
+                      : "Cancelled"}
+                  </span>
+                </div>
+                <p>
+                  {summary.plan.category.replaceAll("-", " ")} • {summary.activeOccurrenceCount} active visit
+                  {summary.activeOccurrenceCount === 1 ? "" : "s"} • {summary.completedOccurrenceCount} completed
+                </p>
+                {summary.upcomingBooking ? (
+                  <p>
+                    Next visit: {formatBookingWindowSummary(summary.upcomingBooking.scheduledStartIso)} •{" "}
+                    {formatDateTime(summary.upcomingBooking.scheduledStartIso)}
+                  </p>
+                ) : summary.plan.status === "active" ? (
+                  <p>No upcoming visit is queued yet.</p>
+                ) : null}
+                {summary.plan.lastSchedulingError ? <p>{summary.plan.lastSchedulingError}</p> : null}
+                {summary.plan.status === "active" ? (
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={loadingState === "loading"}
+                      onClick={() => void handleCancelRecurringPlan(summary.plan.id)}
+                      type="button"
+                    >
+                      Cancel recurring plan
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p>Start a weekly or every-2-weeks service plan after choosing a provider and route window.</p>
         )}
       </section>
 

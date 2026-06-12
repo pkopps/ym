@@ -10,8 +10,10 @@ import {
   formatBookingWindowSummary,
   getExternalCalendarBlockLabel,
   getBookingExceptionLabel,
+  ProviderAssistantCommandResponse,
   ProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
+  ProviderProfile,
   ProviderCalendarSubscriptionResponse,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
@@ -64,6 +66,30 @@ function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") 
   }
 }
 
+function formatCalendarHealthLabel(status: "healthy" | "attention" | "at-risk") {
+  switch (status) {
+    case "healthy":
+      return "Healthy";
+    case "attention":
+      return "Needs attention";
+    case "at-risk":
+      return "At risk";
+  }
+}
+
+function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup") {
+  switch (label) {
+    case "best-fit":
+      return "Best fit";
+    case "good-fit":
+      return "Good fit";
+    case "backup":
+      return "Backup";
+    default:
+      return undefined;
+  }
+}
+
 const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "off-platform-client",
   "personal-time",
@@ -100,6 +126,11 @@ export function ProviderLiveManagementBoard() {
   );
   const [blockNotes, setBlockNotes] = useState("");
   const [chatDraft, setChatDraft] = useState("");
+  const [assistantCommand, setAssistantCommand] = useState(
+    "Change my afternoon appointment to evening and notify the customer"
+  );
+  const [assistantResult, setAssistantResult] = useState<ProviderAssistantCommandResponse | undefined>();
+  const [selectedAssistantBookingId, setSelectedAssistantBookingId] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
@@ -107,6 +138,7 @@ export function ProviderLiveManagementBoard() {
   const provider = overview?.provider;
   const jobs = overview?.jobs ?? [];
   const dispatchDays = calendarOverview?.dispatchDays ?? [];
+  const calendarHealth = calendarOverview?.syncHealth ?? calendarImports?.syncHealth;
   const calendarBlocks = provider?.calendarConnection.externalBlocks ?? [];
   const externalBlockingEnabled = provider?.calendarConnection.externalEventsBlockingEnabled ?? false;
   const totalAssignedCrew = useMemo(
@@ -198,6 +230,75 @@ export function ProviderLiveManagementBoard() {
       await loadProviderView();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to update staffing mode right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleDispatchSettingsUpdate(
+    updates: Partial<
+      Pick<
+        ProviderProfile,
+        "serviceRadiusMiles" | "staffingMode" | "crewReviewLeadHours" | "departureReminderLeadMinutes" | "routeLeaderMode"
+      >
+    >,
+    successMessage: string
+  ) {
+    if (!provider) {
+      return;
+    }
+
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.updateProviderSettings({
+        serviceRadiusMiles: updates.serviceRadiusMiles ?? provider.serviceRadiusMiles,
+        staffingMode: updates.staffingMode ?? provider.staffingMode,
+        crewReviewLeadHours: updates.crewReviewLeadHours ?? provider.crewReviewLeadHours,
+        departureReminderLeadMinutes:
+          updates.departureReminderLeadMinutes ?? provider.departureReminderLeadMinutes,
+        routeLeaderMode: updates.routeLeaderMode ?? provider.routeLeaderMode,
+        sponsoredListingEnabled: provider.sponsoredListingEnabled
+      });
+      setStatusMessage(successMessage);
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update provider controls right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleProviderAssistant(execute: boolean) {
+    if (!assistantCommand.trim()) {
+      setErrorMessage("Enter a provider assistant command first.");
+      return;
+    }
+
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const result = await api.runProviderAssistantCommand({
+        command: assistantCommand,
+        bookingId: selectedAssistantBookingId,
+        execute
+      });
+      setAssistantResult(result);
+      if (result.bookingCandidates.length === 1) {
+        setSelectedAssistantBookingId(result.bookingCandidates[0].bookingId);
+      }
+      if (result.executed) {
+        setStatusMessage(result.previewMessage);
+        await loadProviderView();
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to run the provider assistant right now.");
     } finally {
       setIsWorking(false);
     }
@@ -584,6 +685,73 @@ export function ProviderLiveManagementBoard() {
         </section>
       ) : null}
 
+      <section className="card">
+        <span className="eyebrow">Assistant</span>
+        <h2>Change bookings in plain language.</h2>
+        <p>
+          Try a command like “Change my afternoon appointment to evening and notify the customer.”
+        </p>
+        <label className="form-field form-field--full">
+          <span>Provider assistant command</span>
+          <textarea
+            rows={3}
+            value={assistantCommand}
+            onChange={(event) => setAssistantCommand(event.target.value)}
+          />
+        </label>
+        {selectedAssistantBookingId ? <p>Selected booking: {selectedAssistantBookingId}</p> : null}
+        <div className="cta-row">
+          <button
+            className="button-secondary"
+            disabled={isWorking}
+            onClick={() => void handleProviderAssistant(false)}
+            type="button"
+          >
+            Preview command
+          </button>
+          <button
+            className="button"
+            disabled={isWorking || !assistantResult?.requiresConfirmation}
+            onClick={() => void handleProviderAssistant(true)}
+            type="button"
+          >
+            Run command
+          </button>
+        </div>
+        {assistantResult ? (
+          <div className="stack-md" style={{ paddingTop: "1rem" }}>
+            <article className="list-panel">
+              <strong>{assistantResult.previewLabel}</strong>
+              <p>{assistantResult.previewMessage}</p>
+              {assistantResult.targetWindowLabel ? <p>Target window: {assistantResult.targetWindowLabel}</p> : null}
+              {assistantResult.customerNotificationPreview ? (
+                <p>{assistantResult.customerNotificationPreview}</p>
+              ) : null}
+            </article>
+            {assistantResult.bookingCandidates.length > 1 ? (
+              <div className="stack-md">
+                {assistantResult.bookingCandidates.map((candidate) => (
+                  <article className="list-panel" key={candidate.bookingId}>
+                    <strong>{candidate.customerName}</strong>
+                    <p>
+                      {candidate.currentWindowLabel} • {formatDateTime(candidate.scheduledStartIso)}
+                    </p>
+                    <p>{candidate.addressLine}</p>
+                    <button
+                      className={selectedAssistantBookingId === candidate.bookingId ? "button" : "button-secondary"}
+                      onClick={() => setSelectedAssistantBookingId(candidate.bookingId)}
+                      type="button"
+                    >
+                      Use this appointment
+                    </button>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
       <section className={`provider-capacity-alert ${totalCrewGap > 0 ? "provider-capacity-alert--warning" : ""}`}>
         <div>
           <span className="eyebrow">Live staffing</span>
@@ -615,6 +783,147 @@ export function ProviderLiveManagementBoard() {
             Review first
           </button>
         </div>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <span className="eyebrow">Service area</span>
+          <h2>{provider?.serviceRadiusMiles ?? 0} mi</h2>
+          <p>How far YardMatch should search around your base.</p>
+          <div className="cta-row">
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { serviceRadiusMiles: Math.max(5, (provider?.serviceRadiusMiles ?? 15) - 5) },
+                  "Service radius updated."
+                )
+              }
+              type="button"
+            >
+              -5 miles
+            </button>
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { serviceRadiusMiles: Math.min(60, (provider?.serviceRadiusMiles ?? 15) + 5) },
+                  "Service radius updated."
+                )
+              }
+              type="button"
+            >
+              +5 miles
+            </button>
+          </div>
+        </article>
+        <article className="card">
+          <span className="eyebrow">Reminder timing</span>
+          <h2>{provider?.departureReminderLeadMinutes ?? 0} min</h2>
+          <p>When YardMatch reminds you it is time to head out.</p>
+          <div className="cta-row">
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  {
+                    departureReminderLeadMinutes: Math.max(
+                      10,
+                      (provider?.departureReminderLeadMinutes ?? 60) - 10
+                    )
+                  },
+                  "Departure reminder timing updated."
+                )
+              }
+              type="button"
+            >
+              -10 min
+            </button>
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  {
+                    departureReminderLeadMinutes: Math.min(
+                      180,
+                      (provider?.departureReminderLeadMinutes ?? 60) + 10
+                    )
+                  },
+                  "Departure reminder timing updated."
+                )
+              }
+              type="button"
+            >
+              +10 min
+            </button>
+          </div>
+          <p>Staffing review reminders: {provider?.crewReviewLeadHours ?? 0} hours before start.</p>
+          <div className="cta-row">
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { crewReviewLeadHours: Math.max(1, (provider?.crewReviewLeadHours ?? 24) - 1) },
+                  "Staffing review timing updated."
+                )
+              }
+              type="button"
+            >
+              -1 hour
+            </button>
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) },
+                  "Staffing review timing updated."
+                )
+              }
+              type="button"
+            >
+              +1 hour
+            </button>
+          </div>
+        </article>
+        <article className="card">
+          <span className="eyebrow">Route leader</span>
+          <h2>{provider?.routeLeaderMode === "accepted-crew-fallback" ? "Provider or crew" : "Provider only"}</h2>
+          <p>Choose whether an accepted crew member can start the route and share live tracking.</p>
+          <div className="cta-row">
+            <button
+              className={provider?.routeLeaderMode === "provider-only" ? "button" : "button-secondary"}
+              disabled={isWorking}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { routeLeaderMode: "provider-only" },
+                  "Route leader mode updated."
+                )
+              }
+              type="button"
+            >
+              Provider only
+            </button>
+            <button
+              className={provider?.routeLeaderMode === "accepted-crew-fallback" ? "button" : "button-secondary"}
+              disabled={isWorking}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { routeLeaderMode: "accepted-crew-fallback" },
+                  "Route leader mode updated."
+                )
+              }
+              type="button"
+            >
+              Allow crew fallback
+            </button>
+          </div>
+        </article>
       </section>
 
       <section className="grid-three">
@@ -656,6 +965,24 @@ export function ProviderLiveManagementBoard() {
             </div>
             {calendarOverview ? (
               <div className="stack-md" style={{ paddingTop: "1rem" }}>
+                {calendarHealth ? (
+                  <article className="list-panel">
+                    <strong>Outside calendar health: {formatCalendarHealthLabel(calendarHealth.status)}</strong>
+                    <p>
+                      {calendarHealth.subscriptionCount} feeds • {calendarHealth.importedBlockCount} imported blocks •{" "}
+                      {calendarHealth.externalBlockingEnabled ? "blocking on" : "save only"}
+                    </p>
+                    <p>
+                      {calendarHealth.erroredSubscriptionCount} errors • {calendarHealth.staleSubscriptionCount} stale feeds •{" "}
+                      {calendarHealth.conflictingYardmatchJobCount} booking conflicts
+                    </p>
+                    <div className="stack-sm" style={{ paddingBottom: 0 }}>
+                      {calendarHealth.notes.map((note) => (
+                        <p key={note}>{note}</p>
+                      ))}
+                    </div>
+                  </article>
+                ) : null}
                 <div className="chip-row">
                   <span>{calendarOverview.yardmatchJobCount} YardMatch jobs</span>
                   <span>{calendarOverview.externalBlockCount} outside blocks</span>
@@ -779,6 +1106,7 @@ export function ProviderLiveManagementBoard() {
                     {subscription.importedEventCount} imported events
                     {subscription.lastSyncedAt ? ` • synced ${formatDateTime(subscription.lastSyncedAt)}` : ""}
                   </p>
+                  <p>Status: {subscription.syncStatus === "active" ? "Active" : "Sync issue"}</p>
                   {subscription.lastError ? <p>{subscription.lastError}</p> : null}
                   <div className="cta-row">
                     <button
@@ -1153,6 +1481,20 @@ export function ProviderLiveManagementBoard() {
                         {match.distanceMiles} miles away • {match.preferredSchedule} •{" "}
                         {match.availableWeekdays.join(", ")}
                       </p>
+                      {match.recommendationLabel ? (
+                        <p>
+                          {formatCrewRecommendationLabel(match.recommendationLabel)}
+                          {typeof match.recommendationScore === "number"
+                            ? ` • score ${match.recommendationScore}`
+                            : ""}
+                        </p>
+                      ) : null}
+                      {match.recommendationReasons?.length ? (
+                        <p>{match.recommendationReasons.join(" • ")}</p>
+                      ) : null}
+                      {match.status === "cancelled-by-crew" && match.cancellationReason ? (
+                        <p className="warning-copy">Crew note: {match.cancellationReason}</p>
+                      ) : null}
                       <p>{formatCurrency(match.hourlyRateCents)}/hr</p>
                       <div className="cta-row">
                         {match.status === "pending-provider-review" ? (

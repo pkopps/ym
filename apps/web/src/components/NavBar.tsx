@@ -6,8 +6,8 @@ import { NotificationMenu } from "./NotificationMenu";
 
 const links = [
   { href: "/customer", label: "Book a service" },
-  { href: "/auth/provider", label: "List your Business on YardMatch" },
-  { href: "/crew", label: "Join a landscaping crew" },
+  { href: "/auth/provider", label: "For providers" },
+  { href: "/crew", label: "For crews" },
   { href: "/help", label: "Help center" }
 ];
 
@@ -45,17 +45,21 @@ export function NavBar() {
     <header className="site-header">
       <div className="container site-header__inner">
         <a href="/" className="brand-lockup">
-          <span className="brand-lockup__logo-frame" aria-hidden="true">
+          <span className="brand-lockup__mark-frame" aria-hidden="true">
             <img
-              alt="Green Rain"
-              className="brand-lockup__logo"
-              height={60}
-              src="/media/logo_with_words.png"
-              width={220}
+              alt=""
+              className="brand-lockup__mark-image"
+              height={56}
+              src="/media/logo_without_words.png"
+              width={56}
             />
           </span>
+          <span className="brand-lockup__wordmark">
+            <strong>GreenRain</strong>
+            <small>Book, run, or join landscaping crews</small>
+          </span>
         </a>
-        <nav aria-label="Primary navigation">
+        <nav aria-label="Primary navigation" className="site-header__nav">
           <ul className="inline-nav">
             {links.map((link) => (
               <li key={link.href}>

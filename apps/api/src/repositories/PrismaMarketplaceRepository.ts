@@ -18,6 +18,7 @@ import {
   NotificationPreferences,
   PaymentRecord,
   PushDevice,
+  RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
   ReviewInvite,
@@ -140,6 +141,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           yearsExperience: provider.yearsExperience,
           serviceRadiusMiles: provider.serviceRadiusMiles,
           staffingMode: provider.staffingMode,
+          crewReviewLeadHours: provider.crewReviewLeadHours,
+          departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
+          routeLeaderMode: provider.routeLeaderMode,
           verificationStatus: provider.verificationStatus,
           verificationSubmittedAt: provider.verificationSubmittedAt
             ? new Date(provider.verificationSubmittedAt)
@@ -193,6 +197,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           winterWorkEnabled: crewMember.winterWorkEnabled,
           rating: crewMember.rating,
           completedJobs: crewMember.completedJobs,
+          cancellationCount: crewMember.cancellationCount,
+          lastCancellationAt: crewMember.lastCancellationAt ? new Date(crewMember.lastCancellationAt) : undefined,
           status: crewMember.status,
           assignedProviderId: crewMember.assignedProviderId
         }
@@ -290,6 +296,13 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           winterWorkEnabled: updates.winterWorkEnabled,
           rating: updates.rating,
           completedJobs: updates.completedJobs,
+          cancellationCount: updates.cancellationCount,
+          lastCancellationAt:
+            "lastCancellationAt" in updates
+              ? updates.lastCancellationAt
+                ? new Date(updates.lastCancellationAt)
+                : null
+              : undefined,
           status: updates.status,
           assignedProviderId: updates.assignedProviderId
         }
@@ -393,6 +406,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         id: booking.id,
         customerId: booking.customerId,
         providerId: booking.providerId,
+        recurringPlanId: booking.recurringPlanId,
+        recurringOccurrenceIndex: booking.recurringOccurrenceIndex,
         serviceAddress: asJson(booking.serviceAddress),
         servicePropertyId: booking.servicePropertyId,
         category: booking.category,
@@ -455,6 +470,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       data: {
         customerId: updates.customerId,
         providerId: updates.providerId,
+        recurringPlanId:
+          "recurringPlanId" in updates ? updates.recurringPlanId ?? null : undefined,
+        recurringOccurrenceIndex:
+          "recurringOccurrenceIndex" in updates ? updates.recurringOccurrenceIndex ?? null : undefined,
         serviceAddress: updates.serviceAddress ? asJson(updates.serviceAddress) : undefined,
         servicePropertyId: updates.servicePropertyId,
         category: updates.category,
@@ -539,6 +558,108 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapBooking(booking);
   }
 
+  public async createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan> {
+    await this.prisma.recurringServicePlan.create({
+      data: {
+        id: plan.id,
+        customerId: plan.customerId,
+        providerId: plan.providerId,
+        serviceAddress: asJson(plan.serviceAddress),
+        servicePropertyId: plan.servicePropertyId,
+        category: plan.category,
+        frequency: plan.frequency,
+        requestedAt: new Date(plan.requestedAt),
+        notes: plan.notes,
+        totalCents: plan.totalCents,
+        status: plan.status,
+        anchorScheduledStartIso: new Date(plan.anchorScheduledStartIso),
+        anchorScheduledEndIso: new Date(plan.anchorScheduledEndIso),
+        lastGeneratedBookingId: plan.lastGeneratedBookingId,
+        lastGeneratedAt: plan.lastGeneratedAt ? new Date(plan.lastGeneratedAt) : undefined,
+        lastSchedulingAttemptAt: plan.lastSchedulingAttemptAt
+          ? new Date(plan.lastSchedulingAttemptAt)
+          : undefined,
+        lastSchedulingError: plan.lastSchedulingError,
+        cancelledAt: plan.cancelledAt ? new Date(plan.cancelledAt) : undefined,
+        cancellationReason: plan.cancellationReason
+      }
+    });
+
+    return plan;
+  }
+
+  public async listRecurringServicePlans(): Promise<RecurringServicePlan[]> {
+    const plans = await this.prisma.recurringServicePlan.findMany({
+      orderBy: { requestedAt: "desc" }
+    });
+    return plans.map((plan: any) => this.mapRecurringServicePlan(plan));
+  }
+
+  public async findRecurringServicePlanById(planId: string): Promise<RecurringServicePlan | undefined> {
+    const plan = await this.prisma.recurringServicePlan.findUnique({
+      where: { id: planId }
+    });
+    return plan ? this.mapRecurringServicePlan(plan) : undefined;
+  }
+
+  public async updateRecurringServicePlan(
+    planId: string,
+    updates: Partial<RecurringServicePlan>
+  ): Promise<RecurringServicePlan | undefined> {
+    const current = await this.findRecurringServicePlanById(planId);
+    if (!current) {
+      return undefined;
+    }
+
+    const plan = await this.prisma.recurringServicePlan.update({
+      where: { id: planId },
+      data: {
+        customerId: updates.customerId,
+        providerId: updates.providerId,
+        serviceAddress: updates.serviceAddress ? asJson(updates.serviceAddress) : undefined,
+        servicePropertyId: "servicePropertyId" in updates ? updates.servicePropertyId ?? null : undefined,
+        category: updates.category,
+        frequency: updates.frequency,
+        requestedAt: updates.requestedAt ? new Date(updates.requestedAt) : undefined,
+        notes: updates.notes,
+        totalCents: updates.totalCents,
+        status: updates.status,
+        anchorScheduledStartIso: updates.anchorScheduledStartIso
+          ? new Date(updates.anchorScheduledStartIso)
+          : undefined,
+        anchorScheduledEndIso: updates.anchorScheduledEndIso
+          ? new Date(updates.anchorScheduledEndIso)
+          : undefined,
+        lastGeneratedBookingId:
+          "lastGeneratedBookingId" in updates ? updates.lastGeneratedBookingId ?? null : undefined,
+        lastGeneratedAt:
+          "lastGeneratedAt" in updates
+            ? updates.lastGeneratedAt
+              ? new Date(updates.lastGeneratedAt)
+              : null
+            : undefined,
+        lastSchedulingAttemptAt:
+          "lastSchedulingAttemptAt" in updates
+            ? updates.lastSchedulingAttemptAt
+              ? new Date(updates.lastSchedulingAttemptAt)
+              : null
+            : undefined,
+        lastSchedulingError:
+          "lastSchedulingError" in updates ? updates.lastSchedulingError ?? null : undefined,
+        cancelledAt:
+          "cancelledAt" in updates
+            ? updates.cancelledAt
+              ? new Date(updates.cancelledAt)
+              : null
+            : undefined,
+        cancellationReason:
+          "cancellationReason" in updates ? updates.cancellationReason ?? null : undefined
+      }
+    });
+
+    return this.mapRecurringServicePlan(plan);
+  }
+
   public async createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate> {
     await this.prisma.crewMatch.create({
       data: {
@@ -558,6 +679,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         autoAccepted: match.autoAccepted,
         distanceMiles: match.distanceMiles,
         hourlyRateCents: match.hourlyRateCents,
+        cancellationReason: match.cancellationReason,
+        cancelledAt: match.cancelledAt ? new Date(match.cancelledAt) : undefined,
         createdAt: new Date(match.createdAt),
         reviewedAt: match.reviewedAt ? new Date(match.reviewedAt) : undefined
       }
@@ -598,6 +721,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         autoAccepted: updates.autoAccepted,
         distanceMiles: updates.distanceMiles,
         hourlyRateCents: updates.hourlyRateCents,
+        cancellationReason:
+          "cancellationReason" in updates ? updates.cancellationReason ?? null : undefined,
+        cancelledAt:
+          "cancelledAt" in updates
+            ? updates.cancelledAt
+              ? new Date(updates.cancelledAt)
+              : null
+            : undefined,
         reviewedAt: updates.reviewedAt
           ? new Date(updates.reviewedAt)
           : updates.reviewedAt === undefined
@@ -763,6 +894,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           yearsExperience: updates.yearsExperience,
           serviceRadiusMiles: updates.serviceRadiusMiles,
           staffingMode: updates.staffingMode,
+          crewReviewLeadHours: updates.crewReviewLeadHours,
+          departureReminderLeadMinutes: updates.departureReminderLeadMinutes,
+          routeLeaderMode: updates.routeLeaderMode,
           verificationStatus: updates.verificationStatus,
           verificationSubmittedAt: updates.verificationSubmittedAt
             ? new Date(updates.verificationSubmittedAt)
@@ -1517,6 +1651,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       yearsExperience: number;
       serviceRadiusMiles: number;
       staffingMode?: string;
+      crewReviewLeadHours: number;
+      departureReminderLeadMinutes: number;
+      routeLeaderMode: string;
       verificationStatus?: string;
       verificationSubmittedAt?: Date | null;
       verificationReviewedAt?: Date | null;
@@ -1543,6 +1680,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       yearsExperience: profile.yearsExperience,
       serviceRadiusMiles: profile.serviceRadiusMiles,
       staffingMode: (profile.staffingMode as ProviderProfile["staffingMode"] | undefined) ?? "review-first",
+      crewReviewLeadHours: profile.crewReviewLeadHours,
+      departureReminderLeadMinutes: profile.departureReminderLeadMinutes,
+      routeLeaderMode:
+        (profile.routeLeaderMode as ProviderProfile["routeLeaderMode"] | undefined) ?? "provider-only",
       verificationStatus:
         (profile.verificationStatus as ProviderProfile["verificationStatus"] | undefined) ??
         "verified",
@@ -1580,6 +1721,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       winterWorkEnabled?: boolean;
       rating: number;
       completedJobs: number;
+      cancellationCount: number;
+      lastCancellationAt: Date | null;
       status: string;
       assignedProviderId: string | null;
     }
@@ -1604,6 +1747,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       winterWorkEnabled: profile.winterWorkEnabled ?? true,
       rating: profile.rating,
       completedJobs: profile.completedJobs,
+      cancellationCount: profile.cancellationCount,
+      lastCancellationAt: profile.lastCancellationAt?.toISOString(),
       status: profile.status as CrewMemberProfile["status"],
       assignedProviderId: profile.assignedProviderId ?? undefined
     };
@@ -1613,6 +1758,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     id: string;
     customerId: string;
     providerId: string;
+    recurringPlanId: string | null;
+    recurringOccurrenceIndex: number | null;
     serviceAddress: unknown;
     servicePropertyId: string | null;
     category: string;
@@ -1648,6 +1795,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       id: record.id,
       customerId: record.customerId,
       providerId: record.providerId,
+      recurringPlanId: record.recurringPlanId ?? undefined,
+      recurringOccurrenceIndex: record.recurringOccurrenceIndex ?? undefined,
       serviceAddress: readJson<Address>(record.serviceAddress),
       servicePropertyId: record.servicePropertyId ?? undefined,
       category: record.category as Booking["category"],
@@ -1678,6 +1827,50 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       serviceEvidence: readJson<Booking["serviceEvidence"]>(record.serviceEvidence),
       interventions: readJson<Booking["interventions"]>(record.interventions),
       addressChangeHistory: readJson<BookingAddressChangeRequest[]>(record.addressChangeHistory)
+    };
+  }
+
+  private mapRecurringServicePlan(record: {
+    id: string;
+    customerId: string;
+    providerId: string;
+    serviceAddress: unknown;
+    servicePropertyId: string | null;
+    category: string;
+    frequency: string;
+    requestedAt: Date;
+    notes: string;
+    totalCents: number;
+    status: string;
+    anchorScheduledStartIso: Date;
+    anchorScheduledEndIso: Date;
+    lastGeneratedBookingId: string | null;
+    lastGeneratedAt: Date | null;
+    lastSchedulingAttemptAt: Date | null;
+    lastSchedulingError: string | null;
+    cancelledAt: Date | null;
+    cancellationReason: string | null;
+  }): RecurringServicePlan {
+    return {
+      id: record.id,
+      customerId: record.customerId,
+      providerId: record.providerId,
+      serviceAddress: readJson<Address>(record.serviceAddress),
+      servicePropertyId: record.servicePropertyId ?? undefined,
+      category: record.category as RecurringServicePlan["category"],
+      frequency: record.frequency as RecurringServicePlan["frequency"],
+      requestedAt: record.requestedAt.toISOString(),
+      notes: record.notes,
+      totalCents: record.totalCents,
+      status: record.status as RecurringServicePlan["status"],
+      anchorScheduledStartIso: record.anchorScheduledStartIso.toISOString(),
+      anchorScheduledEndIso: record.anchorScheduledEndIso.toISOString(),
+      lastGeneratedBookingId: record.lastGeneratedBookingId ?? undefined,
+      lastGeneratedAt: record.lastGeneratedAt?.toISOString(),
+      lastSchedulingAttemptAt: record.lastSchedulingAttemptAt?.toISOString(),
+      lastSchedulingError: record.lastSchedulingError ?? undefined,
+      cancelledAt: record.cancelledAt?.toISOString(),
+      cancellationReason: record.cancellationReason ?? undefined
     };
   }
 
@@ -1835,6 +2028,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     autoAccepted: boolean;
     distanceMiles: number;
     hourlyRateCents: number;
+    cancellationReason: string | null;
+    cancelledAt: Date | null;
     createdAt: Date;
     reviewedAt: Date | null;
   }): CrewMatchCandidate {
@@ -1855,6 +2050,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       autoAccepted: record.autoAccepted,
       distanceMiles: record.distanceMiles,
       hourlyRateCents: record.hourlyRateCents,
+      cancellationReason: record.cancellationReason ?? undefined,
+      cancelledAt: record.cancelledAt?.toISOString(),
       createdAt: record.createdAt.toISOString(),
       reviewedAt: record.reviewedAt?.toISOString()
     };

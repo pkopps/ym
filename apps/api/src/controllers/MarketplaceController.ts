@@ -1,14 +1,18 @@
 import {
   AddBookingEvidenceRequest,
   CancelBookingRequest,
+  CancelCrewMatchRequest,
+  CancelRecurringServicePlanRequest,
   ConfirmBookingRequest,
   CompleteBookingRequest,
   CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
   CreateProviderReviewRequest,
+  ProviderAssistantCommandRequest,
   ReviewProviderVerificationRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
+  CreateRecurringServicePlanRequest,
   CreateBookingDisputeRequest,
   InstantQuoteRequest,
   MarkBookingExceptionRequest,
@@ -59,6 +63,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
       (context.method === "POST" && context.path === "/api/providers/settings") ||
+      (context.method === "POST" && context.path === "/api/providers/assistant") ||
       (context.method === "GET" && context.path === "/api/providers/reviews") ||
       (context.method === "POST" && context.path === "/api/providers/reviews") ||
       (context.method === "GET" && context.path === "/api/notifications") ||
@@ -71,6 +76,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/notifications/ops/health") ||
       (context.method === "POST" && context.path === "/api/notifications/ops/retry-due") ||
       (context.method === "POST" && context.path === "/api/bookings") ||
+      (context.method === "GET" && context.path === "/api/bookings/recurring-plans") ||
+      (context.method === "POST" && context.path === "/api/bookings/recurring-plans") ||
+      (context.method === "POST" && context.path === "/api/bookings/recurring-plans/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
       (context.method === "POST" && context.path === "/api/bookings/confirm") ||
@@ -88,6 +96,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/review-invites/process") ||
       (context.method === "POST" && context.path === "/api/crew/preferences") ||
       (context.method === "GET" && context.path === "/api/crew/matches") ||
+      (context.method === "POST" && context.path === "/api/crew/matches/cancel") ||
       (context.method === "GET" && context.path === "/api/chat/provider-crew/threads") ||
       (context.method === "GET" && context.path === "/api/chat/provider-crew/messages") ||
       (context.method === "POST" && context.path === "/api/chat/provider-crew/messages") ||
@@ -227,6 +236,16 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "POST" && context.path === "/api/providers/assistant") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.runProviderAssistantCommand(identity.userId, context.body as ProviderAssistantCommandRequest)
+      );
+      return;
+    }
+
     if (context.method === "GET" && context.path === "/api/providers/reviews") {
       const providerId = context.query.get("providerId");
       if (!providerId) {
@@ -319,6 +338,38 @@ export class MarketplaceController implements ApiController {
         response,
         201,
         await this.platform.createBooking(identity.userId, context.body as CreateBookingRequest)
+      );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/bookings/recurring-plans") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.listRecurringServicePlansForCustomer(identity.userId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/recurring-plans") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        201,
+        await this.platform.createRecurringServicePlan(
+          identity.userId,
+          context.body as CreateRecurringServicePlanRequest
+        )
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/recurring-plans/cancel") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        200,
+        await this.platform.cancelRecurringServicePlan(
+          identity.userId,
+          context.body as CancelRecurringServicePlanRequest
+        )
       );
       return;
     }
@@ -554,6 +605,12 @@ export class MarketplaceController implements ApiController {
     if (context.method === "GET" && context.path === "/api/crew/matches") {
       const identity = await requireRole(context, this.platform, "crew-member");
       sendJson(response, 200, await this.platform.getCrewMatchesForCrew(identity.userId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/crew/matches/cancel") {
+      const identity = await requireRole(context, this.platform, "crew-member");
+      sendJson(response, 200, await this.platform.cancelCrewMatch(identity.userId, context.body as CancelCrewMatchRequest));
       return;
     }
 

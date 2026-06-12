@@ -617,7 +617,7 @@ export const apiSpec = {
         tags: ["Quotes"],
         summary: "Generate an instant quote with confidence scoring",
         description:
-          "Returns an automated price and duration estimate. If confidence is not high enough, the response includes a minimal follow-up question set.",
+          "Returns an automated price and duration estimate, plus normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. If confidence is not high enough, the response includes a minimal follow-up question set.",
         requestBody: {
           required: true,
           content: {
@@ -704,7 +704,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Update provider business settings",
         description:
-          "Lets a landscaping business owner change the service radius used to match against each customer property address, choose whether matched crew members are auto-accepted or reviewed first, and manage outside-calendar blocking that protects YardMatch availability from direct clients or personal time.",
+          "Lets a landscaping business owner change the service radius used to match against each customer property address, choose whether matched crew members are auto-accepted or reviewed first, tune staffing/departure reminder timing, control whether accepted crew can act as route leaders, and manage outside-calendar blocking that protects YardMatch availability from direct clients or personal time.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -713,6 +713,9 @@ export const apiSpec = {
               example: {
                 serviceRadiusMiles: 20,
                 staffingMode: "review-first",
+                crewReviewLeadHours: 6,
+                departureReminderLeadMinutes: 45,
+                routeLeaderMode: "provider-only",
                 sponsoredListingEnabled: true,
                 externalEventsBlockingEnabled: true,
                 externalCalendarBlocks: [
@@ -730,6 +733,30 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated provider profile" }
+        }
+      }
+    },
+    "/api/providers/assistant": {
+      post: {
+        tags: ["Providers"],
+        summary: "Run a provider scheduling assistant command",
+        description:
+          "Parses a natural-language provider scheduling command, previews the matched booking and target service window, and can execute a provider-side reschedule plus customer notification when confirmed.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                command: "Change my afternoon appointment to evening and notify the customer",
+                bookingId: "booking_123",
+                execute: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Parsed provider assistant result, or executed booking update when requested" }
         }
       }
     },
@@ -978,6 +1005,31 @@ export const apiSpec = {
         }
       }
     },
+    "/api/support/ops/bookings/evidence/review": {
+      post: {
+        tags: ["Support"],
+        summary: "Review and annotate booking evidence",
+        description:
+          "Lets operations mark before/after photos as supporting the provider, supporting the customer, or inconclusive, with notes saved directly on the booking evidence record for disputes and refund reviews.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                ticketId: "support_ticket_123",
+                evidenceId: "evidence_123",
+                reviewStatus: "supports-provider",
+                reviewNotes: "Before-work photo clearly shows the original state of the lawn."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with reviewed evidence metadata" }
+        }
+      }
+    },
     "/api/bookings": {
       get: {
         tags: ["Bookings"],
@@ -1134,6 +1186,33 @@ export const apiSpec = {
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Crew match list for the authenticated crew member" }
+        }
+      }
+    },
+    "/api/crew/matches/cancel": {
+      post: {
+        tags: ["Crew"],
+        summary: "Cancel an accepted crew assignment",
+        description:
+          "Lets a crew member back out of an accepted assignment before the route or work has started. The cancellation is recorded against the crew profile so repeated call-offs can reduce future staffing priority.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["crewMatchId"],
+                properties: {
+                  crewMatchId: { type: "string" },
+                  reason: { type: "string" }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated crew match summary in cancelled-by-crew status" }
         }
       }
     },
@@ -1562,7 +1641,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Get a merged provider calendar timeline",
         description:
-          "Returns a combined schedule view for the authenticated provider, merging YardMatch jobs with blocking outside-calendar entries so mixed books of business can be managed in one timeline. The response also includes dispatch-planning summaries for day load, crew gaps, route miles, and morning/afternoon/evening pressure.",
+          "Returns a combined schedule view for the authenticated provider, merging YardMatch jobs with blocking outside-calendar entries so mixed books of business can be managed in one timeline. The response also includes dispatch-planning summaries for day load, crew gaps, route miles, morning/afternoon/evening pressure, and a sync-health summary that flags stale or broken outside calendar feeds.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1589,7 +1668,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "List imported outside calendars",
         description:
-          "Returns the provider's external iCal subscriptions and how many imported events they are currently contributing to availability blocking.",
+          "Returns the provider's external iCal subscriptions, imported-block counts, and mixed-schedule sync health so stale or errored feeds are visible before they create double-booking risk.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "External calendar imports" }
@@ -1599,7 +1678,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Add an outside calendar import",
         description:
-          "Lets a provider paste a Google, Apple, or generic iCal feed URL so outside events can be pulled into YardMatch and block availability automatically.",
+          "Lets a provider paste a Google, Apple, or generic iCal feed URL so outside events can be pulled into YardMatch and block availability automatically. If the first sync fails, the feed is still saved and marked with a sync error so the provider can retry instead of losing the setup.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1623,7 +1702,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Sync an outside calendar import",
         description:
-          "Fetches the latest iCal events for a saved external calendar subscription and updates the imported blocking events in YardMatch.",
+          "Fetches the latest iCal events for a saved external calendar subscription and updates the imported blocking events in YardMatch. Sync errors are persisted onto the subscription health instead of disappearing as a one-off request failure.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

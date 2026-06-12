@@ -10,22 +10,30 @@ import { AuthIdentityOptions } from "./SignupIdentityOptions";
 const roleCopy: Record<
   MarketplaceRole,
   {
+    title: string;
+    helper: string;
     demoEmail: string;
     demoPassword: string;
     redirectPath: string;
   }
 > = {
   customer: {
+    title: "Sign in",
+    helper: "Jump back into bookings, recurring care, route tracking, and support updates.",
     demoEmail: "jordan@example.com",
     demoPassword: "YardMatch123!",
     redirectPath: "/customer"
   },
   provider: {
+    title: "Sign in",
+    helper: "Open the management board for routes, staffing, payouts, and calendar sync.",
     demoEmail: "ariana@greenstride.example",
     demoPassword: "YardMatch123!",
     redirectPath: "/provider/management"
   },
   "crew-member": {
+    title: "Sign in",
+    helper: "See upcoming assignments, directions, and your work schedule in one place.",
     demoEmail: "crew@example.com",
     demoPassword: "YardMatch123!",
     redirectPath: "/crew"
@@ -139,6 +147,10 @@ export function RoleLoginCard({
   return (
     <section className="card auth-form-card">
       <form className="auth-form-stack" onSubmit={handleSubmit}>
+        <div className="auth-form-card__header">
+          <h3>{roleCopy[role].title}</h3>
+          <p>{roleCopy[role].helper}</p>
+        </div>
         <div className="form-grid">
           <label className="form-field">
             <span>Email</span>
@@ -154,7 +166,7 @@ export function RoleLoginCard({
           </label>
         </div>
 
-        <div className="list-panel">
+        <div className="list-panel auth-demo-panel">
           <strong>Seeded test account</strong>
           <p>
             {roleCopy[role].demoEmail} • {roleCopy[role].demoPassword}

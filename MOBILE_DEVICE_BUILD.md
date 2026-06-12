@@ -25,6 +25,7 @@ Each app now has:
 - convenience scripts:
   - `npm run dev:client`
   - `npm run ios:device`
+  - `npm run ios:device:personal`
   - `npm run android:device`
 
 ## Path 1: Fastest local iPhone install from your Mac
@@ -63,6 +64,26 @@ npm run dev:client
 - The first iOS device build will open Xcode signing prompts if your Apple signing is not already configured.
 - You need an Apple developer team selected in Xcode for the bundle identifier:
   - `com.yardmatch.customer`
+
+### Customer app with a personal Apple team
+
+If you are building to your own iPhone with a free personal Apple team, the push entitlement will block signing.
+
+Use the personal-device build mode instead:
+
+```bash
+cd apps/customer-mobile
+npm run ios:device:personal
+```
+
+Then start Metro in another terminal with:
+
+```bash
+cd apps/customer-mobile
+npm run dev:client:personal
+```
+
+This mode disables push entitlements only for the local customer-device build so the app can install on a personal team certificate.
 
 ## Path 2: Fastest local Android install from your Mac
 

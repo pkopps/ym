@@ -126,6 +126,38 @@ export function CrewLiveDashboard() {
     }
   }
 
+  async function cancelCrewMatch(matchId: string) {
+    setIsWorking(true);
+    setErrorMessage(undefined);
+    setStatusMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.cancelCrewMatch({
+        crewMatchId: matchId,
+        reason: "Crew member cancelled from the web dashboard."
+      });
+      setStatusMessage("Assignment cancelled. The business owner was notified.");
+      await loadCrewView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel this assignment.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  function confirmCancelCrewMatch(matchId: string) {
+    if (
+      !window.confirm(
+        "Backing out of an accepted shift can negatively affect your reliability score and reduce your chances of being selected for future crews. Cancel this assignment?"
+      )
+    ) {
+      return;
+    }
+
+    void cancelCrewMatch(matchId);
+  }
+
   if (!sessionReady) {
     return (
       <section className="card">
@@ -174,8 +206,8 @@ export function CrewLiveDashboard() {
           <p>Accepted jobs</p>
         </article>
         <article className="card">
-          <h2>{crewMember?.willingToTravelMiles ?? 0}</h2>
-          <p>Travel miles</p>
+          <h2>{crewMember?.cancellationCount ?? 0}</h2>
+          <p>Call-offs on record</p>
         </article>
       </section>
 
@@ -269,6 +301,9 @@ export function CrewLiveDashboard() {
             {crewMember?.winterWorkEnabled ? "Winter work on" : "Winter work off"}
           </button>
         </div>
+        <p className="muted-copy">
+          Reliability matters. Cancelling accepted assignments can lower your future staffing priority with providers.
+        </p>
       </section>
 
       <section className="stack-lg">
@@ -302,6 +337,9 @@ export function CrewLiveDashboard() {
               </div>
 
               <p>{match.summary}</p>
+              {match.status === "cancelled-by-crew" && match.cancellationReason ? (
+                <p className="warning-copy">{match.cancellationReason}</p>
+              ) : null}
 
               {match.status === "accepted" ? (
                 <div className="cta-row">
@@ -333,6 +371,17 @@ export function CrewLiveDashboard() {
                   >
                     Get help
                   </a>
+                  {(match.bookingStatus === "requested" ||
+                    (match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt)) ? (
+                    <button
+                      className="button-danger"
+                      disabled={isWorking}
+                      onClick={() => confirmCancelCrewMatch(match.id)}
+                      type="button"
+                    >
+                      Cancel assignment
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </article>

@@ -19,6 +19,7 @@ export class ApiRoutes {
   public static readonly providerStaffingOverview = "/api/providers/staffing";
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";
   public static readonly updateProviderSettings = "/api/providers/settings";
+  public static readonly providerAssistantCommand = "/api/providers/assistant";
   public static readonly providerReviews = "/api/providers/reviews";
   public static readonly notifications = "/api/notifications";
   public static readonly notificationsRead = "/api/notifications/read";
@@ -31,6 +32,8 @@ export class ApiRoutes {
   public static readonly customerReviewOpportunities = "/api/customers/review-opportunities";
   public static readonly createBooking = "/api/bookings";
   public static readonly listBookings = "/api/bookings";
+  public static readonly recurringServicePlans = "/api/bookings/recurring-plans";
+  public static readonly cancelRecurringServicePlan = "/api/bookings/recurring-plans/cancel";
   public static readonly cancelBooking = "/api/bookings/cancel";
   public static readonly rescheduleBooking = "/api/bookings/reschedule";
   public static readonly confirmBooking = "/api/bookings/confirm";
@@ -47,6 +50,7 @@ export class ApiRoutes {
   public static readonly processReviewInvites = "/api/review-invites/process";
   public static readonly crewPreferences = "/api/crew/preferences";
   public static readonly crewMatches = "/api/crew/matches";
+  public static readonly cancelCrewMatch = "/api/crew/matches/cancel";
   public static readonly providerCrewConversations = "/api/chat/provider-crew/threads";
   public static readonly providerCrewMessages = "/api/chat/provider-crew/messages";
   public static readonly customerProviderConversations = "/api/chat/customer-provider/threads";
@@ -75,4 +79,5 @@ export class ApiRoutes {
   public static readonly opsSupportSummary = "/api/support/ops/summary";
   public static readonly opsRefundOverride = "/api/support/ops/refund-override";
   public static readonly opsBookingIntervention = "/api/support/ops/bookings/intervene";
+  public static readonly opsBookingEvidenceReview = "/api/support/ops/bookings/evidence/review";
 }

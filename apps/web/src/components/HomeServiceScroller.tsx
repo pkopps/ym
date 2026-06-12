@@ -1,56 +1,86 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function HomeServiceScroller({ services }: { services: readonly string[] }) {
   const [state, setState] = useState({
-    activeIndex: 0,
+    currentIndex: 0,
+    incomingIndex: services.length > 1 ? 1 : undefined as number | undefined,
     isAnimating: false
   });
-  const nextIndex = useMemo(
-    () => (state.activeIndex + 1) % services.length,
-    [state.activeIndex, services.length]
-  );
-  const currentService = services[state.activeIndex];
-  const nextService = services[nextIndex];
+  const advanceTimeoutRef = useRef<number | undefined>(undefined);
+  const settleTimeoutRef = useRef<number | undefined>(undefined);
+  const currentService = services[state.currentIndex];
+  const incomingService =
+    state.incomingIndex !== undefined ? services[state.incomingIndex] : undefined;
 
   useEffect(() => {
-    let advanceTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (services.length <= 1) {
+      return undefined;
+    }
 
-    const intervalId = setInterval(() => {
-      setState((currentState) => ({
-        ...currentState,
-        isAnimating: true
-      }));
-      advanceTimeoutId = setTimeout(() => {
-        setState((currentState) => ({
-          activeIndex: (currentState.activeIndex + 1) % services.length,
-          isAnimating: false
-        }));
-      }, 420);
-    }, 3000);
+    function clearTimers() {
+      if (advanceTimeoutRef.current !== undefined) {
+        window.clearTimeout(advanceTimeoutRef.current);
+      }
+      if (settleTimeoutRef.current !== undefined) {
+        window.clearTimeout(settleTimeoutRef.current);
+      }
+    }
+
+    function queueAdvance() {
+      advanceTimeoutRef.current = window.setTimeout(() => {
+        setState((currentState) => {
+          if (currentState.isAnimating) {
+            return currentState;
+          }
+
+          return {
+            ...currentState,
+            incomingIndex: (currentState.currentIndex + 1) % services.length,
+            isAnimating: true
+          };
+        });
+        settleTimeoutRef.current = window.setTimeout(() => {
+          setState((currentState) => {
+            const nextIndex = currentState.incomingIndex ?? currentState.currentIndex;
+            return {
+              currentIndex: nextIndex,
+              incomingIndex: undefined,
+              isAnimating: false
+            };
+          });
+          queueAdvance();
+        }, 420);
+      }, 3000);
+    }
+
+    clearTimers();
+    queueAdvance();
 
     return () => {
-      clearInterval(intervalId);
-      window.clearTimeout(advanceTimeoutId);
+      clearTimers();
     };
   }, [services.length]);
 
   return (
     <span className={`home-service-scroller${state.isAnimating ? " is-animating" : ""}`}>
-      <span className="home-service-scroller__window" aria-live="polite">
-        <span className="home-service-scroller__track">
-          <span
-            className={`home-service-scroller__item home-service-scroller__item--current${isWinterService(currentService) ? " home-service-scroller__item--winter" : ""}`}
-          >
-            {currentService}
-          </span>
-          <span
-            className={`home-service-scroller__item home-service-scroller__item--next${isWinterService(nextService) ? " home-service-scroller__item--winter" : ""}`}
-          >
-            {nextService}
-          </span>
+      <span aria-atomic="true" aria-live="polite" className="visually-hidden">
+        {currentService}
+      </span>
+      <span aria-hidden="true" className="home-service-scroller__window">
+        <span
+          className={`home-service-scroller__item home-service-scroller__item--active${isWinterService(currentService) ? " home-service-scroller__item--winter" : ""}`}
+        >
+          {currentService}
         </span>
+        {incomingService ? (
+          <span
+            className={`home-service-scroller__item home-service-scroller__item--incoming${isWinterService(incomingService) ? " home-service-scroller__item--winter" : ""}`}
+          >
+            {incomingService}
+          </span>
+        ) : null}
       </span>
     </span>
   );

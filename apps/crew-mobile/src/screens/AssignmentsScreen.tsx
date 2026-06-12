@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { CrewMatchesResponse } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
@@ -14,6 +14,7 @@ export function AssignmentsScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
 
   async function loadMatches() {
     if (!envelope?.session.token) {
@@ -33,8 +34,45 @@ export function AssignmentsScreen() {
     void loadMatches();
   }, [envelope?.session.token]);
 
+  async function cancelAssignment(crewMatchId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setErrorMessage("");
+      await api.cancelCrewMatch({
+        crewMatchId,
+        reason: "Crew member cancelled from the assignments screen."
+      });
+      setStatusMessage("Assignment cancelled. The business owner was notified.");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel assignment.");
+    }
+  }
+
+  function confirmCancelAssignment(crewMatchId: string) {
+    Alert.alert(
+      "Cancel accepted assignment?",
+      "Backing out of an accepted shift can negatively affect your reliability score, which may reduce your chances of being selected for future crews.",
+      [
+        { text: "Keep assignment", style: "cancel" },
+        {
+          text: "Cancel assignment",
+          style: "destructive",
+          onPress: () => void cancelAssignment(crewMatchId)
+        }
+      ]
+    );
+  }
+
   const items = (matchesResponse?.matches ?? []).filter((match) =>
-    viewMode === "upcoming" ? match.status !== "denied" : match.status === "denied"
+    viewMode === "upcoming"
+      ? match.status !== "denied" && match.status !== "cancelled-by-crew"
+      : match.status === "denied" || match.status === "cancelled-by-crew"
   );
 
   return (
@@ -44,10 +82,11 @@ export function AssignmentsScreen() {
         <ModeButton active={viewMode === "history"} label="History" onPress={() => setViewMode("history")} />
       </View>
 
+      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       <InfoCard
-        title={viewMode === "upcoming" ? "Matched and accepted work" : "Not selected"}
+        title={viewMode === "upcoming" ? "Matched and accepted work" : "Past decisions"}
         description={`${items.length} items`}
       >
         <View style={styles.list}>
@@ -61,6 +100,19 @@ export function AssignmentsScreen() {
                 <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
                 <Text style={styles.meta}>{new Date(assignment.scheduledStartIso).toLocaleString()}</Text>
                 <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
+                {assignment.status === "cancelled-by-crew" && assignment.cancellationReason ? (
+                  <Text style={styles.warning}>You cancelled this job: {assignment.cancellationReason}</Text>
+                ) : null}
+                {assignment.status === "accepted" &&
+                (assignment.bookingStatus === "requested" ||
+                  (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
+                  <Pressable
+                    onPress={() => confirmCancelAssignment(assignment.id)}
+                    style={styles.cancelButton}
+                  >
+                    <Text style={styles.cancelButtonLabel}>Cancel assignment</Text>
+                  </Pressable>
+                ) : null}
               </View>
               <Text style={styles.earnings}>{assignment.status.replaceAll("-", " ")}</Text>
             </View>
@@ -145,5 +197,23 @@ const styles = StyleSheet.create({
   earnings: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
+  },
+  cancelButton: {
+    alignSelf: "flex-start",
+    marginTop: BrandTokens.spacing.xs,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#b25555",
+    backgroundColor: "#fff3f1",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs
+  },
+  cancelButtonLabel: {
+    color: "#a03838",
+    fontWeight: "700"
+  },
+  warning: {
+    color: "#a03838",
+    lineHeight: 20
   }
 });

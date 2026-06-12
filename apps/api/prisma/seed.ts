@@ -45,6 +45,9 @@ async function main() {
       yearsExperience: 7,
       serviceRadiusMiles: 18,
       staffingMode: "review-first" as const,
+      crewReviewLeadHours: 24,
+      departureReminderLeadMinutes: 60,
+      routeLeaderMode: "provider-only" as const,
       verificationStatus: "verified" as const,
       verificationSubmittedAt: now,
       verificationReviewedAt: now,
@@ -74,6 +77,9 @@ async function main() {
       yearsExperience: 12,
       serviceRadiusMiles: 24,
       staffingMode: "review-first" as const,
+      crewReviewLeadHours: 24,
+      departureReminderLeadMinutes: 60,
+      routeLeaderMode: "provider-only" as const,
       verificationStatus: "verified" as const,
       verificationSubmittedAt: now,
       verificationReviewedAt: now,
@@ -153,6 +159,9 @@ async function main() {
           yearsExperience: provider.yearsExperience,
           serviceRadiusMiles: provider.serviceRadiusMiles,
           staffingMode: provider.staffingMode,
+          crewReviewLeadHours: provider.crewReviewLeadHours,
+          departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
+          routeLeaderMode: provider.routeLeaderMode,
           verificationStatus: provider.verificationStatus,
           verificationSubmittedAt: provider.verificationSubmittedAt
             ? new Date(provider.verificationSubmittedAt)
@@ -245,6 +254,7 @@ async function main() {
         winterWorkEnabled: true,
         rating: 4.9,
         completedJobs: 28,
+        cancellationCount: 0,
         status: "available"
       },
       seededPassword
@@ -271,6 +281,7 @@ async function main() {
         winterWorkEnabled: true,
         rating: 4.9,
         completedJobs: 28,
+        cancellationCount: 0,
         status: "available"
       }
     });

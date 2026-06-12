@@ -6,7 +6,11 @@ import {
   BookingArrivalTracking,
   Booking,
   CancelBookingRequest,
+  CancelCrewMatchRequest,
+  CancelRecurringServicePlanRequest,
   ConfirmPasswordResetRequest,
+  CreateRecurringServicePlanRequest,
+  CreateRecurringServicePlanResponse,
   CompleteSocialSignupRequest,
   ConfirmBookingRequest,
   CustomerProviderConversation,
@@ -17,6 +21,7 @@ import {
   CreateCheckoutSessionResponse,
   CreateBookingDisputeRequest,
   CreateExternalCalendarImportRequest,
+  CrewMatchSummary,
   CrewMatchesResponse,
   CrewOpportunity,
   CustomerProperty,
@@ -36,6 +41,8 @@ import {
   PushDevice,
   PaymentRecord,
   ProviderPayoutLedgerResponse,
+  ProviderAssistantCommandRequest,
+  ProviderAssistantCommandResponse,
   ProviderVerificationQueueItem,
   PlaceSearchResponse,
   ProcessReviewInvitesRequest,
@@ -49,6 +56,7 @@ import {
   CreatePaymentIntentRequest,
   CreateOpsRefundOverrideRequest,
   CreateOpsBookingInterventionRequest,
+  ReviewBookingEvidenceForOpsRequest,
   CreateRefundRequest,
   CreateSupportTicketRequest,
   ObservabilityOverview,
@@ -61,9 +69,11 @@ import {
   ProviderReview,
   RegisterUserRequest,
   RegisterPushDeviceRequest,
+  RecurringServicePlanSummary,
   MarkBookingOnRouteRequest,
   MarkBookingLateRequest,
   MarkBookingExceptionRequest,
+  ListRecurringServicePlansResponse,
   ReviewCrewMatchRequest,
   ReviewProviderVerificationRequest,
   RemovePushDeviceRequest,
@@ -262,6 +272,10 @@ export class MarketplaceApiClient {
     return this.postJson<ProviderProfile>(ApiRoutes.updateProviderSettings, payload);
   }
 
+  public runProviderAssistantCommand(payload: ProviderAssistantCommandRequest) {
+    return this.postJson<ProviderAssistantCommandResponse>(ApiRoutes.providerAssistantCommand, payload);
+  }
+
   public getProviderCalendarSubscription(): Promise<ProviderCalendarSubscriptionResponse> {
     return this.getJson(ApiRoutes.providerCalendarSubscription);
   }
@@ -297,6 +311,22 @@ export class MarketplaceApiClient {
 
   public getNotifications(): Promise<NotificationListResponse> {
     return this.getJson(ApiRoutes.notifications);
+  }
+
+  public getRecurringServicePlans(): Promise<ListRecurringServicePlansResponse> {
+    return this.getJson(ApiRoutes.recurringServicePlans);
+  }
+
+  public createRecurringServicePlan(
+    payload: CreateRecurringServicePlanRequest
+  ): Promise<CreateRecurringServicePlanResponse> {
+    return this.postJson(ApiRoutes.recurringServicePlans, payload);
+  }
+
+  public cancelRecurringServicePlan(
+    payload: CancelRecurringServicePlanRequest
+  ): Promise<RecurringServicePlanSummary> {
+    return this.postJson(ApiRoutes.cancelRecurringServicePlan, payload);
   }
 
   public markNotificationsRead(
@@ -341,6 +371,10 @@ export class MarketplaceApiClient {
 
   public getCrewMatches(): Promise<CrewMatchesResponse> {
     return this.getJson(ApiRoutes.crewMatches);
+  }
+
+  public cancelCrewMatch(payload: CancelCrewMatchRequest): Promise<CrewMatchSummary> {
+    return this.postJson(ApiRoutes.cancelCrewMatch, payload);
   }
 
   public getProviderCrewConversations(): Promise<ProviderCrewConversation[]> {
@@ -513,6 +547,10 @@ export class MarketplaceApiClient {
 
   public createOpsBookingIntervention(payload: CreateOpsBookingInterventionRequest): Promise<Booking> {
     return this.postJson(ApiRoutes.opsBookingIntervention, payload);
+  }
+
+  public reviewBookingEvidenceForOps(payload: ReviewBookingEvidenceForOpsRequest): Promise<Booking> {
+    return this.postJson(ApiRoutes.opsBookingEvidenceReview, payload);
   }
 
   public updateOpsSupportTicket(payload: UpdateSupportTicketRequest): Promise<SupportTicket> {

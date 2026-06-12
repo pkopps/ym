@@ -29,6 +29,8 @@ export type EstimateConfidenceTier = "high" | "medium" | "low";
 export type PropertySlope = "flat" | "moderate" | "steep";
 export type LotComplexity = "low" | "medium" | "high";
 export type FollowUpInputType = "single-select" | "number";
+export type PropertyMeasurementSource = "saved-property" | "customer-follow-up" | "address-heuristic";
+export type QuoteConfidenceReasonImpact = "positive" | "warning";
 export type PropertyEstimateSource =
   | "licensed-imagery-model"
   | "address-heuristic"
@@ -42,6 +44,8 @@ export type BookingStatus =
   | "cancelled"
   | "disputed"
   | "refunded";
+export type RecurringServiceFrequency = "weekly" | "biweekly";
+export type RecurringServicePlanStatus = "active" | "cancelled";
 
 export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "failed";
 export type PaymentProcessor = "manual" | "stripe";
@@ -68,7 +72,9 @@ export type OpsBookingInterventionAction =
   | "reschedule-booking"
   | "restore-active-booking"
   | "cancel-booking"
-  | "complete-booking";
+  | "complete-booking"
+  | "provider-assistant-reschedule";
+export type ProviderAssistantActionType = "reschedule-booking";
 export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
@@ -81,8 +87,9 @@ export type CrewMemberSchedulePreference = "full-time" | "part-time" | "seasonal
 export type CrewMemberStatus = "available" | "assigned" | "off-duty";
 export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 export type ProviderStaffingMode = "auto-accept" | "review-first";
+export type ProviderRouteLeaderMode = "provider-only" | "accepted-crew-fallback";
 export type ProviderVerificationStatus = "pending-review" | "verified" | "rejected";
-export type CrewMatchStatus = "pending-provider-review" | "accepted" | "denied";
+export type CrewMatchStatus = "pending-provider-review" | "accepted" | "denied" | "cancelled-by-crew";
 export type ExternalCalendarBlockType =
   | "off-platform-client"
   | "personal-time"
@@ -90,6 +97,7 @@ export type ExternalCalendarBlockType =
   | "equipment-maintenance";
 export type ExternalCalendarProvider = "google" | "apple" | "ical";
 export type ExternalCalendarSubscriptionStatus = "active" | "error";
+export type ProviderCalendarSyncHealthStatus = "healthy" | "attention" | "at-risk";
 export type BookingArrivalTrackingStatus =
   | "unavailable"
   | "not-started"
@@ -101,6 +109,7 @@ export type ProviderCalendarEventSource = "yardmatch-booking" | "external-block"
 export type ProviderDispatchRouteStatus = "comfortable" | "watch" | "overloaded";
 export type BookingRouteLocationSource = "computed-origin" | "provider-device" | "crew-device";
 export type BookingEvidencePhase = "before" | "after";
+export type BookingEvidenceReviewStatus = "supports-provider" | "supports-customer" | "inconclusive";
 export type BookingExceptionType =
   | "customer-no-show"
   | "customer-not-ready"
@@ -206,6 +215,9 @@ export interface ProviderProfile extends BaseUser {
   yearsExperience: number;
   serviceRadiusMiles: number;
   staffingMode?: ProviderStaffingMode;
+  crewReviewLeadHours: number;
+  departureReminderLeadMinutes: number;
+  routeLeaderMode: ProviderRouteLeaderMode;
   verificationStatus: ProviderVerificationStatus;
   verificationSubmittedAt?: string;
   verificationReviewedAt?: string;
@@ -231,6 +243,8 @@ export interface CrewMemberProfile extends BaseUser {
   winterWorkEnabled?: boolean;
   rating: number;
   completedJobs: number;
+  cancellationCount: number;
+  lastCancellationAt?: string;
   status: CrewMemberStatus;
   assignedProviderId?: string;
 }
@@ -270,6 +284,11 @@ export interface CrewMatchCandidate {
   autoAccepted: boolean;
   distanceMiles: number;
   hourlyRateCents: number;
+  recommendationScore?: number;
+  recommendationLabel?: "best-fit" | "good-fit" | "backup";
+  recommendationReasons?: string[];
+  cancellationReason?: string;
+  cancelledAt?: string;
   createdAt: string;
   reviewedAt?: string;
 }
@@ -339,6 +358,8 @@ export interface CrewMatchSummary {
   hourlyRateCents: number;
   canChat: boolean;
   summary: string;
+  cancellationReason?: string;
+  cancelledAt?: string;
 }
 
 export interface CrewMatchesResponse {
@@ -425,6 +446,8 @@ export interface Booking {
   id: string;
   customerId: string;
   providerId: string;
+  recurringPlanId?: string;
+  recurringOccurrenceIndex?: number;
   serviceAddress: Address;
   servicePropertyId?: string;
   category: ServiceCategory;
@@ -461,7 +484,7 @@ export interface BookingInterventionRecord {
   id: string;
   action: OpsBookingInterventionAction;
   createdAt: string;
-  actorRole: "ops";
+  actorRole: "ops" | "provider-assistant";
   actorUserId: string;
   note: string;
   ticketId?: string;
@@ -481,6 +504,11 @@ export interface BookingEvidencePhoto {
   capturedByRole: "provider" | "crew-member";
   capturedByUserId: string;
   note?: string;
+  reviewStatus?: BookingEvidenceReviewStatus;
+  reviewNotes?: string;
+  reviewedAt?: string;
+  reviewedByRole?: "ops";
+  reviewedByUserId?: string;
 }
 
 export interface BookingArrivalTracking {
@@ -502,6 +530,36 @@ export interface BookingArrivalTracking {
   unlockedAt?: string;
   lastComputedAt: string;
   message: string;
+}
+
+export interface RecurringServicePlan {
+  id: string;
+  customerId: string;
+  providerId: string;
+  serviceAddress: Address;
+  servicePropertyId?: string;
+  category: ServiceCategory;
+  frequency: RecurringServiceFrequency;
+  requestedAt: string;
+  notes: string;
+  totalCents: number;
+  status: RecurringServicePlanStatus;
+  anchorScheduledStartIso: string;
+  anchorScheduledEndIso: string;
+  lastGeneratedBookingId?: string;
+  lastGeneratedAt?: string;
+  lastSchedulingAttemptAt?: string;
+  lastSchedulingError?: string;
+  cancelledAt?: string;
+  cancellationReason?: string;
+}
+
+export interface RecurringServicePlanSummary {
+  plan: RecurringServicePlan;
+  providerName: string;
+  upcomingBooking?: Booking;
+  completedOccurrenceCount: number;
+  activeOccurrenceCount: number;
 }
 
 export interface ProviderReview {
@@ -826,6 +884,21 @@ export interface ProviderCalendarSubscriptionResponse {
   instructions: string[];
 }
 
+export interface ProviderCalendarSyncHealth {
+  status: ProviderCalendarSyncHealthStatus;
+  externalBlockingEnabled: boolean;
+  subscriptionCount: number;
+  activeSubscriptionCount: number;
+  erroredSubscriptionCount: number;
+  staleSubscriptionCount: number;
+  importedBlockCount: number;
+  manualBlockCount: number;
+  upcomingExternalBlockCount: number;
+  conflictingYardmatchJobCount: number;
+  nextExternalBlockStartIso?: string;
+  notes: string[];
+}
+
 export interface ProviderCalendarEvent {
   id: string;
   source: ProviderCalendarEventSource;
@@ -883,6 +956,7 @@ export interface ProviderCalendarOverviewResponse {
   totalEvents: number;
   yardmatchJobCount: number;
   externalBlockCount: number;
+  syncHealth: ProviderCalendarSyncHealth;
   dispatchDays: ProviderDispatchDaySummary[];
   events: ProviderCalendarEvent[];
 }
@@ -891,6 +965,7 @@ export interface ProviderCalendarImportsResponse {
   providerId: string;
   subscriptions: ExternalCalendarSubscription[];
   importedBlockCount: number;
+  syncHealth: ProviderCalendarSyncHealth;
 }
 
 export interface RegisterUserRequest {
@@ -1040,6 +1115,24 @@ export interface CreateBookingRequest {
   totalCents: number;
 }
 
+export interface CreateRecurringServicePlanRequest extends CreateBookingRequest {
+  frequency: RecurringServiceFrequency;
+}
+
+export interface CreateRecurringServicePlanResponse {
+  plan: RecurringServicePlanSummary;
+  initialBooking: Booking;
+}
+
+export interface ListRecurringServicePlansResponse {
+  plans: RecurringServicePlanSummary[];
+}
+
+export interface CancelRecurringServicePlanRequest {
+  planId: string;
+  reason?: string;
+}
+
 export interface CreateCustomerPropertyRequest {
   label: string;
   address: Address;
@@ -1059,6 +1152,9 @@ export interface SetDefaultCustomerPropertyRequest {
 export interface UpdateProviderSettingsRequest {
   serviceRadiusMiles: number;
   staffingMode?: ProviderStaffingMode;
+  crewReviewLeadHours?: number;
+  departureReminderLeadMinutes?: number;
+  routeLeaderMode?: ProviderRouteLeaderMode;
   sponsoredListingEnabled?: boolean;
   externalEventsBlockingEnabled?: boolean;
   externalCalendarBlocks?: Array<{
@@ -1101,6 +1197,11 @@ export interface UpdateCrewPreferencesRequest {
   preferredSchedule?: CrewMemberSchedulePreference;
   hasOwnEquipment?: boolean;
   winterWorkEnabled?: boolean;
+}
+
+export interface CancelCrewMatchRequest {
+  crewMatchId: string;
+  reason?: string;
 }
 
 export interface ReviewCrewMatchRequest {
@@ -1180,6 +1281,44 @@ export interface UpdateBookingAddressResponse {
   reason: string;
 }
 
+export interface ProviderAssistantCommandRequest {
+  command: string;
+  bookingId?: string;
+  execute?: boolean;
+}
+
+export interface ProviderAssistantBookingCandidate {
+  bookingId: string;
+  customerName: string;
+  scheduledStartIso: string;
+  scheduledEndIso: string;
+  currentWindowKey: BookingServiceWindowKey;
+  currentWindowLabel: string;
+  addressLine: string;
+}
+
+export interface ProviderAssistantCommandResponse {
+  command: string;
+  understood: boolean;
+  actionType?: ProviderAssistantActionType;
+  requiresBookingSelection: boolean;
+  requiresConfirmation: boolean;
+  executed: boolean;
+  notifyCustomer: boolean;
+  matchedBookingId?: string;
+  matchedCustomerName?: string;
+  sourceWindowKey?: BookingServiceWindowKey;
+  targetWindowKey?: BookingServiceWindowKey;
+  targetWindowLabel?: string;
+  suggestedStartIso?: string;
+  suggestedEndIso?: string;
+  previewLabel: string;
+  previewMessage: string;
+  customerNotificationPreview?: string;
+  bookingCandidates: ProviderAssistantBookingCandidate[];
+  updatedBooking?: Booking;
+}
+
 export interface QuoteFollowUpAnswer {
   questionId: string;
   value: string | number;
@@ -1207,6 +1346,25 @@ export interface PropertyMeasurementEstimate {
   slope: PropertySlope;
 }
 
+export interface PropertyMeasurementEstimateSources {
+  turfSqFt: PropertyMeasurementSource;
+  shrubBedSqFt: PropertyMeasurementSource;
+  drivewaySqFt: PropertyMeasurementSource;
+  sidewalkLinearFt: PropertyMeasurementSource;
+}
+
+export interface QuoteConfidenceReason {
+  impact: QuoteConfidenceReasonImpact;
+  label: string;
+  detail: string;
+}
+
+export interface NormalizedAddressSummary {
+  displayLabel: string;
+  wasNormalized: boolean;
+  normalizedFields: Array<"line1" | "line2" | "city" | "state" | "postalCode" | "country">;
+}
+
 export interface InstantQuoteRequest {
   address: Address;
   category: ServiceCategory;
@@ -1217,15 +1375,18 @@ export interface InstantQuoteRequest {
 
 export interface InstantQuoteResponse {
   address: Address;
+  normalizedAddress: NormalizedAddressSummary;
   category: ServiceCategory;
   source: PropertyEstimateSource;
   confidenceScore: number;
   confidenceTier: EstimateConfidenceTier;
+  confidenceReasons: QuoteConfidenceReason[];
   estimatedPriceCents: number;
   estimatedDurationMinutes: number;
   estimatedCrewSize: number;
   estimateSummary: string;
   measurements: PropertyMeasurementEstimate;
+  measurementSources: PropertyMeasurementEstimateSources;
   followUpQuestions: QuoteFollowUpQuestion[];
   quoteReadyForCheckout: boolean;
 }
@@ -1283,6 +1444,14 @@ export interface CreateOpsBookingInterventionRequest {
   note: string;
   scheduledStartIso?: string;
   scheduledEndIso?: string;
+}
+
+export interface ReviewBookingEvidenceForOpsRequest {
+  bookingId: string;
+  evidenceId: string;
+  ticketId?: string;
+  reviewStatus: BookingEvidenceReviewStatus;
+  reviewNotes?: string;
 }
 
 export interface ConfirmBookingRequest {

@@ -44,6 +44,17 @@ function formatCurrency(cents: number) {
   }).format(cents / 100);
 }
 
+function formatCalendarHealthLabel(status: "healthy" | "attention" | "at-risk") {
+  switch (status) {
+    case "healthy":
+      return "Healthy";
+    case "attention":
+      return "Needs attention";
+    case "at-risk":
+      return "At risk";
+  }
+}
+
 export function SupportScreen() {
   const {
     biometricAvailable,
@@ -83,6 +94,7 @@ export function SupportScreen() {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const calendarHealth = calendarImports?.syncHealth;
 
   async function loadProvider() {
     if (!envelope?.session.token) {
@@ -132,7 +144,14 @@ export function SupportScreen() {
     void loadProvider();
   }, [envelope?.session.token]);
 
-  async function saveSettings(updates: Partial<Pick<ProviderProfile, "serviceRadiusMiles" | "staffingMode">>) {
+  async function saveSettings(
+    updates: Partial<
+      Pick<
+        ProviderProfile,
+        "serviceRadiusMiles" | "staffingMode" | "crewReviewLeadHours" | "departureReminderLeadMinutes" | "routeLeaderMode"
+      >
+    >
+  ) {
     if (!envelope?.session.token || !provider) {
       return;
     }
@@ -145,6 +164,10 @@ export function SupportScreen() {
       const nextProvider = await api.updateProviderSettings({
         serviceRadiusMiles: updates.serviceRadiusMiles ?? provider.serviceRadiusMiles,
         staffingMode: updates.staffingMode ?? provider.staffingMode,
+        crewReviewLeadHours: updates.crewReviewLeadHours ?? provider.crewReviewLeadHours,
+        departureReminderLeadMinutes:
+          updates.departureReminderLeadMinutes ?? provider.departureReminderLeadMinutes,
+        routeLeaderMode: updates.routeLeaderMode ?? provider.routeLeaderMode,
         sponsoredListingEnabled: provider.sponsoredListingEnabled
       });
       setProvider(nextProvider);
@@ -174,6 +197,9 @@ export function SupportScreen() {
       const nextProvider = await api.updateProviderSettings({
         serviceRadiusMiles: provider.serviceRadiusMiles,
         staffingMode: provider.staffingMode,
+        crewReviewLeadHours: provider.crewReviewLeadHours,
+        departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
+        routeLeaderMode: provider.routeLeaderMode,
         sponsoredListingEnabled: provider.sponsoredListingEnabled,
         externalEventsBlockingEnabled:
           overrides.enabled ?? provider.calendarConnection.externalEventsBlockingEnabled ?? false,
@@ -490,6 +516,96 @@ export function SupportScreen() {
         </View>
       </InfoCard>
 
+      <InfoCard title="Staffing review timing" description="When to nudge you before unfilled jobs start">
+        <View style={styles.stepRow}>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ crewReviewLeadHours: Math.max(1, (provider?.crewReviewLeadHours ?? 24) - 1) })}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
+          </Pressable>
+          <Text style={styles.valueText}>{provider?.crewReviewLeadHours ?? 0} hours</Text>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) })}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
+          </Pressable>
+        </View>
+      </InfoCard>
+
+      <InfoCard title="Departure reminder" description="When YardMatch tells you it is time to head out">
+        <View style={styles.stepRow}>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() =>
+              void saveSettings({
+                departureReminderLeadMinutes: Math.max(
+                  10,
+                  (provider?.departureReminderLeadMinutes ?? 60) - 10
+                )
+              })
+            }
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>-10 min</Text>
+          </Pressable>
+          <Text style={styles.valueText}>{provider?.departureReminderLeadMinutes ?? 0} minutes</Text>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() =>
+              void saveSettings({
+                departureReminderLeadMinutes: Math.min(
+                  180,
+                  (provider?.departureReminderLeadMinutes ?? 60) + 10
+                )
+              })
+            }
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>+10 min</Text>
+          </Pressable>
+        </View>
+      </InfoCard>
+
+      <InfoCard title="Route leader" description="Choose who can unlock customer tracking">
+        <View style={styles.stepRow}>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ routeLeaderMode: "provider-only" })}
+            style={[styles.secondaryButton, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonActive]}
+          >
+            <Text style={[styles.secondaryButtonLabel, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonLabelActive]}>
+              Provider only
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ routeLeaderMode: "accepted-crew-fallback" })}
+            style={[
+              styles.secondaryButton,
+              provider?.routeLeaderMode === "accepted-crew-fallback" && styles.secondaryButtonActive
+            ]}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonLabel,
+                provider?.routeLeaderMode === "accepted-crew-fallback" && styles.secondaryButtonLabelActive
+              ]}
+            >
+              Crew fallback
+            </Text>
+          </Pressable>
+        </View>
+        <Text style={styles.meta}>
+          {provider?.routeLeaderMode === "accepted-crew-fallback"
+            ? "Accepted crew can start the route and share live tracking when needed."
+            : "Only the business owner can start the route and share live tracking."}
+        </Text>
+      </InfoCard>
+
       <InfoCard title="Payouts" description="Live earnings and crew-share ledger">
         <Text style={styles.meta}>
           Ready now: {formatCurrency(payoutLedger?.totalNetReadyCents ?? 0)} • Scheduled:{" "}
@@ -520,6 +636,28 @@ export function SupportScreen() {
           Subscribe to your YardMatch schedule in Apple Calendar or Google Calendar so booked jobs show up
           next to direct clients and personal blocks.
         </Text>
+        {calendarHealth ? (
+          <View style={styles.ticketRow}>
+            <View style={styles.ticketCopy}>
+              <Text style={styles.valueText}>
+                Outside calendar health: {formatCalendarHealthLabel(calendarHealth.status)}
+              </Text>
+              <Text style={styles.meta}>
+                {calendarHealth.subscriptionCount} feeds • {calendarHealth.importedBlockCount} imported blocks •{" "}
+                {calendarHealth.externalBlockingEnabled ? "blocking on" : "save only"}
+              </Text>
+              <Text style={styles.meta}>
+                {calendarHealth.erroredSubscriptionCount} errors • {calendarHealth.staleSubscriptionCount} stale feeds •{" "}
+                {calendarHealth.conflictingYardmatchJobCount} booking conflicts
+              </Text>
+              {calendarHealth.notes.map((note) => (
+                <Text key={note} style={styles.meta}>
+                  {note}
+                </Text>
+              ))}
+            </View>
+          </View>
+        ) : null}
         <View style={styles.ticketStack}>
           {calendarSubscription?.instructions.map((instruction) => (
             <Text key={instruction} style={styles.meta}>
@@ -595,9 +733,13 @@ export function SupportScreen() {
                     : `${subscription.provider.charAt(0).toUpperCase()}${subscription.provider.slice(1)} Calendar`}{" "}
                   • {subscription.importedEventCount} imported events
                 </Text>
+                <Text style={styles.meta}>
+                  Status: {subscription.syncStatus === "active" ? "Active" : "Sync issue"}
+                </Text>
                 {subscription.lastSyncedAt ? (
                   <Text style={styles.meta}>Synced {new Date(subscription.lastSyncedAt).toLocaleString()}</Text>
                 ) : null}
+                {subscription.lastError ? <Text style={styles.meta}>{subscription.lastError}</Text> : null}
               </View>
               <View style={styles.ticketStack}>
                 <Pressable

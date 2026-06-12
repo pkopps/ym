@@ -2,6 +2,7 @@ import {
   AnalyticsEvent,
   CreateOpsBookingInterventionRequest,
   CreateOpsRefundOverrideRequest,
+  ReviewBookingEvidenceForOpsRequest,
   CreateSupportTicketRequest,
   UpdateSupportTicketRequest
 } from "@yardmatch/contracts";
@@ -21,6 +22,7 @@ export class SupportController implements ApiController {
       (context.method === "POST" && context.path === "/api/support/ops/tickets/update") ||
       (context.method === "POST" && context.path === "/api/support/ops/refund-override") ||
       (context.method === "POST" && context.path === "/api/support/ops/bookings/intervene") ||
+      (context.method === "POST" && context.path === "/api/support/ops/bookings/evidence/review") ||
       (context.method === "POST" && context.path === "/api/analytics/events")
     );
   }
@@ -50,6 +52,15 @@ export class SupportController implements ApiController {
         response,
         200,
         await this.platform.createOpsBookingIntervention(context.body as CreateOpsBookingInterventionRequest)
+      );
+      return;
+    }
+
+    if (context.path === "/api/support/ops/bookings/evidence/review") {
+      sendJson(
+        response,
+        200,
+        await this.platform.reviewBookingEvidenceForOps(context.body as ReviewBookingEvidenceForOpsRequest)
       );
       return;
     }

@@ -77,7 +77,15 @@ export function PublicCustomerMarketplacePage() {
             <span>Book local</span>
             <HomeServiceScroller services={rotatingServices} />
           </h1>
-          <p>Search by service and area first. Create an account only when you need to manage the booking.</p>
+          <p className="home-hero__lede">
+            Search nearby landscaping businesses, compare live availability, and book a clear
+            service window without getting stuck in lead forms.
+          </p>
+          <div className="home-hero__trust-strip" aria-label="Why customers book with GreenRain">
+            <span>Tracked arrivals</span>
+            <span>Provider reviews</span>
+            <span>Support-backed refunds</span>
+          </div>
           <PublicMarketplaceSearchShell
             areaQuery={areaQuery}
             onAreaQueryChange={setAreaQuery}
@@ -91,8 +99,8 @@ export function PublicCustomerMarketplacePage() {
             <a className="button-secondary" href="/customer/listings">
               Browse local pros
             </a>
-            <a className="button-secondary" href="/provider">
-              Run my business
+            <a className="button-secondary" href="/auth/provider">
+              Grow my business
             </a>
             <a className="button-secondary" href="/crew">
               Join a crew

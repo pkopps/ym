@@ -8,6 +8,8 @@ import {
   AvailabilitySlot,
   BookingEvidencePhoto,
   CancelBookingRequest,
+  CancelCrewMatchRequest,
+  CancelRecurringServicePlanRequest,
   BookingArrivalTracking,
   CompleteBookingRequest,
   ConfirmBookingRequest,
@@ -47,6 +49,8 @@ import {
   CreateProviderReviewRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
+  CreateRecurringServicePlanRequest,
+  CreateRecurringServicePlanResponse,
   CreateBookingDisputeRequest,
   CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
@@ -54,6 +58,7 @@ import {
   InstantQuoteRequest,
   InstantQuoteResponse,
   ListCustomerReviewOpportunitiesResponse,
+  ListRecurringServicePlansResponse,
   CreatePaymentIntentRequest,
   CreateOpsRefundOverrideRequest,
   FinalizeCheckoutSessionRequest,
@@ -67,6 +72,7 @@ import {
   Booking,
   BookingInterventionRecord,
   CrewMemberProfile,
+  CrewMemberSchedulePreference,
   CustomerProperty,
   ObservabilityOverview,
   CustomerProfile,
@@ -74,16 +80,23 @@ import {
   NotificationListResponse,
   NotificationPreferences,
   PaymentRecord,
+  ProviderAssistantBookingCandidate,
+  ProviderAssistantCommandRequest,
+  ProviderAssistantCommandResponse,
   PushDevice,
+  RecurringServicePlan,
+  RecurringServicePlanSummary,
   ProviderProfile,
   ProviderVerificationQueueItem,
   ExternalCalendarBlock,
   ExternalCalendarSubscription,
   ProviderReview,
+  ReviewBookingEvidenceForOpsRequest,
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
   ProviderCalendarSubscriptionResponse,
   ProviderCalendarImportsResponse,
+  ProviderCalendarSyncHealth,
   ProviderCalendarOverviewResponse,
   PlaceSearchResponse,
   RegisterUserRequest,
@@ -171,12 +184,13 @@ export class MarketplacePlatformService {
     passwordHash?: string
   ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
     const now = new Date().toISOString();
+    const normalizedAddress = this.normalizeAddress(payload.address);
 
     if (payload.role === "customer") {
       const primaryProperty = {
         id: crypto.randomUUID(),
         label: payload.propertyLabel ?? "Primary property",
-        address: payload.address,
+        address: normalizedAddress,
         accessNotes: payload.propertyNotes,
         lawnSizeSqFt: payload.lawnSizeSqFt,
         isDefault: true,
@@ -189,7 +203,7 @@ export class MarketplacePlatformService {
         email: payload.email,
         phone: payload.phone,
         role: "customer",
-        address: payload.address,
+        address: normalizedAddress,
         createdAt: now,
         propertyNotes: payload.propertyNotes ?? "",
         lawnSizeSqFt: payload.lawnSizeSqFt ?? 0,
@@ -211,7 +225,7 @@ export class MarketplacePlatformService {
         email: payload.email,
         phone: payload.phone,
         role: "crew-member",
-        address: payload.address,
+        address: normalizedAddress,
         createdAt: now,
         bio:
           payload.bio ??
@@ -225,6 +239,7 @@ export class MarketplacePlatformService {
         winterWorkEnabled: payload.winterWorkEnabled ?? true,
         rating: 5,
         completedJobs: 0,
+        cancellationCount: 0,
         status: "available"
       };
 
@@ -246,13 +261,16 @@ export class MarketplacePlatformService {
       email: payload.email,
       phone: payload.phone,
       role: "provider",
-      address: payload.address,
+      address: normalizedAddress,
       createdAt: now,
       companyName: payload.companyName ?? `${payload.fullName} Landscaping`,
       bio: payload.bio ?? "Quality lawn care and landscaping services.",
       yearsExperience: payload.yearsExperience ?? 1,
       serviceRadiusMiles: payload.serviceRadiusMiles ?? 15,
       staffingMode: "review-first",
+      crewReviewLeadHours: 24,
+      departureReminderLeadMinutes: 60,
+      routeLeaderMode: "provider-only",
       verificationStatus: "pending-review",
       verificationSubmittedAt: now,
       sponsoredListingEnabled: false,
@@ -564,10 +582,12 @@ export class MarketplacePlatformService {
   }
 
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
+    const normalizedAddress = this.normalizeAddress(payload.address);
+
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.providerSearchPerformed, "anonymous", {
       dateIso: payload.dateIso,
       categoryCount: payload.categories.length,
-      city: payload.address.city
+      city: normalizedAddress.city
     });
 
     const [providers, bookings] = await Promise.all([
@@ -584,7 +604,7 @@ export class MarketplacePlatformService {
               payload.categories.some((category) => provider.categories.includes(category))
           )
           .map(async (provider) => {
-            const distanceMiles = this.geoService.distanceMiles(payload.address, provider.address);
+            const distanceMiles = this.geoService.distanceMiles(normalizedAddress, provider.address);
             if (distanceMiles > provider.serviceRadiusMiles) {
               return undefined;
             }
@@ -648,7 +668,7 @@ export class MarketplacePlatformService {
       properties: {
         providerCount: matchingProviders.length,
         slotCount: suggestedSlots.length,
-        city: payload.address.city
+        city: normalizedAddress.city
       }
     });
 
@@ -857,42 +877,103 @@ export class MarketplacePlatformService {
             return [];
           }
 
-          return [{
-            id: match.id,
-            bookingId: match.bookingId,
-            providerId: match.providerId,
-            providerCompanyName: provider.companyName,
-            providerPhone: provider.phone,
-            category: booking.category,
-            serviceAddress: booking.serviceAddress,
-          scheduledStartIso: booking.scheduledStartIso,
-          scheduledEndIso: booking.scheduledEndIso,
-          bookingStatus: booking.status,
-          onRouteConfirmedAt: booking.onRouteConfirmedAt,
-          lateNoticeSentAt: booking.lateNoticeSentAt,
-          lateEtaIso: booking.lateEtaIso,
-          lateReason: booking.lateReason,
-          activeExceptionType: booking.activeExceptionType,
-          activeExceptionReportedAt: booking.activeExceptionReportedAt,
-          activeExceptionNotes: booking.activeExceptionNotes,
-          disputedAt: booking.disputedAt,
-          disputeReason: booking.disputeReason,
-          disputedByRole: booking.disputedByRole,
-          beforeEvidenceCount: this.countBookingEvidence(booking, "before"),
-          afterEvidenceCount: this.countBookingEvidence(booking, "after"),
-          status: match.status,
-            hourlyRateCents: match.hourlyRateCents,
-            canChat: match.status === "pending-provider-review" || match.status === "accepted",
-            summary:
-              match.status === "accepted"
-                ? `${provider.companyName} accepted you for this job.`
-                : match.status === "denied"
-                  ? `${provider.companyName} passed on this match.`
-                  : `${provider.companyName} is reviewing your fit for this job.`
-          }];
+          return [this.buildCrewMatchSummary(match, provider, booking)];
         })
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
     };
+  }
+
+  public async cancelCrewMatch(
+    crewMemberId: string,
+    payload: CancelCrewMatchRequest
+  ): Promise<CrewMatchesResponse["matches"][number]> {
+    const [crewMember, match] = await Promise.all([
+      this.repository.findCrewMemberById(crewMemberId),
+      this.repository.findCrewMatchById(payload.crewMatchId)
+    ]);
+
+    if (!crewMember) {
+      throw new HttpError(404, "Crew member not found");
+    }
+
+    if (!match || match.crewMemberId !== crewMemberId) {
+      throw new HttpError(404, "Crew match not found");
+    }
+
+    if (match.status !== "accepted") {
+      throw new HttpError(400, "Only accepted assignments can be cancelled by the crew member");
+    }
+
+    const [provider, booking] = await Promise.all([
+      this.repository.findProviderById(match.providerId),
+      this.repository.findBookingById(match.bookingId)
+    ]);
+
+    if (!provider || !booking) {
+      throw new HttpError(404, "Assignment details could not be found");
+    }
+
+    if (booking.status === "completed" || booking.status === "cancelled" || booking.status === "refunded") {
+      throw new HttpError(400, "This assignment is no longer active");
+    }
+
+    if (booking.onRouteConfirmedAt || booking.status === "in-progress") {
+      throw new HttpError(400, "This assignment can no longer be cancelled because work is already underway");
+    }
+
+    if (new Date(booking.scheduledStartIso).getTime() <= Date.now()) {
+      throw new HttpError(400, "This assignment can no longer be cancelled because the start time has passed");
+    }
+
+    const cancelledAt = new Date().toISOString();
+    const cancellationReason = payload.reason?.trim() || "Crew member cancelled this assignment.";
+    const updatedMatch = await this.repository.updateCrewMatch(match.id, {
+      status: "cancelled-by-crew",
+      reviewedAt: cancelledAt,
+      cancelledAt,
+      cancellationReason
+    });
+
+    if (!updatedMatch) {
+      throw new HttpError(500, "Crew assignment could not be cancelled");
+    }
+
+    await this.repository.updateCrewMember(crewMemberId, {
+      cancellationCount: (crewMember.cancellationCount ?? 0) + 1,
+      lastCancellationAt: cancelledAt
+    });
+
+    const existingConversation = await this.repository.findProviderCrewConversationByCrewMatchId(match.id);
+    if (existingConversation) {
+      await this.repository.updateProviderCrewConversation(existingConversation.id, {
+        status: "cancelled-by-crew",
+        updatedAt: cancelledAt,
+        lastMessagePreview: `${crewMember.fullName} cancelled this assignment.`
+      });
+    }
+
+    await this.refreshCrewMemberStatus(crewMemberId);
+    await this.reconcileCrewMatches(provider.id);
+
+    await this.createNotification({
+      recipientId: provider.id,
+      recipientRole: "provider",
+      category: "staffing",
+      title: "Crew member cancelled",
+      body: `${crewMember.fullName} cancelled an accepted assignment for ${this.titleCaseCategory(booking.category).toLowerCase()}.`,
+      actionHref: "/provider/management"
+    });
+
+    await this.createNotification({
+      recipientId: crewMemberId,
+      recipientRole: "crew-member",
+      category: "staffing",
+      title: "Assignment cancelled",
+      body: "This cancellation was recorded and may lower your future match priority if it becomes a pattern.",
+      actionHref: "/crew/schedule"
+    });
+
+    return this.buildCrewMatchSummary(updatedMatch, provider, booking);
   }
 
   public async listProviderCrewConversations(
@@ -904,6 +985,50 @@ export class MarketplacePlatformService {
         ? conversation.providerId === actor.userId
         : conversation.crewMemberId === actor.userId
     );
+  }
+
+  private buildCrewMatchSummary(
+    match: CrewMatchCandidate,
+    provider: ProviderProfile,
+    booking: Booking
+  ): CrewMatchesResponse["matches"][number] {
+    return {
+      id: match.id,
+      bookingId: match.bookingId,
+      providerId: match.providerId,
+      providerCompanyName: provider.companyName,
+      providerPhone: provider.phone,
+      category: booking.category,
+      serviceAddress: booking.serviceAddress,
+      scheduledStartIso: booking.scheduledStartIso,
+      scheduledEndIso: booking.scheduledEndIso,
+      bookingStatus: booking.status,
+      onRouteConfirmedAt: booking.onRouteConfirmedAt,
+      lateNoticeSentAt: booking.lateNoticeSentAt,
+      lateEtaIso: booking.lateEtaIso,
+      lateReason: booking.lateReason,
+      activeExceptionType: booking.activeExceptionType,
+      activeExceptionReportedAt: booking.activeExceptionReportedAt,
+      activeExceptionNotes: booking.activeExceptionNotes,
+      disputedAt: booking.disputedAt,
+      disputeReason: booking.disputeReason,
+      disputedByRole: booking.disputedByRole,
+      beforeEvidenceCount: this.countBookingEvidence(booking, "before"),
+      afterEvidenceCount: this.countBookingEvidence(booking, "after"),
+      status: match.status,
+      hourlyRateCents: match.hourlyRateCents,
+      canChat: match.status === "pending-provider-review" || match.status === "accepted",
+      summary:
+        match.status === "accepted"
+          ? `${provider.companyName} accepted you for this job.`
+          : match.status === "denied"
+            ? `${provider.companyName} passed on this match.`
+            : match.status === "cancelled-by-crew"
+              ? `You cancelled this accepted assignment with ${provider.companyName}.`
+              : `${provider.companyName} is reviewing your fit for this job.`,
+      cancellationReason: match.cancellationReason,
+      cancelledAt: match.cancelledAt
+    };
   }
 
   public async getProviderCrewConversationThread(
@@ -1021,17 +1146,26 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    const acceptedMatch = (await this.repository.listCrewMatches()).find(
-      (match) =>
-        match.bookingId === booking.id &&
-        match.status === "accepted"
-    );
+    const [acceptedMatch, provider] = await Promise.all([
+      this.repository.listCrewMatches().then((matches) =>
+        matches.find((match) => match.bookingId === booking.id && match.status === "accepted")
+      ),
+      this.repository.findProviderById(booking.providerId)
+    ]);
+
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
 
     if (actor.role === "provider" && booking.providerId !== actor.userId) {
       throw new HttpError(403, "Providers can only start the route for their own bookings");
     }
 
     if (actor.role === "crew-member") {
+      if (provider.routeLeaderMode !== "accepted-crew-fallback") {
+        throw new HttpError(403, "This business owner handles route start personally for this booking");
+      }
+
       if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
         throw new HttpError(403, "Only accepted crew members can confirm they are on route");
       }
@@ -1064,7 +1198,6 @@ export class MarketplacePlatformService {
       throw new HttpError(500, "Booking could not be updated");
     }
 
-    const provider = await this.repository.findProviderById(booking.providerId);
     const routeLeaderLabel =
       actor.role === "provider"
         ? provider?.companyName ?? "Your landscaping business"
@@ -1104,15 +1237,22 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    const acceptedMatch = (await this.repository.listCrewMatches()).find(
-      (match) => match.bookingId === booking.id && match.status === "accepted"
-    );
+    const [acceptedMatch, provider] = await Promise.all([
+      this.repository.listCrewMatches().then((matches) =>
+        matches.find((match) => match.bookingId === booking.id && match.status === "accepted")
+      ),
+      this.repository.findProviderById(booking.providerId)
+    ]);
 
     if (actor.role === "provider" && booking.providerId !== actor.userId) {
       throw new HttpError(403, "Providers can only share live route location for their own bookings");
     }
 
     if (actor.role === "crew-member") {
+      if ((provider?.routeLeaderMode ?? "provider-only") !== "accepted-crew-fallback") {
+        throw new HttpError(403, "This business owner handles route tracking personally for this booking");
+      }
+
       if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
         throw new HttpError(403, "Only accepted crew members can share route location");
       }
@@ -1860,6 +2000,23 @@ export class MarketplacePlatformService {
       throw new Error("staffingMode must be auto-accept or review-first");
     }
 
+    const crewReviewLeadHours = Math.round(payload.crewReviewLeadHours ?? provider.crewReviewLeadHours ?? 24);
+    if (crewReviewLeadHours < 1 || crewReviewLeadHours > 72) {
+      throw new Error("crewReviewLeadHours must be between 1 and 72");
+    }
+
+    const departureReminderLeadMinutes = Math.round(
+      payload.departureReminderLeadMinutes ?? provider.departureReminderLeadMinutes ?? 60
+    );
+    if (departureReminderLeadMinutes < 10 || departureReminderLeadMinutes > 180) {
+      throw new Error("departureReminderLeadMinutes must be between 10 and 180");
+    }
+
+    const routeLeaderMode = payload.routeLeaderMode ?? provider.routeLeaderMode ?? "provider-only";
+    if (routeLeaderMode !== "provider-only" && routeLeaderMode !== "accepted-crew-fallback") {
+      throw new Error("routeLeaderMode must be provider-only or accepted-crew-fallback");
+    }
+
     const nextCalendarConnection = {
       ...provider.calendarConnection,
       externalEventsBlockingEnabled:
@@ -1875,6 +2032,9 @@ export class MarketplacePlatformService {
       ...provider,
       serviceRadiusMiles: normalizedRadius,
       staffingMode,
+      crewReviewLeadHours,
+      departureReminderLeadMinutes,
+      routeLeaderMode,
       sponsoredListingEnabled:
         payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
       calendarConnection: nextCalendarConnection
@@ -1883,6 +2043,9 @@ export class MarketplacePlatformService {
     const updatedProvider = await this.repository.updateProvider(provider.id, {
       serviceRadiusMiles: normalizedRadius,
       staffingMode,
+      crewReviewLeadHours,
+      departureReminderLeadMinutes,
+      routeLeaderMode,
       sponsoredListingEnabled:
         payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
       calendarConnection: nextCalendarConnection
@@ -1900,6 +2063,9 @@ export class MarketplacePlatformService {
       properties: {
         serviceRadiusMiles: normalizedRadius,
         staffingMode,
+        crewReviewLeadHours,
+        departureReminderLeadMinutes,
+        routeLeaderMode,
         sponsoredListingEnabled:
           payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
         externalEventsBlockingEnabled:
@@ -2107,6 +2273,8 @@ export class MarketplacePlatformService {
         body: "Your landscaping service was completed. A review prompt will unlock after the follow-up delay.",
         actionHref: "/customer/dashboard"
       });
+
+      await this.scheduleNextRecurringBookingIfNeeded(updatedBooking);
     }
 
     return updatedBooking;
@@ -2178,12 +2346,16 @@ export class MarketplacePlatformService {
       throw new Error("Selected property does not belong to the customer");
     }
 
+    const rawAddress = property?.address ?? payload.address;
+    const normalizedAddress = this.normalizeAddress(rawAddress);
+
     const quote = this.instantQuoteEngine.buildQuote({
       request: {
         ...payload,
-        address: property?.address ?? payload.address
+        address: normalizedAddress
       },
-      property
+      property,
+      normalizedAddress: this.buildNormalizedAddressSummary(rawAddress, normalizedAddress)
     });
 
     this.analytics.record({
@@ -2210,6 +2382,13 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: CreateBookingRequest
   ): Promise<Booking> {
+    return this.createBookingRecord(customerId, payload);
+  }
+
+  public async createRecurringServicePlan(
+    customerId: string,
+    payload: CreateRecurringServicePlanRequest
+  ): Promise<CreateRecurringServicePlanResponse> {
     const customer = await this.repository.findCustomerById(customerId);
     if (!customer) {
       throw new Error("Customer not found");
@@ -2223,37 +2402,206 @@ export class MarketplacePlatformService {
       throw new Error("Selected property does not belong to the customer");
     }
 
-    const booking = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
+    const plan: RecurringServicePlan = {
+      id: crypto.randomUUID(),
       customerId,
-      ...payload,
-      serviceAddress: selectedProperty?.address ?? payload.serviceAddress
+      providerId: payload.providerId,
+      serviceAddress: selectedProperty?.address ?? payload.serviceAddress,
+      servicePropertyId: payload.servicePropertyId,
+      category: payload.category,
+      frequency: payload.frequency,
+      requestedAt: new Date().toISOString(),
+      notes: payload.notes,
+      totalCents: payload.totalCents,
+      status: "active",
+      anchorScheduledStartIso: payload.scheduledStartIso,
+      anchorScheduledEndIso: payload.scheduledEndIso
+    };
+
+    await this.repository.createRecurringServicePlan(plan);
+
+    const initialBooking = await this.createBookingRecord(
+      customerId,
+      {
+        providerId: payload.providerId,
+        serviceAddress: payload.serviceAddress,
+        servicePropertyId: payload.servicePropertyId,
+        category: payload.category,
+        scheduledStartIso: payload.scheduledStartIso,
+        scheduledEndIso: payload.scheduledEndIso,
+        notes: payload.notes,
+        totalCents: payload.totalCents
+      },
+      {
+        recurringPlanId: plan.id,
+        recurringOccurrenceIndex: 1,
+        providerNotificationTitle: "New recurring booking request",
+        providerNotificationBody: `${customer.fullName} started a ${this.describeRecurringFrequency(
+          payload.frequency
+        )} ${this.titleCaseCategory(payload.category).toLowerCase()} plan beginning ${this.formatBookingWindowWithDate(
+          payload.scheduledStartIso
+        )}.`
+      }
+    );
+
+    await this.repository.updateRecurringServicePlan(plan.id, {
+      lastGeneratedBookingId: initialBooking.id,
+      lastGeneratedAt: initialBooking.requestedAt,
+      lastSchedulingAttemptAt: initialBooking.requestedAt,
+      lastSchedulingError: undefined
     });
 
-    await this.assertProviderWindowIsAvailable(
-      payload.providerId,
-      payload.scheduledStartIso,
-      payload.scheduledEndIso
+    await this.createNotification({
+      recipientId: customerId,
+      recipientRole: "customer",
+      category: "booking",
+      title: "Recurring plan started",
+      body: `Your ${this.describeRecurringFrequency(payload.frequency)} ${this.titleCaseCategory(
+        payload.category
+      ).toLowerCase()} plan is active. The first visit has been requested.`,
+      actionHref: "/customer/dashboard"
+    });
+
+    return {
+      plan: await this.buildRecurringServicePlanSummary(plan.id),
+      initialBooking
+    };
+  }
+
+  public async listRecurringServicePlansForCustomer(
+    customerId: string
+  ): Promise<ListRecurringServicePlansResponse> {
+    const plans = (await this.repository.listRecurringServicePlans())
+      .filter((plan) => plan.customerId === customerId)
+      .sort((left, right) => right.requestedAt.localeCompare(left.requestedAt));
+
+    return {
+      plans: await Promise.all(plans.map((plan) => this.buildRecurringServicePlanSummary(plan.id)))
+    };
+  }
+
+  public async cancelRecurringServicePlan(
+    customerId: string,
+    payload: CancelRecurringServicePlanRequest
+  ): Promise<RecurringServicePlanSummary> {
+    const plan = await this.repository.findRecurringServicePlanById(payload.planId);
+    if (!plan) {
+      throw new HttpError(404, "Recurring plan not found");
+    }
+
+    if (plan.customerId !== customerId) {
+      throw new HttpError(403, "Customers can only manage their own recurring plans");
+    }
+
+    if (plan.status === "cancelled") {
+      return this.buildRecurringServicePlanSummary(plan.id);
+    }
+
+    const cancelledAt = new Date().toISOString();
+    const allBookings = await this.repository.listBookings();
+    const futureBookings = allBookings.filter(
+      (booking) =>
+        booking.recurringPlanId === plan.id &&
+        (booking.status === "requested" || booking.status === "confirmed") &&
+        new Date(booking.scheduledStartIso).getTime() > Date.now()
     );
+
+    for (const booking of futureBookings) {
+      await this.repository.updateBooking(booking.id, {
+        status: "cancelled",
+        activeExceptionType: undefined,
+        activeExceptionReportedAt: undefined,
+        activeExceptionNotes: undefined
+      });
+    }
+
+    await this.repository.updateRecurringServicePlan(plan.id, {
+      status: "cancelled",
+      cancelledAt,
+      cancellationReason: payload.reason?.trim() || "Customer cancelled the recurring service plan."
+    });
+
+    await this.createNotification({
+      recipientId: plan.providerId,
+      recipientRole: "provider",
+      category: "booking",
+      title: "Recurring plan cancelled",
+      body: "A customer cancelled an active recurring service plan and any upcoming requested visits tied to it.",
+      actionHref: "/provider/management"
+    });
+
+    return this.buildRecurringServicePlanSummary(plan.id);
+  }
+
+  private async createBookingRecord(
+    customerId: string,
+    payload: CreateBookingRequest,
+    options?: {
+      recurringPlanId?: string;
+      recurringOccurrenceIndex?: number;
+      providerNotificationTitle?: string;
+      providerNotificationBody?: string;
+      skipProviderAvailabilityCheck?: boolean;
+      skipRequestedFunnelEvent?: boolean;
+    }
+  ): Promise<Booking> {
+    const customer = await this.repository.findCustomerById(customerId);
+    if (!customer) {
+      throw new Error("Customer not found");
+    }
+
+    const selectedProperty = payload.servicePropertyId
+      ? customer.properties.find((property) => property.id === payload.servicePropertyId)
+      : undefined;
+
+    if (payload.servicePropertyId && !selectedProperty) {
+      throw new Error("Selected property does not belong to the customer");
+    }
+
+    const bookingBase = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
+      customerId,
+      ...payload,
+      serviceAddress: selectedProperty?.address ?? this.normalizeAddress(payload.serviceAddress)
+    });
+
+    const booking: Booking = {
+      ...bookingBase,
+      recurringPlanId: options?.recurringPlanId,
+      recurringOccurrenceIndex: options?.recurringOccurrenceIndex
+    };
+
+    if (!options?.skipProviderAvailabilityCheck) {
+      await this.assertProviderWindowIsAvailable(
+        payload.providerId,
+        payload.scheduledStartIso,
+        payload.scheduledEndIso
+      );
+    }
 
     const result = await this.repository.createBooking(booking);
 
-    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, customerId, {
-      providerId: payload.providerId,
-      totalCents: payload.totalCents,
-      category: payload.category,
-      servicePropertyId: payload.servicePropertyId ?? "custom-address"
-    });
-    const provider = await this.repository.findProviderById(payload.providerId);
+    if (!options?.skipRequestedFunnelEvent) {
+      this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, customerId, {
+        providerId: payload.providerId,
+        totalCents: payload.totalCents,
+        category: payload.category,
+        servicePropertyId: payload.servicePropertyId ?? "custom-address"
+      });
+    }
+
     await this.createNotification({
       recipientId: payload.providerId,
       recipientRole: "provider",
       category: "booking",
-      title: "New booking request",
-      body: `${customer.fullName} requested ${this.titleCaseCategory(payload.category)} for ${new Date(
-        booking.scheduledStartIso
-      ).toLocaleDateString()}.`,
+      title: options?.providerNotificationTitle ?? "New booking request",
+      body:
+        options?.providerNotificationBody ??
+        `${customer.fullName} requested ${this.titleCaseCategory(payload.category)} for ${new Date(
+          booking.scheduledStartIso
+        ).toLocaleDateString()}.`,
       actionHref: "/provider/management"
     });
+
     return result;
   }
 
@@ -2342,6 +2690,13 @@ export class MarketplacePlatformService {
       throw new Error("Confirmed bookings starting in less than 24 hours cannot be rescheduled in app");
     }
 
+    await this.assertProviderRescheduleWindowIsAvailable(
+      booking.providerId,
+      booking.id,
+      payload.scheduledStartIso,
+      payload.scheduledEndIso
+    );
+
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       scheduledStartIso: payload.scheduledStartIso,
       scheduledEndIso: payload.scheduledEndIso,
@@ -2382,6 +2737,197 @@ export class MarketplacePlatformService {
     return updatedBooking;
   }
 
+  public async runProviderAssistantCommand(
+    providerId: string,
+    payload: ProviderAssistantCommandRequest
+  ): Promise<ProviderAssistantCommandResponse> {
+    const command = payload.command.trim();
+    if (!command) {
+      throw new HttpError(400, "A provider assistant command is required");
+    }
+
+    const parsed = this.parseProviderAssistantCommand(command);
+    if (!parsed.understood || !parsed.targetWindowKey) {
+      return {
+        command,
+        understood: false,
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: parsed.notifyCustomer,
+        previewLabel: "Could not understand command",
+        previewMessage:
+          'Try a command like "Move my afternoon appointment to evening and notify the customer."',
+        bookingCandidates: []
+      };
+    }
+
+    const upcomingBookings = await this.listProviderAssistantCandidates(providerId);
+    const matchingCandidates = payload.bookingId
+      ? upcomingBookings.filter((booking) => booking.id === payload.bookingId)
+      : parsed.sourceWindowKey
+        ? upcomingBookings.filter(
+            (booking) => getBookingServiceWindow(booking.scheduledStartIso).key === parsed.sourceWindowKey
+          )
+        : upcomingBookings;
+
+    if (payload.bookingId && matchingCandidates.length === 0) {
+      throw new HttpError(404, "Booking not found for this provider assistant command");
+    }
+
+    if (!payload.bookingId && matchingCandidates.length !== 1) {
+      const candidates = matchingCandidates.map((booking) => this.toProviderAssistantBookingCandidate(booking));
+      return {
+        command,
+        understood: true,
+        actionType: "reschedule-booking",
+        requiresBookingSelection: true,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: true,
+        sourceWindowKey: parsed.sourceWindowKey,
+        targetWindowKey: parsed.targetWindowKey,
+        targetWindowLabel: this.providerAssistantWindowLabel(parsed.targetWindowKey),
+        previewLabel:
+          matchingCandidates.length === 0 ? "No matching appointment found" : "Pick the appointment to change",
+        previewMessage:
+          matchingCandidates.length === 0
+            ? "The assistant could not find an upcoming provider booking that matches that time window."
+            : "More than one upcoming booking matches that request, so choose the booking explicitly and run the command again.",
+        bookingCandidates: candidates
+      };
+    }
+
+    const booking = matchingCandidates[0];
+    if (!booking) {
+      throw new HttpError(404, "No matching provider booking was found");
+    }
+
+    const targetWindow = this.buildProviderAssistantTargetWindow(booking, parsed.targetWindowKey);
+    const customer = await this.repository.findCustomerById(booking.customerId);
+    await this.assertProviderRescheduleWindowIsAvailable(
+      booking.providerId,
+      booking.id,
+      targetWindow.startIso,
+      targetWindow.endIso
+    );
+
+    const customerNotificationPreview = `Updated to ${this.formatBookingWindowWithDate(targetWindow.startIso)} for ${
+      customer?.fullName ?? "the customer"
+    }.`;
+
+    if (!payload.execute) {
+      return {
+        command,
+        understood: true,
+        actionType: "reschedule-booking",
+        requiresBookingSelection: false,
+        requiresConfirmation: true,
+        executed: false,
+        notifyCustomer: true,
+        matchedBookingId: booking.id,
+        matchedCustomerName: customer?.fullName,
+        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        targetWindowKey: parsed.targetWindowKey,
+        targetWindowLabel: this.providerAssistantWindowLabel(parsed.targetWindowKey),
+        suggestedStartIso: targetWindow.startIso,
+        suggestedEndIso: targetWindow.endIso,
+        previewLabel: "Ready to reschedule",
+        previewMessage: `Move ${customer?.fullName ?? "this customer"} to ${this.providerAssistantWindowLabel(
+          parsed.targetWindowKey
+        )} on ${new Date(targetWindow.startIso).toLocaleDateString()}.`,
+        customerNotificationPreview,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+      };
+    }
+
+    const now = new Date().toISOString();
+    const intervention: BookingInterventionRecord = {
+      id: crypto.randomUUID(),
+      action: "provider-assistant-reschedule",
+      createdAt: now,
+      actorRole: "provider-assistant",
+      actorUserId: providerId,
+      note: `Provider assistant command: ${command}`,
+      previousStatus: booking.status,
+      nextStatus: booking.status === "requested" ? "requested" : "confirmed",
+      previousScheduledStartIso: booking.scheduledStartIso,
+      previousScheduledEndIso: booking.scheduledEndIso,
+      nextScheduledStartIso: targetWindow.startIso,
+      nextScheduledEndIso: targetWindow.endIso
+    };
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      scheduledStartIso: targetWindow.startIso,
+      scheduledEndIso: targetWindow.endIso,
+      status: booking.status === "requested" ? "requested" : "confirmed",
+      onRouteConfirmedAt: undefined,
+      onRouteConfirmedByCrewMemberId: undefined,
+      lateNoticeSentAt: undefined,
+      lateEtaIso: undefined,
+      lateReason: undefined,
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined,
+      disputedAt: undefined,
+      disputeReason: undefined,
+      disputedByRole: undefined,
+      completedAt: undefined,
+      interventions: [...booking.interventions, intervention]
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Provider assistant could not reschedule the booking");
+    }
+
+    await this.createNotification({
+      recipientId: booking.customerId,
+      recipientRole: "customer",
+      category: "booking",
+      title: "Your service window was updated",
+      body: `Your provider moved this job to ${this.formatBookingWindowWithDate(targetWindow.startIso)}.`,
+      actionHref: `/customer/dashboard?bookingId=${booking.id}`
+    });
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.bookingRescheduled,
+      actorId: providerId,
+      occurredAt: now,
+      properties: {
+        bookingId: booking.id,
+        providerId,
+        previousStartIso: booking.scheduledStartIso,
+        nextStartIso: targetWindow.startIso,
+        source: "provider-assistant"
+      }
+    });
+
+    return {
+      command,
+      understood: true,
+      actionType: "reschedule-booking",
+      requiresBookingSelection: false,
+      requiresConfirmation: false,
+      executed: true,
+      notifyCustomer: true,
+      matchedBookingId: booking.id,
+      matchedCustomerName: customer?.fullName,
+      sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+      targetWindowKey: parsed.targetWindowKey,
+      targetWindowLabel: this.providerAssistantWindowLabel(parsed.targetWindowKey),
+      suggestedStartIso: targetWindow.startIso,
+      suggestedEndIso: targetWindow.endIso,
+      previewLabel: "Command executed",
+      previewMessage: `Moved ${customer?.fullName ?? "the customer"} to ${this.providerAssistantWindowLabel(
+        parsed.targetWindowKey
+      )} and sent an update.`,
+      customerNotificationPreview,
+      bookingCandidates: [this.toProviderAssistantBookingCandidate(updatedBooking)],
+      updatedBooking
+    };
+  }
+
   public async createCustomerProperty(
     customerId: string,
     payload: CreateCustomerPropertyRequest
@@ -2394,6 +2940,7 @@ export class MarketplacePlatformService {
 
     const property = this.propertyBook.createProperty(crypto.randomUUID(), {
       ...payload,
+      address: this.normalizeAddress(payload.address),
       customerId
     });
     const properties = customer.properties.map((existingProperty) => ({
@@ -2537,7 +3084,7 @@ export class MarketplacePlatformService {
       throw new Error("Selected property does not belong to the customer");
     }
 
-    const requestedAddress = selectedProperty?.address ?? payload.newAddress;
+    const requestedAddress = selectedProperty?.address ?? this.normalizeAddress(payload.newAddress);
 
     const provider = await this.repository.findProviderById(booking.providerId);
     if (!provider) {
@@ -3296,6 +3843,67 @@ export class MarketplacePlatformService {
     return updatedBooking;
   }
 
+  public async reviewBookingEvidenceForOps(
+    payload: ReviewBookingEvidenceForOpsRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const evidenceIndex = booking.serviceEvidence.findIndex((photo) => photo.id === payload.evidenceId);
+    if (evidenceIndex === -1) {
+      throw new HttpError(404, "Booking evidence not found");
+    }
+
+    const ticket = payload.ticketId
+      ? (await this.repository.listSupportTickets()).find((candidate) => candidate.id === payload.ticketId)
+      : undefined;
+    if (payload.ticketId && !ticket) {
+      throw new HttpError(404, "Support ticket not found");
+    }
+    if (ticket?.bookingId && ticket.bookingId !== booking.id) {
+      throw new HttpError(400, "This support ticket is not tied to the selected booking");
+    }
+
+    const reviewNotes = payload.reviewNotes?.trim();
+    const reviewedAt = new Date().toISOString();
+    const nextEvidence = booking.serviceEvidence.map((photo, index) =>
+      index === evidenceIndex
+        ? {
+            ...photo,
+            reviewStatus: payload.reviewStatus,
+            reviewNotes: reviewNotes || undefined,
+            reviewedAt,
+            reviewedByRole: "ops" as const,
+            reviewedByUserId: "ops-system"
+          }
+        : photo
+    );
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      serviceEvidence: nextEvidence
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking evidence review could not be saved");
+    }
+
+    if (ticket) {
+      const evidence = booking.serviceEvidence[evidenceIndex];
+      await this.repository.updateSupportTicket(ticket.id, {
+        updatedAt: reviewedAt,
+        triagedAt: ticket.triagedAt ?? (ticket.status === "open" ? reviewedAt : undefined),
+        status: ticket.status === "open" ? "triaged" : ticket.status,
+        description:
+          `${ticket.description}\n\nOps evidence review: ${evidence?.phase ?? "photo"} ` +
+          `${payload.reviewStatus}${reviewNotes ? `. Notes: ${reviewNotes}` : "."}`
+      });
+    }
+
+    return updatedBooking;
+  }
+
   public async createSupportTicket(
     requester: { userId: string; role: "customer" | "provider" | "crew-member" },
     payload: CreateSupportTicketRequest
@@ -4021,6 +4629,7 @@ export class MarketplacePlatformService {
     if (!provider) {
       throw new HttpError(404, "Provider not found");
     }
+    const bookings = await this.listFutureProviderCalendarConflictBookings(provider.id);
 
     return {
       providerId: provider.id,
@@ -4029,7 +4638,8 @@ export class MarketplacePlatformService {
       ),
       importedBlockCount: (provider.calendarConnection.externalBlocks ?? []).filter(
         (block) => block.source === "calendar-import"
-      ).length
+      ).length,
+      syncHealth: this.buildProviderCalendarSyncHealth(provider, bookings)
     };
   }
 
@@ -4062,13 +4672,25 @@ export class MarketplacePlatformService {
     };
 
     const nextSubscriptions = [...(provider.calendarConnection.externalSubscriptions ?? []), subscription];
-    const imported = await this.syncExternalCalendarSubscription(provider, subscription, nextSubscriptions);
+    const savedProvider = await this.repository.updateProvider(provider.id, {
+      calendarConnection: {
+        ...provider.calendarConnection,
+        externalSubscriptions: nextSubscriptions
+      }
+    });
+    if (!savedProvider) {
+      throw new HttpError(500, "Calendar import could not be created");
+    }
+
+    const imported = await this.syncExternalCalendarSubscription(savedProvider, subscription, nextSubscriptions);
+    const bookings = await this.listFutureProviderCalendarConflictBookings(imported.id);
     return {
       providerId,
       subscriptions: imported.calendarConnection.externalSubscriptions ?? [],
       importedBlockCount: (imported.calendarConnection.externalBlocks ?? []).filter(
         (block) => block.source === "calendar-import"
-      ).length
+      ).length,
+      syncHealth: this.buildProviderCalendarSyncHealth(imported, bookings)
     };
   }
 
@@ -4093,12 +4715,14 @@ export class MarketplacePlatformService {
       subscription,
       provider.calendarConnection.externalSubscriptions ?? []
     );
+    const bookings = await this.listFutureProviderCalendarConflictBookings(updatedProvider.id);
     return {
       providerId,
       subscriptions: updatedProvider.calendarConnection.externalSubscriptions ?? [],
       importedBlockCount: (updatedProvider.calendarConnection.externalBlocks ?? []).filter(
         (block) => block.source === "calendar-import"
-      ).length
+      ).length,
+      syncHealth: this.buildProviderCalendarSyncHealth(updatedProvider, bookings)
     };
   }
 
@@ -4129,13 +4753,15 @@ export class MarketplacePlatformService {
     if (!updatedProvider) {
       throw new HttpError(500, "Calendar import could not be removed");
     }
+    const bookings = await this.listFutureProviderCalendarConflictBookings(updatedProvider.id);
 
     return {
       providerId,
       subscriptions: updatedProvider.calendarConnection.externalSubscriptions ?? [],
       importedBlockCount: (updatedProvider.calendarConnection.externalBlocks ?? []).filter(
         (block) => block.source === "calendar-import"
-      ).length
+      ).length,
+      syncHealth: this.buildProviderCalendarSyncHealth(updatedProvider, bookings)
     };
   }
 
@@ -4223,6 +4849,7 @@ export class MarketplacePlatformService {
       totalEvents: events.length,
       yardmatchJobCount: bookings.length,
       externalBlockCount: externalBlocks.length,
+      syncHealth: this.buildProviderCalendarSyncHealth(provider, bookings, externalBlocks),
       dispatchDays,
       events
     };
@@ -4255,56 +4882,199 @@ export class MarketplacePlatformService {
     );
   }
 
-  private async syncExternalCalendarSubscription(
+  private buildProviderCalendarSyncHealth(
     provider: ProviderProfile,
-    subscription: ExternalCalendarSubscription,
+    bookings: Array<{ scheduledStartIso: string; scheduledEndIso: string }> = [],
+    activeExternalBlocks = this.getActiveExternalCalendarBlocks(provider)
+  ): ProviderCalendarSyncHealth {
+    const subscriptions = provider.calendarConnection.externalSubscriptions ?? [];
+    const now = Date.now();
+    const allExternalBlocks = provider.calendarConnection.externalBlocks ?? [];
+    const manualBlockCount = allExternalBlocks.filter((block) => block.source === "manual").length;
+    const importedBlocks = allExternalBlocks.filter((block) => block.source === "calendar-import");
+    const importedBlockCount = importedBlocks.length;
+    const upcomingExternalBlocks = allExternalBlocks.filter(
+      (block) => Date.parse(block.endIso) > now
+    );
+    const conflictingYardmatchJobCount = bookings.filter((booking) =>
+      allExternalBlocks.some((block) =>
+        this.doIntervalsOverlap(block.startIso, block.endIso, booking.scheduledStartIso, booking.scheduledEndIso)
+      )
+    ).length;
+    const staleSubscriptions = subscriptions.filter((subscription) => {
+      if (!subscription.lastSyncedAt) {
+        return true;
+      }
+
+      return now - Date.parse(subscription.lastSyncedAt) > 24 * 60 * 60 * 1000;
+    });
+    const erroredSubscriptions = subscriptions.filter((subscription) => subscription.syncStatus === "error");
+
+    const notes: string[] = [];
+    const externalBlockingEnabled = provider.calendarConnection.externalEventsBlockingEnabled ?? false;
+
+    if (subscriptions.length === 0) {
+      notes.push("No outside calendar feeds are connected yet.");
+    }
+
+    if (!externalBlockingEnabled && upcomingExternalBlocks.length > 0) {
+      notes.push("Outside blocks are saved, but they are not reducing YardMatch availability yet.");
+    }
+
+    if (conflictingYardmatchJobCount > 0) {
+      notes.push(
+        `${conflictingYardmatchJobCount} YardMatch job${conflictingYardmatchJobCount === 1 ? " overlaps" : "s overlap"} an outside calendar block and needs ops or provider review.`
+      );
+    }
+
+    if (erroredSubscriptions.length > 0) {
+      notes.push(
+        `${erroredSubscriptions.length} calendar feed${erroredSubscriptions.length === 1 ? " is" : "s are"} currently failing to sync.`
+      );
+    }
+
+    if (staleSubscriptions.length > 0) {
+      notes.push(
+        `${staleSubscriptions.length} calendar feed${staleSubscriptions.length === 1 ? " has" : "s have"} not synced in the last 24 hours.`
+      );
+    }
+
+    if (externalBlockingEnabled && importedBlockCount > 0 && activeExternalBlocks.length === 0) {
+      notes.push("Imported outside calendars exist, but there are no active blocks in the current schedule window.");
+    }
+
+    if (notes.length === 0) {
+      notes.push("Outside calendars are synced and availability protection looks healthy.");
+    }
+
+    const status: ProviderCalendarSyncHealth["status"] =
+      erroredSubscriptions.length > 0 ||
+      (!externalBlockingEnabled && upcomingExternalBlocks.length > 0) ||
+      conflictingYardmatchJobCount > 0
+        ? "at-risk"
+        : staleSubscriptions.length > 0
+          ? "attention"
+          : "healthy";
+
+    return {
+      status,
+      externalBlockingEnabled,
+      subscriptionCount: subscriptions.length,
+      activeSubscriptionCount: subscriptions.filter((subscription) => subscription.syncStatus === "active").length,
+      erroredSubscriptionCount: erroredSubscriptions.length,
+      staleSubscriptionCount: staleSubscriptions.length,
+      importedBlockCount,
+      manualBlockCount,
+      upcomingExternalBlockCount: upcomingExternalBlocks.length,
+      conflictingYardmatchJobCount,
+      nextExternalBlockStartIso: upcomingExternalBlocks
+        .sort((left, right) => left.startIso.localeCompare(right.startIso))[0]?.startIso,
+      notes
+    };
+  }
+
+  private async listFutureProviderCalendarConflictBookings(providerId: string) {
+    return (await this.repository.listBookings()).filter(
+      (booking) =>
+        booking.providerId === providerId &&
+        booking.status !== "cancelled" &&
+        booking.status !== "completed" &&
+        booking.status !== "refunded" &&
+        Date.parse(booking.scheduledEndIso) > Date.now()
+    );
+  }
+
+  private async persistExternalCalendarSubscriptionError(
+    provider: ProviderProfile,
+    subscriptionId: string,
+    errorMessage: string,
     allSubscriptions: ExternalCalendarSubscription[]
   ): Promise<ProviderProfile> {
-    const icsBody = await this.fetchExternalCalendarFeed(subscription.feedUrl);
-    const importedBlocks = this.parseExternalCalendarFeed({
-      icsBody,
-      subscriptionId: subscription.id,
-      title: subscription.title
-    });
-    const manualBlocks = (provider.calendarConnection.externalBlocks ?? []).filter(
-      (block) => block.source !== "calendar-import" && block.subscriptionId !== subscription.id
-    );
-    const nextBlocks = this.normalizeExternalCalendarBlocks([...manualBlocks, ...importedBlocks]);
     const nextSubscriptions = allSubscriptions.map((item) =>
-      item.id === subscription.id
+      item.id === subscriptionId
         ? {
             ...item,
-            importedEventCount: importedBlocks.length,
             lastSyncedAt: new Date().toISOString(),
-            syncStatus: "active" as const,
-            lastError: undefined
+            syncStatus: "error" as const,
+            lastError: errorMessage
           }
         : item
     );
 
-    await this.ensureExternalCalendarBlocksDoNotConflict({
-      ...provider,
-      calendarConnection: {
-        ...provider.calendarConnection,
-        externalBlocks: nextBlocks,
-        externalSubscriptions: nextSubscriptions
-      }
-    });
-
     const updatedProvider = await this.repository.updateProvider(provider.id, {
       calendarConnection: {
         ...provider.calendarConnection,
-        externalBlocks: nextBlocks,
         externalSubscriptions: nextSubscriptions,
         lastSyncedAt: new Date().toISOString()
       }
     });
 
     if (!updatedProvider) {
-      throw new HttpError(500, "Calendar import could not be synced");
+      throw new HttpError(500, "Calendar import error state could not be saved");
     }
 
     return updatedProvider;
+  }
+
+  private async syncExternalCalendarSubscription(
+    provider: ProviderProfile,
+    subscription: ExternalCalendarSubscription,
+    allSubscriptions: ExternalCalendarSubscription[]
+  ): Promise<ProviderProfile> {
+    try {
+      const icsBody = await this.fetchExternalCalendarFeed(subscription.feedUrl);
+      const importedBlocks = this.parseExternalCalendarFeed({
+        icsBody,
+        subscriptionId: subscription.id,
+        title: subscription.title
+      });
+      const manualBlocks = (provider.calendarConnection.externalBlocks ?? []).filter(
+        (block) => block.source !== "calendar-import" && block.subscriptionId !== subscription.id
+      );
+      const nextBlocks = this.normalizeExternalCalendarBlocks([...manualBlocks, ...importedBlocks]);
+      const nextSubscriptions = allSubscriptions.map((item) =>
+        item.id === subscription.id
+          ? {
+              ...item,
+              importedEventCount: importedBlocks.length,
+              lastSyncedAt: new Date().toISOString(),
+              syncStatus: "active" as const,
+              lastError: undefined
+            }
+          : item
+      );
+
+      await this.ensureExternalCalendarBlocksDoNotConflict({
+        ...provider,
+        calendarConnection: {
+          ...provider.calendarConnection,
+          externalBlocks: nextBlocks,
+          externalSubscriptions: nextSubscriptions
+        }
+      });
+
+      const updatedProvider = await this.repository.updateProvider(provider.id, {
+        calendarConnection: {
+          ...provider.calendarConnection,
+          externalBlocks: nextBlocks,
+          externalSubscriptions: nextSubscriptions,
+          lastSyncedAt: new Date().toISOString()
+        }
+      });
+
+      if (!updatedProvider) {
+        throw new HttpError(500, "Calendar import could not be synced");
+      }
+
+      return updatedProvider;
+    } catch (error) {
+      return this.persistExternalCalendarSubscriptionError(
+        provider,
+        subscription.id,
+        error instanceof Error ? error.message : "Calendar import could not be synced",
+        allSubscriptions
+      );
+    }
   }
 
   private async fetchExternalCalendarFeed(feedUrl: string): Promise<string> {
@@ -4494,6 +5264,37 @@ export class MarketplacePlatformService {
     }
   }
 
+  private async assertProviderRescheduleWindowIsAvailable(
+    providerId: string,
+    bookingId: string,
+    scheduledStartIso: string,
+    scheduledEndIso: string
+  ): Promise<void> {
+    await this.assertProviderWindowIsAvailable(providerId, scheduledStartIso, scheduledEndIso);
+
+    const overlappingBooking = (await this.repository.listBookings()).find(
+      (booking) =>
+        booking.providerId === providerId &&
+        booking.id !== bookingId &&
+        booking.status !== "cancelled" &&
+        booking.status !== "refunded" &&
+        booking.status !== "completed" &&
+        this.doIntervalsOverlap(
+          booking.scheduledStartIso,
+          booking.scheduledEndIso,
+          scheduledStartIso,
+          scheduledEndIso
+        )
+    );
+
+    if (overlappingBooking) {
+      throw new HttpError(
+        409,
+        "That provider window overlaps another YardMatch job. Pick a different service window."
+      );
+    }
+  }
+
   private async assertProviderWindowIsAvailable(
     providerId: string,
     scheduledStartIso: string,
@@ -4531,6 +5332,119 @@ export class MarketplacePlatformService {
       new Date(leftStartIso).getTime() < new Date(rightEndIso).getTime() &&
       new Date(rightStartIso).getTime() < new Date(leftEndIso).getTime()
     );
+  }
+
+  private parseProviderAssistantCommand(command: string): {
+    understood: boolean;
+    sourceWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
+    targetWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
+    notifyCustomer: boolean;
+  } {
+    const normalized = command.trim().toLowerCase();
+    const notifyCustomer =
+      /notify|notification|message|tell/.test(normalized) &&
+      /customer|property owner|homeowner|client/.test(normalized);
+    const targetBoundary = normalized.match(/\b(?:to|into)\b/);
+    const beforeTarget = targetBoundary ? normalized.slice(0, targetBoundary.index).trim() : normalized;
+    const afterTarget = targetBoundary
+      ? normalized.slice((targetBoundary.index ?? 0) + targetBoundary[0].length).trim()
+      : "";
+
+    const targetWindowKey = this.parseProviderAssistantWindowFromCommand(afterTarget, true);
+    const sourceWindowKey = this.parseProviderAssistantWindowFromCommand(beforeTarget, true);
+
+    return {
+      understood: Boolean(targetWindowKey && /change|move|shift|resched/.test(normalized)),
+      sourceWindowKey,
+      targetWindowKey,
+      notifyCustomer
+    };
+  }
+
+  private parseProviderAssistantWindowFromCommand(
+    text: string,
+    targetOnly = false
+  ): "morning" | "afternoon" | "late-afternoon-night" | undefined {
+    if (/late afternoon|evening|night/.test(text)) {
+      return "late-afternoon-night";
+    }
+
+    if (/afternoon/.test(text)) {
+      return "afternoon";
+    }
+
+    if (/morning/.test(text)) {
+      return "morning";
+    }
+
+    return targetOnly ? undefined : undefined;
+  }
+
+  private async listProviderAssistantCandidates(providerId: string) {
+    const [bookings, customers] = await Promise.all([
+      this.repository.listBookings(),
+      this.repository.listCustomers()
+    ]);
+    const customerById = new Map(customers.map((customer) => [customer.id, customer]));
+
+    return bookings
+      .filter(
+        (booking) =>
+          booking.providerId === providerId &&
+          booking.status !== "cancelled" &&
+          booking.status !== "completed" &&
+          booking.status !== "refunded" &&
+          Date.parse(booking.scheduledStartIso) > Date.now()
+      )
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
+      .map((booking) => ({
+        ...booking,
+        customerName: customerById.get(booking.customerId)?.fullName ?? "Customer"
+      }));
+  }
+
+  private toProviderAssistantBookingCandidate(booking: Booking & { customerName?: string }): ProviderAssistantBookingCandidate {
+    const window = getBookingServiceWindow(booking.scheduledStartIso);
+    return {
+      bookingId: booking.id,
+      customerName: booking.customerName ?? "Customer",
+      scheduledStartIso: booking.scheduledStartIso,
+      scheduledEndIso: booking.scheduledEndIso,
+      currentWindowKey: window.key,
+      currentWindowLabel: window.label,
+      addressLine: this.formatAddressLine(booking.serviceAddress)
+    };
+  }
+
+  private buildProviderAssistantTargetWindow(
+    booking: Booking,
+    targetWindowKey: "morning" | "afternoon" | "late-afternoon-night"
+  ) {
+    const durationMs =
+      new Date(booking.scheduledEndIso).getTime() - new Date(booking.scheduledStartIso).getTime();
+    const start = new Date(booking.scheduledStartIso);
+
+    if (targetWindowKey === "morning") {
+      start.setHours(8, 0, 0, 0);
+    } else if (targetWindowKey === "afternoon") {
+      start.setHours(13, 0, 0, 0);
+    } else {
+      start.setHours(17, 0, 0, 0);
+    }
+
+    if (start.getTime() <= Date.now()) {
+      start.setDate(start.getDate() + 1);
+    }
+
+    const end = new Date(start.getTime() + durationMs);
+    return {
+      startIso: start.toISOString(),
+      endIso: end.toISOString()
+    };
+  }
+
+  private providerAssistantWindowLabel(windowKey: "morning" | "afternoon" | "late-afternoon-night"): string {
+    return windowKey === "late-afternoon-night" ? "Late afternoon / evening" : this.toTitleCase(windowKey);
   }
 
   public async getUserByIdentity(
@@ -4582,10 +5496,11 @@ export class MarketplacePlatformService {
   ): Promise<ProviderStaffingJobSummary[]> {
     await this.reconcileCrewMatches(provider.id);
 
-    const [bookings, customers, matches] = await Promise.all([
+    const [bookings, customers, matches, crewMembers] = await Promise.all([
       this.repository.listBookings(),
       this.repository.listCustomers(),
-      this.repository.listCrewMatches()
+      this.repository.listCrewMatches(),
+      this.repository.listCrewMembers()
     ]);
 
     return bookings
@@ -4605,6 +5520,35 @@ export class MarketplacePlatformService {
         );
         const bookingMatches = matches.filter((match) => match.bookingId === booking.id);
         const assignedCrewMembers = bookingMatches.filter((match) => match.status === "accepted").length;
+        const matchesWithRecommendations = bookingMatches
+          .map((match) => {
+            const crewMember = crewMembers.find((item) => item.id === match.crewMemberId);
+            if (!crewMember) {
+              return match;
+            }
+
+            const recommendation = this.buildCrewMatchRecommendation({
+              crewMember,
+              booking,
+              provider,
+              allBookings: bookings,
+              allMatches: matches
+            });
+
+            return {
+              ...match,
+              recommendationScore: recommendation.score,
+              recommendationLabel: recommendation.label,
+              recommendationReasons: recommendation.reasons
+            };
+          })
+          .sort((left, right) => {
+            const scoreDelta = (right.recommendationScore ?? 0) - (left.recommendationScore ?? 0);
+            if (scoreDelta !== 0) {
+              return scoreDelta;
+            }
+            return left.distanceMiles - right.distanceMiles;
+          });
 
         return {
           bookingId: booking.id,
@@ -4631,7 +5575,7 @@ export class MarketplacePlatformService {
           requiredCrewMembers,
           assignedCrewMembers,
           crewGap: Math.max(requiredCrewMembers - assignedCrewMembers, 0),
-          matches: bookingMatches
+          matches: matchesWithRecommendations
         };
       })
       .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
@@ -4649,6 +5593,7 @@ export class MarketplacePlatformService {
     const targetProviders = providerId
       ? providers.filter((provider) => provider.id === providerId)
       : providers;
+    const crewDayLoadMap = this.buildCrewDayLoadMap(matches, bookings);
 
     for (const provider of targetProviders) {
       const providerBookings = bookings.filter(
@@ -4671,20 +5616,40 @@ export class MarketplacePlatformService {
         }
 
         const candidatePool = crewMembers
-          .filter((crewMember) => this.isCrewMemberEligibleForBooking(crewMember, booking))
-          .sort(
-            (left, right) =>
-              this.geoService.distanceMiles(left.address, booking.serviceAddress) -
-              this.geoService.distanceMiles(right.address, booking.serviceAddress)
-          );
+          .filter((crewMember) =>
+            this.isCrewMemberEligibleForBooking(crewMember, booking, matches, bookings, crewDayLoadMap)
+          )
+          .map((crewMember) => ({
+            crewMember,
+            recommendation: this.buildCrewMatchRecommendation({
+              crewMember,
+              booking,
+              provider,
+              allBookings: bookings,
+              allMatches: matches,
+              dayLoadCount:
+                crewDayLoadMap.get(this.getCrewDayLoadKey(crewMember.id, booking.scheduledStartIso)) ?? 0
+            })
+          }))
+          .sort((left, right) => {
+            const scoreDelta = right.recommendation.score - left.recommendation.score;
+            if (scoreDelta !== 0) {
+              return scoreDelta;
+            }
+
+            return (
+              this.geoService.distanceMiles(left.crewMember.address, booking.serviceAddress) -
+              this.geoService.distanceMiles(right.crewMember.address, booking.serviceAddress)
+            );
+          });
 
         const gap = requiredCrewMembers - acceptedMatches.length;
         const existingIds = new Set(bookingMatches.map((match) => match.crewMemberId));
         const nextCandidates = candidatePool
-          .filter((crewMember) => !existingIds.has(crewMember.id))
+          .filter(({ crewMember }) => !existingIds.has(crewMember.id))
           .slice(0, provider.staffingMode === "auto-accept" ? gap : Math.max(3, gap));
 
-        for (const crewMember of nextCandidates) {
+        for (const { crewMember } of nextCandidates) {
           const distanceMiles = Number(
             this.geoService.distanceMiles(crewMember.address, booking.serviceAddress).toFixed(1)
           );
@@ -4709,6 +5674,8 @@ export class MarketplacePlatformService {
             createdAt: new Date().toISOString(),
             reviewedAt: provider.staffingMode === "auto-accept" ? new Date().toISOString() : undefined
           });
+          const crewDayLoadKey = this.getCrewDayLoadKey(crewMember.id, booking.scheduledStartIso);
+          crewDayLoadMap.set(crewDayLoadKey, (crewDayLoadMap.get(crewDayLoadKey) ?? 0) + 1);
 
           await this.createNotification({
             recipientId: crewMember.id,
@@ -4752,7 +5719,13 @@ export class MarketplacePlatformService {
     });
   }
 
-  private isCrewMemberEligibleForBooking(crewMember: CrewMemberProfile, booking: Booking): boolean {
+  private isCrewMemberEligibleForBooking(
+    crewMember: CrewMemberProfile,
+    booking: Booking,
+    allMatches: CrewMatchCandidate[],
+    allBookings: Booking[],
+    crewDayLoadMap?: Map<string, number>
+  ): boolean {
     if (!crewMember.categories.includes(booking.category)) {
       return false;
     }
@@ -4776,7 +5749,196 @@ export class MarketplacePlatformService {
       return false;
     }
 
+    const acceptedBookedJobs = this.getAcceptedCrewBookings(crewMember.id, allMatches, allBookings);
+    const hasConflictingAcceptedJob = acceptedBookedJobs.some(
+      (acceptedBooking) =>
+        acceptedBooking.id !== booking.id &&
+        this.doIntervalsOverlap(
+          acceptedBooking.scheduledStartIso,
+          acceptedBooking.scheduledEndIso,
+          booking.scheduledStartIso,
+          booking.scheduledEndIso
+        )
+    );
+
+    if (hasConflictingAcceptedJob) {
+      return false;
+    }
+
     return crewMember.status !== "off-duty";
+  }
+
+  private buildCrewMatchRecommendation(input: {
+    crewMember: CrewMemberProfile;
+    booking: Booking;
+    provider: ProviderProfile;
+    allBookings: Booking[];
+    allMatches: CrewMatchCandidate[];
+    dayLoadCount?: number;
+  }): {
+    score: number;
+    label: "best-fit" | "good-fit" | "backup";
+    reasons: string[];
+  } {
+    const { crewMember, booking, provider, allBookings, allMatches } = input;
+    const distanceMiles = this.geoService.distanceMiles(crewMember.address, booking.serviceAddress);
+    const acceptedCrewBookings = this.getAcceptedCrewBookings(crewMember.id, allMatches, allBookings);
+    const sameDayAcceptedBookings = acceptedCrewBookings.filter(
+      (candidate) =>
+        this.localDateKey(candidate.scheduledStartIso) === this.localDateKey(booking.scheduledStartIso) &&
+        candidate.id !== booking.id
+    );
+    const sameDayLoadCount =
+      input.dayLoadCount ??
+      this.getCrewSameDayLoadCount(crewMember.id, booking.scheduledStartIso, allMatches, allBookings);
+    const priorProviderAssignments = acceptedCrewBookings.filter(
+      (candidate) => candidate.providerId === provider.id && candidate.id !== booking.id
+    ).length;
+    const reliabilityPenalty = Math.min((crewMember.cancellationCount ?? 0) * 4, 12);
+    const scoreParts = {
+      distance: Math.round(Math.max(0, 1 - distanceMiles / Math.max(crewMember.willingToTravelMiles, 1)) * 28),
+      schedulePreference: this.getSchedulePreferenceScore(crewMember.preferredSchedule),
+      reliability: Math.max(
+        0,
+        Math.round((crewMember.rating / 5) * 12 + (Math.min(crewMember.completedJobs, 150) / 150) * 10) -
+          reliabilityPenalty
+      ),
+      providerFamiliarity:
+        crewMember.assignedProviderId === provider.id ? 12 : Math.min(priorProviderAssignments * 4, 10),
+      workload:
+        sameDayLoadCount === 0 ? 14 : sameDayLoadCount === 1 ? 9 : sameDayLoadCount === 2 ? 3 : -16,
+      equipment:
+        this.categoryBenefitsFromEquipmentOwnership(booking.category) && crewMember.hasOwnEquipment ? 8 : 0
+    };
+
+    const score = Math.max(
+      0,
+      scoreParts.distance +
+        scoreParts.schedulePreference +
+        scoreParts.reliability +
+        scoreParts.providerFamiliarity +
+        scoreParts.workload +
+        scoreParts.equipment
+    );
+
+    const reasons: string[] = [];
+    if ((crewMember.cancellationCount ?? 0) > 0) {
+      reasons.push("Recent call-offs lower future match priority");
+    }
+    if (scoreParts.schedulePreference >= 14) {
+      reasons.push("Has strong availability capacity for new jobs");
+    }
+    if (distanceMiles <= 5) {
+      reasons.push("Very close to the property");
+    }
+    if (scoreParts.providerFamiliarity >= 8) {
+      reasons.push("Already familiar with this business");
+    }
+    if (sameDayLoadCount === 0) {
+      reasons.push("Open capacity on this day");
+    } else if (sameDayLoadCount === 1) {
+      reasons.push("Can still fit this route into the same day");
+    } else if (sameDayLoadCount === 2) {
+      reasons.push("Already carrying a fuller day than other crew");
+    } else if (sameDayLoadCount >= 3) {
+      reasons.push("Heavy same-day load, keep as a fallback only");
+    }
+    if (scoreParts.equipment > 0) {
+      reasons.push("Brings equipment that helps on this job");
+    }
+    if (crewMember.rating >= 4.8 && crewMember.completedJobs >= 25) {
+      reasons.push("Strong reliability history");
+    }
+    if (reasons.length === 0) {
+      reasons.push("Matches the service and area");
+    }
+
+    return {
+      score,
+      label: score >= 60 ? "best-fit" : score >= 42 ? "good-fit" : "backup",
+      reasons: reasons.slice(0, 3)
+    };
+  }
+
+  private getAcceptedCrewBookings(
+    crewMemberId: string,
+    allMatches: CrewMatchCandidate[],
+    allBookings: Booking[]
+  ): Booking[] {
+    const acceptedBookingIds = new Set(
+      allMatches
+        .filter((match) => match.crewMemberId === crewMemberId && match.status === "accepted")
+        .map((match) => match.bookingId)
+    );
+
+    return allBookings.filter((booking) => acceptedBookingIds.has(booking.id));
+  }
+
+  private getCrewSameDayLoadCount(
+    crewMemberId: string,
+    scheduledStartIso: string,
+    allMatches: CrewMatchCandidate[],
+    allBookings: Booking[]
+  ): number {
+    const dayKey = this.localDateKey(scheduledStartIso);
+    const bookingIds = new Set(
+      allMatches
+        .filter(
+          (match) =>
+            match.crewMemberId === crewMemberId &&
+            (match.status === "accepted" || match.status === "pending-provider-review")
+        )
+        .map((match) => match.bookingId)
+    );
+
+    return allBookings.filter(
+      (booking) => bookingIds.has(booking.id) && this.localDateKey(booking.scheduledStartIso) === dayKey
+    ).length;
+  }
+
+  private buildCrewDayLoadMap(allMatches: CrewMatchCandidate[], allBookings: Booking[]): Map<string, number> {
+    const loadMap = new Map<string, number>();
+    for (const match of allMatches) {
+      if (match.status !== "accepted" && match.status !== "pending-provider-review") {
+        continue;
+      }
+
+      const booking = allBookings.find((item) => item.id === match.bookingId);
+      if (!booking) {
+        continue;
+      }
+
+      const key = this.getCrewDayLoadKey(match.crewMemberId, booking.scheduledStartIso);
+      loadMap.set(key, (loadMap.get(key) ?? 0) + 1);
+    }
+
+    return loadMap;
+  }
+
+  private getCrewDayLoadKey(crewMemberId: string, scheduledStartIso: string): string {
+    return `${crewMemberId}:${this.localDateKey(scheduledStartIso)}`;
+  }
+
+  private getSchedulePreferenceScore(preference: CrewMemberSchedulePreference): number {
+    switch (preference) {
+      case "full-time":
+        return 16;
+      case "flex":
+        return 12;
+      case "part-time":
+        return 8;
+      case "seasonal":
+        return 5;
+    }
+  }
+
+  private categoryBenefitsFromEquipmentOwnership(category: Booking["category"]): boolean {
+    return (
+      category === "mulch-installation" ||
+      category === "gutter-cleaning" ||
+      category === "snow-blowing" ||
+      category === "leaf-blowing"
+    );
   }
 
   private estimateRequiredCrewMembers(booking: Booking, property?: CustomerProperty): number {
@@ -5019,6 +6181,144 @@ export class MarketplacePlatformService {
     return new Date(new Date(iso).getTime() + days * 24 * 60 * 60 * 1000).toISOString();
   }
 
+  private async buildRecurringServicePlanSummary(planId: string): Promise<RecurringServicePlanSummary> {
+    const plan = await this.repository.findRecurringServicePlanById(planId);
+    if (!plan) {
+      throw new HttpError(404, "Recurring plan not found");
+    }
+
+    const [provider, allBookings] = await Promise.all([
+      this.repository.findProviderById(plan.providerId),
+      this.repository.listBookings()
+    ]);
+
+    const planBookings = allBookings
+      .filter((booking) => booking.recurringPlanId === plan.id)
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
+
+    const upcomingBooking = planBookings.find(
+      (booking) =>
+        booking.status !== "cancelled" &&
+        booking.status !== "completed" &&
+        booking.status !== "refunded"
+    );
+
+    return {
+      plan,
+      providerName: provider?.companyName ?? "Landscaping business",
+      upcomingBooking,
+      completedOccurrenceCount: planBookings.filter((booking) => booking.status === "completed").length,
+      activeOccurrenceCount: planBookings.filter((booking) =>
+        booking.status === "requested" ||
+        booking.status === "confirmed" ||
+        booking.status === "in-progress" ||
+        booking.status === "disputed"
+      ).length
+    };
+  }
+
+  private async scheduleNextRecurringBookingIfNeeded(completedBooking: Booking): Promise<void> {
+    if (!completedBooking.recurringPlanId) {
+      return;
+    }
+
+    const plan = await this.repository.findRecurringServicePlanById(completedBooking.recurringPlanId);
+    if (!plan || plan.status !== "active") {
+      return;
+    }
+
+    const allBookings = await this.repository.listBookings();
+    const hasUpcomingRecurringBooking = allBookings.some(
+      (booking) =>
+        booking.recurringPlanId === plan.id &&
+        booking.id !== completedBooking.id &&
+        booking.status !== "cancelled" &&
+        booking.status !== "completed" &&
+        booking.status !== "refunded"
+    );
+
+    if (hasUpcomingRecurringBooking) {
+      return;
+    }
+
+    const nextStartIso = this.shiftRecurringIso(completedBooking.scheduledStartIso, plan.frequency);
+    const nextEndIso = this.shiftRecurringIso(completedBooking.scheduledEndIso, plan.frequency);
+    const attemptAt = new Date().toISOString();
+
+    try {
+      const nextBooking = await this.createBookingRecord(
+        plan.customerId,
+        {
+          providerId: plan.providerId,
+          serviceAddress: plan.serviceAddress,
+          servicePropertyId: plan.servicePropertyId,
+          category: plan.category,
+          scheduledStartIso: nextStartIso,
+          scheduledEndIso: nextEndIso,
+          notes: plan.notes,
+          totalCents: plan.totalCents
+        },
+        {
+          recurringPlanId: plan.id,
+          recurringOccurrenceIndex: (completedBooking.recurringOccurrenceIndex ?? 1) + 1,
+          providerNotificationTitle: "Next recurring visit requested",
+          providerNotificationBody: `The next ${this.describeRecurringFrequency(plan.frequency)} ${this.titleCaseCategory(
+            plan.category
+          ).toLowerCase()} visit was queued for ${this.formatBookingWindowWithDate(nextStartIso)}.`,
+          skipProviderAvailabilityCheck: true,
+          skipRequestedFunnelEvent: true
+        }
+      );
+
+      await this.repository.updateRecurringServicePlan(plan.id, {
+        lastGeneratedBookingId: nextBooking.id,
+        lastGeneratedAt: nextBooking.requestedAt,
+        lastSchedulingAttemptAt: attemptAt,
+        lastSchedulingError: undefined
+      });
+
+      await this.createNotification({
+        recipientId: plan.customerId,
+        recipientRole: "customer",
+        category: "booking",
+        title: "Next recurring visit scheduled",
+        body: `Your next ${this.describeRecurringFrequency(plan.frequency)} ${this.titleCaseCategory(
+          plan.category
+        ).toLowerCase()} visit was queued for ${this.formatBookingWindowWithDate(nextStartIso)}.`,
+        actionHref: "/customer/dashboard"
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "We could not queue the next recurring visit automatically.";
+
+      await this.repository.updateRecurringServicePlan(plan.id, {
+        lastSchedulingAttemptAt: attemptAt,
+        lastSchedulingError: message
+      });
+
+      await this.createNotification({
+        recipientId: plan.customerId,
+        recipientRole: "customer",
+        category: "booking",
+        title: "Recurring plan needs review",
+        body: `We could not automatically queue the next ${this.describeRecurringFrequency(
+          plan.frequency
+        )} visit. ${message}`,
+        actionHref: "/customer/dashboard"
+      });
+    }
+  }
+
+  private shiftRecurringIso(iso: string, frequency: RecurringServicePlan["frequency"]): string {
+    return this.addDays(iso, frequency === "biweekly" ? 14 : 7);
+  }
+
+  private describeRecurringFrequency(frequency: RecurringServicePlan["frequency"]): string {
+    return frequency === "biweekly" ? "every 2 weeks" : "every week";
+  }
+
   private titleCaseCategory(category: Booking["category"]): string {
     return category
       .split("-")
@@ -5028,6 +6328,25 @@ export class MarketplacePlatformService {
 
   private countBookingEvidence(booking: Booking, phase: BookingEvidencePhoto["phase"]): number {
     return booking.serviceEvidence.filter((photo) => photo.phase === phase).length;
+  }
+
+  private localDateKey(iso: string): string {
+    const date = new Date(iso);
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  private getServiceWindowKey(iso: string): "morning" | "afternoon" | "late-afternoon-night" {
+    const hour = new Date(iso).getHours();
+    if (hour < 12) {
+      return "morning";
+    }
+    if (hour < 16) {
+      return "afternoon";
+    }
+    return "late-afternoon-night";
   }
 
   private buildSearchProviderRanking(
@@ -5499,14 +6818,22 @@ export class MarketplacePlatformService {
       return;
     }
 
-    await this.ensureProviderDepartureReminders(identity.userId);
+    await Promise.all([
+      this.ensureProviderDepartureReminders(identity.userId),
+      this.ensureProviderStaffingReviewReminders(identity.userId)
+    ]);
   }
 
   private async ensureProviderDepartureReminders(providerId: string): Promise<void> {
-    const [bookings, notifications] = await Promise.all([
+    const [provider, bookings, notifications] = await Promise.all([
+      this.repository.findProviderById(providerId),
       this.repository.listBookings(),
       this.repository.listNotificationsByRecipient(providerId)
     ]);
+
+    if (!provider) {
+      return;
+    }
 
     const now = Date.now();
     const existingReminderActions = new Set(
@@ -5527,7 +6854,7 @@ export class MarketplacePlatformService {
         .map(async (booking) => {
           const scheduledStart = new Date(booking.scheduledStartIso).getTime();
           const minutesUntilStart = Math.round((scheduledStart - now) / (1000 * 60));
-          if (minutesUntilStart < 0 || minutesUntilStart > 60) {
+          if (minutesUntilStart < 0 || minutesUntilStart > provider.departureReminderLeadMinutes) {
             return;
           }
 
@@ -5548,6 +6875,73 @@ export class MarketplacePlatformService {
             category: "booking",
             title: "Time to head out soon",
             body: `${leadText} ${booking.serviceAddress.line1} • ${this.formatBookingWindowWithDate(booking.scheduledStartIso)}`,
+            actionHref
+          });
+        })
+    );
+  }
+
+  private async ensureProviderStaffingReviewReminders(providerId: string): Promise<void> {
+    const [provider, bookings, notifications, matches, customers] = await Promise.all([
+      this.repository.findProviderById(providerId),
+      this.repository.listBookings(),
+      this.repository.listNotificationsByRecipient(providerId),
+      this.repository.listCrewMatches(),
+      this.repository.listCustomers()
+    ]);
+
+    if (!provider || provider.staffingMode !== "review-first") {
+      return;
+    }
+
+    const now = Date.now();
+    const existingReminderActions = new Set(
+      notifications
+        .filter((notification) => notification.recipientRole === "provider")
+        .map((notification) => notification.actionHref)
+        .filter((actionHref): actionHref is string => Boolean(actionHref))
+    );
+
+    await Promise.all(
+      bookings
+        .filter(
+          (booking) =>
+            booking.providerId === providerId &&
+            (booking.status === "requested" || booking.status === "confirmed") &&
+            !booking.onRouteConfirmedAt
+        )
+        .map(async (booking) => {
+          const scheduledStart = new Date(booking.scheduledStartIso).getTime();
+          const hoursUntilStart = (scheduledStart - now) / (1000 * 60 * 60);
+          if (hoursUntilStart < 0 || hoursUntilStart > provider.crewReviewLeadHours) {
+            return;
+          }
+
+          const actionHref = `/provider/management?bookingId=${booking.id}&reminder=staffing`;
+          if (existingReminderActions.has(actionHref)) {
+            return;
+          }
+
+          const customer = customers.find((item) => item.id === booking.customerId);
+          const bookingMatches = matches.filter((match) => match.bookingId === booking.id);
+          const acceptedCount = bookingMatches.filter((match) => match.status === "accepted").length;
+          const pendingCount = bookingMatches.filter((match) => match.status === "pending-provider-review").length;
+          const requiredCrewMembers = this.estimateRequiredCrewMembers(
+            booking,
+            customer?.properties.find((property) => property.id === booking.servicePropertyId)
+          );
+          const crewGap = Math.max(requiredCrewMembers - acceptedCount, 0);
+
+          if (pendingCount === 0 || crewGap === 0) {
+            return;
+          }
+
+          await this.createNotification({
+            recipientId: providerId,
+            recipientRole: "provider",
+            category: "staffing",
+            title: "Review crew staffing soon",
+            body: `${pendingCount} pending crew match${pendingCount === 1 ? "" : "es"} still need review for ${customer?.fullName ?? "this customer"} • ${crewGap} open slot${crewGap === 1 ? "" : "s"} remaining.`,
             actionHref
           });
         })
@@ -5710,6 +7104,68 @@ export class MarketplacePlatformService {
     return new Date(
       Date.parse(booking.completedAt ?? booking.scheduledEndIso) + 48 * 60 * 60 * 1000
     ).toISOString();
+  }
+
+  private normalizeAddress(address: Address): Address {
+    const line1 = this.toTitleCase(this.normalizeAddressText(address.line1));
+    const line2 = this.toTitleCase(this.normalizeAddressText(address.line2));
+    const city = this.toTitleCase(this.normalizeAddressText(address.city));
+    const state = this.normalizeAddressText(address.state).toUpperCase();
+    const postalCode = this.normalizePostalCode(address.postalCode);
+    const country = this.normalizeAddressText(address.country).toUpperCase();
+
+    return {
+      ...address,
+      line1,
+      line2: line2 || undefined,
+      city,
+      state,
+      postalCode,
+      country
+    };
+  }
+
+  private buildNormalizedAddressSummary(original: Address, normalized: Address) {
+    const normalizedFields = (
+      [
+        ["line1", original.line1, normalized.line1],
+        ["line2", original.line2 ?? "", normalized.line2 ?? ""],
+        ["city", original.city, normalized.city],
+        ["state", original.state, normalized.state],
+        ["postalCode", original.postalCode, normalized.postalCode],
+        ["country", original.country, normalized.country]
+      ] as const
+    )
+      .filter(([, before, after]) => before !== after)
+      .map(([field]) => field);
+
+    return {
+      displayLabel: this.formatAddressLine(normalized),
+      wasNormalized: normalizedFields.length > 0,
+      normalizedFields
+    };
+  }
+
+  private normalizeAddressText(value: string | undefined): string {
+    return (value ?? "").trim().replace(/\s+/g, " ");
+  }
+
+  private normalizePostalCode(postalCode: string): string {
+    const compact = this.normalizeAddressText(postalCode).replace(/\s+/g, "");
+    const digits = compact.replace(/[^0-9]/g, "");
+    if (digits.length === 9) {
+      return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+    }
+
+    if (digits.length === 5) {
+      return digits;
+    }
+
+    return compact.toUpperCase();
+  }
+
+  private toTitleCase(value: string): string {
+    return value.replace(/\b([a-z])/gi, (segment) => segment.toUpperCase());
   }
 
   private formatAddressLine(address: Address): string {

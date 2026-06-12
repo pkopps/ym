@@ -16,6 +16,7 @@ import {
   NotificationPreferences,
   PaymentRecord,
   PushDevice,
+  RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
   ReviewInvite,
@@ -29,6 +30,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly crewMembers: CrewMemberProfile[] = [];
   private readonly slots: AvailabilitySlot[] = [];
   private readonly bookings: Booking[] = [];
+  private readonly recurringServicePlans: RecurringServicePlan[] = [];
   private readonly payments: PaymentRecord[] = [];
   private readonly providerReviews: ProviderReview[] = [];
   private readonly reviewInvites: ReviewInvite[] = [];
@@ -151,6 +153,33 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
     Object.assign(booking, updates);
     return booking;
+  }
+
+  public async createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan> {
+    this.recurringServicePlans.push(plan);
+    return plan;
+  }
+
+  public async listRecurringServicePlans(): Promise<RecurringServicePlan[]> {
+    return this.recurringServicePlans.map((plan) => ({ ...plan }));
+  }
+
+  public async findRecurringServicePlanById(planId: string): Promise<RecurringServicePlan | undefined> {
+    const plan = this.recurringServicePlans.find((item) => item.id === planId);
+    return plan ? { ...plan } : undefined;
+  }
+
+  public async updateRecurringServicePlan(
+    planId: string,
+    updates: Partial<RecurringServicePlan>
+  ): Promise<RecurringServicePlan | undefined> {
+    const plan = this.recurringServicePlans.find((item) => item.id === planId);
+    if (!plan) {
+      return undefined;
+    }
+
+    Object.assign(plan, updates);
+    return { ...plan };
   }
 
   public async createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate> {
@@ -565,6 +594,9 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         yearsExperience: 7,
         serviceRadiusMiles: 18,
         staffingMode: "review-first",
+        crewReviewLeadHours: 24,
+        departureReminderLeadMinutes: 60,
+        routeLeaderMode: "provider-only",
         verificationStatus: "verified",
         verificationSubmittedAt: new Date().toISOString(),
         verificationReviewedAt: new Date().toISOString(),
@@ -601,6 +633,9 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         yearsExperience: 12,
         serviceRadiusMiles: 24,
         staffingMode: "review-first",
+        crewReviewLeadHours: 24,
+        departureReminderLeadMinutes: 60,
+        routeLeaderMode: "provider-only",
         verificationStatus: "verified",
         verificationSubmittedAt: new Date().toISOString(),
         verificationReviewedAt: new Date().toISOString(),
@@ -637,6 +672,9 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         yearsExperience: 10,
         serviceRadiusMiles: 30,
         staffingMode: "review-first",
+        crewReviewLeadHours: 24,
+        departureReminderLeadMinutes: 60,
+        routeLeaderMode: "provider-only",
         verificationStatus: "verified",
         verificationSubmittedAt: new Date().toISOString(),
         verificationReviewedAt: new Date().toISOString(),

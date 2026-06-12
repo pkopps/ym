@@ -3,7 +3,11 @@ import {
   EstimateConfidenceTier,
   InstantQuoteRequest,
   InstantQuoteResponse,
+  NormalizedAddressSummary,
   PropertySlope,
+  PropertyMeasurementEstimateSources,
+  PropertyMeasurementSource,
+  QuoteConfidenceReason,
   QuoteFollowUpAnswer,
   QuoteFollowUpQuestion,
   ServiceCategory,
@@ -687,8 +691,13 @@ export class InstantQuoteEngine {
   public buildQuote(input: {
     request: InstantQuoteRequest;
     property?: CustomerProperty;
+    normalizedAddress?: NormalizedAddressSummary;
   }): InstantQuoteResponse {
-    const measurements = this.estimateMeasurements(input.request.address, input.property, input.request);
+    const { measurements, measurementSources } = this.estimateMeasurements(
+      input.request.address,
+      input.property,
+      input.request
+    );
     const confidenceScore = this.calculateConfidenceScore(input.property, input.request.followUpAnswers ?? []);
     const confidenceTier = this.toConfidenceTier(confidenceScore);
     const durationMinutes = this.estimateDurationMinutes(input.request.category, measurements);
@@ -698,18 +707,31 @@ export class InstantQuoteEngine {
       confidenceTier === "high"
         ? []
         : this.buildFollowUpQuestions(input.request.category, measurements, input.request.followUpAnswers ?? []);
+    const confidenceReasons = this.buildConfidenceReasons(
+      measurementSources,
+      input.property,
+      input.request.followUpAnswers ?? []
+    );
 
     return {
       address: input.request.address,
+      normalizedAddress:
+        input.normalizedAddress ?? {
+          displayLabel: this.formatAddressLabel(input.request.address),
+          wasNormalized: false,
+          normalizedFields: []
+        },
       category: input.request.category,
       source: input.property ? "hybrid-imagery-plus-confirmation" : "address-heuristic",
       confidenceScore,
       confidenceTier,
+      confidenceReasons,
       estimatedPriceCents,
       estimatedDurationMinutes: durationMinutes,
       estimatedCrewSize,
       estimateSummary: this.buildSummary(input.request.category, measurements, durationMinutes, confidenceTier),
       measurements,
+      measurementSources,
       followUpQuestions,
       quoteReadyForCheckout: followUpQuestions.length === 0
     };
@@ -719,17 +741,16 @@ export class InstantQuoteEngine {
     address: Address,
     property: CustomerProperty | undefined,
     request: InstantQuoteRequest
-  ): PropertyMeasurementEstimate {
+  ): {
+    measurements: PropertyMeasurementEstimate;
+    measurementSources: PropertyMeasurementEstimateSources;
+  } {
     const geocodeSignal = Math.abs(Math.round(address.point.latitude * 1000 + address.point.longitude * 1000));
     const baselineTurf = 2200 + (geocodeSignal % 4500);
-    const turfSqFt =
-      property?.lawnSizeSqFt ??
-      this.answerAsNumber(request.followUpAnswers, "turf_sq_ft") ??
-      baselineTurf;
-    const shrubBedSqFt =
-      property?.shrubBedSqFt ??
-      this.answerAsNumber(request.followUpAnswers, "shrub_sq_ft") ??
-      Math.round(turfSqFt * 0.18);
+    const turfAnswer = this.answerAsNumber(request.followUpAnswers, "turf_sq_ft");
+    const shrubAnswer = this.answerAsNumber(request.followUpAnswers, "shrub_sq_ft");
+    const turfSqFt = property?.lawnSizeSqFt ?? turfAnswer ?? baselineTurf;
+    const shrubBedSqFt = property?.shrubBedSqFt ?? shrubAnswer ?? Math.round(turfSqFt * 0.18);
     const drivewaySqFt =
       property?.drivewaySqFt ??
       Math.round(420 + (Math.abs(Math.round(address.point.longitude * 1000)) % 700));
@@ -738,12 +759,20 @@ export class InstantQuoteEngine {
       Math.round(24 + (Math.abs(Math.round(address.point.latitude * 1000)) % 60));
 
     return {
-      turfSqFt,
-      shrubBedSqFt,
-      drivewaySqFt,
-      sidewalkLinearFt,
-      lotComplexity: this.estimateLotComplexity(turfSqFt, shrubBedSqFt),
-      slope: this.estimateSlope(address)
+      measurements: {
+        turfSqFt,
+        shrubBedSqFt,
+        drivewaySqFt,
+        sidewalkLinearFt,
+        lotComplexity: this.estimateLotComplexity(turfSqFt, shrubBedSqFt),
+        slope: this.estimateSlope(address)
+      },
+      measurementSources: {
+        turfSqFt: this.resolveMeasurementSource(property?.lawnSizeSqFt, turfAnswer),
+        shrubBedSqFt: this.resolveMeasurementSource(property?.shrubBedSqFt, shrubAnswer),
+        drivewaySqFt: property?.drivewaySqFt ? "saved-property" : "address-heuristic",
+        sidewalkLinearFt: property?.sidewalkLinearFt ? "saved-property" : "address-heuristic"
+      }
     };
   }
 
@@ -870,6 +899,85 @@ export class InstantQuoteEngine {
     confidenceTier: EstimateConfidenceTier
   ): string {
     return `${this.titleCase(category)} looks like roughly ${measurements.turfSqFt.toLocaleString()} sq ft of turf with ${measurements.lotComplexity} complexity. We estimate about ${durationMinutes} minutes of work with ${confidenceTier} confidence.`;
+  }
+
+  private buildConfidenceReasons(
+    measurementSources: PropertyMeasurementEstimateSources,
+    property: CustomerProperty | undefined,
+    followUpAnswers: QuoteFollowUpAnswer[]
+  ): QuoteConfidenceReason[] {
+    const reasons: QuoteConfidenceReason[] = [];
+    const sources = Object.values(measurementSources);
+    const savedMeasurementCount = sources.filter((source) => source === "saved-property").length;
+    const followUpMeasurementCount = sources.filter((source) => source === "customer-follow-up").length;
+    const heuristicMeasurementCount = sources.filter((source) => source === "address-heuristic").length;
+
+    if (savedMeasurementCount > 0) {
+      reasons.push({
+        impact: "positive",
+        label: "Saved property details improved the estimate",
+        detail:
+          savedMeasurementCount >= 3
+            ? "Multiple property measurements were already saved, so the quote relies less on fallback assumptions."
+            : "Some property measurements were already saved, which makes the quote more grounded than an address-only estimate."
+      });
+    }
+
+    if (followUpAnswers.length > 0 || followUpMeasurementCount > 0) {
+      reasons.push({
+        impact: "positive",
+        label: "Your answers sharpened the quote",
+        detail:
+          "Customer-provided size details replaced part of the default model, which improves confidence before checkout."
+      });
+    }
+
+    if (!property && heuristicMeasurementCount >= 2) {
+      reasons.push({
+        impact: "warning",
+        label: "Some measurements are still modeled from the address",
+        detail:
+          "Without saved property details, YardMatch is still estimating parts of the job from location patterns and property heuristics."
+      });
+    } else if (heuristicMeasurementCount > 0) {
+      reasons.push({
+        impact: "warning",
+        label: "A few job details still use fallback assumptions",
+        detail:
+          "Driveway, sidewalk, or bed dimensions are still estimated until more property details are confirmed."
+      });
+    }
+
+    if (reasons.length === 0) {
+      reasons.push({
+        impact: "positive",
+        label: "The quote is using a stable property profile",
+        detail: "Saved property measurements are doing most of the work for this estimate."
+      });
+    }
+
+    return reasons;
+  }
+
+  private resolveMeasurementSource(
+    savedValue: number | undefined,
+    answerValue: number | undefined
+  ): PropertyMeasurementSource {
+    if (typeof savedValue === "number" && savedValue > 0) {
+      return "saved-property";
+    }
+
+    if (typeof answerValue === "number" && Number.isFinite(answerValue)) {
+      return "customer-follow-up";
+    }
+
+    return "address-heuristic";
+  }
+
+  private formatAddressLabel(address: Address): string {
+    return [address.line1, address.city, `${address.state} ${address.postalCode}`]
+      .filter(Boolean)
+      .join(", ");
   }
 
   private estimateLotComplexity(turfSqFt: number, shrubBedSqFt: number): PropertyMeasurementEstimate["lotComplexity"] {

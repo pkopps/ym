@@ -9,6 +9,7 @@ import {
   formatBookingWindowSummary,
   getExternalCalendarBlockLabel,
   getBookingExceptionLabel,
+  ProviderAssistantCommandResponse,
   ProviderCalendarOverviewResponse,
   ProviderStaffingOverview
 } from "@yardmatch/contracts";
@@ -18,6 +19,13 @@ import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
 type ViewMode = "calendar" | "list";
+
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD"
+  }).format(cents / 100);
+}
 
 function formatMinutesAsHours(minutes: number) {
   if (minutes < 60) {
@@ -39,6 +47,19 @@ function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") 
   }
 }
 
+function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup") {
+  switch (label) {
+    case "best-fit":
+      return "Best fit";
+    case "good-fit":
+      return "Good fit";
+    case "backup":
+      return "Backup";
+    default:
+      return "";
+  }
+}
+
 export function ScheduleScreen() {
   const { envelope } = useProviderSession();
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
@@ -51,6 +72,11 @@ export function ScheduleScreen() {
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [chatDraft, setChatDraft] = useState("");
+  const [assistantCommand, setAssistantCommand] = useState(
+    "Change my afternoon appointment to evening and notify the customer"
+  );
+  const [assistantResult, setAssistantResult] = useState<ProviderAssistantCommandResponse | undefined>();
+  const [selectedAssistantBookingId, setSelectedAssistantBookingId] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const routeSharingBookingIdRef = useRef<string | undefined>(undefined);
@@ -223,6 +249,26 @@ export function ScheduleScreen() {
     }
   }
 
+  async function handleReviewMatch(crewMatchId: string, action: "accept" | "deny") {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.reviewCrewMatch({ crewMatchId, action });
+      setStatusMessage(action === "accept" ? "Crew member accepted." : "Crew member declined.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update that crew match.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function confirmJob(bookingId: string) {
     if (!envelope?.session.token) {
       return;
@@ -366,6 +412,36 @@ export function ScheduleScreen() {
     }
   }
 
+  async function runProviderAssistant(execute: boolean) {
+    if (!envelope?.session.token || !assistantCommand.trim()) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const result = await api.runProviderAssistantCommand({
+        command: assistantCommand,
+        bookingId: selectedAssistantBookingId,
+        execute
+      });
+      setAssistantResult(result);
+      if (result.bookingCandidates.length === 1) {
+        setSelectedAssistantBookingId(result.bookingCandidates[0].bookingId);
+      }
+      if (result.executed) {
+        setStatusMessage(result.previewMessage);
+        await loadOverview();
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to run the provider assistant.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function reportIssue(
     bookingId: string,
     exceptionType:
@@ -452,6 +528,65 @@ export function ScheduleScreen() {
 
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
+      <InfoCard title="Assistant" description="Change bookings in plain language">
+        <Text style={styles.metaLine}>
+          Try “Change my afternoon appointment to evening and notify the customer.”
+        </Text>
+        <TextInput
+          value={assistantCommand}
+          onChangeText={setAssistantCommand}
+          placeholder="Type a provider scheduling command"
+          placeholderTextColor={BrandTokens.colors.inkSoft}
+          style={[styles.input, styles.multilineInput]}
+          multiline
+        />
+        {selectedAssistantBookingId ? (
+          <Text style={styles.metaLine}>Selected booking: {selectedAssistantBookingId}</Text>
+        ) : null}
+        <View style={styles.stepRow}>
+          <Pressable disabled={isWorking} onPress={() => void runProviderAssistant(false)} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonLabel}>Preview</Text>
+          </Pressable>
+          <Pressable
+            disabled={isWorking || !assistantResult?.requiresConfirmation}
+            onPress={() => void runProviderAssistant(true)}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>Run</Text>
+          </Pressable>
+        </View>
+        {assistantResult ? (
+          <View style={styles.ticketStack}>
+            <Text style={styles.valueText}>{assistantResult.previewLabel}</Text>
+            <Text style={styles.meta}>{assistantResult.previewMessage}</Text>
+            {assistantResult.targetWindowLabel ? (
+              <Text style={styles.meta}>Target window: {assistantResult.targetWindowLabel}</Text>
+            ) : null}
+            {assistantResult.customerNotificationPreview ? (
+              <Text style={styles.meta}>{assistantResult.customerNotificationPreview}</Text>
+            ) : null}
+            {assistantResult.bookingCandidates.map((candidate) => (
+              <View key={candidate.bookingId} style={styles.ticketRow}>
+                <View style={styles.ticketCopy}>
+                  <Text style={styles.valueText}>{candidate.customerName}</Text>
+                  <Text style={styles.meta}>
+                    {candidate.currentWindowLabel} • {new Date(candidate.scheduledStartIso).toLocaleString()}
+                  </Text>
+                  <Text style={styles.meta}>{candidate.addressLine}</Text>
+                </View>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => setSelectedAssistantBookingId(candidate.bookingId)}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Use</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </InfoCard>
 
       {viewMode === "calendar" ? (
         <InfoCard
@@ -558,6 +693,62 @@ export function ScheduleScreen() {
                       Disputed{job.disputeReason ? ` • ${job.disputeReason}` : ""}
                     </Text>
                   ) : null}
+                  <View style={styles.matchList}>
+                    {job.matches.length === 0 ? (
+                      <View style={styles.windowCard}>
+                        <Text style={styles.clientLabel}>No matched crew yet</Text>
+                        <Text style={styles.metaLine}>
+                          As more crew availability comes in, matched candidates will appear here.
+                        </Text>
+                      </View>
+                    ) : (
+                      job.matches.map((match) => (
+                        <View key={match.id} style={styles.windowCard}>
+                          <Text style={styles.clientLabel}>{match.crewMemberName}</Text>
+                          <Text style={styles.metaLine}>
+                            {match.distanceMiles} miles away • {match.preferredSchedule} •{" "}
+                            {match.availableWeekdays.join(", ")}
+                          </Text>
+                          {match.recommendationLabel ? (
+                            <Text style={styles.metaLine}>
+                              {formatCrewRecommendationLabel(match.recommendationLabel)}
+                              {typeof match.recommendationScore === "number"
+                                ? ` • score ${match.recommendationScore}`
+                                : ""}
+                            </Text>
+                          ) : null}
+                          {match.recommendationReasons?.length ? (
+                            <Text style={styles.metaLine}>{match.recommendationReasons.join(" • ")}</Text>
+                          ) : null}
+                          {match.status === "cancelled-by-crew" && match.cancellationReason ? (
+                            <Text style={styles.warningLine}>Crew note: {match.cancellationReason}</Text>
+                          ) : null}
+                          <Text style={styles.metaLine}>{match.status.replaceAll("-", " ")}</Text>
+                          <Text style={styles.metaLine}>{formatCurrency(match.hourlyRateCents)}/hr</Text>
+                          {match.status === "pending-provider-review" ? (
+                            <View style={styles.actionRow}>
+                              <Pressable
+                                disabled={isWorking}
+                                onPress={() => void handleReviewMatch(match.id, "accept")}
+                                style={styles.completeButton}
+                              >
+                                <Text style={styles.completeButtonLabel}>
+                                  {isWorking ? "Working..." : "Accept"}
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                disabled={isWorking}
+                                onPress={() => void handleReviewMatch(match.id, "deny")}
+                                style={styles.chatButton}
+                              >
+                                <Text style={styles.chatButtonLabel}>Deny</Text>
+                              </Pressable>
+                            </View>
+                          ) : null}
+                        </View>
+                      ))
+                    )}
+                  </View>
                   <View style={styles.actionRow}>
                     {(job.status === "confirmed" || job.status === "in-progress") ? (
                       <Pressable
@@ -892,6 +1083,11 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
+  warningLine: {
+    color: "#a03838",
+    lineHeight: 20,
+    fontWeight: "600"
+  },
   statusLine: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
@@ -903,6 +1099,10 @@ const styles = StyleSheet.create({
   },
   jobCopy: {
     gap: BrandTokens.spacing.xs
+  },
+  matchList: {
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.sm
   },
   actionRow: {
     flexDirection: "row",
@@ -957,6 +1157,55 @@ const styles = StyleSheet.create({
     padding: BrandTokens.spacing.md,
     color: BrandTokens.colors.ink,
     textAlignVertical: "top"
+  },
+  multilineInput: {
+    minHeight: 108
+  },
+  stepRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.xs
+  },
+  secondaryButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  secondaryButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  ticketStack: {
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.sm
+  },
+  ticketRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: BrandTokens.spacing.sm,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    padding: BrandTokens.spacing.sm
+  },
+  ticketCopy: {
+    flex: 1,
+    gap: 2
+  },
+  valueText: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
+  },
+  meta: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
   },
   submitButton: {
     alignItems: "center",

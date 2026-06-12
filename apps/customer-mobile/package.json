@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "expo start",
     "dev:client": "expo start --dev-client",
+    "dev:client:personal": "EXPO_PUBLIC_DISABLE_PUSH_FOR_LOCAL_DEVICE=1 expo start --dev-client",
     "export": "expo export",
     "ios": "expo run:ios",
     "ios:device": "expo run:ios --device",
+    "ios:device:personal": "YARDMATCH_DISABLE_PUSH_FOR_LOCAL_DEVICE=1 EXPO_PUBLIC_DISABLE_PUSH_FOR_LOCAL_DEVICE=1 expo run:ios --device",
     "android": "expo run:android",
     "android:device": "expo run:android --device"
   },
