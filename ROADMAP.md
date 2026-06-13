@@ -146,8 +146,10 @@ Already done:
 
 - Improve geocoding quality beyond the current fallback + basic place search setup
 - Improve explainability and confidence of quote / property measurement logic
+  - complexity-aware quote follow-up questions and scope warnings are now shipped
 - Improve provider ranking further beyond the current score-and-explanation model:
   - conversion signals once they are trustworthy enough to use
+  - specialization-aware service-fit weighting is now shipped for marketplace search
   - richer service-fit weighting across more complex requests
   - stronger long-term reliability signals and calibration
   - continued tuning of distance and travel-burden tradeoffs

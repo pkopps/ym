@@ -698,7 +698,13 @@ export class InstantQuoteEngine {
       input.property,
       input.request
     );
-    const confidenceScore = this.calculateConfidenceScore(input.property, input.request.followUpAnswers ?? []);
+    const confidenceScore = this.calculateConfidenceScore({
+      category: input.request.category,
+      property: input.property,
+      followUpAnswers: input.request.followUpAnswers ?? [],
+      measurements,
+      measurementSources
+    });
     const confidenceTier = this.toConfidenceTier(confidenceScore);
     const durationMinutes = this.estimateDurationMinutes(input.request.category, measurements);
     const estimatedPriceCents = this.estimatePriceCents(input.request.category, measurements, durationMinutes);
@@ -710,7 +716,8 @@ export class InstantQuoteEngine {
     const confidenceReasons = this.buildConfidenceReasons(
       measurementSources,
       input.property,
-      input.request.followUpAnswers ?? []
+      input.request.followUpAnswers ?? [],
+      measurements
     );
 
     return {
@@ -749,6 +756,7 @@ export class InstantQuoteEngine {
     const baselineTurf = 2200 + (geocodeSignal % 4500);
     const turfAnswer = this.answerAsNumber(request.followUpAnswers, "turf_sq_ft");
     const shrubAnswer = this.answerAsNumber(request.followUpAnswers, "shrub_sq_ft");
+    const lotComplexityAnswer = this.answerAsString(request.followUpAnswers, "lot_complexity");
     const turfSqFt = property?.lawnSizeSqFt ?? turfAnswer ?? baselineTurf;
     const shrubBedSqFt = property?.shrubBedSqFt ?? shrubAnswer ?? Math.round(turfSqFt * 0.18);
     const drivewaySqFt =
@@ -764,7 +772,7 @@ export class InstantQuoteEngine {
         shrubBedSqFt,
         drivewaySqFt,
         sidewalkLinearFt,
-        lotComplexity: this.estimateLotComplexity(turfSqFt, shrubBedSqFt),
+        lotComplexity: this.resolveLotComplexity(turfSqFt, shrubBedSqFt, lotComplexityAnswer),
         slope: this.estimateSlope(address)
       },
       measurementSources: {
@@ -776,17 +784,38 @@ export class InstantQuoteEngine {
     };
   }
 
-  private calculateConfidenceScore(
-    property: CustomerProperty | undefined,
-    followUpAnswers: QuoteFollowUpAnswer[]
-  ): number {
+  private calculateConfidenceScore(input: {
+    category: ServiceCategory;
+    property: CustomerProperty | undefined;
+    followUpAnswers: QuoteFollowUpAnswer[];
+    measurements: PropertyMeasurementEstimate;
+    measurementSources: PropertyMeasurementEstimateSources;
+  }): number {
+    const { category, property, followUpAnswers, measurements, measurementSources } = input;
     const savedSignals =
       (property?.lawnSizeSqFt ? 1 : 0) +
       (property?.shrubBedSqFt ? 1 : 0) +
       (property?.drivewaySqFt ? 1 : 0);
-    const answerBoost = Math.min(2, followUpAnswers.length) * 0.06;
+    const heuristicMeasurementCount = Object.values(measurementSources).filter(
+      (source) => source === "address-heuristic"
+    ).length;
+    const answerBoost = Math.min(3, followUpAnswers.length) * 0.05;
     const propertyBoost = savedSignals * 0.08;
-    return Math.min(0.95, 0.58 + propertyBoost + answerBoost);
+    const complexityPenalty =
+      measurements.lotComplexity === "high" ? 0.06 : measurements.lotComplexity === "medium" ? 0.03 : 0;
+    const slopePenalty =
+      measurements.slope === "steep" ? 0.05 : measurements.slope === "moderate" ? 0.02 : 0;
+    const heuristicPenalty = heuristicMeasurementCount * 0.025;
+    const categoryPenalty =
+      !property && ["seasonal-cleanup", "mulch-installation", "hedge-trimming"].includes(category) ? 0.04 : 0;
+
+    return Math.max(
+      0.42,
+      Math.min(
+        0.95,
+        0.6 + propertyBoost + answerBoost - complexityPenalty - slopePenalty - heuristicPenalty - categoryPenalty
+      )
+    );
   }
 
   private toConfidenceTier(score: number): EstimateConfidenceTier {
@@ -886,10 +915,31 @@ export class InstantQuoteEngine {
           { label: "A moderate amount", value: "350" },
           { label: "A lot", value: "700" }
         ]
+      },
+      {
+        id: "lot_complexity",
+        prompt: "How intricate is the property layout?",
+        inputType: "single-select" as const,
+        helperText: `Current estimate: ${measurements.lotComplexity} complexity based on the address and property pattern.`,
+        options: [
+          { label: "Mostly open and simple", value: "low" },
+          { label: "Some beds, turns, or obstacles", value: "medium" },
+          { label: "Tight layout with lots of detail work", value: "high" }
+        ]
       }
     ];
 
-    return questions.filter((question) => !unanswered.has(question.id));
+    return questions.filter((question) => {
+      if (unanswered.has(question.id)) {
+        return false;
+      }
+
+      if (question.id === "lot_complexity") {
+        return measurements.lotComplexity !== "low" || category === "seasonal-cleanup";
+      }
+
+      return true;
+    });
   }
 
   private buildSummary(
@@ -904,7 +954,8 @@ export class InstantQuoteEngine {
   private buildConfidenceReasons(
     measurementSources: PropertyMeasurementEstimateSources,
     property: CustomerProperty | undefined,
-    followUpAnswers: QuoteFollowUpAnswer[]
+    followUpAnswers: QuoteFollowUpAnswer[],
+    measurements: PropertyMeasurementEstimate
   ): QuoteConfidenceReason[] {
     const reasons: QuoteConfidenceReason[] = [];
     const sources = Object.values(measurementSources);
@@ -948,6 +999,17 @@ export class InstantQuoteEngine {
       });
     }
 
+    if (measurements.lotComplexity === "high" || measurements.slope === "steep") {
+      reasons.push({
+        impact: "warning",
+        label: "The property layout may still swing the final scope",
+        detail:
+          measurements.lotComplexity === "high"
+            ? "The current estimate sees a more intricate property layout, so final routing and detail work could move the onsite scope slightly."
+            : "The current estimate sees more slope than a flat property, which can move labor time until the crew confirms the site."
+      });
+    }
+
     if (reasons.length === 0) {
       reasons.push({
         impact: "positive",
@@ -957,6 +1019,18 @@ export class InstantQuoteEngine {
     }
 
     return reasons;
+  }
+
+  private resolveLotComplexity(
+    turfSqFt: number,
+    shrubBedSqFt: number,
+    answerValue: string | undefined
+  ): PropertyMeasurementEstimate["lotComplexity"] {
+    if (answerValue === "low" || answerValue === "medium" || answerValue === "high") {
+      return answerValue;
+    }
+
+    return this.estimateLotComplexity(turfSqFt, shrubBedSqFt);
   }
 
   private resolveMeasurementSource(
@@ -1016,6 +1090,18 @@ export class InstantQuoteEngine {
     }
 
     return typeof answer.value === "number" ? answer.value : Number(answer.value);
+  }
+
+  private answerAsString(
+    answers: QuoteFollowUpAnswer[] | undefined,
+    questionId: string
+  ): string | undefined {
+    const answer = answers?.find((item) => item.questionId === questionId);
+    if (!answer) {
+      return undefined;
+    }
+
+    return typeof answer.value === "string" ? answer.value : String(answer.value);
   }
 
   private titleCase(value: string): string {

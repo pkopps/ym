@@ -121,6 +121,34 @@ test("instant quotes normalize addresses and explain confidence sources", async 
   );
 });
 
+test("complex heuristic-heavy quotes ask for layout follow-up and explain scope risk", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const quote = await platform.createInstantQuote({
+    address: {
+      line1: "4500 Canyon Run",
+      city: "Austin",
+      state: "TX",
+      postalCode: "78749",
+      country: "US",
+      point: {
+        latitude: 30.205,
+        longitude: -97.91
+      }
+    },
+    category: "seasonal-cleanup",
+    followUpAnswers: [{ questionId: "turf_sq_ft", value: 11000 }]
+  });
+
+  assert.equal(quote.measurementSources.turfSqFt, "customer-follow-up");
+  assert.ok(quote.followUpQuestions.some((question) => question.id === "lot_complexity"));
+  assert.ok(
+    quote.confidenceReasons.some((reason) => reason.label === "The property layout may still swing the final scope")
+  );
+  assert.ok(quote.confidenceScore < 0.82);
+});
+
 test("customer addresses are normalized before properties and booking snapshots are saved", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -225,12 +253,33 @@ test("provider search returns ranked results with score reasons and reliability-
     address: createAddress("2200 Outer Loop", 30.305, -97.82),
     serviceRadiusMiles: 50,
     sponsoredListingEnabled: true,
-    categories: ["lawn-mowing"],
+    categories: ["lawn-mowing", "seasonal-cleanup", "mulch-installation", "weed-control"],
     rating: 4.1,
     timelinessRating: 3.8,
     attentionToDetailRating: 4,
     reviewCount: 12,
     yearsExperience: 4,
+    verificationStatus: "verified"
+  });
+
+  const broadProvider = await platform.registerUser({
+    fullName: "Morgan Lane",
+    email: "provider-broad-ranking@example.com",
+    password: "Password123!",
+    phone: "555-0230",
+    role: "provider",
+    companyName: "Broad Route Yard Care",
+    categories: ["lawn-mowing", "seasonal-cleanup", "mulch-installation", "weed-control"],
+    serviceRadiusMiles: 20,
+    address: createAddress("114 Garden Row", 30.2437, -97.76395)
+  });
+
+  await repository.updateProvider(broadProvider.id, {
+    rating: 4.8,
+    timelinessRating: 4.8,
+    attentionToDetailRating: 4.8,
+    reviewCount: 180,
+    yearsExperience: 12,
     verificationStatus: "verified"
   });
 
@@ -274,6 +323,12 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.ok(results.rankedProviders[0]!.score > results.rankedProviders[1]!.score);
   assert.ok(results.rankedProviders[0]!.reasons.length > 0);
   assert.ok(results.rankedProviders[0]!.reasons.includes("Close to the property"));
+  assert.ok(results.rankedProviders[0]!.reasons.includes("Focused on this type of service"));
+  assert.ok((results.rankedProviders[0]!.factors.specialization ?? 0) > 0);
+
+  const broadResult = results.rankedProviders.find((result) => result.provider.id === broadProvider.id);
+  assert.ok(broadResult);
+  assert.ok((results.rankedProviders[0]!.factors.specialization ?? 0) > (broadResult?.factors.specialization ?? 0));
 
   const sponsoredResult = results.rankedProviders.find((result) => result.provider.id === farProvider.id);
   assert.ok(sponsoredResult);

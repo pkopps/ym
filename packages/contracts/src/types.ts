@@ -1153,6 +1153,7 @@ export interface SearchProviderResult {
   reasons: string[];
   factors: {
     serviceFit: number;
+    specialization: number;
     distance: number;
     reliability: number;
     experience: number;

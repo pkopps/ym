@@ -617,7 +617,7 @@ export const apiSpec = {
         tags: ["Quotes"],
         summary: "Generate an instant quote with confidence scoring",
         description:
-          "Returns an automated price and duration estimate, plus normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. If confidence is not high enough, the response includes a minimal follow-up question set.",
+          "Returns an automated price and duration estimate, plus normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. Lower-confidence jobs also surface complexity-aware follow-up questions so larger or more intricate properties can be clarified before checkout.",
         requestBody: {
           required: true,
           content: {
@@ -670,7 +670,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, distance, reliability history, availability, and sponsored placement, with an explanation payload for each ranked provider.",
+          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, and sponsored placement, with an explanation payload for each ranked provider.",
         requestBody: {
           required: true,
           content: {

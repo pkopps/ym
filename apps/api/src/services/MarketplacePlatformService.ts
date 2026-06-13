@@ -6667,6 +6667,8 @@ export class MarketplacePlatformService {
     suggestedSlot?: AvailabilitySlot
   ): SearchProviderResult {
     const matchedCategories = payload.categories.filter((category) => provider.categories.includes(category));
+    const requestedCategoryCount = Math.max(payload.categories.length, 1);
+    const providerCategoryCount = Math.max(provider.categories.length, 1);
     const completedBookings = providerBookings.filter((booking) => booking.status === "completed").length;
     const disputedBookings = providerBookings.filter((booking) => booking.status === "disputed").length;
     const refundedBookings = providerBookings.filter((booking) => booking.status === "refunded").length;
@@ -6674,11 +6676,24 @@ export class MarketplacePlatformService {
     const issueRate =
       (disputedBookings + refundedBookings + activeExceptionBookings) /
       Math.max(providerBookings.length, 1);
+    const specializationFocus =
+      matchedCategories.length === 0
+        ? 0
+        : Math.min(
+            1,
+            matchedCategories.length / providerCategoryCount +
+              (providerCategoryCount <= requestedCategoryCount + 1
+                ? 0.3
+                : providerCategoryCount <= requestedCategoryCount + 3
+                  ? 0.15
+                  : 0)
+          );
 
     const factors = {
-      serviceFit: Math.round((matchedCategories.length / Math.max(payload.categories.length, 1)) * 25),
+      serviceFit: Math.round((matchedCategories.length / requestedCategoryCount) * 22),
+      specialization: Math.round(specializationFocus * 10),
       distance: Math.round(
-        Math.max(0, 1 - distanceMiles / Math.max(provider.serviceRadiusMiles, 1)) * 22
+        Math.max(0, 1 - distanceMiles / Math.max(provider.serviceRadiusMiles, 1)) * 20
       ),
       reliability: Math.round(
         (provider.rating / 5) * 16 +
@@ -6698,6 +6713,7 @@ export class MarketplacePlatformService {
     const score = Math.max(
       0,
       factors.serviceFit +
+        factors.specialization +
         factors.distance +
         factors.reliability +
         factors.experience +
@@ -6710,9 +6726,20 @@ export class MarketplacePlatformService {
     if (suggestedSlot) {
       reasons.push("Open route window available");
     }
-    if (matchedCategories.length === payload.categories.length && payload.categories.length > 0) {
+    if (
+      matchedCategories.length === payload.categories.length &&
+      payload.categories.length > 0 &&
+      (payload.categories.length > 1 || factors.specialization < 7)
+    ) {
       reasons.push(
         payload.categories.length > 1 ? "Covers all requested services" : "Matches the requested service"
+      );
+    }
+    if (factors.specialization >= 7) {
+      reasons.push(
+        payload.categories.length > 1
+          ? "Focused on this mix of services"
+          : "Focused on this type of service"
       );
     }
     if (distanceMiles <= 5) {
