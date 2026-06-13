@@ -82,6 +82,7 @@ import {
   NotificationListResponse,
   NotificationPreferences,
   PaymentRecord,
+  ProviderAssistantActionType,
   ProviderAssistantBookingCandidate,
   ProviderAssistantCommandRequest,
   ProviderAssistantCommandResponse,
@@ -2869,7 +2870,11 @@ export class MarketplacePlatformService {
     }
 
     const parsed = this.parseProviderAssistantCommand(command);
-    if (!parsed.understood || !parsed.targetWindowKey) {
+    if (
+      !parsed.understood ||
+      (parsed.actionType === "reschedule-booking" && !parsed.targetWindowKey) ||
+      (parsed.actionType === "mark-booking-late" && !parsed.lateMinutes)
+    ) {
       return {
         command,
         understood: false,
@@ -2879,7 +2884,7 @@ export class MarketplacePlatformService {
         notifyCustomer: parsed.notifyCustomer,
         previewLabel: "Could not understand command",
         previewMessage:
-          'Try a command like "Move my afternoon appointment to evening and notify the customer."',
+          'Try a command like "Move my afternoon appointment to evening and notify the customer" or "Tell my afternoon customer I am 30 minutes late."',
         bookingCandidates: []
       };
     }
@@ -2902,16 +2907,19 @@ export class MarketplacePlatformService {
       return {
         command,
         understood: true,
-        actionType: "reschedule-booking",
+        actionType: parsed.actionType,
         requiresBookingSelection: true,
         requiresConfirmation: false,
         executed: false,
-        notifyCustomer: true,
+        notifyCustomer: parsed.notifyCustomer,
         sourceWindowKey: parsed.sourceWindowKey,
         targetWindowKey: parsed.targetWindowKey,
-        targetWindowLabel: this.providerAssistantWindowLabel(parsed.targetWindowKey),
+        targetWindowLabel: parsed.targetWindowKey
+          ? this.providerAssistantWindowLabel(parsed.targetWindowKey)
+          : undefined,
+        lateMinutes: parsed.lateMinutes,
         previewLabel:
-          matchingCandidates.length === 0 ? "No matching appointment found" : "Pick the appointment to change",
+          matchingCandidates.length === 0 ? "No matching appointment found" : "Pick the appointment",
         previewMessage:
           matchingCandidates.length === 0
             ? "The assistant could not find an upcoming provider booking that matches that time window."
@@ -2925,7 +2933,84 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "No matching provider booking was found");
     }
 
-    const targetWindow = this.buildProviderAssistantTargetWindow(booking, parsed.targetWindowKey);
+    if (parsed.actionType === "mark-booking-late") {
+      const lateEtaIso = this.buildProviderAssistantLateEta(booking, parsed.lateMinutes!);
+      const customer = await this.repository.findCustomerById(booking.customerId);
+      const lateWindowLabel = getBookingServiceWindow(booking.scheduledStartIso).label.toLowerCase();
+      const etaText = new Date(lateEtaIso).toLocaleTimeString([], { timeStyle: "short" });
+      const reasonText = parsed.lateReason ? ` Reason: ${parsed.lateReason}` : "";
+      const customerNotificationPreview = `${
+        customer?.fullName ?? "The customer"
+      } will be told you now expect to arrive around ${etaText} in the ${lateWindowLabel} window.${reasonText}`;
+
+      if (!payload.execute) {
+        return {
+          command,
+          understood: true,
+          actionType: "mark-booking-late",
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          lateMinutes: parsed.lateMinutes,
+          lateEtaIso,
+          previewLabel: "Ready to send a late update",
+          previewMessage: `Let ${customer?.fullName ?? "this customer"} know you are about ${
+            parsed.lateMinutes
+          } minutes behind and now expect to arrive around ${etaText}.`,
+          customerNotificationPreview,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const lateUpdatedBooking = await this.markBookingLate(providerId, {
+        bookingId: booking.id,
+        lateEtaIso,
+        reason: parsed.lateReason
+      });
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-late-update",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${command}`,
+        previousStatus: booking.status,
+        nextStatus: lateUpdatedBooking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...lateUpdatedBooking.interventions, intervention]
+      });
+
+      return {
+        command,
+        understood: true,
+        actionType: "mark-booking-late",
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: true,
+        matchedBookingId: booking.id,
+        matchedCustomerName: customer?.fullName,
+        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        lateMinutes: parsed.lateMinutes,
+        lateEtaIso,
+        previewLabel: "Late update sent",
+        previewMessage: `Sent a late update to ${customer?.fullName ?? "the customer"} with an arrival estimate around ${etaText}.`,
+        customerNotificationPreview,
+        bookingCandidates: [
+          this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? lateUpdatedBooking)
+        ],
+        updatedBooking: bookingWithIntervention ?? lateUpdatedBooking
+      };
+    }
+
+    const targetWindowKey = parsed.targetWindowKey!;
+    const targetWindow = this.buildProviderAssistantTargetWindow(booking, targetWindowKey);
     const customer = await this.repository.findCustomerById(booking.customerId);
     await this.assertProviderRescheduleWindowIsAvailable(
       booking.providerId,
@@ -2950,13 +3035,13 @@ export class MarketplacePlatformService {
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
         sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
-        targetWindowKey: parsed.targetWindowKey,
-        targetWindowLabel: this.providerAssistantWindowLabel(parsed.targetWindowKey),
+        targetWindowKey,
+        targetWindowLabel: this.providerAssistantWindowLabel(targetWindowKey),
         suggestedStartIso: targetWindow.startIso,
         suggestedEndIso: targetWindow.endIso,
         previewLabel: "Ready to reschedule",
         previewMessage: `Move ${customer?.fullName ?? "this customer"} to ${this.providerAssistantWindowLabel(
-          parsed.targetWindowKey
+          targetWindowKey
         )} on ${new Date(targetWindow.startIso).toLocaleDateString()}.`,
         customerNotificationPreview,
         bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3036,13 +3121,13 @@ export class MarketplacePlatformService {
       matchedBookingId: booking.id,
       matchedCustomerName: customer?.fullName,
       sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
-      targetWindowKey: parsed.targetWindowKey,
-      targetWindowLabel: this.providerAssistantWindowLabel(parsed.targetWindowKey),
+      targetWindowKey,
+      targetWindowLabel: this.providerAssistantWindowLabel(targetWindowKey),
       suggestedStartIso: targetWindow.startIso,
       suggestedEndIso: targetWindow.endIso,
       previewLabel: "Command executed",
       previewMessage: `Moved ${customer?.fullName ?? "the customer"} to ${this.providerAssistantWindowLabel(
-        parsed.targetWindowKey
+        targetWindowKey
       )} and sent an update.`,
       customerNotificationPreview,
       bookingCandidates: [this.toProviderAssistantBookingCandidate(updatedBooking)],
@@ -5646,9 +5731,12 @@ export class MarketplacePlatformService {
 
   private parseProviderAssistantCommand(command: string): {
     understood: boolean;
+    actionType?: ProviderAssistantActionType;
     sourceWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
     targetWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
     notifyCustomer: boolean;
+    lateMinutes?: number;
+    lateReason?: string;
   } {
     const normalized = command.trim().toLowerCase();
     const notifyCustomer =
@@ -5662,12 +5750,19 @@ export class MarketplacePlatformService {
 
     const targetWindowKey = this.parseProviderAssistantWindowFromCommand(afterTarget, true);
     const sourceWindowKey = this.parseProviderAssistantWindowFromCommand(beforeTarget, true);
+    const lateMinutes = this.parseProviderAssistantLateMinutes(normalized);
+    const lateReason = this.parseProviderAssistantLateReason(normalized);
+    const isLateCommand = Boolean(lateMinutes) && /\blate|behind\b/.test(normalized);
+    const isRescheduleCommand = Boolean(targetWindowKey && /change|move|shift|resched/.test(normalized));
 
     return {
-      understood: Boolean(targetWindowKey && /change|move|shift|resched/.test(normalized)),
+      understood: isRescheduleCommand || isLateCommand,
+      actionType: isRescheduleCommand ? "reschedule-booking" : isLateCommand ? "mark-booking-late" : undefined,
       sourceWindowKey,
       targetWindowKey,
-      notifyCustomer
+      notifyCustomer: isLateCommand ? true : notifyCustomer,
+      lateMinutes,
+      lateReason
     };
   }
 
@@ -5753,8 +5848,47 @@ export class MarketplacePlatformService {
     };
   }
 
+  private buildProviderAssistantLateEta(booking: Booking, lateMinutes: number): string {
+    const scheduledStartMs = new Date(booking.scheduledStartIso).getTime();
+    const baselineMs = Math.max(scheduledStartMs, Date.now());
+    return new Date(baselineMs + lateMinutes * 60 * 1000).toISOString();
+  }
+
   private providerAssistantWindowLabel(windowKey: "morning" | "afternoon" | "late-afternoon-night"): string {
     return windowKey === "late-afternoon-night" ? "Late afternoon / evening" : this.toTitleCase(windowKey);
+  }
+
+  private parseProviderAssistantLateMinutes(command: string): number | undefined {
+    const match =
+      command.match(/(\d+)\s*(minute|minutes|min|mins)\s+late/) ??
+      command.match(/late\s+by\s+(\d+)\s*(minute|minutes|min|mins)/) ??
+      command.match(/(\d+)\s*(hour|hours|hr|hrs)\s+late/) ??
+      command.match(/late\s+by\s+(\d+)\s*(hour|hours|hr|hrs)/);
+
+    if (!match) {
+      return undefined;
+    }
+
+    const numericValue = Number(match[1]);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      return undefined;
+    }
+
+    return /hour|hours|hr|hrs/.test(match[2] ?? "") ? numericValue * 60 : numericValue;
+  }
+
+  private parseProviderAssistantLateReason(command: string): string | undefined {
+    const becauseMatch = command.match(/\b(?:because|due to)\b\s+(.+)$/);
+    if (becauseMatch?.[1]) {
+      return this.toSentenceCase(becauseMatch[1].trim().replace(/[.]+$/, ""));
+    }
+
+    const finishingMatch = command.match(/\b(finishing .+)$/);
+    if (finishingMatch?.[1]) {
+      return this.toSentenceCase(finishingMatch[1].trim().replace(/[.]+$/, ""));
+    }
+
+    return undefined;
   }
 
   public async getUserByIdentity(
@@ -7555,6 +7689,14 @@ export class MarketplacePlatformService {
 
   private toTitleCase(value: string): string {
     return value.replace(/\b([a-z])/gi, (segment) => segment.toUpperCase());
+  }
+
+  private toSentenceCase(value: string): string {
+    if (!value) {
+      return value;
+    }
+
+    return `${value.charAt(0).toUpperCase()}${value.slice(1)}`;
   }
 
   private formatAddressLine(address: Address): string {

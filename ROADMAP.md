@@ -104,6 +104,7 @@ Already done:
   - providers can preview a plain-language reschedule command
   - ambiguous commands can return matching appointments for explicit selection
   - confirmed commands can move a booking to a broader window and notify the customer automatically
+  - providers can also send a customer-facing late update from a plain-language command with a parsed delay amount
 
 - Broaden the provider assistant beyond the shipped reschedule baseline:
   - richer crew/provider coordination actions from natural-language requests
@@ -139,6 +140,10 @@ Still left:
 Already done:
 
 - backend address normalization across customer signup, saved properties, quoting, and booking snapshots
+- smarter local place-search quality for customer search flows:
+  - stronger city/state normalization
+  - ZIP / postal matching
+  - practical service-area aliases in the fallback dataset
 - quote explainability improvements:
   - normalized-address feedback
   - measurement source breakdowns
@@ -156,14 +161,28 @@ Already done:
 
 ### Financial and internal ops tooling
 
-- Refund overrides for ops
-- Richer booking intervention controls beyond the current ops action console
-- Deeper dispute evidence and resolution flows beyond the current photo workflow
-- Evidence workflow improvements beyond the shipped before/after photo requirement:
+Already done:
+
+- refund overrides for ops from the support queue
+- richer booking intervention controls through the current ops action console:
+  - add notes
+  - reschedule
+  - restore active
+  - cancel
+  - complete
+  - booking-level intervention audit trail
+- baseline dispute evidence workflow on booking photos:
+  - required before/after service photos
+  - ops review and annotation on booking photo evidence
+  - evidence already feeds disputes, refund reviews, and service-quality support
+
+Still left:
+
+- deeper dispute evidence and resolution flows beyond the current photo workflow
+- evidence workflow improvements beyond the shipped before/after photo requirement:
   - expand evidence types beyond photos alone
-  - cleaner evidence review and annotation tools for ops are now in place on booking photos
   - strengthen evidence linkage even further into disputes, bad reviews, refund reviews, and service-quality support workflows
-- Audit-friendly internal tooling for support and financial exceptions
+- audit-friendly internal tooling for support and financial exceptions
 
 ## Phase 3: Nice To Have After Launch
 

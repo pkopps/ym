@@ -73,8 +73,9 @@ export type OpsBookingInterventionAction =
   | "restore-active-booking"
   | "cancel-booking"
   | "complete-booking"
-  | "provider-assistant-reschedule";
-export type ProviderAssistantActionType = "reschedule-booking";
+  | "provider-assistant-reschedule"
+  | "provider-assistant-late-update";
+export type ProviderAssistantActionType = "reschedule-booking" | "mark-booking-late";
 export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";
@@ -1373,6 +1374,8 @@ export interface ProviderAssistantCommandResponse {
   targetWindowLabel?: string;
   suggestedStartIso?: string;
   suggestedEndIso?: string;
+  lateMinutes?: number;
+  lateEtaIso?: string;
   previewLabel: string;
   previewMessage: string;
   customerNotificationPreview?: string;

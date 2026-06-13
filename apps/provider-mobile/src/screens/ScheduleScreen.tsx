@@ -531,7 +531,7 @@ export function ScheduleScreen() {
 
       <InfoCard title="Assistant" description="Change bookings in plain language">
         <Text style={styles.metaLine}>
-          Try “Change my afternoon appointment to evening and notify the customer.”
+          Try “Change my afternoon appointment to evening and notify the customer” or “Tell my afternoon customer I am 30 minutes late.”
         </Text>
         <TextInput
           value={assistantCommand}
@@ -562,6 +562,11 @@ export function ScheduleScreen() {
             <Text style={styles.meta}>{assistantResult.previewMessage}</Text>
             {assistantResult.targetWindowLabel ? (
               <Text style={styles.meta}>Target window: {assistantResult.targetWindowLabel}</Text>
+            ) : null}
+            {assistantResult.lateEtaIso ? (
+              <Text style={styles.meta}>
+                New ETA: {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
+              </Text>
             ) : null}
             {assistantResult.customerNotificationPreview ? (
               <Text style={styles.meta}>{assistantResult.customerNotificationPreview}</Text>

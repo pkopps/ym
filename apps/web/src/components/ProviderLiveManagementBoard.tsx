@@ -734,7 +734,8 @@ export function ProviderLiveManagementBoard() {
         <span className="eyebrow">Assistant</span>
         <h2>Change bookings in plain language.</h2>
         <p>
-          Try a command like “Change my afternoon appointment to evening and notify the customer.”
+          Try “Change my afternoon appointment to evening and notify the customer” or “Tell my
+          afternoon customer I am 30 minutes late.”
         </p>
         <label className="form-field form-field--full">
           <span>Provider assistant command</span>
@@ -769,6 +770,12 @@ export function ProviderLiveManagementBoard() {
               <strong>{assistantResult.previewLabel}</strong>
               <p>{assistantResult.previewMessage}</p>
               {assistantResult.targetWindowLabel ? <p>Target window: {assistantResult.targetWindowLabel}</p> : null}
+              {assistantResult.lateEtaIso ? (
+                <p>
+                  New ETA:{" "}
+                  {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
+                </p>
+              ) : null}
               {assistantResult.customerNotificationPreview ? (
                 <p>{assistantResult.customerNotificationPreview}</p>
               ) : null}

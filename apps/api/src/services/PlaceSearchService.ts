@@ -8,11 +8,27 @@ type LocalPlaceSeed = {
   postalCode: string;
   latitude: number;
   longitude: number;
+  aliases?: string[];
+};
+
+const stateNameToCode: Record<string, string> = {
+  arizona: "az",
+  california: "ca",
+  colorado: "co",
+  georgia: "ga",
+  newjersey: "nj",
+  "new jersey": "nj",
+  newyork: "ny",
+  "new york": "ny",
+  northcarolina: "nc",
+  "north carolina": "nc",
+  tennessee: "tn",
+  texas: "tx"
 };
 
 const localPlaceSeeds: LocalPlaceSeed[] = [
-  { id: "brooklyn-ny", label: "Brooklyn, NY", city: "Brooklyn", state: "NY", postalCode: "11201", latitude: 40.6782, longitude: -73.9442 },
-  { id: "queens-ny", label: "Queens, NY", city: "Queens", state: "NY", postalCode: "11101", latitude: 40.7282, longitude: -73.7949 },
+  { id: "brooklyn-ny", label: "Brooklyn, NY", city: "Brooklyn", state: "NY", postalCode: "11201", latitude: 40.6782, longitude: -73.9442, aliases: ["bklyn", "bk", "brooklyn ny", "new york city borough"] },
+  { id: "queens-ny", label: "Queens, NY", city: "Queens", state: "NY", postalCode: "11101", latitude: 40.7282, longitude: -73.7949, aliases: ["queens ny", "new york city borough"] },
   { id: "jersey-city-nj", label: "Jersey City, NJ", city: "Jersey City", state: "NJ", postalCode: "07302", latitude: 40.7178, longitude: -74.0431 },
   { id: "hoboken-nj", label: "Hoboken, NJ", city: "Hoboken", state: "NJ", postalCode: "07030", latitude: 40.7433, longitude: -74.0324 },
   { id: "newark-nj", label: "Newark, NJ", city: "Newark", state: "NJ", postalCode: "07102", latitude: 40.7357, longitude: -74.1724 },
@@ -48,18 +64,52 @@ export class PlaceSearchService {
   }
 
   private searchLocal(query: string): PlaceSuggestion[] {
-    const normalizedQuery = query.trim().toLowerCase();
-    const queryTokens = normalizedQuery.split(/[\s,]+/).filter(Boolean);
+    const normalizedQuery = this.normalizeQuery(query);
+    const queryTokens = this.expandQueryTokens(normalizedQuery);
+    const postalQuery = normalizedQuery.replace(/\D/g, "");
+    const stateQuery = this.extractStateQuery(queryTokens);
 
     return localPlaceSeeds
       .map((seed) => {
-        const haystack = `${seed.label} ${seed.city} ${seed.state} ${seed.postalCode}`.toLowerCase();
+        const city = this.normalizeQuery(seed.city);
+        const state = seed.state.toLowerCase();
+        const postalCode = seed.postalCode.replace(/\D/g, "");
+        const haystack = [
+          this.normalizeQuery(seed.label),
+          city,
+          state,
+          postalCode,
+          ...(seed.aliases ?? []).map((alias) => this.normalizeQuery(alias))
+        ].join(" ");
         const matchesAllTokens = queryTokens.every((token) => haystack.includes(token));
-        const prefixBoost = haystack.startsWith(normalizedQuery) ? 2 : 0;
-        const exactCityBoost = seed.city.toLowerCase() === normalizedQuery ? 3 : 0;
+        const cityStateLabel = `${city} ${state}`;
+        let score = matchesAllTokens ? 1 : 0;
+
+        if (haystack.startsWith(normalizedQuery)) {
+          score += 3;
+        }
+        if (city === normalizedQuery) {
+          score += 5;
+        }
+        if (cityStateLabel === normalizedQuery) {
+          score += 6;
+        }
+        if (postalQuery.length >= 3 && postalCode.startsWith(postalQuery)) {
+          score += postalQuery.length >= 5 ? 8 : 5;
+        }
+        if (stateQuery && stateQuery === state) {
+          score += 2;
+        }
+        if (queryTokens.some((token) => city.startsWith(token))) {
+          score += 2;
+        }
+        if ((seed.aliases ?? []).some((alias) => this.normalizeQuery(alias) === normalizedQuery)) {
+          score += 4;
+        }
+
         return {
           seed,
-          score: matchesAllTokens ? 1 + prefixBoost + exactCityBoost : 0
+          score
         };
       })
       .filter((candidate) => candidate.score > 0)
@@ -114,6 +164,8 @@ export class PlaceSearchService {
     }
 
     const components = result.address_components ?? [];
+    const streetNumber = this.findGoogleComponent(components, "street_number");
+    const route = this.findGoogleComponent(components, "route");
     const city =
       this.findGoogleComponent(components, "locality") ??
       this.findGoogleComponent(components, "postal_town") ??
@@ -121,17 +173,20 @@ export class PlaceSearchService {
       "Unknown";
     const state = this.findGoogleComponent(components, "administrative_area_level_1", true) ?? "US";
     const postalCode = this.findGoogleComponent(components, "postal_code") ?? "00000";
+    const country = this.findGoogleComponent(components, "country", true) ?? "US";
+    const line1 = [streetNumber, route].filter(Boolean).join(" ") || city;
+    const label = result.formatted_address.replace(/,\s*USA$/i, "");
 
     return {
       id: result.place_id ?? `google-${city}-${state}-${postalCode}`,
-      label: result.formatted_address,
+      label,
       source: "google-geocoding",
       address: {
-        line1: result.formatted_address,
+        line1,
         city,
         state,
         postalCode,
-        country: "US",
+        country,
         point: {
           latitude: location.lat,
           longitude: location.lng
@@ -170,5 +225,36 @@ export class PlaceSearchService {
         }
       }
     };
+  }
+
+  private normalizeQuery(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/\./g, "")
+      .replace(/\s+/g, " ");
+  }
+
+  private expandQueryTokens(normalizedQuery: string): string[] {
+    const tokens = normalizedQuery.split(/[\s,]+/).filter(Boolean);
+    const expanded = new Set(tokens);
+
+    for (const token of tokens) {
+      if (stateNameToCode[token]) {
+        expanded.add(stateNameToCode[token]);
+      }
+    }
+
+    for (const [stateName, stateCode] of Object.entries(stateNameToCode)) {
+      if (normalizedQuery.includes(stateName)) {
+        expanded.add(stateCode);
+      }
+    }
+
+    return [...expanded];
+  }
+
+  private extractStateQuery(tokens: string[]): string | undefined {
+    return tokens.find((token) => token.length === 2 && Object.values(stateNameToCode).includes(token));
   }
 }

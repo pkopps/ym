@@ -4468,6 +4468,84 @@ test("provider assistant asks for booking selection when more than one booking m
   assert.equal(response.bookingCandidates.length, 2);
 });
 
+test("provider assistant can send a late update with parsed delay timing", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-late@example.com",
+    password: "Password123!",
+    phone: "555-4384",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-late@example.com",
+    password: "Password123!",
+    phone: "555-4385",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const startIso = serviceDay.toISOString();
+  const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: startIso,
+    scheduledEndIso: endIso,
+    notes: "Assistant late update test",
+    totalCents: 6200
+  });
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell my afternoon customer I am 30 minutes late because traffic",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "mark-booking-late");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.equal(preview.lateMinutes, 30);
+  assert.ok(preview.lateEtaIso);
+  assert.match(preview.previewMessage, /30 minutes behind/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell my afternoon customer I am 30 minutes late because traffic",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "mark-booking-late");
+  assert.ok(executed.updatedBooking?.lateEtaIso);
+  assert.equal(executed.updatedBooking?.lateReason, "Traffic");
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-late-update");
+
+  const notifications = await platform.listNotifications({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  });
+  assert.ok(
+    notifications.notifications.some((notification) => notification.title === "Your provider is running late")
+  );
+});
+
 test("new providers stay out of public search until ops approves verification", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

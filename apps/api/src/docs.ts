@@ -650,6 +650,8 @@ export const apiSpec = {
       get: {
         tags: ["Search"],
         summary: "Search for cities, towns, and service areas",
+        description:
+          "Returns customer-facing place suggestions for booking/search flows. The fallback dataset now supports stronger city/state normalization, ZIP matching, and practical service-area aliases when live geocoding is unavailable.",
         parameters: [
           {
             name: "query",
@@ -741,7 +743,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Run a provider scheduling assistant command",
         description:
-          "Parses a natural-language provider scheduling command, previews the matched booking and target service window, and can execute a provider-side reschedule plus customer notification when confirmed.",
+          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like rescheduling a job or sending a late arrival update to the customer when confirmed.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
