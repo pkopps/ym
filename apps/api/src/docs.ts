@@ -1651,7 +1651,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Get provider calendar subscription details",
         description:
-          "Returns a subscribable ICS feed URL and webcal URL so providers can add YardMatch jobs and manual outside-calendar blocks to Apple Calendar, Google Calendar, and other iCal-compatible scheduling tools.",
+          "Returns a subscribable ICS feed plus platform-specific Apple Calendar, Google Calendar, and generic iCal actions so providers can add YardMatch jobs and manual outside-calendar blocks with less setup friction.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Provider calendar subscription details" }
@@ -1738,6 +1738,18 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "External calendar import synced" }
+        }
+      }
+    },
+    "/api/calendar/imports/sync-stale": {
+      post: {
+        tags: ["Providers"],
+        summary: "Bulk-refresh stale or errored outside calendar imports",
+        description:
+          "Refreshes every external calendar subscription that is stale or currently failing, then returns the updated import health and attempt counts so providers can recover mixed-schedule sync faster.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Stale or errored external calendar imports refreshed" }
         }
       }
     },

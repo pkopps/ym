@@ -335,6 +335,31 @@ export function SupportScreen() {
     }
   }
 
+  async function handleSyncStaleCalendarImports() {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const nextImports = await api.syncStaleProviderCalendarImports();
+      setCalendarImports(nextImports);
+      setStatusMessage(
+        nextImports.attemptedSubscriptionCount === 0
+          ? "No stale or errored calendar feeds needed a refresh."
+          : `Refreshed ${nextImports.syncedSubscriptionCount} feed${nextImports.syncedSubscriptionCount === 1 ? "" : "s"} and ${nextImports.failedSubscriptionCount} still need attention.`
+      );
+      await loadProvider();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh stale calendar feeds.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function handleRemoveCalendarImport(subscriptionId: string) {
     if (!envelope?.session.token) {
       return;
@@ -755,24 +780,30 @@ export function SupportScreen() {
               • {instruction}
             </Text>
           ))}
+          {calendarSubscription?.actions.map((action) => (
+            <Text key={`${action.platform}-helper`} style={styles.meta}>
+              • {action.label}: {action.helperText}
+            </Text>
+          ))}
         </View>
         <View style={styles.stepRow}>
-          <Pressable
-            disabled={!calendarSubscription}
-            onPress={() => calendarSubscription && void Linking.openURL(calendarSubscription.feedUrl)}
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>Open feed URL</Text>
-          </Pressable>
-          <Pressable
-            disabled={!calendarSubscription}
-            onPress={() => calendarSubscription && void Linking.openURL(calendarSubscription.webcalUrl)}
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>Subscribe with webcal</Text>
-          </Pressable>
+          {calendarSubscription?.actions.map((action) => (
+            <Pressable
+              disabled={!calendarSubscription}
+              key={action.platform}
+              onPress={() => void Linking.openURL(action.href)}
+              style={styles.secondaryButton}
+            >
+              <Text style={styles.secondaryButtonLabel}>{action.label}</Text>
+            </Pressable>
+          ))}
         </View>
         <View style={styles.ticketStack}>
+          {(calendarHealth?.staleSubscriptionCount ?? 0) > 0 || (calendarHealth?.erroredSubscriptionCount ?? 0) > 0 ? (
+            <Pressable disabled={isWorking} onPress={() => void handleSyncStaleCalendarImports()} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>Sync stale feeds</Text>
+            </Pressable>
+          ) : null}
           <Text style={styles.valueText}>Import an outside calendar feed</Text>
           <Text style={styles.meta}>
             Paste a Google, Apple, or generic iCal feed URL and YardMatch will pull those events in as blocking time.

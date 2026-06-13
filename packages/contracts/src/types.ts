@@ -920,11 +920,19 @@ export interface NotificationOpsEscalationResponse {
   failedCount: number;
 }
 
+export interface ProviderCalendarSubscriptionAction {
+  platform: "apple-calendar" | "google-calendar" | "ical";
+  label: string;
+  href: string;
+  helperText: string;
+}
+
 export interface ProviderCalendarSubscriptionResponse {
   providerId: string;
   providerName: string;
   feedUrl: string;
   webcalUrl: string;
+  actions: ProviderCalendarSubscriptionAction[];
   instructions: string[];
 }
 
@@ -1010,6 +1018,12 @@ export interface ProviderCalendarImportsResponse {
   subscriptions: ExternalCalendarSubscription[];
   importedBlockCount: number;
   syncHealth: ProviderCalendarSyncHealth;
+}
+
+export interface SyncStaleProviderCalendarImportsResponse extends ProviderCalendarImportsResponse {
+  syncedSubscriptionCount: number;
+  failedSubscriptionCount: number;
+  attemptedSubscriptionCount: number;
 }
 
 export interface RegisterUserRequest {

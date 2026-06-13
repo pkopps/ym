@@ -75,6 +75,7 @@ export class ApiRoutes {
   public static readonly providerCalendarOverview = "/api/calendar/overview";
   public static readonly providerCalendarImports = "/api/calendar/imports";
   public static readonly providerCalendarImportsSync = "/api/calendar/imports/sync";
+  public static readonly providerCalendarImportsSyncStale = "/api/calendar/imports/sync-stale";
   public static readonly providerCalendarImportsRemove = "/api/calendar/imports/remove";
   public static readonly opsSupportTickets = "/api/support/ops/tickets";
   public static readonly opsSupportTicketsUpdate = "/api/support/ops/tickets/update";

@@ -3577,6 +3577,13 @@ test("providers can get a subscribable calendar feed and merged overview for mix
   const subscription = await platform.getProviderCalendarSubscription(provider.id);
   assert.ok(subscription.feedUrl.includes("/api/calendar/feed?token="));
   assert.ok(subscription.webcalUrl.startsWith("webcal://"));
+  assert.equal(subscription.actions.length, 3);
+  assert.equal(subscription.actions[0]?.platform, "apple-calendar");
+  assert.equal(subscription.actions[0]?.href, subscription.webcalUrl);
+  assert.equal(subscription.actions[1]?.platform, "google-calendar");
+  assert.ok(subscription.actions[1]?.href.includes(encodeURIComponent(subscription.feedUrl)));
+  assert.equal(subscription.actions[2]?.platform, "ical");
+  assert.equal(subscription.actions[2]?.href, subscription.feedUrl);
 
   const overview = await platform.getProviderCalendarOverview(provider.id);
   assert.equal(overview.yardmatchJobCount, 1);
@@ -3759,6 +3766,85 @@ test("calendar import sync failures persist provider-facing health state", async
     assert.equal(imports.syncHealth.erroredSubscriptionCount, 1);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("providers can bulk-refresh stale or errored calendar feeds", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-calendar-sync-stale@example.com",
+    password: "Password123!",
+    phone: "555-3945",
+    role: "provider",
+    companyName: "Recover Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: provider.serviceRadiusMiles,
+    staffingMode: provider.staffingMode,
+    sponsoredListingEnabled: provider.sponsoredListingEnabled,
+    externalEventsBlockingEnabled: true,
+    externalCalendarBlocks: []
+  });
+
+  const brokenFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response("calendar unavailable", {
+      status: 503
+    })) as typeof fetch;
+
+  let imports;
+  try {
+    imports = await platform.createProviderCalendarImport(provider.id, {
+      title: "Google Calendar - Recoverable feed",
+      provider: "google",
+      feedUrl: "https://calendar.example.com/recoverable.ics"
+    });
+  } finally {
+    globalThis.fetch = brokenFetch;
+  }
+
+  assert.equal(imports.subscriptions[0]?.syncStatus, "error");
+
+  const importStart = futureIso(96);
+  const importEnd = futureIso(97);
+  const rawFeed = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "BEGIN:VEVENT",
+    "UID:outside-client-recovered@example.com",
+    `DTSTART:${importStart.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
+    `DTEND:${importEnd.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
+    "SUMMARY:Recovered outside route",
+    "DESCRIPTION:Recovered from stale feed sync",
+    "END:VEVENT",
+    "END:VCALENDAR"
+  ].join("\n");
+
+  globalThis.fetch = (async () =>
+    new Response(rawFeed, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/calendar"
+      }
+    })) as typeof fetch;
+
+  try {
+    const refreshed = await platform.syncStaleProviderCalendarImports(provider.id);
+    assert.equal(refreshed.attemptedSubscriptionCount, 1);
+    assert.equal(refreshed.syncedSubscriptionCount, 1);
+    assert.equal(refreshed.failedSubscriptionCount, 0);
+    assert.equal(refreshed.subscriptions[0]?.syncStatus, "active");
+    assert.equal(refreshed.syncHealth.status, "healthy");
+    assert.ok(refreshed.subscriptions[0]?.lastSyncedAt);
+  } finally {
+    globalThis.fetch = brokenFetch;
   }
 });
 

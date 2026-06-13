@@ -97,8 +97,10 @@ import {
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
   ProviderCalendarSubscriptionResponse,
+  ProviderCalendarSubscriptionAction,
   ProviderCalendarImportsResponse,
   ProviderCalendarSyncHealth,
+  SyncStaleProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
   PlaceSearchResponse,
   RegisterUserRequest,
@@ -4836,9 +4838,10 @@ export class MarketplacePlatformService {
       providerName: provider.companyName,
       feedUrl,
       webcalUrl: feedUrl.replace(/^http/, "webcal"),
+      actions: this.buildProviderCalendarSubscriptionActions(feedUrl),
       instructions: [
-        "Apple Calendar and Outlook can subscribe directly with the webcal link.",
-        "Google Calendar can subscribe to the feed URL from Add calendar by URL.",
+        "Apple Calendar can subscribe directly with the Apple Calendar action or the raw webcal link.",
+        "Google Calendar can use the Google Calendar action or paste the feed URL into Add calendar by URL.",
         "The feed includes YardMatch jobs plus your manual outside-client and personal blocks."
       ]
     };
@@ -4943,6 +4946,67 @@ export class MarketplacePlatformService {
         (block) => block.source === "calendar-import"
       ).length,
       syncHealth: this.buildProviderCalendarSyncHealth(updatedProvider, bookings)
+    };
+  }
+
+  public async syncStaleProviderCalendarImports(
+    providerId: string
+  ): Promise<SyncStaleProviderCalendarImportsResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const subscriptions = provider.calendarConnection.externalSubscriptions ?? [];
+    const now = Date.now();
+    const targets = subscriptions.filter(
+      (subscription) =>
+        subscription.syncStatus === "error" ||
+        !subscription.lastSyncedAt ||
+        now - Date.parse(subscription.lastSyncedAt) > 24 * 60 * 60 * 1000
+    );
+
+    let currentProvider = provider;
+    let syncedSubscriptionCount = 0;
+    let failedSubscriptionCount = 0;
+
+    for (const target of targets) {
+      const currentSubscription = (currentProvider.calendarConnection.externalSubscriptions ?? []).find(
+        (item) => item.id === target.id
+      );
+      if (!currentSubscription) {
+        failedSubscriptionCount += 1;
+        continue;
+      }
+
+      const beforeStatus = currentSubscription.syncStatus;
+      currentProvider = await this.syncExternalCalendarSubscription(
+        currentProvider,
+        currentSubscription,
+        currentProvider.calendarConnection.externalSubscriptions ?? []
+      );
+      const afterStatus = (currentProvider.calendarConnection.externalSubscriptions ?? []).find(
+        (item) => item.id === target.id
+      )?.syncStatus;
+
+      if (afterStatus === "active") {
+        syncedSubscriptionCount += 1;
+      } else if (beforeStatus === "error" || afterStatus === "error") {
+        failedSubscriptionCount += 1;
+      }
+    }
+
+    const bookings = await this.listFutureProviderCalendarConflictBookings(currentProvider.id);
+    return {
+      providerId,
+      subscriptions: currentProvider.calendarConnection.externalSubscriptions ?? [],
+      importedBlockCount: (currentProvider.calendarConnection.externalBlocks ?? []).filter(
+        (block) => block.source === "calendar-import"
+      ).length,
+      syncHealth: this.buildProviderCalendarSyncHealth(currentProvider, bookings),
+      attemptedSubscriptionCount: targets.length,
+      syncedSubscriptionCount,
+      failedSubscriptionCount
     };
   }
 
@@ -5191,6 +5255,32 @@ export class MarketplacePlatformService {
         .sort((left, right) => left.startIso.localeCompare(right.startIso))[0]?.startIso,
       notes
     };
+  }
+
+  private buildProviderCalendarSubscriptionActions(feedUrl: string): ProviderCalendarSubscriptionAction[] {
+    const webcalUrl = feedUrl.replace(/^http/, "webcal");
+    const googleCalendarUrl = `https://calendar.google.com/calendar/u/0/r/settings/addbyurl?cid=${encodeURIComponent(feedUrl)}`;
+
+    return [
+      {
+        platform: "apple-calendar",
+        label: "Apple Calendar",
+        href: webcalUrl,
+        helperText: "Opens the native subscribe flow in Apple Calendar and other webcal-capable apps."
+      },
+      {
+        platform: "google-calendar",
+        label: "Google Calendar",
+        href: googleCalendarUrl,
+        helperText: "Opens Google Calendar's Add by URL screen with the YardMatch feed prefilled."
+      },
+      {
+        platform: "ical",
+        label: "Raw feed URL",
+        href: feedUrl,
+        helperText: "Use this HTTPS feed in any iCal-compatible calendar that prefers a plain URL."
+      }
+    ];
   }
 
   private async listFutureProviderCalendarConflictBookings(providerId: string) {

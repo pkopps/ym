@@ -450,6 +450,28 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
+  async function handleSyncStaleCalendarImports() {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const nextImports = await api.syncStaleProviderCalendarImports();
+      setCalendarImports(nextImports);
+      setStatusMessage(
+        nextImports.attemptedSubscriptionCount === 0
+          ? "No stale or errored calendar feeds needed a refresh."
+          : `Refreshed ${nextImports.syncedSubscriptionCount} feed${nextImports.syncedSubscriptionCount === 1 ? "" : "s"} and ${nextImports.failedSubscriptionCount} still need attention.`
+      );
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh stale calendar feeds right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function handleRemoveCalendarImport(subscriptionId: string) {
     setIsWorking(true);
     setStatusMessage(undefined);
@@ -1029,17 +1051,27 @@ export function ProviderLiveManagementBoard() {
         {calendarSubscription ? (
           <>
             <div className="cta-row">
-              <a className="button-secondary" href={calendarSubscription.feedUrl} target="_blank" rel="noreferrer">
-                Open feed URL
-              </a>
-              <a className="button-secondary" href={calendarSubscription.webcalUrl}>
-                Subscribe with webcal
-              </a>
+              {calendarSubscription.actions.map((action) => (
+                <a
+                  className="button-secondary"
+                  href={action.href}
+                  key={action.platform}
+                  rel={action.href.startsWith("http") ? "noreferrer" : undefined}
+                  target={action.href.startsWith("http") ? "_blank" : undefined}
+                >
+                  {action.label}
+                </a>
+              ))}
             </div>
             <div className="stack-md" style={{ paddingTop: "1rem" }}>
               {calendarSubscription.instructions.map((instruction) => (
                 <p key={instruction}>{instruction}</p>
               ))}
+              <div className="stack-sm" style={{ paddingBottom: 0 }}>
+                {calendarSubscription.actions.map((action) => (
+                  <p key={`${action.platform}-helper`}>{action.label}: {action.helperText}</p>
+                ))}
+              </div>
             </div>
             {calendarOverview ? (
               <div className="stack-md" style={{ paddingTop: "1rem" }}>
@@ -1133,6 +1165,18 @@ export function ProviderLiveManagementBoard() {
           </>
         ) : null}
         <div className="stack-md" style={{ paddingTop: "1.25rem" }}>
+          {(calendarHealth?.staleSubscriptionCount ?? 0) > 0 || (calendarHealth?.erroredSubscriptionCount ?? 0) > 0 ? (
+            <div className="cta-row">
+              <button
+                className="button-secondary"
+                disabled={isWorking}
+                onClick={() => void handleSyncStaleCalendarImports()}
+                type="button"
+              >
+                Sync stale feeds
+              </button>
+            </div>
+          ) : null}
           <div className="grid-two">
             <label className="form-field">
               <span>Imported calendar title</span>

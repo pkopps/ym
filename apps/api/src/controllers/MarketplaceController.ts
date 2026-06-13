@@ -117,6 +117,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/calendar/imports") ||
       (context.method === "POST" && context.path === "/api/calendar/imports") ||
       (context.method === "POST" && context.path === "/api/calendar/imports/sync") ||
+      (context.method === "POST" && context.path === "/api/calendar/imports/sync-stale") ||
       (context.method === "POST" && context.path === "/api/calendar/imports/remove") ||
       (context.method === "GET" && context.path === "/api/calendar/feed")
     );
@@ -699,6 +700,12 @@ export class MarketplaceController implements ApiController {
           context.body as SyncExternalCalendarImportRequest
         )
       );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/calendar/imports/sync-stale") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.syncStaleProviderCalendarImports(identity.userId));
       return;
     }
 

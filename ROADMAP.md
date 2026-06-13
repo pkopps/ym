@@ -122,6 +122,8 @@ Already done:
 - merged provider calendar view
 - manual outside-client / personal block handling
 - outside blocks reducing YardMatch availability
+- platform-specific provider calendar subscription actions for Apple Calendar, Google Calendar, and raw iCal feeds
+- bulk stale / errored feed refresh for outside calendar imports
 - external calendar sync health for mixed books of business:
   - stale or broken outside feeds are surfaced back to the provider
   - failed imports persist as saved subscriptions with error state instead of disappearing
@@ -130,9 +132,6 @@ Already done:
 
 Still left:
 
-- Google Calendar sync polish
-- Apple Calendar / iCal subscription polish
-- stronger external sync behavior for mixed books of business
 - optional deeper two-way sync later, if it proves worth the added complexity
 
 ### Search, address, and quote intelligence

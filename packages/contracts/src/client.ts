@@ -65,6 +65,7 @@ import {
   ProviderCrewConversation,
   ProviderCalendarSubscriptionResponse,
   ProviderCalendarImportsResponse,
+  SyncStaleProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
   ProviderProfile,
   ProviderStaffingOverview,
@@ -305,6 +306,13 @@ export class MarketplaceApiClient {
 
   public syncProviderCalendarImport(payload: SyncExternalCalendarImportRequest) {
     return this.postJson<ProviderCalendarImportsResponse>(ApiRoutes.providerCalendarImportsSync, payload);
+  }
+
+  public syncStaleProviderCalendarImports() {
+    return this.postJson<SyncStaleProviderCalendarImportsResponse>(
+      ApiRoutes.providerCalendarImportsSyncStale,
+      {}
+    );
   }
 
   public removeProviderCalendarImport(payload: RemoveExternalCalendarImportRequest) {

@@ -138,6 +138,7 @@ npm run prisma:seed
 - Separate customer, provider, and crew-member mobile app shells with role-specific navigation
 - One shared website with role-aware login entry points
 - Scheduling, calendar feeds, and availability planning
+- Provider calendar subscription actions for Apple Calendar, Google Calendar, and raw iCal feeds
 - Payments, refunds, and service-quality issue workflows
 - Structured provider reviews with overall, timeliness, and attention-to-detail ratings plus free text
 - Customer support intake
