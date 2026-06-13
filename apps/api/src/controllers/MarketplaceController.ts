@@ -535,6 +535,11 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "GET" && context.path === "/api/payouts/ops/preview") {
+      sendJson(response, 200, await this.platform.getOpsPayoutPreview());
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/payments/webhook") {
       const signatureHeader = context.headers["stripe-signature"];
       if (!signatureHeader) {

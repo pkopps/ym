@@ -1329,6 +1329,167 @@ test("ops can deny a refund review and return payouts to the normal schedule", a
   );
 });
 
+test("provider payout ledger exposes weekly and instant payout schedule details", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-payout-schedule@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: provider.serviceRadiusMiles,
+    staffingMode: provider.staffingMode,
+    crewReviewLeadHours: provider.crewReviewLeadHours,
+    departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
+    routeLeaderMode: provider.routeLeaderMode,
+    weeklyPayoutDay: "Tue",
+    instantPayoutsEnabled: true,
+    sponsoredListingEnabled: provider.sponsoredListingEnabled
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Provider payout schedule test",
+    totalCents: 12800
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  await platform.finalizeCheckoutSession(customer.id, { checkoutSessionId: "cs_test_123" });
+  await repository.updateBooking(booking.id, {
+    completedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()
+  });
+
+  const ledger = await platform.getProviderPayoutLedger(provider.id);
+  const entry = ledger.entries.find((candidate) => candidate.bookingId === booking.id);
+
+  assert.ok(entry);
+  assert.equal(entry?.status, "ready");
+  assert.equal(ledger.payoutSchedule.weeklyPayoutDay, "Tue");
+  assert.equal(ledger.payoutSchedule.instantPayoutsEnabled, true);
+  assert.equal(ledger.payoutSchedule.instantPayoutMinimumCents, 10000);
+  assert.equal(ledger.payoutSchedule.instantPayoutEligibleCents, entry?.providerNetAmountCents ?? 0);
+  assert.equal(ledger.payoutSchedule.holdPeriodHours, 48);
+});
+
+test("ops payout preview groups ready balances into upcoming payout runs", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-ops-payout-preview@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const providers = await repository.listProviders();
+  assert.ok(providers.length >= 2);
+
+  await platform.updateProviderSettings(providers[0]!.id, {
+    serviceRadiusMiles: providers[0]!.serviceRadiusMiles,
+    staffingMode: providers[0]!.staffingMode,
+    crewReviewLeadHours: providers[0]!.crewReviewLeadHours,
+    departureReminderLeadMinutes: providers[0]!.departureReminderLeadMinutes,
+    routeLeaderMode: providers[0]!.routeLeaderMode,
+    weeklyPayoutDay: "Tue",
+    instantPayoutsEnabled: true,
+    sponsoredListingEnabled: providers[0]!.sponsoredListingEnabled
+  });
+  await platform.updateProviderSettings(providers[1]!.id, {
+    serviceRadiusMiles: providers[1]!.serviceRadiusMiles,
+    staffingMode: providers[1]!.staffingMode,
+    crewReviewLeadHours: providers[1]!.crewReviewLeadHours,
+    departureReminderLeadMinutes: providers[1]!.departureReminderLeadMinutes,
+    routeLeaderMode: providers[1]!.routeLeaderMode,
+    weeklyPayoutDay: "Fri",
+    instantPayoutsEnabled: false,
+    sponsoredListingEnabled: providers[1]!.sponsoredListingEnabled
+  });
+
+  const firstBooking = await platform.createBooking(customer.id, {
+    providerId: providers[0]!.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Ops payout preview first provider",
+    totalCents: 14200
+  });
+  const secondBooking = await platform.createBooking(customer.id, {
+    providerId: providers[1]!.id,
+    serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "hedge-trimming",
+    scheduledStartIso: futureIso(80),
+    scheduledEndIso: futureIso(81),
+    notes: "Ops payout preview second provider",
+    totalCents: 8600
+  });
+
+  for (const current of [
+    { booking: firstBooking, provider: providers[0]! },
+    { booking: secondBooking, provider: providers[1]! }
+  ]) {
+    await platform.confirmBooking(current.provider.id, { bookingId: current.booking.id });
+    await attachEvidence(
+      platform,
+      { userId: current.provider.id, email: current.provider.email, role: "provider" },
+      current.booking.id,
+      "after"
+    );
+    await platform.completeBooking(current.provider.id, { bookingId: current.booking.id });
+    const checkout = await platform.createCheckoutSession(customer.id, { bookingId: current.booking.id });
+    await repository.updatePayment(checkout.payment.id, {
+      status: "captured",
+      paymentIntentId: checkout.payment.paymentIntentId ?? "pi_test_123",
+      updatedAt: new Date().toISOString()
+    });
+    await repository.updateBooking(current.booking.id, {
+      completedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()
+    });
+  }
+
+  const preview = await platform.getOpsPayoutPreview();
+
+  assert.equal(preview.providerRuns.length, 2);
+  assert.equal(preview.providerInstantEligibleCount, 1);
+  assert.ok(preview.totalProviderReadyCents >= 22800);
+  assert.ok(preview.providerRuns.some((run) => run.providerCount === 1 && run.providerNetCents >= 14200));
+});
+
 test("customer service can open a refund review override from a billing ticket", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(

@@ -3,6 +3,7 @@ import { MarketplaceApiClient, ObservabilityOverview } from "@yardmatch/contract
 import { getWebApiBaseUrl } from "../../lib/api";
 import { NotificationOpsBoard } from "../../components/NotificationOpsBoard";
 import { OpsFinancialExceptionBoard } from "../../components/OpsFinancialExceptionBoard";
+import { OpsPayoutRunBoard } from "../../components/OpsPayoutRunBoard";
 import { OpsProviderVerificationQueue } from "../../components/OpsProviderVerificationQueue";
 import { OpsSupportQueue } from "../../components/OpsSupportQueue";
 
@@ -128,6 +129,7 @@ export default async function OpsPage() {
       </section>
 
       <NotificationOpsBoard />
+      <OpsPayoutRunBoard />
       <OpsFinancialExceptionBoard />
       <OpsProviderVerificationQueue />
       <OpsSupportQueue />

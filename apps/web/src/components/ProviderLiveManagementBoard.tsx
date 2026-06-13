@@ -55,6 +55,20 @@ function formatMinutesAsHours(minutes: number) {
   return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hrs`;
 }
 
+function formatWeekdayLabel(weekday: ProviderProfile["weeklyPayoutDay"]) {
+  const map: Record<ProviderProfile["weeklyPayoutDay"], string> = {
+    Mon: "Monday",
+    Tue: "Tuesday",
+    Wed: "Wednesday",
+    Thu: "Thursday",
+    Fri: "Friday",
+    Sat: "Saturday",
+    Sun: "Sunday"
+  };
+
+  return map[weekday];
+}
+
 function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") {
   switch (status) {
     case "comfortable":
@@ -239,7 +253,13 @@ export function ProviderLiveManagementBoard() {
     updates: Partial<
       Pick<
         ProviderProfile,
-        "serviceRadiusMiles" | "staffingMode" | "crewReviewLeadHours" | "departureReminderLeadMinutes" | "routeLeaderMode"
+        | "serviceRadiusMiles"
+        | "staffingMode"
+        | "crewReviewLeadHours"
+        | "departureReminderLeadMinutes"
+        | "routeLeaderMode"
+        | "weeklyPayoutDay"
+        | "instantPayoutsEnabled"
       >
     >,
     successMessage: string
@@ -261,6 +281,9 @@ export function ProviderLiveManagementBoard() {
         departureReminderLeadMinutes:
           updates.departureReminderLeadMinutes ?? provider.departureReminderLeadMinutes,
         routeLeaderMode: updates.routeLeaderMode ?? provider.routeLeaderMode,
+        weeklyPayoutDay: updates.weeklyPayoutDay ?? provider.weeklyPayoutDay,
+        instantPayoutsEnabled:
+          updates.instantPayoutsEnabled ?? provider.instantPayoutsEnabled,
         sponsoredListingEnabled: provider.sponsoredListingEnabled
       });
       setStatusMessage(successMessage);
@@ -921,6 +944,61 @@ export function ProviderLiveManagementBoard() {
               type="button"
             >
               Allow crew fallback
+            </button>
+          </div>
+        </article>
+        <article className="card">
+          <span className="eyebrow">Payout timing</span>
+          <h2>{provider ? formatWeekdayLabel(provider.weeklyPayoutDay) : "Thursday"}</h2>
+          <p>Choose the weekly day YardMatch groups provider payouts for this business.</p>
+          <div className="cta-row">
+            {(["Tue", "Thu", "Fri"] as const).map((weekday) => (
+              <button
+                className={provider?.weeklyPayoutDay === weekday ? "button" : "button-secondary"}
+                disabled={isWorking}
+                key={weekday}
+                onClick={() =>
+                  void handleDispatchSettingsUpdate(
+                    { weeklyPayoutDay: weekday },
+                    "Weekly payout day updated."
+                  )
+                }
+                type="button"
+              >
+                {formatWeekdayLabel(weekday)}
+              </button>
+            ))}
+          </div>
+          <p>
+            Instant payouts are {provider?.instantPayoutsEnabled ? "enabled" : "off"} for ready balances
+            above the platform minimum.
+          </p>
+          <div className="cta-row">
+            <button
+              className={provider?.instantPayoutsEnabled ? "button" : "button-secondary"}
+              disabled={isWorking}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { instantPayoutsEnabled: true },
+                  "Instant payouts enabled."
+                )
+              }
+              type="button"
+            >
+              Enable instant
+            </button>
+            <button
+              className={!provider?.instantPayoutsEnabled ? "button" : "button-secondary"}
+              disabled={isWorking}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { instantPayoutsEnabled: false },
+                  "Instant payouts turned off."
+                )
+              }
+              type="button"
+            >
+              Weekly only
             </button>
           </div>
         </article>

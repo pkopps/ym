@@ -191,6 +191,12 @@ export function SupportScreen() {
         <Text style={styles.meta}>
           Waiting on customer payment: {formatCurrency(payoutLedger?.pendingCustomerPaymentCents ?? 0)}
         </Text>
+        <Text style={styles.meta}>
+          Next weekly crew payout:{" "}
+          {payoutLedger?.nextWeeklyPayoutDateIso
+            ? new Date(payoutLedger.nextWeeklyPayoutDateIso).toLocaleString()
+            : "Not available"}
+        </Text>
         <View style={styles.ticketStack}>
           {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
             <View key={entry.id} style={styles.ticketRow}>

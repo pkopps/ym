@@ -68,6 +68,8 @@ model ProviderBusinessProfile {
   crewReviewLeadHours       Int      @default(24)
   departureReminderLeadMinutes Int   @default(60)
   routeLeaderMode           String   @default("provider-only")
+  weeklyPayoutDay           String   @default("Thu")
+  instantPayoutsEnabled     Boolean  @default(false)
   verificationStatus        String   @default("pending-review")
   verificationSubmittedAt   DateTime?
   verificationReviewedAt    DateTime?

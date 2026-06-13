@@ -38,6 +38,7 @@ import {
   NotificationOpsRetrySweepResponse,
   NotificationPreferences,
   OpsFinancialExceptionSummaryResponse,
+  OpsPayoutRunPreviewResponse,
   PushDevice,
   PaymentRecord,
   ProviderPayoutLedgerResponse,
@@ -505,6 +506,10 @@ export class MarketplaceApiClient {
 
   public getCrewPayoutLedger(): Promise<CrewPayoutLedgerResponse> {
     return this.getJson(ApiRoutes.crewPayoutLedger);
+  }
+
+  public getOpsPayoutPreview(): Promise<OpsPayoutRunPreviewResponse> {
+    return this.getJson(ApiRoutes.opsPayoutPreview);
   }
 
   public createCheckoutSession(

@@ -118,13 +118,31 @@ export function ProviderPaymentsBoard() {
         </article>
       </section>
 
+      <section className="grid-three">
+        <article className="card">
+          <h2>{ledger?.payoutSchedule ? formatDateTime(ledger.payoutSchedule.nextWeeklyPayoutDateIso) : "—"}</h2>
+          <p>Next weekly provider payout run</p>
+        </article>
+        <article className="card">
+          <h2>{formatCurrency(ledger?.payoutSchedule.instantPayoutEligibleCents ?? 0)}</h2>
+          <p>Instant payout eligible now</p>
+        </article>
+        <article className="card">
+          <h2>{ledger?.payoutSchedule.instantPayoutsEnabled ? "On" : "Off"}</h2>
+          <p>
+            Instant payouts {ledger?.payoutSchedule ? `over ${formatCurrency(ledger.payoutSchedule.instantPayoutMinimumCents)}` : ""}
+          </p>
+        </article>
+      </section>
+
       <section className="provider-capacity-alert provider-capacity-alert--healthy">
         <div>
           <span className="eyebrow">Payout status</span>
           <h2>Completed work now feeds a real payout ledger, even before bank-transfer rails are fully live.</h2>
           <p>
             Provider net and crew share now come from actual completed bookings, accepted crew matches,
-            captured customer payments, and refund state. Weekly payouts and instant cash-out rules are the next layer.
+            captured customer payments, and refund state. Your weekly payout day and instant-cash-out eligibility
+            are now tracked directly in the ledger.
           </p>
         </div>
         <div className="cta-row">

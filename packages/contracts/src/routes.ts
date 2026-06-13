@@ -58,6 +58,7 @@ export class ApiRoutes {
   public static readonly listPayments = "/api/payments";
   public static readonly providerPayoutLedger = "/api/payouts/provider";
   public static readonly crewPayoutLedger = "/api/payouts/crew";
+  public static readonly opsPayoutPreview = "/api/payouts/ops/preview";
   public static readonly paymentsWebhook = "/api/payments/webhook";
   public static readonly createCheckoutSession = "/api/payments/checkout-session";
   public static readonly finalizeCheckoutSession = "/api/payments/checkout-session/finalize";

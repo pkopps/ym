@@ -65,13 +65,14 @@ Already done:
 - customer refund-review requests tied directly to real bookings and payments
 - ops approval / denial of refund reviews from the internal support queue
 - provider and crew payouts automatically move on hold while a refund review is open
+- provider-configurable weekly payout timing and instant-payout eligibility rules
+- ops payout preview board for upcoming provider and crew payout runs
 - provider verification workflow with an ops review queue and provider-facing status visibility
 - richer refund reporting and exception summaries in the ops dashboard
 
 - Turn on real Stripe credentials in development and staging
 - Verify production-style webhook handling end to end
 - Add real refund handling synchronized with Stripe
-- Define weekly / instant payout rules where applicable
 
 ## Phase 2: Needed For Launch
 

@@ -144,6 +144,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           crewReviewLeadHours: provider.crewReviewLeadHours,
           departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
           routeLeaderMode: provider.routeLeaderMode,
+          weeklyPayoutDay: provider.weeklyPayoutDay,
+          instantPayoutsEnabled: provider.instantPayoutsEnabled,
           verificationStatus: provider.verificationStatus,
           verificationSubmittedAt: provider.verificationSubmittedAt
             ? new Date(provider.verificationSubmittedAt)
@@ -897,6 +899,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           crewReviewLeadHours: updates.crewReviewLeadHours,
           departureReminderLeadMinutes: updates.departureReminderLeadMinutes,
           routeLeaderMode: updates.routeLeaderMode,
+          weeklyPayoutDay: updates.weeklyPayoutDay,
+          instantPayoutsEnabled: updates.instantPayoutsEnabled,
           verificationStatus: updates.verificationStatus,
           verificationSubmittedAt: updates.verificationSubmittedAt
             ? new Date(updates.verificationSubmittedAt)
@@ -1654,6 +1658,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       crewReviewLeadHours: number;
       departureReminderLeadMinutes: number;
       routeLeaderMode: string;
+      weeklyPayoutDay: string;
+      instantPayoutsEnabled: boolean;
       verificationStatus?: string;
       verificationSubmittedAt?: Date | null;
       verificationReviewedAt?: Date | null;
@@ -1684,6 +1690,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       departureReminderLeadMinutes: profile.departureReminderLeadMinutes,
       routeLeaderMode:
         (profile.routeLeaderMode as ProviderProfile["routeLeaderMode"] | undefined) ?? "provider-only",
+      weeklyPayoutDay: (profile.weeklyPayoutDay as ProviderProfile["weeklyPayoutDay"] | undefined) ?? "Thu",
+      instantPayoutsEnabled: profile.instantPayoutsEnabled ?? false,
       verificationStatus:
         (profile.verificationStatus as ProviderProfile["verificationStatus"] | undefined) ??
         "verified",

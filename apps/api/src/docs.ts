@@ -1363,6 +1363,17 @@ export const apiSpec = {
         }
       }
     },
+    "/api/payouts/ops/preview": {
+      get: {
+        tags: ["Payments"],
+        summary: "Preview upcoming provider and crew payout runs",
+        description:
+          "Returns an internal operations view of payout-ready provider balances, crew-share balances, upcoming grouped provider payout runs, and payout entries that are still on hold or waiting on customer payment.",
+        responses: {
+          "200": { description: "Ops payout preview returned" }
+        }
+      }
+    },
     "/api/payments/webhook": {
       post: {
         tags: ["Payments"],

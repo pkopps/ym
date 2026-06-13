@@ -97,6 +97,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
 - Real customer card payments are now prepared through Stripe hosted Checkout.
 - Provider and crew payout ledgers now read from real completed bookings, captured customer payments, accepted crew matches, and refund state.
+- Providers can now choose a weekly payout day and whether instant payouts are enabled, and ops can preview upcoming payout runs before real bank-transfer rails are switched on.
 - Refunds now flow through an internal review path instead of an instant customer-side reversal:
   - customers can request a refund review from completed paid bookings
   - a billing support ticket is created automatically

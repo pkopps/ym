@@ -89,6 +89,7 @@ export type CrewAvailabilityDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" 
 export type ProviderStaffingMode = "auto-accept" | "review-first";
 export type ProviderRouteLeaderMode = "provider-only" | "accepted-crew-fallback";
 export type ProviderVerificationStatus = "pending-review" | "verified" | "rejected";
+export type ProviderPayoutWeekday = CrewAvailabilityDay;
 export type CrewMatchStatus = "pending-provider-review" | "accepted" | "denied" | "cancelled-by-crew";
 export type ExternalCalendarBlockType =
   | "off-platform-client"
@@ -218,6 +219,8 @@ export interface ProviderProfile extends BaseUser {
   crewReviewLeadHours: number;
   departureReminderLeadMinutes: number;
   routeLeaderMode: ProviderRouteLeaderMode;
+  weeklyPayoutDay: ProviderPayoutWeekday;
+  instantPayoutsEnabled: boolean;
   verificationStatus: ProviderVerificationStatus;
   verificationSubmittedAt?: string;
   verificationReviewedAt?: string;
@@ -647,6 +650,15 @@ export interface ProviderPayoutLedgerEntry {
   note: string;
 }
 
+export interface ProviderPayoutScheduleSummary {
+  weeklyPayoutDay: ProviderPayoutWeekday;
+  nextWeeklyPayoutDateIso: string;
+  holdPeriodHours: number;
+  instantPayoutsEnabled: boolean;
+  instantPayoutMinimumCents: number;
+  instantPayoutEligibleCents: number;
+}
+
 export interface ProviderPayoutLedgerResponse {
   providerId: string;
   totalGrossCapturedCents: number;
@@ -654,6 +666,7 @@ export interface ProviderPayoutLedgerResponse {
   totalNetScheduledCents: number;
   totalCrewOwedCents: number;
   pendingCustomerPaymentCents: number;
+  payoutSchedule: ProviderPayoutScheduleSummary;
   entries: ProviderPayoutLedgerEntry[];
 }
 
@@ -679,7 +692,29 @@ export interface CrewPayoutLedgerResponse {
   totalScheduledCents: number;
   totalPaidCents: number;
   pendingCustomerPaymentCents: number;
+  nextWeeklyPayoutDateIso: string;
+  holdPeriodHours: number;
   entries: CrewPayoutLedgerEntry[];
+}
+
+export interface OpsProviderPayoutRunPreviewItem {
+  runDateIso: string;
+  providerCount: number;
+  bookingCount: number;
+  providerNetCents: number;
+  crewShareCents: number;
+  providerIds: string[];
+}
+
+export interface OpsPayoutRunPreviewResponse {
+  generatedAt: string;
+  totalProviderReadyCents: number;
+  totalCrewReadyCents: number;
+  totalAwaitingCustomerPaymentCents: number;
+  onHoldEntryCount: number;
+  providerInstantEligibleCount: number;
+  crewNextWeeklyPayoutDateIso: string;
+  providerRuns: OpsProviderPayoutRunPreviewItem[];
 }
 
 export interface SupportTicket {
@@ -1155,6 +1190,8 @@ export interface UpdateProviderSettingsRequest {
   crewReviewLeadHours?: number;
   departureReminderLeadMinutes?: number;
   routeLeaderMode?: ProviderRouteLeaderMode;
+  weeklyPayoutDay?: ProviderPayoutWeekday;
+  instantPayoutsEnabled?: boolean;
   sponsoredListingEnabled?: boolean;
   externalEventsBlockingEnabled?: boolean;
   externalCalendarBlocks?: Array<{

@@ -55,6 +55,20 @@ function formatCalendarHealthLabel(status: "healthy" | "attention" | "at-risk") 
   }
 }
 
+function formatWeekdayLabel(weekday: ProviderProfile["weeklyPayoutDay"]) {
+  const map: Record<ProviderProfile["weeklyPayoutDay"], string> = {
+    Mon: "Monday",
+    Tue: "Tuesday",
+    Wed: "Wednesday",
+    Thu: "Thursday",
+    Fri: "Friday",
+    Sat: "Saturday",
+    Sun: "Sunday"
+  };
+
+  return map[weekday];
+}
+
 export function SupportScreen() {
   const {
     biometricAvailable,
@@ -148,7 +162,13 @@ export function SupportScreen() {
     updates: Partial<
       Pick<
         ProviderProfile,
-        "serviceRadiusMiles" | "staffingMode" | "crewReviewLeadHours" | "departureReminderLeadMinutes" | "routeLeaderMode"
+        | "serviceRadiusMiles"
+        | "staffingMode"
+        | "crewReviewLeadHours"
+        | "departureReminderLeadMinutes"
+        | "routeLeaderMode"
+        | "weeklyPayoutDay"
+        | "instantPayoutsEnabled"
       >
     >
   ) {
@@ -168,6 +188,9 @@ export function SupportScreen() {
         departureReminderLeadMinutes:
           updates.departureReminderLeadMinutes ?? provider.departureReminderLeadMinutes,
         routeLeaderMode: updates.routeLeaderMode ?? provider.routeLeaderMode,
+        weeklyPayoutDay: updates.weeklyPayoutDay ?? provider.weeklyPayoutDay,
+        instantPayoutsEnabled:
+          updates.instantPayoutsEnabled ?? provider.instantPayoutsEnabled,
         sponsoredListingEnabled: provider.sponsoredListingEnabled
       });
       setProvider(nextProvider);
@@ -615,6 +638,16 @@ export function SupportScreen() {
           Waiting on customer payment: {formatCurrency(payoutLedger?.pendingCustomerPaymentCents ?? 0)} • Crew reserved:{" "}
           {formatCurrency(payoutLedger?.totalCrewOwedCents ?? 0)}
         </Text>
+        <Text style={styles.meta}>
+          Next weekly payout:{" "}
+          {payoutLedger?.payoutSchedule
+            ? new Date(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso).toLocaleString()
+            : "Not available"}
+        </Text>
+        <Text style={styles.meta}>
+          Instant eligible: {formatCurrency(payoutLedger?.payoutSchedule.instantPayoutEligibleCents ?? 0)} •{" "}
+          {provider?.instantPayoutsEnabled ? "Instant payouts on" : "Weekly only"}
+        </Text>
         <View style={styles.ticketStack}>
           {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
             <View key={entry.id} style={styles.ticketRow}>
@@ -628,6 +661,64 @@ export function SupportScreen() {
               <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
             </View>
           ))}
+        </View>
+        <View style={styles.stepRow}>
+          {(["Tue", "Thu", "Fri"] as const).map((weekday) => (
+            <Pressable
+              disabled={isWorking || !provider}
+              key={weekday}
+              onPress={() => void saveSettings({ weeklyPayoutDay: weekday })}
+              style={[
+                styles.secondaryButton,
+                provider?.weeklyPayoutDay === weekday && styles.secondaryButtonActive
+              ]}
+            >
+              <Text
+                style={[
+                  styles.secondaryButtonLabel,
+                  provider?.weeklyPayoutDay === weekday && styles.secondaryButtonLabelActive
+                ]}
+              >
+                {formatWeekdayLabel(weekday)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <View style={styles.stepRow}>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ instantPayoutsEnabled: true })}
+            style={[
+              styles.secondaryButton,
+              provider?.instantPayoutsEnabled && styles.secondaryButtonActive
+            ]}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonLabel,
+                provider?.instantPayoutsEnabled && styles.secondaryButtonLabelActive
+              ]}
+            >
+              Enable instant
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() => void saveSettings({ instantPayoutsEnabled: false })}
+            style={[
+              styles.secondaryButton,
+              !provider?.instantPayoutsEnabled && styles.secondaryButtonActive
+            ]}
+          >
+            <Text
+              style={[
+                styles.secondaryButtonLabel,
+                !provider?.instantPayoutsEnabled && styles.secondaryButtonLabelActive
+              ]}
+            >
+              Weekly only
+            </Text>
+          </Pressable>
         </View>
       </InfoCard>
 

@@ -36,6 +36,7 @@ import {
   NotificationOpsRetrySweepResponse,
   OpsBookingExceptionSummaryItem,
   OpsFinancialExceptionSummaryResponse,
+  OpsPayoutRunPreviewResponse,
   OpsRefundSummaryItem,
   ProviderCrewConversation,
   ProviderCrewConversationThread,
@@ -154,6 +155,9 @@ export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
   private static readonly reviewInviteExpiryDays = 30;
   private static readonly liveRouteLocationStaleMinutes = 5;
+  private readonly payoutHoldHours = 48;
+  private readonly instantPayoutMinimumCents = 10_000;
+  private readonly crewPayoutWeekday: CrewAvailabilityDay = "Fri";
   private readonly geoService = new GeoService();
   private readonly providerMatcher = new ProviderMatchService(this.geoService);
   private readonly schedulingService = new SchedulingService();
@@ -271,6 +275,8 @@ export class MarketplacePlatformService {
       crewReviewLeadHours: 24,
       departureReminderLeadMinutes: 60,
       routeLeaderMode: "provider-only",
+      weeklyPayoutDay: "Thu",
+      instantPayoutsEnabled: false,
       verificationStatus: "pending-review",
       verificationSubmittedAt: now,
       sponsoredListingEnabled: false,
@@ -2017,6 +2023,14 @@ export class MarketplacePlatformService {
       throw new Error("routeLeaderMode must be provider-only or accepted-crew-fallback");
     }
 
+    const weeklyPayoutDay = payload.weeklyPayoutDay ?? provider.weeklyPayoutDay ?? "Thu";
+    if (!this.isValidPayoutWeekday(weeklyPayoutDay)) {
+      throw new Error("weeklyPayoutDay must be Mon, Tue, Wed, Thu, Fri, Sat, or Sun");
+    }
+
+    const instantPayoutsEnabled =
+      payload.instantPayoutsEnabled ?? provider.instantPayoutsEnabled ?? false;
+
     const nextCalendarConnection = {
       ...provider.calendarConnection,
       externalEventsBlockingEnabled:
@@ -2035,6 +2049,8 @@ export class MarketplacePlatformService {
       crewReviewLeadHours,
       departureReminderLeadMinutes,
       routeLeaderMode,
+      weeklyPayoutDay,
+      instantPayoutsEnabled,
       sponsoredListingEnabled:
         payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
       calendarConnection: nextCalendarConnection
@@ -2046,6 +2062,8 @@ export class MarketplacePlatformService {
       crewReviewLeadHours,
       departureReminderLeadMinutes,
       routeLeaderMode,
+      weeklyPayoutDay,
+      instantPayoutsEnabled,
       sponsoredListingEnabled:
         payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
       calendarConnection: nextCalendarConnection
@@ -2066,6 +2084,8 @@ export class MarketplacePlatformService {
         crewReviewLeadHours,
         departureReminderLeadMinutes,
         routeLeaderMode,
+        weeklyPayoutDay,
+        instantPayoutsEnabled,
         sponsoredListingEnabled:
           payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
         externalEventsBlockingEnabled:
@@ -3250,6 +3270,7 @@ export class MarketplacePlatformService {
       pendingCustomerPaymentCents: entries
         .filter((entry) => entry.status === "awaiting-customer-payment")
         .reduce((sum, entry) => sum + entry.grossAmountCents, 0),
+      payoutSchedule: this.buildProviderPayoutScheduleSummary(provider, entries),
       entries
     };
   }
@@ -3316,7 +3337,106 @@ export class MarketplacePlatformService {
       pendingCustomerPaymentCents: entries
         .filter((entry) => entry.status === "awaiting-customer-payment")
         .reduce((sum, entry) => sum + entry.amountCents, 0),
+      nextWeeklyPayoutDateIso: this.getNextPayoutRunIso(this.crewPayoutWeekday),
+      holdPeriodHours: this.payoutHoldHours,
       entries
+    };
+  }
+
+  public async getOpsPayoutPreview(): Promise<OpsPayoutRunPreviewResponse> {
+    const [providers, bookings, payments, matches] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listBookings(),
+      this.repository.listPayments(),
+      this.repository.listCrewMatches()
+    ]);
+
+    const providerRuns = new Map<
+      string,
+      {
+        runDateIso: string;
+        providerIds: Set<string>;
+        bookingIds: Set<string>;
+        providerNetCents: number;
+        crewShareCents: number;
+      }
+    >();
+
+    let totalProviderReadyCents = 0;
+    let totalCrewReadyCents = 0;
+    let totalAwaitingCustomerPaymentCents = 0;
+    let onHoldEntryCount = 0;
+    let providerInstantEligibleCount = 0;
+
+    for (const provider of providers) {
+      const providerBookings = bookings.filter(
+        (booking) => booking.providerId === provider.id && this.isPayoutRelevantBooking(booking)
+      );
+      const nextRunIso = this.getNextPayoutRunIso(provider.weeklyPayoutDay);
+      let providerInstantEligibleCents = 0;
+
+      for (const booking of providerBookings) {
+        const payment = payments.find((candidate) => candidate.bookingId === booking.id);
+        const acceptedMatches = matches.filter(
+          (match) => match.bookingId === booking.id && match.status === "accepted"
+        );
+        const crewShareCents = acceptedMatches.reduce(
+          (sum, match) => sum + this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents),
+          0
+        );
+        const providerNetAmountCents = Math.max(booking.totalCents - crewShareCents, 0);
+        const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
+
+        if (payoutStatus === "ready") {
+          totalProviderReadyCents += providerNetAmountCents;
+          totalCrewReadyCents += crewShareCents;
+          providerInstantEligibleCents += providerNetAmountCents;
+
+          const run = providerRuns.get(nextRunIso) ?? {
+            runDateIso: nextRunIso,
+            providerIds: new Set<string>(),
+            bookingIds: new Set<string>(),
+            providerNetCents: 0,
+            crewShareCents: 0
+          };
+          run.providerIds.add(provider.id);
+          run.bookingIds.add(booking.id);
+          run.providerNetCents += providerNetAmountCents;
+          run.crewShareCents += crewShareCents;
+          providerRuns.set(nextRunIso, run);
+        } else if (payoutStatus === "awaiting-customer-payment") {
+          totalAwaitingCustomerPaymentCents += booking.totalCents;
+        } else if (payoutStatus === "on-hold") {
+          onHoldEntryCount += 1;
+        }
+      }
+
+      if (
+        provider.instantPayoutsEnabled &&
+        providerInstantEligibleCents >= this.instantPayoutMinimumCents
+      ) {
+        providerInstantEligibleCount += 1;
+      }
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      totalProviderReadyCents,
+      totalCrewReadyCents,
+      totalAwaitingCustomerPaymentCents,
+      onHoldEntryCount,
+      providerInstantEligibleCount,
+      crewNextWeeklyPayoutDateIso: this.getNextPayoutRunIso(this.crewPayoutWeekday),
+      providerRuns: Array.from(providerRuns.values())
+        .map((run) => ({
+          runDateIso: run.runDateIso,
+          providerCount: run.providerIds.size,
+          bookingCount: run.bookingIds.size,
+          providerNetCents: run.providerNetCents,
+          crewShareCents: run.crewShareCents,
+          providerIds: Array.from(run.providerIds)
+        }))
+        .sort((left, right) => left.runDateIso.localeCompare(right.runDateIso))
     };
   }
 
@@ -7072,6 +7192,49 @@ export class MarketplacePlatformService {
     return Math.round(hourlyRateCents * durationHours);
   }
 
+  private isValidPayoutWeekday(value: string): value is ProviderProfile["weeklyPayoutDay"] {
+    return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].includes(value);
+  }
+
+  private getNextPayoutRunIso(weekday: CrewAvailabilityDay): string {
+    const dayIndexByKey: Record<CrewAvailabilityDay, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6
+    };
+    const now = new Date();
+    const next = new Date(now);
+    next.setHours(9, 0, 0, 0);
+    const targetDay = dayIndexByKey[weekday];
+    const delta = (targetDay - next.getDay() + 7) % 7 || 7;
+    next.setDate(next.getDate() + delta);
+    return next.toISOString();
+  }
+
+  private buildProviderPayoutScheduleSummary(
+    provider: ProviderProfile,
+    entries: ProviderPayoutLedgerEntry[]
+  ): ProviderPayoutLedgerResponse["payoutSchedule"] {
+    const instantPayoutEligibleCents = provider.instantPayoutsEnabled
+      ? entries
+          .filter((entry) => entry.status === "ready")
+          .reduce((sum, entry) => sum + entry.providerNetAmountCents, 0)
+      : 0;
+
+    return {
+      weeklyPayoutDay: provider.weeklyPayoutDay,
+      nextWeeklyPayoutDateIso: this.getNextPayoutRunIso(provider.weeklyPayoutDay),
+      holdPeriodHours: this.payoutHoldHours,
+      instantPayoutsEnabled: provider.instantPayoutsEnabled,
+      instantPayoutMinimumCents: this.instantPayoutMinimumCents,
+      instantPayoutEligibleCents
+    };
+  }
+
   private getPayoutLedgerStatus(
     booking: Booking,
     payment?: PaymentRecord
@@ -7089,7 +7252,7 @@ export class MarketplacePlatformService {
     }
 
     const completedAtMs = Date.parse(booking.completedAt ?? booking.scheduledEndIso);
-    const readyAtMs = completedAtMs + 48 * 60 * 60 * 1000;
+    const readyAtMs = completedAtMs + this.payoutHoldHours * 60 * 60 * 1000;
     return readyAtMs <= Date.now() ? "ready" : "scheduled";
   }
 
@@ -7102,7 +7265,7 @@ export class MarketplacePlatformService {
     }
 
     return new Date(
-      Date.parse(booking.completedAt ?? booking.scheduledEndIso) + 48 * 60 * 60 * 1000
+      Date.parse(booking.completedAt ?? booking.scheduledEndIso) + this.payoutHoldHours * 60 * 60 * 1000
     ).toISOString();
   }
 

@@ -48,6 +48,8 @@ async function main() {
       crewReviewLeadHours: 24,
       departureReminderLeadMinutes: 60,
       routeLeaderMode: "provider-only" as const,
+      weeklyPayoutDay: "Thu" as const,
+      instantPayoutsEnabled: false,
       verificationStatus: "verified" as const,
       verificationSubmittedAt: now,
       verificationReviewedAt: now,
@@ -80,6 +82,8 @@ async function main() {
       crewReviewLeadHours: 24,
       departureReminderLeadMinutes: 60,
       routeLeaderMode: "provider-only" as const,
+      weeklyPayoutDay: "Thu" as const,
+      instantPayoutsEnabled: false,
       verificationStatus: "verified" as const,
       verificationSubmittedAt: now,
       verificationReviewedAt: now,
@@ -162,6 +166,8 @@ async function main() {
           crewReviewLeadHours: provider.crewReviewLeadHours,
           departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
           routeLeaderMode: provider.routeLeaderMode,
+          weeklyPayoutDay: provider.weeklyPayoutDay,
+          instantPayoutsEnabled: provider.instantPayoutsEnabled,
           verificationStatus: provider.verificationStatus,
           verificationSubmittedAt: provider.verificationSubmittedAt
             ? new Date(provider.verificationSubmittedAt)
