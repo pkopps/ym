@@ -3456,6 +3456,70 @@ test("ops notification health surfaces overdue retries and can run a retry sweep
   );
 });
 
+test("ops notification health can escalate external alerts to configured contacts", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalResendApiKey = process.env.RESEND_API_KEY;
+  const originalNotificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM;
+  const originalNotificationAlertEmails = process.env.NOTIFICATION_ALERT_EMAILS;
+
+  process.env.RESEND_API_KEY = "resend_test_key";
+  process.env.NOTIFICATION_EMAIL_FROM = "ops@yardmatch.test";
+  process.env.NOTIFICATION_ALERT_EMAILS = "alerts@yardmatch.test";
+
+  try {
+    globalThis.fetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({ id: "email_alert_123" })
+      }) as Response) as typeof fetch;
+
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+    const now = Date.now();
+
+    await repository.createNotificationDelivery({
+      id: "delivery_failed_retry_ops",
+      notificationId: "notification_failed_retry_ops",
+      recipientId: "provider-1",
+      recipientRole: "provider",
+      category: "booking",
+      channel: "sms",
+      destination: "+15555550123",
+      provider: "twilio",
+      status: "failed",
+      title: "Route should start soon",
+      bodyPreview: "Time to head out soon.",
+      errorMessage: "twilio unavailable",
+      attemptCount: 1,
+      createdAt: new Date(now - 90 * 60 * 1000).toISOString(),
+      lastAttemptAt: new Date(now - 30 * 60 * 1000).toISOString(),
+      nextRetryAt: new Date(now - 5 * 60 * 1000).toISOString(),
+      sentAt: undefined
+    });
+
+    const escalation = await platform.escalateNotificationOpsAlerts();
+    assert.equal(escalation.escalated, true);
+    assert.equal(escalation.targetCount, 1);
+    assert.equal(escalation.sentCount, 1);
+    assert.equal(escalation.failedCount, 0);
+
+    const deliveries = await repository.listAllNotificationDeliveries();
+    assert.ok(
+      deliveries.some(
+        (delivery) =>
+          delivery.destination === "alerts@yardmatch.test" &&
+          delivery.provider === "resend" &&
+          delivery.status === "sent"
+      )
+    );
+  } finally {
+    process.env.RESEND_API_KEY = originalResendApiKey;
+    process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
+    process.env.NOTIFICATION_ALERT_EMAILS = originalNotificationAlertEmails;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("providers can get a subscribable calendar feed and merged overview for mixed schedule management", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

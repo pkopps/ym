@@ -3,6 +3,7 @@
 import {
   MarketplaceApiClient,
   NotificationDeliveryRecord,
+  NotificationOpsEscalationResponse,
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse
 } from "@yardmatch/contracts";
@@ -45,8 +46,10 @@ function maskDestination(delivery: NotificationDeliveryRecord) {
 export function NotificationOpsBoard() {
   const [health, setHealth] = useState<NotificationOpsHealthResponse | undefined>();
   const [retryResult, setRetryResult] = useState<NotificationOpsRetrySweepResponse | undefined>();
+  const [escalationResult, setEscalationResult] = useState<NotificationOpsEscalationResponse | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isEscalating, setIsEscalating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   async function loadHealth() {
@@ -83,6 +86,21 @@ export function NotificationOpsBoard() {
     }
   }
 
+  async function handleEscalate() {
+    try {
+      setIsEscalating(true);
+      setErrorMessage(undefined);
+      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const response = await api.escalateNotificationOpsAlerts();
+      setEscalationResult(response);
+      await loadHealth();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to send external ops escalation.");
+    } finally {
+      setIsEscalating(false);
+    }
+  }
+
   return (
     <section className="card">
       <span className="eyebrow">Notification health</span>
@@ -98,6 +116,12 @@ export function NotificationOpsBoard() {
         <p>
           Retry sweep: retried {retryResult.retriedCount}, recovered {retryResult.sentCount}, still failing{" "}
           {retryResult.failedCount}, overdue now {retryResult.remainingOverdueCount}.
+        </p>
+      ) : null}
+      {escalationResult ? (
+        <p>
+          External ops alert: {escalationResult.reason} Sent {escalationResult.sentCount} of{" "}
+          {escalationResult.targetCount} target{escalationResult.targetCount === 1 ? "" : "s"}.
         </p>
       ) : null}
 
@@ -126,6 +150,17 @@ export function NotificationOpsBoard() {
               type="button"
             >
               {isRetrying ? "Retrying..." : "Run retry sweep"}
+            </button>
+            <button
+              className="button-secondary"
+              disabled={
+                isEscalating ||
+                !health.alerts.some((alert) => alert.severity === "warning" || alert.severity === "critical")
+              }
+              onClick={() => void handleEscalate()}
+              type="button"
+            >
+              {isEscalating ? "Escalating..." : "Send external ops alert"}
             </button>
             <span>Last refreshed {formatDateTime(health.generatedAt)}</span>
           </div>

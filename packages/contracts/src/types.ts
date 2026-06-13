@@ -911,6 +911,15 @@ export interface NotificationOpsRetrySweepResponse {
   remainingOverdueCount: number;
 }
 
+export interface NotificationOpsEscalationResponse {
+  generatedAt: string;
+  escalated: boolean;
+  reason: string;
+  targetCount: number;
+  sentCount: number;
+  failedCount: number;
+}
+
 export interface ProviderCalendarSubscriptionResponse {
   providerId: string;
   providerName: string;

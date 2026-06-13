@@ -29,6 +29,7 @@ export class ApiRoutes {
   public static readonly notificationPushDevicesRemove = "/api/notifications/devices/remove";
   public static readonly notificationOpsHealth = "/api/notifications/ops/health";
   public static readonly notificationOpsRetryDue = "/api/notifications/ops/retry-due";
+  public static readonly notificationOpsEscalate = "/api/notifications/ops/escalate";
   public static readonly customerReviewOpportunities = "/api/customers/review-opportunities";
   public static readonly createBooking = "/api/bookings";
   public static readonly listBookings = "/api/bookings";

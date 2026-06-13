@@ -75,6 +75,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/notifications/devices/remove") ||
       (context.method === "GET" && context.path === "/api/notifications/ops/health") ||
       (context.method === "POST" && context.path === "/api/notifications/ops/retry-due") ||
+      (context.method === "POST" && context.path === "/api/notifications/ops/escalate") ||
       (context.method === "POST" && context.path === "/api/bookings") ||
       (context.method === "GET" && context.path === "/api/bookings/recurring-plans") ||
       (context.method === "POST" && context.path === "/api/bookings/recurring-plans") ||
@@ -329,6 +330,11 @@ export class MarketplaceController implements ApiController {
 
     if (context.method === "POST" && context.path === "/api/notifications/ops/retry-due") {
       sendJson(response, 200, await this.platform.retryDueNotificationDeliveriesForOps());
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/notifications/ops/escalate") {
+      sendJson(response, 200, await this.platform.escalateNotificationOpsAlerts());
       return;
     }
 

@@ -32,6 +32,7 @@ import {
   NotificationDeliveryRecord,
   NotificationOpsAlert,
   NotificationOpsChannelHealth,
+  NotificationOpsEscalationResponse,
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse,
   OpsBookingExceptionSummaryItem,
@@ -550,6 +551,105 @@ export class MarketplacePlatformService {
           delivery.nextRetryAt &&
           Date.parse(delivery.nextRetryAt) <= Date.now()
       ).length
+    };
+  }
+
+  public async escalateNotificationOpsAlerts(): Promise<NotificationOpsEscalationResponse> {
+    const health = await this.getNotificationOpsHealth();
+    const actionableAlerts = health.alerts.filter((alert) => alert.severity === "warning" || alert.severity === "critical");
+    if (actionableAlerts.length === 0) {
+      return {
+        generatedAt: new Date().toISOString(),
+        escalated: false,
+        reason: "Delivery health is currently stable, so no external ops escalation was sent.",
+        targetCount: 0,
+        sentCount: 0,
+        failedCount: 0
+      };
+    }
+
+    const targets = this.notificationDelivery.getOpsAlertTargets();
+    if (targets.length === 0) {
+      return {
+        generatedAt: new Date().toISOString(),
+        escalated: false,
+        reason: "No NOTIFICATION_ALERT_EMAILS or NOTIFICATION_ALERT_SMS_NUMBERS contacts are configured.",
+        targetCount: 0,
+        sentCount: 0,
+        failedCount: 0
+      };
+    }
+
+    const title = actionableAlerts.some((alert) => alert.severity === "critical")
+      ? "YardMatch notification delivery alert"
+      : "YardMatch notification delivery warning";
+    const body = actionableAlerts
+      .slice(0, 4)
+      .map((alert) => `${alert.severity.toUpperCase()}: ${alert.title} — ${alert.detail}`)
+      .join("\n");
+
+    let sentCount = 0;
+    let failedCount = 0;
+
+    await Promise.all(
+      targets.map(async (target) => {
+        try {
+          const dispatch = await this.notificationDelivery.dispatch({
+            channel: target.channel,
+            destination: target.destination,
+            title,
+            body
+          });
+
+          await this.repository.createNotificationDelivery({
+            id: crypto.randomUUID(),
+            notificationId: `ops-alert-${health.generatedAt}`,
+            recipientId: "ops-alert-target",
+            recipientRole: "provider",
+            category: "support",
+            channel: target.channel,
+            destination: target.destination,
+            provider: dispatch.provider,
+            status: "sent",
+            title,
+            bodyPreview: body.slice(0, 160),
+            attemptCount: 1,
+            createdAt: new Date().toISOString(),
+            lastAttemptAt: dispatch.sentAt,
+            sentAt: dispatch.sentAt
+          });
+          sentCount += 1;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Notification ops escalation failed.";
+          await this.repository.createNotificationDelivery({
+            id: crypto.randomUUID(),
+            notificationId: `ops-alert-${health.generatedAt}`,
+            recipientId: "ops-alert-target",
+            recipientRole: "provider",
+            category: "support",
+            channel: target.channel,
+            destination: target.destination,
+            provider: this.notificationDelivery.getProviderName(target.channel, target.destination),
+            status: "failed",
+            title,
+            bodyPreview: body.slice(0, 160),
+            errorMessage: message,
+            attemptCount: 1,
+            createdAt: new Date().toISOString(),
+            lastAttemptAt: new Date().toISOString()
+          });
+          failedCount += 1;
+        }
+      })
+    );
+
+    return {
+      generatedAt: new Date().toISOString(),
+      escalated: sentCount > 0,
+      reason: sentCount > 0 ? "Notification delivery health was escalated to configured ops contacts." : "All configured ops alert attempts failed.",
+      targetCount: targets.length,
+      sentCount,
+      failedCount
     };
   }
 
@@ -6876,6 +6976,7 @@ export class MarketplacePlatformService {
     channels: NotificationOpsChannelHealth[];
   }): NotificationOpsAlert[] {
     const alerts: NotificationOpsAlert[] = [];
+    const opsAlertTargets = this.notificationDelivery.getOpsAlertTargets();
 
     if (input.overdueRetryCount > 0) {
       alerts.push({
@@ -6914,6 +7015,14 @@ export class MarketplacePlatformService {
         severity: "info",
         title: "Mock notification providers are still active",
         detail: `${mockProviders.join(", ")} are still being used in this environment, so those channels are not yet production-grade.`
+      });
+    }
+
+    if (opsAlertTargets.length === 0 && alerts.some((alert) => alert.severity === "warning" || alert.severity === "critical")) {
+      alerts.push({
+        severity: "warning",
+        title: "No external ops alert targets are configured",
+        detail: "Set NOTIFICATION_ALERT_EMAILS or NOTIFICATION_ALERT_SMS_NUMBERS so critical delivery problems can reach ops outside the dashboard."
       });
     }
 

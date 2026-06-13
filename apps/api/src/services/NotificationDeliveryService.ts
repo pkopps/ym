@@ -1,5 +1,10 @@
 import { NotificationChannel } from "@yardmatch/contracts";
 
+export interface OpsAlertTarget {
+  channel: "email" | "sms";
+  destination: string;
+}
+
 export interface NotificationDispatchInput {
   channel: NotificationChannel;
   destination: string;
@@ -20,6 +25,8 @@ export class NotificationDeliveryService {
   private readonly twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim();
   private readonly twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim();
   private readonly twilioFromNumber = process.env.TWILIO_FROM_NUMBER?.trim();
+  private readonly notificationAlertEmails = process.env.NOTIFICATION_ALERT_EMAILS?.trim();
+  private readonly notificationAlertSmsNumbers = process.env.NOTIFICATION_ALERT_SMS_NUMBERS?.trim();
 
   public async dispatch(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
     if (input.channel === "push" && input.destination.startsWith("ExponentPushToken[")) {
@@ -67,12 +74,39 @@ export class NotificationDeliveryService {
     return provider === "expo-push" || provider === "resend" || provider === "twilio";
   }
 
+  public getOpsAlertTargets(): OpsAlertTarget[] {
+    const targets: OpsAlertTarget[] = [];
+
+    for (const destination of this.parseCsv(this.notificationAlertEmails)) {
+      targets.push({
+        channel: "email",
+        destination
+      });
+    }
+
+    for (const destination of this.parseCsv(this.notificationAlertSmsNumbers)) {
+      targets.push({
+        channel: "sms",
+        destination
+      });
+    }
+
+    return targets;
+  }
+
   private hasResendConfig(): boolean {
     return Boolean(this.resendApiKey && this.notificationEmailFrom);
   }
 
   private hasTwilioConfig(): boolean {
     return Boolean(this.twilioAccountSid && this.twilioAuthToken && this.twilioFromNumber);
+  }
+
+  private parseCsv(value: string | undefined): string[] {
+    return (value ?? "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   private async dispatchExpoPush(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {

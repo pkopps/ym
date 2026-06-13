@@ -35,6 +35,7 @@ import {
   NotificationDeliveriesResponse,
   NotificationListResponse,
   NotificationOpsHealthResponse,
+  NotificationOpsEscalationResponse,
   NotificationOpsRetrySweepResponse,
   NotificationPreferences,
   OpsFinancialExceptionSummaryResponse,
@@ -356,6 +357,10 @@ export class MarketplaceApiClient {
 
   public retryDueNotificationDeliveriesForOps(): Promise<NotificationOpsRetrySweepResponse> {
     return this.postJson(ApiRoutes.notificationOpsRetryDue, {});
+  }
+
+  public escalateNotificationOpsAlerts(): Promise<NotificationOpsEscalationResponse> {
+    return this.postJson(ApiRoutes.notificationOpsEscalate, {});
   }
 
   public registerPushDevice(payload: RegisterPushDeviceRequest): Promise<PushDevice> {

@@ -979,6 +979,17 @@ export const apiSpec = {
         }
       }
     },
+    "/api/notifications/ops/escalate": {
+      post: {
+        tags: ["Observability"],
+        summary: "Escalate delivery-health problems to external ops contacts",
+        description:
+          "Builds an external alert digest from current warning and critical notification-health issues, then sends it to configured ops email and SMS contacts through the existing delivery providers.",
+        responses: {
+          "200": { description: "External notification ops escalation result" }
+        }
+      }
+    },
     "/api/support/ops/bookings/intervene": {
       post: {
         tags: ["Support"],
