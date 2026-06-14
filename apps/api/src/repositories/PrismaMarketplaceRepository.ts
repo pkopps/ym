@@ -140,6 +140,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           bio: provider.bio,
           yearsExperience: provider.yearsExperience,
           serviceRadiusMiles: provider.serviceRadiusMiles,
+          minimumBookingLeadHours: provider.minimumBookingLeadHours,
           staffingMode: provider.staffingMode,
           crewReviewLeadHours: provider.crewReviewLeadHours,
           departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
@@ -895,6 +896,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           bio: updates.bio,
           yearsExperience: updates.yearsExperience,
           serviceRadiusMiles: updates.serviceRadiusMiles,
+          minimumBookingLeadHours: updates.minimumBookingLeadHours,
           staffingMode: updates.staffingMode,
           crewReviewLeadHours: updates.crewReviewLeadHours,
           departureReminderLeadMinutes: updates.departureReminderLeadMinutes,
@@ -1654,6 +1656,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       bio: string;
       yearsExperience: number;
       serviceRadiusMiles: number;
+      minimumBookingLeadHours: number;
       staffingMode?: string;
       crewReviewLeadHours: number;
       departureReminderLeadMinutes: number;
@@ -1685,6 +1688,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       bio: profile.bio,
       yearsExperience: profile.yearsExperience,
       serviceRadiusMiles: profile.serviceRadiusMiles,
+      minimumBookingLeadHours: profile.minimumBookingLeadHours ?? 0,
       staffingMode: (profile.staffingMode as ProviderProfile["staffingMode"] | undefined) ?? "review-first",
       crewReviewLeadHours: profile.crewReviewLeadHours,
       departureReminderLeadMinutes: profile.departureReminderLeadMinutes,

@@ -96,6 +96,7 @@ Already done:
   - providers can see recommendation labels, scores, and reasons in staffing review surfaces
 - baseline provider dispatch controls:
   - service radius tuning
+  - booking acceptance windows
   - staffing mode selection
   - staffing review reminder timing
   - departure reminder timing
@@ -113,7 +114,6 @@ Already done:
   - more complex multi-step scheduling changes
   - deeper assistant support for dispatch reasoning and route management
 - More provider controls for:
-  - acceptance windows
   - richer dispatch timing and routing heuristics
   - more nuanced route-leader/delegation behavior across multiple crews
 
@@ -353,5 +353,5 @@ Already done:
 Still left:
 
 - AI-assisted dispatch changes
-- richer acceptance windows and routing heuristics
+ - richer routing heuristics
 - more nuanced delegated route leadership across multiple crews

@@ -64,6 +64,7 @@ model ProviderBusinessProfile {
   bio                       String
   yearsExperience           Int
   serviceRadiusMiles        Int
+  minimumBookingLeadHours   Int      @default(0)
   staffingMode              String   @default("review-first")
   crewReviewLeadHours       Int      @default(24)
   departureReminderLeadMinutes Int   @default(60)

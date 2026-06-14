@@ -223,6 +223,7 @@ export interface ProviderProfile extends BaseUser {
   bio: string;
   yearsExperience: number;
   serviceRadiusMiles: number;
+  minimumBookingLeadHours: number;
   staffingMode?: ProviderStaffingMode;
   crewReviewLeadHours: number;
   departureReminderLeadMinutes: number;
@@ -1244,6 +1245,7 @@ export interface SetDefaultCustomerPropertyRequest {
 
 export interface UpdateProviderSettingsRequest {
   serviceRadiusMiles: number;
+  minimumBookingLeadHours?: number;
   staffingMode?: ProviderStaffingMode;
   crewReviewLeadHours?: number;
   departureReminderLeadMinutes?: number;

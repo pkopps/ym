@@ -757,6 +757,73 @@ test("outside calendar blocks remove overlapping availability from provider sear
   assert.ok(response.suggestedSlots.some((slot) => slot.id === fallbackSlot.id));
 });
 
+test("provider acceptance windows hide too-soon slots and reject booking requests inside the lead window", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-acceptance-window@example.com",
+    password: "Password123!",
+    phone: "555-0201",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+  const providerSlots = await repository.listSlotsByProvider(provider.id);
+  const sameDaySlot = providerSlots[0];
+  const laterSlot = providerSlots[1];
+  assert.ok(sameDaySlot);
+  assert.ok(laterSlot);
+
+  const updatedProvider = await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: provider.serviceRadiusMiles,
+    minimumBookingLeadHours: 12,
+    staffingMode: provider.staffingMode,
+    sponsoredListingEnabled: provider.sponsoredListingEnabled
+  });
+  assert.equal(updatedProvider.minimumBookingLeadHours, 12);
+
+  const response = await platform.searchProviders({
+    address: provider.address,
+    categories: [provider.categories[0]],
+    dateIso: sameDaySlot.startIso,
+    estimatedDurationMinutes: 45
+  });
+
+  assert.ok(!response.suggestedSlots.some((slot) => slot.id === sameDaySlot.id));
+  assert.ok(response.suggestedSlots.some((slot) => slot.id === laterSlot.id));
+
+  await assert.rejects(
+    platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: customer.address,
+      servicePropertyId: customer.defaultPropertyId,
+      category: provider.categories[0],
+      scheduledStartIso: sameDaySlot.startIso,
+      scheduledEndIso: sameDaySlot.endIso,
+      notes: "Try to book inside the provider acceptance window",
+      totalCents: 6900
+    }),
+    /only accepts new bookings/
+  );
+
+  const laterBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: provider.categories[0],
+    scheduledStartIso: laterSlot.startIso,
+    scheduledEndIso: laterSlot.endIso,
+    notes: "Book the later acceptance-ready slot",
+    totalCents: 6900
+  });
+  assert.equal(laterBooking.scheduledStartIso, laterSlot.startIso);
+});
+
 test("customers cannot book a provider window blocked by an outside calendar event", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

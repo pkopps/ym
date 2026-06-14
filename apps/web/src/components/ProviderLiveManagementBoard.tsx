@@ -69,6 +69,14 @@ function formatWeekdayLabel(weekday: ProviderProfile["weeklyPayoutDay"]) {
   return map[weekday];
 }
 
+function formatMinimumLeadHoursLabel(hours: number) {
+  if (hours <= 0) {
+    return "No minimum";
+  }
+
+  return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+
 function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") {
   switch (status) {
     case "comfortable":
@@ -254,6 +262,7 @@ export function ProviderLiveManagementBoard() {
       Pick<
         ProviderProfile,
         | "serviceRadiusMiles"
+        | "minimumBookingLeadHours"
         | "staffingMode"
         | "crewReviewLeadHours"
         | "departureReminderLeadMinutes"
@@ -276,6 +285,7 @@ export function ProviderLiveManagementBoard() {
       const api = createAuthenticatedWebApiClient();
       await api.updateProviderSettings({
         serviceRadiusMiles: updates.serviceRadiusMiles ?? provider.serviceRadiusMiles,
+        minimumBookingLeadHours: updates.minimumBookingLeadHours ?? provider.minimumBookingLeadHours,
         staffingMode: updates.staffingMode ?? provider.staffingMode,
         crewReviewLeadHours: updates.crewReviewLeadHours ?? provider.crewReviewLeadHours,
         departureReminderLeadMinutes:
@@ -936,6 +946,35 @@ export function ProviderLiveManagementBoard() {
                 void handleDispatchSettingsUpdate(
                   { crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) },
                   "Staffing review timing updated."
+                )
+              }
+              type="button"
+            >
+              +1 hour
+            </button>
+          </div>
+          <p>New bookings must land at least {formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)} ahead.</p>
+          <div className="cta-row">
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { minimumBookingLeadHours: Math.max(0, (provider?.minimumBookingLeadHours ?? 0) - 1) },
+                  "Acceptance window updated."
+                )
+              }
+              type="button"
+            >
+              -1 hour
+            </button>
+            <button
+              className="button-secondary"
+              disabled={isWorking || !provider}
+              onClick={() =>
+                void handleDispatchSettingsUpdate(
+                  { minimumBookingLeadHours: Math.min(72, (provider?.minimumBookingLeadHours ?? 0) + 1) },
+                  "Acceptance window updated."
                 )
               }
               type="button"

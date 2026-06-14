@@ -69,6 +69,14 @@ function formatWeekdayLabel(weekday: ProviderProfile["weeklyPayoutDay"]) {
   return map[weekday];
 }
 
+function formatMinimumLeadHoursLabel(hours: number) {
+  if (hours <= 0) {
+    return "No minimum";
+  }
+
+  return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+
 export function SupportScreen() {
   const {
     biometricAvailable,
@@ -163,6 +171,7 @@ export function SupportScreen() {
       Pick<
         ProviderProfile,
         | "serviceRadiusMiles"
+        | "minimumBookingLeadHours"
         | "staffingMode"
         | "crewReviewLeadHours"
         | "departureReminderLeadMinutes"
@@ -183,6 +192,7 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       const nextProvider = await api.updateProviderSettings({
         serviceRadiusMiles: updates.serviceRadiusMiles ?? provider.serviceRadiusMiles,
+        minimumBookingLeadHours: updates.minimumBookingLeadHours ?? provider.minimumBookingLeadHours,
         staffingMode: updates.staffingMode ?? provider.staffingMode,
         crewReviewLeadHours: updates.crewReviewLeadHours ?? provider.crewReviewLeadHours,
         departureReminderLeadMinutes:
@@ -577,6 +587,30 @@ export function SupportScreen() {
           <Pressable
             disabled={isWorking || !provider}
             onPress={() => void saveSettings({ crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) })}
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
+          </Pressable>
+        </View>
+      </InfoCard>
+
+      <InfoCard title="Acceptance window" description="How much lead time new bookings need">
+        <View style={styles.stepRow}>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() =>
+              void saveSettings({ minimumBookingLeadHours: Math.max(0, (provider?.minimumBookingLeadHours ?? 0) - 1) })
+            }
+            style={styles.secondaryButton}
+          >
+            <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
+          </Pressable>
+          <Text style={styles.valueText}>{formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)}</Text>
+          <Pressable
+            disabled={isWorking || !provider}
+            onPress={() =>
+              void saveSettings({ minimumBookingLeadHours: Math.min(72, (provider?.minimumBookingLeadHours ?? 0) + 1) })
+            }
             style={styles.secondaryButton}
           >
             <Text style={styles.secondaryButtonLabel}>+1 hr</Text>

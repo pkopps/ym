@@ -275,6 +275,7 @@ export class MarketplacePlatformService {
       bio: payload.bio ?? "Quality lawn care and landscaping services.",
       yearsExperience: payload.yearsExperience ?? 1,
       serviceRadiusMiles: payload.serviceRadiusMiles ?? 15,
+      minimumBookingLeadHours: 0,
       staffingMode: "review-first",
       crewReviewLeadHours: 24,
       departureReminderLeadMinutes: 60,
@@ -722,16 +723,19 @@ export class MarketplacePlatformService {
               provider,
               await this.repository.listSlotsByProvider(provider.id)
             );
+            const acceptanceReadySlots = providerSlots.filter((slot) =>
+              this.isWithinProviderAcceptanceWindow(provider, slot.startIso)
+            );
 
             const matchingSlots = payload.estimatedDurationMinutes
               ? (() => {
                   const firstMatchingSlot = this.schedulingService.findFirstAvailableSlot(
-                    providerSlots,
+                    acceptanceReadySlots,
                     payload.estimatedDurationMinutes
                   );
                   return firstMatchingSlot ? [firstMatchingSlot] : [];
                 })()
-              : providerSlots.filter((slot) => !slot.isBooked);
+              : acceptanceReadySlots.filter((slot) => !slot.isBooked);
 
             const suggestedSlot = matchingSlots[0];
             const providerBookings = bookings.filter((booking) => booking.providerId === provider.id);
@@ -2127,6 +2131,13 @@ export class MarketplacePlatformService {
       throw new Error("serviceRadiusMiles must be between 5 and 60");
     }
 
+    const minimumBookingLeadHours = Math.round(
+      payload.minimumBookingLeadHours ?? provider.minimumBookingLeadHours ?? 0
+    );
+    if (minimumBookingLeadHours < 0 || minimumBookingLeadHours > 72) {
+      throw new Error("minimumBookingLeadHours must be between 0 and 72");
+    }
+
     const staffingMode = payload.staffingMode ?? provider.staffingMode ?? "review-first";
     if (staffingMode !== "auto-accept" && staffingMode !== "review-first") {
       throw new Error("staffingMode must be auto-accept or review-first");
@@ -2171,6 +2182,7 @@ export class MarketplacePlatformService {
     await this.ensureExternalCalendarBlocksDoNotConflict({
       ...provider,
       serviceRadiusMiles: normalizedRadius,
+      minimumBookingLeadHours,
       staffingMode,
       crewReviewLeadHours,
       departureReminderLeadMinutes,
@@ -2184,6 +2196,7 @@ export class MarketplacePlatformService {
 
     const updatedProvider = await this.repository.updateProvider(provider.id, {
       serviceRadiusMiles: normalizedRadius,
+      minimumBookingLeadHours,
       staffingMode,
       crewReviewLeadHours,
       departureReminderLeadMinutes,
@@ -2206,6 +2219,7 @@ export class MarketplacePlatformService {
       occurredAt: new Date().toISOString(),
       properties: {
         serviceRadiusMiles: normalizedRadius,
+        minimumBookingLeadHours,
         staffingMode,
         crewReviewLeadHours,
         departureReminderLeadMinutes,
@@ -5959,6 +5973,35 @@ export class MarketplacePlatformService {
         "That service window is no longer available. The provider may be booked or blocked by an outside calendar event."
       );
     }
+
+    if (!this.isWithinProviderAcceptanceWindow(provider, scheduledStartIso)) {
+      throw new HttpError(409, this.buildProviderAcceptanceWindowMessage(provider.minimumBookingLeadHours));
+    }
+  }
+
+  private isWithinProviderAcceptanceWindow(
+    provider: Pick<ProviderProfile, "minimumBookingLeadHours">,
+    scheduledStartIso: string
+  ): boolean {
+    const minimumLeadHours = provider.minimumBookingLeadHours ?? 0;
+    if (minimumLeadHours <= 0) {
+      return true;
+    }
+
+    const scheduledStart = Date.parse(scheduledStartIso);
+    if (Number.isNaN(scheduledStart)) {
+      return false;
+    }
+
+    return scheduledStart - Date.now() >= minimumLeadHours * 60 * 60 * 1000;
+  }
+
+  private buildProviderAcceptanceWindowMessage(minimumBookingLeadHours: number): string {
+    const leadText =
+      minimumBookingLeadHours === 1
+        ? "at least 1 hour in advance"
+        : `at least ${minimumBookingLeadHours} hours in advance`;
+    return `This business only accepts new bookings ${leadText}. Pick a later service window.`;
   }
 
   private doIntervalsOverlap(
