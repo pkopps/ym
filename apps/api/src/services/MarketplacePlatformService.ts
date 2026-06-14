@@ -4316,13 +4316,20 @@ export class MarketplacePlatformService {
         const provider = booking
           ? providers.find((candidate) => candidate.id === booking.providerId)
           : undefined;
+        const evidenceSummary = booking ? this.buildSupportEvidenceSummary(booking) : undefined;
+        const resolutionGuidance =
+          booking && evidenceSummary
+            ? this.buildSupportResolutionGuidance(ticket, booking, payment, evidenceSummary)
+            : undefined;
 
         return {
           ticket,
           booking,
           payment,
           customerName: customer?.fullName,
-          providerName: provider?.companyName
+          providerName: provider?.companyName,
+          evidenceSummary,
+          resolutionGuidance
         } satisfies SupportOpsTicket;
       })
       .sort((left, right) => right.ticket.createdAt.localeCompare(left.ticket.createdAt));
@@ -6797,6 +6804,68 @@ export class MarketplacePlatformService {
     return booking.serviceEvidence.filter(
       (evidence) => evidence.phase === phase && evidence.evidenceType === "photo"
     ).length;
+  }
+
+  private buildSupportEvidenceSummary(booking: Booking) {
+    const reviewed = booking.serviceEvidence.filter((evidence) => Boolean(evidence.reviewStatus));
+    return {
+      photoCount: booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "photo").length,
+      noteCount: booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "note").length,
+      checklistCount: booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "checklist").length,
+      reviewedCount: reviewed.length,
+      unreviewedCount: booking.serviceEvidence.length - reviewed.length,
+      supportsProviderCount: reviewed.filter((evidence) => evidence.reviewStatus === "supports-provider").length,
+      supportsCustomerCount: reviewed.filter((evidence) => evidence.reviewStatus === "supports-customer").length,
+      inconclusiveCount: reviewed.filter((evidence) => evidence.reviewStatus === "inconclusive").length
+    };
+  }
+
+  private buildSupportResolutionGuidance(
+    ticket: SupportTicket,
+    booking: Booking,
+    payment: PaymentRecord | undefined,
+    evidenceSummary: SupportOpsTicket["evidenceSummary"]
+  ) {
+    if (!evidenceSummary) {
+      return undefined;
+    }
+
+    if (evidenceSummary.reviewedCount === 0) {
+      return {
+        confidence: "low" as const,
+        rationale: "No reviewed evidence yet. Start by annotating the strongest booking evidence before resolving."
+      } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
+    }
+
+    const providerLead = evidenceSummary.supportsProviderCount - evidenceSummary.supportsCustomerCount;
+    const customerLead = evidenceSummary.supportsCustomerCount - evidenceSummary.supportsProviderCount;
+    const refundOpen = payment?.refundReviewStatus === "requested";
+
+    if (customerLead >= 2 || (customerLead >= 1 && ticket.issueType === "billing")) {
+      const confidence: "high" | "medium" = customerLead >= 2 ? "high" : "medium";
+      return {
+        recommendedAction: refundOpen ? "approve-refund" : "cancel-booking",
+        confidence,
+        rationale:
+          "Reviewed evidence currently leans toward the customer, so ops should consider a customer-favoring resolution."
+      } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
+    }
+
+    if (providerLead >= 2 || (providerLead >= 1 && booking.status === "disputed")) {
+      const confidence: "high" | "medium" = providerLead >= 2 ? "high" : "medium";
+      return {
+        recommendedAction: refundOpen ? "deny-refund" : "restore-active-booking",
+        confidence,
+        rationale:
+          "Reviewed evidence currently leans toward the provider, so ops should consider restoring the job or keeping payment in place."
+      } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
+    }
+
+    return {
+      confidence: "low" as const,
+      rationale:
+        "Reviewed evidence is mixed or inconclusive. Add more evidence review notes or use a manual ops intervention before resolving."
+    } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
   }
 
   private localDateKey(iso: string): string {

@@ -742,12 +742,31 @@ export interface SupportTicket {
   resolutionAction?: SupportBookingResolution;
 }
 
+export interface SupportEvidenceSummary {
+  photoCount: number;
+  noteCount: number;
+  checklistCount: number;
+  reviewedCount: number;
+  unreviewedCount: number;
+  supportsProviderCount: number;
+  supportsCustomerCount: number;
+  inconclusiveCount: number;
+}
+
+export interface SupportResolutionGuidance {
+  recommendedAction?: SupportBookingResolution;
+  confidence: "high" | "medium" | "low";
+  rationale: string;
+}
+
 export interface SupportOpsTicket {
   ticket: SupportTicket;
   booking?: Booking;
   payment?: PaymentRecord;
   customerName?: string;
   providerName?: string;
+  evidenceSummary?: SupportEvidenceSummary;
+  resolutionGuidance?: SupportResolutionGuidance;
 }
 
 export interface OpsRefundSummaryItem {

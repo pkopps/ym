@@ -244,7 +244,7 @@ export function OpsSupportQueue() {
       {errorMessage ? <p>{errorMessage}</p> : null}
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
         {tickets.length > 0 ? (
-          tickets.map(({ ticket, booking, payment, customerName, providerName }) => (
+          tickets.map(({ ticket, booking, payment, customerName, providerName, evidenceSummary, resolutionGuidance }) => (
             <article className="list-panel" key={ticket.id}>
               <div className="search-result-title">
                 <div>
@@ -271,6 +271,30 @@ export function OpsSupportQueue() {
                     {booking.disputeReason ? ` • dispute: ${booking.disputeReason}` : ""}
                     {booking.activeExceptionType ? ` • issue: ${booking.activeExceptionType}` : ""}
                   </p>
+                  {evidenceSummary ? (
+                    <div className="list-panel" style={{ padding: "0.9rem" }}>
+                      <strong>Evidence signal</strong>
+                      <p>
+                        {evidenceSummary.photoCount} photos • {evidenceSummary.noteCount} notes •{" "}
+                        {evidenceSummary.checklistCount} checklists
+                      </p>
+                      <p>
+                        Reviewed {evidenceSummary.reviewedCount} • supports provider{" "}
+                        {evidenceSummary.supportsProviderCount} • supports customer{" "}
+                        {evidenceSummary.supportsCustomerCount} • inconclusive{" "}
+                        {evidenceSummary.inconclusiveCount} • unreviewed {evidenceSummary.unreviewedCount}
+                      </p>
+                      {resolutionGuidance ? (
+                        <p className="warning-copy" style={{ marginBottom: 0 }}>
+                          Guidance:{" "}
+                          {resolutionGuidance.recommendedAction
+                            ? `${resolutionGuidance.recommendedAction.replaceAll("-", " ")}`
+                            : "manual review"}{" "}
+                          • {resolutionGuidance.confidence} confidence • {resolutionGuidance.rationale}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <p>
                     Evidence: before photos{" "}
                     {

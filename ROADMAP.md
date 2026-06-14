@@ -178,12 +178,15 @@ Already done:
 - broader booking evidence types are now shipped:
   - onsite notes
   - structured arrival/completion checklists
+- ops evidence now feeds ticket-level resolution guidance:
+  - reviewed evidence can summarize whether it leans provider, customer, or inconclusive
+  - ops queue can suggest the likely next resolution action with confidence
 
 Still left:
 
 - deeper dispute evidence and resolution flows beyond the current photo workflow
 - evidence workflow improvements beyond the shipped before/after photo requirement:
-  - strengthen evidence linkage even further into disputes, bad reviews, refund reviews, and service-quality support workflows
+  - strengthen evidence linkage even further into bad reviews and service-quality support workflows
 - audit-friendly internal tooling for support and financial exceptions
 
 ## Phase 3: Nice To Have After Launch

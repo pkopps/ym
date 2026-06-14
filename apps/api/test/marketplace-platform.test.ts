@@ -2967,6 +2967,99 @@ test("ops can annotate booking evidence for disputes and refund reviews", async 
   assert.match(updatedTicket?.description ?? "", /Ops evidence review: before supports-provider/i);
 });
 
+test("ops support tickets include evidence summaries and resolution guidance", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-guidance@example.com",
+    password: "Password123!",
+    phone: "555-1510",
+    role: "provider",
+    companyName: "Guidance Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-guidance@example.com",
+    password: "Password123!",
+    phone: "555-1610",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Evidence guidance coverage",
+    totalCents: 6200
+  });
+
+  await repository.updateBooking(booking.id, {
+    status: "disputed",
+    disputedAt: new Date().toISOString(),
+    disputeReason: "Customer said the job was incomplete.",
+    disputedByRole: "customer"
+  });
+
+  const ticket = await platform.createSupportTicket(
+    { userId: customer.id, role: "customer" },
+    {
+      bookingId: booking.id,
+      subject: "Review service evidence",
+      description: "Customer challenged whether the crew completed the work.",
+      issueType: "service-quality"
+    }
+  );
+
+  const bookingWithPhoto = await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "after",
+      evidenceType: "photo",
+      imageDataUrl: "data:image/jpeg;base64,after-photo"
+    }
+  );
+  const photoEvidenceId = bookingWithPhoto.serviceEvidence.find((evidence) => evidence.evidenceType === "photo")?.id;
+  assert.ok(photoEvidenceId);
+
+  await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "after",
+      evidenceType: "note",
+      note: "Completed mow, edging, and cleanup around the driveway."
+    }
+  );
+
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    evidenceId: photoEvidenceId!,
+    reviewStatus: "supports-provider",
+    reviewNotes: "The after photo shows fresh mow lines and trimmed edges.",
+    ticketId: ticket.id
+  });
+
+  const opsTickets = await platform.listOpsSupportTickets();
+  const opsTicket = opsTickets.find((candidate) => candidate.ticket.id === ticket.id);
+  assert.ok(opsTicket?.evidenceSummary);
+  assert.equal(opsTicket?.evidenceSummary?.photoCount, 1);
+  assert.equal(opsTicket?.evidenceSummary?.noteCount, 1);
+  assert.equal(opsTicket?.evidenceSummary?.supportsProviderCount, 1);
+  assert.equal(opsTicket?.resolutionGuidance?.recommendedAction, "restore-active-booking");
+  assert.equal(opsTicket?.resolutionGuidance?.confidence, "medium");
+});
+
 test("providers cannot complete requested bookings before confirmation", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
