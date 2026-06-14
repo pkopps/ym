@@ -84,6 +84,7 @@ Already done:
   - per-day route load summaries
   - crew gap visibility
   - estimated route miles
+  - outlier-stop and idle-gap route risk heuristics
   - morning / afternoon / late-afternoon pressure by window
   - day-level recommendations when routes look overloaded
 - automated crew/day load balancing:
@@ -114,7 +115,7 @@ Already done:
   - more complex multi-step scheduling changes
   - deeper assistant support for dispatch reasoning and route management
 - More provider controls for:
-  - richer dispatch timing and routing heuristics
+  - richer dispatch timing
   - more nuanced route-leader/delegation behavior across multiple crews
 
 ### Calendar interoperability, part 2
@@ -353,5 +354,4 @@ Already done:
 Still left:
 
 - AI-assisted dispatch changes
- - richer routing heuristics
 - more nuanced delegated route leadership across multiple crews

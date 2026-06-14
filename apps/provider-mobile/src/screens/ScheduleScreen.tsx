@@ -682,6 +682,11 @@ export function ScheduleScreen() {
                   {day.estimatedDriveMiles} mi
                 </Text>
                 <Text style={styles.metaLine}>
+                  Longest leg {day.longestDriveLegMiles} mi
+                  {day.largestIdleGapMinutes ? ` • Longest idle gap ${formatMinutesAsHours(day.largestIdleGapMinutes)}` : ""}
+                  {day.outlierStopCount ? ` • ${day.outlierStopCount} outlier stop${day.outlierStopCount === 1 ? "" : "s"}` : ""}
+                </Text>
+                <Text style={styles.metaLine}>
                   {formatMinutesAsHours(day.bookedMinutes)} booked
                   {day.externalBlockCount ? ` • ${formatMinutesAsHours(day.blockedMinutes)} outside blocks` : ""}
                 </Text>

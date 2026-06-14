@@ -305,7 +305,7 @@ export class SchedulingService {
         const totalCrewRequired = sortedBookings.reduce((sum, booking) => sum + booking.requiredCrewMembers, 0);
         const totalCrewAssigned = sortedBookings.reduce((sum, booking) => sum + booking.assignedCrewMembers, 0);
         const crewGap = Math.max(totalCrewRequired - totalCrewAssigned, 0);
-        const estimatedDriveMiles = this.estimateDailyRouteMiles(input.providerAddress, sortedBookings);
+        const routeHeuristics = this.analyzeDailyRoute(input.providerAddress, sortedBookings);
         const windowSummaries = this.buildDispatchWindowSummaries({
           dayKey,
           bookings: sortedBookings,
@@ -314,7 +314,9 @@ export class SchedulingService {
         const routeStatus = this.getDispatchRouteStatus({
           crewGap,
           yardmatchJobCount: sortedBookings.length,
-          estimatedDriveMiles,
+          estimatedDriveMiles: routeHeuristics.estimatedDriveMiles,
+          longestDriveLegMiles: routeHeuristics.longestDriveLegMiles,
+          largestIdleGapMinutes: routeHeuristics.largestIdleGapMinutes,
           blockedMinutes
         });
 
@@ -328,7 +330,10 @@ export class SchedulingService {
           crewGap,
           bookedMinutes,
           blockedMinutes,
-          estimatedDriveMiles,
+          estimatedDriveMiles: routeHeuristics.estimatedDriveMiles,
+          longestDriveLegMiles: routeHeuristics.longestDriveLegMiles,
+          largestIdleGapMinutes: routeHeuristics.largestIdleGapMinutes,
+          outlierStopCount: routeHeuristics.outlierStopCount,
           firstJobStartIso: firstBooking?.scheduledStartIso,
           lastJobEndIso: lastBooking?.scheduledEndIso,
           firstStopAddressLine: firstBooking?.addressLine,
@@ -336,7 +341,10 @@ export class SchedulingService {
           recommendations: this.buildDispatchRecommendations({
             routeStatus,
             crewGap,
-            estimatedDriveMiles,
+            estimatedDriveMiles: routeHeuristics.estimatedDriveMiles,
+            longestDriveLegMiles: routeHeuristics.longestDriveLegMiles,
+            largestIdleGapMinutes: routeHeuristics.largestIdleGapMinutes,
+            outlierStopCount: routeHeuristics.outlierStopCount,
             yardmatchJobCount: sortedBookings.length,
             externalBlockCount: dayGroup.externalBlocks.length
           }),
@@ -436,12 +444,16 @@ export class SchedulingService {
     crewGap: number;
     yardmatchJobCount: number;
     estimatedDriveMiles: number;
+    longestDriveLegMiles: number;
+    largestIdleGapMinutes: number;
     blockedMinutes: number;
   }): ProviderDispatchRouteStatus {
     if (
       input.crewGap > 0 ||
       input.yardmatchJobCount >= 5 ||
       input.estimatedDriveMiles >= 40 ||
+      input.longestDriveLegMiles >= 14 ||
+      input.largestIdleGapMinutes >= 180 ||
       input.blockedMinutes >= 240
     ) {
       return "overloaded";
@@ -450,6 +462,8 @@ export class SchedulingService {
     if (
       input.yardmatchJobCount >= 3 ||
       input.estimatedDriveMiles >= 22 ||
+      input.longestDriveLegMiles >= 8 ||
+      input.largestIdleGapMinutes >= 90 ||
       input.blockedMinutes >= 120
     ) {
       return "watch";
@@ -462,6 +476,9 @@ export class SchedulingService {
     routeStatus: ProviderDispatchRouteStatus;
     crewGap: number;
     estimatedDriveMiles: number;
+    longestDriveLegMiles: number;
+    largestIdleGapMinutes: number;
+    outlierStopCount: number;
     yardmatchJobCount: number;
     externalBlockCount: number;
   }): string[] {
@@ -474,6 +491,16 @@ export class SchedulingService {
     }
     if (input.estimatedDriveMiles >= 22) {
       recommendations.push("Consider shifting one stop or adding a travel buffer.");
+    }
+    if (input.longestDriveLegMiles >= 8) {
+      recommendations.push(
+        `One stop sits about ${input.longestDriveLegMiles} mi off route. Consider resequencing or moving that visit.`
+      );
+    }
+    if (input.largestIdleGapMinutes >= 90) {
+      recommendations.push(
+        `There is a ${this.formatMinutesAsDuration(input.largestIdleGapMinutes)} idle gap between stops. Tighten timing or add nearby work.`
+      );
     }
     if (input.externalBlockCount > 0 && input.yardmatchJobCount > 0) {
       recommendations.push("Outside calendar blocks are tightening this route.");
@@ -489,24 +516,71 @@ export class SchedulingService {
     return recommendations.slice(0, 3);
   }
 
-  private estimateDailyRouteMiles(
+  private analyzeDailyRoute(
     providerAddress: Address,
     bookings: Array<{
+      scheduledStartIso: string;
+      scheduledEndIso: string;
       serviceAddress: Address;
     }>
-  ): number {
+  ): {
+    estimatedDriveMiles: number;
+    longestDriveLegMiles: number;
+    largestIdleGapMinutes: number;
+    outlierStopCount: number;
+  } {
     if (bookings.length === 0) {
-      return 0;
+      return {
+        estimatedDriveMiles: 0,
+        longestDriveLegMiles: 0,
+        largestIdleGapMinutes: 0,
+        outlierStopCount: 0
+      };
     }
 
     let miles = 0;
+    let longestDriveLegMiles = 0;
+    let largestIdleGapMinutes = 0;
+    let outlierStopCount = 0;
     let currentAddress = providerAddress;
-    for (const booking of bookings) {
-      miles += new GeoService().distanceMiles(currentAddress, booking.serviceAddress);
+    const geo = new GeoService();
+    bookings.forEach((booking, index) => {
+      const legMiles = geo.distanceMiles(currentAddress, booking.serviceAddress);
+      miles += legMiles;
+      longestDriveLegMiles = Math.max(longestDriveLegMiles, legMiles);
+      if (legMiles >= 8) {
+        outlierStopCount += 1;
+      }
+
+      const nextBooking = bookings[index + 1];
+      if (nextBooking) {
+        const idleGapMinutes = Math.max(
+          0,
+          Math.round(
+            (new Date(nextBooking.scheduledStartIso).getTime() - new Date(booking.scheduledEndIso).getTime()) / 60_000
+          )
+        );
+        largestIdleGapMinutes = Math.max(largestIdleGapMinutes, idleGapMinutes);
+      }
+
       currentAddress = booking.serviceAddress;
+    });
+
+    return {
+      estimatedDriveMiles: Number(miles.toFixed(1)),
+      longestDriveLegMiles: Number(longestDriveLegMiles.toFixed(1)),
+      largestIdleGapMinutes,
+      outlierStopCount
+    };
+  }
+
+  private formatMinutesAsDuration(minutes: number): string {
+    if (minutes < 60) {
+      return `${minutes} min`;
     }
 
-    return Number(miles.toFixed(1));
+    const hours = minutes / 60;
+    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hr`;
   }
 
   private localDateKey(iso: string): string {

@@ -1160,6 +1160,11 @@ export function ProviderLiveManagementBoard() {
                             {day.estimatedDriveMiles} mi route
                           </p>
                           <p>
+                            Longest leg {day.longestDriveLegMiles} mi
+                            {day.largestIdleGapMinutes ? ` • Longest idle gap ${formatMinutesAsHours(day.largestIdleGapMinutes)}` : ""}
+                            {day.outlierStopCount ? ` • ${day.outlierStopCount} outlier stop${day.outlierStopCount === 1 ? "" : "s"}` : ""}
+                          </p>
+                          <p>
                             {formatMinutesAsHours(day.bookedMinutes)} booked
                             {day.externalBlockCount ? ` • ${formatMinutesAsHours(day.blockedMinutes)} outside blocks` : ""}
                           </p>

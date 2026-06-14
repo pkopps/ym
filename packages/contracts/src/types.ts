@@ -1027,6 +1027,9 @@ export interface ProviderDispatchDaySummary {
   bookedMinutes: number;
   blockedMinutes: number;
   estimatedDriveMiles: number;
+  longestDriveLegMiles: number;
+  largestIdleGapMinutes: number;
+  outlierStopCount: number;
   firstJobStartIso?: string;
   lastJobEndIso?: string;
   firstStopAddressLine?: string;

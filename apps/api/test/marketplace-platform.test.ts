@@ -4283,7 +4283,7 @@ test("provider calendar overview includes dispatch load summaries for route plan
 
   await platform.createBooking(customer.id, {
     providerId: provider.id,
-    serviceAddress: createAddress("210 Mulch Lane", 30.255, -97.78),
+    serviceAddress: createAddress("980 Ridge View", 30.3442, -97.6641),
     servicePropertyId: undefined,
     category: "mulch-installation",
     scheduledStartIso: afternoon.startIso,
@@ -4328,6 +4328,10 @@ test("provider calendar overview includes dispatch load summaries for route plan
   assert.ok(
     (day.windowSummaries.find((window) => window.windowKey === "late-afternoon-night")?.blockedMinutes ?? 0) > 0
   );
+  assert.ok(day.longestDriveLegMiles >= 8);
+  assert.ok(day.largestIdleGapMinutes >= 180);
+  assert.ok(day.outlierStopCount >= 1);
+  assert.ok(day.recommendations.some((item) => /idle gap/i.test(item) || /off route/i.test(item)));
 });
 
 test("providers receive one timed departure reminder for confirmed upcoming jobs", async () => {
