@@ -4776,6 +4776,72 @@ test("provider assistant can send a late update with parsed delay timing", async
   );
 });
 
+test("provider assistant can preview and confirm a requested booking", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-confirm@example.com",
+    password: "Password123!",
+    phone: "555-4385",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-confirm@example.com",
+    password: "Password123!",
+    phone: "555-4384",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const startIso = serviceDay.toISOString();
+  const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: startIso,
+    scheduledEndIso: endIso,
+    notes: "Assistant confirm test",
+    totalCents: 6200
+  });
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Confirm my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "confirm-booking");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /confirm .* for/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Confirm my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "confirm-booking");
+  assert.equal(executed.updatedBooking?.status, "confirmed");
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-confirm-booking");
+});
+
 test("provider assistant can preview and start a route from a natural-language command", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

@@ -2921,7 +2921,7 @@ export class MarketplacePlatformService {
         notifyCustomer: parsed.notifyCustomer,
         previewLabel: "Could not understand command",
         previewMessage:
-          'Try a command like "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", "Start route for my afternoon appointment", or "Start work for my afternoon appointment."',
+          'Try a command like "Confirm my afternoon appointment", "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", "Start route for my afternoon appointment", or "Start work for my afternoon appointment."',
         bookingCandidates: []
       };
     }
@@ -2968,6 +2968,106 @@ export class MarketplacePlatformService {
     const booking = matchingCandidates[0];
     if (!booking) {
       throw new HttpError(404, "No matching provider booking was found");
+    }
+
+    if (parsed.actionType === "confirm-booking") {
+      const customer = await this.repository.findCustomerById(booking.customerId);
+      if (booking.status === "confirmed" || booking.status === "in-progress" || booking.status === "completed") {
+        return {
+          command,
+          understood: true,
+          actionType: "confirm-booking",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Booking already confirmed",
+          previewMessage: `${customer?.fullName ?? "This customer"} is already confirmed and ready for the next lifecycle step.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (booking.status !== "requested") {
+        return {
+          command,
+          understood: true,
+          actionType: "confirm-booking",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Booking cannot be confirmed",
+          previewMessage: "Only requested bookings can be confirmed from the provider assistant.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const customerNotificationPreview = `${
+        customer?.fullName ?? "The customer"
+      } will be told that their requested service window is confirmed.`;
+
+      if (!payload.execute) {
+        return {
+          command,
+          understood: true,
+          actionType: "confirm-booking",
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Ready to confirm booking",
+          previewMessage: `Confirm ${customer?.fullName ?? "this customer"} for ${this.formatBookingWindowWithDate(
+            booking.scheduledStartIso
+          )}.`,
+          customerNotificationPreview,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const confirmedBooking = await this.confirmBooking(providerId, { bookingId: booking.id });
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-confirm-booking",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${command}`,
+        previousStatus: booking.status,
+        nextStatus: confirmedBooking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...confirmedBooking.interventions, intervention]
+      });
+
+      return {
+        command,
+        understood: true,
+        actionType: "confirm-booking",
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: true,
+        matchedBookingId: booking.id,
+        matchedCustomerName: customer?.fullName,
+        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        previewLabel: "Booking confirmed",
+        previewMessage: `Confirmed ${customer?.fullName ?? "the customer"} for ${this.formatBookingWindowWithDate(
+          booking.scheduledStartIso
+        )}.`,
+        customerNotificationPreview,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? confirmedBooking)],
+        updatedBooking: bookingWithIntervention ?? confirmedBooking
+      };
     }
 
     if (parsed.actionType === "mark-booking-late") {
@@ -6039,6 +6139,7 @@ export class MarketplacePlatformService {
     const sourceWindowKey = this.parseProviderAssistantWindowFromCommand(beforeTarget, true);
     const lateMinutes = this.parseProviderAssistantLateMinutes(normalized);
     const lateReason = this.parseProviderAssistantLateReason(normalized);
+    const isConfirmCommand = /\b(confirm|approve|accept)\b/.test(normalized) && /\b(appointment|booking|job|visit)\b/.test(normalized);
     const isLateCommand = Boolean(lateMinutes) && /\blate|behind\b/.test(normalized);
     const isRescheduleCommand = Boolean(targetWindowKey && /change|move|shift|resched/.test(normalized));
     const isStartWorkCommand = /\b(start work|begin work|start the job|begin the job|start service|begin service)\b/.test(
@@ -6049,8 +6150,10 @@ export class MarketplacePlatformService {
     );
 
     return {
-      understood: isRescheduleCommand || isLateCommand || isStartRouteCommand || isStartWorkCommand,
-      actionType: isRescheduleCommand
+      understood: isConfirmCommand || isRescheduleCommand || isLateCommand || isStartRouteCommand || isStartWorkCommand,
+      actionType: isConfirmCommand
+        ? "confirm-booking"
+        : isRescheduleCommand
         ? "reschedule-booking"
         : isLateCommand
           ? "mark-booking-late"
@@ -6061,7 +6164,7 @@ export class MarketplacePlatformService {
             : undefined,
       sourceWindowKey,
       targetWindowKey,
-      notifyCustomer: isLateCommand || isStartRouteCommand ? true : notifyCustomer,
+      notifyCustomer: isConfirmCommand || isLateCommand || isStartRouteCommand ? true : notifyCustomer,
       lateMinutes,
       lateReason
     };
