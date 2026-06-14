@@ -1,5 +1,6 @@
 import {
   AddBookingEvidenceRequest,
+  AssignBookingRouteLeaderRequest,
   AppNotification,
   AnalyticsEvent,
   AuthenticatedUserEnvelope,
@@ -13,6 +14,7 @@ import {
   CreateRecurringServicePlanResponse,
   CompleteSocialSignupRequest,
   ConfirmBookingRequest,
+  DeclineBookingRequest,
   CustomerProviderConversation,
   CustomerProviderConversationThread,
   CrewMemberProfile,
@@ -71,6 +73,7 @@ import {
   ProviderStaffingOverview,
   ProviderReview,
   RegisterUserRequest,
+  SetBookingRouteStopRequest,
   RegisterPushDeviceRequest,
   RecurringServicePlanSummary,
   MarkBookingOnRouteRequest,
@@ -92,6 +95,7 @@ import {
   SupportTicket,
   ProviderCrewConversationThread,
   SyncExternalCalendarImportRequest,
+  ClearBookingRouteStopRequest,
   UpdateBookingRouteLocationRequest,
   CrewPayoutLedgerResponse,
   UpdateCrewPreferencesRequest,
@@ -269,6 +273,10 @@ export class MarketplaceApiClient {
 
   public reviewCrewMatch(payload: ReviewCrewMatchRequest) {
     return this.postJson(ApiRoutes.providerReviewCrewMatch, payload);
+  }
+
+  public assignBookingRouteLeader(payload: AssignBookingRouteLeaderRequest) {
+    return this.postJson<Booking>(ApiRoutes.providerAssignBookingRouteLeader, payload);
   }
 
   public updateProviderSettings(payload: UpdateProviderSettingsRequest) {
@@ -469,6 +477,10 @@ export class MarketplaceApiClient {
     return this.postJson<Booking>(ApiRoutes.confirmBooking, payload);
   }
 
+  public declineBooking(payload: DeclineBookingRequest) {
+    return this.postJson<Booking>(ApiRoutes.declineBooking, payload);
+  }
+
   public startBooking(payload: StartBookingRequest) {
     return this.postJson<Booking>(ApiRoutes.startBooking, payload);
   }
@@ -479,6 +491,14 @@ export class MarketplaceApiClient {
 
   public markBookingOnRoute(payload: MarkBookingOnRouteRequest) {
     return this.postJson<Booking>(ApiRoutes.markBookingOnRoute, payload);
+  }
+
+  public setBookingRouteStop(payload: SetBookingRouteStopRequest) {
+    return this.postJson<Booking>(ApiRoutes.setBookingRouteStop, payload);
+  }
+
+  public clearBookingRouteStop(payload: ClearBookingRouteStopRequest) {
+    return this.postJson<Booking>(ApiRoutes.clearBookingRouteStop, payload);
   }
 
   public updateBookingRouteLocation(payload: UpdateBookingRouteLocationRequest) {

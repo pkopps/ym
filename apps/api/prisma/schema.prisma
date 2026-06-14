@@ -133,6 +133,7 @@ model Booking {
   scheduledStartIso    DateTime
   scheduledEndIso      DateTime
   status               String
+  assignedRouteLeaderCrewMemberId String?
   onRouteConfirmedAt   DateTime?
   onRouteConfirmedByCrewMemberId String?
   lateNoticeSentAt     DateTime?
@@ -141,6 +142,7 @@ model Booking {
   activeExceptionType  String?
   activeExceptionReportedAt DateTime?
   activeExceptionNotes String?
+  routeActiveStop      Json?
   routeLivePoint       Json?
   routeLiveUpdatedAt   DateTime?
   routeLiveSource      String?

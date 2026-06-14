@@ -240,6 +240,11 @@ export function DashboardScreen({
             {acceptedMatch.serviceAddress.city}, {acceptedMatch.serviceAddress.state}
           </Text>
           <Text style={styles.meta}>Status: {acceptedMatch.bookingStatus.replaceAll("-", " ")}</Text>
+          {acceptedMatch.isAssignedRouteLeader ? (
+            <Text style={styles.meta}>You are the assigned route leader for this job.</Text>
+          ) : acceptedMatch.requiresRouteLeaderAssignment ? (
+            <Text style={styles.meta}>The business owner still needs to choose which accepted crew member leads the route.</Text>
+          ) : null}
           <Text style={styles.meta}>Reliability call-offs on record: {matchesResponse?.crewMember.cancellationCount ?? 0}</Text>
           <Text style={styles.meta}>
             Evidence • before {acceptedMatch.beforeEvidenceCount} • after {acceptedMatch.afterEvidenceCount}
@@ -324,7 +329,11 @@ export function DashboardScreen({
             ) : null}
             {acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
               <View style={styles.waitingBadge}>
-                <Text style={styles.waitingBadgeLabel}>Business owner will start the route</Text>
+                <Text style={styles.waitingBadgeLabel}>
+                  {acceptedMatch.isAssignedRouteLeader
+                    ? "You can start the route from the accepted-crew flow"
+                    : "Business owner or assigned route leader will start the route"}
+                </Text>
               </View>
             ) : null}
             {acceptedMatch.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt ? (

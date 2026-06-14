@@ -28,6 +28,18 @@ async function getOverview(): Promise<ObservabilityOverview> {
       bookingsLast24Hours: 0,
       refundRequestedCount: 0,
       openSupportTickets: 0,
+      recommendationViews: 0,
+      recommendationAlternativesViewed: 0,
+      recommendationDismissals: 0,
+      acceptedRecommendations: 0,
+      swappedRecommendations: 0,
+      recommendationAcceptanceRate: 0,
+      providerBookingConfirmations: 0,
+      providerBookingDeclines: 0,
+      customerBookingCancellations: 0,
+      paymentAuthorizations: 0,
+      paymentCaptures: 0,
+      recommendationMetricsBySource: [],
       activeUsers5m: 0,
       activeCustomers5m: 0,
       activeProviders5m: 0,
@@ -64,6 +76,55 @@ export default async function OpsPage() {
         </article>
       </section>
 
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.recommendationViews}</h2>
+          <p>Recommendation views recorded</p>
+        </article>
+        <article className="card">
+          <h2>{(overview.recommendationAcceptanceRate * 100).toFixed(0)}%</h2>
+          <p>Recommendation acceptance rate</p>
+        </article>
+        <article className="card">
+          <h2>{overview.swappedRecommendations}</h2>
+          <p>Bookings moved to an alternative provider</p>
+        </article>
+        <article className="card">
+          <h2>{overview.recommendationDismissals}</h2>
+          <p>Recommendations dismissed for a new search</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.providerBookingConfirmations}</h2>
+          <p>Provider booking confirmations</p>
+        </article>
+        <article className="card">
+          <h2>{overview.providerBookingDeclines}</h2>
+          <p>Provider booking declines</p>
+        </article>
+        <article className="card">
+          <h2>{overview.customerBookingCancellations}</h2>
+          <p>Customer booking cancellations</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.paymentAuthorizations}</h2>
+          <p>Payment authorizations recorded</p>
+        </article>
+        <article className="card">
+          <h2>{overview.paymentCaptures}</h2>
+          <p>Payments captured</p>
+        </article>
+        <article className="card">
+          <h2>{overview.refundRequestedCount}</h2>
+          <p>Refund requests raised</p>
+        </article>
+      </section>
+
       <section className="grid-two">
         <article className="card">
           <h2>Operational counts</h2>
@@ -79,6 +140,18 @@ export default async function OpsPage() {
             <li>
               <strong>3</strong>
               <span>{overview.openSupportTickets} support tickets still open or triaged</span>
+            </li>
+            <li>
+              <strong>4</strong>
+              <span>{overview.recommendationAlternativesViewed} recommendation sessions opened alternatives</span>
+            </li>
+            <li>
+              <strong>5</strong>
+              <span>{overview.acceptedRecommendations} bookings accepted the first recommendation</span>
+            </li>
+            <li>
+              <strong>6</strong>
+              <span>{overview.paymentCaptures} bookings have reached captured payment status</span>
             </li>
           </ul>
         </article>
@@ -116,6 +189,32 @@ export default async function OpsPage() {
         </article>
 
         <article className="card">
+          <h2>Recommendation performance by surface</h2>
+          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            {overview.recommendationMetricsBySource.length === 0 ? (
+              <p>No recommendation conversion data recorded yet.</p>
+            ) : (
+              overview.recommendationMetricsBySource.map((surface) => (
+                <article className="list-panel" key={surface.requestSource}>
+                  <h3>{surface.requestSource}</h3>
+                  <p>
+                    {surface.recommendationViews} views •{" "}
+                    {(surface.recommendationAcceptanceRate * 100).toFixed(0)}% accepted
+                  </p>
+                  <p>
+                    {surface.recommendationAlternativesViewed} alternative reveals •{" "}
+                    {surface.recommendationDismissals} dismissals •{" "}
+                    {surface.swappedRecommendations} swaps
+                  </p>
+                </article>
+              ))
+            )}
+          </div>
+        </article>
+      </section>
+
+      <section className="grid-two">
+        <article className="card">
           <h2>Recent telemetry events</h2>
           <div className="stack-lg" style={{ paddingBottom: 0 }}>
             {overview.recentEvents.map((event) => (
@@ -124,6 +223,17 @@ export default async function OpsPage() {
                 <p>{new Date(event.occurredAt).toLocaleString()}</p>
               </article>
             ))}
+          </div>
+        </article>
+
+        <article className="card">
+          <h2>Recommendation analytics notes</h2>
+          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <p>
+              Recommendation views, reveals, accepts, and swaps are now grouped by source so you can
+              compare public search, customer dashboard, and mobile booking behavior without
+              exporting raw analytics first.
+            </p>
           </div>
         </article>
       </section>

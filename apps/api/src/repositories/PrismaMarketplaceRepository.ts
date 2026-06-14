@@ -418,6 +418,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         scheduledStartIso: new Date(booking.scheduledStartIso),
         scheduledEndIso: new Date(booking.scheduledEndIso),
         status: booking.status,
+        assignedRouteLeaderCrewMemberId: booking.assignedRouteLeaderCrewMemberId,
         onRouteConfirmedAt: booking.onRouteConfirmedAt ? new Date(booking.onRouteConfirmedAt) : undefined,
         onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
         lateNoticeSentAt: booking.lateNoticeSentAt ? new Date(booking.lateNoticeSentAt) : undefined,
@@ -428,6 +429,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           ? new Date(booking.activeExceptionReportedAt)
           : undefined,
         activeExceptionNotes: booking.activeExceptionNotes,
+        routeActiveStop: booking.routeActiveStop ? asJson(booking.routeActiveStop) : undefined,
         routeLivePoint: booking.routeLivePoint ? asJson(booking.routeLivePoint) : undefined,
         routeLiveUpdatedAt: booking.routeLiveUpdatedAt ? new Date(booking.routeLiveUpdatedAt) : undefined,
         routeLiveSource: booking.routeLiveSource,
@@ -484,6 +486,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         scheduledStartIso: updates.scheduledStartIso ? new Date(updates.scheduledStartIso) : undefined,
         scheduledEndIso: updates.scheduledEndIso ? new Date(updates.scheduledEndIso) : undefined,
         status: updates.status,
+        assignedRouteLeaderCrewMemberId:
+          "assignedRouteLeaderCrewMemberId" in updates
+            ? updates.assignedRouteLeaderCrewMemberId ?? null
+            : undefined,
         onRouteConfirmedAt:
           "onRouteConfirmedAt" in updates
             ? updates.onRouteConfirmedAt
@@ -517,6 +523,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
             : undefined,
         activeExceptionNotes:
           "activeExceptionNotes" in updates ? updates.activeExceptionNotes ?? null : undefined,
+        routeActiveStop:
+          "routeActiveStop" in updates
+            ? updates.routeActiveStop
+              ? asJson(updates.routeActiveStop)
+              : null
+            : undefined,
         routeLivePoint:
           "routeLivePoint" in updates
             ? updates.routeLivePoint
@@ -1779,6 +1791,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     scheduledStartIso: Date;
     scheduledEndIso: Date;
     status: string;
+    assignedRouteLeaderCrewMemberId: string | null;
     onRouteConfirmedAt: Date | null;
     onRouteConfirmedByCrewMemberId: string | null;
     lateNoticeSentAt: Date | null;
@@ -1787,6 +1800,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     activeExceptionType: string | null;
     activeExceptionReportedAt: Date | null;
     activeExceptionNotes: string | null;
+    routeActiveStop: unknown | null;
     routeLivePoint: unknown | null;
     routeLiveUpdatedAt: Date | null;
     routeLiveSource: string | null;
@@ -1816,6 +1830,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       scheduledStartIso: record.scheduledStartIso.toISOString(),
       scheduledEndIso: record.scheduledEndIso.toISOString(),
       status: record.status as Booking["status"],
+      assignedRouteLeaderCrewMemberId: record.assignedRouteLeaderCrewMemberId ?? undefined,
       onRouteConfirmedAt: record.onRouteConfirmedAt?.toISOString(),
       onRouteConfirmedByCrewMemberId: record.onRouteConfirmedByCrewMemberId ?? undefined,
       lateNoticeSentAt: record.lateNoticeSentAt?.toISOString(),
@@ -1824,6 +1839,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       activeExceptionType: record.activeExceptionType as Booking["activeExceptionType"],
       activeExceptionReportedAt: record.activeExceptionReportedAt?.toISOString(),
       activeExceptionNotes: record.activeExceptionNotes ?? undefined,
+      routeActiveStop: record.routeActiveStop ? readJson<Booking["routeActiveStop"]>(record.routeActiveStop) : undefined,
       routeLivePoint: record.routeLivePoint ? readJson<Address["point"]>(record.routeLivePoint) : undefined,
       routeLiveUpdatedAt: record.routeLiveUpdatedAt?.toISOString(),
       routeLiveSource: record.routeLiveSource as Booking["routeLiveSource"],

@@ -270,6 +270,28 @@ export function ScheduleScreen() {
     }
   }
 
+  async function assignRouteLeader(bookingId: string, crewMemberId?: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.assignBookingRouteLeader({ bookingId, crewMemberId });
+      setStatusMessage(
+        crewMemberId ? "Crew route leader assigned." : "Explicit crew route leader cleared."
+      );
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update that route leader.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function confirmJob(bookingId: string) {
     if (!envelope?.session.token) {
       return;
@@ -285,6 +307,26 @@ export function ScheduleScreen() {
       await loadOverview();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to confirm that booking.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function declineJob(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.declineBooking({ bookingId });
+      setStatusMessage("Booking declined. The customer can choose another provider.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to decline that booking.");
     } finally {
       setIsWorking(false);
     }
@@ -603,7 +645,19 @@ export function ScheduleScreen() {
 
       <InfoCard title="Assistant" description="Change bookings in plain language">
         <Text style={styles.metaLine}>
-          Try “Confirm my afternoon appointment”, “Change my afternoon appointment to evening and notify the customer”, “Tell my afternoon customer I am 30 minutes late”, “Start route for my afternoon appointment”, “Start work for my afternoon appointment”, “Complete my afternoon appointment”, or “Mark my afternoon appointment no access because the gate is locked.”
+          Try “What needs attention tomorrow?”, “What needs attention this week?”, “How does this
+          week look?”, “How does tomorrow look?”, “Set equipment pickup as the next stop for my
+          afternoon appointment”, “Clear the route stop for my afternoon appointment”, “Accept the best crew for my afternoon
+          appointment”, “Accept Morgan Crew for my afternoon appointment”, “Confirm my afternoon
+          appointment”, “Change my afternoon appointment to evening and notify the customer”,
+          “Confirm my afternoon appointment and start route”, “Start route for my afternoon
+          appointment and start work”, “Accept Morgan Crew for my afternoon appointment and make
+          Morgan Crew the route leader and tell Morgan Crew to head to the equipment pickup first”,
+          “Make Taylor Crew the route leader for my afternoon appointment”, “Tell Morgan Crew to
+          head to the equipment pickup first for my afternoon appointment”, “Clear the route leader
+          for my afternoon appointment”, “Tell my afternoon customer I am 30 minutes late”,
+          “Complete my afternoon appointment”, or “Mark my afternoon appointment no access because
+          the gate is locked.”
         </Text>
         <TextInput
           value={assistantCommand}
@@ -632,6 +686,9 @@ export function ScheduleScreen() {
           <View style={styles.ticketStack}>
             <Text style={styles.valueText}>{assistantResult.previewLabel}</Text>
             <Text style={styles.meta}>{assistantResult.previewMessage}</Text>
+            {assistantResult.actionTypes && assistantResult.actionTypes.length > 1 ? (
+              <Text style={styles.meta}>Planned steps: {assistantResult.actionTypes.join(" -> ")}</Text>
+            ) : null}
             {assistantResult.targetWindowLabel ? (
               <Text style={styles.meta}>Target window: {assistantResult.targetWindowLabel}</Text>
             ) : null}
@@ -640,8 +697,39 @@ export function ScheduleScreen() {
                 New ETA: {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
               </Text>
             ) : null}
+            {assistantResult.dispatchDaySummary ? (
+              <Text style={styles.meta}>
+                Route: {assistantResult.dispatchDaySummary.routeStatus} • Jobs:{" "}
+                {assistantResult.dispatchDaySummary.yardmatchJobCount} • Crew gap:{" "}
+                {assistantResult.dispatchDaySummary.crewGap} • Drive miles:{" "}
+                {assistantResult.dispatchDaySummary.estimatedDriveMiles.toFixed(1)}
+              </Text>
+            ) : null}
+            {assistantResult.dispatchRangeSummary ? (
+              <Text style={styles.meta}>
+                Active days: {assistantResult.dispatchRangeSummary.activeDayCount} • Watch:{" "}
+                {assistantResult.dispatchRangeSummary.watchDayCount} • Overloaded:{" "}
+                {assistantResult.dispatchRangeSummary.overloadedDayCount} • Total crew gap:{" "}
+                {assistantResult.dispatchRangeSummary.totalCrewGap}
+              </Text>
+            ) : null}
+            {assistantResult.dispatchWindowSummary ? (
+              <Text style={styles.meta}>
+                Focus window: {assistantResult.dispatchWindowSummary.label} • Jobs:{" "}
+                {assistantResult.dispatchWindowSummary.yardmatchJobCount} • Crew gap:{" "}
+                {assistantResult.dispatchWindowSummary.crewGap} • Blocked minutes:{" "}
+                {assistantResult.dispatchWindowSummary.blockedMinutes}
+              </Text>
+            ) : null}
             {assistantResult.customerNotificationPreview ? (
               <Text style={styles.meta}>{assistantResult.customerNotificationPreview}</Text>
+            ) : null}
+            {assistantResult.bookingCandidates.length > 0 ? (
+              <Text style={styles.meta}>
+                {assistantResult.actionType === "summarize-dispatch"
+                  ? "Appointments in that focus area:"
+                  : "Matching appointments:"}
+              </Text>
             ) : null}
             {assistantResult.bookingCandidates.map((candidate) => (
               <View key={candidate.bookingId} style={styles.ticketRow}>
@@ -751,6 +839,12 @@ export function ScheduleScreen() {
                   <Text style={styles.metaLine}>
                     {job.category.replaceAll("-", " ")} • {job.assignedCrewMembers}/{job.requiredCrewMembers} crew
                   </Text>
+                  {overview?.provider.routeLeaderMode === "accepted-crew-fallback" ? (
+                    <Text style={styles.metaLine}>
+                      Route leader: {job.assignedRouteLeaderCrewMemberName ?? "Provider"}
+                      {job.requiresRouteLeaderAssignment ? " • pick one accepted crew member before delegating" : ""}
+                    </Text>
+                  ) : null}
                   <Text style={styles.metaLine}>
                     Evidence • before {job.beforeEvidenceCount} • after {job.afterEvidenceCount}
                   </Text>
@@ -789,6 +883,14 @@ export function ScheduleScreen() {
                     </Text>
                   ) : null}
                   <View style={styles.matchList}>
+                    {job.requiresRouteLeaderAssignment ? (
+                      <View style={styles.windowCard}>
+                        <Text style={styles.clientLabel}>Route leader still needs assignment</Text>
+                        <Text style={styles.metaLine}>
+                          More than one accepted crew member is on this job. Pick who should start and share the route, or keep the route under provider control.
+                        </Text>
+                      </View>
+                    ) : null}
                     {job.matches.length === 0 ? (
                       <View style={styles.windowCard}>
                         <Text style={styles.clientLabel}>No matched crew yet</Text>
@@ -818,6 +920,9 @@ export function ScheduleScreen() {
                           {match.status === "cancelled-by-crew" && match.cancellationReason ? (
                             <Text style={styles.warningLine}>Crew note: {match.cancellationReason}</Text>
                           ) : null}
+                          {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
+                            <Text style={styles.metaLine}>Assigned route leader for this job.</Text>
+                          ) : null}
                           <Text style={styles.metaLine}>{match.status.replaceAll("-", " ")}</Text>
                           <Text style={styles.metaLine}>{formatCurrency(match.hourlyRateCents)}/hr</Text>
                           {match.status === "pending-provider-review" ? (
@@ -840,10 +945,46 @@ export function ScheduleScreen() {
                               </Pressable>
                             </View>
                           ) : null}
+                          {overview?.provider.routeLeaderMode === "accepted-crew-fallback" &&
+                          match.status === "accepted" &&
+                          !job.onRouteConfirmedAt ? (
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void assignRouteLeader(job.bookingId, match.crewMemberId)}
+                              style={
+                                job.assignedRouteLeaderCrewMemberId === match.crewMemberId
+                                  ? styles.completeButton
+                                  : styles.chatButton
+                              }
+                            >
+                              <Text
+                                style={
+                                  job.assignedRouteLeaderCrewMemberId === match.crewMemberId
+                                    ? styles.completeButtonLabel
+                                    : styles.chatButtonLabel
+                                }
+                              >
+                                {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
+                                  ? "Assigned route leader"
+                                  : "Lead this route"}
+                              </Text>
+                            </Pressable>
+                          ) : null}
                         </View>
                       ))
                     )}
                   </View>
+                  {overview?.provider.routeLeaderMode === "accepted-crew-fallback" &&
+                  job.assignedRouteLeaderCrewMemberId &&
+                  !job.onRouteConfirmedAt ? (
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void assignRouteLeader(job.bookingId)}
+                      style={styles.chatButton}
+                    >
+                      <Text style={styles.chatButtonLabel}>Clear explicit route leader</Text>
+                    </Pressable>
+                  ) : null}
                   <View style={styles.actionRow}>
                     {(job.status === "confirmed" || job.status === "in-progress") ? (
                       <Pressable
@@ -923,6 +1064,15 @@ export function ScheduleScreen() {
                         style={styles.completeButton}
                       >
                         <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Confirm booking"}</Text>
+                      </Pressable>
+                    ) : null}
+                    {job.status === "requested" ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void declineJob(job.bookingId)}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>{isWorking ? "Working..." : "Decline request"}</Text>
                       </Pressable>
                     ) : null}
                     {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
@@ -1088,6 +1238,14 @@ export function ScheduleScreen() {
                               }`
                           : "Estimated route from provider base"}
                       </Text>
+                      {tracking.activeRouteStop ? (
+                        <Text style={styles.metaLine}>
+                          Interim stop: {tracking.activeRouteStop.label}
+                          {tracking.etaToCurrentLegMinutes
+                            ? ` • ${tracking.etaToCurrentLegMinutes} min to stop`
+                            : ""}
+                        </Text>
+                      ) : null}
                     </View>
                   ) : null}
                   {job.onRouteConfirmedAt && activeBookingId === job.bookingId ? (

@@ -1,9 +1,12 @@
 import {
   AddBookingEvidenceRequest,
+  AssignBookingRouteLeaderRequest,
+  ClearBookingRouteStopRequest,
   CancelBookingRequest,
   CancelCrewMatchRequest,
   CancelRecurringServicePlanRequest,
   ConfirmBookingRequest,
+  DeclineBookingRequest,
   CompleteBookingRequest,
   CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
@@ -19,6 +22,7 @@ import {
   MarkBookingLateRequest,
   MarkNotificationsReadRequest,
   RegisterPushDeviceRequest,
+  SetBookingRouteStopRequest,
   UpdateBookingRouteLocationRequest,
   UpdateNotificationPreferencesRequest,
   MarkBookingOnRouteRequest,
@@ -62,6 +66,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
+      (context.method === "POST" && context.path === "/api/providers/staffing/route-leader") ||
       (context.method === "POST" && context.path === "/api/providers/settings") ||
       (context.method === "POST" && context.path === "/api/providers/assistant") ||
       (context.method === "GET" && context.path === "/api/providers/reviews") ||
@@ -83,10 +88,13 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
       (context.method === "POST" && context.path === "/api/bookings/confirm") ||
+      (context.method === "POST" && context.path === "/api/bookings/decline") ||
       (context.method === "POST" && context.path === "/api/bookings/start") ||
       (context.method === "POST" && context.path === "/api/bookings/evidence") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/on-route") ||
+      (context.method === "POST" && context.path === "/api/bookings/route-stop") ||
+      (context.method === "POST" && context.path === "/api/bookings/route-stop/clear") ||
       (context.method === "POST" && context.path === "/api/bookings/route-location") ||
       (context.method === "POST" && context.path === "/api/bookings/late") ||
       (context.method === "POST" && context.path === "/api/bookings/exception") ||
@@ -225,6 +233,16 @@ export class MarketplaceController implements ApiController {
     if (context.method === "POST" && context.path === "/api/providers/staffing/review") {
       const identity = await requireRole(context, this.platform, "provider");
       sendJson(response, 200, await this.platform.reviewCrewMatch(identity.userId, context.body as ReviewCrewMatchRequest));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/staffing/route-leader") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.assignBookingRouteLeader(identity.userId, context.body as AssignBookingRouteLeaderRequest)
+      );
       return;
     }
 
@@ -411,6 +429,16 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "POST" && context.path === "/api/bookings/decline") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.declineBooking(identity.userId, context.body as DeclineBookingRequest)
+      );
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/bookings/start") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
       sendJson(
@@ -447,6 +475,26 @@ export class MarketplaceController implements ApiController {
         response,
         200,
         await this.platform.markBookingOnRoute(identity, context.body as MarkBookingOnRouteRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/route-stop") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.setBookingRouteStop(identity.userId, context.body as SetBookingRouteStopRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/route-stop/clear") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.clearBookingRouteStop(identity.userId, context.body as ClearBookingRouteStopRequest)
       );
       return;
     }

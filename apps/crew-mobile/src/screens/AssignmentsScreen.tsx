@@ -100,6 +100,11 @@ export function AssignmentsScreen() {
                 <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
                 <Text style={styles.meta}>{new Date(assignment.scheduledStartIso).toLocaleString()}</Text>
                 <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
+                {assignment.isAssignedRouteLeader ? (
+                  <Text style={styles.meta}>You are the assigned route leader for this job.</Text>
+                ) : assignment.requiresRouteLeaderAssignment ? (
+                  <Text style={styles.meta}>The business owner still needs to assign a route leader.</Text>
+                ) : null}
                 {assignment.status === "cancelled-by-crew" && assignment.cancellationReason ? (
                   <Text style={styles.warning}>You cancelled this job: {assignment.cancellationReason}</Text>
                 ) : null}

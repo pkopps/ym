@@ -7,6 +7,9 @@ function buildBoundingBox(tracking: BookingArrivalTracking) {
   if (tracking.routeStartPoint) {
     points.push(tracking.routeStartPoint);
   }
+  if (tracking.currentLegDestination?.point) {
+    points.push(tracking.currentLegDestination.point);
+  }
   if (tracking.currentPoint) {
     points.push(tracking.currentPoint);
   }
@@ -47,11 +50,13 @@ function formatPercent(progressPercent: number) {
 export function ArrivalTrackingPanel({
   tracking,
   title,
-  subtitle
+  subtitle,
+  showProviderRouteDetails = false
 }: {
   tracking: BookingArrivalTracking;
   title: string;
   subtitle?: string;
+  showProviderRouteDetails?: boolean;
 }) {
   return (
     <section className="arrival-tracking card">
@@ -120,6 +125,20 @@ export function ArrivalTrackingPanel({
             {tracking.destination.city}, {tracking.destination.state} {tracking.destination.postalCode}
           </p>
         </div>
+        {showProviderRouteDetails && tracking.activeRouteStop ? (
+          <div className="list-panel">
+            <h3>Provider-only stop</h3>
+            <p>{tracking.activeRouteStop.label}</p>
+            <p>{tracking.activeRouteStop.address.line1}</p>
+            <p>
+              {tracking.activeRouteStop.address.city}, {tracking.activeRouteStop.address.state}{" "}
+              {tracking.activeRouteStop.address.postalCode}
+            </p>
+            {tracking.etaToCurrentLegMinutes ? (
+              <p>{tracking.etaToCurrentLegMinutes} min to this stop</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <p className="arrival-tracking__message">{tracking.message}</p>

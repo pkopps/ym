@@ -3,6 +3,7 @@ import {
   AnalyticsEvent,
   Booking,
   ObservabilityOverview,
+  RecommendationSurfaceMetrics,
   SessionHeartbeatRequest,
   SupportTicket,
   TelemetryPlatformSurface
@@ -61,6 +62,23 @@ export class DataEngineeringLogger {
     supportTickets: SupportTicket[];
   }): ObservabilityOverview {
     const activeSessions = this.getActiveSessions();
+    const recommendationViews = this.countEvents(MarketplaceTelemetryEventCatalog.recommendationPresented);
+    const recommendationAlternativesViewed = this.countEvents(
+      MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed
+    );
+    const recommendationDismissals = this.countEvents(MarketplaceTelemetryEventCatalog.recommendationDismissed);
+    const acceptedRecommendations = this.countEvents(MarketplaceTelemetryEventCatalog.recommendationAccepted);
+    const swappedRecommendations = this.countEvents(MarketplaceTelemetryEventCatalog.recommendationSwapped);
+    const providerBookingConfirmations = this.countEvents(MarketplaceTelemetryEventCatalog.bookingConfirmed);
+    const providerBookingDeclines = this.countEvents(MarketplaceTelemetryEventCatalog.bookingDeclinedByProvider);
+    const customerBookingCancellations = this.events.filter(
+      (event) =>
+        event.name === MarketplaceTelemetryEventCatalog.bookingCancelled &&
+        event.properties.actorRole === "customer"
+    ).length;
+    const paymentAuthorizations = this.countEvents(MarketplaceTelemetryEventCatalog.paymentAuthorized);
+    const paymentCaptures = this.countEvents(MarketplaceTelemetryEventCatalog.paymentCaptured);
+    const recommendationMetricsBySource = this.buildRecommendationMetricsBySource();
 
     return {
       generatedAt: new Date().toISOString(),
@@ -72,6 +90,19 @@ export class DataEngineeringLogger {
         (event) => event.name === MarketplaceTelemetryEventCatalog.refundRequested
       ).length,
       openSupportTickets: input.supportTickets.filter((ticket) => ticket.status !== "resolved").length,
+      recommendationViews,
+      recommendationAlternativesViewed,
+      recommendationDismissals,
+      acceptedRecommendations,
+      swappedRecommendations,
+      recommendationAcceptanceRate:
+        recommendationViews > 0 ? acceptedRecommendations / recommendationViews : 0,
+      providerBookingConfirmations,
+      providerBookingDeclines,
+      customerBookingCancellations,
+      paymentAuthorizations,
+      paymentCaptures,
+      recommendationMetricsBySource,
       activeUsers5m: activeSessions.length,
       activeCustomers5m: activeSessions.filter((session) => session.role === "customer").length,
       activeProviders5m: activeSessions.filter((session) => session.role === "provider").length,
@@ -112,5 +143,71 @@ export class DataEngineeringLogger {
 
   private happenedWithinLastDay(isoDate: string): boolean {
     return new Date(isoDate).getTime() >= Date.now() - 24 * 60 * 60 * 1000;
+  }
+
+  private countEvents(name: string): number {
+    return this.events.filter((event) => event.name === name).length;
+  }
+
+  private buildRecommendationMetricsBySource(): RecommendationSurfaceMetrics[] {
+    const relevantEvents = this.events.filter((event) =>
+      [
+        MarketplaceTelemetryEventCatalog.recommendationPresented,
+        MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+        MarketplaceTelemetryEventCatalog.recommendationDismissed,
+        MarketplaceTelemetryEventCatalog.recommendationAccepted,
+        MarketplaceTelemetryEventCatalog.recommendationSwapped
+      ].includes(event.name)
+    );
+
+    const metrics = new Map<string, RecommendationSurfaceMetrics>();
+
+    for (const event of relevantEvents) {
+      const requestSource =
+        typeof event.properties.requestSource === "string" && event.properties.requestSource.trim().length > 0
+          ? event.properties.requestSource
+          : typeof event.properties.recommendationSource === "string" &&
+              event.properties.recommendationSource.trim().length > 0
+            ? event.properties.recommendationSource
+          : "unknown";
+      const current =
+        metrics.get(requestSource) ??
+        {
+          requestSource,
+          recommendationViews: 0,
+          recommendationAlternativesViewed: 0,
+          recommendationDismissals: 0,
+          acceptedRecommendations: 0,
+          swappedRecommendations: 0,
+          recommendationAcceptanceRate: 0
+        };
+
+      if (event.name === MarketplaceTelemetryEventCatalog.recommendationPresented) {
+        current.recommendationViews += 1;
+      } else if (event.name === MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed) {
+        current.recommendationAlternativesViewed += 1;
+      } else if (event.name === MarketplaceTelemetryEventCatalog.recommendationDismissed) {
+        current.recommendationDismissals += 1;
+      } else if (event.name === MarketplaceTelemetryEventCatalog.recommendationAccepted) {
+        current.acceptedRecommendations += 1;
+      } else if (event.name === MarketplaceTelemetryEventCatalog.recommendationSwapped) {
+        current.swappedRecommendations += 1;
+      }
+
+      current.recommendationAcceptanceRate =
+        current.recommendationViews > 0
+          ? current.acceptedRecommendations / current.recommendationViews
+          : 0;
+
+      metrics.set(requestSource, current);
+    }
+
+    return [...metrics.values()].sort((left, right) => {
+      if (right.recommendationViews !== left.recommendationViews) {
+        return right.recommendationViews - left.recommendationViews;
+      }
+
+      return left.requestSource.localeCompare(right.requestSource);
+    });
   }
 }

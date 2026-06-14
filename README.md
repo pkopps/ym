@@ -149,6 +149,161 @@ npm run prisma:seed
 - Booking address snapshots plus post-booking address-change workflows
 - Instant quote scaffolding with automated property-size estimation and confidence-based follow-up questions
 
+## Competitive positioning
+
+### What YardMatch is not
+
+YardMatch is not intended to become:
+
+- a lead-generation marketplace
+- a provider directory
+- a quote-collection platform
+- a promoted-listings platform
+
+Customers should not need to spend meaningful time browsing dozens of landscapers, collecting multiple quotes, or comparison-shopping large profile catalogs before they can book basic recurring property care.
+
+### What YardMatch is
+
+YardMatch is a managed marketplace focused on matching homeowners with the best available provider for their property, service request, timing, and quality expectations.
+
+Core philosophy:
+
+> Tell us what you need. We'll handle the rest.
+
+The matching algorithm is a core product feature and a long-term competitive advantage, not just a sorting layer on top of listings.
+
+### Customer matchmaking model
+
+For common services such as:
+
+- lawn mowing
+- recurring lawn maintenance
+- leaf cleanup
+- mulch refresh
+- basic trimming
+
+the primary experience should be recommendation-first:
+
+1. Determine service requirements.
+2. Generate a customer-facing price.
+3. Recommend the best provider.
+4. Allow immediate booking.
+
+The customer should usually see:
+
+- one recommended provider
+- why that provider was selected
+- immediate booking controls
+- a limited fallback path to view a small number of other qualified providers
+
+The platform should avoid making the customer do unnecessary marketplace work when GreenRain/YardMatch can make the recommendation confidently.
+
+Current baseline shipped:
+
+- public listings, customer web dashboard, and customer mobile booking all show one recommended provider first
+- alternative providers sit behind an explicit reveal instead of being the default primary view
+- recommendation sessions now support analytics for:
+  - recommendation views
+  - alternative-provider reveals
+  - accepted first-choice recommendations
+  - swapped bookings onto another qualified provider
+- recommendation cards now surface a baseline trust layer instead of only generic ranking reasons:
+  - neighborhood familiarity
+  - completed YardMatch job count
+  - availability-confidence messaging around the suggested route window
+
+### Why not launch as a full directory
+
+For landscaping, trust matters more than it does in rideshare-style matching:
+
+- providers are entering a customer's property
+- service is often recurring
+- the first experience strongly affects retention
+- bad matches create refund, review, and support drag
+
+Because of that, the platform should not launch with:
+
+- open-ended provider browsing as the default path
+- many-provider bidding on a single customer lead
+- opaque hidden matching with no explanation
+
+The target middle ground is:
+
+- strong platform recommendation
+- low customer effort
+- enough provider transparency to create trust
+
+### Competitive comparison
+
+`Angi`
+
+- primary value proposition: `Find providers`
+- customer effort: `High`
+
+`Thumbtack`
+
+- primary value proposition: `Collect quotes`
+- customer effort: `Medium to High`
+
+`LawnStarter`
+
+- primary value proposition: `Get lawn service`
+- customer effort: `Low`
+
+`YardMatch / GreenRain`
+
+- primary value proposition: `Get matched with the best provider for your property`
+- customer effort: `Very Low`
+
+### Strategic principles
+
+When evaluating customer-facing marketplace features, prefer:
+
+- fewer clicks
+- faster booking
+- simpler decisions
+- stronger recommendations
+- better matching transparency
+- provider-first supply economics
+- local density over broad sparse geographic expansion
+
+Avoid features that increase customer decision fatigue unless they materially improve outcomes.
+
+Avoid marketplace drift toward:
+
+- directory behavior
+- promoted ranking as the primary discovery mechanism
+- quote wars
+- provider economics that treat supply like a disposable lead source
+
+### Marketplace metrics
+
+Primary marketplace metric to add and watch:
+
+- `Recommendation Acceptance Rate`
+
+Definition:
+
+- `accepted_recommendations / recommendation_views`
+
+This metric should become a primary signal of:
+
+- customer trust in the matching algorithm
+- conversion efficiency
+- recommendation quality
+- marketplace liquidity health
+
+Current baseline instrumentation:
+
+- recommendation views are emitted when ranked provider results return with a top match
+- accepted recommendations are emitted when the customer books the recommended provider
+- swapped recommendations are emitted when the customer books a revealed alternative
+- alternative reveals are emitted when the customer asks to inspect other qualified providers
+- ops telemetry now breaks recommendation performance down by booking surface, including:
+  - `public-web-listings`
+  - `customer-web-dashboard`
+  - `customer-mobile-book`
+
 ## Observability approach
 
 - `OpenTelemetry` should instrument the API for traces, metrics, and logs.
@@ -156,6 +311,8 @@ npm run prisma:seed
 - `Sentry` should handle errors and performance on API, web, and mobile.
 - Active users are defined by a heartbeat model: a session is considered active if it has reported within the last 5 minutes.
 - Booking and refund KPIs should be authored by the backend on successful state changes, not by frontend-only clicks.
+- The internal ops telemetry view should surface marketplace counters like recommendation acceptance alongside booking and support activity.
+- The internal ops telemetry view now also tracks provider booking confirmations, provider booking declines, customer cancellations, and payment authorization/capture counts so booking and payment health do not rely on raw event inspection.
 
 ## Review policy
 

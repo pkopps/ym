@@ -7,6 +7,7 @@ import {
   CustomerProperty,
   formatBookingWindowSummary,
   InstantQuoteResponse,
+  SearchProvidersResponse,
   SearchProviderResult,
   ServiceCategory
 } from "@yardmatch/contracts";
@@ -35,11 +36,15 @@ export function BookServiceScreen() {
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
   const [providers, setProviders] = useState<SearchProviderResult[]>([]);
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
+  const [recommendationContext, setRecommendationContext] = useState<
+    Pick<SearchProvidersResponse, "recommendationSessionId" | "recommendedProviderId"> | undefined
+  >();
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [searchState, setSearchState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [showPropertyForm, setShowPropertyForm] = useState(false);
+  const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
 
   const activeProperty = useMemo(
     () => properties.find((property) => property.id === selectedPropertyId) ?? properties[0],
@@ -85,22 +90,23 @@ export function BookServiceScreen() {
       setQuote(nextQuote);
       setProviders([]);
       setSlots([]);
+      setRecommendationContext(undefined);
       setSearchState("loading");
       const providerSearch = await api.searchProviders({
         address: activeProperty.address,
         categories: [selectedService],
         dateIso: new Date().toISOString(),
-        estimatedDurationMinutes: nextQuote.estimatedDurationMinutes
+        estimatedDurationMinutes: nextQuote.estimatedDurationMinutes,
+        requestSource: "customer-mobile-book"
       });
       setProviders(providerSearch.rankedProviders);
       setSlots(providerSearch.suggestedSlots);
-      setSearchState("loaded");
-      void tracker.track(MarketplaceTelemetryEventCatalog.bookingRequested, {
-        app: "customer",
-        screen: "book",
-        service: selectedService,
-        property: activeProperty.label
+      setRecommendationContext({
+        recommendationSessionId: providerSearch.recommendationSessionId,
+        recommendedProviderId: providerSearch.recommendedProviderId
       });
+      setShowAlternativeProviders(false);
+      setSearchState("loaded");
     } catch (error) {
       setSearchState("error");
       setErrorMessage(error instanceof Error ? error.message : "Unable to build quote right now.");
@@ -132,7 +138,7 @@ export function BookServiceScreen() {
     }
   }
 
-  async function handleCreateBooking(provider: SearchProviderResult) {
+  async function handleCreateBooking(provider: SearchProviderResult, rank: number) {
     if (!quote || !activeProperty || !envelope?.session.token) {
       return;
     }
@@ -158,7 +164,12 @@ export function BookServiceScreen() {
         scheduledStartIso: slot.startIso,
         scheduledEndIso: slot.endIso,
         notes: "Booked from the mobile customer app.",
-        totalCents: quote.estimatedPriceCents
+        totalCents: quote.estimatedPriceCents,
+        recommendationSessionId: recommendationContext?.recommendationSessionId,
+        recommendedProviderId: recommendationContext?.recommendedProviderId,
+        selectedProviderRank: rank,
+        viewedAlternativeProviders: showAlternativeProviders,
+        recommendationSource: "customer-mobile-book"
       });
       setMessage(
         `Booked ${provider.provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
@@ -176,6 +187,8 @@ export function BookServiceScreen() {
     slot: ranking.suggestedSlot ?? slots.find((item) => item.providerId === ranking.provider.id && !item.isBooked)
   }));
   const shortlist = providerCards.slice(0, 3);
+  const recommendedProviderCard = shortlist[0];
+  const alternativeProviderCards = shortlist.slice(1);
   const providersWithWindows = providerCards.filter((item) => item.slot);
 
   return (
@@ -306,9 +319,72 @@ export function BookServiceScreen() {
               </View>
             ) : (
               <View style={styles.providerStack}>
-                {shortlist.map(({ provider, ranking, slot }) => (
+                {recommendedProviderCard ? (
+                  <View style={styles.providerRow}>
+                    <View style={styles.providerCopy}>
+                      <Text style={styles.providerBadge}>Recommended for this property</Text>
+                      <Text style={styles.providerName}>{recommendedProviderCard.provider.companyName}</Text>
+                      <Text style={styles.providerMeta}>
+                        {recommendedProviderCard.provider.rating} stars •{" "}
+                        {recommendedProviderCard.provider.serviceRadiusMiles} mi radius
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} mi away •{" "}
+                        {recommendedProviderCard.ranking.reasons.join(" • ")}
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {recommendedProviderCard.ranking.neighborhoodFamiliarityLabel}.{" "}
+                        {recommendedProviderCard.ranking.neighborhoodFamiliarityDetail}
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {recommendedProviderCard.ranking.availabilityConfidenceLabel}.{" "}
+                        {recommendedProviderCard.ranking.completedJobCount} completed YardMatch jobs.
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {recommendedProviderCard.slot
+                          ? formatBookingWindowSummary(recommendedProviderCard.slot.startIso)
+                          : "No open slot"}
+                      </Text>
+                    </View>
+                    <Pressable
+                      disabled={isWorking || !recommendedProviderCard.slot}
+                      onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1)}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Book</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
+                  <View style={styles.providerStack}>
+                    <Text style={styles.providerMeta}>
+                      Want a few other qualified options? YardMatch can show a short list without
+                      turning the flow into directory browsing.
+                    </Text>
+                    <Pressable
+                      onPress={() => {
+                        setShowAlternativeProviders(true);
+                        void tracker.track(
+                          MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+                          {
+                            recommendationSessionId: recommendationContext?.recommendationSessionId ?? "unknown",
+                            recommendedProviderId: recommendationContext?.recommendedProviderId ?? "none",
+                            providerCount: shortlist.length,
+                            requestSource: "customer-mobile-book",
+                            service: selectedService
+                          }
+                        );
+                      }}
+                      style={styles.secondaryButtonInline}
+                    >
+                      <Text style={styles.secondaryButtonInlineLabel}>Show other qualified providers</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => (
                   <View key={provider.id} style={styles.providerRow}>
                     <View style={styles.providerCopy}>
+                      {index === 0 ? <Text style={styles.providerBadge}>Alternative qualified match</Text> : null}
                       <Text style={styles.providerName}>{provider.companyName}</Text>
                       <Text style={styles.providerMeta}>
                         {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
@@ -317,12 +393,18 @@ export function BookServiceScreen() {
                         {ranking.distanceMiles.toFixed(1)} mi away • {ranking.reasons.join(" • ")}
                       </Text>
                       <Text style={styles.providerMeta}>
+                        {ranking.neighborhoodFamiliarityLabel}. {ranking.neighborhoodFamiliarityDetail}
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        {ranking.availabilityConfidenceLabel}. {ranking.completedJobCount} completed YardMatch jobs.
+                      </Text>
+                      <Text style={styles.providerMeta}>
                         {slot ? formatBookingWindowSummary(slot.startIso) : "No open slot"}
                       </Text>
                     </View>
                     <Pressable
                       disabled={isWorking || !slot}
-                      onPress={() => void handleCreateBooking(ranking)}
+                      onPress={() => void handleCreateBooking(ranking, index + 2)}
                       style={styles.secondaryButton}
                     >
                       <Text style={styles.secondaryButtonLabel}>Book</Text>
@@ -444,6 +526,12 @@ const styles = StyleSheet.create({
   providerName: {
     color: BrandTokens.colors.ink,
     fontWeight: "700"
+  },
+  providerBadge: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase"
   },
   providerMeta: {
     color: BrandTokens.colors.inkSoft,

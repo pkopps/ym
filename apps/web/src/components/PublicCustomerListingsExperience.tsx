@@ -7,10 +7,12 @@ import {
   ServiceCategory,
   formatBookingWindowSummary
 } from "@yardmatch/contracts";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWebApiClient } from "../lib/api";
+import { trackWebEvent } from "../lib/tracking";
 import { BookedBusinessResults } from "./BookedBusinessResults";
 import { buildCustomerListingsSearchParams } from "./PublicMarketplaceSearchShell";
 import { CustomerListingsHero } from "./CustomerListingsHero";
@@ -117,9 +119,12 @@ export function PublicCustomerListingsExperience({
   const [searchState, setSearchState] = useState<"loading" | "loaded" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [resolvedAreaLabel, setResolvedAreaLabel] = useState(initialAreaLabel ?? "Brooklyn, NY");
+  const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
 
   const serviceLabel = serviceCategoryLabels[selectedService];
   const rankedProviders = providerResults?.rankedProviders ?? [];
+  const recommendedProvider = rankedProviders[0];
+  const alternativeProviders = rankedProviders.slice(1, 4);
   const liveMetrics = formatSearchMetrics(providerResults);
   const providersWithOpenWindows = rankedProviders.filter((provider) => provider.hasOpenSlot);
 
@@ -161,7 +166,8 @@ export function PublicCustomerListingsExperience({
       const nextResults = await api.searchProviders({
         address: resolvedSuggestion.address,
         categories: [nextService],
-        dateIso: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()
+        dateIso: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        requestSource: "public-web-listings"
       });
 
       setAreaQuery(resolvedSuggestion.label);
@@ -169,6 +175,7 @@ export function PublicCustomerListingsExperience({
       setSelectedSuggestion(resolvedSuggestion);
       setSelectedService(nextService);
       setProviderResults(nextResults);
+      setShowAlternativeProviders(false);
       setSearchState("loaded");
 
       if (shouldUpdateUrl) {
@@ -228,8 +235,8 @@ export function PublicCustomerListingsExperience({
               {serviceLabel} near {resolvedAreaLabel}
             </span>
             <small>
-              Public search now ranks verified providers by service fit, distance, reliability,
-              and whether they still have room in the route.
+              GreenRain recommends one verified provider first, then lets customers inspect a
+              short list of other qualified businesses only if they want to compare.
             </small>
           </div>
           <div className="results-summary__actions">
@@ -298,9 +305,52 @@ export function PublicCustomerListingsExperience({
                 </p>
               </article>
             ) : null}
-            {rankedProviders.map((result, index) => (
-              <LiveProviderCard key={result.provider.id} result={result} rank={index + 1} />
-            ))}
+            {recommendedProvider ? (
+              <LiveProviderCard
+                result={recommendedProvider}
+                rank={1}
+                rankLabel="Recommended for this property"
+              />
+            ) : null}
+            {alternativeProviders.length > 0 && !showAlternativeProviders ? (
+              <article className="list-panel live-listings-card__banner">
+                <h3>Want a few other qualified options?</h3>
+                <p>
+                  We keep the recommendation primary, but you can still inspect a short list of
+                  nearby alternatives if you want to compare.
+                </p>
+                <div className="cta-row">
+                  <button
+                    className="button-secondary"
+                    onClick={() => {
+                      setShowAlternativeProviders(true);
+                      void trackWebEvent(
+                        MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+                        {
+                          recommendationSessionId: providerResults?.recommendationSessionId ?? "unknown",
+                          recommendedProviderId: providerResults?.recommendedProviderId ?? "none",
+                          providerCount: rankedProviders.length,
+                          requestSource: "public-web-listings"
+                        }
+                      );
+                    }}
+                    type="button"
+                  >
+                    Show other qualified providers
+                  </button>
+                </div>
+              </article>
+            ) : null}
+            {showAlternativeProviders
+              ? alternativeProviders.map((result, index) => (
+                  <LiveProviderCard
+                    key={result.provider.id}
+                    result={result}
+                    rank={index + 2}
+                    rankLabel={index === 0 ? "Alternative qualified match" : undefined}
+                  />
+                ))
+              : null}
           </div>
         ) : null}
       </section>
@@ -320,9 +370,11 @@ export function PublicCustomerListingsExperience({
 }
 
 function LiveProviderCard({
+  rankLabel,
   rank,
   result
 }: {
+  rankLabel?: string;
   rank: number;
   result: SearchProviderResult;
 }) {
@@ -337,7 +389,7 @@ function LiveProviderCard({
         <div className="search-result-title">
           <h3>{provider.companyName}</h3>
           <div className="live-provider-card__badges">
-            {rank === 1 ? <span className="result-badge">Best fit</span> : null}
+            {rankLabel ? <span className="result-badge">{rankLabel}</span> : rank === 1 ? <span className="result-badge">Best fit</span> : null}
             {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
             <span className={`result-badge${result.hasOpenSlot ? "" : " result-badge--neutral"}`}>
               {result.hasOpenSlot ? "Open route window" : "Route full"}
@@ -353,7 +405,7 @@ function LiveProviderCard({
       <div className="calendar-card__metric-row">
         <span>{result.distanceMiles.toFixed(1)} mi away</span>
         <span>{provider.serviceRadiusMiles} mile radius</span>
-        <span>{provider.yearsExperience}+ years</span>
+        <span>{result.completedJobCount} completed jobs</span>
       </div>
 
       <p className="live-provider-card__window">
@@ -361,6 +413,18 @@ function LiveProviderCard({
           ? `Next open window: ${formatBookingWindowSummary(result.suggestedSlot.startIso)}`
           : "This business serves the area, but the next route window is currently full."}
       </p>
+
+      <div className="stack-sm" style={{ paddingBottom: 0 }}>
+        <p className="live-provider-card__address">
+          <strong>{result.neighborhoodFamiliarityLabel}.</strong> {result.neighborhoodFamiliarityDetail}
+        </p>
+        <p className="live-provider-card__address">
+          <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
+          {result.hasOpenSlot
+            ? `GreenRain found a real route opening for this property and service request.`
+            : `This provider still serves the area, but there is no open route window to hold right now.`}
+        </p>
+      </div>
 
       <div className="chip-row">
         {displayedCategories.map((category) => (

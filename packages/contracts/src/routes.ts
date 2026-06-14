@@ -18,6 +18,7 @@ export class ApiRoutes {
   public static readonly crewOpportunities = "/api/crew/opportunities";
   public static readonly providerStaffingOverview = "/api/providers/staffing";
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";
+  public static readonly providerAssignBookingRouteLeader = "/api/providers/staffing/route-leader";
   public static readonly updateProviderSettings = "/api/providers/settings";
   public static readonly providerAssistantCommand = "/api/providers/assistant";
   public static readonly providerReviews = "/api/providers/reviews";
@@ -38,9 +39,12 @@ export class ApiRoutes {
   public static readonly cancelBooking = "/api/bookings/cancel";
   public static readonly rescheduleBooking = "/api/bookings/reschedule";
   public static readonly confirmBooking = "/api/bookings/confirm";
+  public static readonly declineBooking = "/api/bookings/decline";
   public static readonly startBooking = "/api/bookings/start";
   public static readonly completeBooking = "/api/bookings/complete";
   public static readonly markBookingOnRoute = "/api/bookings/on-route";
+  public static readonly setBookingRouteStop = "/api/bookings/route-stop";
+  public static readonly clearBookingRouteStop = "/api/bookings/route-stop/clear";
   public static readonly updateBookingRouteLocation = "/api/bookings/route-location";
   public static readonly markBookingLate = "/api/bookings/late";
   public static readonly markBookingException = "/api/bookings/exception";

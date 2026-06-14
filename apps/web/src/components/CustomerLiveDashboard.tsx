@@ -17,10 +17,12 @@ import {
   SearchProvidersResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { trackWebEvent } from "../lib/tracking";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 
@@ -85,6 +87,7 @@ export function CustomerLiveDashboard() {
   const [loadingState, setLoadingState] = useState<"idle" | "loading">("idle");
   const [providerSearchState, setProviderSearchState] = useState<"idle" | "loading" | "loaded">("idle");
   const [selectedCadence, setSelectedCadence] = useState<"one-time" | RecurringServiceFrequency>("one-time");
+  const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
   const [recurringPlans, setRecurringPlans] = useState<RecurringServicePlanSummary[]>([]);
   const [bookingMessage, setBookingMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -116,6 +119,8 @@ export function CustomerLiveDashboard() {
       slot: providerResults.suggestedSlots.find((candidate) => candidate.providerId === provider.id)
     })) ??
     [];
+  const recommendedProviderCard = providerCards[0];
+  const alternativeProviderCards = providerCards.slice(1, 4);
   const providersWithWindows = providerCards.filter((item) => item.slot);
   const nextBooking = bookings
     .filter(
@@ -305,9 +310,11 @@ export function CustomerLiveDashboard() {
         address: activeProperty.address,
         categories: [selectedCategory],
         dateIso: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
-        estimatedDurationMinutes: quote?.estimatedDurationMinutes
+        estimatedDurationMinutes: quote?.estimatedDurationMinutes,
+        requestSource: "customer-web-dashboard"
       });
       setProviderResults(results);
+      setShowAlternativeProviders(false);
       setProviderSearchState("loaded");
     } catch (error) {
       setProviderSearchState("idle");
@@ -317,13 +324,14 @@ export function CustomerLiveDashboard() {
     }
   }
 
-  async function handleCreateBooking(provider: ProviderProfile) {
+  async function handleCreateBooking(providerCard: (typeof providerCards)[number], rank: number) {
     if (!activeProperty) {
       setErrorMessage("Choose a property first.");
       return;
     }
 
-    const slot = providerResults?.suggestedSlots.find((candidate) => candidate.providerId === provider.id);
+    const provider = providerCard.provider;
+    const slot = providerCard.slot ?? providerResults?.suggestedSlots.find((candidate) => candidate.providerId === provider.id);
     if (!slot || !quote) {
       setErrorMessage("Pick a provider with an available slot first.");
       return;
@@ -344,7 +352,12 @@ export function CustomerLiveDashboard() {
           scheduledStartIso: slot.startIso,
           scheduledEndIso: slot.endIso,
           notes: "Booked from the live YardMatch customer dashboard.",
-          totalCents: quote.estimatedPriceCents
+          totalCents: quote.estimatedPriceCents,
+          recommendationSessionId: providerResults?.recommendationSessionId,
+          recommendedProviderId: providerResults?.recommendedProviderId,
+          selectedProviderRank: rank,
+          viewedAlternativeProviders: showAlternativeProviders,
+          recommendationSource: "customer-web-dashboard"
         });
         setBookingMessage(
           `Booked ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
@@ -359,7 +372,12 @@ export function CustomerLiveDashboard() {
           scheduledEndIso: slot.endIso,
           notes: "Recurring service plan started from the live YardMatch customer dashboard.",
           totalCents: quote.estimatedPriceCents,
-          frequency: selectedCadence
+          frequency: selectedCadence,
+          recommendationSessionId: providerResults?.recommendationSessionId,
+          recommendedProviderId: providerResults?.recommendedProviderId,
+          selectedProviderRank: rank,
+          viewedAlternativeProviders: showAlternativeProviders,
+          recommendationSource: "customer-web-dashboard"
         });
         setBookingMessage(
           `Started an ${formatRecurringFrequency(selectedCadence).toLowerCase()} plan with ${provider.companyName}. First visit requested for ${formatBookingWindowSummary(
@@ -871,20 +889,106 @@ export function CustomerLiveDashboard() {
                 <p>Try another service window, another property, or check back later as route openings change throughout the day.</p>
               </article>
             ) : null}
-            {providerCards.map(({ provider, ranking, slot }) => {
+            {recommendedProviderCard ? (
+              <article className="list-panel">
+                <div className="search-result-title">
+                  <h3>{recommendedProviderCard.provider.companyName}</h3>
+                  <span className="result-badge">Recommended for this property</span>
+                </div>
+                <p>
+                  {recommendedProviderCard.provider.rating.toFixed(1)} overall •{" "}
+                  {recommendedProviderCard.provider.timelinessRating.toFixed(1)} punctuality
+                </p>
+                {recommendedProviderCard.ranking ? (
+                  <>
+                    <p>
+                      {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} miles away •{" "}
+                      {recommendedProviderCard.ranking.reasons.join(" • ")}
+                    </p>
+                    <p>
+                      <strong>{recommendedProviderCard.ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
+                      {recommendedProviderCard.ranking.neighborhoodFamiliarityDetail}
+                    </p>
+                    <p>
+                      <strong>{recommendedProviderCard.ranking.availabilityConfidenceLabel}.</strong>{" "}
+                      {recommendedProviderCard.ranking.completedJobCount} completed YardMatch jobs.
+                    </p>
+                  </>
+                ) : null}
+                <p>
+                  Radius {recommendedProviderCard.provider.serviceRadiusMiles} miles •{" "}
+                  {recommendedProviderCard.slot
+                    ? `${formatBookingWindowSummary(recommendedProviderCard.slot.startIso)} window`
+                    : "No open slot"}
+                </p>
+                <div className="cta-row">
+                  <button
+                    className="button"
+                    disabled={!recommendedProviderCard.slot || loadingState === "loading"}
+                    onClick={() => void handleCreateBooking(recommendedProviderCard, 1)}
+                    type="button"
+                  >
+                    {selectedCadence === "one-time" ? "Book recommended provider" : "Start recurring plan"}
+                  </button>
+                </div>
+                {!recommendedProviderCard.slot ? (
+                  <p style={{ marginTop: "0.75rem" }}>
+                    This business serves the area, but it does not have an open route window right now.
+                  </p>
+                ) : null}
+              </article>
+            ) : null}
+            {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
+              <article className="list-panel">
+                <h3>Want a few other qualified options?</h3>
+                <p>YardMatch keeps the recommendation first, but you can still compare a short list of alternatives.</p>
+                <div className="cta-row">
+                  <button
+                    className="button-secondary"
+                    onClick={() => {
+                      setShowAlternativeProviders(true);
+                      void trackWebEvent(
+                        MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+                        {
+                          recommendationSessionId: providerResults.recommendationSessionId,
+                          recommendedProviderId: providerResults.recommendedProviderId ?? "none",
+                          providerCount: providerCards.length,
+                          requestSource: "customer-web-dashboard"
+                        }
+                      );
+                    }}
+                    type="button"
+                  >
+                    Show other qualified providers
+                  </button>
+                </div>
+              </article>
+            ) : null}
+            {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => {
               return (
                 <article className="list-panel" key={provider.id}>
                   <div className="search-result-title">
                     <h3>{provider.companyName}</h3>
+                    {index === 0 ? <span className="result-badge">Alternative qualified match</span> : null}
                     {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
                   </div>
                   <p>
                     {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality
                   </p>
                   {ranking ? (
-                    <p>
-                      {ranking.distanceMiles.toFixed(1)} miles away • {ranking.reasons.join(" • ")}
-                    </p>
+                    <>
+                      <p>
+                        {ranking.distanceMiles.toFixed(1)} miles away • {ranking.reasons.join(" • ")}
+                      </p>
+                      <p>
+                        <strong>{ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
+                        {ranking.neighborhoodFamiliarityDetail}
+                      </p>
+                      <p>
+                        <strong>{ranking.availabilityConfidenceLabel}.</strong> {ranking.completedJobCount} completed
+                        YardMatch jobs.
+                      </p>
+                    </>
                   ) : null}
                     <p>
                       Radius {provider.serviceRadiusMiles} miles •{" "}
@@ -894,7 +998,12 @@ export function CustomerLiveDashboard() {
                     <button
                       className="button"
                       disabled={!slot || loadingState === "loading"}
-                      onClick={() => void handleCreateBooking(provider)}
+                      onClick={() =>
+                        void handleCreateBooking(
+                          { provider, ranking, slot },
+                          index + 2
+                        )
+                      }
                       type="button"
                     >
                       {selectedCadence === "one-time" ? "Book this window" : "Start recurring plan"}

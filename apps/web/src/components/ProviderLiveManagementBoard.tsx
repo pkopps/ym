@@ -228,6 +228,27 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
+  async function handleAssignRouteLeader(bookingId: string, crewMemberId?: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.assignBookingRouteLeader({ bookingId, crewMemberId });
+      setStatusMessage(
+        crewMemberId
+          ? "Crew route leader assigned for this job."
+          : "Explicit crew route leader cleared for this job."
+      );
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update the route leader right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function handleStaffingModeChange(staffingMode: "auto-accept" | "review-first") {
     if (!provider) {
       return;
@@ -543,6 +564,23 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
+  async function handleDeclineBooking(bookingId: string) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.declineBooking({ bookingId });
+      setStatusMessage("Booking declined. The customer can choose another qualified provider.");
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to decline this booking right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function handleStartRoute(bookingId: string) {
     setIsWorking(true);
     setStatusMessage(undefined);
@@ -744,11 +782,19 @@ export function ProviderLiveManagementBoard() {
         <span className="eyebrow">Assistant</span>
         <h2>Change bookings in plain language.</h2>
         <p>
-          Try “Confirm my afternoon appointment”, “Change my afternoon appointment to evening and
-          notify the customer”, “Tell my afternoon customer I am 30 minutes late”, “Start route for
-          my afternoon appointment”, “Start work for my afternoon appointment”, “Complete my
-          afternoon appointment”, or “Mark my afternoon appointment no access because the gate is
-          locked.”
+          Try “What needs attention tomorrow?”, “What needs attention this week?”, “How does this
+          week look?”, “How does tomorrow look?”, “Set equipment pickup as the next stop for my
+          afternoon appointment”, “Clear the route stop for my afternoon appointment”, “Accept the best crew for my afternoon
+          appointment”, “Accept Morgan Crew for my afternoon appointment”, “Confirm my afternoon
+          appointment”, “Change my afternoon appointment to evening and notify the customer”,
+          “Confirm my afternoon appointment and start route”, “Start route for my afternoon
+          appointment and start work”, “Accept Morgan Crew for my afternoon appointment and make
+          Morgan Crew the route leader and tell Morgan Crew to head to the equipment pickup first”,
+          “Make Taylor Crew the route leader for my afternoon appointment”, “Tell Morgan Crew to
+          head to the equipment pickup first for my afternoon appointment”, “Clear the route leader
+          for my afternoon appointment”, “Tell my afternoon customer I am 30 minutes late”,
+          “Complete my afternoon appointment”, or “Mark my afternoon appointment no access because
+          the gate is locked.”
         </p>
         <label className="form-field form-field--full">
           <span>Provider assistant command</span>
@@ -782,6 +828,9 @@ export function ProviderLiveManagementBoard() {
             <article className="list-panel">
               <strong>{assistantResult.previewLabel}</strong>
               <p>{assistantResult.previewMessage}</p>
+              {assistantResult.actionTypes && assistantResult.actionTypes.length > 1 ? (
+                <p>Planned steps: {assistantResult.actionTypes.join(" -> ")}</p>
+              ) : null}
               {assistantResult.targetWindowLabel ? <p>Target window: {assistantResult.targetWindowLabel}</p> : null}
               {assistantResult.lateEtaIso ? (
                 <p>
@@ -789,12 +838,41 @@ export function ProviderLiveManagementBoard() {
                   {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
                 </p>
               ) : null}
+              {assistantResult.dispatchDaySummary ? (
+                <p>
+                  Route: {assistantResult.dispatchDaySummary.routeStatus} • Jobs:{" "}
+                  {assistantResult.dispatchDaySummary.yardmatchJobCount} • Crew gap:{" "}
+                  {assistantResult.dispatchDaySummary.crewGap} • Drive miles:{" "}
+                  {assistantResult.dispatchDaySummary.estimatedDriveMiles.toFixed(1)}
+                </p>
+              ) : null}
+              {assistantResult.dispatchRangeSummary ? (
+                <p>
+                  Active days: {assistantResult.dispatchRangeSummary.activeDayCount} • Watch:{" "}
+                  {assistantResult.dispatchRangeSummary.watchDayCount} • Overloaded:{" "}
+                  {assistantResult.dispatchRangeSummary.overloadedDayCount} • Total crew gap:{" "}
+                  {assistantResult.dispatchRangeSummary.totalCrewGap}
+                </p>
+              ) : null}
+              {assistantResult.dispatchWindowSummary ? (
+                <p>
+                  Focus window: {assistantResult.dispatchWindowSummary.label} • Jobs:{" "}
+                  {assistantResult.dispatchWindowSummary.yardmatchJobCount} • Crew gap:{" "}
+                  {assistantResult.dispatchWindowSummary.crewGap} • Blocked minutes:{" "}
+                  {assistantResult.dispatchWindowSummary.blockedMinutes}
+                </p>
+              ) : null}
               {assistantResult.customerNotificationPreview ? (
                 <p>{assistantResult.customerNotificationPreview}</p>
               ) : null}
             </article>
-            {assistantResult.bookingCandidates.length > 1 ? (
+            {assistantResult.bookingCandidates.length > 0 ? (
               <div className="stack-md">
+                <p>
+                  {assistantResult.actionType === "summarize-dispatch"
+                    ? "Appointments in that focus area:"
+                    : "Matching appointments:"}
+                </p>
                 {assistantResult.bookingCandidates.map((candidate) => (
                   <article className="list-panel" key={candidate.bookingId}>
                     <strong>{candidate.customerName}</strong>
@@ -1448,19 +1526,35 @@ export function ProviderLiveManagementBoard() {
                 <p>{job.assignedCrewMembers} assigned</p>
                 <p>{job.crewGap} open</p>
                 <p>Status: {job.status.replaceAll("-", " ")}</p>
+                {provider?.routeLeaderMode === "accepted-crew-fallback" ? (
+                  <p>
+                    Route leader: {job.assignedRouteLeaderCrewMemberName ?? "Provider"}
+                    {job.requiresRouteLeaderAssignment ? " • pick one accepted crew member before delegating" : ""}
+                  </p>
+                ) : null}
               </div>
             </div>
 
             <div className="cta-row">
               {job.status === "requested" ? (
-                <button
-                  className="button"
-                  disabled={isWorking}
-                  onClick={() => void handleConfirmBooking(job.bookingId)}
-                  type="button"
-                >
-                  Confirm booking
-                </button>
+                <>
+                  <button
+                    className="button"
+                    disabled={isWorking}
+                    onClick={() => void handleConfirmBooking(job.bookingId)}
+                    type="button"
+                  >
+                    Confirm booking
+                  </button>
+                  <button
+                    className="button-secondary"
+                    disabled={isWorking}
+                    onClick={() => void handleDeclineBooking(job.bookingId)}
+                    type="button"
+                  >
+                    Decline request
+                  </button>
+                </>
               ) : null}
               {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
                 <>
@@ -1635,6 +1729,12 @@ export function ProviderLiveManagementBoard() {
             ) : null}
 
             <div className="stack-md">
+              {job.requiresRouteLeaderAssignment ? (
+                <div className="list-panel">
+                  <strong>Route leader still needs assignment</strong>
+                  <p>More than one accepted crew member is on this job. Pick who should start and share the route, or keep the route under provider control.</p>
+                </div>
+              ) : null}
               {job.matches.length === 0 ? (
                 <div className="list-panel">
                   <strong>No matched crew yet</strong>
@@ -1671,6 +1771,9 @@ export function ProviderLiveManagementBoard() {
                       {match.status === "cancelled-by-crew" && match.cancellationReason ? (
                         <p className="warning-copy">Crew note: {match.cancellationReason}</p>
                       ) : null}
+                      {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
+                        <p>Assigned route leader for this job.</p>
+                      ) : null}
                       <p>{formatCurrency(match.hourlyRateCents)}/hr</p>
                       <div className="cta-row">
                         {match.status === "pending-provider-review" ? (
@@ -1693,6 +1796,22 @@ export function ProviderLiveManagementBoard() {
                             </button>
                           </>
                         ) : null}
+                        {provider?.routeLeaderMode === "accepted-crew-fallback" &&
+                        match.status === "accepted" &&
+                        !job.onRouteConfirmedAt ? (
+                          <button
+                            className={
+                              job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? "button" : "button-secondary"
+                            }
+                            disabled={isWorking}
+                            onClick={() => void handleAssignRouteLeader(job.bookingId, match.crewMemberId)}
+                            type="button"
+                          >
+                            {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
+                              ? "Assigned route leader"
+                              : "Lead this route"}
+                          </button>
+                        ) : null}
                         <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
                           Call crew
                         </a>
@@ -1707,6 +1826,20 @@ export function ProviderLiveManagementBoard() {
                   );
                 })
               )}
+              {provider?.routeLeaderMode === "accepted-crew-fallback" &&
+              job.assignedRouteLeaderCrewMemberId &&
+              !job.onRouteConfirmedAt ? (
+                <div className="cta-row">
+                  <button
+                    className="button-secondary"
+                    disabled={isWorking}
+                    onClick={() => void handleAssignRouteLeader(job.bookingId)}
+                    type="button"
+                  >
+                    Clear explicit route leader
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             {job.onRouteConfirmedAt ? (
@@ -1741,6 +1874,7 @@ export function ProviderLiveManagementBoard() {
                 </div>
                 {activeTrackingBookingId === job.bookingId && activeTracking ? (
                   <ArrivalTrackingPanel
+                    showProviderRouteDetails
                     subtitle={job.customerName}
                     title="Crew arrival route"
                     tracking={activeTracking}

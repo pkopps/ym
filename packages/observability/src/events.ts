@@ -9,6 +9,11 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly crewMemberRegistered = "crew_member_registered";
   public static readonly providerSearchPerformed = "provider_search_performed";
   public static readonly providerMatchReturned = "provider_match_returned";
+  public static readonly recommendationPresented = "recommendation_presented";
+  public static readonly recommendationAlternativesViewed = "recommendation_alternatives_viewed";
+  public static readonly recommendationDismissed = "recommendation_dismissed";
+  public static readonly recommendationAccepted = "recommendation_accepted";
+  public static readonly recommendationSwapped = "recommendation_swapped";
   public static readonly providerReviewSubmitted = "provider_review_submitted";
   public static readonly reviewInviteScheduled = "review_invite_scheduled";
   public static readonly reviewInviteSent = "review_invite_sent";
@@ -24,6 +29,7 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly bookingAddressChangePendingReview = "booking_address_change_pending_review";
   public static readonly bookingAddressChangeBlocked = "booking_address_change_blocked";
   public static readonly bookingConfirmed = "booking_confirmed";
+  public static readonly bookingDeclinedByProvider = "booking_declined_by_provider";
   public static readonly bookingCompleted = "booking_completed";
   public static readonly paymentAuthorized = "payment_authorized";
   public static readonly paymentCaptured = "payment_captured";

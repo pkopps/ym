@@ -2,6 +2,7 @@ import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
   AddBookingEvidenceRequest,
+  AssignBookingRouteLeaderRequest,
   AppNotification,
   AnalyticsEvent,
   Address,
@@ -73,6 +74,7 @@ import {
   UpdateSupportTicketRequest,
   Booking,
   BookingInterventionRecord,
+  BookingRouteStop,
   CrewMemberProfile,
   CrewMemberSchedulePreference,
   CustomerProperty,
@@ -103,6 +105,7 @@ import {
   ProviderCalendarSyncHealth,
   SyncStaleProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
+  ProviderDispatchRangeSummary,
   PlaceSearchResponse,
   RegisterUserRequest,
   ReviewProviderVerificationRequest,
@@ -111,8 +114,10 @@ import {
   RescheduleBookingRequest,
   ReviewInvite,
   ReviewInviteDispatch,
+  ClearBookingRouteStopRequest,
   SendCustomerProviderMessageRequest,
   SendProviderCrewMessageRequest,
+  SetBookingRouteStopRequest,
   SetDefaultCustomerPropertyRequest,
   SessionHeartbeatRequest,
   SearchProvidersRequest,
@@ -155,10 +160,48 @@ import { NotificationDeliveryService } from "./NotificationDeliveryService";
 import { PlaceSearchService } from "./PlaceSearchService";
 import { PaymentCheckoutGateway, StripeCheckoutService } from "./StripeCheckoutService";
 
+type ParsedProviderAssistantAction = {
+  command: string;
+  actionType: ProviderAssistantActionType;
+  sourceWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
+  targetWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
+  notifyCustomer: boolean;
+  dispatchScope?: "today" | "tomorrow" | "next-7-days";
+  dispatchFocus?: "summary" | "attention";
+  crewMatchCrewNameQuery?: string;
+  routeLeaderCrewNameQuery?: string;
+  crewMessageCrewNameQuery?: string;
+  crewMessageBody?: string;
+  routeStopKind?: SetBookingRouteStopRequest["kind"];
+  lateMinutes?: number;
+  lateReason?: string;
+  exceptionType?: MarkBookingExceptionRequest["exceptionType"];
+  exceptionNotes?: string;
+};
+
+type ParsedProviderAssistantCommand = {
+  understood: boolean;
+  actionType?: ProviderAssistantActionType;
+  actionTypes: ProviderAssistantActionType[];
+  actions: ParsedProviderAssistantAction[];
+  dispatchScope?: "today" | "tomorrow" | "next-7-days";
+  dispatchFocus?: "summary" | "attention";
+  sourceWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
+  targetWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
+  notifyCustomer: boolean;
+  routeLeaderCrewNameQuery?: string;
+  lateMinutes?: number;
+  lateReason?: string;
+  exceptionType?: MarkBookingExceptionRequest["exceptionType"];
+  exceptionNotes?: string;
+};
+
 export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
   private static readonly reviewInviteExpiryDays = 30;
   private static readonly liveRouteLocationStaleMinutes = 5;
+  private static readonly routeStopReachedThresholdMiles = 0.12;
+  private static readonly routeStopDwellMinutes = 6;
   private readonly payoutHoldHours = 48;
   private readonly instantPayoutMinimumCents = 10_000;
   private readonly crewPayoutWeekday: CrewAvailabilityDay = "Fri";
@@ -693,11 +736,13 @@ export class MarketplacePlatformService {
 
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
     const normalizedAddress = this.normalizeAddress(payload.address);
+    const recommendationSessionId = crypto.randomUUID();
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.providerSearchPerformed, "anonymous", {
       dateIso: payload.dateIso,
       categoryCount: payload.categories.length,
-      city: normalizedAddress.city
+      city: normalizedAddress.city,
+      requestSource: payload.requestSource ?? "unknown"
     });
 
     const [providers, bookings] = await Promise.all([
@@ -773,22 +818,44 @@ export class MarketplacePlatformService {
     const suggestedSlots = rankedCandidates.flatMap((candidate) => candidate.matchingSlots);
     const rankedProviders = rankedCandidates.map((candidate) => candidate.ranking);
     const matchingProviders = rankedProviders.map((candidate) => candidate.provider);
+    const recommendedProviderId = rankedProviders[0]?.provider.id;
 
     this.analytics.record({
       id: crypto.randomUUID(),
       name: MarketplaceTelemetryEventCatalog.providerMatchReturned,
       occurredAt: new Date().toISOString(),
       properties: {
+        recommendationSessionId,
+        recommendedProviderId,
         providerCount: matchingProviders.length,
         slotCount: suggestedSlots.length,
-        city: normalizedAddress.city
+        city: normalizedAddress.city,
+        requestSource: payload.requestSource ?? "unknown"
       }
     });
+
+    if (recommendedProviderId) {
+      this.analytics.record({
+        id: crypto.randomUUID(),
+        name: MarketplaceTelemetryEventCatalog.recommendationPresented,
+        occurredAt: new Date().toISOString(),
+        properties: {
+          recommendationSessionId,
+          recommendedProviderId,
+          providerCount: matchingProviders.length,
+          city: normalizedAddress.city,
+          hasOpenSlot: Boolean(rankedProviders[0]?.hasOpenSlot),
+          requestSource: payload.requestSource ?? "unknown"
+        }
+      });
+    }
 
     return {
       providers: matchingProviders,
       rankedProviders,
-      suggestedSlots
+      suggestedSlots,
+      recommendationSessionId,
+      recommendedProviderId
     };
   }
 
@@ -946,6 +1013,16 @@ export class MarketplacePlatformService {
       throw new Error("Crew match could not be updated");
     }
 
+    const booking = await this.repository.findBookingById(match.bookingId);
+    if (
+      booking?.assignedRouteLeaderCrewMemberId === updatedMatch.crewMemberId &&
+      updatedMatch.status !== "accepted"
+    ) {
+      await this.repository.updateBooking(booking.id, {
+        assignedRouteLeaderCrewMemberId: undefined
+      });
+    }
+
     await this.refreshCrewMemberStatus(updatedMatch.crewMemberId);
     const provider = await this.repository.findProviderById(providerId);
     if (provider) {
@@ -963,6 +1040,78 @@ export class MarketplacePlatformService {
     }
 
     return updatedMatch;
+  }
+
+  public async assignBookingRouteLeader(
+    providerId: string,
+    payload: AssignBookingRouteLeaderRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking || booking.providerId !== providerId) {
+      throw new HttpError(404, "Booking not found for this provider");
+    }
+
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    if (provider.routeLeaderMode !== "accepted-crew-fallback") {
+      throw new HttpError(400, "Enable accepted crew fallback before assigning a crew route leader");
+    }
+
+    if (
+      booking.status === "completed" ||
+      booking.status === "cancelled" ||
+      booking.status === "refunded"
+    ) {
+      throw new HttpError(400, "Route leaders can only be assigned on active bookings");
+    }
+
+    if (booking.onRouteConfirmedAt) {
+      throw new HttpError(400, "Route leader assignment is locked once the route has started");
+    }
+
+    const acceptedMatches = (await this.repository.listCrewMatches()).filter(
+      (match) => match.bookingId === booking.id && match.status === "accepted"
+    );
+
+    if (payload.crewMemberId) {
+      const assignedMatch = acceptedMatches.find((match) => match.crewMemberId === payload.crewMemberId);
+      if (!assignedMatch) {
+        throw new HttpError(400, "Only accepted crew members can be assigned as route leader");
+      }
+
+      const updatedBooking = await this.repository.updateBooking(booking.id, {
+        assignedRouteLeaderCrewMemberId: payload.crewMemberId
+      });
+
+      if (!updatedBooking) {
+        throw new HttpError(500, "Route leader could not be assigned");
+      }
+
+      const crewMember = await this.repository.findCrewMemberById(payload.crewMemberId);
+      if (crewMember) {
+        await this.createNotification({
+          recipientId: crewMember.id,
+          recipientRole: "crew-member",
+          category: "staffing",
+          title: "You were assigned as route leader",
+          body: `${provider.companyName} chose you to start and share the route for an upcoming ${this.titleCaseCategory(booking.category).toLowerCase()} job.`,
+          actionHref: "/crew/schedule"
+        });
+      }
+
+      return updatedBooking;
+    }
+
+    const clearedBooking = await this.repository.updateBooking(booking.id, {
+      assignedRouteLeaderCrewMemberId: undefined
+    });
+    if (!clearedBooking) {
+      throw new HttpError(500, "Route leader assignment could not be updated");
+    }
+    return clearedBooking;
   }
 
   public async getCrewMatchesForCrew(crewMemberId: string): Promise<CrewMatchesResponse> {
@@ -990,7 +1139,10 @@ export class MarketplacePlatformService {
             return [];
           }
 
-          return [this.buildCrewMatchSummary(match, provider, booking)];
+          const acceptedMatchCount = matches.filter(
+            (candidate) => candidate.bookingId === booking.id && candidate.status === "accepted"
+          ).length;
+          return [this.buildCrewMatchSummary(match, provider, booking, acceptedMatchCount)];
         })
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
     };
@@ -1051,6 +1203,12 @@ export class MarketplacePlatformService {
       throw new HttpError(500, "Crew assignment could not be cancelled");
     }
 
+    if (booking.assignedRouteLeaderCrewMemberId === crewMemberId) {
+      await this.repository.updateBooking(booking.id, {
+        assignedRouteLeaderCrewMemberId: undefined
+      });
+    }
+
     await this.repository.updateCrewMember(crewMemberId, {
       cancellationCount: (crewMember.cancellationCount ?? 0) + 1,
       lastCancellationAt: cancelledAt
@@ -1086,7 +1244,11 @@ export class MarketplacePlatformService {
       actionHref: "/crew/schedule"
     });
 
-    return this.buildCrewMatchSummary(updatedMatch, provider, booking);
+    const acceptedMatchCount = (await this.repository.listCrewMatches()).filter(
+      (candidate) => candidate.bookingId === booking.id && candidate.status === "accepted"
+    ).length;
+    const refreshedBooking = (await this.repository.findBookingById(booking.id)) ?? booking;
+    return this.buildCrewMatchSummary(updatedMatch, provider, refreshedBooking, acceptedMatchCount);
   }
 
   public async listProviderCrewConversations(
@@ -1103,8 +1265,16 @@ export class MarketplacePlatformService {
   private buildCrewMatchSummary(
     match: CrewMatchCandidate,
     provider: ProviderProfile,
-    booking: Booking
+    booking: Booking,
+    acceptedMatchCount: number
   ): CrewMatchesResponse["matches"][number] {
+    const resolvedRouteLeaderCrewMemberId =
+      booking.assignedRouteLeaderCrewMemberId ??
+      (acceptedMatchCount === 1 && match.status === "accepted" ? match.crewMemberId : undefined);
+    const requiresRouteLeaderAssignment =
+      provider.routeLeaderMode === "accepted-crew-fallback" &&
+      acceptedMatchCount > 1 &&
+      !booking.assignedRouteLeaderCrewMemberId;
     return {
       id: match.id,
       bookingId: match.bookingId,
@@ -1116,6 +1286,9 @@ export class MarketplacePlatformService {
       scheduledStartIso: booking.scheduledStartIso,
       scheduledEndIso: booking.scheduledEndIso,
       bookingStatus: booking.status,
+      assignedRouteLeaderCrewMemberId: resolvedRouteLeaderCrewMemberId,
+      isAssignedRouteLeader: resolvedRouteLeaderCrewMemberId === match.crewMemberId,
+      requiresRouteLeaderAssignment,
       onRouteConfirmedAt: booking.onRouteConfirmedAt,
       lateNoticeSentAt: booking.lateNoticeSentAt,
       lateEtaIso: booking.lateEtaIso,
@@ -1142,6 +1315,51 @@ export class MarketplacePlatformService {
       cancellationReason: match.cancellationReason,
       cancelledAt: match.cancelledAt
     };
+  }
+
+  private resolveDelegatedCrewRouteLeaderId(
+    booking: Booking,
+    acceptedMatches: CrewMatchCandidate[]
+  ): string | undefined {
+    if (
+      booking.assignedRouteLeaderCrewMemberId &&
+      acceptedMatches.some((match) => match.crewMemberId === booking.assignedRouteLeaderCrewMemberId)
+    ) {
+      return booking.assignedRouteLeaderCrewMemberId;
+    }
+
+    return acceptedMatches.length === 1 ? acceptedMatches[0]?.crewMemberId : undefined;
+  }
+
+  private async resolveProviderAssistantCrewMatch(
+    crewNameQuery: string | undefined,
+    matches: CrewMatchCandidate[]
+  ): Promise<(CrewMatchCandidate & { crewMemberName: string }) | undefined> {
+    const query = crewNameQuery?.trim().toLowerCase();
+    if (!query) {
+      return undefined;
+    }
+
+    const crewMembers = await Promise.all(
+      matches.map(async (match) => ({
+        ...match,
+        crewMemberId: match.crewMemberId,
+        crewMemberName: (await this.repository.findCrewMemberById(match.crewMemberId))?.fullName ?? "Crew member"
+      }))
+    );
+
+    const normalizedQuery = query.replace(/^the\s+/i, "").trim();
+    const exact = crewMembers.find((crewMember) => crewMember.crewMemberName.toLowerCase() === normalizedQuery);
+    if (exact) {
+      return exact;
+    }
+
+    const partialMatches = crewMembers.filter((crewMember) => {
+      const normalizedName = crewMember.crewMemberName.toLowerCase();
+      return normalizedName.includes(normalizedQuery) || normalizedQuery.includes(normalizedName);
+    });
+
+    return partialMatches.length === 1 ? partialMatches[0] : undefined;
   }
 
   public async getProviderCrewConversationThread(
@@ -1259,12 +1477,13 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    const [acceptedMatch, provider] = await Promise.all([
-      this.repository.listCrewMatches().then((matches) =>
-        matches.find((match) => match.bookingId === booking.id && match.status === "accepted")
-      ),
+    const [allMatches, provider] = await Promise.all([
+      this.repository.listCrewMatches(),
       this.repository.findProviderById(booking.providerId)
     ]);
+    const acceptedMatches = allMatches.filter(
+      (match) => match.bookingId === booking.id && match.status === "accepted"
+    );
 
     if (!provider) {
       throw new HttpError(404, "Provider not found");
@@ -1279,8 +1498,17 @@ export class MarketplacePlatformService {
         throw new HttpError(403, "This business owner handles route start personally for this booking");
       }
 
-      if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
+      if (!acceptedMatches.some((match) => match.crewMemberId === actor.userId)) {
         throw new HttpError(403, "Only accepted crew members can confirm they are on route");
+      }
+
+      const delegatedRouteLeaderId = this.resolveDelegatedCrewRouteLeaderId(booking, acceptedMatches);
+      if (!delegatedRouteLeaderId) {
+        throw new HttpError(403, "A specific crew route leader must be assigned before crew can start this route");
+      }
+
+      if (delegatedRouteLeaderId !== actor.userId) {
+        throw new HttpError(403, "Only the assigned route leader can confirm they are on route");
       }
     }
 
@@ -1341,6 +1569,77 @@ export class MarketplacePlatformService {
     return updatedBooking;
   }
 
+  public async setBookingRouteStop(
+    providerId: string,
+    payload: SetBookingRouteStopRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.providerId !== providerId) {
+      throw new HttpError(403, "Only the booking provider can set route stops");
+    }
+
+    if (booking.status === "completed" || booking.status === "cancelled" || booking.status === "refunded") {
+      throw new HttpError(400, "Route stops can only be managed while the booking is active");
+    }
+
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const address = payload.address ?? provider.address;
+    if (!address.point) {
+      throw new HttpError(400, "Route stop address must include a point");
+    }
+
+    const defaultLabel = payload.kind === "staging" ? "Staging stop" : "Equipment pickup";
+    const routeStop: BookingRouteStop = {
+      id: crypto.randomUUID(),
+      kind: payload.kind,
+      label: payload.label?.trim() || defaultLabel,
+      address,
+      createdAt: new Date().toISOString()
+    };
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      routeActiveStop: routeStop
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking route stop could not be saved");
+    }
+
+    return updatedBooking;
+  }
+
+  public async clearBookingRouteStop(
+    providerId: string,
+    payload: ClearBookingRouteStopRequest
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.providerId !== providerId) {
+      throw new HttpError(403, "Only the booking provider can clear route stops");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      routeActiveStop: undefined
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking route stop could not be cleared");
+    }
+
+    return updatedBooking;
+  }
+
   public async updateBookingRouteLocation(
     actor: AuthIdentityRecord,
     payload: UpdateBookingRouteLocationRequest
@@ -1350,12 +1649,13 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    const [acceptedMatch, provider] = await Promise.all([
-      this.repository.listCrewMatches().then((matches) =>
-        matches.find((match) => match.bookingId === booking.id && match.status === "accepted")
-      ),
+    const [allMatches, provider] = await Promise.all([
+      this.repository.listCrewMatches(),
       this.repository.findProviderById(booking.providerId)
     ]);
+    const acceptedMatches = allMatches.filter(
+      (match) => match.bookingId === booking.id && match.status === "accepted"
+    );
 
     if (actor.role === "provider" && booking.providerId !== actor.userId) {
       throw new HttpError(403, "Providers can only share live route location for their own bookings");
@@ -1366,8 +1666,17 @@ export class MarketplacePlatformService {
         throw new HttpError(403, "This business owner handles route tracking personally for this booking");
       }
 
-      if (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId) {
+      if (!acceptedMatches.some((match) => match.crewMemberId === actor.userId)) {
         throw new HttpError(403, "Only accepted crew members can share route location");
+      }
+
+      const delegatedRouteLeaderId = this.resolveDelegatedCrewRouteLeaderId(booking, acceptedMatches);
+      if (!delegatedRouteLeaderId) {
+        throw new HttpError(403, "A specific crew route leader must be assigned before crew can share route location");
+      }
+
+      if (delegatedRouteLeaderId !== actor.userId) {
+        throw new HttpError(403, "Only the assigned route leader can share route location");
       }
     }
 
@@ -1386,7 +1695,18 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "capturedAtIso must be a valid ISO date when provided");
     }
 
+    const activeRouteStop =
+      booking.routeActiveStop && !booking.routeActiveStop.reachedAt ? booking.routeActiveStop : undefined;
+    const routeStopReached =
+      activeRouteStop && this.isRouteStopReached(activeRouteStop, payload.point)
+        ? {
+            ...activeRouteStop,
+            reachedAt: capturedAtIso
+          }
+        : undefined;
+
     const updatedBooking = await this.repository.updateBooking(booking.id, {
+      routeActiveStop: routeStopReached ?? booking.routeActiveStop,
       routeLivePoint: payload.point,
       routeLiveUpdatedAt: capturedAtIso,
       routeLiveSource: actor.role === "provider" ? "provider-device" : "crew-device",
@@ -1706,9 +2026,8 @@ export class MarketplacePlatformService {
 
     const provider = await this.repository.findProviderById(booking.providerId);
     const matches = await this.repository.listCrewMatches();
-    const acceptedMatch = matches.find(
-      (match) => match.bookingId === booking.id && match.status === "accepted"
-    );
+    const acceptedMatches = matches.filter((match) => match.bookingId === booking.id && match.status === "accepted");
+    const acceptedMatch = acceptedMatches[0];
 
     if (actor.role === "customer" && booking.customerId !== actor.userId) {
       throw new HttpError(403, "Customers can only track their own bookings");
@@ -1720,12 +2039,14 @@ export class MarketplacePlatformService {
 
     if (
       actor.role === "crew-member" &&
-      (!acceptedMatch || acceptedMatch.crewMemberId !== actor.userId)
+      !acceptedMatches.some((match) => match.crewMemberId === actor.userId)
     ) {
       throw new HttpError(403, "Crew members can only track accepted assignments");
     }
 
-    const crewMemberId = booking.onRouteConfirmedByCrewMemberId ?? acceptedMatch?.crewMemberId;
+    const crewMemberId =
+      booking.onRouteConfirmedByCrewMemberId ??
+      this.resolveDelegatedCrewRouteLeaderId(booking, acceptedMatches);
     const crewMember = crewMemberId ? await this.repository.findCrewMemberById(crewMemberId) : undefined;
     const routeLeaderPoint =
       booking.onRouteConfirmedByCrewMemberId && crewMember
@@ -1735,6 +2056,12 @@ export class MarketplacePlatformService {
       booking.onRouteConfirmedByCrewMemberId && crewMember
         ? crewMember.fullName
         : provider?.companyName ?? crewMember?.fullName ?? "Your landscaping business";
+    const activeRouteStop =
+      booking.status === "confirmed" ? this.getActiveBookingRouteStop(booking, booking.routeLivePoint) : undefined;
+    const providerVisibleCurrentLegDestination =
+      actor.role === "customer"
+        ? undefined
+        : activeRouteStop?.address ?? booking.serviceAddress;
 
     const baseTracking: BookingArrivalTracking = {
       bookingId: booking.id,
@@ -1745,6 +2072,8 @@ export class MarketplacePlatformService {
       crewMemberName: routeLeaderName,
       destination: booking.serviceAddress,
       routeStartPoint: routeLeaderPoint,
+      currentLegDestination: providerVisibleCurrentLegDestination,
+      activeRouteStop: actor.role === "customer" ? undefined : activeRouteStop,
       source: "computed-origin",
       progressPercent: 0,
       lastComputedAt: nowIso,
@@ -1768,16 +2097,12 @@ export class MarketplacePlatformService {
 
     const startedAt = new Date(booking.onRouteConfirmedAt).getTime();
     const now = new Date(nowIso).getTime();
-    const totalDistanceMiles = routeLeaderPoint
-      ? this.geoService.distanceMiles(
-          {
-            ...booking.serviceAddress,
-            point: routeLeaderPoint
-          },
-          booking.serviceAddress
-        )
-      : 0;
-    const totalTravelMinutes = Math.max(6, Math.min(45, Math.round((totalDistanceMiles / 22) * 60) + 4));
+    const totalDistanceMiles = this.calculateBookingRouteTotalMiles(
+      routeLeaderPoint,
+      booking.serviceAddress,
+      activeRouteStop
+    );
+    const totalTravelMinutes = this.estimateRouteTravelMinutes(totalDistanceMiles, undefined, activeRouteStop);
     const elapsedMinutes = Math.max(0, (now - startedAt) / (1000 * 60));
     const liveLocationAgeMinutes = booking.routeLiveUpdatedAt
       ? Math.max(0, (now - new Date(booking.routeLiveUpdatedAt).getTime()) / (1000 * 60))
@@ -1794,28 +2119,33 @@ export class MarketplacePlatformService {
       ? booking.routeLivePoint
       : this.interpolatePoint(
           routeLeaderPoint ?? booking.serviceAddress.point,
-          booking.serviceAddress.point,
+          activeRouteStop?.address.point ?? booking.serviceAddress.point,
           computedProgress
         );
-    const liveRemainingDistanceMiles = effectiveCurrentPoint
-      ? this.geoService.distanceMiles(
-          {
-            ...booking.serviceAddress,
-            point: effectiveCurrentPoint
-          },
-          booking.serviceAddress
-        )
-      : undefined;
+    const activeStopDuringTracking = this.getActiveBookingRouteStop(booking, effectiveCurrentPoint);
+    const liveRemainingDistanceMiles =
+      effectiveCurrentPoint
+        ? this.calculateRemainingBookingRouteMiles(effectiveCurrentPoint, booking.serviceAddress, activeStopDuringTracking)
+        : undefined;
+    const liveRemainingLegDistanceMiles =
+      effectiveCurrentPoint
+        ? this.calculateRemainingBookingLegMiles(effectiveCurrentPoint, booking.serviceAddress, activeStopDuringTracking)
+        : undefined;
     const clampedProgress =
       typeof liveRemainingDistanceMiles === "number" && totalDistanceMiles > 0
         ? Math.max(0, Math.min(1, 1 - liveRemainingDistanceMiles / totalDistanceMiles))
         : computedProgress;
     const etaMinutesFromLivePoint =
       typeof liveRemainingDistanceMiles === "number"
-        ? Math.max(
-            0,
-            Math.ceil((liveRemainingDistanceMiles / Math.max(10, booking.routeLiveSpeedMph ?? 22)) * 60)
+        ? this.estimateRouteTravelMinutes(
+            liveRemainingDistanceMiles,
+            booking.routeLiveSpeedMph,
+            activeStopDuringTracking
           )
+        : undefined;
+    const legEtaMinutesFromLivePoint =
+      typeof liveRemainingLegDistanceMiles === "number"
+        ? this.estimateRouteTravelMinutes(liveRemainingLegDistanceMiles, booking.routeLiveSpeedMph)
         : undefined;
 
     if (booking.status === "completed") {
@@ -1854,14 +2184,25 @@ export class MarketplacePlatformService {
       ...baseTracking,
       status: "on-route",
       currentPoint: effectiveCurrentPoint,
+      currentLegDestination:
+        actor.role === "customer"
+          ? undefined
+          : activeStopDuringTracking?.address ?? booking.serviceAddress,
+      activeRouteStop: actor.role === "customer" ? undefined : activeStopDuringTracking,
       source: hasLiveRoutePoint ? booking.routeLiveSource ?? "computed-origin" : "computed-origin",
       liveUpdatedAt: booking.routeLiveUpdatedAt,
       isLiveLocationStale,
       progressPercent: Math.round(clampedProgress * 100),
+      remainingLegDistanceMiles:
+        typeof liveRemainingLegDistanceMiles === "number"
+          ? Number(liveRemainingLegDistanceMiles.toFixed(1))
+          : undefined,
       remainingDistanceMiles:
         typeof liveRemainingDistanceMiles === "number"
           ? Number(liveRemainingDistanceMiles.toFixed(1))
           : Number((totalDistanceMiles * (1 - clampedProgress)).toFixed(1)),
+      etaToCurrentLegMinutes:
+        typeof legEtaMinutesFromLivePoint === "number" ? Math.max(1, legEtaMinutesFromLivePoint) : undefined,
       etaMinutes:
         typeof etaMinutesFromLivePoint === "number"
           ? Math.max(1, etaMinutesFromLivePoint)
@@ -1873,6 +2214,123 @@ export class MarketplacePlatformService {
           : `${routeLeaderName} is on the way with live location updates.`
         : `${routeLeaderName} is on the way.`
     };
+  }
+
+  private getActiveBookingRouteStop(
+    booking: Booking,
+    currentPoint?: Address["point"]
+  ): Booking["routeActiveStop"] | undefined {
+    const routeStop = booking.routeActiveStop;
+    if (!routeStop || routeStop.reachedAt) {
+      return undefined;
+    }
+
+    if (currentPoint && this.isRouteStopReached(routeStop, currentPoint)) {
+      return undefined;
+    }
+
+    return routeStop;
+  }
+
+  private isRouteStopReached(routeStop: BookingRouteStop, point: Address["point"]): boolean {
+    return (
+      this.geoService.distanceMiles(
+        {
+          ...routeStop.address,
+          point
+        },
+        routeStop.address
+      ) <= MarketplacePlatformService.routeStopReachedThresholdMiles
+    );
+  }
+
+  private calculateBookingRouteTotalMiles(
+    routeStartPoint: Address["point"] | undefined,
+    destination: Address,
+    activeRouteStop?: Booking["routeActiveStop"]
+  ): number {
+    if (!routeStartPoint) {
+      return 0;
+    }
+
+    if (!activeRouteStop) {
+      return this.geoService.distanceMiles(
+        {
+          ...destination,
+          point: routeStartPoint
+        },
+        destination
+      );
+    }
+
+    const firstLeg = this.geoService.distanceMiles(
+      {
+        ...activeRouteStop.address,
+        point: routeStartPoint
+      },
+      activeRouteStop.address
+    );
+    const secondLeg = this.geoService.distanceMiles(activeRouteStop.address, destination);
+    return firstLeg + secondLeg;
+  }
+
+  private calculateRemainingBookingRouteMiles(
+    currentPoint: Address["point"],
+    destination: Address,
+    activeRouteStop?: Booking["routeActiveStop"]
+  ): number {
+    if (!activeRouteStop) {
+      return this.geoService.distanceMiles(
+        {
+          ...destination,
+          point: currentPoint
+        },
+        destination
+      );
+    }
+
+    const firstLegRemaining = this.geoService.distanceMiles(
+      {
+        ...activeRouteStop.address,
+        point: currentPoint
+      },
+      activeRouteStop.address
+    );
+    return firstLegRemaining + this.geoService.distanceMiles(activeRouteStop.address, destination);
+  }
+
+  private calculateRemainingBookingLegMiles(
+    currentPoint: Address["point"],
+    destination: Address,
+    activeRouteStop?: Booking["routeActiveStop"]
+  ): number {
+    if (!activeRouteStop) {
+      return this.geoService.distanceMiles(
+        {
+          ...destination,
+          point: currentPoint
+        },
+        destination
+      );
+    }
+
+    return this.geoService.distanceMiles(
+      {
+        ...activeRouteStop.address,
+        point: currentPoint
+      },
+      activeRouteStop.address
+    );
+  }
+
+  private estimateRouteTravelMinutes(
+    distanceMiles: number,
+    speedMph?: number,
+    activeRouteStop?: Booking["routeActiveStop"]
+  ): number {
+    const travelMinutes = Math.ceil((Math.max(0, distanceMiles) / Math.max(10, speedMph ?? 22)) * 60);
+    const dwellMinutes = activeRouteStop ? MarketplacePlatformService.routeStopDwellMinutes : 0;
+    return Math.max(0, travelMinutes + dwellMinutes);
   }
 
   public async startBooking(actor: AuthIdentityRecord, payload: StartBookingRequest): Promise<Booking> {
@@ -2496,6 +2954,65 @@ export class MarketplacePlatformService {
     return updatedBooking;
   }
 
+  public async declineBooking(
+    providerId: string,
+    payload: { bookingId: string; reason?: string }
+  ): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.providerId !== providerId) {
+      throw new HttpError(403, "Only the booking provider can decline this service");
+    }
+
+    if (booking.status === "cancelled") {
+      return booking;
+    }
+
+    if (booking.status !== "requested") {
+      throw new HttpError(400, "Only requested bookings can be declined");
+    }
+
+    const updatedBooking = await this.repository.updateBooking(booking.id, {
+      status: "cancelled",
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined
+    });
+
+    if (!updatedBooking) {
+      throw new HttpError(500, "Booking could not be declined");
+    }
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.bookingDeclinedByProvider,
+      actorId: providerId,
+      occurredAt: new Date().toISOString(),
+      properties: {
+        bookingId: booking.id,
+        customerId: booking.customerId,
+        category: booking.category,
+        reason: payload.reason?.trim() || "none"
+      }
+    });
+
+    await this.createNotification({
+      recipientId: booking.customerId,
+      recipientRole: "customer",
+      category: "booking",
+      title: "Provider declined this request",
+      body: payload.reason?.trim()
+        ? `The provider could not take this service window. Note: ${payload.reason.trim()}`
+        : "The provider could not take this service window. Please choose another qualified provider.",
+      actionHref: "/customer/dashboard"
+    });
+
+    return updatedBooking;
+  }
+
   public async createInstantQuote(payload: InstantQuoteRequest): Promise<InstantQuoteResponse> {
     const customer = payload.customerId ? await this.repository.findCustomerById(payload.customerId) : undefined;
     const property = payload.propertyId
@@ -2590,7 +3107,12 @@ export class MarketplacePlatformService {
         scheduledStartIso: payload.scheduledStartIso,
         scheduledEndIso: payload.scheduledEndIso,
         notes: payload.notes,
-        totalCents: payload.totalCents
+        totalCents: payload.totalCents,
+        recommendationSessionId: payload.recommendationSessionId,
+        recommendedProviderId: payload.recommendedProviderId,
+        selectedProviderRank: payload.selectedProviderRank,
+        viewedAlternativeProviders: payload.viewedAlternativeProviders,
+        recommendationSource: payload.recommendationSource
       },
       {
         recurringPlanId: plan.id,
@@ -2747,6 +3269,7 @@ export class MarketplacePlatformService {
         category: payload.category,
         servicePropertyId: payload.servicePropertyId ?? "custom-address"
       });
+      this.recordRecommendationSelection(customerId, booking, payload, Boolean(options?.recurringPlanId));
     }
 
     await this.createNotification({
@@ -2763,6 +3286,36 @@ export class MarketplacePlatformService {
     });
 
     return result;
+  }
+
+  private recordRecommendationSelection(
+    customerId: string,
+    booking: Booking,
+    payload: CreateBookingRequest,
+    recurringPlanStarted: boolean
+  ): void {
+    if (!payload.recommendationSessionId) {
+      return;
+    }
+
+    const selectedRecommendedProvider = payload.recommendedProviderId
+      ? payload.providerId === payload.recommendedProviderId
+      : payload.selectedProviderRank === 1;
+    const eventName = selectedRecommendedProvider
+      ? MarketplaceTelemetryEventCatalog.recommendationAccepted
+      : MarketplaceTelemetryEventCatalog.recommendationSwapped;
+
+    this.analytics.recordFunnelStep(eventName, customerId, {
+      bookingId: booking.id,
+      providerId: payload.providerId,
+      category: payload.category,
+      recommendationSessionId: payload.recommendationSessionId,
+      recommendedProviderId: payload.recommendedProviderId ?? "unknown",
+      selectedProviderRank: payload.selectedProviderRank ?? "unknown",
+      viewedAlternativeProviders: payload.viewedAlternativeProviders ?? false,
+      recommendationSource: payload.recommendationSource ?? "unknown",
+      recurringPlanStarted
+    });
   }
 
   public async cancelBooking(
@@ -2798,7 +3351,8 @@ export class MarketplacePlatformService {
       properties: {
         bookingId: booking.id,
         providerId: booking.providerId,
-        category: booking.category
+        category: booking.category,
+        actorRole: "customer"
       }
     });
 
@@ -2909,9 +3463,13 @@ export class MarketplacePlatformService {
     const parsed = this.parseProviderAssistantCommand(command);
     if (
       !parsed.understood ||
-      (parsed.actionType === "reschedule-booking" && !parsed.targetWindowKey) ||
-      (parsed.actionType === "mark-booking-late" && !parsed.lateMinutes) ||
-      (parsed.actionType === "report-booking-exception" && !parsed.exceptionType)
+      parsed.actions.some(
+        (action) =>
+          (action.actionType === "summarize-dispatch" && !action.dispatchScope) ||
+          (action.actionType === "reschedule-booking" && !action.targetWindowKey) ||
+          (action.actionType === "mark-booking-late" && !action.lateMinutes) ||
+          (action.actionType === "report-booking-exception" && !action.exceptionType)
+      )
     ) {
       return {
         command,
@@ -2920,11 +3478,15 @@ export class MarketplacePlatformService {
         requiresConfirmation: false,
         executed: false,
         notifyCustomer: parsed.notifyCustomer,
+        actionTypes: parsed.actionTypes.length > 0 ? parsed.actionTypes : undefined,
         previewLabel: "Could not understand command",
-        previewMessage:
-          'Try a command like "Confirm my afternoon appointment", "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", "Start route for my afternoon appointment", "Start work for my afternoon appointment", "Complete my afternoon appointment", or "Mark my afternoon appointment no access because the gate is locked."',
+        previewMessage: this.providerAssistantHelpText(),
         bookingCandidates: []
       };
+    }
+
+    if (parsed.actions.length === 1 && parsed.actions[0]?.actionType === "summarize-dispatch") {
+      return this.runProviderAssistantDispatchSummary(providerId, parsed.actions[0], command);
     }
 
     const upcomingBookings = await this.listProviderAssistantCandidates(providerId);
@@ -2946,6 +3508,7 @@ export class MarketplacePlatformService {
         command,
         understood: true,
         actionType: parsed.actionType,
+        actionTypes: parsed.actionTypes,
         requiresBookingSelection: true,
         requiresConfirmation: false,
         executed: false,
@@ -2971,20 +3534,953 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "No matching provider booking was found");
     }
 
-    if (parsed.actionType === "confirm-booking") {
+    if (parsed.actions.length === 1) {
+      return this.runProviderAssistantSingleAction(providerId, booking, parsed.actions[0]!, payload.execute === true, command);
+    }
+
+    const stepResponses: ProviderAssistantCommandResponse[] = [];
+    let currentBooking = booking;
+    let projectedMatches =
+      payload.execute === true
+        ? undefined
+        : await this.listProviderAssistantBookingMatches(providerId, booking.id);
+
+    for (const [index, action] of parsed.actions.entries()) {
+      const response = await this.runProviderAssistantSingleAction(
+        providerId,
+        currentBooking,
+        action,
+        payload.execute === true,
+        command,
+        projectedMatches
+      );
+      stepResponses.push(response);
+
+      if (!payload.execute && !response.requiresConfirmation) {
+        return {
+          ...response,
+          command,
+          actionTypes: parsed.actionTypes,
+          previewLabel: "Multi-step command needs attention",
+          previewMessage: `Step ${index + 1} is blocked. ${response.previewMessage}`
+        };
+      }
+
+      if (payload.execute && !response.executed) {
+        return {
+          ...response,
+          command,
+          actionTypes: parsed.actionTypes,
+          previewLabel: "Multi-step command stopped early",
+          previewMessage: `Step ${index + 1} could not finish. ${response.previewMessage}`
+        };
+      }
+
+      currentBooking =
+        payload.execute === true
+          ? response.updatedBooking
+            ? {
+                ...response.updatedBooking,
+                customerName: currentBooking.customerName ?? "Customer"
+              }
+            : currentBooking
+          : this.projectBookingAfterProviderAssistantAction(currentBooking, action);
+      if (payload.execute !== true && projectedMatches) {
+        projectedMatches = this.projectCrewMatchesAfterProviderAssistantAction(projectedMatches, action);
+      }
+    }
+
+    return this.mergeProviderAssistantResponses(command, parsed.actionTypes, stepResponses, payload.execute === true);
+  }
+
+  private async runProviderAssistantDispatchSummary(
+    providerId: string,
+    action: ParsedProviderAssistantAction,
+    originalCommand: string
+  ): Promise<ProviderAssistantCommandResponse> {
+    const window = this.buildProviderAssistantDispatchWindow(action.dispatchScope ?? "today");
+    const overview = await this.getProviderCalendarOverview(providerId, window);
+    const scopeLabel = this.providerAssistantDispatchScopeLabel(action.dispatchScope ?? "today");
+
+    if (action.dispatchScope === "next-7-days") {
+      const rangeSummary = this.buildProviderAssistantDispatchRangeSummary(overview.dispatchDays);
+      if (!rangeSummary) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "summarize-dispatch",
+          actionTypes: ["summarize-dispatch"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          previewLabel: `${scopeLabel} looks open`,
+          previewMessage: `There are no YardMatch jobs or outside calendar blocks across ${scopeLabel.toLowerCase()}.`,
+          bookingCandidates: []
+        };
+      }
+
+      if (action.dispatchFocus === "attention") {
+        const targetDay =
+          rangeSummary.overloadedDayCount > 0
+            ? overview.dispatchDays.find((day) => day.routeStatus === "overloaded")
+            : rangeSummary.highestCrewGapDay?.crewGap
+              ? rangeSummary.highestCrewGapDay
+              : rangeSummary.watchDayCount > 0
+                ? overview.dispatchDays.find((day) => day.routeStatus === "watch")
+                : rangeSummary.highestDriveMilesDay ?? rangeSummary.busiestDay;
+
+        if (targetDay) {
+          const focusWindow = this.selectProviderAssistantDispatchFocusWindow(targetDay);
+          const recommendationText =
+            targetDay.recommendations.length > 0
+              ? ` Recommendations: ${targetDay.recommendations.join(" ")}`
+              : "";
+          const focusWindowText = focusWindow
+            ? ` Biggest pressure window: ${focusWindow.label} with ${focusWindow.yardmatchJobCount} job${
+                focusWindow.yardmatchJobCount === 1 ? "" : "s"
+              }, crew gap ${focusWindow.crewGap}, and ${focusWindow.blockedMinutes} blocked minutes.`
+            : "";
+
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "summarize-dispatch",
+            actionTypes: ["summarize-dispatch"],
+            requiresBookingSelection: false,
+            requiresConfirmation: false,
+            executed: false,
+            notifyCustomer: false,
+            dispatchDaySummary: targetDay,
+            dispatchWindowSummary: focusWindow,
+            dispatchRangeSummary: rangeSummary,
+            previewLabel: `${scopeLabel} dispatch attention`,
+            previewMessage: `${targetDay.dayLabel} needs the most attention. It is ${targetDay.routeStatus} with ${
+              targetDay.yardmatchJobCount
+            } YardMatch job${targetDay.yardmatchJobCount === 1 ? "" : "s"}, crew gap ${
+              targetDay.crewGap
+            }, and ${targetDay.estimatedDriveMiles.toFixed(1)} route miles.${focusWindowText}${recommendationText}`,
+            bookingCandidates: this.buildProviderAssistantDispatchBookingCandidates(overview, targetDay, focusWindow)
+          };
+        }
+      }
+
+      const rangeRecommendations =
+        rangeSummary.recommendations.length > 0
+          ? ` Recommendations: ${rangeSummary.recommendations.join(" ")}`
+          : "";
+      const busiestDayText = rangeSummary.busiestDay
+        ? ` Busiest day: ${rangeSummary.busiestDay.dayLabel} with ${rangeSummary.busiestDay.yardmatchJobCount} jobs.`
+        : "";
+      const crewGapText =
+        rangeSummary.highestCrewGapDay && rangeSummary.highestCrewGapDay.crewGap > 0
+          ? ` Biggest crew gap: ${rangeSummary.highestCrewGapDay.dayLabel} (${rangeSummary.highestCrewGapDay.crewGap}).`
+          : "";
+
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "summarize-dispatch",
+        actionTypes: ["summarize-dispatch"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        dispatchRangeSummary: rangeSummary,
+        previewLabel: `${scopeLabel} dispatch summary`,
+        previewMessage: `${scopeLabel} has ${rangeSummary.totalYardmatchJobs} YardMatch jobs across ${
+          rangeSummary.activeDayCount
+        } active day${rangeSummary.activeDayCount === 1 ? "" : "s"}, ${rangeSummary.watchDayCount} watch day${
+          rangeSummary.watchDayCount === 1 ? "" : "s"
+        }, and ${rangeSummary.overloadedDayCount} overloaded day${
+          rangeSummary.overloadedDayCount === 1 ? "" : "s"
+        }.${busiestDayText}${crewGapText}${rangeRecommendations}`,
+        bookingCandidates: []
+      };
+    }
+
+    const targetDay =
+      overview.dispatchDays.find((day) =>
+        this.doIntervalsOverlap(
+          day.dateIso,
+          new Date(new Date(day.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+          window.fromIso,
+          window.toIso
+        )
+      ) ?? overview.dispatchDays[0];
+
+    if (!targetDay) {
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "summarize-dispatch",
+        actionTypes: ["summarize-dispatch"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        previewLabel: `${scopeLabel} looks open`,
+        previewMessage: `There are no YardMatch jobs or outside calendar blocks on ${scopeLabel.toLowerCase()}.`,
+        bookingCandidates: []
+      };
+    }
+
+    const recommendationText =
+      targetDay.recommendations.length > 0
+        ? ` Recommendations: ${targetDay.recommendations.join(" ")}`
+        : "";
+    const firstStopText = targetDay.firstStopAddressLine ? ` First stop: ${targetDay.firstStopAddressLine}.` : "";
+    const focusWindow = this.selectProviderAssistantDispatchFocusWindow(targetDay);
+
+    if (action.dispatchFocus === "attention") {
+      const focusWindowText = focusWindow
+        ? ` The biggest pressure is in the ${focusWindow.label.toLowerCase()} window with ${focusWindow.yardmatchJobCount} job${
+            focusWindow.yardmatchJobCount === 1 ? "" : "s"
+          }, crew gap ${focusWindow.crewGap}, and ${focusWindow.blockedMinutes} blocked minutes.`
+        : "";
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "summarize-dispatch",
+        actionTypes: ["summarize-dispatch"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        dispatchDaySummary: targetDay,
+        dispatchWindowSummary: focusWindow,
+        previewLabel: `${scopeLabel} dispatch attention`,
+        previewMessage: `${scopeLabel} needs attention because the route is ${targetDay.routeStatus} with crew gap ${
+          targetDay.crewGap
+        } and ${targetDay.estimatedDriveMiles.toFixed(1)} route miles.${focusWindowText}${recommendationText}`,
+        bookingCandidates: this.buildProviderAssistantDispatchBookingCandidates(overview, targetDay, focusWindow)
+      };
+    }
+
+    return {
+      command: originalCommand,
+      understood: true,
+      actionType: "summarize-dispatch",
+      actionTypes: ["summarize-dispatch"],
+      requiresBookingSelection: false,
+      requiresConfirmation: false,
+      executed: false,
+      notifyCustomer: false,
+      dispatchDaySummary: targetDay,
+      previewLabel: `${scopeLabel} dispatch summary`,
+      previewMessage: `${scopeLabel} is ${targetDay.routeStatus}. ${targetDay.yardmatchJobCount} YardMatch job${
+        targetDay.yardmatchJobCount === 1 ? "" : "s"
+      }, ${targetDay.externalBlockCount} outside block${targetDay.externalBlockCount === 1 ? "" : "s"}, crew gap ${
+        targetDay.crewGap
+      }, and about ${targetDay.estimatedDriveMiles.toFixed(1)} route miles.${firstStopText}${recommendationText}`,
+      bookingCandidates: []
+    };
+  }
+
+  private async runProviderAssistantSingleAction(
+    providerId: string,
+    booking: Booking & { customerName: string },
+    action: ParsedProviderAssistantAction,
+    execute: boolean,
+    originalCommand: string,
+    projectedMatches?: CrewMatchCandidate[]
+  ): Promise<ProviderAssistantCommandResponse> {
+    const sourceWindowKey = action.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key;
+
+    if (
+      action.actionType === "accept-best-crew-match" ||
+      action.actionType === "accept-crew-match" ||
+      action.actionType === "deny-crew-match"
+    ) {
+      const bookingMatches = (projectedMatches ?? (await this.listProviderAssistantBookingMatches(providerId, booking.id))).filter(
+        (match) =>
+          match.bookingId === booking.id &&
+          (match.status === "pending-provider-review" || match.status === "accepted")
+      );
+
+      if (bookingMatches.length === 0) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: action.actionType,
+          actionTypes: [action.actionType],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel: "No crew matches to review",
+          previewMessage: "This booking does not currently have any pending crew matches to accept or decline.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const crewMatch =
+        action.actionType === "accept-best-crew-match"
+          ? bookingMatches.find((match) => match.status === "pending-provider-review")
+          : await this.resolveProviderAssistantCrewMatch(action.crewMatchCrewNameQuery, bookingMatches);
+      if (!crewMatch) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: action.actionType,
+          actionTypes: [action.actionType],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel:
+            action.actionType === "accept-best-crew-match"
+              ? "No recommended crew left"
+              : "Crew match not found",
+          previewMessage:
+            action.actionType === "accept-best-crew-match"
+              ? "This booking does not currently have a pending crew recommendation to accept."
+              : "The assistant could not match that crew name to a pending or accepted staffing match on this job.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (crewMatch.status === "accepted") {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: action.actionType,
+          actionTypes: [action.actionType],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel:
+            action.actionType === "accept-best-crew-match"
+              ? "Best crew already accepted"
+              : "Crew already accepted",
+          previewMessage:
+            action.actionType === "accept-best-crew-match"
+              ? `${crewMatch.crewMemberName} is already the best accepted crew on this job.`
+              : `${crewMatch.crewMemberName} is already accepted on this job.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const reviewAction =
+        action.actionType === "deny-crew-match" ? "deny" : "accept";
+      const reviewVerb = reviewAction === "accept" ? "Accept" : "Decline";
+      const pastTense = reviewAction === "accept" ? "accepted" : "declined";
+      const recommendationReasons = crewMatch.recommendationReasons?.length
+        ? ` Best fit notes: ${crewMatch.recommendationReasons.join(", ")}.`
+        : "";
+
+      if (!execute) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: action.actionType,
+          actionTypes: [action.actionType],
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel:
+            action.actionType === "accept-best-crew-match"
+              ? "Ready to accept best crew"
+              : reviewAction === "accept"
+                ? "Ready to accept crew"
+                : "Ready to decline crew",
+          previewMessage:
+            action.actionType === "accept-best-crew-match"
+              ? `Accept ${crewMatch.crewMemberName} as the best crew for this job.${recommendationReasons} They will be accepted through the normal staffing review flow.`
+              : `${reviewVerb} ${crewMatch.crewMemberName} for this job. They will be ${pastTense} through the normal staffing review flow.${recommendationReasons}`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      await this.reviewCrewMatch(providerId, {
+        crewMatchId: crewMatch.id,
+        action: reviewAction
+      });
+
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action:
+          action.actionType === "accept-best-crew-match"
+            ? "provider-assistant-accept-best-crew-match"
+            : reviewAction === "accept"
+              ? "provider-assistant-accept-crew-match"
+            : "provider-assistant-deny-crew-match",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${originalCommand}`,
+        previousStatus: booking.status,
+        nextStatus: booking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...booking.interventions, intervention]
+      });
+
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: action.actionType,
+        actionTypes: [action.actionType],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: false,
+        matchedBookingId: booking.id,
+        matchedCustomerName: booking.customerName,
+        sourceWindowKey,
+        previewLabel:
+          action.actionType === "accept-best-crew-match"
+            ? "Best crew accepted"
+            : reviewAction === "accept"
+              ? "Crew accepted"
+              : "Crew declined",
+        previewMessage:
+          action.actionType === "accept-best-crew-match"
+            ? `Accepted ${crewMatch.crewMemberName} as the best crew through the staffing review flow.`
+            : `${this.toTitleCase(pastTense)} ${crewMatch.crewMemberName} through the staffing review flow.`,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? booking)],
+        updatedBooking: bookingWithIntervention ?? booking
+      };
+    }
+
+    if (action.actionType === "set-route-stop" || action.actionType === "clear-route-stop") {
+      const provider = await this.repository.findProviderById(providerId);
+      if (!provider) {
+        throw new HttpError(404, "Provider not found for this assistant command");
+      }
+
+      const activeRouteStop = booking.routeActiveStop && !booking.routeActiveStop.reachedAt ? booking.routeActiveStop : undefined;
+      if (action.actionType === "clear-route-stop") {
+        if (!activeRouteStop) {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "clear-route-stop",
+            actionTypes: ["clear-route-stop"],
+            requiresBookingSelection: false,
+            requiresConfirmation: false,
+            executed: false,
+            notifyCustomer: false,
+            matchedBookingId: booking.id,
+            matchedCustomerName: booking.customerName,
+            sourceWindowKey,
+            previewLabel: "No route stop set",
+            previewMessage: "This booking does not currently have a provider-only interim route stop.",
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        if (!execute) {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "clear-route-stop",
+            actionTypes: ["clear-route-stop"],
+            requiresBookingSelection: false,
+            requiresConfirmation: true,
+            executed: false,
+            notifyCustomer: false,
+            matchedBookingId: booking.id,
+            matchedCustomerName: booking.customerName,
+            sourceWindowKey,
+            previewLabel: "Ready to clear route stop",
+            previewMessage: `Clear ${activeRouteStop.label} so tracking heads straight to the property again.`,
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        const clearedBooking = await this.clearBookingRouteStop(providerId, { bookingId: booking.id });
+        const now = new Date().toISOString();
+        const intervention: BookingInterventionRecord = {
+          id: crypto.randomUUID(),
+          action: "provider-assistant-clear-route-stop",
+          createdAt: now,
+          actorRole: "provider-assistant",
+          actorUserId: providerId,
+          note: `Provider assistant command: ${originalCommand}`
+        };
+        const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+          interventions: [...clearedBooking.interventions, intervention]
+        });
+
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "clear-route-stop",
+          actionTypes: ["clear-route-stop"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: true,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel: "Route stop cleared",
+          previewMessage: `Cleared ${activeRouteStop.label}. Tracking will now point straight to the property.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? clearedBooking)],
+          updatedBooking: bookingWithIntervention ?? clearedBooking
+        };
+      }
+
+      const routeStopKind = action.routeStopKind ?? "equipment-pickup";
+      const defaultLabel = routeStopKind === "staging" ? "Staging stop" : "Equipment pickup";
+      if (
+        activeRouteStop &&
+        activeRouteStop.kind === routeStopKind &&
+        activeRouteStop.address.line1 === provider.address.line1
+      ) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "set-route-stop",
+          actionTypes: ["set-route-stop"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel: "Route stop already set",
+          previewMessage: `${activeRouteStop.label} is already set as the next provider-only route stop for this booking.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (!execute) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "set-route-stop",
+          actionTypes: ["set-route-stop"],
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel: "Ready to add route stop",
+          previewMessage: `Add ${defaultLabel.toLowerCase()} at your business address before heading to the property. Customers will still only see your business route, while provider tracking keeps the extra stop visible internally.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const stopBooking = await this.setBookingRouteStop(providerId, {
+        bookingId: booking.id,
+        kind: routeStopKind,
+        label: defaultLabel,
+        address: provider.address
+      });
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-set-route-stop",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${originalCommand}`
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...stopBooking.interventions, intervention]
+      });
+
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "set-route-stop",
+        actionTypes: ["set-route-stop"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: false,
+        matchedBookingId: booking.id,
+        matchedCustomerName: booking.customerName,
+        sourceWindowKey,
+        previewLabel: "Route stop added",
+        previewMessage: `${defaultLabel} is now the next provider-only route stop before the property.`,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? stopBooking)],
+        updatedBooking: bookingWithIntervention ?? stopBooking
+      };
+    }
+
+    if (action.actionType === "message-crew") {
+      const bookingMatches = (projectedMatches ?? (await this.repository.listCrewMatches())).filter(
+        (match) =>
+          match.bookingId === booking.id &&
+          (match.status === "accepted" || match.status === "pending-provider-review")
+      );
+
+      if (bookingMatches.length === 0) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "message-crew",
+          actionTypes: ["message-crew"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel: "No crew available to message",
+          previewMessage:
+            "Add or accept at least one crew member on this job before sending a crew message from the provider assistant.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const crewMatch = await this.resolveProviderAssistantCrewMatch(
+        action.crewMessageCrewNameQuery,
+        bookingMatches
+      );
+      if (!crewMatch || !action.crewMessageBody) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "message-crew",
+          actionTypes: ["message-crew"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel: "Crew message target not found",
+          previewMessage:
+            "The assistant could not match that crew name to a pending or accepted crew member on this job.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (!execute) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "message-crew",
+          actionTypes: ["message-crew"],
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: booking.customerName,
+          sourceWindowKey,
+          previewLabel: "Ready to message crew",
+          previewMessage: `Send ${crewMatch.crewMemberName}: "${action.crewMessageBody}"`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const providerIdentity = await this.repository.findAuthIdentityByUserId(providerId);
+      if (!providerIdentity || providerIdentity.role !== "provider") {
+        throw new HttpError(404, "Provider identity not found for this assistant command");
+      }
+
+      await this.sendProviderCrewMessage(providerIdentity, {
+        crewMatchId: crewMatch.id,
+        body: action.crewMessageBody
+      });
+
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-message-crew",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${originalCommand}`,
+        previousStatus: booking.status,
+        nextStatus: booking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...booking.interventions, intervention]
+      });
+
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "message-crew",
+        actionTypes: ["message-crew"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: false,
+        matchedBookingId: booking.id,
+        matchedCustomerName: booking.customerName,
+        sourceWindowKey,
+        previewLabel: "Crew message sent",
+        previewMessage: `Sent ${crewMatch.crewMemberName}: "${action.crewMessageBody}"`,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? booking)],
+        updatedBooking: bookingWithIntervention ?? booking
+      };
+    }
+
+    if (action.actionType === "assign-route-leader" || action.actionType === "clear-route-leader") {
+      const provider = await this.repository.findProviderById(providerId);
+      if (!provider) {
+        throw new HttpError(404, "Provider not found for this assistant command");
+      }
+
+      if (provider.routeLeaderMode !== "accepted-crew-fallback") {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: action.actionType,
+          actionTypes: [action.actionType],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          sourceWindowKey,
+          previewLabel: "Crew route fallback is off",
+          previewMessage: "Turn on accepted-crew fallback before using the provider assistant to delegate route leadership.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (booking.onRouteConfirmedAt) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: action.actionType,
+          actionTypes: [action.actionType],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          sourceWindowKey,
+          previewLabel: "Route already started",
+          previewMessage: "Route leadership is locked once the route is already live.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const acceptedMatches = (projectedMatches ?? (await this.repository.listCrewMatches())).filter(
+        (match) => match.bookingId === booking.id && match.status === "accepted"
+      );
+
+      if (acceptedMatches.length === 0) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: action.actionType,
+          actionTypes: [action.actionType],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          sourceWindowKey,
+          previewLabel: "No accepted crew yet",
+          previewMessage: "Accept at least one crew member on this job before delegating route leadership.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (action.actionType === "clear-route-leader") {
+        if (!booking.assignedRouteLeaderCrewMemberId) {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "clear-route-leader",
+            actionTypes: ["clear-route-leader"],
+            requiresBookingSelection: false,
+            requiresConfirmation: false,
+            executed: false,
+            notifyCustomer: false,
+            matchedBookingId: booking.id,
+            sourceWindowKey,
+            previewLabel: "No explicit route leader set",
+            previewMessage: "This job does not currently have an explicit crew route-leader assignment to clear.",
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        const currentLeader = await this.repository.findCrewMemberById(booking.assignedRouteLeaderCrewMemberId);
+        if (!execute) {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "clear-route-leader",
+            actionTypes: ["clear-route-leader"],
+            requiresBookingSelection: false,
+            requiresConfirmation: true,
+            executed: false,
+            notifyCustomer: false,
+            matchedBookingId: booking.id,
+            sourceWindowKey,
+            previewLabel: "Ready to clear route leader",
+            previewMessage: `Clear ${currentLeader?.fullName ?? "the crew lead"} as the explicit route leader for this job.`,
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        const clearedBooking = await this.assignBookingRouteLeader(providerId, {
+          bookingId: booking.id
+        });
+        const now = new Date().toISOString();
+        const intervention: BookingInterventionRecord = {
+          id: crypto.randomUUID(),
+          action: "provider-assistant-clear-route-leader",
+          createdAt: now,
+          actorRole: "provider-assistant",
+          actorUserId: providerId,
+          note: `Provider assistant command: ${originalCommand}`,
+          previousStatus: booking.status,
+          nextStatus: clearedBooking.status
+        };
+        const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+          interventions: [...clearedBooking.interventions, intervention]
+        });
+
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "clear-route-leader",
+          actionTypes: ["clear-route-leader"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: true,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          sourceWindowKey,
+          previewLabel: "Route leader cleared",
+          previewMessage: `Cleared the explicit route-leader assignment for this job.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? clearedBooking)],
+          updatedBooking: bookingWithIntervention ?? clearedBooking
+        };
+      }
+
+      const routeLeaderMatch = await this.resolveProviderAssistantCrewMatch(
+        action.routeLeaderCrewNameQuery,
+        acceptedMatches
+      );
+      if (!routeLeaderMatch) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "assign-route-leader",
+          actionTypes: ["assign-route-leader"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          sourceWindowKey,
+          previewLabel: "Accepted crew member not found",
+          previewMessage: "The assistant could not match that crew name to an accepted crew member on this job.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (booking.assignedRouteLeaderCrewMemberId === routeLeaderMatch.crewMemberId) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "assign-route-leader",
+          actionTypes: ["assign-route-leader"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          sourceWindowKey,
+          previewLabel: "Route leader already assigned",
+          previewMessage: `${routeLeaderMatch.crewMemberName} is already the explicit route leader for this job.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (!execute) {
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "assign-route-leader",
+          actionTypes: ["assign-route-leader"],
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          sourceWindowKey,
+          previewLabel: "Ready to assign route leader",
+          previewMessage: `Assign ${routeLeaderMatch.crewMemberName} as the route leader for this job.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const assignedBooking = await this.assignBookingRouteLeader(providerId, {
+        bookingId: booking.id,
+        crewMemberId: routeLeaderMatch.crewMemberId
+      });
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-assign-route-leader",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${originalCommand}`,
+        previousStatus: booking.status,
+        nextStatus: assignedBooking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...assignedBooking.interventions, intervention]
+      });
+
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "assign-route-leader",
+        actionTypes: ["assign-route-leader"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: false,
+        matchedBookingId: booking.id,
+        sourceWindowKey,
+        previewLabel: "Route leader assigned",
+        previewMessage: `Assigned ${routeLeaderMatch.crewMemberName} as the route leader for this job.`,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? assignedBooking)],
+        updatedBooking: bookingWithIntervention ?? assignedBooking
+      };
+    }
+
+    if (action.actionType === "confirm-booking") {
       const customer = await this.repository.findCustomerById(booking.customerId);
       if (booking.status === "confirmed" || booking.status === "in-progress" || booking.status === "completed") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "confirm-booking",
+          actionTypes: ["confirm-booking"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Booking already confirmed",
           previewMessage: `${customer?.fullName ?? "This customer"} is already confirmed and ready for the next lifecycle step.`,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -2993,16 +4489,17 @@ export class MarketplacePlatformService {
 
       if (booking.status !== "requested") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "confirm-booking",
+          actionTypes: ["confirm-booking"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Booking cannot be confirmed",
           previewMessage: "Only requested bookings can be confirmed from the provider assistant.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3013,18 +4510,19 @@ export class MarketplacePlatformService {
         customer?.fullName ?? "The customer"
       } will be told that their requested service window is confirmed.`;
 
-      if (!payload.execute) {
+      if (!execute) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "confirm-booking",
+          actionTypes: ["confirm-booking"],
           requiresBookingSelection: false,
           requiresConfirmation: true,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Ready to confirm booking",
           previewMessage: `Confirm ${customer?.fullName ?? "this customer"} for ${this.formatBookingWindowWithDate(
             booking.scheduledStartIso
@@ -3042,7 +4540,7 @@ export class MarketplacePlatformService {
         createdAt: now,
         actorRole: "provider-assistant",
         actorUserId: providerId,
-        note: `Provider assistant command: ${command}`,
+        note: `Provider assistant command: ${originalCommand}`,
         previousStatus: booking.status,
         nextStatus: confirmedBooking.status
       };
@@ -3051,16 +4549,17 @@ export class MarketplacePlatformService {
       });
 
       return {
-        command,
+        command: originalCommand,
         understood: true,
         actionType: "confirm-booking",
+        actionTypes: ["confirm-booking"],
         requiresBookingSelection: false,
         requiresConfirmation: false,
         executed: true,
         notifyCustomer: true,
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
-        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        sourceWindowKey,
         previewLabel: "Booking confirmed",
         previewMessage: `Confirmed ${customer?.fullName ?? "the customer"} for ${this.formatBookingWindowWithDate(
           booking.scheduledStartIso
@@ -3071,20 +4570,21 @@ export class MarketplacePlatformService {
       };
     }
 
-    if (parsed.actionType === "complete-booking") {
+    if (action.actionType === "complete-booking") {
       const customer = await this.repository.findCustomerById(booking.customerId);
       if (booking.status === "completed") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "complete-booking",
+          actionTypes: ["complete-booking"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Booking already completed",
           previewMessage: `${customer?.fullName ?? "This customer"} is already marked complete.`,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3093,16 +4593,17 @@ export class MarketplacePlatformService {
 
       if (booking.status !== "confirmed" && booking.status !== "in-progress") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "complete-booking",
+          actionTypes: ["complete-booking"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Booking cannot be completed",
           previewMessage: "Only confirmed or in-progress bookings can be completed from the provider assistant.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3111,16 +4612,17 @@ export class MarketplacePlatformService {
 
       if (this.countBookingEvidence(booking, "after") < 1) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "complete-booking",
+          actionTypes: ["complete-booking"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "After photo still needed",
           previewMessage: "Capture at least one after photo before completing the booking from the provider assistant.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3131,18 +4633,19 @@ export class MarketplacePlatformService {
         customer?.fullName ?? "The customer"
       } will be told the service is complete and the review follow-up timer will begin.`;
 
-      if (!payload.execute) {
+      if (!execute) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "complete-booking",
+          actionTypes: ["complete-booking"],
           requiresBookingSelection: false,
           requiresConfirmation: true,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Ready to complete booking",
           previewMessage: `Complete ${customer?.fullName ?? "this customer"} and close out the service lifecycle.`,
           customerNotificationPreview,
@@ -3158,7 +4661,7 @@ export class MarketplacePlatformService {
         createdAt: now,
         actorRole: "provider-assistant",
         actorUserId: providerId,
-        note: `Provider assistant command: ${command}`,
+        note: `Provider assistant command: ${originalCommand}`,
         previousStatus: booking.status,
         nextStatus: completedBooking.status
       };
@@ -3167,16 +4670,17 @@ export class MarketplacePlatformService {
       });
 
       return {
-        command,
+        command: originalCommand,
         understood: true,
         actionType: "complete-booking",
+        actionTypes: ["complete-booking"],
         requiresBookingSelection: false,
         requiresConfirmation: false,
         executed: true,
         notifyCustomer: true,
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
-        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        sourceWindowKey,
         previewLabel: "Booking completed",
         previewMessage: `Completed ${customer?.fullName ?? "the customer"} and closed out the service lifecycle.`,
         customerNotificationPreview,
@@ -3185,44 +4689,44 @@ export class MarketplacePlatformService {
       };
     }
 
-    if (parsed.actionType === "report-booking-exception") {
+    if (action.actionType === "report-booking-exception") {
       const customer = await this.repository.findCustomerById(booking.customerId);
-      const exceptionLabel = getBookingExceptionLabel(parsed.exceptionType!);
-      const notesSuffix = parsed.exceptionNotes ? ` Reason: ${parsed.exceptionNotes}` : "";
-      const customerNotificationPreview = `${
-        customer?.fullName ?? "The customer"
-      } will be told: ${exceptionLabel}.${notesSuffix}`;
+      const exceptionLabel = getBookingExceptionLabel(action.exceptionType!);
+      const notesSuffix = action.exceptionNotes ? ` Reason: ${action.exceptionNotes}` : "";
+      const customerNotificationPreview = `${customer?.fullName ?? "The customer"} will be told: ${exceptionLabel}.${notesSuffix}`;
 
       if (booking.status === "completed" || booking.status === "cancelled" || booking.status === "refunded") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "report-booking-exception",
+          actionTypes: ["report-booking-exception"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Issue cannot be logged now",
           previewMessage: "Service issues can only be reported while the booking is still active.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
         };
       }
 
-      if (!payload.execute) {
+      if (!execute) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "report-booking-exception",
+          actionTypes: ["report-booking-exception"],
           requiresBookingSelection: false,
           requiresConfirmation: true,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Ready to report issue",
           previewMessage: `Log ${exceptionLabel.toLowerCase()} for ${customer?.fullName ?? "this customer"} and notify support-facing surfaces immediately.`,
           customerNotificationPreview,
@@ -3232,8 +4736,8 @@ export class MarketplacePlatformService {
 
       const exceptionBooking = await this.markBookingException(providerId, {
         bookingId: booking.id,
-        exceptionType: parsed.exceptionType!,
-        notes: parsed.exceptionNotes
+        exceptionType: action.exceptionType!,
+        notes: action.exceptionNotes
       });
       const now = new Date().toISOString();
       const intervention: BookingInterventionRecord = {
@@ -3242,7 +4746,7 @@ export class MarketplacePlatformService {
         createdAt: now,
         actorRole: "provider-assistant",
         actorUserId: providerId,
-        note: `Provider assistant command: ${command}`,
+        note: `Provider assistant command: ${originalCommand}`,
         previousStatus: booking.status,
         nextStatus: exceptionBooking.status
       };
@@ -3251,16 +4755,17 @@ export class MarketplacePlatformService {
       });
 
       return {
-        command,
+        command: originalCommand,
         understood: true,
         actionType: "report-booking-exception",
+        actionTypes: ["report-booking-exception"],
         requiresBookingSelection: false,
         requiresConfirmation: false,
         executed: true,
         notifyCustomer: true,
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
-        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        sourceWindowKey,
         previewLabel: "Issue reported",
         previewMessage: `Logged ${exceptionLabel.toLowerCase()} for ${customer?.fullName ?? "the customer"}.`,
         customerNotificationPreview,
@@ -3269,33 +4774,34 @@ export class MarketplacePlatformService {
       };
     }
 
-    if (parsed.actionType === "mark-booking-late") {
-      const lateEtaIso = this.buildProviderAssistantLateEta(booking, parsed.lateMinutes!);
+    if (action.actionType === "mark-booking-late") {
+      const lateEtaIso = this.buildProviderAssistantLateEta(booking, action.lateMinutes!);
       const customer = await this.repository.findCustomerById(booking.customerId);
       const lateWindowLabel = getBookingServiceWindow(booking.scheduledStartIso).label.toLowerCase();
       const etaText = new Date(lateEtaIso).toLocaleTimeString([], { timeStyle: "short" });
-      const reasonText = parsed.lateReason ? ` Reason: ${parsed.lateReason}` : "";
+      const reasonText = action.lateReason ? ` Reason: ${action.lateReason}` : "";
       const customerNotificationPreview = `${
         customer?.fullName ?? "The customer"
       } will be told you now expect to arrive around ${etaText} in the ${lateWindowLabel} window.${reasonText}`;
 
-      if (!payload.execute) {
+      if (!execute) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "mark-booking-late",
+          actionTypes: ["mark-booking-late"],
           requiresBookingSelection: false,
           requiresConfirmation: true,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
-          lateMinutes: parsed.lateMinutes,
+          sourceWindowKey,
+          lateMinutes: action.lateMinutes,
           lateEtaIso,
           previewLabel: "Ready to send a late update",
           previewMessage: `Let ${customer?.fullName ?? "this customer"} know you are about ${
-            parsed.lateMinutes
+            action.lateMinutes
           } minutes behind and now expect to arrive around ${etaText}.`,
           customerNotificationPreview,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3305,7 +4811,7 @@ export class MarketplacePlatformService {
       const lateUpdatedBooking = await this.markBookingLate(providerId, {
         bookingId: booking.id,
         lateEtaIso,
-        reason: parsed.lateReason
+        reason: action.lateReason
       });
       const now = new Date().toISOString();
       const intervention: BookingInterventionRecord = {
@@ -3314,7 +4820,7 @@ export class MarketplacePlatformService {
         createdAt: now,
         actorRole: "provider-assistant",
         actorUserId: providerId,
-        note: `Provider assistant command: ${command}`,
+        note: `Provider assistant command: ${originalCommand}`,
         previousStatus: booking.status,
         nextStatus: lateUpdatedBooking.status
       };
@@ -3323,42 +4829,42 @@ export class MarketplacePlatformService {
       });
 
       return {
-        command,
+        command: originalCommand,
         understood: true,
         actionType: "mark-booking-late",
+        actionTypes: ["mark-booking-late"],
         requiresBookingSelection: false,
         requiresConfirmation: false,
         executed: true,
         notifyCustomer: true,
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
-        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
-        lateMinutes: parsed.lateMinutes,
+        sourceWindowKey,
+        lateMinutes: action.lateMinutes,
         lateEtaIso,
         previewLabel: "Late update sent",
         previewMessage: `Sent a late update to ${customer?.fullName ?? "the customer"} with an arrival estimate around ${etaText}.`,
         customerNotificationPreview,
-        bookingCandidates: [
-          this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? lateUpdatedBooking)
-        ],
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? lateUpdatedBooking)],
         updatedBooking: bookingWithIntervention ?? lateUpdatedBooking
       };
     }
 
-    if (parsed.actionType === "start-route") {
+    if (action.actionType === "start-route") {
       const customer = await this.repository.findCustomerById(booking.customerId);
       if (booking.status !== "confirmed") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "start-route",
+          actionTypes: ["start-route"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Route cannot start yet",
           previewMessage: "Confirm this booking before starting the route from the provider assistant.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3369,18 +4875,19 @@ export class MarketplacePlatformService {
         customer?.fullName ?? "The customer"
       } will be told that your crew is on the way and live arrival tracking will unlock.`;
 
-      if (!payload.execute) {
+      if (!execute) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "start-route",
+          actionTypes: ["start-route"],
           requiresBookingSelection: false,
           requiresConfirmation: true,
           executed: false,
           notifyCustomer: true,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Ready to start the route",
           previewMessage: `Start the route for ${customer?.fullName ?? "this customer"} and unlock live arrival tracking.`,
           customerNotificationPreview,
@@ -3401,7 +4908,7 @@ export class MarketplacePlatformService {
         createdAt: now,
         actorRole: "provider-assistant",
         actorUserId: providerId,
-        note: `Provider assistant command: ${command}`,
+        note: `Provider assistant command: ${originalCommand}`,
         previousStatus: booking.status,
         nextStatus: onRouteBooking.status
       };
@@ -3410,16 +4917,17 @@ export class MarketplacePlatformService {
       });
 
       return {
-        command,
+        command: originalCommand,
         understood: true,
         actionType: "start-route",
+        actionTypes: ["start-route"],
         requiresBookingSelection: false,
         requiresConfirmation: false,
         executed: true,
         notifyCustomer: true,
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
-        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        sourceWindowKey,
         previewLabel: "Route started",
         previewMessage: `Started the route for ${customer?.fullName ?? "the customer"} and unlocked live arrival tracking.`,
         customerNotificationPreview,
@@ -3428,20 +4936,21 @@ export class MarketplacePlatformService {
       };
     }
 
-    if (parsed.actionType === "start-work") {
+    if (action.actionType === "start-work") {
       const customer = await this.repository.findCustomerById(booking.customerId);
       if (booking.status === "in-progress") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "start-work",
+          actionTypes: ["start-work"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: false,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Work already started",
           previewMessage: `${customer?.fullName ?? "This customer"} is already marked in progress.`,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3450,16 +4959,17 @@ export class MarketplacePlatformService {
 
       if (booking.status !== "confirmed") {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "start-work",
+          actionTypes: ["start-work"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: false,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Work cannot start yet",
           previewMessage: "Confirm this booking before starting work from the provider assistant.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3468,16 +4978,17 @@ export class MarketplacePlatformService {
 
       if (!booking.onRouteConfirmedAt) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "start-work",
+          actionTypes: ["start-work"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: false,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Start the route first",
           previewMessage: "Start the route first, then ask the provider assistant to begin work.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3486,34 +4997,36 @@ export class MarketplacePlatformService {
 
       if (this.countBookingEvidence(booking, "before") < 1) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "start-work",
+          actionTypes: ["start-work"],
           requiresBookingSelection: false,
           requiresConfirmation: false,
           executed: false,
           notifyCustomer: false,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Before photo still needed",
           previewMessage: "Capture at least one before photo before starting work from the provider assistant.",
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
         };
       }
 
-      if (!payload.execute) {
+      if (!execute) {
         return {
-          command,
+          command: originalCommand,
           understood: true,
           actionType: "start-work",
+          actionTypes: ["start-work"],
           requiresBookingSelection: false,
           requiresConfirmation: true,
           executed: false,
           notifyCustomer: false,
           matchedBookingId: booking.id,
           matchedCustomerName: customer?.fullName,
-          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          sourceWindowKey,
           previewLabel: "Ready to start work",
           previewMessage: `Start work for ${customer?.fullName ?? "this customer"} and move the booking into the active job state.`,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
@@ -3533,7 +5046,7 @@ export class MarketplacePlatformService {
         createdAt: now,
         actorRole: "provider-assistant",
         actorUserId: providerId,
-        note: `Provider assistant command: ${command}`,
+        note: `Provider assistant command: ${originalCommand}`,
         previousStatus: booking.status,
         nextStatus: startedBooking.status
       };
@@ -3542,16 +5055,17 @@ export class MarketplacePlatformService {
       });
 
       return {
-        command,
+        command: originalCommand,
         understood: true,
         actionType: "start-work",
+        actionTypes: ["start-work"],
         requiresBookingSelection: false,
         requiresConfirmation: false,
         executed: true,
         notifyCustomer: false,
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
-        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        sourceWindowKey,
         previewLabel: "Work started",
         previewMessage: `Started work for ${customer?.fullName ?? "the customer"} and moved the booking into progress.`,
         bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? startedBooking)],
@@ -3559,7 +5073,7 @@ export class MarketplacePlatformService {
       };
     }
 
-    const targetWindowKey = parsed.targetWindowKey!;
+    const targetWindowKey = action.targetWindowKey!;
     const targetWindow = this.buildProviderAssistantTargetWindow(booking, targetWindowKey);
     const customer = await this.repository.findCustomerById(booking.customerId);
     await this.assertProviderRescheduleWindowIsAvailable(
@@ -3573,18 +5087,19 @@ export class MarketplacePlatformService {
       customer?.fullName ?? "the customer"
     }.`;
 
-    if (!payload.execute) {
+    if (!execute) {
       return {
-        command,
+        command: originalCommand,
         understood: true,
         actionType: "reschedule-booking",
+        actionTypes: ["reschedule-booking"],
         requiresBookingSelection: false,
         requiresConfirmation: true,
         executed: false,
         notifyCustomer: true,
         matchedBookingId: booking.id,
         matchedCustomerName: customer?.fullName,
-        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        sourceWindowKey,
         targetWindowKey,
         targetWindowLabel: this.providerAssistantWindowLabel(targetWindowKey),
         suggestedStartIso: targetWindow.startIso,
@@ -3605,7 +5120,7 @@ export class MarketplacePlatformService {
       createdAt: now,
       actorRole: "provider-assistant",
       actorUserId: providerId,
-      note: `Provider assistant command: ${command}`,
+      note: `Provider assistant command: ${originalCommand}`,
       previousStatus: booking.status,
       nextStatus: booking.status === "requested" ? "requested" : "confirmed",
       previousScheduledStartIso: booking.scheduledStartIso,
@@ -3661,16 +5176,17 @@ export class MarketplacePlatformService {
     });
 
     return {
-      command,
+      command: originalCommand,
       understood: true,
       actionType: "reschedule-booking",
+      actionTypes: ["reschedule-booking"],
       requiresBookingSelection: false,
       requiresConfirmation: false,
       executed: true,
       notifyCustomer: true,
       matchedBookingId: booking.id,
       matchedCustomerName: customer?.fullName,
-      sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+      sourceWindowKey,
       targetWindowKey,
       targetWindowLabel: this.providerAssistantWindowLabel(targetWindowKey),
       suggestedStartIso: targetWindow.startIso,
@@ -3683,6 +5199,250 @@ export class MarketplacePlatformService {
       bookingCandidates: [this.toProviderAssistantBookingCandidate(updatedBooking)],
       updatedBooking
     };
+  }
+
+  private projectBookingAfterProviderAssistantAction(
+    booking: Booking & { customerName: string },
+    action: ParsedProviderAssistantAction
+  ): Booking & { customerName: string } {
+    const now = new Date().toISOString();
+    if (action.actionType === "accept-crew-match" || action.actionType === "deny-crew-match") {
+      return {
+        ...booking
+      };
+    }
+
+    if (action.actionType === "message-crew") {
+      return {
+        ...booking
+      };
+    }
+
+    if (action.actionType === "set-route-stop") {
+      return {
+        ...booking
+      };
+    }
+
+    if (action.actionType === "assign-route-leader") {
+      return {
+        ...booking
+      };
+    }
+
+    if (action.actionType === "clear-route-leader") {
+      return {
+        ...booking,
+        assignedRouteLeaderCrewMemberId: undefined
+      };
+    }
+
+    if (action.actionType === "clear-route-stop") {
+      return {
+        ...booking,
+        routeActiveStop: undefined
+      };
+    }
+
+    if (action.actionType === "confirm-booking") {
+      return {
+        ...booking,
+        status: "confirmed"
+      };
+    }
+
+    if (action.actionType === "start-route") {
+      return {
+        ...booking,
+        onRouteConfirmedAt: now,
+        lateNoticeSentAt: undefined,
+        lateEtaIso: undefined,
+        lateReason: undefined
+      };
+    }
+
+    if (action.actionType === "start-work") {
+      return {
+        ...booking,
+        status: "in-progress"
+      };
+    }
+
+    if (action.actionType === "complete-booking") {
+      return {
+        ...booking,
+        status: "completed",
+        completedAt: now,
+        activeExceptionType: undefined,
+        activeExceptionReportedAt: undefined,
+        activeExceptionNotes: undefined
+      };
+    }
+
+    if (action.actionType === "mark-booking-late") {
+      return {
+        ...booking,
+        lateNoticeSentAt: now,
+        lateEtaIso: this.buildProviderAssistantLateEta(booking, action.lateMinutes ?? 0),
+        lateReason: action.lateReason
+      };
+    }
+
+    if (action.actionType === "report-booking-exception") {
+      return {
+        ...booking,
+        activeExceptionType: action.exceptionType,
+        activeExceptionReportedAt: now,
+        activeExceptionNotes: action.exceptionNotes
+      };
+    }
+
+    const targetWindow = this.buildProviderAssistantTargetWindow(booking, action.targetWindowKey!);
+    return {
+      ...booking,
+      scheduledStartIso: targetWindow.startIso,
+      scheduledEndIso: targetWindow.endIso,
+      status: booking.status === "requested" ? "requested" : "confirmed",
+      onRouteConfirmedAt: undefined,
+      onRouteConfirmedByCrewMemberId: undefined,
+      lateNoticeSentAt: undefined,
+      lateEtaIso: undefined,
+      lateReason: undefined,
+      activeExceptionType: undefined,
+      activeExceptionReportedAt: undefined,
+      activeExceptionNotes: undefined,
+      disputedAt: undefined,
+      disputeReason: undefined,
+      disputedByRole: undefined,
+      completedAt: undefined
+    };
+  }
+
+  private projectCrewMatchesAfterProviderAssistantAction(
+    matches: CrewMatchCandidate[],
+    action: ParsedProviderAssistantAction
+  ): CrewMatchCandidate[] {
+    if (
+      action.actionType !== "accept-best-crew-match" &&
+      action.actionType !== "accept-crew-match" &&
+      action.actionType !== "deny-crew-match"
+    ) {
+      return matches;
+    }
+
+    const matchedCrew =
+      action.actionType === "accept-best-crew-match"
+        ? matches.find((match) => match.status === "pending-provider-review")
+        : matches.find((match) => {
+            if (
+              match.status !== "pending-provider-review" &&
+              match.status !== "accepted"
+            ) {
+              return false;
+            }
+
+            const normalizedName = match.crewMemberName.toLowerCase();
+            const query = action.crewMatchCrewNameQuery?.trim().toLowerCase();
+            if (!query) {
+              return false;
+            }
+
+            return normalizedName === query || normalizedName.includes(query) || query.includes(normalizedName);
+          });
+
+    if (!matchedCrew) {
+      return matches;
+    }
+
+    const nextStatus = action.actionType === "accept-crew-match" ? "accepted" : "denied";
+    return matches.map((match) =>
+      match.id === matchedCrew.id
+        ? {
+            ...match,
+            status: nextStatus,
+            reviewedAt: new Date().toISOString()
+          }
+        : match
+    );
+  }
+
+  private buildProviderAssistantDispatchRangeSummary(
+    dispatchDays: ProviderCalendarOverviewResponse["dispatchDays"]
+  ): ProviderDispatchRangeSummary | undefined {
+    const activeDays = dispatchDays.filter(
+      (day) => day.yardmatchJobCount > 0 || day.externalBlockCount > 0
+    );
+    if (activeDays.length === 0) {
+      return undefined;
+    }
+
+    const watchDays = activeDays.filter((day) => day.routeStatus === "watch");
+    const overloadedDays = activeDays.filter((day) => day.routeStatus === "overloaded");
+    const busiestDay = [...activeDays].sort((left, right) => right.yardmatchJobCount - left.yardmatchJobCount)[0];
+    const highestCrewGapDay = [...activeDays].sort((left, right) => right.crewGap - left.crewGap)[0];
+    const highestDriveMilesDay = [...activeDays].sort(
+      (left, right) => right.estimatedDriveMiles - left.estimatedDriveMiles
+    )[0];
+    const recommendations = Array.from(
+      new Set(activeDays.flatMap((day) => day.recommendations).filter(Boolean))
+    ).slice(0, 3);
+
+    return {
+      scope: "next-7-days",
+      activeDayCount: activeDays.length,
+      totalYardmatchJobs: activeDays.reduce((sum, day) => sum + day.yardmatchJobCount, 0),
+      totalExternalBlocks: activeDays.reduce((sum, day) => sum + day.externalBlockCount, 0),
+      totalCrewGap: activeDays.reduce((sum, day) => sum + day.crewGap, 0),
+      watchDayCount: watchDays.length,
+      overloadedDayCount: overloadedDays.length,
+      busiestDay,
+      highestCrewGapDay,
+      highestDriveMilesDay,
+      recommendations
+    };
+  }
+
+  private mergeProviderAssistantResponses(
+    command: string,
+    actionTypes: ProviderAssistantActionType[],
+    responses: ProviderAssistantCommandResponse[],
+    executed: boolean
+  ): ProviderAssistantCommandResponse {
+    const lastResponse = responses.at(-1)!;
+    const previewMessages = responses.map((response, index) => `Step ${index + 1}: ${response.previewMessage}`);
+    const notificationPreview = responses
+      .map((response) => response.customerNotificationPreview)
+      .filter((value): value is string => Boolean(value))
+      .join(" Then, ");
+
+    return {
+      command,
+      understood: true,
+      actionType: responses[0]?.actionType,
+      actionTypes,
+      requiresBookingSelection: false,
+      requiresConfirmation: !executed,
+      executed,
+      notifyCustomer: responses.some((response) => response.notifyCustomer),
+      matchedBookingId: lastResponse.matchedBookingId,
+      matchedCustomerName: lastResponse.matchedCustomerName,
+      sourceWindowKey: responses[0]?.sourceWindowKey,
+      targetWindowKey: lastResponse.targetWindowKey,
+      targetWindowLabel: lastResponse.targetWindowLabel,
+      suggestedStartIso: lastResponse.suggestedStartIso,
+      suggestedEndIso: lastResponse.suggestedEndIso,
+      lateMinutes: lastResponse.lateMinutes,
+      lateEtaIso: lastResponse.lateEtaIso,
+      previewLabel: executed ? "Multi-step command executed" : "Ready to run multi-step command",
+      previewMessage: previewMessages.join(" "),
+      customerNotificationPreview: notificationPreview || undefined,
+      bookingCandidates: lastResponse.bookingCandidates,
+      updatedBooking: lastResponse.updatedBooking
+    };
+  }
+
+  private providerAssistantHelpText(): string {
+    return 'Try a command like "Set equipment pickup as the next stop for my afternoon appointment", "Clear the route stop for my afternoon appointment", "Accept the best crew for my afternoon appointment", "Accept Morgan Crew for my afternoon appointment", "Confirm my afternoon appointment", "Confirm my afternoon appointment and start route", "Start route for my afternoon appointment and start work", "Make Taylor Crew the route leader for my afternoon appointment", "Tell Morgan Crew to head to the equipment pickup first for my afternoon appointment", "Clear the route leader for my afternoon appointment", "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", "Complete my afternoon appointment", or "Mark my afternoon appointment no access because the gate is locked."';
   }
 
   public async createCustomerProperty(
@@ -6315,17 +8075,65 @@ export class MarketplacePlatformService {
     );
   }
 
-  private parseProviderAssistantCommand(command: string): {
-    understood: boolean;
-    actionType?: ProviderAssistantActionType;
-    sourceWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
-    targetWindowKey?: "morning" | "afternoon" | "late-afternoon-night";
-    notifyCustomer: boolean;
-    lateMinutes?: number;
-    lateReason?: string;
-    exceptionType?: MarkBookingExceptionRequest["exceptionType"];
-    exceptionNotes?: string;
-  } {
+  private parseProviderAssistantCommand(command: string): ParsedProviderAssistantCommand {
+    const trimmed = command.trim();
+    const chainSegments = trimmed
+      .split(/\s+\band\b\s+/i)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    if (chainSegments.length >= 2) {
+      const parsedSegments = chainSegments.map((segment) => this.parseSingleProviderAssistantAction(segment));
+      if (parsedSegments.every((action): action is ParsedProviderAssistantAction => Boolean(action))) {
+        let inheritedSourceWindowKey: ParsedProviderAssistantAction["sourceWindowKey"];
+        const actions = parsedSegments.map((action) => {
+          const withInheritedWindow = {
+            ...action,
+            sourceWindowKey: action.sourceWindowKey ?? inheritedSourceWindowKey
+          };
+          inheritedSourceWindowKey = withInheritedWindow.sourceWindowKey;
+          return withInheritedWindow;
+        });
+
+        return {
+          understood: true,
+          actionType: actions[0].actionType,
+          actionTypes: actions.map((action) => action.actionType),
+          actions,
+          dispatchScope: actions.find((action) => action.dispatchScope)?.dispatchScope,
+          dispatchFocus: actions.find((action) => action.dispatchFocus)?.dispatchFocus,
+          sourceWindowKey: actions[0].sourceWindowKey,
+          targetWindowKey: actions.find((action) => action.targetWindowKey)?.targetWindowKey,
+          notifyCustomer: actions.some((action) => action.notifyCustomer),
+          routeLeaderCrewNameQuery: actions.find((action) => action.routeLeaderCrewNameQuery)?.routeLeaderCrewNameQuery,
+          lateMinutes: actions.find((action) => action.lateMinutes)?.lateMinutes,
+          lateReason: actions.find((action) => action.lateReason)?.lateReason,
+          exceptionType: actions.find((action) => action.exceptionType)?.exceptionType,
+          exceptionNotes: actions.find((action) => action.exceptionNotes)?.exceptionNotes
+        };
+      }
+    }
+
+    const singleAction = this.parseSingleProviderAssistantAction(trimmed);
+    return {
+      understood: Boolean(singleAction),
+      actionType: singleAction?.actionType,
+      actionTypes: singleAction ? [singleAction.actionType] : [],
+      actions: singleAction ? [singleAction] : [],
+      dispatchScope: singleAction?.dispatchScope,
+      dispatchFocus: singleAction?.dispatchFocus,
+      sourceWindowKey: singleAction?.sourceWindowKey,
+      targetWindowKey: singleAction?.targetWindowKey,
+      notifyCustomer: singleAction?.notifyCustomer ?? false,
+      routeLeaderCrewNameQuery: singleAction?.routeLeaderCrewNameQuery,
+      lateMinutes: singleAction?.lateMinutes,
+      lateReason: singleAction?.lateReason,
+      exceptionType: singleAction?.exceptionType,
+      exceptionNotes: singleAction?.exceptionNotes
+    };
+  }
+
+  private parseSingleProviderAssistantAction(command: string): ParsedProviderAssistantAction | undefined {
     const normalized = command.trim().toLowerCase();
     const notifyCustomer =
       /notify|notification|message|tell/.test(normalized) &&
@@ -6336,12 +8144,56 @@ export class MarketplacePlatformService {
       ? normalized.slice((targetBoundary.index ?? 0) + targetBoundary[0].length).trim()
       : "";
 
+    const crewMessageDetails = this.parseProviderAssistantCrewMessage(command);
     const targetWindowKey = this.parseProviderAssistantWindowFromCommand(afterTarget, true);
-    const sourceWindowKey = this.parseProviderAssistantWindowFromCommand(beforeTarget, true);
+    const sourceWindowKey =
+      crewMessageDetails?.crewNameQuery && crewMessageDetails?.body
+        ? this.parseProviderAssistantWindowFromCommand(normalized, true)
+        : this.parseProviderAssistantWindowFromCommand(beforeTarget, true);
+    const crewMatchCrewNameQuery = this.parseProviderAssistantCrewMatchName(command);
+    const routeLeaderCrewNameQuery = this.parseProviderAssistantRouteLeaderCrewName(command);
+    const routeStopKind = this.parseProviderAssistantRouteStopKind(normalized);
+    const dispatchScope = this.parseProviderAssistantDispatchScope(normalized);
+    const dispatchFocus = this.parseProviderAssistantDispatchFocus(normalized);
     const lateMinutes = this.parseProviderAssistantLateMinutes(normalized);
     const lateReason = this.parseProviderAssistantLateReason(normalized);
     const exceptionType = this.parseProviderAssistantExceptionType(normalized);
     const exceptionNotes = this.parseProviderAssistantExceptionNotes(command);
+    const isClearRouteLeaderCommand =
+      /\b(clear|remove|unset)\b/.test(normalized) &&
+      /\broute leader\b/.test(normalized);
+    const isAssignRouteLeaderCommand =
+      Boolean(routeLeaderCrewNameQuery) &&
+      /\b(assign|make|set)\b/.test(normalized) &&
+      /\broute leader\b/.test(normalized);
+    const isCrewMessageCommand =
+      Boolean(crewMessageDetails?.crewNameQuery && crewMessageDetails?.body) &&
+      /\b(?:tell|message|ask)\b/.test(normalized) &&
+      /\bcrew\b/.test(normalized) &&
+      !/\broute leader\b/.test(normalized);
+    const isClearRouteStopCommand =
+      /\b(clear|remove|skip)\b/.test(normalized) &&
+      /\b(route stop|equipment pickup|staging stop)\b/.test(normalized);
+    const isSetRouteStopCommand =
+      Boolean(routeStopKind) &&
+      /\b(set|use|add|make)\b/.test(normalized) &&
+      /\b(stop|first)\b/.test(normalized);
+    const isAcceptBestCrewCommand =
+      /\b(?:accept|assign|pick|choose)\b/.test(normalized) &&
+      /\b(?:the\s+)?(?:best|top)\s+crew\b/.test(normalized);
+    const isDispatchSummaryCommand =
+      Boolean(dispatchScope) &&
+      (/\b(?:how|what|show|summarize|summary|review)\b/.test(normalized) ||
+        /\b(?:route|dispatch|schedule)\b/.test(normalized)) &&
+      !/\b(?:appointment|booking|job|visit)\b/.test(normalized);
+    const isAcceptCrewCommand =
+      Boolean(crewMatchCrewNameQuery) &&
+      /\b(?:accept|approve)\b/.test(normalized) &&
+      /\bcrew\b/.test(normalized);
+    const isDenyCrewCommand =
+      Boolean(crewMatchCrewNameQuery) &&
+      /\b(?:deny|decline|pass on)\b/.test(normalized) &&
+      /\bcrew\b/.test(normalized);
     const isConfirmCommand = /\b(confirm|approve|accept)\b/.test(normalized) && /\b(appointment|booking|job|visit)\b/.test(normalized);
     const isCompleteCommand = /\b(complete|finish|wrap up|done with)\b/.test(normalized) && /\b(appointment|booking|job|visit|service)\b/.test(normalized);
     const isLateCommand = Boolean(lateMinutes) && /\blate|behind\b/.test(normalized);
@@ -6358,34 +8210,62 @@ export class MarketplacePlatformService {
       normalized
     );
 
+    const actionType = isCrewMessageCommand
+      ? "message-crew"
+      : isClearRouteStopCommand
+        ? "clear-route-stop"
+      : isSetRouteStopCommand
+        ? "set-route-stop"
+      : isDispatchSummaryCommand
+        ? "summarize-dispatch"
+      : isAcceptBestCrewCommand
+        ? "accept-best-crew-match"
+      : isAcceptCrewCommand
+        ? "accept-crew-match"
+        : isDenyCrewCommand
+          ? "deny-crew-match"
+      : isAssignRouteLeaderCommand
+      ? "assign-route-leader"
+      : isClearRouteLeaderCommand
+        ? "clear-route-leader"
+        : isConfirmCommand
+      ? "confirm-booking"
+      : isCompleteCommand
+        ? "complete-booking"
+        : isExceptionCommand
+          ? "report-booking-exception"
+          : isRescheduleCommand
+            ? "reschedule-booking"
+            : isLateCommand
+              ? "mark-booking-late"
+              : isStartRouteCommand
+                ? "start-route"
+                : isStartWorkCommand
+                  ? "start-work"
+                  : undefined;
+
+    if (!actionType) {
+      return undefined;
+    }
+
     return {
-      understood:
-        isConfirmCommand ||
-        isCompleteCommand ||
-        isExceptionCommand ||
-        isRescheduleCommand ||
-        isLateCommand ||
-        isStartRouteCommand ||
-        isStartWorkCommand,
-      actionType: isConfirmCommand
-        ? "confirm-booking"
-        : isCompleteCommand
-          ? "complete-booking"
-          : isExceptionCommand
-            ? "report-booking-exception"
-        : isRescheduleCommand
-          ? "reschedule-booking"
-          : isLateCommand
-            ? "mark-booking-late"
-            : isStartRouteCommand
-              ? "start-route"
-              : isStartWorkCommand
-                ? "start-work"
-                : undefined,
+      command,
+      actionType,
+      dispatchScope,
+      dispatchFocus,
       sourceWindowKey,
       targetWindowKey,
+      crewMatchCrewNameQuery,
+      routeLeaderCrewNameQuery,
+      crewMessageCrewNameQuery: crewMessageDetails?.crewNameQuery,
+      crewMessageBody: crewMessageDetails?.body,
+      routeStopKind,
       notifyCustomer:
-        isConfirmCommand || isCompleteCommand || isExceptionCommand || isLateCommand || isStartRouteCommand
+        actionType === "confirm-booking" ||
+        actionType === "complete-booking" ||
+        actionType === "report-booking-exception" ||
+        actionType === "mark-booking-late" ||
+        actionType === "start-route"
           ? true
           : notifyCustomer,
       lateMinutes,
@@ -6418,6 +8298,92 @@ export class MarketplacePlatformService {
   private parseProviderAssistantExceptionNotes(command: string): string | undefined {
     const match = command.match(/\b(?:because|reason[:]?|due to)\b\s+(.+)$/i);
     return match?.[1]?.trim() || undefined;
+  }
+
+  private parseProviderAssistantRouteLeaderCrewName(command: string): string | undefined {
+    const assignMatch =
+      command.match(/\b(?:assign|make|set)\s+(.+?)\s+(?:as\s+|the\s+)?route leader\b/i) ??
+      command.match(/\broute leader\s+(?:should be|is)\s+(.+?)(?:\s+for\b|$)/i);
+    return assignMatch?.[1]?.trim();
+  }
+
+  private parseProviderAssistantRouteStopKind(
+    command: string
+  ): SetBookingRouteStopRequest["kind"] | undefined {
+    if (/\bstaging stop\b/.test(command)) {
+      return "staging";
+    }
+
+    if (/\bequipment pickup\b/.test(command) || /\bpickup stop\b/.test(command)) {
+      return "equipment-pickup";
+    }
+
+    return undefined;
+  }
+
+  private parseProviderAssistantCrewMatchName(command: string): string | undefined {
+    const reviewMatch =
+      command.match(/\b(?:accept|approve|deny|decline)\s+(.+?)(?:\s+for\b|$)/i) ??
+      command.match(/\bpass on\s+(.+?)(?:\s+for\b|$)/i);
+    return reviewMatch?.[1]?.trim();
+  }
+
+  private parseProviderAssistantDispatchScope(
+    command: string
+  ): "today" | "tomorrow" | "next-7-days" | undefined {
+    if (/\b(next 7 days|next seven days|this week|next week)\b/.test(command)) {
+      return "next-7-days";
+    }
+
+    if (/\btomorrow\b/.test(command)) {
+      return "tomorrow";
+    }
+
+    if (/\btoday\b/.test(command)) {
+      return "today";
+    }
+
+    return undefined;
+  }
+
+  private parseProviderAssistantDispatchFocus(command: string): "summary" | "attention" {
+    return /\b(attention|risk|risky|problem|pressure|overloaded|watch)\b/.test(command)
+      ? "attention"
+      : "summary";
+  }
+
+  private parseProviderAssistantCrewMessage(
+    command: string
+  ): { crewNameQuery?: string; body?: string } | undefined {
+    const match =
+      command.match(/\b(?:tell|ask)\s+(.+?)\s+to\s+(.+)$/i) ??
+      command.match(/\b(?:message|tell|ask)\s+(.+?)\s+(?:that|about)\s+(.+)$/i);
+    if (!match) {
+      return undefined;
+    }
+
+    const crewNameQuery = match[1]?.trim();
+    const body = this.stripProviderAssistantBookingSelector(match[2] ?? "");
+    if (!crewNameQuery || !body) {
+      return undefined;
+    }
+
+    return {
+      crewNameQuery,
+      body: this.toSentenceCase(body)
+    };
+  }
+
+  private stripProviderAssistantBookingSelector(value: string): string {
+    return value
+      .trim()
+      .replace(
+        /\s+for\s+(?:my|this|the|today'?s)\s+(?:(?:late\s+afternoon(?:\s*\/\s*evening)?)|morning|afternoon|evening|night)\s+(?:appointment|booking|job|visit)\b.*$/i,
+        ""
+      )
+      .replace(/\s+for\s+(?:my|this|the)\s+(?:appointment|booking|job|visit)\b.*$/i, "")
+      .replace(/^["'\s]+|["'\s]+$/g, "")
+      .trim();
   }
 
   private parseProviderAssistantWindowFromCommand(
@@ -6462,6 +8428,14 @@ export class MarketplacePlatformService {
       }));
   }
 
+  private async listProviderAssistantBookingMatches(
+    providerId: string,
+    bookingId: string
+  ): Promise<CrewMatchCandidate[]> {
+    const staffing = await this.getProviderStaffingOverview(providerId);
+    return staffing.jobs.find((job) => job.bookingId === bookingId)?.matches ?? [];
+  }
+
   private toProviderAssistantBookingCandidate(booking: Booking & { customerName?: string }): ProviderAssistantBookingCandidate {
     const window = getBookingServiceWindow(booking.scheduledStartIso);
     return {
@@ -6473,6 +8447,116 @@ export class MarketplacePlatformService {
       currentWindowLabel: window.label,
       addressLine: this.formatAddressLine(booking.serviceAddress)
     };
+  }
+
+  private toProviderAssistantBookingCandidateFromCalendarEvent(
+    event: ProviderCalendarOverviewResponse["events"][number]
+  ): ProviderAssistantBookingCandidate | undefined {
+    if (event.source !== "yardmatch-booking" || !event.bookingId) {
+      return undefined;
+    }
+
+    const window = getBookingServiceWindow(event.startIso);
+    const addressLine =
+      event.addressLine ??
+      ([event.city, event.state].filter(Boolean).join(", ") || "Service address");
+
+    return {
+      bookingId: event.bookingId,
+      customerName: event.customerName ?? "Customer",
+      scheduledStartIso: event.startIso,
+      scheduledEndIso: event.endIso,
+      currentWindowKey: window.key,
+      currentWindowLabel: window.label,
+      addressLine
+    };
+  }
+
+  private selectProviderAssistantDispatchFocusWindow(
+    targetDay: ProviderCalendarOverviewResponse["dispatchDays"][number]
+  ): ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number] | undefined {
+    return [...targetDay.windowSummaries].sort((left, right) => {
+      const crewGapDelta = right.crewGap - left.crewGap;
+      if (crewGapDelta !== 0) {
+        return crewGapDelta;
+      }
+
+      const bookedDelta = right.bookedMinutes - left.bookedMinutes;
+      if (bookedDelta !== 0) {
+        return bookedDelta;
+      }
+
+      return right.blockedMinutes - left.blockedMinutes;
+    })[0];
+  }
+
+  private buildProviderAssistantDispatchBookingCandidates(
+    overview: ProviderCalendarOverviewResponse,
+    targetDay: ProviderCalendarOverviewResponse["dispatchDays"][number],
+    focusWindow?: ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number]
+  ): ProviderAssistantBookingCandidate[] {
+    const dayStartIso = targetDay.dateIso;
+    const dayEndIso = new Date(new Date(targetDay.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+    const dayEvents = overview.events
+      .filter(
+        (event) =>
+          event.source === "yardmatch-booking" &&
+          event.bookingId &&
+          this.doIntervalsOverlap(event.startIso, event.endIso, dayStartIso, dayEndIso)
+      )
+      .sort((left, right) => new Date(left.startIso).getTime() - new Date(right.startIso).getTime());
+
+    const focusEvents =
+      focusWindow && focusWindow.yardmatchJobCount > 0
+        ? dayEvents.filter((event) => getBookingServiceWindow(event.startIso).key === focusWindow.windowKey)
+        : dayEvents;
+
+    const candidateEvents = focusEvents.length > 0 ? focusEvents : dayEvents;
+    const seenBookingIds = new Set<string>();
+
+    return candidateEvents.flatMap((event) => {
+      if (!event.bookingId || seenBookingIds.has(event.bookingId)) {
+        return [];
+      }
+
+      const candidate = this.toProviderAssistantBookingCandidateFromCalendarEvent(event);
+      if (!candidate) {
+        return [];
+      }
+
+      seenBookingIds.add(event.bookingId);
+      return [candidate];
+    });
+  }
+
+  private buildProviderAssistantDispatchWindow(scope: "today" | "tomorrow" | "next-7-days"): {
+    fromIso: string;
+    toIso: string;
+  } {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    if (scope === "tomorrow") {
+      start.setDate(start.getDate() + 1);
+    }
+
+    const end = new Date(start);
+    end.setDate(end.getDate() + (scope === "next-7-days" ? 7 : 1));
+    return {
+      fromIso: start.toISOString(),
+      toIso: end.toISOString()
+    };
+  }
+
+  private providerAssistantDispatchScopeLabel(scope: "today" | "tomorrow" | "next-7-days"): string {
+    switch (scope) {
+      case "tomorrow":
+        return "Tomorrow";
+      case "next-7-days":
+        return "The next 7 days";
+      default:
+        return "Today";
+    }
   }
 
   private buildProviderAssistantTargetWindow(
@@ -6617,7 +8701,16 @@ export class MarketplacePlatformService {
           customer?.properties.find((property) => property.id === booking.servicePropertyId)
         );
         const bookingMatches = matches.filter((match) => match.bookingId === booking.id);
-        const assignedCrewMembers = bookingMatches.filter((match) => match.status === "accepted").length;
+        const acceptedMatches = bookingMatches.filter((match) => match.status === "accepted");
+        const assignedCrewMembers = acceptedMatches.length;
+        const assignedRouteLeaderCrewMemberId = this.resolveDelegatedCrewRouteLeaderId(booking, acceptedMatches);
+        const assignedRouteLeaderCrewMemberName = assignedRouteLeaderCrewMemberId
+          ? crewMembers.find((item) => item.id === assignedRouteLeaderCrewMemberId)?.fullName
+          : undefined;
+        const requiresRouteLeaderAssignment =
+          provider.routeLeaderMode === "accepted-crew-fallback" &&
+          acceptedMatches.length > 1 &&
+          !assignedRouteLeaderCrewMemberId;
         const matchesWithRecommendations = bookingMatches
           .map((match) => {
             const crewMember = crewMembers.find((item) => item.id === match.crewMemberId);
@@ -6656,6 +8749,9 @@ export class MarketplacePlatformService {
           status: booking.status,
           scheduledStartIso: booking.scheduledStartIso,
           scheduledEndIso: booking.scheduledEndIso,
+          assignedRouteLeaderCrewMemberId,
+          assignedRouteLeaderCrewMemberName,
+          requiresRouteLeaderAssignment,
           onRouteConfirmedAt: booking.onRouteConfirmedAt,
           onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
           lateNoticeSentAt: booking.lateNoticeSentAt,
@@ -7522,6 +9618,12 @@ export class MarketplacePlatformService {
     const requestedCategoryCount = Math.max(payload.categories.length, 1);
     const providerCategoryCount = Math.max(provider.categories.length, 1);
     const completedBookings = providerBookings.filter((booking) => booking.status === "completed").length;
+    const nearbyCompletedBookings = providerBookings.filter(
+      (booking) =>
+        booking.status === "completed" &&
+        booking.serviceAddress.city === payload.address.city &&
+        booking.serviceAddress.state === payload.address.state
+    ).length;
     const disputedBookings = providerBookings.filter((booking) => booking.status === "disputed").length;
     const refundedBookings = providerBookings.filter((booking) => booking.status === "refunded").length;
     const activeExceptionBookings = providerBookings.filter((booking) => Boolean(booking.activeExceptionType)).length;
@@ -7613,6 +9715,32 @@ export class MarketplacePlatformService {
       reasons.push("Serves this property area");
     }
 
+    const availabilityConfidence = suggestedSlot
+      ? nearbyCompletedBookings >= 5 || distanceMiles <= 6
+        ? "high"
+        : "medium"
+      : "low";
+    const availabilityConfidenceLabel =
+      availabilityConfidence === "high"
+        ? "High confidence in this window"
+        : availabilityConfidence === "medium"
+          ? "Good chance this window holds"
+          : "No live route window right now";
+    const neighborhoodFamiliarityLabel =
+      nearbyCompletedBookings >= 10
+        ? "Works this area every week"
+        : nearbyCompletedBookings >= 4
+          ? "Knows this neighborhood well"
+          : nearbyCompletedBookings >= 1
+            ? "Has already served this area"
+            : "Ready to take work in this area";
+    const neighborhoodFamiliarityDetail =
+      nearbyCompletedBookings >= 1
+        ? `${provider.companyName} has completed ${nearbyCompletedBookings} YardMatch job${
+            nearbyCompletedBookings === 1 ? "" : "s"
+          } in ${payload.address.city}.`
+        : `${provider.companyName} serves ${payload.address.city} within a ${provider.serviceRadiusMiles}-mile route radius.`;
+
     return {
       provider,
       score,
@@ -7620,6 +9748,12 @@ export class MarketplacePlatformService {
       hasOpenSlot: Boolean(suggestedSlot),
       suggestedSlot,
       reasons: reasons.slice(0, 3),
+      completedJobCount: completedBookings,
+      nearbyCompletedJobCount: nearbyCompletedBookings,
+      availabilityConfidence,
+      availabilityConfidenceLabel,
+      neighborhoodFamiliarityLabel,
+      neighborhoodFamiliarityDetail,
       factors
     };
   }

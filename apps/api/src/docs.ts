@@ -437,6 +437,53 @@ export const apiSpec = {
         }
       }
     },
+    "/api/bookings/route-stop": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Set a provider-only interim route stop",
+        description:
+          "Lets the booking provider add an interim stop such as equipment pickup or staging before the crew reaches the service property. Provider tracking keeps the extra stop visible internally while customers continue to see only the provider-facing route status.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                kind: "equipment-pickup"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with the active interim route stop" },
+          "403": { description: "Only the booking provider can set route stops" }
+        }
+      }
+    },
+    "/api/bookings/route-stop/clear": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Clear a provider-only interim route stop",
+        description:
+          "Removes the active provider-only interim stop so arrival tracking heads straight to the service property again.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking without an active interim route stop" },
+          "403": { description: "Only the booking provider can clear route stops" }
+        }
+      }
+    },
     "/api/bookings/late": {
       post: {
         tags: ["Bookings"],
@@ -672,7 +719,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, and sponsored placement, with an explanation payload for each ranked provider.",
+          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, and sponsored placement, with an explanation payload for each ranked provider. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
         requestBody: {
           required: true,
           content: {
@@ -691,7 +738,8 @@ export const apiSpec = {
                 },
                 categories: ["lawn-mowing"],
                 dateIso: "2026-05-01",
-                estimatedDurationMinutes: 52
+                estimatedDurationMinutes: 52,
+                requestSource: "customer-web-dashboard"
               }
             }
           }
@@ -743,15 +791,14 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Run a provider scheduling assistant command",
         description:
-          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like rescheduling a job or sending a late arrival update to the customer when confirmed.",
+          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like reviewing named crew matches, accepting the best recommended crew, setting a provider-only interim route stop, rescheduling a job, messaging crew on a booking thread, or sending a late arrival update to the customer when confirmed. Dispatch-summary commands can also surface the specific appointments creating pressure on a day or service window. Commands can chain multiple same-booking actions together when each step is understood.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
-                command: "Change my afternoon appointment to evening and notify the customer",
-                bookingId: "booking_123",
+                command: "What needs attention tomorrow?",
                 execute: false
               }
             }
@@ -767,7 +814,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Get provider staffing overview",
         description:
-          "Returns upcoming jobs, crew gaps, matched crew candidates, and accepted assignments for the authenticated provider business.",
+          "Returns upcoming jobs, crew gaps, matched crew candidates, accepted assignments, and delegated route-leader state for the authenticated provider business.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Provider staffing overview" }
@@ -792,6 +839,29 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated crew match candidate" }
+        }
+      }
+    },
+    "/api/providers/staffing/route-leader": {
+      post: {
+        tags: ["Providers"],
+        summary: "Assign or clear a delegated route leader for a booking",
+        description:
+          "Lets a provider choose which accepted crew member can start and share the route for a specific booking when accepted-crew fallback is enabled.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                crewMemberId: "crew_456"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with delegated route-leader assignment" }
         }
       }
     },
@@ -1055,6 +1125,8 @@ export const apiSpec = {
       post: {
         tags: ["Bookings"],
         summary: "Create a booking",
+        description:
+          "Creates a customer booking request. Customer-facing recommendation-first flows can include recommendation session metadata here so ops telemetry can distinguish accepted first-choice recommendations from swapped bookings.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1078,7 +1150,12 @@ export const apiSpec = {
                 scheduledStartIso: "2026-05-01T14:00:00.000Z",
                 scheduledEndIso: "2026-05-01T14:52:00.000Z",
                 notes: "Please use side gate",
-                totalCents: 6800
+                totalCents: 6800,
+                recommendationSessionId: "recommendation_session_123",
+                recommendedProviderId: "provider_123",
+                selectedProviderRank: 1,
+                viewedAlternativeProviders: false,
+                recommendationSource: "customer-web-dashboard"
               }
             }
           }
@@ -1130,6 +1207,30 @@ export const apiSpec = {
         responses: {
           "200": { description: "Confirmed booking" },
           "403": { description: "Only the booking provider can confirm the booking" }
+        }
+      }
+    },
+    "/api/bookings/decline": {
+      post: {
+        tags: ["Bookings"],
+        summary: "Decline a requested booking",
+        description:
+          "Used by the provider business owner to decline a newly requested booking they cannot take, notify the customer, and preserve a separate provider-decline telemetry event from customer-side cancellations.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                reason: "Route already full for that day."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Declined booking" },
+          "403": { description: "Only the booking provider can decline the booking" }
         }
       }
     },

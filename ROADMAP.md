@@ -7,7 +7,7 @@ This roadmap reflects the work that is still meaningfully left after the current
 YardMatch already supports a real core loop:
 
 - customer search, quote, booking, cancel, reschedule, and review
-- provider confirmation, route start, work start, completion, late notices, and exception reporting
+- provider confirmation, requested-booking decline, route start, work start, completion, late notices, and exception reporting
 - crew matching, staffing review, accepted work visibility, and availability management
 - customer/provider chat after route start
 - support tickets, disputes, ops resolution, in-app notifications, and delivery preferences
@@ -102,7 +102,15 @@ Already done:
   - staffing review reminder timing
   - departure reminder timing
   - route-leader mode that can stay provider-only or allow accepted-crew fallback
+  - per-booking delegated route-leader assignment when more than one accepted crew member is on the same job
+  - explicit provider-side visibility into which accepted crew member is allowed to start and share the route
 - baseline provider assistant natural-language scheduling help:
+  - providers can ask for a plain-language dispatch summary or highest-attention window/day for today, tomorrow, or the coming week using the existing route-load overview, including the specific appointments sitting in the pressured day/window
+  - providers can accept the best pending crew recommendation from a plain-language command that reuses current staffing scores and reasons
+  - providers can accept or deny pending crew matches from a plain-language command
+  - providers can message pending or accepted crew on the real booking thread from a plain-language command
+  - providers can assign or clear a crew route leader from a plain-language command on a selected booking
+  - providers can add or clear a provider-only interim route stop like equipment pickup from a plain-language command on a selected booking
   - providers can confirm requested bookings from a plain-language command
   - providers can complete a booking from a plain-language command once the after-photo requirement is satisfied
   - providers can report customer-ready/access/completion issues from a plain-language command and trigger the existing exception workflow
@@ -112,14 +120,14 @@ Already done:
   - providers can also send a customer-facing late update from a plain-language command with a parsed delay amount
   - providers can start the route from a plain-language command and unlock customer tracking
   - providers can start work from a plain-language command once route start and before-photo requirements are satisfied
+  - providers can chain broader same-booking multi-step commands, including staffing, route leadership, crew messaging, and lifecycle actions
 
 - Broaden the provider assistant beyond the shipped reschedule baseline:
   - richer crew/provider coordination actions from natural-language requests
-  - more complex multi-step scheduling changes
   - deeper assistant support for dispatch reasoning and route management
 - More provider controls for:
   - richer dispatch timing
-  - more nuanced route-leader/delegation behavior across multiple crews
+  - deeper route-leader handoff and delegation behavior across more complex multi-crew scenarios
 
 ### Calendar interoperability, part 2
 
@@ -164,6 +172,67 @@ Already done:
   - richer service-fit weighting across more complex requests
   - stronger long-term reliability signals and calibration
   - continued tuning of distance and travel-burden tradeoffs
+
+### Customer matchmaking model
+
+Already done:
+
+- provider search returns scored, explainable ranked results instead of a raw directory
+- recommendation reasons are already part of the ranking response shape
+- the marketplace already has the foundations for recommendation-first matching:
+  - service-fit weighting
+  - specialization-aware ranking
+  - reliability-aware ordering
+  - availability-aware filtering
+- recommendation-first customer surfaces are now live in the current booking flow:
+  - public listings show one recommended provider first
+  - customer web dashboard shows one recommended provider first
+  - customer mobile booking shows one recommended provider first
+  - alternative providers stay behind a smaller explicit reveal instead of leading the experience
+- customer-facing recommendation transparency now has a real baseline:
+  - neighborhood familiarity messaging
+  - completed-job context
+  - availability-confidence messaging for the suggested route window
+- baseline product and analytics support for recommendation acceptance rate is now shipped:
+  - recommendation views
+  - alternative-provider reveals
+  - accepted first-choice recommendations
+  - swapped bookings onto another qualified provider
+  - ops telemetry summary now surfaces recommendation acceptance counters
+  - ops telemetry now breaks recommendation performance down by source surface
+- provider-side requested booking decline is now part of the managed marketplace flow:
+  - providers can decline a requested booking directly from web and provider mobile
+  - customer notifications distinguish provider declines from customer-side cancellations
+- ops telemetry now exposes broader booking-lifecycle counters:
+  - provider booking confirmations
+  - provider booking declines
+  - customer booking cancellations
+  - payment authorizations
+  - payment captures
+
+Still left:
+
+- deepen customer-side matching transparency beyond the shipped baseline:
+  - richer explanation of why this provider was selected
+  - stronger reliability framing that is clearer than raw star ratings alone
+  - more nuanced service-area familiarity if we later add denser local routing history
+- deepen recommendation-first presentation beyond the current baseline:
+  - small curated alternative framing like best match / budget / highest rated if it improves trust without adding much friction
+  - clearer recommendation reasons directly inside the booking CTA surface
+- extend recommendation telemetry beyond the shipped baseline:
+  - explicit decline signals when the recommendation is dismissed without a booking
+  - deeper per-surface interpretation once usage volume is meaningful
+- avoid directory drift in future marketplace decisions:
+  - no many-provider bidding wars on a single common-service lead
+  - no promoted-listings-first discovery model
+  - no feature direction that turns the product into a quote-comparison marketplace
+- preserve provider-first marketplace economics in the matching model:
+  - keep payout-floor / minimum-provider-economics thinking in scope
+  - avoid ranking or pricing behavior that improves conversion by squeezing supply quality
+- keep launch operations focused on local density first, not broad sparse expansion:
+  - denser neighborhood coverage
+  - repeat-route efficiency
+  - stronger matching confidence by market
 
 ### Financial and internal ops tooling
 
@@ -266,9 +335,10 @@ The following items are no longer roadmap gaps and should be treated as complete
 3. Turn on real Stripe keys and finish refund / payout depth
 4. Google / Apple calendar sync polish
 5. Automated load balancing and deeper dispatch controls
-6. Search / ranking / quote intelligence improvements
-7. Richer ops and financial admin tooling
-8. Post-launch loyalty, subscriptions, and deeper business tooling
+6. Customer recommendation-first matchmaking UX
+7. Search / ranking / quote intelligence improvements
+8. Richer ops and financial admin tooling
+9. Post-launch loyalty, subscriptions, and deeper business tooling
 
 ## Notes
 
@@ -292,17 +362,21 @@ Already done:
 - customer-facing arrival banner + full map
 - provider-device-backed live tracking
 - fallback to estimated route when live location is unavailable
+- provider-only interim route-stop tracking before the property:
+  - equipment pickup / staging stops can sit between the live route and the property
+  - providers can see the extra stop while customers still only see provider route status
+- stronger ETA recalculation across live points and interim route stops
+- delegated route leadership when the owner is not traveling with the crew:
+  - accepted-crew fallback can own the route
+  - explicit per-booking crew route leader assignment controls who can start and share that route
 
 Still left:
 
 - background location behavior if desired later
-- broader crew-member location tracking beyond the current provider-led route model:
-  - track crew progress toward the service property
-  - support interim stops like equipment pickup or staging locations before the property
-  - only the business owner / provider should see individual crew-member route context
-  - property owners should continue to see only the business owner / provider location, not individual crew locations
-- stronger ETA recalculation
-- delegated route leadership when the owner is not traveling with the crew
+- broader crew-member location tracking beyond the single active route leader:
+  - track additional crew positions if the business wants more than one live route actor
+  - keep individual crew-member location visibility provider-only for the business owner who hired that crew
+  - property owners should continue to see only the business owner / provider location and route status, not individual crew locations
 
 ### Payments
 

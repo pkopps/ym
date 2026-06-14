@@ -73,6 +73,14 @@ export type OpsBookingInterventionAction =
   | "restore-active-booking"
   | "cancel-booking"
   | "complete-booking"
+  | "provider-assistant-set-route-stop"
+  | "provider-assistant-clear-route-stop"
+  | "provider-assistant-accept-best-crew-match"
+  | "provider-assistant-accept-crew-match"
+  | "provider-assistant-deny-crew-match"
+  | "provider-assistant-message-crew"
+  | "provider-assistant-assign-route-leader"
+  | "provider-assistant-clear-route-leader"
   | "provider-assistant-confirm-booking"
   | "provider-assistant-complete-booking"
   | "provider-assistant-report-exception"
@@ -81,6 +89,15 @@ export type OpsBookingInterventionAction =
   | "provider-assistant-start-route"
   | "provider-assistant-start-work";
 export type ProviderAssistantActionType =
+  | "summarize-dispatch"
+  | "set-route-stop"
+  | "clear-route-stop"
+  | "accept-best-crew-match"
+  | "accept-crew-match"
+  | "deny-crew-match"
+  | "message-crew"
+  | "assign-route-leader"
+  | "clear-route-leader"
   | "confirm-booking"
   | "complete-booking"
   | "report-booking-exception"
@@ -118,6 +135,7 @@ export type BookingArrivalTrackingStatus =
   | "on-route"
   | "arrived"
   | "completed";
+export type BookingRouteStopKind = "equipment-pickup" | "staging";
 export type BookingServiceWindowKey = "morning" | "afternoon" | "late-afternoon-night";
 export type ProviderCalendarEventSource = "yardmatch-booking" | "external-block";
 export type ProviderDispatchRouteStatus = "comfortable" | "watch" | "overloaded";
@@ -144,6 +162,15 @@ export interface Address {
   postalCode: string;
   country: string;
   point: GeoPoint;
+}
+
+export interface BookingRouteStop {
+  id: string;
+  kind: BookingRouteStopKind;
+  label: string;
+  address: Address;
+  createdAt: string;
+  reachedAt?: string;
 }
 
 export interface PlaceSuggestion {
@@ -319,6 +346,9 @@ export interface ProviderStaffingJobSummary {
   status: BookingStatus;
   scheduledStartIso: string;
   scheduledEndIso: string;
+  assignedRouteLeaderCrewMemberId?: string;
+  assignedRouteLeaderCrewMemberName?: string;
+  requiresRouteLeaderAssignment: boolean;
   onRouteConfirmedAt?: string;
   onRouteConfirmedByCrewMemberId?: string;
   lateNoticeSentAt?: string;
@@ -327,6 +357,7 @@ export interface ProviderStaffingJobSummary {
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
+  routeActiveStop?: BookingRouteStop;
   routeLivePoint?: GeoPoint;
   routeLiveUpdatedAt?: string;
   routeLiveSource?: BookingRouteLocationSource;
@@ -360,6 +391,9 @@ export interface CrewMatchSummary {
   scheduledStartIso: string;
   scheduledEndIso: string;
   bookingStatus: BookingStatus;
+  assignedRouteLeaderCrewMemberId?: string;
+  isAssignedRouteLeader: boolean;
+  requiresRouteLeaderAssignment: boolean;
   onRouteConfirmedAt?: string;
   lateNoticeSentAt?: string;
   lateEtaIso?: string;
@@ -473,6 +507,7 @@ export interface Booking {
   scheduledStartIso: string;
   scheduledEndIso: string;
   status: BookingStatus;
+  assignedRouteLeaderCrewMemberId?: string;
   onRouteConfirmedAt?: string;
   onRouteConfirmedByCrewMemberId?: string;
   lateNoticeSentAt?: string;
@@ -481,6 +516,7 @@ export interface Booking {
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
+  routeActiveStop?: BookingRouteStop;
   routeLivePoint?: GeoPoint;
   routeLiveUpdatedAt?: string;
   routeLiveSource?: BookingRouteLocationSource;
@@ -546,11 +582,15 @@ export interface BookingArrivalTracking {
   destination: Address;
   currentPoint?: GeoPoint;
   routeStartPoint?: GeoPoint;
+  currentLegDestination?: Address;
+  activeRouteStop?: BookingRouteStop;
   source: BookingRouteLocationSource;
   liveUpdatedAt?: string;
   isLiveLocationStale?: boolean;
   progressPercent: number;
+  remainingLegDistanceMiles?: number;
   remainingDistanceMiles?: number;
+  etaToCurrentLegMinutes?: number;
   etaMinutes?: number;
   unlockedAt?: string;
   lastComputedAt: string;
@@ -1044,6 +1084,20 @@ export interface ProviderDispatchDaySummary {
   windowSummaries: ProviderDispatchWindowSummary[];
 }
 
+export interface ProviderDispatchRangeSummary {
+  scope: "next-7-days";
+  activeDayCount: number;
+  totalYardmatchJobs: number;
+  totalExternalBlocks: number;
+  totalCrewGap: number;
+  watchDayCount: number;
+  overloadedDayCount: number;
+  busiestDay?: ProviderDispatchDaySummary;
+  highestCrewGapDay?: ProviderDispatchDaySummary;
+  highestDriveMilesDay?: ProviderDispatchDaySummary;
+  recommendations: string[];
+}
+
 export interface ProviderCalendarOverviewResponse {
   providerId: string;
   providerName: string;
@@ -1180,12 +1234,15 @@ export interface SearchProvidersRequest {
   categories: ServiceCategory[];
   dateIso: string;
   estimatedDurationMinutes?: number;
+  requestSource?: string;
 }
 
 export interface SearchProvidersResponse {
   providers: ProviderProfile[];
   rankedProviders: SearchProviderResult[];
   suggestedSlots: AvailabilitySlot[];
+  recommendationSessionId: string;
+  recommendedProviderId?: string;
 }
 
 export interface SearchProviderResult {
@@ -1195,6 +1252,12 @@ export interface SearchProviderResult {
   hasOpenSlot: boolean;
   suggestedSlot?: AvailabilitySlot;
   reasons: string[];
+  completedJobCount: number;
+  nearbyCompletedJobCount: number;
+  availabilityConfidence: "high" | "medium" | "low";
+  availabilityConfidenceLabel: string;
+  neighborhoodFamiliarityLabel: string;
+  neighborhoodFamiliarityDetail: string;
   factors: {
     serviceFit: number;
     specialization: number;
@@ -1216,6 +1279,11 @@ export interface CreateBookingRequest {
   scheduledEndIso: string;
   notes: string;
   totalCents: number;
+  recommendationSessionId?: string;
+  recommendedProviderId?: string;
+  selectedProviderRank?: number;
+  viewedAlternativeProviders?: boolean;
+  recommendationSource?: string;
 }
 
 export interface CreateRecurringServicePlanRequest extends CreateBookingRequest {
@@ -1274,6 +1342,11 @@ export interface UpdateProviderSettingsRequest {
     createdAt?: string;
     subscriptionId?: string;
   }>;
+}
+
+export interface AssignBookingRouteLeaderRequest {
+  bookingId: string;
+  crewMemberId?: string;
 }
 
 export interface ReviewProviderVerificationRequest {
@@ -1337,6 +1410,17 @@ export interface UpdateBookingRouteLocationRequest {
   capturedAtIso?: string;
   speedMph?: number;
   accuracyMeters?: number;
+}
+
+export interface SetBookingRouteStopRequest {
+  bookingId: string;
+  kind: BookingRouteStopKind;
+  label?: string;
+  address?: Address;
+}
+
+export interface ClearBookingRouteStopRequest {
+  bookingId: string;
 }
 
 export interface MarkBookingLateRequest {
@@ -1409,6 +1493,7 @@ export interface ProviderAssistantCommandResponse {
   command: string;
   understood: boolean;
   actionType?: ProviderAssistantActionType;
+  actionTypes?: ProviderAssistantActionType[];
   requiresBookingSelection: boolean;
   requiresConfirmation: boolean;
   executed: boolean;
@@ -1422,6 +1507,9 @@ export interface ProviderAssistantCommandResponse {
   suggestedEndIso?: string;
   lateMinutes?: number;
   lateEtaIso?: string;
+  dispatchDaySummary?: ProviderDispatchDaySummary;
+  dispatchWindowSummary?: ProviderDispatchWindowSummary;
+  dispatchRangeSummary?: ProviderDispatchRangeSummary;
   previewLabel: string;
   previewMessage: string;
   customerNotificationPreview?: string;
@@ -1568,6 +1656,11 @@ export interface ConfirmBookingRequest {
   bookingId: string;
 }
 
+export interface DeclineBookingRequest {
+  bookingId: string;
+  reason?: string;
+}
+
 export interface StartBookingRequest {
   bookingId: string;
 }
@@ -1709,6 +1802,16 @@ export interface ActiveSession {
   lastSeenAt: string;
 }
 
+export interface RecommendationSurfaceMetrics {
+  requestSource: string;
+  recommendationViews: number;
+  recommendationAlternativesViewed: number;
+  recommendationDismissals: number;
+  acceptedRecommendations: number;
+  swappedRecommendations: number;
+  recommendationAcceptanceRate: number;
+}
+
 export interface ObservabilityOverview {
   generatedAt: string;
   totalBookings: number;
@@ -1716,6 +1819,18 @@ export interface ObservabilityOverview {
   bookingsLast24Hours: number;
   refundRequestedCount: number;
   openSupportTickets: number;
+  recommendationViews: number;
+  recommendationAlternativesViewed: number;
+  recommendationDismissals: number;
+  acceptedRecommendations: number;
+  swappedRecommendations: number;
+  recommendationAcceptanceRate: number;
+  providerBookingConfirmations: number;
+  providerBookingDeclines: number;
+  customerBookingCancellations: number;
+  paymentAuthorizations: number;
+  paymentCaptures: number;
+  recommendationMetricsBySource: RecommendationSurfaceMetrics[];
   activeUsers5m: number;
   activeCustomers5m: number;
   activeProviders5m: number;

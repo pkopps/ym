@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import { getBookingServiceWindow } from "@yardmatch/contracts";
+import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
 import { PaymentCheckoutGateway } from "../src/services/StripeCheckoutService";
@@ -293,6 +294,21 @@ test("provider search returns ranked results with score reasons and reliability-
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
+  const nearbyCompletedBooking = await platform.createBooking(customer.id, {
+    providerId: nearProvider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(48),
+    scheduledEndIso: futureIso(49),
+    notes: "Nearby familiarity coverage",
+    totalCents: 6200
+  });
+
+  await repository.updateBooking(nearbyCompletedBooking.id, {
+    status: "completed"
+  });
+
   const problemBooking = await platform.createBooking(customer.id, {
     providerId: farProvider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
@@ -325,6 +341,11 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.ok(results.rankedProviders[0]!.reasons.includes("Close to the property"));
   assert.ok(results.rankedProviders[0]!.reasons.includes("Focused on this type of service"));
   assert.ok((results.rankedProviders[0]!.factors.specialization ?? 0) > 0);
+  assert.ok(results.rankedProviders[0]!.completedJobCount >= 1);
+  assert.ok(results.rankedProviders[0]!.nearbyCompletedJobCount >= 1);
+  assert.equal(results.rankedProviders[0]!.availabilityConfidence, "high");
+  assert.ok(/area|neighborhood/i.test(results.rankedProviders[0]!.neighborhoodFamiliarityLabel));
+  assert.ok(results.rankedProviders[0]!.availabilityConfidenceLabel.length > 0);
 
   const broadResult = results.rankedProviders.find((result) => result.provider.id === broadProvider.id);
   assert.ok(broadResult);
@@ -334,6 +355,251 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.ok(sponsoredResult);
   assert.ok((sponsoredResult?.factors.sponsorship ?? 0) > 0);
   assert.ok((sponsoredResult?.factors.issuePenalty ?? 0) > 0);
+});
+
+test("provider decline flow and ops overview counters cover confirms, declines, cancellations, and payment milestones", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics, createFakeStripeGateway());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-provider-decline@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const confirmedBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Confirm me",
+    totalCents: 6200
+  });
+
+  const declinedBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("113 Garden Row"),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "hedge-trimming",
+    scheduledStartIso: futureIso(74),
+    scheduledEndIso: futureIso(75),
+    notes: "Decline me",
+    totalCents: 7200
+  });
+
+  const cancelledBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("114 Garden Row"),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "seasonal-cleanup",
+    scheduledStartIso: futureIso(76),
+    scheduledEndIso: futureIso(77),
+    notes: "Cancel me",
+    totalCents: 8200
+  });
+
+  const authorizedBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("115 Garden Row"),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "weed-control",
+    scheduledStartIso: futureIso(78),
+    scheduledEndIso: futureIso(79),
+    notes: "Authorize me",
+    totalCents: 5200
+  });
+
+  const capturedBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("116 Garden Row"),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(80),
+    scheduledEndIso: futureIso(81),
+    notes: "Capture me",
+    totalCents: 9200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: confirmedBooking.id });
+  const declined = await platform.declineBooking(provider.id, {
+    bookingId: declinedBooking.id,
+    reason: "Route already full for that window."
+  });
+  assert.equal(declined.status, "cancelled");
+
+  await platform.cancelBooking(customer.id, { bookingId: cancelledBooking.id });
+  await platform.createPaymentIntent({
+    bookingId: authorizedBooking.id,
+    amountCents: authorizedBooking.totalCents
+  });
+  await platform.createCheckoutSession(customer.id, { bookingId: capturedBooking.id });
+  await platform.finalizeCheckoutSession(customer.id, { checkoutSessionId: "cs_test_123" });
+
+  const customerNotifications = await repository.listNotificationsByRecipient(customer.id);
+  assert.ok(
+    customerNotifications.some((notification) => notification.title === "Provider declined this request")
+  );
+
+  const overview = analytics.getOverview({
+    bookings: await repository.listBookings(),
+    supportTickets: await repository.listSupportTickets()
+  });
+
+  assert.equal(overview.providerBookingConfirmations, 1);
+  assert.equal(overview.providerBookingDeclines, 1);
+  assert.equal(overview.customerBookingCancellations, 1);
+  assert.equal(overview.paymentAuthorizations, 1);
+  assert.equal(overview.paymentCaptures, 1);
+});
+
+test("recommendation telemetry tracks views, alternatives, accepted recommendations, and swaps", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const [recommendedSeedProvider, alternateSeedProvider] = (await repository.listProviders()).slice(0, 2);
+  assert.ok(recommendedSeedProvider);
+  assert.ok(alternateSeedProvider);
+
+  await repository.updateProvider(recommendedSeedProvider.id, {
+    companyName: "Recommended Route Lawn",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    serviceRadiusMiles: 20,
+    categories: ["lawn-mowing"],
+    rating: 4.9,
+    timelinessRating: 4.9,
+    attentionToDetailRating: 4.9,
+    reviewCount: 240,
+    yearsExperience: 12,
+    verificationStatus: "verified"
+  });
+
+  await repository.updateProvider(alternateSeedProvider.id, {
+    companyName: "Alternate Route Lawn",
+    address: createAddress("114 Garden Row", 30.24365, -97.76395),
+    serviceRadiusMiles: 20,
+    categories: ["lawn-mowing"],
+    rating: 4.7,
+    timelinessRating: 4.7,
+    attentionToDetailRating: 4.7,
+    reviewCount: 160,
+    yearsExperience: 10,
+    verificationStatus: "verified"
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-recommendation-telemetry@example.com",
+    password: "Password123!",
+    phone: "555-0260",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const results = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "customer-web-dashboard"
+  });
+
+  await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "public-web-listings"
+  });
+
+  assert.ok(results.recommendationSessionId);
+  assert.equal(results.recommendedProviderId, results.rankedProviders[0]?.provider.id);
+  assert.ok(results.rankedProviders.length >= 2);
+
+  platform.createAnalyticsEvent({
+    id: crypto.randomUUID(),
+    name: MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+    actorId: customer.id,
+    occurredAt: new Date().toISOString(),
+    properties: {
+      recommendationSessionId: results.recommendationSessionId,
+      recommendedProviderId: results.recommendedProviderId ?? "none",
+      requestSource: "customer-web-dashboard"
+    }
+  });
+
+  const recommendedResult = results.rankedProviders[0]!;
+  const alternateResult = results.rankedProviders[1]!;
+
+  await platform.createBooking(customer.id, {
+    providerId: recommendedResult.provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: recommendedResult.suggestedSlot?.startIso ?? futureIso(72),
+    scheduledEndIso: recommendedResult.suggestedSlot?.endIso ?? futureIso(73),
+    notes: "Recommended booking",
+    totalCents: 6200,
+    recommendationSessionId: results.recommendationSessionId,
+    recommendedProviderId: results.recommendedProviderId,
+    selectedProviderRank: 1,
+    viewedAlternativeProviders: false,
+    recommendationSource: "customer-web-dashboard"
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: alternateResult.provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: alternateResult.suggestedSlot?.startIso ?? futureIso(96),
+    scheduledEndIso: alternateResult.suggestedSlot?.endIso ?? futureIso(97),
+    notes: "Swapped to alternate provider",
+    totalCents: 6200,
+    recommendationSessionId: results.recommendationSessionId,
+    recommendedProviderId: results.recommendedProviderId,
+    selectedProviderRank: 2,
+    viewedAlternativeProviders: true,
+    recommendationSource: "customer-web-dashboard"
+  });
+
+  const overview = analytics.getOverview({
+    bookings: await repository.listBookings(),
+    supportTickets: await repository.listSupportTickets()
+  });
+
+  assert.equal(overview.recommendationViews, 2);
+  assert.equal(overview.recommendationAlternativesViewed, 1);
+  assert.equal(overview.acceptedRecommendations, 1);
+  assert.equal(overview.swappedRecommendations, 1);
+  assert.equal(overview.recommendationAcceptanceRate, 0.5);
+  assert.equal(overview.recommendationMetricsBySource.length, 2);
+  const dashboardMetrics = overview.recommendationMetricsBySource.find(
+    (metric) => metric.requestSource === "customer-web-dashboard"
+  );
+  const publicMetrics = overview.recommendationMetricsBySource.find(
+    (metric) => metric.requestSource === "public-web-listings"
+  );
+  assert.ok(dashboardMetrics);
+  assert.equal(dashboardMetrics?.recommendationViews, 1);
+  assert.equal(dashboardMetrics?.recommendationAlternativesViewed, 1);
+  assert.equal(dashboardMetrics?.acceptedRecommendations, 1);
+  assert.equal(dashboardMetrics?.swappedRecommendations, 1);
+  assert.equal(dashboardMetrics?.recommendationAcceptanceRate, 1);
+  assert.ok(publicMetrics);
+  assert.equal(publicMetrics?.recommendationViews, 1);
+  assert.equal(publicMetrics?.acceptedRecommendations, 0);
 });
 
 test("completed bookings unlock review invites and reject duplicate reviews", async () => {
@@ -2664,6 +2930,108 @@ test("arrival tracking shows a live route once the crew is on route", async () =
   assert.equal(tracking.message.includes("live location"), true);
 });
 
+test("provider-only route stops adjust ETA while customer tracking keeps stop details hidden", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-route-stop@example.com",
+    password: "Password123!",
+    phone: "555-0901",
+    role: "provider",
+    companyName: "GreenStride Lawn",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-route-stop@example.com",
+    password: "Password123!",
+    phone: "555-0201",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Front beds and walkway border",
+    totalCents: 9200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.setBookingRouteStop(provider.id, {
+    bookingId: booking.id,
+    kind: "equipment-pickup",
+    label: "Equipment pickup",
+    address: createAddress("95 Supply Yard", 30.2515, -97.7521)
+  });
+  const onRouteBooking = await platform.markBookingOnRoute(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    { bookingId: booking.id }
+  );
+
+  const oneMinuteLater = new Date(
+    new Date(onRouteBooking.onRouteConfirmedAt as string).getTime() + 1 * 60 * 1000
+  ).toISOString();
+  await platform.updateBookingRouteLocation(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      point: {
+        latitude: 30.245,
+        longitude: -97.7615
+      },
+      speedMph: 18,
+      capturedAtIso: oneMinuteLater
+    }
+  );
+
+  const providerTracking = await platform.getBookingArrivalTracking(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    oneMinuteLater
+  );
+  const customerTracking = await platform.getBookingArrivalTracking(
+    { userId: customer.id, email: customer.email, role: "customer" },
+    booking.id,
+    oneMinuteLater
+  );
+
+  assert.equal(providerTracking.activeRouteStop?.label, "Equipment pickup");
+  assert.equal(providerTracking.currentLegDestination?.line1, "95 Supply Yard");
+  assert.ok((providerTracking.etaToCurrentLegMinutes ?? 0) > 0);
+  assert.ok((providerTracking.etaMinutes ?? 0) > (providerTracking.etaToCurrentLegMinutes ?? 0));
+  assert.ok((providerTracking.remainingDistanceMiles ?? 0) > (providerTracking.remainingLegDistanceMiles ?? 0));
+  assert.equal(customerTracking.activeRouteStop, undefined);
+  assert.equal(customerTracking.currentLegDestination, undefined);
+  assert.equal(customerTracking.etaMinutes, providerTracking.etaMinutes);
+
+  const atStopTime = new Date(new Date(oneMinuteLater).getTime() + 4 * 60 * 1000).toISOString();
+  const trackingAfterStop = await platform.updateBookingRouteLocation(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      point: {
+        latitude: 30.2515,
+        longitude: -97.7521
+      },
+      speedMph: 12,
+      capturedAtIso: atStopTime
+    }
+  );
+
+  assert.equal(trackingAfterStop.activeRouteStop, undefined);
+  assert.equal(trackingAfterStop.currentLegDestination?.line1, "112 Garden Row");
+});
+
 test("providers confirm bookings before crew can go on route or start work", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -4558,6 +4926,920 @@ test("provider dispatch controls tune reminder timing and route-leader permissio
   );
 });
 
+test("providers can assign a specific route leader when multiple accepted crew members share a job", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-route-assignment@example.com",
+    password: "Password123!",
+    phone: "555-4375",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-route-assignment@example.com",
+    password: "Password123!",
+    phone: "555-4376",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  const firstCrew = await platform.registerUser({
+    fullName: "Taylor Crew",
+    email: "crew-route-assignment-1@example.com",
+    password: "Password123!",
+    phone: "555-4377",
+    role: "crew-member",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+  const secondCrew = await platform.registerUser({
+    fullName: "Morgan Crew",
+    email: "crew-route-assignment-2@example.com",
+    password: "Password123!",
+    phone: "555-4378",
+    role: "crew-member",
+    address: createAddress("114 Garden Row", 30.24358, -97.76382),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: 20,
+    staffingMode: "review-first",
+    crewReviewLeadHours: 6,
+    departureReminderLeadMinutes: 30,
+    routeLeaderMode: "accepted-crew-fallback",
+    sponsoredListingEnabled: provider.sponsoredListingEnabled
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(48),
+    scheduledEndIso: futureIso(49),
+    notes: "Delegated route leader test",
+    totalCents: 6400
+  });
+
+  const overview = await platform.getProviderStaffingOverview(provider.id);
+  const job = overview.jobs.find((item) => item.bookingId === booking.id);
+  assert.ok(job);
+  const firstMatch = job?.matches.find((match) => match.crewMemberId === firstCrew.id);
+  const secondMatch = job?.matches.find((match) => match.crewMemberId === secondCrew.id);
+  assert.ok(firstMatch);
+  assert.ok(secondMatch);
+
+  await platform.reviewCrewMatch(provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
+  await platform.reviewCrewMatch(provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+
+  const multiCrewOverview = await platform.getProviderStaffingOverview(provider.id);
+  const multiCrewJob = multiCrewOverview.jobs.find((item) => item.bookingId === booking.id);
+  assert.equal(multiCrewJob?.requiresRouteLeaderAssignment, true);
+
+  await assert.rejects(
+    platform.markBookingOnRoute(
+      { userId: firstCrew.id, email: firstCrew.email, role: "crew-member" },
+      { bookingId: booking.id }
+    ),
+    /specific crew route leader must be assigned/
+  );
+
+  const assignedBooking = await platform.assignBookingRouteLeader(provider.id, {
+    bookingId: booking.id,
+    crewMemberId: secondCrew.id
+  });
+  assert.equal(assignedBooking.assignedRouteLeaderCrewMemberId, secondCrew.id);
+
+  const assignedOverview = await platform.getProviderStaffingOverview(provider.id);
+  const assignedJob = assignedOverview.jobs.find((item) => item.bookingId === booking.id);
+  assert.equal(assignedJob?.assignedRouteLeaderCrewMemberId, secondCrew.id);
+  assert.equal(assignedJob?.assignedRouteLeaderCrewMemberName, secondCrew.fullName);
+  assert.equal(assignedJob?.requiresRouteLeaderAssignment, false);
+
+  await assert.rejects(
+    platform.markBookingOnRoute(
+      { userId: firstCrew.id, email: firstCrew.email, role: "crew-member" },
+      { bookingId: booking.id }
+    ),
+    /assigned route leader/
+  );
+
+  const onRoute = await platform.markBookingOnRoute(
+    { userId: secondCrew.id, email: secondCrew.email, role: "crew-member" },
+    { bookingId: booking.id }
+  );
+  assert.equal(onRoute.onRouteConfirmedByCrewMemberId, secondCrew.id);
+
+  const tracking = await platform.updateBookingRouteLocation(
+    { userId: secondCrew.id, email: secondCrew.email, role: "crew-member" },
+    {
+      bookingId: booking.id,
+      point: {
+        latitude: 30.2437,
+        longitude: -97.76395
+      },
+      speedMph: 18
+    }
+  );
+  assert.equal(tracking.source, "crew-device");
+
+  const crewMatches = await platform.getCrewMatchesForCrew(secondCrew.id);
+  assert.equal(crewMatches.matches[0]?.isAssignedRouteLeader, true);
+});
+
+test("provider assistant can assign and clear a crew route leader from plain language", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-route-leader@example.com",
+    password: "Password123!",
+    phone: "555-4379",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-route-leader@example.com",
+    password: "Password123!",
+    phone: "555-4380",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  const firstCrew = await platform.registerUser({
+    fullName: "Taylor Crew",
+    email: "crew-assistant-route-leader-1@example.com",
+    password: "Password123!",
+    phone: "555-4381",
+    role: "crew-member",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+  const secondCrew = await platform.registerUser({
+    fullName: "Morgan Crew",
+    email: "crew-assistant-route-leader-2@example.com",
+    password: "Password123!",
+    phone: "555-4382",
+    role: "crew-member",
+    address: createAddress("114 Garden Row", 30.24358, -97.76382),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: 20,
+    staffingMode: "review-first",
+    crewReviewLeadHours: 6,
+    departureReminderLeadMinutes: 30,
+    routeLeaderMode: "accepted-crew-fallback",
+    sponsoredListingEnabled: provider.sponsoredListingEnabled
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant route leader test",
+    totalCents: 6200
+  });
+
+  const overview = await platform.getProviderStaffingOverview(provider.id);
+  const job = overview.jobs.find((item) => item.bookingId === booking.id);
+  const firstMatch = job?.matches.find((match) => match.crewMemberId === firstCrew.id);
+  const secondMatch = job?.matches.find((match) => match.crewMemberId === secondCrew.id);
+  assert.ok(firstMatch);
+  assert.ok(secondMatch);
+  await platform.reviewCrewMatch(provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
+  await platform.reviewCrewMatch(provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Make Morgan Crew the route leader for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "assign-route-leader");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /Assign Morgan Crew as the route leader/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Make Morgan Crew the route leader for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "assign-route-leader");
+  assert.equal(executed.updatedBooking?.assignedRouteLeaderCrewMemberId, secondCrew.id);
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-assign-route-leader");
+
+  const clearPreview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Clear the route leader for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+  assert.equal(clearPreview.understood, true);
+  assert.equal(clearPreview.actionType, "clear-route-leader");
+  assert.equal(clearPreview.requiresConfirmation, true);
+
+  const cleared = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Clear the route leader for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+  assert.equal(cleared.executed, true);
+  assert.equal(cleared.actionType, "clear-route-leader");
+  assert.equal(cleared.updatedBooking?.assignedRouteLeaderCrewMemberId, undefined);
+  assert.equal(cleared.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-clear-route-leader");
+});
+
+test("provider assistant can preview and send a provider-crew coordination message", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-crew-message@example.com",
+    password: "Password123!",
+    phone: "555-4383",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-crew-message@example.com",
+    password: "Password123!",
+    phone: "555-4384",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  const crew = await platform.registerUser({
+    fullName: "Morgan Crew",
+    email: "crew-assistant-message@example.com",
+    password: "Password123!",
+    phone: "555-4385",
+    role: "crew-member",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant crew message test",
+    totalCents: 6200
+  });
+
+  const overview = await platform.getProviderStaffingOverview(provider.id);
+  const job = overview.jobs.find((item) => item.bookingId === booking.id);
+  const crewMatch = job?.matches.find((match) => match.crewMemberId === crew.id);
+  assert.ok(crewMatch);
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell Morgan Crew to head to the equipment pickup first for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "message-crew");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /Send Morgan Crew:/i);
+  assert.match(preview.previewMessage, /equipment pickup first/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell Morgan Crew to head to the equipment pickup first for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "message-crew");
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-message-crew");
+
+  const providerThread = await platform.getProviderCrewConversationThread(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    undefined,
+    crewMatch!.id
+  );
+  assert.equal(providerThread.messages.length, 1);
+  assert.equal(providerThread.messages[0]?.senderRole, "provider");
+  assert.equal(providerThread.messages[0]?.body, "Head to the equipment pickup first");
+});
+
+test("provider assistant can accept or deny crew matches from plain language", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-crew-review@example.com",
+    password: "Password123!",
+    phone: "555-4386",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-crew-review@example.com",
+    password: "Password123!",
+    phone: "555-4387",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  const firstCrew = await platform.registerUser({
+    fullName: "Morgan Crew",
+    email: "crew-assistant-review-1@example.com",
+    password: "Password123!",
+    phone: "555-4388",
+    role: "crew-member",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+  const secondCrew = await platform.registerUser({
+    fullName: "Taylor Crew",
+    email: "crew-assistant-review-2@example.com",
+    password: "Password123!",
+    phone: "555-4389",
+    role: "crew-member",
+    address: createAddress("114 Garden Row", 30.24358, -97.76382),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant crew review test",
+    totalCents: 6200
+  });
+
+  const overview = await platform.getProviderStaffingOverview(provider.id);
+  const job = overview.jobs.find((item) => item.bookingId === booking.id);
+  assert.ok(job);
+  assert.equal(
+    job?.matches.filter((match) => match.status === "pending-provider-review").length,
+    2
+  );
+
+  const acceptPreview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Accept Morgan Crew for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+  assert.equal(acceptPreview.understood, true);
+  assert.equal(acceptPreview.actionType, "accept-crew-match");
+  assert.equal(acceptPreview.requiresConfirmation, true);
+  assert.match(acceptPreview.previewMessage, /Accept Morgan Crew/i);
+
+  const accepted = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Accept Morgan Crew for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+  assert.equal(accepted.executed, true);
+  assert.equal(accepted.actionType, "accept-crew-match");
+  assert.equal(accepted.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-accept-crew-match");
+
+  const acceptedMatches = await platform.getProviderStaffingOverview(provider.id);
+  const acceptedJob = acceptedMatches.jobs.find((item) => item.bookingId === booking.id);
+  const acceptedCrewMatch = acceptedJob?.matches.find((match) => match.crewMemberId === firstCrew.id);
+  assert.equal(acceptedCrewMatch?.status, "accepted");
+
+  const denyPreview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Decline Taylor Crew for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+  assert.equal(denyPreview.understood, true);
+  assert.equal(denyPreview.actionType, "deny-crew-match");
+  assert.equal(denyPreview.requiresConfirmation, true);
+  assert.match(denyPreview.previewMessage, /Decline Taylor Crew/i);
+
+  const denied = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Decline Taylor Crew for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+  assert.equal(denied.executed, true);
+  assert.equal(denied.actionType, "deny-crew-match");
+  assert.equal(denied.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-deny-crew-match");
+
+  const deniedMatches = await platform.getProviderStaffingOverview(provider.id);
+  const deniedJob = deniedMatches.jobs.find((item) => item.bookingId === booking.id);
+  const deniedCrewMatch = deniedJob?.matches.find((match) => match.crewMemberId === secondCrew.id);
+  assert.equal(deniedCrewMatch?.status, "denied");
+});
+
+test("provider assistant can accept the best recommended crew from plain language", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-best-crew@example.com",
+    password: "Password123!",
+    phone: "555-4390",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-best-crew@example.com",
+    password: "Password123!",
+    phone: "555-4391",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  const bestCrew = await platform.registerUser({
+    fullName: "Morgan Crew",
+    email: "crew-assistant-best-1@example.com",
+    password: "Password123!",
+    phone: "555-4392",
+    role: "crew-member",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20,
+    preferredSchedule: "full-time"
+  });
+  const backupCrew = await platform.registerUser({
+    fullName: "Taylor Crew",
+    email: "crew-assistant-best-2@example.com",
+    password: "Password123!",
+    phone: "555-4393",
+    role: "crew-member",
+    address: createAddress("1600 Far Crew Lane", 30.31, -97.86),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 25,
+    preferredSchedule: "seasonal"
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant best crew test",
+    totalCents: 6200
+  });
+
+  const overview = await platform.getProviderStaffingOverview(provider.id);
+  const job = overview.jobs.find((item) => item.bookingId === booking.id);
+  assert.ok(job);
+  assert.equal(job?.matches[0]?.crewMemberId, bestCrew.id);
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Accept the best crew for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "accept-best-crew-match");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /Accept Morgan Crew as the best crew/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Accept the best crew for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "accept-best-crew-match");
+  assert.equal(
+    executed.updatedBooking?.interventions.at(-1)?.action,
+    "provider-assistant-accept-best-crew-match"
+  );
+
+  const staffingAfter = await platform.getProviderStaffingOverview(provider.id);
+  const updatedJob = staffingAfter.jobs.find((item) => item.bookingId === booking.id);
+  const acceptedMatch = updatedJob?.matches.find((match) => match.crewMemberId === bestCrew.id);
+  const untouchedBackup = updatedJob?.matches.find((match) => match.crewMemberId === backupCrew.id);
+  assert.equal(acceptedMatch?.status, "accepted");
+  assert.equal(untouchedBackup?.status, "pending-provider-review");
+});
+
+test("provider assistant can summarize tomorrow's dispatch load without picking a booking", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-dispatch-summary@example.com",
+    password: "Password123!",
+    phone: "555-4394",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-dispatch-summary@example.com",
+    password: "Password123!",
+    phone: "555-4395",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 1);
+  serviceDay.setHours(13, 0, 0, 0);
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant dispatch summary test",
+    totalCents: 6200
+  });
+
+  const summary = await platform.runProviderAssistantCommand(provider.id, {
+    command: "How does tomorrow look?",
+    execute: false
+  });
+
+  assert.equal(summary.understood, true);
+  assert.equal(summary.actionType, "summarize-dispatch");
+  assert.equal(summary.requiresBookingSelection, false);
+  assert.equal(summary.requiresConfirmation, false);
+  assert.equal(summary.executed, false);
+  assert.ok(summary.dispatchDaySummary);
+  assert.equal(summary.dispatchDaySummary?.yardmatchJobCount, 1);
+  assert.match(summary.previewLabel, /Tomorrow dispatch summary/i);
+  assert.match(summary.previewMessage, /Tomorrow is/i);
+});
+
+test("provider assistant can highlight the highest-pressure window tomorrow", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-day-attention@example.com",
+    password: "Password123!",
+    phone: "555-4394",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-day-attention@example.com",
+    password: "Password123!",
+    phone: "555-4395",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const firstJob = new Date();
+  firstJob.setDate(firstJob.getDate() + 1);
+  firstJob.setHours(8, 0, 0, 0);
+  const secondJob = new Date(firstJob);
+  secondJob.setHours(13, 0, 0, 0);
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: firstJob.toISOString(),
+    scheduledEndIso: new Date(firstJob.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant day attention test 1",
+    totalCents: 6200
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: secondJob.toISOString(),
+    scheduledEndIso: new Date(secondJob.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant day attention test 2",
+    totalCents: 6200
+  });
+
+  const summary = await platform.runProviderAssistantCommand(provider.id, {
+    command: "What needs attention tomorrow?",
+    execute: false
+  });
+
+  assert.equal(summary.understood, true);
+  assert.equal(summary.actionType, "summarize-dispatch");
+  assert.ok(summary.dispatchDaySummary);
+  assert.ok(summary.dispatchWindowSummary);
+  assert.ok(summary.bookingCandidates.length > 0);
+  assert.equal(summary.bookingCandidates.length, summary.dispatchWindowSummary!.yardmatchJobCount);
+  assert.match(summary.previewLabel, /Tomorrow dispatch attention/i);
+  assert.match(summary.previewMessage, /biggest pressure/i);
+  assert.ok(["Morning", "Afternoon", "Late afternoon / evening"].includes(summary.dispatchWindowSummary!.label));
+});
+
+test("provider assistant can summarize the next 7 days of dispatch pressure", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-week-summary@example.com",
+    password: "Password123!",
+    phone: "555-4396",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-week-summary@example.com",
+    password: "Password123!",
+    phone: "555-4397",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const firstDay = new Date();
+  firstDay.setDate(firstDay.getDate() + 1);
+  firstDay.setHours(13, 0, 0, 0);
+  const secondDay = new Date(firstDay);
+  secondDay.setDate(secondDay.getDate() + 2);
+  secondDay.setHours(17, 0, 0, 0);
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: firstDay.toISOString(),
+    scheduledEndIso: new Date(firstDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant week summary test 1",
+    totalCents: 6200
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: secondDay.toISOString(),
+    scheduledEndIso: new Date(secondDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant week summary test 2",
+    totalCents: 6200
+  });
+
+  const summary = await platform.runProviderAssistantCommand(provider.id, {
+    command: "How does this week look?",
+    execute: false
+  });
+
+  assert.equal(summary.understood, true);
+  assert.equal(summary.actionType, "summarize-dispatch");
+  assert.equal(summary.requiresBookingSelection, false);
+  assert.equal(summary.requiresConfirmation, false);
+  assert.equal(summary.executed, false);
+  assert.ok(summary.dispatchRangeSummary);
+  assert.equal(summary.dispatchRangeSummary?.scope, "next-7-days");
+  assert.equal(summary.dispatchRangeSummary?.activeDayCount, 2);
+  assert.equal(summary.dispatchRangeSummary?.totalYardmatchJobs, 2);
+  assert.match(summary.previewLabel, /next 7 days dispatch summary/i);
+  assert.match(summary.previewMessage, /next 7 days has 2 YardMatch jobs/i);
+});
+
+test("provider assistant can highlight the highest-attention day this week", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-week-attention@example.com",
+    password: "Password123!",
+    phone: "555-4398",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-week-attention@example.com",
+    password: "Password123!",
+    phone: "555-4399",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const firstDay = new Date();
+  firstDay.setDate(firstDay.getDate() + 1);
+  firstDay.setHours(13, 0, 0, 0);
+  const secondDay = new Date(firstDay);
+  secondDay.setDate(secondDay.getDate() + 3);
+  secondDay.setHours(13, 0, 0, 0);
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: firstDay.toISOString(),
+    scheduledEndIso: new Date(firstDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant week attention test 1",
+    totalCents: 6200
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: secondDay.toISOString(),
+    scheduledEndIso: new Date(secondDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant week attention test 2a",
+    totalCents: 6200
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("125 Garden Row", 30.2439, -97.7641),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: new Date(secondDay.getTime() + 2.5 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(secondDay.getTime() + 4.5 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant week attention test 2b",
+    totalCents: 6200
+  });
+
+  const summary = await platform.runProviderAssistantCommand(provider.id, {
+    command: "What needs attention this week?",
+    execute: false
+  });
+
+  assert.equal(summary.understood, true);
+  assert.equal(summary.actionType, "summarize-dispatch");
+  assert.ok(summary.dispatchRangeSummary);
+  assert.ok(summary.dispatchDaySummary);
+  assert.ok(summary.dispatchWindowSummary);
+  assert.ok(summary.bookingCandidates.length > 0);
+  assert.match(summary.previewLabel, /dispatch attention/i);
+  assert.match(summary.previewMessage, /needs the most attention/i);
+  assert.equal(summary.bookingCandidates.length, summary.dispatchWindowSummary!.yardmatchJobCount);
+  const candidateDayIsos = [
+    summary.dispatchRangeSummary?.highestCrewGapDay?.dateIso,
+    summary.dispatchRangeSummary?.highestDriveMilesDay?.dateIso,
+    summary.dispatchRangeSummary?.busiestDay?.dateIso
+  ].filter(Boolean);
+  assert.ok(candidateDayIsos.includes(summary.dispatchDaySummary?.dateIso));
+});
+
+test("provider assistant can preview and clear an equipment pickup route stop", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-route-stop@example.com",
+    password: "Password123!",
+    phone: "555-4390",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-route-stop@example.com",
+    password: "Password123!",
+    phone: "555-4391",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const afternoonStart = new Date();
+  afternoonStart.setDate(afternoonStart.getDate() + 2);
+  afternoonStart.setHours(13, 0, 0, 0);
+  const afternoonEnd = new Date(afternoonStart.getTime() + 2 * 60 * 60 * 1000);
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: afternoonStart.toISOString(),
+    scheduledEndIso: afternoonEnd.toISOString(),
+    notes: "Assistant route stop test",
+    totalCents: 6200
+  });
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Set equipment pickup as the next stop for my afternoon appointment",
+    execute: false
+  });
+  assert.equal(preview.actionType, "set-route-stop");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /equipment pickup/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Set equipment pickup as the next stop for my afternoon appointment",
+    execute: true
+  });
+  assert.equal(executed.actionType, "set-route-stop");
+  assert.equal(executed.updatedBooking?.routeActiveStop?.kind, "equipment-pickup");
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-set-route-stop");
+
+  const clearPreview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Clear the route stop for my afternoon appointment",
+    execute: false
+  });
+  assert.equal(clearPreview.actionType, "clear-route-stop");
+  assert.equal(clearPreview.requiresConfirmation, true);
+
+  const cleared = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Clear the route stop for my afternoon appointment",
+    execute: true
+  });
+  assert.equal(cleared.actionType, "clear-route-stop");
+  assert.equal(cleared.updatedBooking?.routeActiveStop, undefined);
+  assert.equal(cleared.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-clear-route-stop");
+});
+
 test("provider assistant previews and executes a reschedule command with customer notification", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -4910,6 +6192,71 @@ test("provider assistant can preview and start a route from a natural-language c
   assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-start-route");
 });
 
+test("provider assistant can preview and execute a confirm-then-route multi-step command", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-confirm-route@example.com",
+    password: "Password123!",
+    phone: "555-4394",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-confirm-route@example.com",
+    password: "Password123!",
+    phone: "555-4395",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant multi-step confirm route test",
+    totalCents: 6200
+  });
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Confirm my afternoon appointment and start route",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.deepEqual(preview.actionTypes, ["confirm-booking", "start-route"]);
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /Step 1:/);
+  assert.match(preview.previewMessage, /Step 2:/);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Confirm my afternoon appointment and start route",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.deepEqual(executed.actionTypes, ["confirm-booking", "start-route"]);
+  assert.equal(executed.updatedBooking?.status, "confirmed");
+  assert.ok(executed.updatedBooking?.onRouteConfirmedAt);
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-start-route");
+});
+
 test("provider assistant can preview and start work once route and before-photo requirements are met", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -4993,6 +6340,179 @@ test("provider assistant can preview and start work once route and before-photo 
   assert.equal(executed.actionType, "start-work");
   assert.equal(executed.updatedBooking?.status, "in-progress");
   assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-start-work");
+});
+
+test("provider assistant can preview and execute a route-then-work multi-step command", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-route-work@example.com",
+    password: "Password123!",
+    phone: "555-4396",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-route-work@example.com",
+    password: "Password123!",
+    phone: "555-4397",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant multi-step route work test",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(platform, { userId: provider.id, email: provider.email, role: "provider" }, booking.id, "before");
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Start route for my afternoon appointment and start work",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.deepEqual(preview.actionTypes, ["start-route", "start-work"]);
+  assert.equal(preview.requiresConfirmation, true);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Start route for my afternoon appointment and start work",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.deepEqual(executed.actionTypes, ["start-route", "start-work"]);
+  assert.equal(executed.updatedBooking?.status, "in-progress");
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-start-work");
+});
+
+test("provider assistant can preview and execute a broader three-step same-booking chain", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-three-step@example.com",
+    password: "Password123!",
+    phone: "555-4398",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-three-step@example.com",
+    password: "Password123!",
+    phone: "555-4399",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const crew = await platform.registerUser({
+    fullName: "Morgan Crew",
+    email: "crew-assistant-three-step@example.com",
+    password: "Password123!",
+    phone: "555-4400",
+    role: "crew-member",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+    willingToTravelMiles: 20
+  });
+
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: 25,
+    staffingMode: "review-first",
+    crewReviewLeadHours: 6,
+    departureReminderLeadMinutes: 30,
+    routeLeaderMode: "accepted-crew-fallback",
+    sponsoredListingEnabled: provider.sponsoredListingEnabled
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant broader chain test",
+    totalCents: 6200
+  });
+
+  const overview = await platform.getProviderStaffingOverview(provider.id);
+  const job = overview.jobs.find((item) => item.bookingId === booking.id);
+  const crewMatch = job?.matches.find((match) => match.crewMemberId === crew.id);
+  assert.ok(crewMatch);
+
+  const command =
+    "Accept Morgan Crew for my afternoon appointment and make Morgan Crew the route leader and tell Morgan Crew to head to the equipment pickup first";
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command,
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.deepEqual(preview.actionTypes, ["accept-crew-match", "assign-route-leader", "message-crew"]);
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /Step 1:/);
+  assert.match(preview.previewMessage, /Step 2:/);
+  assert.match(preview.previewMessage, /Step 3:/);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command,
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.deepEqual(executed.actionTypes, ["accept-crew-match", "assign-route-leader", "message-crew"]);
+  assert.equal(executed.updatedBooking?.assignedRouteLeaderCrewMemberId, crew.id);
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-message-crew");
+
+  const staffingAfter = await platform.getProviderStaffingOverview(provider.id);
+  const updatedJob = staffingAfter.jobs.find((item) => item.bookingId === booking.id);
+  const updatedMatch = updatedJob?.matches.find((match) => match.crewMemberId === crew.id);
+  assert.equal(updatedMatch?.status, "accepted");
+  assert.equal(updatedJob?.assignedRouteLeaderCrewMemberId, crew.id);
+
+  const providerThread = await platform.getProviderCrewConversationThread(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    undefined,
+    crewMatch!.id
+  );
+  assert.equal(providerThread.messages.length, 1);
+  assert.equal(providerThread.messages[0]?.body, "Head to the equipment pickup first");
 });
 
 test("provider assistant can preview and complete a booking once after-photo requirements are met", async () => {
