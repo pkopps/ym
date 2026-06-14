@@ -2907,7 +2907,7 @@ export class MarketplacePlatformService {
         notifyCustomer: parsed.notifyCustomer,
         previewLabel: "Could not understand command",
         previewMessage:
-          'Try a command like "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", or "Start route for my afternoon appointment."',
+          'Try a command like "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", "Start route for my afternoon appointment", or "Start work for my afternoon appointment."',
         bookingCandidates: []
       };
     }
@@ -3112,6 +3112,137 @@ export class MarketplacePlatformService {
         customerNotificationPreview,
         bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? onRouteBooking)],
         updatedBooking: bookingWithIntervention ?? onRouteBooking
+      };
+    }
+
+    if (parsed.actionType === "start-work") {
+      const customer = await this.repository.findCustomerById(booking.customerId);
+      if (booking.status === "in-progress") {
+        return {
+          command,
+          understood: true,
+          actionType: "start-work",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Work already started",
+          previewMessage: `${customer?.fullName ?? "This customer"} is already marked in progress.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (booking.status !== "confirmed") {
+        return {
+          command,
+          understood: true,
+          actionType: "start-work",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Work cannot start yet",
+          previewMessage: "Confirm this booking before starting work from the provider assistant.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (!booking.onRouteConfirmedAt) {
+        return {
+          command,
+          understood: true,
+          actionType: "start-work",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Start the route first",
+          previewMessage: "Start the route first, then ask the provider assistant to begin work.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (this.countBookingEvidence(booking, "before") < 1) {
+        return {
+          command,
+          understood: true,
+          actionType: "start-work",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Before photo still needed",
+          previewMessage: "Capture at least one before photo before starting work from the provider assistant.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (!payload.execute) {
+        return {
+          command,
+          understood: true,
+          actionType: "start-work",
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: false,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Ready to start work",
+          previewMessage: `Start work for ${customer?.fullName ?? "this customer"} and move the booking into the active job state.`,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const providerIdentity = await this.repository.findAuthIdentityByUserId(providerId);
+      if (!providerIdentity || providerIdentity.role !== "provider") {
+        throw new HttpError(404, "Provider identity not found for this assistant command");
+      }
+
+      const startedBooking = await this.startBooking(providerIdentity, { bookingId: booking.id });
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-start-work",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${command}`,
+        previousStatus: booking.status,
+        nextStatus: startedBooking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...startedBooking.interventions, intervention]
+      });
+
+      return {
+        command,
+        understood: true,
+        actionType: "start-work",
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: false,
+        matchedBookingId: booking.id,
+        matchedCustomerName: customer?.fullName,
+        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        previewLabel: "Work started",
+        previewMessage: `Started work for ${customer?.fullName ?? "the customer"} and moved the booking into progress.`,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? startedBooking)],
+        updatedBooking: bookingWithIntervention ?? startedBooking
       };
     }
 
@@ -5867,18 +5998,23 @@ export class MarketplacePlatformService {
     const lateReason = this.parseProviderAssistantLateReason(normalized);
     const isLateCommand = Boolean(lateMinutes) && /\blate|behind\b/.test(normalized);
     const isRescheduleCommand = Boolean(targetWindowKey && /change|move|shift|resched/.test(normalized));
+    const isStartWorkCommand = /\b(start work|begin work|start the job|begin the job|start service|begin service)\b/.test(
+      normalized
+    );
     const isStartRouteCommand = /\b(start route|start the route|on my way|head out|heading out|leave for|heading to)\b/.test(
       normalized
     );
 
     return {
-      understood: isRescheduleCommand || isLateCommand || isStartRouteCommand,
+      understood: isRescheduleCommand || isLateCommand || isStartRouteCommand || isStartWorkCommand,
       actionType: isRescheduleCommand
         ? "reschedule-booking"
         : isLateCommand
           ? "mark-booking-late"
           : isStartRouteCommand
             ? "start-route"
+            : isStartWorkCommand
+              ? "start-work"
             : undefined,
       sourceWindowKey,
       targetWindowKey,

@@ -106,6 +106,7 @@ Already done:
   - confirmed commands can move a booking to a broader window and notify the customer automatically
   - providers can also send a customer-facing late update from a plain-language command with a parsed delay amount
   - providers can start the route from a plain-language command and unlock customer tracking
+  - providers can start work from a plain-language command once route start and before-photo requirements are satisfied
 
 - Broaden the provider assistant beyond the shipped reschedule baseline:
   - richer crew/provider coordination actions from natural-language requests
