@@ -4995,6 +4995,88 @@ test("provider assistant can preview and start work once route and before-photo 
   assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-start-work");
 });
 
+test("provider assistant can preview and complete a booking once after-photo requirements are met", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-complete@example.com",
+    password: "Password123!",
+    phone: "555-4390",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-complete@example.com",
+    password: "Password123!",
+    phone: "555-4391",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const startIso = serviceDay.toISOString();
+  const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: startIso,
+    scheduledEndIso: endIso,
+    notes: "Assistant complete test",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+
+  const blockedPreview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Complete my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(blockedPreview.understood, true);
+  assert.equal(blockedPreview.actionType, "complete-booking");
+  assert.equal(blockedPreview.requiresConfirmation, false);
+  assert.match(blockedPreview.previewMessage, /after photo/i);
+
+  await attachEvidence(platform, { userId: provider.id, email: provider.email, role: "provider" }, booking.id, "after");
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Complete my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "complete-booking");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /close out the service lifecycle/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Complete my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "complete-booking");
+  assert.equal(executed.updatedBooking?.status, "completed");
+  assert.ok(executed.updatedBooking?.completedAt);
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-complete-booking");
+});
+
 test("new providers stay out of public search until ops approves verification", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

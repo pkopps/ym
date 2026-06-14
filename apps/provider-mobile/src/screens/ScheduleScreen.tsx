@@ -603,7 +603,7 @@ export function ScheduleScreen() {
 
       <InfoCard title="Assistant" description="Change bookings in plain language">
         <Text style={styles.metaLine}>
-          Try “Confirm my afternoon appointment”, “Change my afternoon appointment to evening and notify the customer”, “Tell my afternoon customer I am 30 minutes late”, “Start route for my afternoon appointment”, or “Start work for my afternoon appointment.”
+          Try “Confirm my afternoon appointment”, “Change my afternoon appointment to evening and notify the customer”, “Tell my afternoon customer I am 30 minutes late”, “Start route for my afternoon appointment”, “Start work for my afternoon appointment”, or “Complete my afternoon appointment.”
         </Text>
         <TextInput
           value={assistantCommand}

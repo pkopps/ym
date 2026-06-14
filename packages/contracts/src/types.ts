@@ -74,12 +74,14 @@ export type OpsBookingInterventionAction =
   | "cancel-booking"
   | "complete-booking"
   | "provider-assistant-confirm-booking"
+  | "provider-assistant-complete-booking"
   | "provider-assistant-reschedule"
   | "provider-assistant-late-update"
   | "provider-assistant-start-route"
   | "provider-assistant-start-work";
 export type ProviderAssistantActionType =
   | "confirm-booking"
+  | "complete-booking"
   | "reschedule-booking"
   | "mark-booking-late"
   | "start-route"

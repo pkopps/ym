@@ -104,6 +104,7 @@ Already done:
   - route-leader mode that can stay provider-only or allow accepted-crew fallback
 - baseline provider assistant natural-language scheduling help:
   - providers can confirm requested bookings from a plain-language command
+  - providers can complete a booking from a plain-language command once the after-photo requirement is satisfied
   - providers can preview a plain-language reschedule command
   - ambiguous commands can return matching appointments for explicit selection
   - confirmed commands can move a booking to a broader window and notify the customer automatically

@@ -746,7 +746,8 @@ export function ProviderLiveManagementBoard() {
         <p>
           Try “Confirm my afternoon appointment”, “Change my afternoon appointment to evening and
           notify the customer”, “Tell my afternoon customer I am 30 minutes late”, “Start route for
-          my afternoon appointment”, or “Start work for my afternoon appointment.”
+          my afternoon appointment”, “Start work for my afternoon appointment”, or “Complete my
+          afternoon appointment.”
         </p>
         <label className="form-field form-field--full">
           <span>Provider assistant command</span>
