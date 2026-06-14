@@ -111,6 +111,7 @@ export type ProviderCalendarEventSource = "yardmatch-booking" | "external-block"
 export type ProviderDispatchRouteStatus = "comfortable" | "watch" | "overloaded";
 export type BookingRouteLocationSource = "computed-origin" | "provider-device" | "crew-device";
 export type BookingEvidencePhase = "before" | "after";
+export type BookingEvidenceType = "photo" | "note" | "checklist";
 export type BookingEvidenceReviewStatus = "supports-provider" | "supports-customer" | "inconclusive";
 export type BookingExceptionType =
   | "customer-no-show"
@@ -479,7 +480,7 @@ export interface Booking {
   notes: string;
   totalCents: number;
   reviewId?: string;
-  serviceEvidence: BookingEvidencePhoto[];
+  serviceEvidence: BookingEvidenceEntry[];
   interventions: BookingInterventionRecord[];
   addressChangeHistory: BookingAddressChangeRequest[];
 }
@@ -500,14 +501,21 @@ export interface BookingInterventionRecord {
   nextScheduledEndIso?: string;
 }
 
-export interface BookingEvidencePhoto {
+export interface BookingEvidenceChecklistItem {
+  label: string;
+  completed: boolean;
+}
+
+export interface BookingEvidenceEntry {
   id: string;
   phase: BookingEvidencePhase;
-  imageDataUrl: string;
+  evidenceType: BookingEvidenceType;
   capturedAt: string;
   capturedByRole: "provider" | "crew-member";
   capturedByUserId: string;
+  imageDataUrl?: string;
   note?: string;
+  checklistItems?: BookingEvidenceChecklistItem[];
   reviewStatus?: BookingEvidenceReviewStatus;
   reviewNotes?: string;
   reviewedAt?: string;
@@ -1310,8 +1318,10 @@ export interface MarkBookingExceptionRequest {
 export interface AddBookingEvidenceRequest {
   bookingId: string;
   phase: BookingEvidencePhase;
-  imageDataUrl: string;
+  evidenceType?: BookingEvidenceType;
+  imageDataUrl?: string;
   note?: string;
+  checklistItems?: BookingEvidenceChecklistItem[];
 }
 
 export interface CreateBookingDisputeRequest {

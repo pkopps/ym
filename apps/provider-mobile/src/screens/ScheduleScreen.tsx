@@ -77,6 +77,7 @@ export function ScheduleScreen() {
   );
   const [assistantResult, setAssistantResult] = useState<ProviderAssistantCommandResponse | undefined>();
   const [selectedAssistantBookingId, setSelectedAssistantBookingId] = useState<string | undefined>();
+  const [evidenceNoteDrafts, setEvidenceNoteDrafts] = useState<Record<string, string>>({});
   const [isWorking, setIsWorking] = useState(false);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const routeSharingBookingIdRef = useRef<string | undefined>(undefined);
@@ -519,6 +520,77 @@ export function ScheduleScreen() {
     }
   }
 
+  async function saveEvidenceNote(bookingId: string, phase: "before" | "after") {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    const draftKey = `${bookingId}:${phase}`;
+    const draft = (evidenceNoteDrafts[draftKey] ?? "").trim();
+    if (!draft) {
+      setErrorMessage("Add a short onsite note before saving it.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.addBookingEvidence({
+        bookingId,
+        phase,
+        evidenceType: "note",
+        note: draft
+      });
+      setEvidenceNoteDrafts((current) => ({ ...current, [draftKey]: "" }));
+      setStatusMessage(phase === "before" ? "Before-work note saved." : "After-work note saved.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save that onsite note.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function saveEvidenceChecklist(bookingId: string, phase: "before" | "after") {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    const checklistItems =
+      phase === "before"
+        ? [
+            { label: "Access path confirmed", completed: true },
+            { label: "Equipment staged", completed: true },
+            { label: "Service scope reviewed", completed: true }
+          ]
+        : [
+            { label: "Primary service completed", completed: true },
+            { label: "Debris cleared", completed: true },
+            { label: "Property secured", completed: true }
+          ];
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.addBookingEvidence({
+        bookingId,
+        phase,
+        evidenceType: "checklist",
+        checklistItems
+      });
+      setStatusMessage(phase === "before" ? "Arrival checklist saved." : "Completion checklist saved.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save that checklist.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Schedule" title="Upcoming jobs">
       <View style={styles.modeRow}>
@@ -677,6 +749,19 @@ export function ScheduleScreen() {
                   <Text style={styles.metaLine}>
                     Evidence • before {job.beforeEvidenceCount} • after {job.afterEvidenceCount}
                   </Text>
+                  <TextInput
+                    multiline
+                    onChangeText={(value) =>
+                      setEvidenceNoteDrafts((current) => ({
+                        ...current,
+                        [`${job.bookingId}:before`]: value
+                      }))
+                    }
+                    placeholder="Add a before-work note for ops and disputes."
+                    placeholderTextColor={BrandTokens.colors.muted}
+                    style={styles.input}
+                    value={evidenceNoteDrafts[`${job.bookingId}:before`] ?? ""}
+                  />
                   <Text style={styles.statusLine}>{job.status.replaceAll("-", " ")}</Text>
                   {job.onRouteConfirmedAt ? (
                     <Text style={styles.metaLine}>Route is live. Customer chat is open.</Text>
@@ -769,12 +854,61 @@ export function ScheduleScreen() {
                     {(job.status === "confirmed" || job.status === "in-progress") ? (
                       <Pressable
                         disabled={isWorking}
+                        onPress={() => void saveEvidenceNote(job.bookingId, "before")}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Save before note</Text>
+                      </Pressable>
+                    ) : null}
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void saveEvidenceChecklist(job.bookingId, "before")}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Save arrival checklist</Text>
+                      </Pressable>
+                    ) : null}
+                    <TextInput
+                      multiline
+                      onChangeText={(value) =>
+                        setEvidenceNoteDrafts((current) => ({
+                          ...current,
+                          [`${job.bookingId}:after`]: value
+                        }))
+                      }
+                      placeholder="Add an after-work note for ops and disputes."
+                      placeholderTextColor={BrandTokens.colors.muted}
+                      style={styles.input}
+                      value={evidenceNoteDrafts[`${job.bookingId}:after`] ?? ""}
+                    />
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
                         onPress={() => void captureEvidencePhoto(job.bookingId, "after")}
                         style={styles.chatButton}
                       >
                         <Text style={styles.chatButtonLabel}>
                           {job.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
                         </Text>
+                      </Pressable>
+                    ) : null}
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void saveEvidenceNote(job.bookingId, "after")}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Save after note</Text>
+                      </Pressable>
+                    ) : null}
+                    {(job.status === "confirmed" || job.status === "in-progress") ? (
+                      <Pressable
+                        disabled={isWorking}
+                        onPress={() => void saveEvidenceChecklist(job.bookingId, "after")}
+                        style={styles.chatButton}
+                      >
+                        <Text style={styles.chatButtonLabel}>Save completion checklist</Text>
                       </Pressable>
                     ) : null}
                     {job.status === "requested" ? (

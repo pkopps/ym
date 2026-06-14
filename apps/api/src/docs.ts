@@ -589,9 +589,9 @@ export const apiSpec = {
     "/api/bookings/evidence": {
       post: {
         tags: ["Bookings"],
-        summary: "Attach before or after service photos to a booking",
+        summary: "Attach booking evidence to a job",
         description:
-          "Stores booking-linked photo evidence with phase, timestamp, and actor attribution. Providers and accepted crew members can attach before-work or after-work photos while the booking is active.",
+          "Stores booking-linked service evidence with phase, timestamp, and actor attribution. Providers and accepted crew members can attach before-work or after-work photos, onsite notes, and structured checklists while the booking is active.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1023,7 +1023,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Review and annotate booking evidence",
         description:
-          "Lets operations mark before/after photos as supporting the provider, supporting the customer, or inconclusive, with notes saved directly on the booking evidence record for disputes and refund reviews.",
+          "Lets operations mark booking evidence as supporting the provider, supporting the customer, or inconclusive, with notes saved directly on the booking evidence record for disputes and refund reviews.",
         requestBody: {
           required: true,
           content: {

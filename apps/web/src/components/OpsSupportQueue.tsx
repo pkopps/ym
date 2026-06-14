@@ -272,50 +272,87 @@ export function OpsSupportQueue() {
                     {booking.activeExceptionType ? ` • issue: ${booking.activeExceptionType}` : ""}
                   </p>
                   <p>
-                    Evidence: before{" "}
-                    {booking.serviceEvidence.filter((photo) => photo.phase === "before").length} • after{" "}
-                    {booking.serviceEvidence.filter((photo) => photo.phase === "after").length}
+                    Evidence: before photos{" "}
+                    {
+                      booking.serviceEvidence.filter(
+                        (evidence) => evidence.phase === "before" && evidence.evidenceType === "photo"
+                      ).length
+                    }{" "}
+                    • after photos{" "}
+                    {
+                      booking.serviceEvidence.filter(
+                        (evidence) => evidence.phase === "after" && evidence.evidenceType === "photo"
+                      ).length
+                    }{" "}
+                    • notes{" "}
+                    {booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "note").length} •
+                    checklists{" "}
+                    {
+                      booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "checklist").length
+                    }
                   </p>
                   {booking.serviceEvidence.length > 0 ? (
                     <div className="stack-md">
                       {(["before", "after"] as const).map((phase) => {
-                        const photos = booking.serviceEvidence.filter((photo) => photo.phase === phase);
-                        if (photos.length === 0) {
+                        const evidenceItems = booking.serviceEvidence.filter((evidence) => evidence.phase === phase);
+                        if (evidenceItems.length === 0) {
                           return null;
                         }
 
                         return (
                           <div key={phase} className="stack-md">
-                            <p>{phase === "before" ? "Before-work photos" : "After-work photos"}</p>
+                            <p>{phase === "before" ? "Before-work evidence" : "After-work evidence"}</p>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
-                              {photos.slice(0, 3).map((photo) => (
+                              {evidenceItems.slice(0, 6).map((evidence) => (
                                 <div
-                                  key={photo.id}
+                                  key={evidence.id}
                                   style={{
                                     display: "grid",
                                     gap: "0.5rem",
                                     width: "12rem"
                                   }}
                                 >
-                                  <img
-                                    alt={`${phase} evidence`}
-                                    src={photo.imageDataUrl}
-                                    style={{
-                                      width: "7rem",
-                                      height: "7rem",
-                                      objectFit: "cover",
-                                      borderRadius: "1rem",
-                                      border: "1px solid rgba(21, 54, 47, 0.12)"
-                                    }}
-                                  />
+                                  {evidence.evidenceType === "photo" && evidence.imageDataUrl ? (
+                                    <img
+                                      alt={`${phase} evidence`}
+                                      src={evidence.imageDataUrl}
+                                      style={{
+                                        width: "7rem",
+                                        height: "7rem",
+                                        objectFit: "cover",
+                                        borderRadius: "1rem",
+                                        border: "1px solid rgba(21, 54, 47, 0.12)"
+                                      }}
+                                    />
+                                  ) : null}
+                                  {evidence.evidenceType === "note" ? (
+                                    <div className="list-panel" style={{ padding: "0.75rem" }}>
+                                      <strong>Onsite note</strong>
+                                      <p style={{ margin: "0.35rem 0 0 0" }}>{evidence.note}</p>
+                                    </div>
+                                  ) : null}
+                                  {evidence.evidenceType === "checklist" ? (
+                                    <div className="list-panel" style={{ padding: "0.75rem" }}>
+                                      <strong>Checklist</strong>
+                                      <div style={{ display: "grid", gap: "0.25rem", marginTop: "0.35rem" }}>
+                                        {(evidence.checklistItems ?? []).map((item) => (
+                                          <p key={item.label} style={{ margin: 0 }}>
+                                            {item.completed ? "Done" : "Open"} • {item.label}
+                                          </p>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : null}
                                   <p style={{ margin: 0, fontSize: "0.9rem" }}>
-                                    {photo.capturedByRole} • {formatDateTime(photo.capturedAt)}
+                                    {evidence.capturedByRole} • {formatDateTime(evidence.capturedAt)}
                                   </p>
-                                  {photo.note ? <p style={{ margin: 0 }}>{photo.note}</p> : null}
-                                  {photo.reviewStatus ? (
+                                  {evidence.evidenceType !== "note" && evidence.note ? (
+                                    <p style={{ margin: 0 }}>{evidence.note}</p>
+                                  ) : null}
+                                  {evidence.reviewStatus ? (
                                     <p className="warning-copy" style={{ margin: 0 }}>
-                                      Ops review: {photo.reviewStatus.replaceAll("-", " ")}
-                                      {photo.reviewNotes ? ` • ${photo.reviewNotes}` : ""}
+                                      Ops review: {evidence.reviewStatus.replaceAll("-", " ")}
+                                      {evidence.reviewNotes ? ` • ${evidence.reviewNotes}` : ""}
                                     </p>
                                   ) : null}
                                   <label>
@@ -324,13 +361,13 @@ export function OpsSupportQueue() {
                                       onChange={(event) =>
                                         setEvidenceReviewDrafts((current) => ({
                                           ...current,
-                                          [`${ticket.id}:${photo.id}`]: {
-                                            ...getEvidenceReviewDraft(ticket.id, photo.id),
+                                          [`${ticket.id}:${evidence.id}`]: {
+                                            ...getEvidenceReviewDraft(ticket.id, evidence.id),
                                             reviewStatus: event.target.value as BookingEvidenceReviewStatus
                                           }
                                         }))
                                       }
-                                      value={getEvidenceReviewDraft(ticket.id, photo.id).reviewStatus}
+                                      value={getEvidenceReviewDraft(ticket.id, evidence.id).reviewStatus}
                                     >
                                       <option value="supports-provider">Supports provider</option>
                                       <option value="supports-customer">Supports customer</option>
@@ -343,14 +380,14 @@ export function OpsSupportQueue() {
                                       onChange={(event) =>
                                         setEvidenceReviewDrafts((current) => ({
                                           ...current,
-                                          [`${ticket.id}:${photo.id}`]: {
-                                            ...getEvidenceReviewDraft(ticket.id, photo.id),
+                                          [`${ticket.id}:${evidence.id}`]: {
+                                            ...getEvidenceReviewDraft(ticket.id, evidence.id),
                                             reviewNotes: event.target.value
                                           }
                                         }))
                                       }
                                       rows={2}
-                                      value={getEvidenceReviewDraft(ticket.id, photo.id).reviewNotes}
+                                      value={getEvidenceReviewDraft(ticket.id, evidence.id).reviewNotes}
                                     />
                                   </label>
                                   <button
@@ -359,7 +396,7 @@ export function OpsSupportQueue() {
                                     onClick={() =>
                                       void reviewEvidence(
                                         { ticket, booking, payment, customerName, providerName },
-                                        photo.id
+                                        evidence.id
                                       )
                                     }
                                     type="button"

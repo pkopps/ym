@@ -2708,7 +2708,7 @@ test("providers confirm bookings before crew can go on route or start work", asy
   assert.equal(inProgressBooking.status, "in-progress");
 });
 
-test("before and after photos gate booking start and completion, and accepted crew can add them", async () => {
+test("before and after photos still gate booking start and completion while notes and checklists can also be attached", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
 
@@ -2805,6 +2805,39 @@ test("before and after photos gate booking start and completion, and accepted cr
   );
   assert.equal(bookingWithBeforeEvidence.serviceEvidence.filter((photo) => photo.phase === "before").length, 1);
 
+  const bookingWithBeforeNote = await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "before",
+      evidenceType: "note",
+      note: "Front gate was open and the lawn was wet from overnight rain."
+    }
+  );
+  assert.ok(
+    bookingWithBeforeNote.serviceEvidence.some(
+      (evidence) => evidence.phase === "before" && evidence.evidenceType === "note"
+    )
+  );
+
+  const bookingWithBeforeChecklist = await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "before",
+      evidenceType: "checklist",
+      checklistItems: [
+        { label: "Access path confirmed", completed: true },
+        { label: "Service area reviewed", completed: true }
+      ]
+    }
+  );
+  assert.ok(
+    bookingWithBeforeChecklist.serviceEvidence.some(
+      (evidence) => evidence.phase === "before" && evidence.evidenceType === "checklist"
+    )
+  );
+
   const startedBooking = await platform.startBooking(
     { userId: provider.id, email: provider.email, role: "provider" },
     { bookingId: booking.id }
@@ -2823,6 +2856,39 @@ test("before and after photos gate booking start and completion, and accepted cr
     "after"
   );
   assert.equal(bookingWithAfterEvidence.serviceEvidence.filter((photo) => photo.phase === "after").length, 1);
+
+  const bookingWithAfterNote = await platform.addBookingEvidence(
+    { userId: crewMember.id, email: crewMember.email, role: "crew-member" },
+    {
+      bookingId: booking.id,
+      phase: "after",
+      evidenceType: "note",
+      note: "Trim pass completed and clippings were blown off the driveway."
+    }
+  );
+  assert.ok(
+    bookingWithAfterNote.serviceEvidence.some(
+      (evidence) => evidence.phase === "after" && evidence.evidenceType === "note"
+    )
+  );
+
+  const bookingWithAfterChecklist = await platform.addBookingEvidence(
+    { userId: crewMember.id, email: crewMember.email, role: "crew-member" },
+    {
+      bookingId: booking.id,
+      phase: "after",
+      evidenceType: "checklist",
+      checklistItems: [
+        { label: "Primary service completed", completed: true },
+        { label: "Debris cleared", completed: true }
+      ]
+    }
+  );
+  assert.ok(
+    bookingWithAfterChecklist.serviceEvidence.some(
+      (evidence) => evidence.phase === "after" && evidence.evidenceType === "checklist"
+    )
+  );
 
   const completedBooking = await platform.completeBooking(provider.id, { bookingId: booking.id });
   assert.equal(completedBooking.status, "completed");

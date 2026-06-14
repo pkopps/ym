@@ -175,12 +175,14 @@ Already done:
   - required before/after service photos
   - ops review and annotation on booking photo evidence
   - evidence already feeds disputes, refund reviews, and service-quality support
+- broader booking evidence types are now shipped:
+  - onsite notes
+  - structured arrival/completion checklists
 
 Still left:
 
 - deeper dispute evidence and resolution flows beyond the current photo workflow
 - evidence workflow improvements beyond the shipped before/after photo requirement:
-  - expand evidence types beyond photos alone
   - strengthen evidence linkage even further into disputes, bad reviews, refund reviews, and service-quality support workflows
 - audit-friendly internal tooling for support and financial exceptions
 
@@ -285,6 +287,11 @@ Already done:
 Still left:
 
 - background location behavior if desired later
+- broader crew-member location tracking beyond the current provider-led route model:
+  - track crew progress toward the service property
+  - support interim stops like equipment pickup or staging locations before the property
+  - only the business owner / provider should see individual crew-member route context
+  - property owners should continue to see only the business owner / provider location, not individual crew locations
 - stronger ETA recalculation
 - delegated route leadership when the owner is not traveling with the crew
 
@@ -300,6 +307,7 @@ Already done:
 - refund review workflow with ops approval / denial and payout holds
 - ops booking intervention console for notes, reschedules, cancel/restore/complete actions, and audit trail history
 - required before-work and after-work photo evidence with booking-level timestamps and actor attribution
+- onsite note and structured checklist evidence on active bookings
 - ops evidence review and annotation directly on booking photos inside the support queue
 
 Still left:

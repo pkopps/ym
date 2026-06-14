@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { Alert, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { CrewMatchesResponse } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
@@ -20,6 +20,8 @@ export function DashboardScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [beforeNoteDraft, setBeforeNoteDraft] = useState("");
+  const [afterNoteDraft, setAfterNoteDraft] = useState("");
   const acceptedMatch = useMemo(
     () => matchesResponse?.matches.find((match) => match.status === "accepted"),
     [matchesResponse]
@@ -106,6 +108,80 @@ export function DashboardScreen({
     }
   }
 
+  async function saveEvidenceNote(phase: "before" | "after") {
+    if (!envelope?.session.token || !acceptedMatch) {
+      return;
+    }
+
+    const draft = (phase === "before" ? beforeNoteDraft : afterNoteDraft).trim();
+    if (!draft) {
+      setErrorMessage("Add a short onsite note before saving it.");
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.addBookingEvidence({
+        bookingId: acceptedMatch.bookingId,
+        phase,
+        evidenceType: "note",
+        note: draft
+      });
+      if (phase === "before") {
+        setBeforeNoteDraft("");
+      } else {
+        setAfterNoteDraft("");
+      }
+      setStatusMessage(phase === "before" ? "Before-work note saved." : "After-work note saved.");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save that onsite note.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function saveEvidenceChecklist(phase: "before" | "after") {
+    if (!envelope?.session.token || !acceptedMatch) {
+      return;
+    }
+
+    const checklistItems =
+      phase === "before"
+        ? [
+            { label: "Access path confirmed", completed: true },
+            { label: "Equipment unloaded", completed: true },
+            { label: "Service area reviewed", completed: true }
+          ]
+        : [
+            { label: "Primary service completed", completed: true },
+            { label: "Debris cleared", completed: true },
+            { label: "Gate secured", completed: true }
+          ];
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.addBookingEvidence({
+        bookingId: acceptedMatch.bookingId,
+        phase,
+        evidenceType: "checklist",
+        checklistItems
+      });
+      setStatusMessage(phase === "before" ? "Arrival checklist saved." : "Completion checklist saved.");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to save that checklist.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function cancelAcceptedAssignment() {
     if (!envelope?.session.token || !acceptedMatch) {
       return;
@@ -168,6 +244,13 @@ export function DashboardScreen({
           <Text style={styles.meta}>
             Evidence • before {acceptedMatch.beforeEvidenceCount} • after {acceptedMatch.afterEvidenceCount}
           </Text>
+          <TextInput
+            value={beforeNoteDraft}
+            onChangeText={setBeforeNoteDraft}
+            placeholder="Add a before-work note for ops and disputes."
+            placeholderTextColor={BrandTokens.colors.inkSoft}
+            style={styles.input}
+          />
           <View style={styles.buttonRow}>
             {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
               <Pressable
@@ -183,12 +266,55 @@ export function DashboardScreen({
             {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
               <Pressable
                 disabled={isWorking}
+                onPress={() => void saveEvidenceNote("before")}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>Save before note</Text>
+              </Pressable>
+            ) : null}
+            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void saveEvidenceChecklist("before")}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>Save arrival checklist</Text>
+              </Pressable>
+            ) : null}
+            <TextInput
+              value={afterNoteDraft}
+              onChangeText={setAfterNoteDraft}
+              placeholder="Add an after-work note for ops and disputes."
+              placeholderTextColor={BrandTokens.colors.inkSoft}
+              style={styles.input}
+            />
+            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+              <Pressable
+                disabled={isWorking}
                 onPress={() => void captureEvidencePhoto("after")}
                 style={styles.secondaryButton}
               >
                 <Text style={styles.secondaryButtonLabel}>
                   {acceptedMatch.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
                 </Text>
+              </Pressable>
+            ) : null}
+            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void saveEvidenceNote("after")}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>Save after note</Text>
+              </Pressable>
+            ) : null}
+            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void saveEvidenceChecklist("after")}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>Save completion checklist</Text>
               </Pressable>
             ) : null}
             {acceptedMatch.bookingStatus === "requested" ? (
@@ -272,6 +398,15 @@ const styles = StyleSheet.create({
   meta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  input: {
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    color: BrandTokens.colors.ink,
+    backgroundColor: "rgba(255,255,255,0.95)"
   },
   buttonRow: {
     flexDirection: "row",

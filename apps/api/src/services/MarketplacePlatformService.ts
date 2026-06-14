@@ -6,7 +6,7 @@ import {
   AnalyticsEvent,
   Address,
   AvailabilitySlot,
-  BookingEvidencePhoto,
+  BookingEvidenceEntry,
   CancelBookingRequest,
   CancelCrewMatchRequest,
   CancelRecurringServicePlanRequest,
@@ -1485,23 +1485,46 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Evidence can only be attached while the booking is still active");
     }
 
-    const imageDataUrl = payload.imageDataUrl.trim();
-    if (!imageDataUrl.startsWith("data:image/")) {
-      throw new HttpError(400, "Booking evidence must be provided as an image data URL");
+    const evidenceType = payload.evidenceType ?? "photo";
+    const note = payload.note?.trim() || undefined;
+    const checklistItems = payload.checklistItems?.map((item) => ({
+      label: item.label.trim(),
+      completed: Boolean(item.completed)
+    }));
+
+    if (evidenceType === "photo") {
+      const imageDataUrl = payload.imageDataUrl?.trim() ?? "";
+      if (!imageDataUrl.startsWith("data:image/")) {
+        throw new HttpError(400, "Photo evidence must be provided as an image data URL");
+      }
+
+      if (imageDataUrl.length > 2_000_000) {
+        throw new HttpError(400, "Booking evidence image is too large");
+      }
+    } else if (evidenceType === "note") {
+      if (!note) {
+        throw new HttpError(400, "Note evidence requires a written onsite note");
+      }
+    } else if (evidenceType === "checklist") {
+      if (!checklistItems || checklistItems.length === 0) {
+        throw new HttpError(400, "Checklist evidence requires at least one checklist item");
+      }
+
+      if (checklistItems.some((item) => !item.label)) {
+        throw new HttpError(400, "Checklist evidence items must have labels");
+      }
     }
 
-    if (imageDataUrl.length > 2_000_000) {
-      throw new HttpError(400, "Booking evidence image is too large");
-    }
-
-    const evidence: BookingEvidencePhoto = {
+    const evidence: BookingEvidenceEntry = {
       id: crypto.randomUUID(),
       phase: payload.phase,
-      imageDataUrl,
+      evidenceType,
       capturedAt: new Date().toISOString(),
       capturedByRole: actor.role,
       capturedByUserId: actor.userId,
-      note: payload.note?.trim() || undefined
+      imageDataUrl: evidenceType === "photo" ? payload.imageDataUrl?.trim() : undefined,
+      note,
+      checklistItems: evidenceType === "checklist" ? checklistItems : undefined
     };
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
@@ -6770,8 +6793,10 @@ export class MarketplacePlatformService {
       .join(" ");
   }
 
-  private countBookingEvidence(booking: Booking, phase: BookingEvidencePhoto["phase"]): number {
-    return booking.serviceEvidence.filter((photo) => photo.phase === phase).length;
+  private countBookingEvidence(booking: Booking, phase: BookingEvidenceEntry["phase"]): number {
+    return booking.serviceEvidence.filter(
+      (evidence) => evidence.phase === phase && evidence.evidenceType === "photo"
+    ).length;
   }
 
   private localDateKey(iso: string): string {
