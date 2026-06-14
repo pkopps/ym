@@ -74,8 +74,9 @@ export type OpsBookingInterventionAction =
   | "cancel-booking"
   | "complete-booking"
   | "provider-assistant-reschedule"
-  | "provider-assistant-late-update";
-export type ProviderAssistantActionType = "reschedule-booking" | "mark-booking-late";
+  | "provider-assistant-late-update"
+  | "provider-assistant-start-route";
+export type ProviderAssistantActionType = "reschedule-booking" | "mark-booking-late" | "start-route";
 export type PlaceSuggestionSource = "google-geocoding" | "local-dataset";
 export type ReviewScore = 1 | 2 | 3 | 4 | 5;
 export type ReviewInviteStatus = "scheduled" | "sent" | "opened" | "completed" | "expired";

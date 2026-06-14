@@ -2907,7 +2907,7 @@ export class MarketplacePlatformService {
         notifyCustomer: parsed.notifyCustomer,
         previewLabel: "Could not understand command",
         previewMessage:
-          'Try a command like "Move my afternoon appointment to evening and notify the customer" or "Tell my afternoon customer I am 30 minutes late."',
+          'Try a command like "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", or "Start route for my afternoon appointment."',
         bookingCandidates: []
       };
     }
@@ -3029,6 +3029,89 @@ export class MarketplacePlatformService {
           this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? lateUpdatedBooking)
         ],
         updatedBooking: bookingWithIntervention ?? lateUpdatedBooking
+      };
+    }
+
+    if (parsed.actionType === "start-route") {
+      const customer = await this.repository.findCustomerById(booking.customerId);
+      if (booking.status !== "confirmed") {
+        return {
+          command,
+          understood: true,
+          actionType: "start-route",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Route cannot start yet",
+          previewMessage: "Confirm this booking before starting the route from the provider assistant.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const customerNotificationPreview = `${
+        customer?.fullName ?? "The customer"
+      } will be told that your crew is on the way and live arrival tracking will unlock.`;
+
+      if (!payload.execute) {
+        return {
+          command,
+          understood: true,
+          actionType: "start-route",
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Ready to start the route",
+          previewMessage: `Start the route for ${customer?.fullName ?? "this customer"} and unlock live arrival tracking.`,
+          customerNotificationPreview,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const providerIdentity = await this.repository.findAuthIdentityByUserId(providerId);
+      if (!providerIdentity || providerIdentity.role !== "provider") {
+        throw new HttpError(404, "Provider identity not found for this assistant command");
+      }
+
+      const onRouteBooking = await this.markBookingOnRoute(providerIdentity, { bookingId: booking.id });
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-start-route",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${command}`,
+        previousStatus: booking.status,
+        nextStatus: onRouteBooking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...onRouteBooking.interventions, intervention]
+      });
+
+      return {
+        command,
+        understood: true,
+        actionType: "start-route",
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: true,
+        matchedBookingId: booking.id,
+        matchedCustomerName: customer?.fullName,
+        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        previewLabel: "Route started",
+        previewMessage: `Started the route for ${customer?.fullName ?? "the customer"} and unlocked live arrival tracking.`,
+        customerNotificationPreview,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? onRouteBooking)],
+        updatedBooking: bookingWithIntervention ?? onRouteBooking
       };
     }
 
@@ -5784,13 +5867,22 @@ export class MarketplacePlatformService {
     const lateReason = this.parseProviderAssistantLateReason(normalized);
     const isLateCommand = Boolean(lateMinutes) && /\blate|behind\b/.test(normalized);
     const isRescheduleCommand = Boolean(targetWindowKey && /change|move|shift|resched/.test(normalized));
+    const isStartRouteCommand = /\b(start route|start the route|on my way|head out|heading out|leave for|heading to)\b/.test(
+      normalized
+    );
 
     return {
-      understood: isRescheduleCommand || isLateCommand,
-      actionType: isRescheduleCommand ? "reschedule-booking" : isLateCommand ? "mark-booking-late" : undefined,
+      understood: isRescheduleCommand || isLateCommand || isStartRouteCommand,
+      actionType: isRescheduleCommand
+        ? "reschedule-booking"
+        : isLateCommand
+          ? "mark-booking-late"
+          : isStartRouteCommand
+            ? "start-route"
+            : undefined,
       sourceWindowKey,
       targetWindowKey,
-      notifyCustomer: isLateCommand ? true : notifyCustomer,
+      notifyCustomer: isLateCommand || isStartRouteCommand ? true : notifyCustomer,
       lateMinutes,
       lateReason
     };
