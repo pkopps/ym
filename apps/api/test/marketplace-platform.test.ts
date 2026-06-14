@@ -5077,6 +5077,73 @@ test("provider assistant can preview and complete a booking once after-photo req
   assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-complete-booking");
 });
 
+test("provider assistant can preview and report a booking exception with notes", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-exception@example.com",
+    password: "Password123!",
+    phone: "555-4392",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-exception@example.com",
+    password: "Password123!",
+    phone: "555-4393",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const startIso = serviceDay.toISOString();
+  const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: startIso,
+    scheduledEndIso: endIso,
+    notes: "Assistant exception test",
+    totalCents: 6200
+  });
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Mark my afternoon appointment no access because the gate is locked",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "report-booking-exception");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /log unable to access property/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Mark my afternoon appointment no access because the gate is locked",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "report-booking-exception");
+  assert.equal(executed.updatedBooking?.activeExceptionType, "unable-to-access-property");
+  assert.equal(executed.updatedBooking?.activeExceptionNotes, "the gate is locked");
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-report-exception");
+});
+
 test("new providers stay out of public search until ops approves verification", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

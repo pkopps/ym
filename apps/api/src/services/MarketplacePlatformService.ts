@@ -2910,7 +2910,8 @@ export class MarketplacePlatformService {
     if (
       !parsed.understood ||
       (parsed.actionType === "reschedule-booking" && !parsed.targetWindowKey) ||
-      (parsed.actionType === "mark-booking-late" && !parsed.lateMinutes)
+      (parsed.actionType === "mark-booking-late" && !parsed.lateMinutes) ||
+      (parsed.actionType === "report-booking-exception" && !parsed.exceptionType)
     ) {
       return {
         command,
@@ -2921,7 +2922,7 @@ export class MarketplacePlatformService {
         notifyCustomer: parsed.notifyCustomer,
         previewLabel: "Could not understand command",
         previewMessage:
-          'Try a command like "Confirm my afternoon appointment", "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", "Start route for my afternoon appointment", "Start work for my afternoon appointment", or "Complete my afternoon appointment."',
+          'Try a command like "Confirm my afternoon appointment", "Move my afternoon appointment to evening and notify the customer", "Tell my afternoon customer I am 30 minutes late", "Start route for my afternoon appointment", "Start work for my afternoon appointment", "Complete my afternoon appointment", or "Mark my afternoon appointment no access because the gate is locked."',
         bookingCandidates: []
       };
     }
@@ -3181,6 +3182,90 @@ export class MarketplacePlatformService {
         customerNotificationPreview,
         bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? completedBooking)],
         updatedBooking: bookingWithIntervention ?? completedBooking
+      };
+    }
+
+    if (parsed.actionType === "report-booking-exception") {
+      const customer = await this.repository.findCustomerById(booking.customerId);
+      const exceptionLabel = getBookingExceptionLabel(parsed.exceptionType!);
+      const notesSuffix = parsed.exceptionNotes ? ` Reason: ${parsed.exceptionNotes}` : "";
+      const customerNotificationPreview = `${
+        customer?.fullName ?? "The customer"
+      } will be told: ${exceptionLabel}.${notesSuffix}`;
+
+      if (booking.status === "completed" || booking.status === "cancelled" || booking.status === "refunded") {
+        return {
+          command,
+          understood: true,
+          actionType: "report-booking-exception",
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Issue cannot be logged now",
+          previewMessage: "Service issues can only be reported while the booking is still active.",
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      if (!payload.execute) {
+        return {
+          command,
+          understood: true,
+          actionType: "report-booking-exception",
+          requiresBookingSelection: false,
+          requiresConfirmation: true,
+          executed: false,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+          previewLabel: "Ready to report issue",
+          previewMessage: `Log ${exceptionLabel.toLowerCase()} for ${customer?.fullName ?? "this customer"} and notify support-facing surfaces immediately.`,
+          customerNotificationPreview,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+        };
+      }
+
+      const exceptionBooking = await this.markBookingException(providerId, {
+        bookingId: booking.id,
+        exceptionType: parsed.exceptionType!,
+        notes: parsed.exceptionNotes
+      });
+      const now = new Date().toISOString();
+      const intervention: BookingInterventionRecord = {
+        id: crypto.randomUUID(),
+        action: "provider-assistant-report-exception",
+        createdAt: now,
+        actorRole: "provider-assistant",
+        actorUserId: providerId,
+        note: `Provider assistant command: ${command}`,
+        previousStatus: booking.status,
+        nextStatus: exceptionBooking.status
+      };
+      const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+        interventions: [...exceptionBooking.interventions, intervention]
+      });
+
+      return {
+        command,
+        understood: true,
+        actionType: "report-booking-exception",
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: true,
+        notifyCustomer: true,
+        matchedBookingId: booking.id,
+        matchedCustomerName: customer?.fullName,
+        sourceWindowKey: parsed.sourceWindowKey ?? getBookingServiceWindow(booking.scheduledStartIso).key,
+        previewLabel: "Issue reported",
+        previewMessage: `Logged ${exceptionLabel.toLowerCase()} for ${customer?.fullName ?? "the customer"}.`,
+        customerNotificationPreview,
+        bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? exceptionBooking)],
+        updatedBooking: bookingWithIntervention ?? exceptionBooking
       };
     }
 
@@ -6238,6 +6323,8 @@ export class MarketplacePlatformService {
     notifyCustomer: boolean;
     lateMinutes?: number;
     lateReason?: string;
+    exceptionType?: MarkBookingExceptionRequest["exceptionType"];
+    exceptionNotes?: string;
   } {
     const normalized = command.trim().toLowerCase();
     const notifyCustomer =
@@ -6253,10 +6340,17 @@ export class MarketplacePlatformService {
     const sourceWindowKey = this.parseProviderAssistantWindowFromCommand(beforeTarget, true);
     const lateMinutes = this.parseProviderAssistantLateMinutes(normalized);
     const lateReason = this.parseProviderAssistantLateReason(normalized);
+    const exceptionType = this.parseProviderAssistantExceptionType(normalized);
+    const exceptionNotes = this.parseProviderAssistantExceptionNotes(command);
     const isConfirmCommand = /\b(confirm|approve|accept)\b/.test(normalized) && /\b(appointment|booking|job|visit)\b/.test(normalized);
     const isCompleteCommand = /\b(complete|finish|wrap up|done with)\b/.test(normalized) && /\b(appointment|booking|job|visit|service)\b/.test(normalized);
     const isLateCommand = Boolean(lateMinutes) && /\blate|behind\b/.test(normalized);
     const isRescheduleCommand = Boolean(targetWindowKey && /change|move|shift|resched/.test(normalized));
+    const isExceptionCommand =
+      Boolean(exceptionType) &&
+      /\b(no access|can't access|cannot access|unable to access|customer not ready|no show|no-show|could not complete|couldn't complete|cannot complete)\b/.test(
+        normalized
+      );
     const isStartWorkCommand = /\b(start work|begin work|start the job|begin the job|start service|begin service)\b/.test(
       normalized
     );
@@ -6268,6 +6362,7 @@ export class MarketplacePlatformService {
       understood:
         isConfirmCommand ||
         isCompleteCommand ||
+        isExceptionCommand ||
         isRescheduleCommand ||
         isLateCommand ||
         isStartRouteCommand ||
@@ -6276,6 +6371,8 @@ export class MarketplacePlatformService {
         ? "confirm-booking"
         : isCompleteCommand
           ? "complete-booking"
+          : isExceptionCommand
+            ? "report-booking-exception"
         : isRescheduleCommand
           ? "reschedule-booking"
           : isLateCommand
@@ -6288,12 +6385,39 @@ export class MarketplacePlatformService {
       sourceWindowKey,
       targetWindowKey,
       notifyCustomer:
-        isConfirmCommand || isCompleteCommand || isLateCommand || isStartRouteCommand
+        isConfirmCommand || isCompleteCommand || isExceptionCommand || isLateCommand || isStartRouteCommand
           ? true
           : notifyCustomer,
       lateMinutes,
-      lateReason
+      lateReason,
+      exceptionType,
+      exceptionNotes
     };
+  }
+
+  private parseProviderAssistantExceptionType(command: string): MarkBookingExceptionRequest["exceptionType"] | undefined {
+    if (/\b(no show|no-show)\b/.test(command)) {
+      return "customer-no-show";
+    }
+
+    if (/\bcustomer not ready\b/.test(command)) {
+      return "customer-not-ready";
+    }
+
+    if (/\b(no access|can't access|cannot access|unable to access)\b/.test(command)) {
+      return "unable-to-access-property";
+    }
+
+    if (/\b(could not complete|couldn't complete|cannot complete)\b/.test(command)) {
+      return "service-could-not-be-completed";
+    }
+
+    return undefined;
+  }
+
+  private parseProviderAssistantExceptionNotes(command: string): string | undefined {
+    const match = command.match(/\b(?:because|reason[:]?|due to)\b\s+(.+)$/i);
+    return match?.[1]?.trim() || undefined;
   }
 
   private parseProviderAssistantWindowFromCommand(

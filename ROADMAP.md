@@ -105,6 +105,7 @@ Already done:
 - baseline provider assistant natural-language scheduling help:
   - providers can confirm requested bookings from a plain-language command
   - providers can complete a booking from a plain-language command once the after-photo requirement is satisfied
+  - providers can report customer-ready/access/completion issues from a plain-language command and trigger the existing exception workflow
   - providers can preview a plain-language reschedule command
   - ambiguous commands can return matching appointments for explicit selection
   - confirmed commands can move a booking to a broader window and notify the customer automatically

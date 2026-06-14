@@ -75,6 +75,7 @@ export type OpsBookingInterventionAction =
   | "complete-booking"
   | "provider-assistant-confirm-booking"
   | "provider-assistant-complete-booking"
+  | "provider-assistant-report-exception"
   | "provider-assistant-reschedule"
   | "provider-assistant-late-update"
   | "provider-assistant-start-route"
@@ -82,6 +83,7 @@ export type OpsBookingInterventionAction =
 export type ProviderAssistantActionType =
   | "confirm-booking"
   | "complete-booking"
+  | "report-booking-exception"
   | "reschedule-booking"
   | "mark-booking-late"
   | "start-route"
