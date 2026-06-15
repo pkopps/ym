@@ -3,6 +3,7 @@ import type { MetadataRoute } from "next";
 export default function sitemap(): MetadataRoute.Sitemap {
   const pages = [
     "",
+    "/about",
     "/auth",
     "/auth/customer",
     "/auth/provider",

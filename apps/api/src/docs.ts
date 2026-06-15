@@ -268,6 +268,17 @@ export const apiSpec = {
         }
       }
     },
+    "/api/providers/public-overview": {
+      get: {
+        tags: ["Providers"],
+        summary: "Fetch live public marketplace overview data",
+        description:
+          "Returns live aggregate provider counts and a featured provider list for the public GreenRain homepage so customer-facing marketing surfaces do not rely on hardcoded showcase records.",
+        responses: {
+          "200": { description: "Public marketplace overview" }
+        }
+      }
+    },
     "/api/providers/verification/queue": {
       get: {
         tags: ["Providers"],

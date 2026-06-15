@@ -19,7 +19,7 @@ export default function CrewSignupPage() {
           <div className="form-grid">
             <label className="form-field form-field--full">
               <span>Email</span>
-              <input placeholder="miles@example.com" />
+              <input placeholder="you@example.com" />
             </label>
             <label className="form-field">
               <span>Password</span>

@@ -1256,11 +1256,6 @@ body {
   margin: 0;
 }
 
-.auth-local-panel p {
-  font-family: var(--ym-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
-  font-size: 0.94rem;
-}
-
 .customer-public-hero {
   padding-bottom: var(--ym-space-8);
 }
@@ -2551,6 +2546,63 @@ body {
 
 .page-hero {
   padding: var(--ym-space-7) 0 var(--ym-space-5);
+}
+
+.about-page {
+  padding-bottom: var(--ym-space-6);
+}
+
+.about-hero__layout,
+.about-hero__story,
+.about-hero__panel,
+.about-cta__card {
+  display: grid;
+  gap: var(--ym-space-4);
+}
+
+.about-hero__layout {
+  align-items: start;
+}
+
+.about-hero__panel,
+.about-cta__card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(240, 234, 220, 0.92));
+}
+
+.about-hero__panel h2,
+.about-cta__card h2 {
+  margin: 0;
+  font-family: var(--ym-font-display);
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1;
+}
+
+.about-hero__quote {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem 1.1rem;
+  border-radius: 1.25rem;
+  background: rgba(47, 125, 76, 0.08);
+  border: 1px solid rgba(47, 125, 76, 0.12);
+}
+
+.about-hero__quote strong,
+.about-hero__quote p,
+.about-principle strong,
+.about-audience strong,
+.about-cta__card p {
+  margin: 0;
+}
+
+.about-principle,
+.about-audience {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.about-cta {
+  padding-bottom: var(--ym-space-8);
 }
 
 .role-login-shell {

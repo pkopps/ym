@@ -60,6 +60,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/quotes/instant") ||
       (context.method === "GET" && context.path === "/api/places/search") ||
       (context.method === "POST" && context.path === "/api/providers/search") ||
+      (context.method === "GET" && context.path === "/api/providers/public-overview") ||
       (context.method === "GET" && context.path === "/api/providers/profile") ||
       (context.method === "GET" && context.path === "/api/providers/verification/queue") ||
       (context.method === "POST" && context.path === "/api/providers/verification/review") ||
@@ -187,6 +188,11 @@ export class MarketplaceController implements ApiController {
 
     if (context.method === "POST" && context.path === "/api/providers/search") {
       sendJson(response, 200, await this.platform.searchProviders(context.body as SearchProvidersRequest));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/providers/public-overview") {
+      sendJson(response, 200, await this.platform.getPublicMarketplaceOverview());
       return;
     }
 

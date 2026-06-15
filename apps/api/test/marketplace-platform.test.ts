@@ -7356,3 +7356,25 @@ test("ops summary reports refund reviews and active booking exceptions", async (
   assert.ok(summary.refundReviews.some((item) => item.bookingId === booking.id));
   assert.ok(summary.activeExceptions.some((item) => item.bookingId === exceptionBooking.id));
 });
+
+test("public marketplace overview returns only verified providers and live aggregate stats", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const verifiedProviders = (await repository.listProviders()).filter(
+    (provider) => provider.verificationStatus === "verified"
+  );
+
+  const overview = await platform.getPublicMarketplaceOverview();
+
+  assert.equal(overview.verifiedProviderCount, verifiedProviders.length);
+  assert.equal(overview.featuredProviders.length, Math.min(verifiedProviders.length, 6));
+  assert.ok(overview.averageRating >= 0);
+  assert.ok(overview.activeCategoryCount > 0);
+  assert.equal(
+    overview.featuredProviders.every((provider) =>
+      verifiedProviders.some((candidate) => candidate.id === provider.id)
+    ),
+    true
+  );
+});

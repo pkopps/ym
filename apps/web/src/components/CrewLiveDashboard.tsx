@@ -170,7 +170,7 @@ export function CrewLiveDashboard() {
     return (
       <section className="card">
         <h2>Crew member login required</h2>
-        <p>Use the seeded crew account to test live staffing matches and chat.</p>
+        <p>Log in to see live staffing matches, accepted work, and crew chat.</p>
         <div className="cta-row">
           <a className="button" href="/login/crew">
             Go to crew login

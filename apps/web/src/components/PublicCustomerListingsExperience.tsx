@@ -15,7 +15,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWebApiClient } from "../lib/api";
 import { trackWebEvent } from "../lib/tracking";
-import { BookedBusinessResults } from "./BookedBusinessResults";
 import {
   buildCustomerListingsSearchParams,
   buildDateIsoForCustomerTiming,
@@ -416,15 +415,6 @@ export function PublicCustomerListingsExperience({
         ) : null}
       </section>
 
-      <section className="stack-lg">
-        <div className="section-header">
-          <h2>What established provider calendars can look like</h2>
-          <p>
-            A quick look at route density once a local market starts to fill in.
-          </p>
-        </div>
-        <BookedBusinessResults allowMapToggle />
-      </section>
     </>
   );
 }

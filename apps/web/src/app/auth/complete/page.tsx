@@ -173,7 +173,7 @@ export default function AuthCompletePage() {
                   <span>Company name</span>
                   <input
                     onChange={(event) => setCompanyName(event.target.value)}
-                    placeholder="GreenStride Lawn Co."
+                    placeholder="Your business name"
                     value={companyName}
                   />
                 </label>

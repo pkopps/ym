@@ -49,6 +49,7 @@ import {
   ProviderAssistantCommandResponse,
   ProviderVerificationQueueItem,
   PlaceSearchResponse,
+  PublicMarketplaceOverviewResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
   CreateProviderReviewRequest,
@@ -247,6 +248,10 @@ export class MarketplaceApiClient {
 
   public searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
     return this.postJson(ApiRoutes.searchProviders, payload);
+  }
+
+  public getPublicMarketplaceOverview(): Promise<PublicMarketplaceOverviewResponse> {
+    return this.getJson(ApiRoutes.publicMarketplaceOverview);
   }
 
   public getProviderProfile(providerId: string): Promise<ProviderProfile> {

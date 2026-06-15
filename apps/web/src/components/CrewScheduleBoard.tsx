@@ -1,65 +1,37 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { useMemo, useState } from "react";
-import { crewAssignments } from "@yardmatch/ui";
+import { CrewMatchSummary } from "@yardmatch/contracts";
+import { useEffect, useMemo, useState } from "react";
+import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useStoredWebSession } from "../lib/session";
 
 type ScheduleView = "calendar" | "list";
-const calendarStartHour = 6;
-const calendarEndHour = 18;
-const calendarHourSpan = calendarEndHour - calendarStartHour;
 
-function buildGoogleCalendarUrl({
-  title,
-  details,
-  location,
-  startDate
-}: {
-  title: string;
-  details: string;
-  location: string;
-  startDate: string;
-}) {
-  const start = `${startDate.replaceAll("-", "")}T070000`;
-  const end = `${startDate.replaceAll("-", "")}T150000`;
-  const params = new URLSearchParams({
-    action: "TEMPLATE",
-    text: title,
-    details,
-    location,
-    dates: `${start}/${end}`
-  });
-
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD"
+  }).format(cents / 100);
 }
 
-function buildAppleCalendarData({
-  title,
-  details,
-  location,
-  startDate
-}: {
-  title: string;
-  details: string;
-  location: string;
-  startDate: string;
-}) {
-  const start = `${startDate.replaceAll("-", "")}T070000`;
-  const end = `${startDate.replaceAll("-", "")}T150000`;
-  const ics = [
-    "BEGIN:VCALENDAR",
-    "VERSION:2.0",
-    "BEGIN:VEVENT",
-    `SUMMARY:${title}`,
-    `DESCRIPTION:${details}`,
-    `LOCATION:${location}`,
-    `DTSTART:${start}`,
-    `DTEND:${end}`,
-    "END:VEVENT",
-    "END:VCALENDAR"
-  ].join("\n");
+function formatDateLabel(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  });
+}
 
-  return `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
+function formatTimeRange(startIso: string, endIso: string) {
+  const start = new Date(startIso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  const end = new Date(endIso).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  return `${start} - ${end}`;
 }
 
 function buildGoogleMapsDirectionsUrl(addressLine: string) {
@@ -70,114 +42,124 @@ function buildAppleMapsDirectionsUrl(addressLine: string) {
   return `https://maps.apple.com/?q=${encodeURIComponent(addressLine)}`;
 }
 
-function parseTimeLabelToRange(timeLabel: string) {
-  const [startLabel, endLabel] = timeLabel.split(" - ");
-  return {
-    startMinutes: parseClockToMinutes(startLabel),
-    endMinutes: parseClockToMinutes(endLabel)
-  };
-}
-
-function parseClockToMinutes(label: string) {
-  const [timePart, meridiem] = label.trim().split(" ");
-  const [rawHours, rawMinutes] = timePart.split(":").map(Number);
-  let hours = rawHours % 12;
-  if (meridiem.toUpperCase() === "PM") {
-    hours += 12;
-  }
-  return hours * 60 + rawMinutes;
-}
-
-function formatCalendarHour(hour: number) {
-  if (hour === 12) {
-    return "12 PM";
-  }
-  if (hour > 12) {
-    return `${hour - 12} PM`;
-  }
-  return `${hour} AM`;
-}
-
 export function CrewScheduleBoard() {
+  const { session, sessionReady } = useStoredWebSession();
   const [view, setView] = useState<ScheduleView>("calendar");
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [acceptedMatches, setAcceptedMatches] = useState<CrewMatchSummary[]>([]);
 
-  const assignments = useMemo(
+  useEffect(() => {
+    if (!sessionReady) {
+      return;
+    }
+
+    if (!session || session.role !== "crew-member") {
+      setAccessDenied(true);
+      return;
+    }
+
+    setAccessDenied(false);
+
+    void (async () => {
+      try {
+        const api = createAuthenticatedWebApiClient();
+        const response = await api.getCrewMatches();
+        setAcceptedMatches(
+          response.matches
+            .filter((match) => match.status === "accepted")
+            .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
+        );
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load your schedule right now.");
+      }
+    })();
+  }, [sessionReady, session?.role, session?.token]);
+
+  const plannedHours = useMemo(
     () =>
-      crewAssignments.map((assignment) => ({
-        ...assignment,
-        googleUrl: buildGoogleCalendarUrl({
-          title: `${assignment.businessName} - ${assignment.serviceLabel}`,
-          details: `${assignment.notes} Crew lead: ${assignment.crewLead}. ${assignment.equipmentLabel}.`,
-          location: assignment.addressLine,
-          startDate: assignment.isoDate
-        }),
-        appleUrl: buildAppleCalendarData({
-          title: `${assignment.businessName} - ${assignment.serviceLabel}`,
-          details: `${assignment.notes} Crew lead: ${assignment.crewLead}. ${assignment.equipmentLabel}.`,
-          location: assignment.addressLine,
-          startDate: assignment.isoDate
-        }),
-        googleMapsUrl: buildGoogleMapsDirectionsUrl(assignment.addressLine),
-        appleMapsUrl: buildAppleMapsDirectionsUrl(assignment.addressLine),
-        ...parseTimeLabelToRange(assignment.timeLabel)
-      })),
-    []
+      acceptedMatches.reduce((total, match) => {
+        const durationHours =
+          (Date.parse(match.scheduledEndIso) - Date.parse(match.scheduledStartIso)) / (60 * 60 * 1000);
+        return total + Math.max(durationHours, 0);
+      }, 0),
+    [acceptedMatches]
   );
-
-  const calendarDays = useMemo(
+  const expectedEarnings = useMemo(
     () =>
-      assignments
-        .slice()
-        .sort((left, right) => left.isoDate.localeCompare(right.isoDate))
-        .map((assignment) => ({
-          isoDate: assignment.isoDate,
-          dateLabel: assignment.dateLabel,
-          dayLabel: assignment.dayLabel,
-          monthLabel: assignment.monthLabel,
-          assignments: [assignment]
-        })),
-    [assignments]
+      acceptedMatches.reduce((total, match) => {
+        const durationHours =
+          (Date.parse(match.scheduledEndIso) - Date.parse(match.scheduledStartIso)) / (60 * 60 * 1000);
+        return total + Math.max(durationHours, 0) * (match.hourlyRateCents / 100);
+      }, 0),
+    [acceptedMatches]
   );
+  const groupedMatches = useMemo(() => {
+    const groups = new Map<string, CrewMatchSummary[]>();
+    for (const match of acceptedMatches) {
+      const key = match.scheduledStartIso.slice(0, 10);
+      const next = groups.get(key) ?? [];
+      next.push(match);
+      groups.set(key, next);
+    }
 
-  const timeMarkers = useMemo(
-    () =>
-      Array.from({ length: calendarHourSpan + 1 }, (_, index) => {
-        const hour = calendarStartHour + index;
-        return {
-          hour,
-          label: formatCalendarHour(hour)
-        };
-      }),
-    []
-  );
+    return [...groups.entries()].map(([date, matches]) => ({
+      date,
+      label: formatDateLabel(matches[0]?.scheduledStartIso ?? date),
+      matches
+    }));
+  }, [acceptedMatches]);
 
-  const plannedHours = assignments.reduce((total, assignment) => total + assignment.plannedHours, 0);
-  const expectedEarnings = assignments.reduce((total, assignment) => {
-    const numeric = Number(assignment.expectedEarnings.replace(/[^0-9.]/g, ""));
-    return total + numeric;
-  }, 0);
+  if (!sessionReady) {
+    return (
+      <section className="card">
+        <h2>Loading your schedule...</h2>
+      </section>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <section className="card">
+        <h2>Crew member login required</h2>
+        <p>Log in to see accepted shifts, route details, and directions.</p>
+        <div className="cta-row">
+          <a className="button" href="/login/crew">
+            Go to crew login
+          </a>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="stack-lg">
+      {errorMessage ? (
+        <section className="card">
+          <h2>Something needs attention</h2>
+          <p>{errorMessage}</p>
+        </section>
+      ) : null}
+
       <section className="grid-three">
         <article className="card">
-          <h2>{plannedHours}</h2>
+          <h2>{plannedHours.toFixed(1)}</h2>
           <p>Planned hours</p>
         </article>
         <article className="card">
-          <h2>${expectedEarnings}</h2>
+          <h2>{formatCurrency(Math.round(expectedEarnings * 100))}</h2>
           <p>Expected earnings</p>
         </article>
         <article className="card">
-          <h2>{assignments.length}</h2>
-          <p>Upcoming shifts</p>
+          <h2>{acceptedMatches.length}</h2>
+          <p>Accepted shifts</p>
         </article>
       </section>
 
       <section className="search-result-title">
         <div>
-          <span className="eyebrow">Your upcoming work</span>
-          <h2>Schedule</h2>
+          <span className="eyebrow">Live crew schedule</span>
+          <h2>Upcoming work</h2>
         </div>
         <div className="view-toggle" role="tablist" aria-label="Schedule view">
           <button
@@ -185,128 +167,106 @@ export function CrewScheduleBoard() {
             onClick={() => setView("calendar")}
             type="button"
           >
-            Calendar view
+            Day groups
           </button>
           <button
             className={view === "list" ? "button" : "button-secondary"}
             onClick={() => setView("list")}
             type="button"
           >
-            List view
+            Full list
           </button>
         </div>
       </section>
 
-      {view === "calendar" ? (
-        <section className="crew-calendar-board">
-          <div className="crew-calendar-board__header">
-            <span className="eyebrow">Week view</span>
-            <p>Shift cards are placed on a day grid so you can scan when each crew block starts and ends.</p>
-          </div>
-          <div className="crew-calendar-board__shell">
-            <div className="crew-calendar-board__time-rail" aria-hidden="true">
-              {timeMarkers.map((marker) => (
-                <div className="crew-calendar-board__time-marker" key={marker.hour}>
-                  <span>{marker.label}</span>
+      {acceptedMatches.length === 0 ? (
+        <section className="card">
+          <h2>No accepted shifts yet</h2>
+          <p>Once a provider accepts you for a job, it will show up here automatically.</p>
+        </section>
+      ) : view === "calendar" ? (
+        <section className="stack-lg">
+          {groupedMatches.map((group) => (
+            <article className="card" key={group.date}>
+              <div className="search-result-title">
+                <div>
+                  <span className="eyebrow">{group.label}</span>
+                  <h2>{group.matches.length} scheduled stop{group.matches.length === 1 ? "" : "s"}</h2>
                 </div>
-              ))}
-            </div>
-            <div className="crew-calendar-board__days">
-              {calendarDays.map((day) => (
-                <article className="crew-calendar-day" key={day.isoDate}>
-                  <header className="crew-calendar-day__header">
-                    <strong>{day.dayLabel}</strong>
-                    <span>{day.monthLabel}</span>
-                  </header>
-                  <div className="crew-calendar-day__grid" style={{ "--calendar-hours": String(calendarHourSpan) } as CSSProperties}>
-                    {timeMarkers.slice(0, -1).map((marker) => (
-                      <div className="crew-calendar-day__hour" key={`${day.isoDate}-${marker.hour}`} />
-                    ))}
-                    {day.assignments.map((assignment) => {
-                      const topPercent =
-                        ((assignment.startMinutes - calendarStartHour * 60) / (calendarHourSpan * 60)) * 100;
-                      const heightPercent =
-                        ((assignment.endMinutes - assignment.startMinutes) / (calendarHourSpan * 60)) * 100;
-
-                      return (
-                        <div
-                          className="crew-calendar-shift"
-                          key={assignment.id}
-                          style={{
-                            top: `${topPercent}%`,
-                            height: `${heightPercent}%`
-                          }}
-                        >
-                          <span className="crew-calendar-shift__time">{assignment.timeLabel}</span>
-                          <h3>{assignment.businessName}</h3>
-                          <p>{assignment.serviceLabel}</p>
-                          <p>{assignment.addressLine}</p>
-                          <div className="crew-calendar-shift__meta">
-                            <span>{assignment.expectedEarnings}</span>
-                            <span>{assignment.crewLead}</span>
-                          </div>
-                          <div className="crew-calendar-shift__actions">
-                            <a
-                              className="button-secondary crew-mobile-directions"
-                              href={assignment.googleMapsUrl}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Google Maps
-                            </a>
-                            <a
-                              className="button-secondary crew-mobile-directions"
-                              href={assignment.appleMapsUrl}
-                              rel="noreferrer"
-                              target="_blank"
-                            >
-                              Apple Maps
-                            </a>
-                            <a className="button-secondary" href={assignment.googleUrl} rel="noreferrer" target="_blank">
-                              Google
-                            </a>
-                            <a className="button-secondary" download={`${assignment.id}.ics`} href={assignment.appleUrl}>
-                              Apple
-                            </a>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
+              </div>
+              <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                {group.matches.map((match) => (
+                  <article className="list-panel" key={match.id}>
+                    <div className="search-result-title">
+                      <div>
+                        <h3>{match.providerCompanyName}</h3>
+                        <p>{match.category.replaceAll("-", " ")}</p>
+                      </div>
+                      <strong>{formatTimeRange(match.scheduledStartIso, match.scheduledEndIso)}</strong>
+                    </div>
+                    <p>{match.serviceAddress.line1}</p>
+                    <p>
+                      {match.serviceAddress.city}, {match.serviceAddress.state}{" "}
+                      {match.serviceAddress.postalCode}
+                    </p>
+                    <p>{match.summary}</p>
+                    <div className="cta-row">
+                      <a
+                        className="button-secondary crew-mobile-directions"
+                        href={buildGoogleMapsDirectionsUrl(match.serviceAddress.line1)}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Google Maps
+                      </a>
+                      <a
+                        className="button-secondary crew-mobile-directions"
+                        href={buildAppleMapsDirectionsUrl(match.serviceAddress.line1)}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Apple Maps
+                      </a>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </article>
+          ))}
         </section>
       ) : (
         <section className="stack-lg">
-          {assignments.map((assignment) => (
-            <article className="history-card" key={`${assignment.id}-list`}>
+          {acceptedMatches.map((match) => (
+            <article className="history-card" key={match.id}>
               <div className="history-card__header">
                 <div>
-                  <span className="eyebrow">{assignment.dateLabel}</span>
-                  <h2>{assignment.businessName}</h2>
+                  <span className="eyebrow">{formatDateLabel(match.scheduledStartIso)}</span>
+                  <h2>{match.providerCompanyName}</h2>
                 </div>
-                <strong>{assignment.timeLabel}</strong>
+                <strong>{formatTimeRange(match.scheduledStartIso, match.scheduledEndIso)}</strong>
               </div>
               <div className="history-card__grid">
                 <div>
                   <h3>Work</h3>
-                  <p>{assignment.serviceLabel}</p>
-                  <p>{assignment.notes}</p>
+                  <p>{match.category.replaceAll("-", " ")}</p>
+                  <p>{match.summary}</p>
                 </div>
                 <div>
-                  <h3>Crew lead</h3>
-                  <p>{assignment.crewLead}</p>
-                  <p>{assignment.equipmentLabel}</p>
+                  <h3>Route</h3>
+                  <p>{match.serviceAddress.line1}</p>
+                  <p>
+                    {match.serviceAddress.city}, {match.serviceAddress.state}{" "}
+                    {match.serviceAddress.postalCode}
+                  </p>
                 </div>
                 <div>
-                  <h3>Location</h3>
-                  <p>{assignment.addressLine}</p>
+                  <h3>Status</h3>
+                  <p>{match.bookingStatus.replaceAll("-", " ")}</p>
+                  <p>{formatCurrency(match.hourlyRateCents)}/hour</p>
                   <div className="cta-row">
                     <a
                       className="button-secondary crew-mobile-directions"
-                      href={assignment.googleMapsUrl}
+                      href={buildGoogleMapsDirectionsUrl(match.serviceAddress.line1)}
                       rel="noreferrer"
                       target="_blank"
                     >
@@ -314,17 +274,11 @@ export function CrewScheduleBoard() {
                     </a>
                     <a
                       className="button-secondary crew-mobile-directions"
-                      href={assignment.appleMapsUrl}
+                      href={buildAppleMapsDirectionsUrl(match.serviceAddress.line1)}
                       rel="noreferrer"
                       target="_blank"
                     >
                       Apple Maps
-                    </a>
-                    <a className="button-secondary" href={assignment.googleUrl} rel="noreferrer" target="_blank">
-                      Google
-                    </a>
-                    <a className="button-secondary" download={`${assignment.id}.ics`} href={assignment.appleUrl}>
-                      Apple
                     </a>
                   </div>
                 </div>

@@ -721,7 +721,7 @@ export function ProviderLiveManagementBoard() {
     return (
       <section className="card">
         <h2>Business owner login required</h2>
-        <p>Use the seeded provider account to test live jobs, staffing review, and chat.</p>
+        <p>Log in to manage live jobs, staffing review, calendar pressure, and chat.</p>
         <div className="cta-row">
           <a className="button" href="/login/provider">
             Go to provider login

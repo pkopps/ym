@@ -63,16 +63,16 @@ export function CrewAuthScreen({
   onAuthenticated: (envelope: AuthenticatedUserEnvelope) => void;
 }) {
   const [mode, setMode] = useState<AuthFlowMode>("login");
-  const [email, setEmail] = useState("crew@example.com");
-  const [password, setPassword] = useState("YardMatch123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [resetCodePreview, setResetCodePreview] = useState("");
   const [recoveryMessage, setRecoveryMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [fullName, setFullName] = useState("Crew Member");
-  const [phone, setPhone] = useState("555-0102");
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [addressQuery, setAddressQuery] = useState("");
   const [address, setAddress] = useState<Address>(createEmptyAddress());
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);

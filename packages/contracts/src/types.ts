@@ -1267,6 +1267,24 @@ export interface SearchProvidersResponse {
   recommendedProviderId?: string;
 }
 
+export interface PublicMarketplaceFeaturedProvider {
+  id: string;
+  companyName: string;
+  city: string;
+  state: string;
+  rating: number;
+  reviewCount: number;
+  primaryCategory?: ServiceCategory;
+}
+
+export interface PublicMarketplaceOverviewResponse {
+  generatedAt: string;
+  verifiedProviderCount: number;
+  averageRating: number;
+  activeCategoryCount: number;
+  featuredProviders: PublicMarketplaceFeaturedProvider[];
+}
+
 export interface SearchProviderResult {
   provider: ProviderProfile;
   score: number;

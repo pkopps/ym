@@ -12,6 +12,7 @@ export class ApiRoutes {
   public static readonly defaultCustomerProperty = "/api/customers/properties/default";
   public static readonly createInstantQuote = "/api/quotes/instant";
   public static readonly searchProviders = "/api/providers/search";
+  public static readonly publicMarketplaceOverview = "/api/providers/public-overview";
   public static readonly providerProfile = "/api/providers/profile";
   public static readonly providerVerificationQueue = "/api/providers/verification/queue";
   public static readonly providerVerificationReview = "/api/providers/verification/review";

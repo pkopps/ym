@@ -1,39 +1,39 @@
 "use client";
 
-import { PlaceSuggestion, ServiceCategory } from "@yardmatch/contracts";
-import { bookedBusinessShowcase, faqItems } from "@yardmatch/ui";
+import {
+  PlaceSuggestion,
+  PublicMarketplaceOverviewResponse,
+  ServiceCategory
+} from "@yardmatch/contracts";
+import { faqItems, serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HomeServiceScroller } from "./HomeServiceScroller";
 import {
   CustomerTimingPreference,
   buildCustomerListingsSearchParams,
   PublicMarketplaceSearchShell
 } from "./PublicMarketplaceSearchShell";
+import { createWebApiClient } from "../lib/api";
 import { StructuredData } from "./StructuredData";
 
 const rotatingServices = ["lawn mowing", "cleanup", "hedge trimming", "mulch refresh"] as const;
 
-function formatAverageRating() {
-  const average =
-    bookedBusinessShowcase.reduce((sum, business) => sum + Number(business.rating), 0) /
-    bookedBusinessShowcase.length;
-  return average.toFixed(1);
-}
-
-function formatAverageDistance() {
-  const average =
-    bookedBusinessShowcase.reduce((sum, business) => sum + business.distanceMiles, 0) /
-    bookedBusinessShowcase.length;
-  return average.toFixed(1);
-}
-
 export function PublicCustomerMarketplacePage() {
   const router = useRouter();
+  const api = useMemo(() => createWebApiClient(), []);
   const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
   const [areaQuery, setAreaQuery] = useState("Brooklyn, NY");
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
+  const [overview, setOverview] = useState<PublicMarketplaceOverviewResponse | undefined>();
+
+  useEffect(() => {
+    api
+      .getPublicMarketplaceOverview()
+      .then(setOverview)
+      .catch(() => setOverview(undefined));
+  }, [api]);
 
   function handleSearch(
     service: ServiceCategory,
@@ -106,20 +106,22 @@ export function PublicCustomerMarketplacePage() {
               I want crew work
             </a>
           </div>
-          <div className="market-home__proof">
-            <div className="market-home__proof-card">
-              <strong>{bookedBusinessShowcase.length}</strong>
-              <span>active providers shown</span>
+          {overview ? (
+            <div className="market-home__proof">
+              <div className="market-home__proof-card">
+                <strong>{overview.verifiedProviderCount}</strong>
+                <span>verified providers</span>
+              </div>
+              <div className="market-home__proof-card">
+                <strong>{overview.averageRating.toFixed(1)}</strong>
+                <span>average rating</span>
+              </div>
+              <div className="market-home__proof-card">
+                <strong>{overview.activeCategoryCount}</strong>
+                <span>active service categories</span>
+              </div>
             </div>
-            <div className="market-home__proof-card">
-              <strong>{formatAverageRating()}</strong>
-              <span>average rating shown</span>
-            </div>
-            <div className="market-home__proof-card">
-              <strong>{formatAverageDistance()} mi</strong>
-              <span>average route distance</span>
-            </div>
-          </div>
+          ) : null}
         </div>
       </section>
 
@@ -165,24 +167,32 @@ export function PublicCustomerMarketplacePage() {
         </div>
       </section>
 
-      <section className="container stack-lg market-home__market-proof">
-        <div className="section-header">
-          <h2>What a busy marketplace looks like</h2>
-          <p>Established providers can fill up quickly when route density gets healthy.</p>
-        </div>
-        <div className="grid-three market-home__market-grid">
-          {bookedBusinessShowcase.slice(0, 6).map((business) => (
-            <article className="card market-home__business-card" key={business.name}>
-              <strong>{business.name}</strong>
-              <p>{business.city}</p>
-              <p>
-                {business.rating} stars • {business.distanceMiles} mi away
-              </p>
-              <p>{business.specialties[0]}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      {overview?.featuredProviders.length ? (
+        <section className="container stack-lg market-home__market-proof">
+          <div className="section-header">
+            <h2>Verified providers already active on GreenRain</h2>
+            <p>These businesses are coming from the live marketplace, not a static directory.</p>
+          </div>
+          <div className="grid-three market-home__market-grid">
+            {overview.featuredProviders.map((provider) => (
+              <article className="card market-home__business-card" key={provider.id}>
+                <strong>{provider.companyName}</strong>
+                <p>
+                  {provider.city}, {provider.state}
+                </p>
+                <p>
+                  {provider.rating.toFixed(1)} stars • {provider.reviewCount} reviews
+                </p>
+                <p>
+                  {provider.primaryCategory
+                    ? serviceCategoryLabels[provider.primaryCategory]
+                    : "Landscaping services"}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="container stack-lg">
         <div className="section-header">

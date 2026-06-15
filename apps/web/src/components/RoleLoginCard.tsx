@@ -12,30 +12,22 @@ const roleCopy: Record<
   {
     title: string;
     helper: string;
-    demoEmail: string;
-    demoPassword: string;
     redirectPath: string;
   }
 > = {
   customer: {
     title: "Sign in",
     helper: "Jump back into bookings, recurring care, route tracking, and support updates.",
-    demoEmail: "jordan@example.com",
-    demoPassword: "YardMatch123!",
     redirectPath: "/customer"
   },
   provider: {
     title: "Sign in",
     helper: "Open the management board for routes, staffing, payouts, and calendar sync.",
-    demoEmail: "ariana@greenstride.example",
-    demoPassword: "YardMatch123!",
     redirectPath: "/provider/management"
   },
   "crew-member": {
     title: "Sign in",
     helper: "See upcoming assignments, directions, and your work schedule in one place.",
-    demoEmail: "crew@example.com",
-    demoPassword: "YardMatch123!",
     redirectPath: "/crew"
   }
 };
@@ -46,8 +38,8 @@ export function RoleLoginCard({
   role: MarketplaceRole;
 }) {
   const router = useRouter();
-  const [email, setEmail] = useState(roleCopy[role].demoEmail);
-  const [password, setPassword] = useState(roleCopy[role].demoPassword);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -154,23 +146,21 @@ export function RoleLoginCard({
         <div className="form-grid">
           <label className="form-field">
             <span>Email</span>
-            <input onChange={(event) => setEmail(event.target.value)} value={email} />
+            <input
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
+              value={email}
+            />
           </label>
           <label className="form-field">
             <span>Password</span>
             <input
               onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter your password"
               type="password"
               value={password}
             />
           </label>
-        </div>
-
-        <div className="list-panel auth-local-panel">
-          <strong>Local sign-in details</strong>
-          <p>
-            {roleCopy[role].demoEmail} • {roleCopy[role].demoPassword}
-          </p>
         </div>
 
         {errorMessage ? (

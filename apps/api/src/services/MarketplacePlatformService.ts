@@ -45,6 +45,7 @@ import {
   ProviderCrewMessage,
   ProviderPayoutLedgerEntry,
   ProviderPayoutLedgerResponse,
+  PublicMarketplaceOverviewResponse,
   CrewOpportunity,
   CrewPayoutLedgerEntry,
   CrewPayoutLedgerResponse,
@@ -896,6 +897,54 @@ export class MarketplacePlatformService {
       suggestedSlots,
       recommendationSessionId,
       recommendedProviderId
+    };
+  }
+
+  public async getPublicMarketplaceOverview(): Promise<PublicMarketplaceOverviewResponse> {
+    const providers = (await this.repository.listProviders()).filter(
+      (provider) => provider.verificationStatus === "verified"
+    );
+    const featuredProviders = providers
+      .slice()
+      .sort((left, right) => {
+        if (right.reviewCount !== left.reviewCount) {
+          return right.reviewCount - left.reviewCount;
+        }
+        if (right.rating !== left.rating) {
+          return right.rating - left.rating;
+        }
+        return left.companyName.localeCompare(right.companyName);
+      })
+      .slice(0, 6)
+      .map((provider) => ({
+        id: provider.id,
+        companyName: provider.companyName,
+        city: provider.address.city,
+        state: provider.address.state,
+        rating: provider.rating,
+        reviewCount: provider.reviewCount,
+        primaryCategory: provider.categories[0]
+      }));
+
+    const averageRating =
+      providers.length > 0
+        ? Number(
+            (
+              providers.reduce((total, provider) => total + provider.rating, 0) / providers.length
+            ).toFixed(1)
+          )
+        : 0;
+
+    const activeCategoryCount = new Set(
+      providers.flatMap((provider) => provider.categories)
+    ).size;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      verifiedProviderCount: providers.length,
+      averageRating,
+      activeCategoryCount,
+      featuredProviders
     };
   }
 

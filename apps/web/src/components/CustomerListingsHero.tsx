@@ -1,27 +1,13 @@
 "use client";
 
 import { PlaceSuggestion, ServiceCategory } from "@yardmatch/contracts";
-import { bookedBusinessShowcase, serviceCategoryLabels } from "@yardmatch/ui";
+import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useState } from "react";
 import {
   CustomerTimingPreference,
   PublicMarketplaceSearchShell,
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
-
-function formatAverageRating() {
-  const average =
-    bookedBusinessShowcase.reduce((sum, business) => sum + Number(business.rating), 0) /
-    bookedBusinessShowcase.length;
-  return average.toFixed(1);
-}
-
-function formatAverageDistance() {
-  const average =
-    bookedBusinessShowcase.reduce((sum, business) => sum + business.distanceMiles, 0) /
-    bookedBusinessShowcase.length;
-  return average.toFixed(1);
-}
 
 export function CustomerListingsHero({
   initialAreaLabel,
@@ -71,11 +57,7 @@ export function CustomerListingsHero({
   const resolvedSelectedTiming = selectedTiming ?? localSelectedTiming;
   const serviceLabel = serviceCategoryLabels[resolvedSelectedService];
   const timingLabel = getCustomerTimingLabel(resolvedSelectedTiming);
-  const metricItems = metrics ?? [
-    { value: String(bookedBusinessShowcase.length), label: "active providers shown" },
-    { value: formatAverageRating(), label: "average rating" },
-    { value: `${formatAverageDistance()} mi`, label: "average distance" }
-  ];
+  const metricItems = metrics ?? [];
 
   return (
     <section className="page-hero page-hero--listings">
@@ -86,14 +68,16 @@ export function CustomerListingsHero({
           {description ??
             `GreenRain will recommend the best local fit for ${timingLabel.toLowerCase()} first, then keep a short backup list ready if you want to compare.`}
         </p>
-        <div className="page-hero__metrics">
-          {metricItems.map((metric) => (
-            <div className="page-hero__metric" key={metric.label}>
-              <strong>{metric.value}</strong>
-              <span>{metric.label}</span>
-            </div>
-          ))}
-        </div>
+        {metricItems.length > 0 ? (
+          <div className="page-hero__metrics">
+            {metricItems.map((metric) => (
+              <div className="page-hero__metric" key={metric.label}>
+                <strong>{metric.value}</strong>
+                <span>{metric.label}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="page-hero__search-card">
