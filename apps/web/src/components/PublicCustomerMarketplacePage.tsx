@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { HomeServiceScroller } from "./HomeServiceScroller";
 import {
+  CustomerTimingPreference,
   buildCustomerListingsSearchParams,
   PublicMarketplaceSearchShell
 } from "./PublicMarketplaceSearchShell";
@@ -32,12 +33,18 @@ export function PublicCustomerMarketplacePage() {
   const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
   const [areaQuery, setAreaQuery] = useState("Brooklyn, NY");
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
+  const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
 
-  function handleSearch(service: ServiceCategory, suggestion?: PlaceSuggestion) {
+  function handleSearch(
+    service: ServiceCategory,
+    suggestion: PlaceSuggestion | undefined,
+    timing: CustomerTimingPreference
+  ) {
     const params = buildCustomerListingsSearchParams({
       areaQuery,
       selectedService: service,
-      selectedSuggestion: suggestion
+      selectedSuggestion: suggestion,
+      selectedTiming: timing
     });
 
     router.push(`/customer/listings?${params.toString()}`);
@@ -83,13 +90,15 @@ export function PublicCustomerMarketplacePage() {
             onSearch={handleSearch}
             onSelectedServiceChange={setSelectedService}
             onSelectedSuggestionChange={setSelectedSuggestion}
+            onSelectedTimingChange={setSelectedTiming}
             selectedService={selectedService}
             selectedSuggestion={selectedSuggestion}
+            selectedTiming={selectedTiming}
           />
           <div className="cta-row">
-            <a className="button" href="/customer/listings">
-              See my match
-            </a>
+            <button className="button" onClick={() => handleSearch(selectedService, selectedSuggestion, selectedTiming)} type="button">
+              See my recommended provider
+            </button>
             <a className="button-secondary" href="/auth/provider">
               I run a landscaping business
             </a>
@@ -100,7 +109,7 @@ export function PublicCustomerMarketplacePage() {
           <div className="market-home__proof">
             <div className="market-home__proof-card">
               <strong>{bookedBusinessShowcase.length}</strong>
-              <span>busy sample providers</span>
+              <span>active providers shown</span>
             </div>
             <div className="market-home__proof-card">
               <strong>{formatAverageRating()}</strong>
@@ -122,7 +131,7 @@ export function PublicCustomerMarketplacePage() {
         <div className="grid-three market-home__steps">
           <article className="card market-home__step">
             <strong>1. Tell us the job</strong>
-            <p>Pick the service and the property. We clean up the address before matching.</p>
+            <p>Pick the service, when you want it, and where it needs to happen.</p>
           </article>
           <article className="card market-home__step">
             <strong>2. Review the best fit</strong>

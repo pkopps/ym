@@ -26,6 +26,12 @@ import { useStoredWebSession } from "../lib/session";
 import { trackWebEvent } from "../lib/tracking";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
+import {
+  buildDateIsoForCustomerTiming,
+  CustomerTimingPreference,
+  customerTimingOptions,
+  getCustomerTimingLabel
+} from "./PublicMarketplaceSearchShell";
 
 const serviceOptions: Array<{ label: string; value: ServiceCategory }> = [
   { label: "Lawn mowing", value: "lawn-mowing" },
@@ -71,6 +77,12 @@ function formatRecurringFrequency(frequency: RecurringServiceFrequency) {
   return frequency === "biweekly" ? "Every 2 weeks" : "Every week";
 }
 
+function formatCompletedJobTrustLine(completedJobCount: number) {
+  return completedJobCount > 0
+    ? `${completedJobCount} completed YardMatch jobs.`
+    : "New on GreenRain, but already ranked well for service fit, timing, and trust signals.";
+}
+
 export function CustomerLiveDashboard() {
   const searchParams = useSearchParams();
   const { session, sessionReady } = useStoredWebSession();
@@ -83,6 +95,7 @@ export function CustomerLiveDashboard() {
   const [reviewOpportunities, setReviewOpportunities] = useState<CustomerReviewOpportunity[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory>("lawn-mowing");
+  const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
   const [loadingState, setLoadingState] = useState<"idle" | "loading">("idle");
@@ -106,6 +119,7 @@ export function CustomerLiveDashboard() {
   const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
+  const timingLabel = getCustomerTimingLabel(selectedTiming);
   const providerCards =
     providerResults?.rankedProviders.map((result) => ({
       provider: result.provider,
@@ -321,7 +335,7 @@ export function CustomerLiveDashboard() {
       const results = await api.searchProviders({
         address: activeProperty.address,
         categories: [selectedCategory],
-        dateIso: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        dateIso: buildDateIsoForCustomerTiming(selectedTiming),
         estimatedDurationMinutes: quote?.estimatedDurationMinutes,
         requestSource: "customer-web-dashboard"
       });
@@ -766,7 +780,8 @@ export function CustomerLiveDashboard() {
 
       <section className="grid-two">
         <article className="card">
-          <h2>Book a service</h2>
+          <h2>1. Pick the job</h2>
+          <p>Choose the service, when you want it, and whether this should repeat.</p>
           <div className="form-grid">
             <label className="form-field">
               <span>Property</span>
@@ -795,6 +810,19 @@ export function CustomerLiveDashboard() {
               </select>
             </label>
             <label className="form-field">
+              <span>When</span>
+              <select
+                onChange={(event) => setSelectedTiming(event.target.value as CustomerTimingPreference)}
+                value={selectedTiming}
+              >
+                {customerTimingOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
               <span>Cadence</span>
               <select
                 onChange={(event) =>
@@ -810,7 +838,7 @@ export function CustomerLiveDashboard() {
           </div>
           <div className="cta-row" style={{ marginTop: "1rem" }}>
             <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} type="button">
-              {loadingState === "loading" ? "Working..." : "Get instant quote"}
+              {loadingState === "loading" ? "Working..." : "See my price"}
             </button>
             <button
               className="button-secondary"
@@ -818,18 +846,19 @@ export function CustomerLiveDashboard() {
               onClick={handleSearchProviders}
               type="button"
             >
-              Find landscapers
+              Get recommendation
             </button>
           </div>
           {activeProperty ? (
             <p>
-              {activeProperty.address.line1}, {activeProperty.address.city}, {activeProperty.address.state}
+              {activeProperty.address.line1}, {activeProperty.address.city}, {activeProperty.address.state} •{" "}
+              {timingLabel}
             </p>
           ) : null}
         </article>
 
         <article className="card">
-          <h2>Quote preview</h2>
+          <h2>2. Price preview</h2>
           {quote ? (
             <div className="stack-lg" style={{ paddingBottom: 0 }}>
               <article className="list-panel">
@@ -870,13 +899,14 @@ export function CustomerLiveDashboard() {
               </article>
             </div>
           ) : (
-            <p>Pick a property and service, then get a live quote from the API.</p>
+            <p>Pick the job details first, then we will price it before recommending a provider.</p>
           )}
         </article>
       </section>
 
       <section className="card">
-        <h2>Nearby landscapers</h2>
+        <h2>3. Recommended provider</h2>
+        <p>We start with the best local fit for {timingLabel.toLowerCase()}, then keep backup options behind one click.</p>
         {providerSearchState === "loading" ? (
           <div className="stack-lg" style={{ paddingBottom: 0 }}>
             <article className="list-panel">
@@ -884,8 +914,8 @@ export function CustomerLiveDashboard() {
               <p>Looking at route openings, service radius, and live availability for this property.</p>
             </article>
             <article className="list-panel">
-              <h3>This can take a moment</h3>
-              <p>If a lot of businesses serve your area, YardMatch sorts the closest openings first.</p>
+              <h3>Sorting the best match</h3>
+              <p>If a lot of businesses serve your area, YardMatch sorts the strongest fit first.</p>
             </article>
           </div>
         ) : providerResults ? (
@@ -903,8 +933,8 @@ export function CustomerLiveDashboard() {
             ) : null}
             {providerResults.providers.length > 0 && providersWithWindows.length === 0 ? (
               <article className="list-panel">
-                <h3>Businesses cover this area, but nothing is open in this window.</h3>
-                <p>Try another service window, another property, or check back later as route openings change throughout the day.</p>
+                <h3>Businesses cover this area, but nothing is open in that window.</h3>
+                <p>Try another timing choice, another property, or check back later as route openings change throughout the day.</p>
               </article>
             ) : null}
             {recommendedProviderCard ? (
@@ -915,6 +945,9 @@ export function CustomerLiveDashboard() {
                     {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
                   </span>
                 </div>
+                <p>
+                  Recommended for <strong>{timingLabel.toLowerCase()}</strong>.
+                </p>
                 <p>
                   {recommendedProviderCard.provider.rating.toFixed(1)} overall •{" "}
                   {recommendedProviderCard.provider.timelinessRating.toFixed(1)} punctuality
@@ -945,7 +978,7 @@ export function CustomerLiveDashboard() {
                     </p>
                     <p>
                       <strong>{recommendedProviderCard.ranking.availabilityConfidenceLabel}.</strong>{" "}
-                      {recommendedProviderCard.ranking.completedJobCount} completed YardMatch jobs.
+                      {formatCompletedJobTrustLine(recommendedProviderCard.ranking.completedJobCount)}
                     </p>
                   </>
                 ) : null}
@@ -981,7 +1014,7 @@ export function CustomerLiveDashboard() {
                       }}
                       type="button"
                     >
-                      Show me another provider
+                      Show backup options
                     </button>
                   ) : null}
                 </div>
@@ -996,8 +1029,7 @@ export function CustomerLiveDashboard() {
               <article className="list-panel">
                 <h3>The recommendation is the fastest path.</h3>
                 <p>
-                  If you still want a confidence check, you can reveal a short curated set of
-                  other qualified providers without turning this into a directory.
+                  If you still want a confidence check, you can reveal a short curated set of other qualified providers without turning this into a directory.
                 </p>
               </article>
             ) : null}
@@ -1036,8 +1068,8 @@ export function CustomerLiveDashboard() {
                         {ranking.neighborhoodFamiliarityDetail}
                       </p>
                       <p>
-                        <strong>{ranking.availabilityConfidenceLabel}.</strong> {ranking.completedJobCount} completed
-                        YardMatch jobs.
+                        <strong>{ranking.availabilityConfidenceLabel}.</strong>{" "}
+                        {formatCompletedJobTrustLine(ranking.completedJobCount)}
                       </p>
                     </>
                   ) : null}
@@ -1070,7 +1102,7 @@ export function CustomerLiveDashboard() {
             })}
           </div>
         ) : (
-          <p>Search after the quote to see live provider matches and open route windows.</p>
+          <p>Price the job first, then get one recommended provider with optional backup options.</p>
         )}
       </section>
 

@@ -29,14 +29,52 @@ const serviceOptions: ServiceCategory[] = [
   "weed-control"
 ];
 
+type CustomerTimingPreference =
+  | "tomorrow-morning"
+  | "tomorrow-afternoon"
+  | "tomorrow-evening"
+  | "day-after-morning"
+  | "day-after-afternoon";
+
+const customerTimingOptions: Array<{ value: CustomerTimingPreference; label: string }> = [
+  { value: "tomorrow-morning", label: "Tomorrow morning" },
+  { value: "tomorrow-afternoon", label: "Tomorrow afternoon" },
+  { value: "tomorrow-evening", label: "Tomorrow evening" },
+  { value: "day-after-morning", label: "Day after morning" },
+  { value: "day-after-afternoon", label: "Day after afternoon" }
+];
+
 function formatServiceLabel(service: ServiceCategory) {
   return serviceCategoryLabels[service];
+}
+
+function buildDateIsoForCustomerTiming(timing: CustomerTimingPreference) {
+  const date = new Date();
+  const isDayAfter = timing.startsWith("day-after");
+  const windowPart = timing.endsWith("morning")
+    ? "morning"
+    : timing.endsWith("afternoon")
+      ? "afternoon"
+      : "evening";
+
+  date.setDate(date.getDate() + (isDayAfter ? 2 : 1));
+
+  if (windowPart === "morning") {
+    date.setHours(9, 0, 0, 0);
+  } else if (windowPart === "afternoon") {
+    date.setHours(14, 0, 0, 0);
+  } else {
+    date.setHours(18, 0, 0, 0);
+  }
+
+  return date.toISOString();
 }
 
 export function BookServiceScreen() {
   const tracker = getCustomerMobileTracker();
   const { envelope } = useCustomerSession();
   const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
+  const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
@@ -109,7 +147,7 @@ export function BookServiceScreen() {
       const providerSearch = await api.searchProviders({
         address: activeProperty.address,
         categories: [selectedService],
-        dateIso: new Date().toISOString(),
+        dateIso: buildDateIsoForCustomerTiming(selectedTiming),
         estimatedDurationMinutes: nextQuote.estimatedDurationMinutes,
         requestSource: "customer-mobile-book"
       });
@@ -214,8 +252,8 @@ export function BookServiceScreen() {
   return (
     <ScreenShell
       eyebrow="Book"
-      title="Get matched"
-      description="Pick the job, pick the property, and review the match."
+      title="Plan the visit"
+      description="Pick the service, pick when, and review the best match."
     >
       {message ? <InfoCard title="Booking confirmed" description={message} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
@@ -239,7 +277,27 @@ export function BookServiceScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="2. Property" description="Where should we send the crew?">
+      <InfoCard title="2. When" description="Choose the visit window first.">
+        <View style={styles.propertyStack}>
+          {customerTimingOptions.map((option) => {
+            const isActive = option.value === selectedTiming;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => setSelectedTiming(option.value)}
+                style={[styles.propertyRow, isActive && styles.propertyRowActive]}
+              >
+                <View style={styles.propertyCopy}>
+                  <Text style={styles.propertyLabel}>{option.label}</Text>
+                  <Text style={styles.propertyAddress}>We will search openings around this timing first.</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </InfoCard>
+
+      <InfoCard title="3. Property" description="Where should we send the crew?">
         {properties.length === 0 ? (
           <View style={styles.propertyStack}>
             <Text style={styles.emptyState}>Add a property before we price the job.</Text>
@@ -275,7 +333,9 @@ export function BookServiceScreen() {
               <Text style={styles.secondaryButtonInlineLabel}>Add another property</Text>
             </Pressable>
             <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "See my price"}</Text>
+              <Text style={styles.primaryButtonLabel}>
+                {isWorking ? "Working..." : "See price and match"}
+              </Text>
             </Pressable>
           </>
         )}
@@ -284,7 +344,7 @@ export function BookServiceScreen() {
       {quote ? (
         <>
           <InfoCard
-            title={`3. Price • ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+            title={`4. Price • ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
               quote.estimatedPriceCents / 100
             )}`}
             description={`${quote.estimatedDurationMinutes} min • ${quote.estimatedCrewSize} crew`}
@@ -303,7 +363,10 @@ export function BookServiceScreen() {
             ))}
           </InfoCard>
 
-          <InfoCard title="4. Recommended provider" description="Best next opening for this property">
+          <InfoCard
+            title="5. Recommended provider"
+            description={`Best next opening for ${customerTimingOptions.find((option) => option.value === selectedTiming)?.label.toLowerCase() ?? "tomorrow morning"}`}
+          >
             {searchState === "loading" ? (
               <View style={styles.providerStack}>
                 <Text style={styles.emptyState}>Checking nearby coverage and route openings...</Text>

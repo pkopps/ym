@@ -2,31 +2,41 @@ import type { Metadata } from "next";
 import { PublicCustomerListingsExperience } from "../../../components/PublicCustomerListingsExperience";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { ServiceCategory } from "@yardmatch/contracts";
+import { CustomerTimingPreference } from "../../../components/PublicMarketplaceSearchShell";
 
 export const metadata: Metadata = {
-  title: "Find landscaping providers",
+  title: "Recommended landscaping match",
   description:
-    "Compare verified landscaping providers, review live route availability, and explore booked calendar context in one search experience."
+    "Pick the job and timing, then review one recommended provider first with a short backup list if needed."
 };
 
-export default function CustomerListingsPage({
+export default async function CustomerListingsPage({
   searchParams
 }: {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const serviceValue = typeof searchParams?.service === "string" ? searchParams.service : undefined;
-  const areaLabel = typeof searchParams?.area === "string" ? searchParams.area : undefined;
-  const city = typeof searchParams?.city === "string" ? searchParams.city : undefined;
-  const state = typeof searchParams?.state === "string" ? searchParams.state : undefined;
-  const postalCode = typeof searchParams?.postalCode === "string" ? searchParams.postalCode : undefined;
-  const serviceLabel =
-    serviceValue && serviceValue in serviceCategoryLabels
-      ? serviceCategoryLabels[serviceValue as keyof typeof serviceCategoryLabels]
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const serviceValue =
+    typeof resolvedSearchParams.service === "string" ? resolvedSearchParams.service : undefined;
+  const areaLabel =
+    typeof resolvedSearchParams.area === "string" ? resolvedSearchParams.area : undefined;
+  const city = typeof resolvedSearchParams.city === "string" ? resolvedSearchParams.city : undefined;
+  const state =
+    typeof resolvedSearchParams.state === "string" ? resolvedSearchParams.state : undefined;
+  const postalCode =
+    typeof resolvedSearchParams.postalCode === "string"
+      ? resolvedSearchParams.postalCode
       : undefined;
   const initialService =
     serviceValue && serviceValue in serviceCategoryLabels ? (serviceValue as ServiceCategory) : undefined;
-  const lat = typeof searchParams?.lat === "string" ? Number.parseFloat(searchParams.lat) : undefined;
-  const lng = typeof searchParams?.lng === "string" ? Number.parseFloat(searchParams.lng) : undefined;
+  const initialTiming =
+    typeof resolvedSearchParams.when === "string"
+      ? (resolvedSearchParams.when as CustomerTimingPreference)
+      : undefined;
+  const lat =
+    typeof resolvedSearchParams.lat === "string" ? Number.parseFloat(resolvedSearchParams.lat) : undefined;
+  const lng =
+    typeof resolvedSearchParams.lng === "string" ? Number.parseFloat(resolvedSearchParams.lng) : undefined;
 
   return (
     <main className="container container--wide stack-lg">
@@ -38,6 +48,7 @@ export default function CustomerListingsPage({
         initialPostalCode={postalCode}
         initialService={initialService}
         initialState={state}
+        initialTiming={initialTiming}
       />
     </main>
   );

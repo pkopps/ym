@@ -166,8 +166,8 @@ export function RoleLoginCard({
           </label>
         </div>
 
-        <div className="list-panel auth-demo-panel">
-          <strong>Seeded test account</strong>
+        <div className="list-panel auth-local-panel">
+          <strong>Local sign-in details</strong>
           <p>
             {roleCopy[role].demoEmail} • {roleCopy[role].demoPassword}
           </p>
@@ -211,7 +211,7 @@ export function RoleLoginCard({
             <div className="list-panel">
               <strong>Reset started</strong>
               <p>{recoveryMessage}</p>
-              {resetCodePreview ? <p>Local preview code: {resetCodePreview}</p> : null}
+              {resetCodePreview ? <p>Local reset code: {resetCodePreview}</p> : null}
             </div>
           ) : null}
 

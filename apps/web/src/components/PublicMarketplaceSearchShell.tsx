@@ -13,16 +13,22 @@ import { createWebApiClient } from "../lib/api";
 export function buildCustomerListingsSearchParams({
   areaQuery,
   selectedService,
-  selectedSuggestion
+  selectedSuggestion,
+  selectedTiming
 }: {
   areaQuery: string;
   selectedService: ServiceCategory;
   selectedSuggestion?: PlaceSuggestion;
+  selectedTiming?: CustomerTimingPreference;
 }) {
   const params = new URLSearchParams({
     service: selectedService,
     area: selectedSuggestion?.label ?? areaQuery.trim()
   });
+
+  if (selectedTiming) {
+    params.set("when", selectedTiming);
+  }
 
   if (selectedSuggestion) {
     params.set("city", selectedSuggestion.address.city);
@@ -35,22 +41,72 @@ export function buildCustomerListingsSearchParams({
   return params;
 }
 
+export type CustomerTimingPreference =
+  | "tomorrow-morning"
+  | "tomorrow-afternoon"
+  | "tomorrow-evening"
+  | "day-after-morning"
+  | "day-after-afternoon";
+
+export const customerTimingOptions: Array<{ value: CustomerTimingPreference; label: string }> = [
+  { value: "tomorrow-morning", label: "Tomorrow morning" },
+  { value: "tomorrow-afternoon", label: "Tomorrow afternoon" },
+  { value: "tomorrow-evening", label: "Tomorrow evening" },
+  { value: "day-after-morning", label: "Day after morning" },
+  { value: "day-after-afternoon", label: "Day after afternoon" }
+];
+
+export function getCustomerTimingLabel(timing: CustomerTimingPreference) {
+  return (
+    customerTimingOptions.find((option) => option.value === timing)?.label ?? "Tomorrow morning"
+  );
+}
+
+export function buildDateIsoForCustomerTiming(timing: CustomerTimingPreference) {
+  const date = new Date();
+  const isDayAfter = timing.startsWith("day-after");
+  const windowPart = timing.endsWith("morning")
+    ? "morning"
+    : timing.endsWith("afternoon")
+      ? "afternoon"
+      : "evening";
+  date.setDate(date.getDate() + (isDayAfter ? 2 : 1));
+
+  if (windowPart === "morning") {
+    date.setHours(9, 0, 0, 0);
+  } else if (windowPart === "afternoon") {
+    date.setHours(14, 0, 0, 0);
+  } else {
+    date.setHours(18, 0, 0, 0);
+  }
+
+  return date.toISOString();
+}
+
 export function PublicMarketplaceSearchShell({
   areaQuery,
   onAreaQueryChange,
   onSearch,
   onSelectedServiceChange,
   onSelectedSuggestionChange,
+  onSelectedTimingChange,
   selectedService,
-  selectedSuggestion
+  selectedSuggestion,
+  selectedTiming
 }: {
   areaQuery: string;
   onAreaQueryChange: (value: string) => void;
-  onSearch?: (service: ServiceCategory, suggestion?: PlaceSuggestion) => void;
+  onSearch?: (
+    service: ServiceCategory,
+    suggestion: PlaceSuggestion | undefined,
+    timing: CustomerTimingPreference
+  ) => void;
   onSelectedServiceChange: (value: ServiceCategory) => void;
   onSelectedSuggestionChange: (value: PlaceSuggestion | undefined) => void;
+  onSelectedTimingChange: (value: CustomerTimingPreference) => void;
   selectedService: ServiceCategory;
   selectedSuggestion?: PlaceSuggestion;
+  selectedTiming: CustomerTimingPreference;
 }) {
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
@@ -127,14 +183,15 @@ export function PublicMarketplaceSearchShell({
     setSubmitGuidance(undefined);
     setIsSuggestionMenuOpen(false);
     if (onSearch) {
-      onSearch(service, suggestion);
+      onSearch(service, suggestion, selectedTiming);
       return;
     }
 
     const params = buildCustomerListingsSearchParams({
       areaQuery,
       selectedService: service,
-      selectedSuggestion: suggestion
+      selectedSuggestion: suggestion,
+      selectedTiming
     });
     router.push(`/customer/listings?${params.toString()}`);
   }
@@ -151,6 +208,19 @@ export function PublicMarketplaceSearchShell({
             {Object.entries(serviceCategoryLabels).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="customer-search-shell__field">
+          <span>When</span>
+          <select
+            onChange={(event) => onSelectedTimingChange(event.target.value as CustomerTimingPreference)}
+            value={selectedTiming}
+          >
+            {customerTimingOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>

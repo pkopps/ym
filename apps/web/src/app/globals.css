@@ -1256,7 +1256,7 @@ body {
   margin: 0;
 }
 
-.auth-demo-panel p {
+.auth-local-panel p {
   font-family: var(--ym-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
   font-size: 0.94rem;
 }

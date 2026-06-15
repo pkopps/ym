@@ -16,7 +16,12 @@ import { useRouter } from "next/navigation";
 import { createWebApiClient } from "../lib/api";
 import { trackWebEvent } from "../lib/tracking";
 import { BookedBusinessResults } from "./BookedBusinessResults";
-import { buildCustomerListingsSearchParams } from "./PublicMarketplaceSearchShell";
+import {
+  buildCustomerListingsSearchParams,
+  buildDateIsoForCustomerTiming,
+  CustomerTimingPreference,
+  getCustomerTimingLabel
+} from "./PublicMarketplaceSearchShell";
 import { CustomerListingsHero } from "./CustomerListingsHero";
 
 function buildInitialSuggestion({
@@ -81,9 +86,19 @@ function formatSearchMetrics(results?: SearchProvidersResponse): Array<{ value: 
   ];
 }
 
-function formatAreaDescription(areaLabel: string | undefined, serviceLabel: string) {
+function formatAreaDescription(
+  areaLabel: string | undefined,
+  serviceLabel: string,
+  timing: CustomerTimingPreference
+) {
   const resolvedArea = areaLabel?.trim() || "your area";
-  return `See one recommended ${serviceLabel.toLowerCase()} provider first in ${resolvedArea}, then open a short backup list only if you want it.`;
+  return `See one recommended ${serviceLabel.toLowerCase()} provider for ${getCustomerTimingLabel(
+    timing
+  ).toLowerCase()} in ${resolvedArea}, then open a short backup list only if you want it.`;
+}
+
+function formatCompletedJobLabel(completedJobCount: number) {
+  return completedJobCount > 0 ? `${completedJobCount} completed jobs` : "New on GreenRain";
 }
 
 export function PublicCustomerListingsExperience({
@@ -93,6 +108,7 @@ export function PublicCustomerListingsExperience({
   initialLng,
   initialPostalCode,
   initialService,
+  initialTiming,
   initialState
 }: {
   initialAreaLabel?: string;
@@ -101,6 +117,7 @@ export function PublicCustomerListingsExperience({
   initialLng?: number;
   initialPostalCode?: string;
   initialService?: ServiceCategory;
+  initialTiming?: CustomerTimingPreference;
   initialState?: string;
 }) {
   const router = useRouter();
@@ -121,9 +138,13 @@ export function PublicCustomerListingsExperience({
   const [searchState, setSearchState] = useState<"loading" | "loaded" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [resolvedAreaLabel, setResolvedAreaLabel] = useState(initialAreaLabel ?? "Brooklyn, NY");
+  const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>(
+    initialTiming ?? "tomorrow-morning"
+  );
   const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
 
   const serviceLabel = serviceCategoryLabels[selectedService];
+  const timingLabel = getCustomerTimingLabel(selectedTiming);
   const rankedProviders = providerResults?.rankedProviders ?? [];
   const providerChoicePresentations = buildCustomerProviderChoicePresentations(rankedProviders);
   const recommendedProvider = rankedProviders[0];
@@ -135,11 +156,13 @@ export function PublicCustomerListingsExperience({
     nextAreaQuery,
     nextService,
     nextSuggestion,
+    nextTiming,
     shouldUpdateUrl
   }: {
     nextAreaQuery: string;
     nextService: ServiceCategory;
     nextSuggestion?: PlaceSuggestion;
+    nextTiming: CustomerTimingPreference;
     shouldUpdateUrl: boolean;
   }) {
     setSearchState("loading");
@@ -173,7 +196,8 @@ export function PublicCustomerListingsExperience({
           if (shouldUpdateUrl) {
             const params = buildCustomerListingsSearchParams({
               areaQuery: nextAreaQuery,
-              selectedService: nextService
+              selectedService: nextService,
+              selectedTiming: nextTiming
             });
             router.replace(`/customer/listings?${params.toString()}`);
           }
@@ -189,7 +213,8 @@ export function PublicCustomerListingsExperience({
         if (shouldUpdateUrl) {
           const params = buildCustomerListingsSearchParams({
             areaQuery: nextAreaQuery,
-            selectedService: nextService
+            selectedService: nextService,
+            selectedTiming: nextTiming
           });
           router.replace(`/customer/listings?${params.toString()}`);
         }
@@ -199,7 +224,7 @@ export function PublicCustomerListingsExperience({
       const nextResults = await api.searchProviders({
         address: resolvedSuggestion.address,
         categories: [nextService],
-        dateIso: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+        dateIso: buildDateIsoForCustomerTiming(nextTiming),
         requestSource: "public-web-listings"
       });
 
@@ -207,6 +232,7 @@ export function PublicCustomerListingsExperience({
       setResolvedAreaLabel(resolvedSuggestion.label);
       setSelectedSuggestion(resolvedSuggestion);
       setSelectedService(nextService);
+      setSelectedTiming(nextTiming);
       setProviderResults(nextResults);
       setShowAlternativeProviders(false);
       setSearchState("loaded");
@@ -215,7 +241,8 @@ export function PublicCustomerListingsExperience({
         const params = buildCustomerListingsSearchParams({
           areaQuery: resolvedSuggestion.label,
           selectedService: nextService,
-          selectedSuggestion: resolvedSuggestion
+          selectedSuggestion: resolvedSuggestion,
+          selectedTiming: nextTiming
         });
         router.replace(`/customer/listings?${params.toString()}`);
       }
@@ -231,6 +258,7 @@ export function PublicCustomerListingsExperience({
       nextAreaQuery: areaQuery,
       nextService: selectedService,
       nextSuggestion: selectedSuggestion,
+      nextTiming: selectedTiming,
       shouldUpdateUrl: false
     });
     // This runs once on mount to hydrate the page with the current URL state.
@@ -241,29 +269,33 @@ export function PublicCustomerListingsExperience({
     <>
       <CustomerListingsHero
         areaQuery={areaQuery}
-        description={formatAreaDescription(resolvedAreaLabel, serviceLabel)}
+        description={formatAreaDescription(resolvedAreaLabel, serviceLabel, selectedTiming)}
         initialAreaLabel={initialAreaLabel}
         initialService={initialService}
+        initialTiming={initialTiming}
         metrics={liveMetrics}
         onAreaQueryChange={setAreaQuery}
-        onSearch={(service, suggestion) =>
+        onSearch={(service, suggestion, timing) =>
           void runSearch({
             nextAreaQuery: suggestion?.label ?? areaQuery,
             nextService: service,
             nextSuggestion: suggestion,
+            nextTiming: timing,
             shouldUpdateUrl: true
           })
         }
         onSelectedServiceChange={setSelectedService}
         onSelectedSuggestionChange={setSelectedSuggestion}
+        onSelectedTimingChange={setSelectedTiming}
         selectedService={selectedService}
         selectedSuggestion={selectedSuggestion}
+        selectedTiming={selectedTiming}
       />
 
       <section className="card live-listings-card">
         <div className="results-summary">
           <div className="results-summary__copy">
-            <strong>Live matches for this property</strong>
+            <strong>Recommended for {timingLabel.toLowerCase()}</strong>
             <span>
               {serviceLabel} near {resolvedAreaLabel}
             </span>
@@ -285,10 +317,10 @@ export function PublicCustomerListingsExperience({
           <div className="live-listings-card__grid">
             <article className="list-panel live-listings-card__message">
               <h3>Checking verified providers</h3>
-              <p>Checking route openings, service fit, and reliability.</p>
+              <p>Checking route openings, service fit, and reliability for {timingLabel.toLowerCase()}.</p>
             </article>
             <article className="list-panel live-listings-card__message">
-              <h3>Sorting real availability</h3>
+              <h3>Sorting the best next fit</h3>
               <p>Only providers with real local coverage make the shortlist.</p>
             </article>
           </div>
@@ -329,7 +361,7 @@ export function PublicCustomerListingsExperience({
           <div className="live-listings-card__grid">
             {providersWithOpenWindows.length === 0 ? (
               <article className="list-panel live-listings-card__banner">
-                <h3>Providers cover this area, but their near-term route windows are full.</h3>
+                <h3>Providers cover this area, but the requested window is full.</h3>
                 <p>
                   You can still review the best local businesses below and be ready when the next route window opens.
                 </p>
@@ -386,7 +418,7 @@ export function PublicCustomerListingsExperience({
 
       <section className="stack-lg">
         <div className="section-header">
-          <h2>What busy provider calendars can look like</h2>
+          <h2>What established provider calendars can look like</h2>
           <p>
             A quick look at route density once a local market starts to fill in.
           </p>
@@ -445,7 +477,7 @@ function LiveProviderCard({
       <div className="calendar-card__metric-row">
         <span>{result.distanceMiles.toFixed(1)} mi away</span>
         <span>{provider.serviceRadiusMiles} mile radius</span>
-        <span>{result.completedJobCount} completed jobs</span>
+        <span>{formatCompletedJobLabel(result.completedJobCount)}</span>
       </div>
 
       <p className="live-provider-card__window">

@@ -15,5 +15,5 @@ function getPlatformSurface(): "ios-phone" | "ios-tablet" | "android-phone" | "a
 export function getCustomerMobileTracker() {
   const api = createCustomerMobileApiClient();
 
-  return new MobileAnalyticsTracker(api, "customer", getPlatformSurface(), "customer-mobile-demo");
+  return new MobileAnalyticsTracker(api, "customer", getPlatformSurface(), "customer-mobile-app");
 }
