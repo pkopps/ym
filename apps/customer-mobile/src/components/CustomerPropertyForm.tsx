@@ -34,6 +34,7 @@ export function CustomerPropertyForm({
   const [setAsDefault, setSetAsDefault] = useState(true);
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [searchMessage, setSearchMessage] = useState("");
   const [isSearching, setIsSearching] = useState(false);
 
   const canSubmit =
@@ -46,6 +47,7 @@ export function CustomerPropertyForm({
   useEffect(() => {
     if (locationQuery.trim().length < 2) {
       setSuggestions([]);
+      setSearchMessage("");
       return;
     }
 
@@ -53,8 +55,14 @@ export function CustomerPropertyForm({
       setIsSearching(true);
       createCustomerMobileApiClient()
         .searchPlaces(locationQuery)
-        .then((response) => setSuggestions(response.suggestions))
-        .catch(() => setSuggestions([]))
+        .then((response) => {
+          setSuggestions(response.suggestions);
+          setSearchMessage(response.searchMessage ?? "");
+        })
+        .catch(() => {
+          setSuggestions([]);
+          setSearchMessage("");
+        })
         .finally(() => setIsSearching(false));
     }, 220);
 
@@ -125,13 +133,16 @@ export function CustomerPropertyForm({
             >
               <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
               <Text style={styles.suggestionMeta}>
-                {suggestion.source === "google-geocoding" ? "Google" : "Suggested area"}
+                {suggestion.matchReason ??
+                  (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
               </Text>
             </Pressable>
           ))}
         </View>
       ) : locationQuery.trim().length >= 2 && isSearching ? (
         <Text style={styles.searchingLabel}>Searching areas…</Text>
+      ) : locationQuery.trim().length >= 2 && searchMessage ? (
+        <Text style={styles.searchingLabel}>{searchMessage}</Text>
       ) : null}
       <TextInput
         autoCapitalize="words"

@@ -106,6 +106,10 @@ Already done:
   - explicit provider-side visibility into which accepted crew member is allowed to start and share the route
 - baseline provider assistant natural-language scheduling help:
   - providers can ask for a plain-language dispatch summary or highest-attention window/day for today, tomorrow, or the coming week using the existing route-load overview, including the specific appointments sitting in the pressured day/window
+  - providers can ask which appointment they should move out of a pressured day/window, and the assistant will recommend a concrete booking plus a lighter same-day window when one exists
+  - when the day has no meaningfully lighter same-day window, that move recommendation can now fall back to the next cleaner route opening on a later day
+  - providers can ask whether a pressured day needs more crew, and the assistant will point to the booking with the highest current crew gap first
+  - that staffing recommendation now distinguishes between “review the pending crew matches first” and “you still need to source more crew”
   - providers can accept the best pending crew recommendation from a plain-language command that reuses current staffing scores and reasons
   - providers can accept or deny pending crew matches from a plain-language command
   - providers can message pending or accepted crew on the real booking thread from a plain-language command
@@ -154,12 +158,21 @@ Still left:
 Already done:
 
 - backend address normalization across customer signup, saved properties, quoting, and booking snapshots
+- optional Google Address Validation enrichment when configured:
+  - signup addresses
+  - customer properties
+  - quote inputs
+  - provider search inputs
+  - direct booking and booking-address update inputs
 - smarter local place-search quality for customer search flows:
   - stronger city/state normalization
   - ZIP / postal matching
   - practical service-area aliases in the fallback dataset
+  - structured search confidence and match-reason metadata for Google-verified vs local-fallback suggestions
+  - safer recommendation-first search behavior that only auto-selects Google-verified or high-confidence local suggestions instead of silently guessing weak fallback areas
 - quote explainability improvements:
   - normalized-address feedback
+  - validation-source and validation-message feedback when Google Address Validation is configured
   - measurement source breakdowns
   - confidence reasons that explain whether the estimate is leaning on saved property data, customer answers, or heuristics
 
@@ -189,17 +202,37 @@ Already done:
   - customer web dashboard shows one recommended provider first
   - customer mobile booking shows one recommended provider first
   - alternative providers stay behind a smaller explicit reveal instead of leading the experience
+  - booking surfaces now use a clearer V1 confirmation posture:
+    - `Book now` for the recommendation
+    - `Show me another provider` for the secondary comparison path
 - customer-facing recommendation transparency now has a real baseline:
+  - reliability summaries that explain trust beyond raw star ratings alone
+  - operational follow-through signals now influence trust messaging and ranking, including provider confirm-vs-decline history and late-update frequency
+  - clearer `why GreenRain picked this provider` explanations tied to fit, trust, route availability, and local familiarity
   - neighborhood familiarity messaging
   - completed-job context
   - availability-confidence messaging for the suggested route window
+  - clearer recommendation framing directly inside the booking surface
+  - safer area-confirmation behavior in public recommendation search when the best location suggestion is only a weak fallback guess
+- curated alternative framing is now shipped for the limited comparison path:
+  - `Highest rated`
+  - `Closest route`
+  - `Local specialist`
+  - fallback labels like `Service specialist` and `Qualified backup` when the comparison set is small or uneven
 - baseline product and analytics support for recommendation acceptance rate is now shipped:
+  - provider searches are now counted by source surface
+  - search diagnostics now include:
+    - no-provider-match searches
+    - provider-found but no-open-window searches
+    - recommendation booking intent before final booking creation
   - recommendation views
   - alternative-provider reveals
+  - recommendation dismissals when a user requests a different match flow after seeing a recommendation without booking it
   - accepted first-choice recommendations
   - swapped bookings onto another qualified provider
   - ops telemetry summary now surfaces recommendation acceptance counters
   - ops telemetry now breaks recommendation performance down by source surface
+  - ops telemetry now also exposes session-based search coverage, open-window, booking-intent, alternative-view, dismissal, first-choice acceptance, and swap rates so repeated actions inside one recommendation session do not inflate funnel health
 - provider-side requested booking decline is now part of the managed marketplace flow:
   - providers can decline a requested booking directly from web and provider mobile
   - customer notifications distinguish provider declines from customer-side cancellations
@@ -210,18 +243,22 @@ Already done:
   - payment authorizations
   - payment captures
 
+Product decision:
+
+- launch with `recommend first, customer confirms`
+- do not launch with full hidden Uber-style matching as the default customer flow
+- do not launch with open-ended directory browsing as the default customer flow
+- keep alternative providers behind an explicit secondary action like `Show me another provider`
+
 Still left:
 
 - deepen customer-side matching transparency beyond the shipped baseline:
-  - richer explanation of why this provider was selected
-  - stronger reliability framing that is clearer than raw star ratings alone
   - more nuanced service-area familiarity if we later add denser local routing history
+  - keep refining reliability phrasing as longer-term dispute, cancellation, and fulfillment signals get richer
 - deepen recommendation-first presentation beyond the current baseline:
-  - small curated alternative framing like best match / budget / highest rated if it improves trust without adding much friction
-  - clearer recommendation reasons directly inside the booking CTA surface
+  - continue tightening the recommendation copy and trust framing without increasing customer decision fatigue
 - extend recommendation telemetry beyond the shipped baseline:
-  - explicit decline signals when the recommendation is dismissed without a booking
-  - deeper per-surface interpretation once usage volume is meaningful
+  - deeper time-based/cohort interpretation once usage volume is meaningful
 - avoid directory drift in future marketplace decisions:
   - no many-provider bidding wars on a single common-service lead
   - no promoted-listings-first discovery model
@@ -233,6 +270,7 @@ Still left:
   - denser neighborhood coverage
   - repeat-route efficiency
   - stronger matching confidence by market
+  - market-by-market expansion discipline instead of thin national coverage
 
 ### Financial and internal ops tooling
 

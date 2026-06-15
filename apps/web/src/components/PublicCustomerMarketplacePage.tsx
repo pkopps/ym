@@ -1,43 +1,31 @@
 "use client";
 
-import {
-  bookedBusinessShowcase,
-  faqItems,
-  serviceCategoryLabels
-} from "@yardmatch/ui";
 import { PlaceSuggestion, ServiceCategory } from "@yardmatch/contracts";
+import { bookedBusinessShowcase, faqItems } from "@yardmatch/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { BookedBusinessResults } from "./BookedBusinessResults";
 import { HomeServiceScroller } from "./HomeServiceScroller";
-import { landscapingToolIllustrations } from "../lib/landscapingToolIllustrations";
 import {
   buildCustomerListingsSearchParams,
   PublicMarketplaceSearchShell
 } from "./PublicMarketplaceSearchShell";
 import { StructuredData } from "./StructuredData";
 
-const topRatedLandscapers = bookedBusinessShowcase
-  .slice()
-  .sort((left, right) => Number(right.rating) - Number(left.rating))
-  .slice(0, 5);
+const rotatingServices = ["lawn mowing", "cleanup", "hedge trimming", "mulch refresh"] as const;
 
-const topPunctualLandscapers = [
-  { ...bookedBusinessShowcase[0], punctuality: "4.9" },
-  { ...bookedBusinessShowcase[3], punctuality: "4.9" },
-  { ...bookedBusinessShowcase[4], punctuality: "4.8" },
-  { ...bookedBusinessShowcase[1], punctuality: "4.8" },
-  { ...bookedBusinessShowcase[2], punctuality: "4.7" }
-];
+function formatAverageRating() {
+  const average =
+    bookedBusinessShowcase.reduce((sum, business) => sum + Number(business.rating), 0) /
+    bookedBusinessShowcase.length;
+  return average.toFixed(1);
+}
 
-const rotatingServices = [
-  "lawn mowing",
-  "weed whacking",
-  "hedge trimming",
-  "mulch installs",
-  "leaf blowing",
-  "snow shoveling"
-] as const;
+function formatAverageDistance() {
+  const average =
+    bookedBusinessShowcase.reduce((sum, business) => sum + business.distanceMiles, 0) /
+    bookedBusinessShowcase.length;
+  return average.toFixed(1);
+}
 
 export function PublicCustomerMarketplacePage() {
   const router = useRouter();
@@ -56,7 +44,7 @@ export function PublicCustomerMarketplacePage() {
   }
 
   return (
-    <main>
+    <main className="market-home">
       <StructuredData
         data={{
           "@context": "https://schema.org",
@@ -71,20 +59,23 @@ export function PublicCustomerMarketplacePage() {
           }
         }}
       />
+
       <section className="container hero home-hero customer-public-hero">
         <div className="home-hero__content">
+          <span className="eyebrow">GreenRain by YardMatch</span>
           <h1 className="home-hero__headline">
-            <span>Book local</span>
-            <HomeServiceScroller services={rotatingServices} />
+            <span>Tell us what needs care.</span>
+            <span className="home-hero__headline-accent">
+              We’ll match the best local fit for <HomeServiceScroller services={rotatingServices} />.
+            </span>
           </h1>
           <p className="home-hero__lede">
-            Search nearby landscaping businesses, compare live availability, and book a clear
-            service window without getting stuck in lead forms.
+            Start with one recommended provider, a real route opening, and short backup options only if you want them.
           </p>
           <div className="home-hero__trust-strip" aria-label="Why customers book with GreenRain">
-            <span>Tracked arrivals</span>
-            <span>Provider reviews</span>
-            <span>Support-backed refunds</span>
+            <span>One best match first</span>
+            <span>Real route openings</span>
+            <span>Support if plans change</span>
           </div>
           <PublicMarketplaceSearchShell
             areaQuery={areaQuery}
@@ -96,194 +87,98 @@ export function PublicCustomerMarketplacePage() {
             selectedSuggestion={selectedSuggestion}
           />
           <div className="cta-row">
-            <a className="button-secondary" href="/customer/listings">
-              Browse local pros
+            <a className="button" href="/customer/listings">
+              See my match
             </a>
             <a className="button-secondary" href="/auth/provider">
-              Grow my business
+              I run a landscaping business
             </a>
-            <a className="button-secondary" href="/crew">
-              Join a crew
-            </a>
-          </div>
-          <div className="chip-row" style={{ marginTop: "1.5rem" }}>
-            {Object.entries(serviceCategoryLabels).map(([value, label]) => (
-              <button
-                className={`chip-row__button${label === "Snow shoveling" ? " chip-row__button--winter" : ""}`}
-                key={value}
-                onClick={() => {
-                  const nextService = value as ServiceCategory;
-                  setSelectedService(nextService);
-                  handleSearch(nextService, selectedSuggestion);
-                }}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="hero-rail home-hero__carousels">
-            <section className="hero-carousel">
-              <div className="hero-carousel__header">
-                <h2>Highest rated landscapers</h2>
-                <span>Top overall</span>
-              </div>
-              <div className="hero-carousel__track">
-                {topRatedLandscapers.map((business) => (
-                  <article className="hero-carousel-card" key={`${business.name}-overall`}>
-                    <img
-                      alt={`${business.ownerName} from ${business.name}`}
-                      className="hero-carousel-card__avatar"
-                      src={business.avatarUrl}
-                    />
-                    <div>
-                      <strong>{business.name}</strong>
-                      <p>{business.ownerName}</p>
-                      <p>{business.rating} overall • {business.distanceMiles} mi away</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-
-            <section className="hero-carousel">
-              <div className="hero-carousel__header">
-                <h2>High punctuality</h2>
-                <span>Shows up on time</span>
-              </div>
-              <div className="hero-carousel__track">
-                {topPunctualLandscapers.map((business) => (
-                  <article className="hero-carousel-card" key={`${business.name}-punctuality`}>
-                    <img
-                      alt={`${business.ownerName} from ${business.name}`}
-                      className="hero-carousel-card__avatar"
-                      src={business.avatarUrl}
-                    />
-                    <div>
-                      <strong>{business.name}</strong>
-                      <p>{business.ownerName}</p>
-                      <p>{business.punctuality} punctuality • {business.city}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-          </div>
-        </div>
-      </section>
-
-      <section className="container stack-lg">
-        <div className="tool-illustration-row">
-          {landscapingToolIllustrations.map((illustration) => (
-            <article className="tool-illustration-card" key={illustration.id}>
-              <div className="tool-illustration-card__image-wrap">
-                <img
-                  alt={illustration.alt}
-                  className="tool-illustration-card__image"
-                  height={240}
-                  src={illustration.src}
-                  width={240}
-                />
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="container app-banner">
-        <div className="app-banner__content">
-          <span className="eyebrow">Mobile apps</span>
-          <h2>YardMatch on the go.</h2>
-          <p>Book services, run routes, or manage crew work from your phone.</p>
-          <p className="app-banner__subcopy">Scan to get the app.</p>
-          <div className="app-banner__qr" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="app-banner__badges">
-            <a className="store-badge" href="/customer">
-              <span className="store-badge__icon store-badge__icon--apple" aria-hidden="true">
-                &#63743;
-              </span>
-              <small>Download on the</small>
-              <strong>App Store</strong>
-            </a>
-            <a className="store-badge" href="/customer">
-              <span className="store-badge__icon store-badge__icon--play" aria-hidden="true">
-                &#9654;
-              </span>
-              <small>Get it on</small>
-              <strong>Google Play</strong>
+            <a className="button-secondary" href="/auth/crew">
+              I want crew work
             </a>
           </div>
-        </div>
-
-        <div className="app-banner__visual" aria-hidden="true">
-          <div className="app-banner__halo" />
-          <div className="app-banner__phone">
-            <div className="app-banner__phone-top" />
-            <div className="app-banner__screen">
-              <div className="app-banner__screen-header">
-                <strong>YardMatch</strong>
-                <span>Today</span>
-              </div>
-              <div className="app-banner__screen-card">
-                <strong>GreenStride Lawn Co.</strong>
-                <p>Morning mow and edge</p>
-                <div className="app-banner__slots">
-                  <span>Morning</span>
-                  <span>Afternoon</span>
-                  <span>Late afternoon / evening</span>
-                </div>
-              </div>
-              <div className="app-banner__screen-card">
-                <strong>Blue Harbor Outdoor</strong>
-                <p>Late afternoon hedge trim</p>
-                <div className="app-banner__slots">
-                  <span>Morning</span>
-                  <span>Afternoon</span>
-                  <span>Late afternoon / evening</span>
-                </div>
-              </div>
+          <div className="market-home__proof">
+            <div className="market-home__proof-card">
+              <strong>{bookedBusinessShowcase.length}</strong>
+              <span>busy sample providers</span>
+            </div>
+            <div className="market-home__proof-card">
+              <strong>{formatAverageRating()}</strong>
+              <span>average rating shown</span>
+            </div>
+            <div className="market-home__proof-card">
+              <strong>{formatAverageDistance()} mi</strong>
+              <span>average route distance</span>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="container container--wide stack-lg">
+      <section className="container stack-lg">
         <div className="section-header">
-          <h2>Booked-up businesses on the platform</h2>
-          <p>See how busy calendars can look on YardMatch.</p>
+          <h2>How GreenRain works</h2>
+          <p>Three quick steps. No directory rabbit hole.</p>
         </div>
-        <BookedBusinessResults showOpenListingsLink />
+        <div className="grid-three market-home__steps">
+          <article className="card market-home__step">
+            <strong>1. Tell us the job</strong>
+            <p>Pick the service and the property. We clean up the address before matching.</p>
+          </article>
+          <article className="card market-home__step">
+            <strong>2. Review the best fit</strong>
+            <p>See one recommended provider first, plus why they were picked.</p>
+          </article>
+          <article className="card market-home__step">
+            <strong>3. Book and track</strong>
+            <p>Hold the route window, pay in one flow, and track arrival without chasing texts.</p>
+          </article>
+        </div>
       </section>
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>Built for every side of the job</h2>
+          <h2>Built for every side of the work</h2>
+          <p>One system for homeowners, businesses, and crews.</p>
         </div>
         <div className="grid-three">
           <article className="card">
             <span className="eyebrow">Customers</span>
-            <p>Search by address, compare pros, and book in minutes.</p>
+            <p>Get matched fast, keep recurring care simple, and track the route when someone is on the way.</p>
           </article>
           <article className="card">
             <span className="eyebrow">Business owners</span>
-            <p>Fill schedules, tighten routes, and grow local demand.</p>
+            <p>Run bookings, crews, payouts, and dispatch decisions in one management flow.</p>
           </article>
           <article className="card">
             <span className="eyebrow">Crew members</span>
-            <p>Find assignments, set availability, and stay job-ready.</p>
+            <p>See assignments, directions, availability, and payout status in one place.</p>
           </article>
+        </div>
+      </section>
+
+      <section className="container stack-lg market-home__market-proof">
+        <div className="section-header">
+          <h2>What a busy marketplace looks like</h2>
+          <p>Established providers can fill up quickly when route density gets healthy.</p>
+        </div>
+        <div className="grid-three market-home__market-grid">
+          {bookedBusinessShowcase.slice(0, 6).map((business) => (
+            <article className="card market-home__business-card" key={business.name}>
+              <strong>{business.name}</strong>
+              <p>{business.city}</p>
+              <p>
+                {business.rating} stars • {business.distanceMiles} mi away
+              </p>
+              <p>{business.specialties[0]}</p>
+            </article>
+          ))}
         </div>
       </section>
 
       <section className="container stack-lg">
         <div className="section-header">
           <h2>Frequently asked questions</h2>
-          <p>Quick answers.</p>
+          <p>Short answers before you book.</p>
         </div>
         <div className="grid-three">
           {faqItems.map((item) => (

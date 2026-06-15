@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   AvailabilitySlot,
+  buildCustomerProviderChoicePresentations,
   CreateCustomerPropertyRequest,
   CustomerProperty,
   formatBookingWindowSummary,
@@ -12,6 +13,7 @@ import {
   ServiceCategory
 } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { serviceCategoryLabels } from "@yardmatch/ui";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
@@ -26,6 +28,10 @@ const serviceOptions: ServiceCategory[] = [
   "seasonal-cleanup",
   "weed-control"
 ];
+
+function formatServiceLabel(service: ServiceCategory) {
+  return serviceCategoryLabels[service];
+}
 
 export function BookServiceScreen() {
   const tracker = getCustomerMobileTracker();
@@ -43,7 +49,7 @@ export function BookServiceScreen() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [searchState, setSearchState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
-  const [showPropertyForm, setShowPropertyForm] = useState(false);
+  const [isPropertyModalVisible, setIsPropertyModalVisible] = useState(false);
   const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
 
   const activeProperty = useMemo(
@@ -80,6 +86,14 @@ export function BookServiceScreen() {
       setIsWorking(true);
       setErrorMessage("");
       setMessage("");
+      if (recommendationContext?.recommendationSessionId) {
+        await tracker.track(MarketplaceTelemetryEventCatalog.recommendationDismissed, {
+          recommendationSessionId: recommendationContext.recommendationSessionId,
+          recommendedProviderId: recommendationContext.recommendedProviderId ?? "none",
+          requestSource: "customer-mobile-book",
+          service: selectedService
+        });
+      }
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
       const nextQuote = await api.createInstantQuote({
@@ -129,7 +143,7 @@ export function BookServiceScreen() {
       const property = await api.createCustomerProperty(payload);
       await loadProperties();
       setSelectedPropertyId(property.id);
-      setShowPropertyForm(false);
+      setIsPropertyModalVisible(false);
       setMessage(`${property.label} is ready for booking.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to save that property.");
@@ -174,6 +188,11 @@ export function BookServiceScreen() {
       setMessage(
         `Booked ${provider.provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
       );
+      setRecommendationContext(undefined);
+      setProviders([]);
+      setSlots([]);
+      setShowAlternativeProviders(false);
+      setSearchState("idle");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
     } finally {
@@ -186,17 +205,22 @@ export function BookServiceScreen() {
     ranking,
     slot: ranking.suggestedSlot ?? slots.find((item) => item.providerId === ranking.provider.id && !item.isBooked)
   }));
+  const providerChoicePresentations = buildCustomerProviderChoicePresentations(providers);
   const shortlist = providerCards.slice(0, 3);
   const recommendedProviderCard = shortlist[0];
   const alternativeProviderCards = shortlist.slice(1);
   const providersWithWindows = providerCards.filter((item) => item.slot);
 
   return (
-    <ScreenShell eyebrow="Book" title="Start a new booking" description="Pick a service and property.">
+    <ScreenShell
+      eyebrow="Book"
+      title="Get matched"
+      description="Pick the job, pick the property, and review the match."
+    >
       {message ? <InfoCard title="Booking confirmed" description={message} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard title="Service" description="What do you need today?">
+      <InfoCard title="1. Service" description="What needs care?">
         <View style={styles.chipWrap}>
           {serviceOptions.map((option) => {
             const isActive = option === selectedService;
@@ -207,7 +231,7 @@ export function BookServiceScreen() {
                 style={[styles.chip, isActive && styles.chipActive]}
               >
                 <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                  {option.replaceAll("-", " ")}
+                  {formatServiceLabel(option)}
                 </Text>
               </Pressable>
             );
@@ -215,15 +239,17 @@ export function BookServiceScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="Property" description="Choose where the crew is going.">
+      <InfoCard title="2. Property" description="Where should we send the crew?">
         {properties.length === 0 ? (
           <View style={styles.propertyStack}>
-            <Text style={styles.emptyState}>Add your first property to get a quote.</Text>
-            <CustomerPropertyForm
-              isWorking={isWorking}
-              onSubmit={handleCreateProperty}
-              submitLabel="Save first property"
-            />
+            <Text style={styles.emptyState}>Add a property before we price the job.</Text>
+            <Pressable
+              disabled={isWorking}
+              onPress={() => setIsPropertyModalVisible(true)}
+              style={styles.secondaryButtonInline}
+            >
+              <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
+            </Pressable>
           </View>
         ) : (
           <>
@@ -245,15 +271,11 @@ export function BookServiceScreen() {
                 );
               })}
             </View>
-            {showPropertyForm ? (
-              <CustomerPropertyForm isWorking={isWorking} onSubmit={handleCreateProperty} submitLabel="Add property" />
-            ) : (
-              <Pressable onPress={() => setShowPropertyForm(true)} style={styles.secondaryButtonInline}>
-                <Text style={styles.secondaryButtonInlineLabel}>Add another property</Text>
-              </Pressable>
-            )}
+            <Pressable onPress={() => setIsPropertyModalVisible(true)} style={styles.secondaryButtonInline}>
+              <Text style={styles.secondaryButtonInlineLabel}>Add another property</Text>
+            </Pressable>
             <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Get quote"}</Text>
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "See my price"}</Text>
             </Pressable>
           </>
         )}
@@ -262,46 +284,44 @@ export function BookServiceScreen() {
       {quote ? (
         <>
           <InfoCard
-            title={new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
+            title={`3. Price • ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
               quote.estimatedPriceCents / 100
-            )}
-            description={`${quote.estimatedDurationMinutes} minutes • ${quote.estimatedCrewSize} crew`}
+            )}`}
+            description={`${quote.estimatedDurationMinutes} min • ${quote.estimatedCrewSize} crew`}
           >
             <Text style={styles.quoteSummary}>{quote.estimateSummary}</Text>
-            <Text style={styles.providerMeta}>{quote.normalizedAddress.displayLabel}</Text>
             <Text style={styles.providerMeta}>
-              Turf source {quote.measurementSources.turfSqFt} • Shrubs source {quote.measurementSources.shrubBedSqFt}
+              {quote.normalizedAddress.displayLabel}
             </Text>
-            {quote.normalizedAddress.wasNormalized ? (
-              <Text style={styles.providerMeta}>We cleaned up the address format before matching and quoting.</Text>
+            {quote.normalizedAddress.validationMessage ? (
+              <Text style={styles.providerMeta}>{quote.normalizedAddress.validationMessage}</Text>
             ) : null}
-            {quote.confidenceReasons.map((reason) => (
+            {quote.confidenceReasons.slice(0, 2).map((reason) => (
               <Text key={`${reason.impact}-${reason.label}`} style={styles.providerMeta}>
                 {reason.label}: {reason.detail}
               </Text>
             ))}
           </InfoCard>
 
-          <InfoCard title="Nearby matches" description="Best next openings">
+          <InfoCard title="4. Recommended provider" description="Best next opening for this property">
             {searchState === "loading" ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>Checking nearby coverage, route openings, and live availability...</Text>
-                <Text style={styles.providerMeta}>If many businesses serve this area, sorting can take a moment.</Text>
+                <Text style={styles.emptyState}>Checking nearby coverage and route openings...</Text>
               </View>
             ) : searchState === "error" ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>We could not finish checking nearby providers.</Text>
-                <Text style={styles.providerMeta}>Please try again. Your quote is still here.</Text>
+                <Text style={styles.emptyState}>We could not finish the match check.</Text>
+                <Text style={styles.providerMeta}>Try again. Your price is still here.</Text>
               </View>
             ) : providers.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>No landscaping businesses are live in this area yet.</Text>
-                <Text style={styles.providerMeta}>Try another nearby city or check back later as YardMatch expands coverage.</Text>
+                <Text style={styles.emptyState}>No verified providers are live in this area yet.</Text>
+                <Text style={styles.providerMeta}>Try another nearby area or check back later.</Text>
               </View>
             ) : providersWithWindows.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>Businesses serve this area, but nothing is open in this window.</Text>
-                <Text style={styles.providerMeta}>Try again later or switch to another service window.</Text>
+                <Text style={styles.emptyState}>Providers serve this area, but their near-term windows are full.</Text>
+                <Text style={styles.providerMeta}>You can still review the shortlist below.</Text>
                 {shortlist.map(({ provider, ranking }) => (
                   <View key={provider.id} style={styles.providerRow}>
                     <View style={styles.providerCopy}>
@@ -322,11 +342,33 @@ export function BookServiceScreen() {
                 {recommendedProviderCard ? (
                   <View style={styles.providerRow}>
                     <View style={styles.providerCopy}>
-                      <Text style={styles.providerBadge}>Recommended for this property</Text>
+                      <Text style={styles.providerBadge}>
+                        {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
+                      </Text>
                       <Text style={styles.providerName}>{recommendedProviderCard.provider.companyName}</Text>
+                      {providerChoicePresentations[0] ? (
+                        <Text style={styles.providerChoiceDetail}>
+                          <Text style={styles.providerChoiceHeading}>
+                            {providerChoicePresentations[0].heading}.{" "}
+                          </Text>
+                          {providerChoicePresentations[0].detail}
+                        </Text>
+                      ) : null}
+                      <Text style={styles.providerChoiceDetail}>
+                        <Text style={styles.providerChoiceHeading}>
+                          {recommendedProviderCard.ranking.selectionSummaryLabel}.{" "}
+                        </Text>
+                        {recommendedProviderCard.ranking.selectionSummaryDetail}
+                      </Text>
                       <Text style={styles.providerMeta}>
                         {recommendedProviderCard.provider.rating} stars •{" "}
                         {recommendedProviderCard.provider.serviceRadiusMiles} mi radius
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        <Text style={styles.providerChoiceHeading}>
+                          {recommendedProviderCard.ranking.reliabilityLabel}.{" "}
+                        </Text>
+                        {recommendedProviderCard.ranking.reliabilityDetail}
                       </Text>
                       <Text style={styles.providerMeta}>
                         {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} mi away •{" "}
@@ -337,13 +379,9 @@ export function BookServiceScreen() {
                         {recommendedProviderCard.ranking.neighborhoodFamiliarityDetail}
                       </Text>
                       <Text style={styles.providerMeta}>
-                        {recommendedProviderCard.ranking.availabilityConfidenceLabel}.{" "}
-                        {recommendedProviderCard.ranking.completedJobCount} completed YardMatch jobs.
-                      </Text>
-                      <Text style={styles.providerMeta}>
                         {recommendedProviderCard.slot
-                          ? formatBookingWindowSummary(recommendedProviderCard.slot.startIso)
-                          : "No open slot"}
+                          ? `Next opening: ${formatBookingWindowSummary(recommendedProviderCard.slot.startIso)}`
+                          : "No open slot right now"}
                       </Text>
                     </View>
                     <Pressable
@@ -351,15 +389,14 @@ export function BookServiceScreen() {
                       onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Book</Text>
+                      <Text style={styles.secondaryButtonLabel}>Book recommended</Text>
                     </Pressable>
                   </View>
                 ) : null}
                 {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
                   <View style={styles.providerStack}>
                     <Text style={styles.providerMeta}>
-                      Want a few other qualified options? YardMatch can show a short list without
-                      turning the flow into directory browsing.
+                      Want a backup first? Open a short curated list.
                     </Text>
                     <Pressable
                       onPress={() => {
@@ -377,26 +414,41 @@ export function BookServiceScreen() {
                       }}
                       style={styles.secondaryButtonInline}
                     >
-                      <Text style={styles.secondaryButtonInlineLabel}>Show other qualified providers</Text>
+                      <Text style={styles.secondaryButtonInlineLabel}>Show backup options</Text>
                     </Pressable>
                   </View>
                 ) : null}
                 {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => (
                   <View key={provider.id} style={styles.providerRow}>
                     <View style={styles.providerCopy}>
-                      {index === 0 ? <Text style={styles.providerBadge}>Alternative qualified match</Text> : null}
+                      {providerChoicePresentations[index + 1] ? (
+                        <Text style={styles.providerBadge}>{providerChoicePresentations[index + 1].badge}</Text>
+                      ) : null}
                       <Text style={styles.providerName}>{provider.companyName}</Text>
+                      {providerChoicePresentations[index + 1] ? (
+                        <Text style={styles.providerChoiceDetail}>
+                          <Text style={styles.providerChoiceHeading}>
+                            {providerChoicePresentations[index + 1].heading}.{" "}
+                          </Text>
+                          {providerChoicePresentations[index + 1].detail}
+                        </Text>
+                      ) : null}
+                      <Text style={styles.providerChoiceDetail}>
+                        <Text style={styles.providerChoiceHeading}>{ranking.selectionSummaryLabel}. </Text>
+                        {ranking.selectionSummaryDetail}
+                      </Text>
                       <Text style={styles.providerMeta}>
                         {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
+                      </Text>
+                      <Text style={styles.providerMeta}>
+                        <Text style={styles.providerChoiceHeading}>{ranking.reliabilityLabel}. </Text>
+                        {ranking.reliabilityDetail}
                       </Text>
                       <Text style={styles.providerMeta}>
                         {ranking.distanceMiles.toFixed(1)} mi away • {ranking.reasons.join(" • ")}
                       </Text>
                       <Text style={styles.providerMeta}>
                         {ranking.neighborhoodFamiliarityLabel}. {ranking.neighborhoodFamiliarityDetail}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {ranking.availabilityConfidenceLabel}. {ranking.completedJobCount} completed YardMatch jobs.
                       </Text>
                       <Text style={styles.providerMeta}>
                         {slot ? formatBookingWindowSummary(slot.startIso) : "No open slot"}
@@ -407,7 +459,7 @@ export function BookServiceScreen() {
                       onPress={() => void handleCreateBooking(ranking, index + 2)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Book</Text>
+                      <Text style={styles.secondaryButtonLabel}>Book this option</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -416,6 +468,35 @@ export function BookServiceScreen() {
           </InfoCard>
         </>
       ) : null}
+
+      <Modal
+        animationType="slide"
+        presentationStyle="pageSheet"
+        transparent={false}
+        visible={isPropertyModalVisible}
+      >
+        <View style={styles.modalShell}>
+          <View style={styles.modalHeader}>
+            <View style={styles.modalHeaderCopy}>
+              <Text style={styles.modalEyebrow}>Property</Text>
+              <Text style={styles.modalTitle}>
+                {properties.length === 0 ? "Add your first property" : "Add another property"}
+              </Text>
+              <Text style={styles.modalDescription}>Keep the address short and clean. You can book it right after.</Text>
+            </View>
+            <Pressable onPress={() => setIsPropertyModalVisible(false)} style={styles.modalCloseButton}>
+              <Text style={styles.modalCloseButtonLabel}>Close</Text>
+            </Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            <CustomerPropertyForm
+              isWorking={isWorking}
+              onSubmit={handleCreateProperty}
+              submitLabel={properties.length === 0 ? "Save property" : "Add property"}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
     </ScreenShell>
   );
 }
@@ -537,6 +618,14 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
+  providerChoiceDetail: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  providerChoiceHeading: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
+  },
   secondaryButton: {
     borderRadius: 999,
     borderWidth: 1,
@@ -547,5 +636,53 @@ const styles = StyleSheet.create({
   secondaryButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
+  },
+  modalShell: {
+    flex: 1,
+    backgroundColor: BrandTokens.colors.surface
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingTop: BrandTokens.spacing.hero,
+    paddingBottom: BrandTokens.spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: BrandTokens.colors.border
+  },
+  modalHeaderCopy: {
+    flex: 1,
+    gap: BrandTokens.spacing.xs
+  },
+  modalEyebrow: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  modalTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 24,
+    fontWeight: "700"
+  },
+  modalDescription: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  modalCloseButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  modalCloseButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  modalBody: {
+    padding: BrandTokens.spacing.lg
   }
 });

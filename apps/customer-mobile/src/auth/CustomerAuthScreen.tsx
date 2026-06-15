@@ -77,6 +77,7 @@ export function CustomerAuthScreen({
   const [addressQuery, setAddressQuery] = useState("");
   const [address, setAddress] = useState<Address>(createEmptyAddress());
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [addressSearchMessage, setAddressSearchMessage] = useState("");
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [isSearching, setIsSearching] = useState(false);
   const [pendingSignupToken, setPendingSignupToken] = useState("");
@@ -99,6 +100,7 @@ export function CustomerAuthScreen({
   useEffect(() => {
     if (mode !== "signup" || addressQuery.trim().length < 2) {
       setSuggestions([]);
+      setAddressSearchMessage("");
       return;
     }
 
@@ -106,8 +108,14 @@ export function CustomerAuthScreen({
       setIsSearching(true);
       createCustomerMobileApiClient()
         .searchPlaces(addressQuery)
-        .then((response) => setSuggestions(response.suggestions))
-        .catch(() => setSuggestions([]))
+        .then((response) => {
+          setSuggestions(response.suggestions);
+          setAddressSearchMessage(response.searchMessage ?? "");
+        })
+        .catch(() => {
+          setSuggestions([]);
+          setAddressSearchMessage("");
+        })
         .finally(() => setIsSearching(false));
     }, 220);
 
@@ -428,13 +436,16 @@ export function CustomerAuthScreen({
                   >
                     <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
                     <Text style={styles.suggestionMeta}>
-                      {suggestion.source === "google-geocoding" ? "Google" : "Suggested area"}
+                      {suggestion.matchReason ??
+                        (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
                     </Text>
                   </Pressable>
                 ))}
               </View>
             ) : addressQuery.trim().length >= 2 && isSearching ? (
               <Text style={styles.helper}>Searching nearby areas…</Text>
+            ) : addressQuery.trim().length >= 2 && addressSearchMessage ? (
+              <Text style={styles.helper}>{addressSearchMessage}</Text>
             ) : null}
             <TextInput
               autoCapitalize="words"

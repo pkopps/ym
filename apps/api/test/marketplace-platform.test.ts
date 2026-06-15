@@ -114,12 +114,81 @@ test("instant quotes normalize addresses and explain confidence sources", async 
   assert.equal(quote.normalizedAddress.wasNormalized, true);
   assert.ok(quote.normalizedAddress.normalizedFields.includes("line1"));
   assert.ok(quote.normalizedAddress.normalizedFields.includes("postalCode"));
+  assert.equal(quote.normalizedAddress.validationSource, "local-rules");
+  assert.equal(quote.normalizedAddress.validationConfidence, "local-only");
   assert.equal(quote.measurementSources.turfSqFt, "customer-follow-up");
   assert.equal(quote.measurementSources.shrubBedSqFt, "customer-follow-up");
   assert.ok(quote.confidenceReasons.some((reason) => reason.label === "Your answers sharpened the quote"));
   assert.ok(
     quote.confidenceReasons.some((reason) => /modeled from the address|fallback assumptions/i.test(reason.label))
   );
+});
+
+test("instant quotes use google address validation when configured", async () => {
+  const originalKey = process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+  const originalFetch = global.fetch;
+
+  process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = "test-address-key";
+  global.fetch = (async () =>
+    ({
+      ok: true,
+      async json() {
+        return {
+          result: {
+            verdict: {
+              addressComplete: true,
+              hasUnconfirmedComponents: false,
+              hasInferredComponents: false,
+              hasReplacedComponents: false
+            },
+            address: {
+              postalAddress: {
+                addressLines: ["112 Garden Row"],
+                locality: "Austin",
+                administrativeArea: "TX",
+                postalCode: "78704-1234",
+                regionCode: "US"
+              }
+            },
+            geocode: {
+              location: {
+                latitude: 30.2435,
+                longitude: -97.7638
+              }
+            }
+          }
+        };
+      }
+    }) as Response) as typeof fetch;
+
+  try {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const quote = await platform.createInstantQuote({
+      address: {
+        line1: "112 garden row",
+        city: "austin",
+        state: "tx",
+        postalCode: "787041234",
+        country: "us",
+        point: {
+          latitude: 30.2435,
+          longitude: -97.7638
+        }
+      },
+      category: "lawn-mowing"
+    });
+
+    assert.equal(quote.address.line1, "112 Garden Row");
+    assert.equal(quote.address.postalCode, "78704-1234");
+    assert.equal(quote.normalizedAddress.validationSource, "google-address-validation");
+    assert.equal(quote.normalizedAddress.validationConfidence, "validated");
+    assert.match(quote.normalizedAddress.validationMessage ?? "", /validated/i);
+  } finally {
+    process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalKey;
+    global.fetch = originalFetch;
+  }
 });
 
 test("complex heuristic-heavy quotes ask for layout follow-up and explain scope risk", async () => {
@@ -309,6 +378,41 @@ test("provider search returns ranked results with score reasons and reliability-
     status: "completed"
   });
 
+  for (let index = 0; index < 5; index += 1) {
+    const acceptedBooking = await platform.createBooking(customer.id, {
+      providerId: nearProvider.id,
+      serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "lawn-mowing",
+      scheduledStartIso: futureIso(52 + index * 2),
+      scheduledEndIso: futureIso(53 + index * 2),
+      notes: `Operational reliability acceptance ${index + 1}`,
+      totalCents: 6200
+    });
+
+    await platform.confirmBooking(nearProvider.id, {
+      bookingId: acceptedBooking.id
+    });
+  }
+
+  for (let index = 0; index < 5; index += 1) {
+    const declinedRequest = await platform.createBooking(customer.id, {
+      providerId: farProvider.id,
+      serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "lawn-mowing",
+      scheduledStartIso: futureIso(64 + index * 2),
+      scheduledEndIso: futureIso(65 + index * 2),
+      notes: `Operational reliability decline ${index + 1}`,
+      totalCents: 6200
+    });
+
+    await platform.declineBooking(farProvider.id, {
+      bookingId: declinedRequest.id,
+      reason: "Route already committed to stronger jobs."
+    });
+  }
+
   const problemBooking = await platform.createBooking(customer.id, {
     providerId: farProvider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
@@ -341,9 +445,14 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.ok(results.rankedProviders[0]!.reasons.includes("Close to the property"));
   assert.ok(results.rankedProviders[0]!.reasons.includes("Focused on this type of service"));
   assert.ok((results.rankedProviders[0]!.factors.specialization ?? 0) > 0);
+  assert.ok((results.rankedProviders[0]!.factors.operationalReliability ?? 0) > 0);
   assert.ok(results.rankedProviders[0]!.completedJobCount >= 1);
   assert.ok(results.rankedProviders[0]!.nearbyCompletedJobCount >= 1);
   assert.equal(results.rankedProviders[0]!.availabilityConfidence, "high");
+  assert.match(results.rankedProviders[0]!.reliabilityLabel, /track record|service history|reliability/i);
+  assert.match(results.rankedProviders[0]!.reliabilityDetail, /reviews|punctuality|completed|follow-through/i);
+  assert.match(results.rankedProviders[0]!.selectionSummaryLabel, /match|trust|fit/i);
+  assert.match(results.rankedProviders[0]!.selectionSummaryDetail, /GreenRain recommended|because/i);
   assert.ok(/area|neighborhood/i.test(results.rankedProviders[0]!.neighborhoodFamiliarityLabel));
   assert.ok(results.rankedProviders[0]!.availabilityConfidenceLabel.length > 0);
 
@@ -354,7 +463,14 @@ test("provider search returns ranked results with score reasons and reliability-
   const sponsoredResult = results.rankedProviders.find((result) => result.provider.id === farProvider.id);
   assert.ok(sponsoredResult);
   assert.ok((sponsoredResult?.factors.sponsorship ?? 0) > 0);
+  assert.ok(
+    (results.rankedProviders[0]!.factors.operationalReliability ?? 0) >
+      (sponsoredResult?.factors.operationalReliability ?? 0)
+  );
   assert.ok((sponsoredResult?.factors.issuePenalty ?? 0) > 0);
+  assert.match(sponsoredResult?.reliabilityLabel ?? "", /reliability|track record/i);
+  assert.match(sponsoredResult?.reliabilityDetail ?? "", /decline|weaker/i);
+  assert.match(sponsoredResult?.selectionSummaryLabel ?? "", /ranks behind|fallback/i);
 });
 
 test("provider decline flow and ops overview counters cover confirms, declines, cancellations, and payment milestones", async () => {
@@ -523,6 +639,60 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
     requestSource: "public-web-listings"
   });
 
+  await platform.searchProviders({
+    address: createAddress("7000 Hill Country Way", 31.2435, -98.7638),
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "customer-mobile-book"
+  });
+
+  await repository.updateProvider(recommendedSeedProvider.id, {
+    serviceRadiusMiles: 0.1
+  });
+  await repository.updateProvider(alternateSeedProvider.id, {
+    serviceRadiusMiles: 0.1
+  });
+
+  const noWindowCustomer = await platform.registerUser({
+    fullName: "Taylor Reed",
+    email: "customer-no-window-telemetry@example.com",
+    password: "Password123!",
+    phone: "555-0261",
+    role: "customer",
+    propertyLabel: "Far property",
+    address: createAddress("900 Remote Road", 36.1627, -86.7816)
+  });
+
+  const noWindowProvider = await platform.registerUser({
+    fullName: "No Window Owner",
+    email: "provider-no-window@example.com",
+    password: "Password123!",
+    phone: "555-0262",
+    role: "provider",
+    companyName: "No Window Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("901 Route Base", 36.1629, -86.7818)
+  });
+
+  await repository.updateProvider(noWindowProvider.id, {
+    rating: 4.8,
+    timelinessRating: 4.8,
+    attentionToDetailRating: 4.8,
+    reviewCount: 50,
+    yearsExperience: 10,
+    verificationStatus: "verified"
+  });
+
+  await platform.searchProviders({
+    address: noWindowCustomer.address,
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "customer-mobile-book"
+  });
+
   assert.ok(results.recommendationSessionId);
   assert.equal(results.recommendedProviderId, results.rankedProviders[0]?.provider.id);
   assert.ok(results.rankedProviders.length >= 2);
@@ -530,6 +700,18 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
   platform.createAnalyticsEvent({
     id: crypto.randomUUID(),
     name: MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+    actorId: customer.id,
+    occurredAt: new Date().toISOString(),
+    properties: {
+      recommendationSessionId: results.recommendationSessionId,
+      recommendedProviderId: results.recommendedProviderId ?? "none",
+      requestSource: "customer-web-dashboard"
+    }
+  });
+
+  platform.createAnalyticsEvent({
+    id: crypto.randomUUID(),
+    name: MarketplaceTelemetryEventCatalog.recommendationDismissed,
     actorId: customer.id,
     occurredAt: new Date().toISOString(),
     properties: {
@@ -579,27 +761,66 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
     supportTickets: await repository.listSupportTickets()
   });
 
-  assert.equal(overview.recommendationViews, 2);
+  assert.equal(overview.recommendationViews, 3);
+  assert.equal(overview.providerSearches, 4);
+  assert.equal(overview.providerSearchesNoResults, 1);
+  assert.equal(overview.providerSearchesNoOpenWindows, 1);
+  assert.equal(overview.providerSearchCoverageRate, 0.75);
+  assert.equal(overview.providerSearchOpenWindowRate, 0.5);
   assert.equal(overview.recommendationAlternativesViewed, 1);
+  assert.equal(overview.recommendationAlternativeRevealRate, 1 / 3);
+  assert.equal(overview.recommendationDismissals, 1);
+  assert.equal(overview.recommendationDismissalRate, 1 / 3);
+  assert.equal(overview.recommendationBookingIntents, 2);
+  assert.equal(overview.recommendationBookingIntentRate, 1 / 3);
   assert.equal(overview.acceptedRecommendations, 1);
   assert.equal(overview.swappedRecommendations, 1);
-  assert.equal(overview.recommendationAcceptanceRate, 0.5);
-  assert.equal(overview.recommendationMetricsBySource.length, 2);
+  assert.equal(overview.recommendationAcceptanceRate, 1 / 3);
+  assert.equal(overview.recommendationSwapRate, 1 / 3);
+  assert.equal(overview.recommendationMetricsBySource.length, 3);
   const dashboardMetrics = overview.recommendationMetricsBySource.find(
     (metric) => metric.requestSource === "customer-web-dashboard"
   );
   const publicMetrics = overview.recommendationMetricsBySource.find(
     (metric) => metric.requestSource === "public-web-listings"
   );
+  const mobileMetrics = overview.recommendationMetricsBySource.find(
+    (metric) => metric.requestSource === "customer-mobile-book"
+  );
   assert.ok(dashboardMetrics);
+  assert.equal(dashboardMetrics?.providerSearches, 1);
+  assert.equal(dashboardMetrics?.providerSearchesNoResults, 0);
+  assert.equal(dashboardMetrics?.providerSearchesNoOpenWindows, 0);
+  assert.equal(dashboardMetrics?.providerSearchCoverageRate, 1);
+  assert.equal(dashboardMetrics?.providerSearchOpenWindowRate, 1);
   assert.equal(dashboardMetrics?.recommendationViews, 1);
   assert.equal(dashboardMetrics?.recommendationAlternativesViewed, 1);
+  assert.equal(dashboardMetrics?.recommendationAlternativeRevealRate, 1);
+  assert.equal(dashboardMetrics?.recommendationDismissals, 1);
+  assert.equal(dashboardMetrics?.recommendationDismissalRate, 1);
+  assert.equal(dashboardMetrics?.recommendationBookingIntents, 2);
+  assert.equal(dashboardMetrics?.recommendationBookingIntentRate, 1);
   assert.equal(dashboardMetrics?.acceptedRecommendations, 1);
   assert.equal(dashboardMetrics?.swappedRecommendations, 1);
   assert.equal(dashboardMetrics?.recommendationAcceptanceRate, 1);
+  assert.equal(dashboardMetrics?.recommendationSwapRate, 1);
   assert.ok(publicMetrics);
+  assert.equal(publicMetrics?.providerSearches, 1);
+  assert.equal(publicMetrics?.providerSearchCoverageRate, 1);
+  assert.equal(publicMetrics?.providerSearchOpenWindowRate, 1);
   assert.equal(publicMetrics?.recommendationViews, 1);
+  assert.equal(publicMetrics?.recommendationBookingIntentRate, 0);
+  assert.equal(publicMetrics?.recommendationDismissals, 0);
   assert.equal(publicMetrics?.acceptedRecommendations, 0);
+  assert.ok(mobileMetrics);
+  assert.equal(mobileMetrics?.providerSearches, 2);
+  assert.equal(mobileMetrics?.providerSearchesNoResults, 1);
+  assert.equal(mobileMetrics?.providerSearchesNoOpenWindows, 1);
+  assert.equal(mobileMetrics?.providerSearchCoverageRate, 0.5);
+  assert.equal(mobileMetrics?.providerSearchOpenWindowRate, 0);
+  assert.equal(mobileMetrics?.recommendationViews, 1);
+  assert.equal(mobileMetrics?.recommendationAcceptanceRate, 0);
+  assert.equal(mobileMetrics?.recommendationBookingIntentRate, 0);
 });
 
 test("completed bookings unlock review invites and reject duplicate reviews", async () => {
@@ -5606,6 +5827,340 @@ test("provider assistant can highlight the highest-pressure window tomorrow", as
   assert.match(summary.previewLabel, /Tomorrow dispatch attention/i);
   assert.match(summary.previewMessage, /biggest pressure/i);
   assert.ok(["Morning", "Afternoon", "Late afternoon / evening"].includes(summary.dispatchWindowSummary!.label));
+});
+
+test("provider assistant can recommend which booking to move tomorrow", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-move-tomorrow@example.com",
+    password: "Password123!",
+    phone: "555-43945",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-move-tomorrow@example.com",
+    password: "Password123!",
+    phone: "555-43946",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const firstAfternoonJob = new Date();
+  firstAfternoonJob.setDate(firstAfternoonJob.getDate() + 1);
+  firstAfternoonJob.setHours(13, 0, 0, 0);
+  const secondAfternoonJob = new Date(firstAfternoonJob);
+  secondAfternoonJob.setHours(15, 30, 0, 0);
+
+  const firstBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: firstAfternoonJob.toISOString(),
+    scheduledEndIso: new Date(firstAfternoonJob.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant move recommendation test 1",
+    totalCents: 6200
+  });
+
+  const secondBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: secondAfternoonJob.toISOString(),
+    scheduledEndIso: new Date(secondAfternoonJob.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant move recommendation test 2",
+    totalCents: 6200
+  });
+
+  const recommendation = await platform.runProviderAssistantCommand(provider.id, {
+    command: "What should I move tomorrow?",
+    execute: false
+  });
+
+  assert.equal(recommendation.understood, true);
+  assert.equal(recommendation.actionType, "recommend-dispatch-adjustment");
+  assert.equal(recommendation.requiresBookingSelection, false);
+  assert.equal(recommendation.requiresConfirmation, false);
+  assert.equal(recommendation.executed, false);
+  assert.ok(recommendation.dispatchDaySummary);
+  assert.ok(recommendation.dispatchWindowSummary);
+  assert.equal(recommendation.dispatchWindowSummary?.windowKey, "afternoon");
+  assert.equal(recommendation.targetWindowKey, "morning");
+  assert.equal(recommendation.bookingCandidates.length, 2);
+  assert.equal(recommendation.bookingCandidates[0]?.bookingId, recommendation.matchedBookingId);
+  assert.equal(recommendation.sourceWindowKey, "afternoon");
+  assert.ok(recommendation.suggestedStartIso);
+  assert.ok(recommendation.suggestedEndIso);
+  assert.match(recommendation.previewLabel, /booking to move/i);
+  assert.match(recommendation.previewMessage, /Move .* appointment into .* first/i);
+  assert.ok(
+    [firstBooking.id, secondBooking.id].includes(recommendation.matchedBookingId ?? "")
+  );
+});
+
+test("provider assistant can recommend a cross-day move when tomorrow stays tight", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-cross-day-move@example.com",
+    password: "Password123!",
+    phone: "555-439465",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-cross-day-move@example.com",
+    password: "Password123!",
+    phone: "555-439466",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const morningJob = new Date();
+  morningJob.setDate(morningJob.getDate() + 1);
+  morningJob.setHours(8, 0, 0, 0);
+  const afternoonJob = new Date(morningJob);
+  afternoonJob.setHours(13, 0, 0, 0);
+  const eveningJob = new Date(morningJob);
+  eveningJob.setHours(17, 0, 0, 0);
+  const crossDaySlotStart = new Date(morningJob);
+  crossDaySlotStart.setDate(crossDaySlotStart.getDate() + 1);
+  crossDaySlotStart.setHours(10, 0, 0, 0);
+  const crossDaySlotEnd = new Date(crossDaySlotStart.getTime() + 60 * 60 * 1000);
+
+  (
+    repository as unknown as {
+      slots: Array<{
+        id: string;
+        providerId: string;
+        startIso: string;
+        endIso: string;
+        isBooked: boolean;
+      }>;
+    }
+  ).slots.push({
+    id: crypto.randomUUID(),
+    providerId: provider.id,
+    startIso: crossDaySlotStart.toISOString(),
+    endIso: crossDaySlotEnd.toISOString(),
+    isBooked: false
+  });
+
+  const morningBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: morningJob.toISOString(),
+    scheduledEndIso: new Date(morningJob.getTime() + 60 * 60 * 1000).toISOString(),
+    notes: "Cross-day move test morning",
+    totalCents: 6200
+  });
+
+  const afternoonBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: afternoonJob.toISOString(),
+    scheduledEndIso: new Date(afternoonJob.getTime() + 60 * 60 * 1000).toISOString(),
+    notes: "Cross-day move test afternoon",
+    totalCents: 6200
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("125 Garden Row", 30.2439, -97.7641),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: eveningJob.toISOString(),
+    scheduledEndIso: new Date(eveningJob.getTime() + 60 * 60 * 1000).toISOString(),
+    notes: "Cross-day move test evening",
+    totalCents: 6200
+  });
+
+  const recommendation = await platform.runProviderAssistantCommand(provider.id, {
+    command: "What should I move tomorrow?",
+    execute: false
+  });
+
+  assert.equal(recommendation.understood, true);
+  assert.equal(recommendation.actionType, "recommend-dispatch-adjustment");
+  assert.ok(recommendation.targetWindowLabel);
+  assert.ok(recommendation.suggestedStartIso);
+  assert.ok(recommendation.suggestedEndIso);
+  assert.ok(new Date(recommendation.suggestedStartIso!).getTime() >= crossDaySlotStart.getTime());
+  assert.match(recommendation.previewMessage, /next cleaner route opening|appointment to/i);
+  assert.ok(
+    [morningBooking.id, afternoonBooking.id].includes(recommendation.matchedBookingId ?? "")
+  );
+});
+
+test("provider assistant can recommend where more crew is needed tomorrow", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-crew-gap@example.com",
+    password: "Password123!",
+    phone: "555-43947",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing", "mulch-installation"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-crew-gap@example.com",
+    password: "Password123!",
+    phone: "555-43948",
+    role: "customer",
+    propertyLabel: "Primary home",
+    lawnSizeSqFt: 6200,
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const firstJob = new Date();
+  firstJob.setDate(firstJob.getDate() + 1);
+  firstJob.setHours(9, 0, 0, 0);
+  const secondJob = new Date(firstJob);
+  secondJob.setHours(14, 0, 0, 0);
+
+  const largerGapBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: firstJob.toISOString(),
+    scheduledEndIso: new Date(firstJob.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant staffing recommendation test 1",
+    totalCents: 9200
+  });
+
+  const smallerGapBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: secondJob.toISOString(),
+    scheduledEndIso: new Date(secondJob.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant staffing recommendation test 2",
+    totalCents: 6200
+  });
+
+  const recommendation = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Do I need more crew tomorrow?",
+    execute: false
+  });
+
+  assert.equal(recommendation.understood, true);
+  assert.equal(recommendation.actionType, "recommend-staffing-adjustment");
+  assert.equal(recommendation.requiresBookingSelection, false);
+  assert.equal(recommendation.requiresConfirmation, false);
+  assert.equal(recommendation.executed, false);
+  assert.ok(recommendation.dispatchDaySummary);
+  assert.equal(recommendation.bookingCandidates.length, 2);
+  assert.equal(recommendation.bookingCandidates[0]?.bookingId, largerGapBooking.id);
+  assert.equal(recommendation.matchedBookingId, largerGapBooking.id);
+  assert.ok(
+    recommendation.bookingCandidates.some((candidate) => candidate.bookingId === smallerGapBooking.id)
+  );
+  assert.match(recommendation.previewLabel, /crew gap recommendation/i);
+  assert.match(recommendation.previewMessage, /extra crew first|open crew slot/i);
+});
+
+test("provider assistant can recommend reviewing pending crew matches before sourcing more crew", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-review-pending-crew@example.com",
+    password: "Password123!",
+    phone: "555-43949",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  await repository.updateProvider(provider.id, {
+    staffingMode: "review-first"
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 1);
+  serviceDay.setHours(9, 0, 0, 0);
+  const availableDay = availabilityDayForIso(serviceDay.toISOString());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-review-pending-crew@example.com",
+    password: "Password123!",
+    phone: "555-43950",
+    role: "customer",
+    propertyLabel: "Primary home",
+    lawnSizeSqFt: 6200,
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  for (const [index, offset] of [0, 1, 2].entries()) {
+    await platform.registerUser({
+      fullName: `Crew Pending ${index + 1}`,
+      email: `crew-pending-${index + 1}@example.com`,
+      password: "Password123!",
+      phone: `555-4395${index + 1}`,
+      role: "crew-member",
+      address: createAddress(`11${index + 3} Garden Row`, 30.24355 + offset * 0.00005, -97.76385 - offset * 0.00005),
+      categories: ["mulch-installation"],
+      availableWeekdays: [availableDay],
+      willingToTravelMiles: 20,
+      preferredSchedule: "full-time",
+      hasOwnEquipment: true
+    });
+  }
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant review pending crew recommendation test",
+    totalCents: 9200
+  });
+
+  const recommendation = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Do I need more crew tomorrow?",
+    execute: false
+  });
+
+  assert.equal(recommendation.understood, true);
+  assert.equal(recommendation.actionType, "recommend-staffing-adjustment");
+  assert.equal(recommendation.matchedBookingId, booking.id);
+  assert.match(recommendation.previewMessage, /Review pending crew matches/i);
+  assert.match(recommendation.previewMessage, /pending match/i);
 });
 
 test("provider assistant can summarize the next 7 days of dispatch pressure", async () => {

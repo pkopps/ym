@@ -646,7 +646,7 @@ export function ScheduleScreen() {
       <InfoCard title="Assistant" description="Change bookings in plain language">
         <Text style={styles.metaLine}>
           Try “What needs attention tomorrow?”, “What needs attention this week?”, “How does this
-          week look?”, “How does tomorrow look?”, “Set equipment pickup as the next stop for my
+          week look?”, “How does tomorrow look?”, “What should I move tomorrow?”, “Do I need more crew tomorrow?”, “Set equipment pickup as the next stop for my
           afternoon appointment”, “Clear the route stop for my afternoon appointment”, “Accept the best crew for my afternoon
           appointment”, “Accept Morgan Crew for my afternoon appointment”, “Confirm my afternoon
           appointment”, “Change my afternoon appointment to evening and notify the customer”,
@@ -728,6 +728,10 @@ export function ScheduleScreen() {
               <Text style={styles.meta}>
                 {assistantResult.actionType === "summarize-dispatch"
                   ? "Appointments in that focus area:"
+                  : assistantResult.actionType === "recommend-dispatch-adjustment"
+                    ? "Appointments in the pressured window:"
+                    : assistantResult.actionType === "recommend-staffing-adjustment"
+                      ? "Bookings that need more crew:"
                   : "Matching appointments:"}
               </Text>
             ) : null}

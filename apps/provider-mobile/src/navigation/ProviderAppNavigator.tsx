@@ -12,8 +12,8 @@ type TabKey = "dashboard" | "schedule" | "crew" | "account";
 const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
   { key: "dashboard", label: "Home", icon: "home" },
   { key: "schedule", label: "Schedule", icon: "calendar" },
-  { key: "crew", label: "Crew", icon: "users" },
-  { key: "account", label: "Account", icon: "user" }
+  { key: "crew", label: "Staffing", icon: "users" },
+  { key: "account", label: "Business", icon: "user" }
 ];
 
 export function ProviderAppNavigator() {

@@ -8,10 +8,13 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly providerSponsorshipUpdated = "provider_sponsorship_updated";
   public static readonly crewMemberRegistered = "crew_member_registered";
   public static readonly providerSearchPerformed = "provider_search_performed";
+  public static readonly providerSearchNoResults = "provider_search_no_results";
+  public static readonly providerSearchNoOpenWindows = "provider_search_no_open_windows";
   public static readonly providerMatchReturned = "provider_match_returned";
   public static readonly recommendationPresented = "recommendation_presented";
   public static readonly recommendationAlternativesViewed = "recommendation_alternatives_viewed";
   public static readonly recommendationDismissed = "recommendation_dismissed";
+  public static readonly recommendationBookingIntent = "recommendation_booking_intent";
   public static readonly recommendationAccepted = "recommendation_accepted";
   public static readonly recommendationSwapped = "recommendation_swapped";
   public static readonly providerReviewSubmitted = "provider_review_submitted";

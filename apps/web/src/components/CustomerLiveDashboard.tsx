@@ -3,6 +3,7 @@
 import {
   BookingArrivalTracking,
   Booking,
+  buildCustomerProviderChoicePresentations,
   CustomerProviderConversationThread,
   CustomerProfile,
   CustomerProperty,
@@ -119,6 +120,9 @@ export function CustomerLiveDashboard() {
       slot: providerResults.suggestedSlots.find((candidate) => candidate.providerId === provider.id)
     })) ??
     [];
+  const providerChoicePresentations = buildCustomerProviderChoicePresentations(
+    providerResults?.rankedProviders ?? []
+  );
   const recommendedProviderCard = providerCards[0];
   const alternativeProviderCards = providerCards.slice(1, 4);
   const providersWithWindows = providerCards.filter((item) => item.slot);
@@ -305,6 +309,14 @@ export function CustomerLiveDashboard() {
     setProviderSearchState("loading");
 
     try {
+      if (providerResults?.recommendationSessionId) {
+        await trackWebEvent(MarketplaceTelemetryEventCatalog.recommendationDismissed, {
+          recommendationSessionId: providerResults.recommendationSessionId,
+          recommendedProviderId: providerResults.recommendedProviderId ?? "none",
+          requestSource: "customer-web-dashboard"
+        });
+      }
+
       const api = createAuthenticatedWebApiClient();
       const results = await api.searchProviders({
         address: activeProperty.address,
@@ -386,6 +398,9 @@ export function CustomerLiveDashboard() {
         );
       }
       await loadDashboard();
+      setProviderResults(undefined);
+      setShowAlternativeProviders(false);
+      setProviderSearchState("idle");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
     } finally {
@@ -838,6 +853,9 @@ export function CustomerLiveDashboard() {
                 {quote.normalizedAddress.wasNormalized ? (
                   <p>We cleaned up the address format before matching and quoting.</p>
                 ) : null}
+                {quote.normalizedAddress.validationMessage ? (
+                  <p>{quote.normalizedAddress.validationMessage}</p>
+                ) : null}
                 <div className="stack-sm" style={{ paddingBottom: 0 }}>
                   {quote.confidenceReasons.map((reason) => (
                     <p key={`${reason.impact}-${reason.label}`}>
@@ -893,14 +911,30 @@ export function CustomerLiveDashboard() {
               <article className="list-panel">
                 <div className="search-result-title">
                   <h3>{recommendedProviderCard.provider.companyName}</h3>
-                  <span className="result-badge">Recommended for this property</span>
+                  <span className="result-badge">
+                    {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
+                  </span>
                 </div>
                 <p>
                   {recommendedProviderCard.provider.rating.toFixed(1)} overall •{" "}
                   {recommendedProviderCard.provider.timelinessRating.toFixed(1)} punctuality
                 </p>
+                {providerChoicePresentations[0] ? (
+                  <p>
+                    <strong>{providerChoicePresentations[0].heading}.</strong>{" "}
+                    {providerChoicePresentations[0].detail}
+                  </p>
+                ) : null}
                 {recommendedProviderCard.ranking ? (
                   <>
+                    <p>
+                      <strong>{recommendedProviderCard.ranking.selectionSummaryLabel}.</strong>{" "}
+                      {recommendedProviderCard.ranking.selectionSummaryDetail}
+                    </p>
+                    <p>
+                      <strong>{recommendedProviderCard.ranking.reliabilityLabel}.</strong>{" "}
+                      {recommendedProviderCard.ranking.reliabilityDetail}
+                    </p>
                     <p>
                       {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} miles away •{" "}
                       {recommendedProviderCard.ranking.reasons.join(" • ")}
@@ -928,8 +962,28 @@ export function CustomerLiveDashboard() {
                     onClick={() => void handleCreateBooking(recommendedProviderCard, 1)}
                     type="button"
                   >
-                    {selectedCadence === "one-time" ? "Book recommended provider" : "Start recurring plan"}
+                    {selectedCadence === "one-time" ? "Book now" : "Start recurring plan"}
                   </button>
+                  {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
+                    <button
+                      className="button-secondary"
+                      onClick={() => {
+                        setShowAlternativeProviders(true);
+                        void trackWebEvent(
+                          MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+                          {
+                            recommendationSessionId: providerResults.recommendationSessionId,
+                            recommendedProviderId: providerResults.recommendedProviderId ?? "none",
+                            providerCount: providerCards.length,
+                            requestSource: "customer-web-dashboard"
+                          }
+                        );
+                      }}
+                      type="button"
+                    >
+                      Show me another provider
+                    </button>
+                  ) : null}
                 </div>
                 {!recommendedProviderCard.slot ? (
                   <p style={{ marginTop: "0.75rem" }}>
@@ -940,28 +994,11 @@ export function CustomerLiveDashboard() {
             ) : null}
             {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
               <article className="list-panel">
-                <h3>Want a few other qualified options?</h3>
-                <p>YardMatch keeps the recommendation first, but you can still compare a short list of alternatives.</p>
-                <div className="cta-row">
-                  <button
-                    className="button-secondary"
-                    onClick={() => {
-                      setShowAlternativeProviders(true);
-                      void trackWebEvent(
-                        MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
-                        {
-                          recommendationSessionId: providerResults.recommendationSessionId,
-                          recommendedProviderId: providerResults.recommendedProviderId ?? "none",
-                          providerCount: providerCards.length,
-                          requestSource: "customer-web-dashboard"
-                        }
-                      );
-                    }}
-                    type="button"
-                  >
-                    Show other qualified providers
-                  </button>
-                </div>
+                <h3>The recommendation is the fastest path.</h3>
+                <p>
+                  If you still want a confidence check, you can reveal a short curated set of
+                  other qualified providers without turning this into a directory.
+                </p>
               </article>
             ) : null}
             {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => {
@@ -969,14 +1006,28 @@ export function CustomerLiveDashboard() {
                 <article className="list-panel" key={provider.id}>
                   <div className="search-result-title">
                     <h3>{provider.companyName}</h3>
-                    {index === 0 ? <span className="result-badge">Alternative qualified match</span> : null}
+                    {providerChoicePresentations[index + 1] ? (
+                      <span className="result-badge">{providerChoicePresentations[index + 1].badge}</span>
+                    ) : null}
                     {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
                   </div>
                   <p>
                     {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality
                   </p>
+                  {providerChoicePresentations[index + 1] ? (
+                    <p>
+                      <strong>{providerChoicePresentations[index + 1].heading}.</strong>{" "}
+                      {providerChoicePresentations[index + 1].detail}
+                    </p>
+                  ) : null}
                   {ranking ? (
                     <>
+                      <p>
+                        <strong>{ranking.selectionSummaryLabel}.</strong> {ranking.selectionSummaryDetail}
+                      </p>
+                      <p>
+                        <strong>{ranking.reliabilityLabel}.</strong> {ranking.reliabilityDetail}
+                      </p>
                       <p>
                         {ranking.distanceMiles.toFixed(1)} miles away • {ranking.reasons.join(" • ")}
                       </p>
@@ -1006,7 +1057,7 @@ export function CustomerLiveDashboard() {
                       }
                       type="button"
                     >
-                      {selectedCadence === "one-time" ? "Book this window" : "Start recurring plan"}
+                      {selectedCadence === "one-time" ? "Book this provider" : "Start recurring plan"}
                     </button>
                   </div>
                   {!slot ? (

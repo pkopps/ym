@@ -50,16 +50,42 @@ export class PlaceSearchService {
   public async search(query: string): Promise<PlaceSearchResponse> {
     const trimmed = query.trim();
     if (trimmed.length < 2) {
-      return { suggestions: [] };
+      return {
+        query: trimmed,
+        searchMode: "none",
+        searchConfidence: "low",
+        searchMessage: "Enter at least two characters to search for an area or address.",
+        suggestions: []
+      };
     }
 
     const googleSuggestions = await this.searchGoogle(trimmed);
     if (googleSuggestions.length > 0) {
-      return { suggestions: googleSuggestions };
+      return {
+        query: trimmed,
+        searchMode: "google-geocoding",
+        searchConfidence: "high",
+        searchMessage: "Showing Google-verified address and area suggestions.",
+        suggestions: googleSuggestions
+      };
     }
 
+    const localSuggestions = this.searchLocal(trimmed);
+    const topMatchQuality = localSuggestions[0]?.matchQuality ?? "low";
+    const searchConfidence =
+      topMatchQuality === "high" ? "medium" : topMatchQuality === "medium" ? "low" : "low";
+
     return {
-      suggestions: this.searchLocal(trimmed)
+      query: trimmed,
+      searchMode: localSuggestions.length > 0 ? "local-dataset" : "none",
+      searchConfidence,
+      searchMessage:
+        localSuggestions.length > 0
+          ? topMatchQuality === "high"
+            ? "Showing the best local service-area matches while precise address geocoding is unavailable."
+            : "Showing the closest local service-area guesses. A fuller city, ZIP, or street address can improve accuracy."
+          : "No matching areas were found yet. Try a fuller city, ZIP, or street address.",
+      suggestions: localSuggestions
     };
   }
 
@@ -115,7 +141,7 @@ export class PlaceSearchService {
       .filter((candidate) => candidate.score > 0)
       .sort((left, right) => right.score - left.score || left.seed.label.localeCompare(right.seed.label))
       .slice(0, 8)
-      .map((candidate) => this.toSuggestion(candidate.seed, "local-dataset"));
+      .map((candidate) => this.toSuggestion(candidate.seed, "local-dataset", normalizedQuery, postalQuery));
   }
 
   private async searchGoogle(query: string): Promise<PlaceSuggestion[]> {
@@ -181,6 +207,8 @@ export class PlaceSearchService {
       id: result.place_id ?? `google-${city}-${state}-${postalCode}`,
       label,
       source: "google-geocoding",
+      matchQuality: "high",
+      matchReason: "Google-verified address or area match",
       address: {
         line1,
         city,
@@ -208,11 +236,45 @@ export class PlaceSearchService {
     return useShortName ? component.short_name : component.long_name;
   }
 
-  private toSuggestion(seed: LocalPlaceSeed, source: "local-dataset"): PlaceSuggestion {
+  private toSuggestion(
+    seed: LocalPlaceSeed,
+    source: "local-dataset",
+    normalizedQuery: string,
+    postalQuery: string
+  ): PlaceSuggestion {
+    const normalizedLabel = this.normalizeQuery(seed.label);
+    const normalizedCity = this.normalizeQuery(seed.city);
+    const normalizedAliases = (seed.aliases ?? []).map((alias) => this.normalizeQuery(alias));
+    const cityStateLabel = `${normalizedCity} ${seed.state.toLowerCase()}`;
+    const matchQuality =
+      normalizedLabel === normalizedQuery ||
+      normalizedCity === normalizedQuery ||
+      cityStateLabel === normalizedQuery ||
+      normalizedAliases.includes(normalizedQuery) ||
+      (postalQuery.length >= 5 && seed.postalCode.startsWith(postalQuery))
+        ? "high"
+        : normalizedLabel.startsWith(normalizedQuery) || normalizedCity.startsWith(normalizedQuery)
+          ? "medium"
+          : "low";
+    const matchReason =
+      normalizedAliases.includes(normalizedQuery)
+        ? "Matched a known local area alias"
+        : postalQuery.length >= 5 && seed.postalCode.startsWith(postalQuery)
+          ? "Matched the ZIP code"
+          : normalizedCity === normalizedQuery
+            ? "Matched the city directly"
+            : cityStateLabel === normalizedQuery
+              ? "Matched the city and state"
+              : normalizedLabel.startsWith(normalizedQuery) || normalizedCity.startsWith(normalizedQuery)
+                ? "Closest local service-area match"
+                : "Nearby local service-area guess";
+
     return {
       id: seed.id,
       label: seed.label,
       source,
+      matchQuality,
+      matchReason,
       address: {
         line1: seed.label,
         city: seed.city,

@@ -480,7 +480,11 @@ export function SupportScreen() {
   }
 
   return (
-    <ScreenShell eyebrow="Account" title="Settings and payouts">
+    <ScreenShell
+      eyebrow="Business"
+      title="Settings and payouts"
+      description="Payouts, calendar sync, alerts, and support."
+    >
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 

@@ -36,6 +36,7 @@ export default function AuthCompletePage() {
   const [addressQuery, setAddressQuery] = useState("");
   const [address, setAddress] = useState<Address>(createEmptyAddress());
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [addressSearchMessage, setAddressSearchMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState(searchParams.get("message") ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -80,11 +81,13 @@ export default function AuthCompletePage() {
       setErrorMessage("");
       const result = await api.searchPlaces(addressQuery.trim());
       setSuggestions(result.suggestions);
+      setAddressSearchMessage(result.searchMessage ?? "");
       if (result.suggestions.length === 0) {
         setErrorMessage("No matching addresses were found yet. Try a fuller street, city, or ZIP.");
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to search addresses right now.");
+      setAddressSearchMessage("");
     } finally {
       setIsSearching(false);
     }
@@ -209,9 +212,12 @@ export default function AuthCompletePage() {
                       {suggestion.address.line1}, {suggestion.address.city}, {suggestion.address.state}{" "}
                       {suggestion.address.postalCode}
                     </p>
+                    <p>{suggestion.matchReason ?? (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}</p>
                   </button>
                 ))}
               </div>
+            ) : addressSearchMessage ? (
+              <p>{addressSearchMessage}</p>
             ) : null}
 
             <div className="list-panel">

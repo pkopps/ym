@@ -53,7 +53,7 @@ export function CustomerListingsHero({
   const resolvedSelectedSuggestion = selectedSuggestion ?? localSelectedSuggestion;
   const serviceLabel = serviceCategoryLabels[resolvedSelectedService];
   const metricItems = metrics ?? [
-    { value: String(bookedBusinessShowcase.length), label: "busy providers shown" },
+    { value: String(bookedBusinessShowcase.length), label: "sample providers shown" },
     { value: formatAverageRating(), label: "average rating" },
     { value: `${formatAverageDistance()} mi`, label: "average distance" }
   ];
@@ -61,11 +61,11 @@ export function CustomerListingsHero({
   return (
     <section className="page-hero page-hero--listings">
       <div className="page-hero__copy">
-        <span className="eyebrow">Listings</span>
-        <h1>{serviceLabel} businesses with real local demand.</h1>
+        <span className="eyebrow">Recommended match</span>
+        <h1>Start with the best local fit for {serviceLabel.toLowerCase()}.</h1>
         <p>
           {description ??
-            "Refine the service and area, compare highly rated landscaping businesses, and get a cleaner sense of who is already running packed routes nearby."}
+            "GreenRain shows one recommended provider first, then keeps a short backup list ready if you want to compare."}
         </p>
         <div className="page-hero__metrics">
           {metricItems.map((metric) => (
@@ -78,9 +78,9 @@ export function CustomerListingsHero({
       </div>
 
       <div className="page-hero__search-card">
-        <span className="eyebrow">Refine search</span>
-        <h2>Update the service or area.</h2>
-        <p>The search panel routes directly into the current listings view.</p>
+        <span className="eyebrow">Update search</span>
+        <h2>Change the job or area.</h2>
+        <p>Keep the same recommendation-first flow with a new search.</p>
         <PublicMarketplaceSearchShell
           areaQuery={resolvedAreaQuery}
           onAreaQueryChange={(value) => {

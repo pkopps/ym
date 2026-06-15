@@ -124,7 +124,11 @@ export function DashboardScreen({
   }, [activeTrackingBookingId, envelope?.session.token]);
 
   return (
-    <ScreenShell eyebrow="Home" title="Your next service">
+    <ScreenShell
+      eyebrow="Home"
+      title="Your next visit"
+      description="See the next booking, jump back into matching, or open tracking fast."
+    >
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       <View style={styles.statRow}>
@@ -139,9 +143,20 @@ export function DashboardScreen({
             ).length
           }`}
         />
-        <StatCard label="Ready reviews" value={`${reviewOpportunities.filter((opportunity) => opportunity.canReviewNow).length}`} />
-        <StatCard label="Saved homes" value={`${properties.length}`} />
+        <StatCard label="Reviews" value={`${reviewOpportunities.filter((opportunity) => opportunity.canReviewNow).length}`} />
+        <StatCard label="Properties" value={`${properties.length}`} />
       </View>
+
+      <InfoCard title="Quick actions" description="Move faster from home">
+        <View style={styles.quickActions}>
+          <Pressable onPress={onStartBooking} style={styles.quickActionButton}>
+            <Text style={styles.quickActionLabel}>Get matched</Text>
+          </Pressable>
+          <Pressable onPress={onOpenBookings} style={styles.quickActionButtonSecondary}>
+            <Text style={styles.quickActionSecondaryLabel}>Open bookings</Text>
+          </Pressable>
+        </View>
+      </InfoCard>
 
       {tracking && activeTrackingBookingId ? (
         <Pressable onPress={() => setIsTrackingModalVisible(true)}>
@@ -154,7 +169,7 @@ export function DashboardScreen({
               <Text style={styles.secondaryLine}>{buildTrackingDetail(tracking)}</Text>
             ) : null}
             <Pressable onPress={() => setIsTrackingModalVisible(true)} style={styles.linkButton}>
-              <Text style={styles.linkButtonLabel}>Open full map</Text>
+              <Text style={styles.linkButtonLabel}>Track arrival</Text>
             </Pressable>
           </InfoCard>
         </Pressable>
@@ -251,6 +266,33 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     fontSize: 13,
     fontWeight: "600"
+  },
+  quickActions: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm
+  },
+  quickActionButton: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  quickActionLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
+  },
+  quickActionButtonSecondary: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  quickActionSecondaryLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
   },
   primaryLine: {
     color: BrandTokens.colors.ink,

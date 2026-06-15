@@ -15,6 +15,10 @@ export const metadata: Metadata = {
   }
 };
 
+function formatRate(value: number) {
+  return `${(value * 100).toFixed(0)}%`;
+}
+
 async function getOverview(): Promise<ObservabilityOverview> {
   const api = new MarketplaceApiClient(getWebApiBaseUrl());
 
@@ -28,12 +32,22 @@ async function getOverview(): Promise<ObservabilityOverview> {
       bookingsLast24Hours: 0,
       refundRequestedCount: 0,
       openSupportTickets: 0,
+      providerSearches: 0,
+      providerSearchesNoResults: 0,
+      providerSearchesNoOpenWindows: 0,
+      providerSearchCoverageRate: 0,
+      providerSearchOpenWindowRate: 0,
       recommendationViews: 0,
       recommendationAlternativesViewed: 0,
+      recommendationAlternativeRevealRate: 0,
       recommendationDismissals: 0,
+      recommendationDismissalRate: 0,
+      recommendationBookingIntents: 0,
+      recommendationBookingIntentRate: 0,
       acceptedRecommendations: 0,
       swappedRecommendations: 0,
       recommendationAcceptanceRate: 0,
+      recommendationSwapRate: 0,
       providerBookingConfirmations: 0,
       providerBookingDeclines: 0,
       customerBookingCancellations: 0,
@@ -78,20 +92,66 @@ export default async function OpsPage() {
 
       <section className="grid-three">
         <article className="card">
+          <h2>{formatRate(overview.providerSearchCoverageRate)}</h2>
+          <p>Searches that found at least one provider</p>
+        </article>
+        <article className="card">
+          <h2>{formatRate(overview.providerSearchOpenWindowRate)}</h2>
+          <p>Searches that found a live route window</p>
+        </article>
+        <article className="card">
+          <h2>{overview.providerSearches}</h2>
+          <p>Provider searches recorded</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{formatRate(overview.recommendationBookingIntentRate)}</h2>
+          <p>Recommendation sessions that reached booking intent</p>
+        </article>
+        <article className="card">
+          <h2>{formatRate(overview.recommendationAcceptanceRate)}</h2>
+          <p>Recommendation sessions that stayed with the first choice</p>
+        </article>
+        <article className="card">
+          <h2>{formatRate(overview.recommendationAlternativeRevealRate)}</h2>
+          <p>Recommendation sessions that opened alternatives</p>
+        </article>
+        <article className="card">
+          <h2>{formatRate(overview.recommendationSwapRate)}</h2>
+          <p>Recommendation sessions that switched providers</p>
+        </article>
+        <article className="card">
+          <h2>{formatRate(overview.recommendationDismissalRate)}</h2>
+          <p>Recommendation sessions dismissed for a new search</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.providerSearchesNoResults}</h2>
+          <p>Searches with no provider matches</p>
+        </article>
+        <article className="card">
+          <h2>{overview.providerSearchesNoOpenWindows}</h2>
+          <p>Searches with providers but no open window</p>
+        </article>
+        <article className="card">
           <h2>{overview.recommendationViews}</h2>
           <p>Recommendation views recorded</p>
         </article>
         <article className="card">
-          <h2>{(overview.recommendationAcceptanceRate * 100).toFixed(0)}%</h2>
-          <p>Recommendation acceptance rate</p>
-        </article>
-        <article className="card">
-          <h2>{overview.swappedRecommendations}</h2>
-          <p>Bookings moved to an alternative provider</p>
+          <h2>{overview.recommendationBookingIntents}</h2>
+          <p>Raw booking-intent events from recommendation flows</p>
         </article>
         <article className="card">
           <h2>{overview.recommendationDismissals}</h2>
-          <p>Recommendations dismissed for a new search</p>
+          <p>Raw recommendation dismissals</p>
+        </article>
+        <article className="card">
+          <h2>{overview.swappedRecommendations}</h2>
+          <p>Raw swap events to another provider</p>
         </article>
       </section>
 
@@ -143,14 +203,26 @@ export default async function OpsPage() {
             </li>
             <li>
               <strong>4</strong>
-              <span>{overview.recommendationAlternativesViewed} recommendation sessions opened alternatives</span>
+              <span>{overview.providerSearchesNoResults} searches ended with no provider coverage</span>
             </li>
             <li>
               <strong>5</strong>
-              <span>{overview.acceptedRecommendations} bookings accepted the first recommendation</span>
+              <span>{overview.providerSearchesNoOpenWindows} searches found providers but no live route opening</span>
             </li>
             <li>
               <strong>6</strong>
+              <span>{overview.recommendationAlternativesViewed} recommendation sessions opened alternatives</span>
+            </li>
+            <li>
+              <strong>7</strong>
+              <span>{overview.recommendationBookingIntents} recommendation sessions reached booking intent</span>
+            </li>
+            <li>
+              <strong>8</strong>
+              <span>{overview.acceptedRecommendations} bookings accepted the first recommendation</span>
+            </li>
+            <li>
+              <strong>9</strong>
               <span>{overview.paymentCaptures} bookings have reached captured payment status</span>
             </li>
           </ul>
@@ -198,13 +270,20 @@ export default async function OpsPage() {
                 <article className="list-panel" key={surface.requestSource}>
                   <h3>{surface.requestSource}</h3>
                   <p>
-                    {surface.recommendationViews} views •{" "}
-                    {(surface.recommendationAcceptanceRate * 100).toFixed(0)}% accepted
+                    {surface.providerSearches} searches • {formatRate(surface.providerSearchCoverageRate)} coverage •{" "}
+                    {formatRate(surface.providerSearchOpenWindowRate)} open-window
                   </p>
                   <p>
-                    {surface.recommendationAlternativesViewed} alternative reveals •{" "}
-                    {surface.recommendationDismissals} dismissals •{" "}
-                    {surface.swappedRecommendations} swaps
+                    {surface.recommendationViews} views • {formatRate(surface.recommendationBookingIntentRate)} booking intent •{" "}
+                    {formatRate(surface.recommendationAcceptanceRate)} first-choice accept
+                  </p>
+                  <p>
+                    {formatRate(surface.recommendationAlternativeRevealRate)} alternatives opened •{" "}
+                    {formatRate(surface.recommendationDismissalRate)} dismissed • {formatRate(surface.recommendationSwapRate)} swapped
+                  </p>
+                  <p>
+                    {surface.providerSearchesNoResults} no-match • {surface.providerSearchesNoOpenWindows} no-window •{" "}
+                    {surface.recommendationBookingIntents} raw booking-intent events
                   </p>
                 </article>
               ))
@@ -230,9 +309,11 @@ export default async function OpsPage() {
           <h2>Recommendation analytics notes</h2>
           <div className="stack-lg" style={{ paddingBottom: 0 }}>
             <p>
-              Recommendation views, reveals, accepts, and swaps are now grouped by source so you can
-              compare public search, customer dashboard, and mobile booking behavior without
-              exporting raw analytics first.
+              Recommendation telemetry now groups search demand, no-match/no-window outcomes,
+              booking intent, and conversion by source so you can compare public search, customer
+              dashboard, and mobile booking behavior without exporting raw analytics first. Key
+              rates are session-based, so repeated booking attempts from one recommendation session
+              do not artificially inflate conversion.
             </p>
           </div>
         </article>

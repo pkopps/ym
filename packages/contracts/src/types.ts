@@ -90,6 +90,8 @@ export type OpsBookingInterventionAction =
   | "provider-assistant-start-work";
 export type ProviderAssistantActionType =
   | "summarize-dispatch"
+  | "recommend-dispatch-adjustment"
+  | "recommend-staffing-adjustment"
   | "set-route-stop"
   | "clear-route-stop"
   | "accept-best-crew-match"
@@ -177,11 +179,31 @@ export interface PlaceSuggestion {
   id: string;
   label: string;
   source: PlaceSuggestionSource;
+  matchQuality?: "high" | "medium" | "low";
+  matchReason?: string;
   address: Address;
 }
 
 export interface PlaceSearchResponse {
+  query: string;
+  searchMode: "google-geocoding" | "local-dataset" | "none";
+  searchConfidence: "high" | "medium" | "low";
+  searchMessage?: string;
   suggestions: PlaceSuggestion[];
+}
+
+export function isPlaceSuggestionSafeToAutoSelect(
+  suggestion: PlaceSuggestion | undefined
+): boolean {
+  if (!suggestion) {
+    return false;
+  }
+
+  if (suggestion.source === "google-geocoding") {
+    return true;
+  }
+
+  return suggestion.matchQuality === "high";
 }
 
 export interface ExternalCalendarBlock {
@@ -1256,6 +1278,10 @@ export interface SearchProviderResult {
   nearbyCompletedJobCount: number;
   availabilityConfidence: "high" | "medium" | "low";
   availabilityConfidenceLabel: string;
+  reliabilityLabel: string;
+  reliabilityDetail: string;
+  selectionSummaryLabel: string;
+  selectionSummaryDetail: string;
   neighborhoodFamiliarityLabel: string;
   neighborhoodFamiliarityDetail: string;
   factors: {
@@ -1263,11 +1289,180 @@ export interface SearchProviderResult {
     specialization: number;
     distance: number;
     reliability: number;
+    operationalReliability: number;
     experience: number;
     availability: number;
     sponsorship: number;
     issuePenalty: number;
   };
+}
+
+export interface CustomerProviderChoicePresentation {
+  badge: string;
+  heading: string;
+  detail: string;
+}
+
+function buildRecommendedChoicePresentation(
+  result: SearchProviderResult
+): CustomerProviderChoicePresentation {
+  return {
+    badge: "Recommended for this property",
+    heading: "Best overall match",
+    detail: result.hasOpenSlot
+      ? "GreenRain picked this provider for service fit, trust history, and a real route opening."
+      : "GreenRain picked this provider as the strongest overall fit, even though the near-term route window is currently full."
+  };
+}
+
+function buildHighestRatedChoicePresentation(): CustomerProviderChoicePresentation {
+  return {
+    badge: "Highest rated",
+    heading: "Strongest review history",
+    detail: "This option stands out on customer ratings and punctuality among the other qualified providers."
+  };
+}
+
+function buildClosestRouteChoicePresentation(): CustomerProviderChoicePresentation {
+  return {
+    badge: "Closest route",
+    heading: "Shortest travel distance",
+    detail: "This option is closer to the property than the other revealed backups, which can help route efficiency."
+  };
+}
+
+function buildLocalSpecialistChoicePresentation(): CustomerProviderChoicePresentation {
+  return {
+    badge: "Local specialist",
+    heading: "Deepest neighborhood familiarity",
+    detail: "This option has the strongest nearby completed-job context among the other revealed backups."
+  };
+}
+
+function buildServiceSpecialistChoicePresentation(): CustomerProviderChoicePresentation {
+  return {
+    badge: "Service specialist",
+    heading: "Focused on this type of work",
+    detail: "This provider leans more heavily into the requested service mix than a generic backup match."
+  };
+}
+
+function buildOpenRouteChoicePresentation(): CustomerProviderChoicePresentation {
+  return {
+    badge: "Open route option",
+    heading: "Another bookable match",
+    detail: "This provider still has a live route opening and remains a solid fallback if you skip the recommendation."
+  };
+}
+
+function buildQualifiedFallbackChoicePresentation(): CustomerProviderChoicePresentation {
+  return {
+    badge: "Qualified backup",
+    heading: "Another verified option",
+    detail: "This provider still serves the area and fits the request, but ranks behind the main recommendation."
+  };
+}
+
+function getAlternativeRatingScore(result: SearchProviderResult) {
+  return (
+    result.provider.rating * 1000 +
+    result.provider.timelinessRating * 100 +
+    Math.min(result.provider.reviewCount, 250)
+  );
+}
+
+function getAlternativeLocalSpecialistScore(result: SearchProviderResult) {
+  return (
+    result.nearbyCompletedJobCount * 1000 +
+    result.factors.specialization * 100 +
+    result.completedJobCount
+  );
+}
+
+function pickAlternativeIndex(
+  rankedProviders: SearchProviderResult[],
+  usedIndexes: Set<number>,
+  comparator: (left: SearchProviderResult, right: SearchProviderResult) => number
+) {
+  let bestIndex: number | undefined;
+  for (let index = 1; index < rankedProviders.length; index += 1) {
+    if (usedIndexes.has(index)) {
+      continue;
+    }
+
+    if (bestIndex === undefined || comparator(rankedProviders[index], rankedProviders[bestIndex]) > 0) {
+      bestIndex = index;
+    }
+  }
+
+  if (bestIndex !== undefined) {
+    usedIndexes.add(bestIndex);
+  }
+
+  return bestIndex;
+}
+
+export function buildCustomerProviderChoicePresentations(
+  rankedProviders: SearchProviderResult[]
+): CustomerProviderChoicePresentation[] {
+  if (rankedProviders.length === 0) {
+    return [];
+  }
+
+  const presentations: CustomerProviderChoicePresentation[] = rankedProviders.map((result) =>
+    buildQualifiedFallbackChoicePresentation()
+  );
+  presentations[0] = buildRecommendedChoicePresentation(rankedProviders[0]);
+
+  if (rankedProviders.length === 1) {
+    return presentations;
+  }
+
+  const usedIndexes = new Set<number>();
+  const highestRatedIndex = pickAlternativeIndex(
+    rankedProviders,
+    usedIndexes,
+    (left, right) => getAlternativeRatingScore(left) - getAlternativeRatingScore(right)
+  );
+  const closestRouteIndex = pickAlternativeIndex(
+    rankedProviders,
+    usedIndexes,
+    (left, right) => right.distanceMiles - left.distanceMiles
+  );
+  const localSpecialistIndex = pickAlternativeIndex(
+    rankedProviders,
+    usedIndexes,
+    (left, right) => getAlternativeLocalSpecialistScore(left) - getAlternativeLocalSpecialistScore(right)
+  );
+
+  if (highestRatedIndex !== undefined) {
+    presentations[highestRatedIndex] = buildHighestRatedChoicePresentation();
+  }
+  if (closestRouteIndex !== undefined) {
+    presentations[closestRouteIndex] = buildClosestRouteChoicePresentation();
+  }
+  if (localSpecialistIndex !== undefined) {
+    presentations[localSpecialistIndex] = buildLocalSpecialistChoicePresentation();
+  }
+
+  for (let index = 1; index < rankedProviders.length; index += 1) {
+    const result = rankedProviders[index];
+    const presentation = presentations[index];
+    if (presentation.badge !== "Qualified backup") {
+      continue;
+    }
+
+    if (result.factors.specialization >= 7) {
+      presentations[index] = buildServiceSpecialistChoicePresentation();
+      continue;
+    }
+
+    if (result.hasOpenSlot) {
+      presentations[index] = buildOpenRouteChoicePresentation();
+    }
+  }
+
+  return presentations;
 }
 
 export interface CreateBookingRequest {
@@ -1561,6 +1756,9 @@ export interface NormalizedAddressSummary {
   displayLabel: string;
   wasNormalized: boolean;
   normalizedFields: Array<"line1" | "line2" | "city" | "state" | "postalCode" | "country">;
+  validationSource?: "local-rules" | "google-address-validation";
+  validationConfidence?: "local-only" | "validated" | "review-suggested";
+  validationMessage?: string;
 }
 
 export interface InstantQuoteRequest {
@@ -1804,12 +2002,22 @@ export interface ActiveSession {
 
 export interface RecommendationSurfaceMetrics {
   requestSource: string;
+  providerSearches: number;
+  providerSearchesNoResults: number;
+  providerSearchesNoOpenWindows: number;
+  providerSearchCoverageRate: number;
+  providerSearchOpenWindowRate: number;
   recommendationViews: number;
   recommendationAlternativesViewed: number;
+  recommendationAlternativeRevealRate: number;
   recommendationDismissals: number;
+  recommendationDismissalRate: number;
+  recommendationBookingIntents: number;
+  recommendationBookingIntentRate: number;
   acceptedRecommendations: number;
   swappedRecommendations: number;
   recommendationAcceptanceRate: number;
+  recommendationSwapRate: number;
 }
 
 export interface ObservabilityOverview {
@@ -1819,12 +2027,22 @@ export interface ObservabilityOverview {
   bookingsLast24Hours: number;
   refundRequestedCount: number;
   openSupportTickets: number;
+  providerSearches: number;
+  providerSearchesNoResults: number;
+  providerSearchesNoOpenWindows: number;
+  providerSearchCoverageRate: number;
+  providerSearchOpenWindowRate: number;
   recommendationViews: number;
   recommendationAlternativesViewed: number;
+  recommendationAlternativeRevealRate: number;
   recommendationDismissals: number;
+  recommendationDismissalRate: number;
+  recommendationBookingIntents: number;
+  recommendationBookingIntentRate: number;
   acceptedRecommendations: number;
   swappedRecommendations: number;
   recommendationAcceptanceRate: number;
+  recommendationSwapRate: number;
   providerBookingConfirmations: number;
   providerBookingDeclines: number;
   customerBookingCancellations: number;

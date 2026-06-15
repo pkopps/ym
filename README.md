@@ -64,6 +64,14 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `APPLE_KEY_ID`
   - `APPLE_PRIVATE_KEY`
   - `APP_BASE_URL` (for example `http://localhost:3000`)
+- To turn Google Address Validation enrichment on locally, set:
+  - `GOOGLE_ADDRESS_VALIDATION_API_KEY`
+- When configured, Google Address Validation can enrich:
+  - customer/provider signup addresses
+  - customer properties
+  - quote inputs
+  - provider search inputs
+  - direct booking and booking-address update inputs
 - Protected customer/provider routes now derive identity from the bearer token instead of trusting caller-supplied IDs.
 - The API keeps the current route families, but ownership is enforced for:
   - customer properties
@@ -148,6 +156,9 @@ npm run prisma:seed
 - Multiple saved customer properties with a default/primary address model
 - Booking address snapshots plus post-booking address-change workflows
 - Instant quote scaffolding with automated property-size estimation and confidence-based follow-up questions
+- Optional Google Address Validation enrichment for quote/search/property/signup flows when configured
+- Place search now returns structured confidence and match-reason metadata so clients can distinguish Google-verified suggestions from best local fallback guesses
+- Recommendation-first public search no longer silently auto-selects weaker local fallback area guesses; low-confidence matches now require clearer customer confirmation
 
 ## Competitive positioning
 
@@ -198,19 +209,78 @@ The customer should usually see:
 
 The platform should avoid making the customer do unnecessary marketplace work when GreenRain/YardMatch can make the recommendation confidently.
 
+### Preferred launch model
+
+GreenRain/YardMatch should launch with:
+
+- one recommended provider
+- a clear explanation of why that provider was chosen
+- immediate booking controls
+- a lightweight fallback path like `Show me another provider`
+
+This is the preferred V1 middle ground:
+
+- not a full directory flow where the customer browses many landscapers
+- not an opaque hidden-match flow where the customer has no idea who was selected until after matching
+
+In practical terms, the launch posture should be:
+
+1. Customer tells us what they need.
+2. The marketplace recommends the best provider.
+3. The customer can confirm that recommendation quickly.
+4. The customer can ask for a limited set of other qualified providers if trust is still needed.
+
+This keeps friction low while still preserving homeowner trust.
+
 Current baseline shipped:
 
 - public listings, customer web dashboard, and customer mobile booking all show one recommended provider first
 - alternative providers sit behind an explicit reveal instead of being the default primary view
+- customer booking surfaces now use a cleaner confirmation posture around the primary match:
+  - `Book now` for the recommendation
+  - `Show me another provider` for the limited fallback path
 - recommendation sessions now support analytics for:
   - recommendation views
   - alternative-provider reveals
   - accepted first-choice recommendations
   - swapped bookings onto another qualified provider
+  - session-based funnel rates so repeated booking attempts in one recommendation session do not overstate conversion
 - recommendation cards now surface a baseline trust layer instead of only generic ranking reasons:
+  - reliability summaries that explain trust beyond raw star ratings alone
+  - operational follow-through signals from real marketplace behavior, like steady confirm-vs-decline history and late-update frequency
+  - a clearer `why GreenRain picked this provider` explanation tied to fit, trust, route availability, and local familiarity
   - neighborhood familiarity
   - completed YardMatch job count
   - availability-confidence messaging around the suggested route window
+- alternative providers now use a curated framing layer instead of generic backup-card language:
+  - `Highest rated`
+  - `Closest route`
+  - `Local specialist`
+- weaker fallback area guesses no longer get silently auto-selected in the public recommendation flow; customers are prompted to choose a suggested area when search confidence is not strong enough
+
+Alternative providers should remain a secondary trust feature, not the primary browsing mode. If alternatives are shown, they should be tightly curated rather than open-ended. Good examples include:
+
+- `Best match`
+- `Highest rated`
+
+## Provider assistant
+
+The provider assistant is meant to reduce dispatch friction, not just restate schedule data.
+
+Current baseline includes:
+
+- lifecycle commands like confirm, start route, start work, complete, late update, and exception reporting
+- staffing commands like accept best crew, accept/deny crew, assign route leader, and message crew
+- dispatch reasoning commands like:
+  - `How does tomorrow look?`
+  - `What needs attention tomorrow?`
+  - `What should I move tomorrow?`
+  - `Do I need more crew tomorrow?`
+
+That last class matters because the assistant now moves beyond descriptive route summaries and can recommend a specific appointment/window adjustment when a day looks pressured.
+It can also tell the provider when existing pending crew matches should be reviewed first versus when the booking still needs fresh sourcing.
+When tomorrow has no meaningfully lighter same-day window left, it can now fall back to the next real cleaner route opening on a later day.
+- `Local specialist`
 
 ### Why not launch as a full directory
 
@@ -224,8 +294,11 @@ For landscaping, trust matters more than it does in rideshare-style matching:
 Because of that, the platform should not launch with:
 
 - open-ended provider browsing as the default path
+- many featured or promoted provider slots competing for attention on a basic service request
 - many-provider bidding on a single customer lead
 - opaque hidden matching with no explanation
+
+The platform also should not launch with a full Uber-style hidden match as the primary flow. For home services, customers usually want at least a minimal trust checkpoint before someone arrives at their property.
 
 The target middle ground is:
 
@@ -276,6 +349,13 @@ Avoid marketplace drift toward:
 - quote wars
 - provider economics that treat supply like a disposable lead source
 
+Operationally, growth should favor dense neighborhood coverage before broad geographic sprawl. A dense local marketplace improves:
+
+- route efficiency
+- recommendation confidence
+- repeat-property retention
+- provider earnings quality
+
 ### Marketplace metrics
 
 Primary marketplace metric to add and watch:
@@ -295,10 +375,16 @@ This metric should become a primary signal of:
 
 Current baseline instrumentation:
 
+- provider searches are now counted by source surface
+- source-level search diagnostics now also track:
+  - searches with no provider coverage
+  - searches with providers but no open route window
+  - recommendation booking intent before final booking creation
 - recommendation views are emitted when ranked provider results return with a top match
 - accepted recommendations are emitted when the customer books the recommended provider
 - swapped recommendations are emitted when the customer books a revealed alternative
 - alternative reveals are emitted when the customer asks to inspect other qualified providers
+- recommendation dismissals are emitted when a customer requests a different match flow after seeing a recommendation without booking it
 - ops telemetry now breaks recommendation performance down by booking surface, including:
   - `public-web-listings`
   - `customer-web-dashboard`

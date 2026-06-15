@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  buildCustomerProviderChoicePresentations,
+  isPlaceSuggestionSafeToAutoSelect,
   PlaceSuggestion,
   SearchProviderResult,
   SearchProvidersResponse,
@@ -81,7 +83,7 @@ function formatSearchMetrics(results?: SearchProvidersResponse): Array<{ value: 
 
 function formatAreaDescription(areaLabel: string | undefined, serviceLabel: string) {
   const resolvedArea = areaLabel?.trim() || "your area";
-  return `See verified ${serviceLabel.toLowerCase()} providers around ${resolvedArea}, compare why they rank highly, and move straight into a real booking flow when you're ready.`;
+  return `See one recommended ${serviceLabel.toLowerCase()} provider first in ${resolvedArea}, then open a short backup list only if you want it.`;
 }
 
 export function PublicCustomerListingsExperience({
@@ -123,6 +125,7 @@ export function PublicCustomerListingsExperience({
 
   const serviceLabel = serviceCategoryLabels[selectedService];
   const rankedProviders = providerResults?.rankedProviders ?? [];
+  const providerChoicePresentations = buildCustomerProviderChoicePresentations(rankedProviders);
   const recommendedProvider = rankedProviders[0];
   const alternativeProviders = rankedProviders.slice(1, 4);
   const liveMetrics = formatSearchMetrics(providerResults);
@@ -143,14 +146,44 @@ export function PublicCustomerListingsExperience({
     setErrorMessage(undefined);
 
     try {
+      if (providerResults?.recommendationSessionId) {
+        await trackWebEvent(MarketplaceTelemetryEventCatalog.recommendationDismissed, {
+          recommendationSessionId: providerResults.recommendationSessionId,
+          recommendedProviderId: providerResults.recommendedProviderId ?? "none",
+          requestSource: "public-web-listings"
+        });
+      }
+
       let resolvedSuggestion = nextSuggestion;
       if (!resolvedSuggestion) {
         const placeResponse = await api.searchPlaces(nextAreaQuery);
-        resolvedSuggestion = placeResponse.suggestions[0];
+        resolvedSuggestion = placeResponse.suggestions.find((suggestion) =>
+          isPlaceSuggestionSafeToAutoSelect(suggestion)
+        );
+
+        if (!resolvedSuggestion && placeResponse.suggestions.length > 0) {
+          setProviderResults(undefined);
+          setSelectedSuggestion(undefined);
+          setResolvedAreaLabel(nextAreaQuery);
+          setSearchState("loaded");
+          setErrorMessage(
+            placeResponse.searchMessage ??
+              "Choose one of the suggested areas so GreenRain does not guess the wrong location."
+          );
+          if (shouldUpdateUrl) {
+            const params = buildCustomerListingsSearchParams({
+              areaQuery: nextAreaQuery,
+              selectedService: nextService
+            });
+            router.replace(`/customer/listings?${params.toString()}`);
+          }
+          return;
+        }
       }
 
       if (!resolvedSuggestion) {
         setProviderResults(undefined);
+        setSelectedSuggestion(undefined);
         setResolvedAreaLabel(nextAreaQuery);
         setSearchState("loaded");
         if (shouldUpdateUrl) {
@@ -230,13 +263,12 @@ export function PublicCustomerListingsExperience({
       <section className="card live-listings-card">
         <div className="results-summary">
           <div className="results-summary__copy">
-            <strong>Live provider matches</strong>
+            <strong>Live matches for this property</strong>
             <span>
               {serviceLabel} near {resolvedAreaLabel}
             </span>
             <small>
-              GreenRain recommends one verified provider first, then lets customers inspect a
-              short list of other qualified businesses only if they want to compare.
+              One verified recommendation first. Short backup options after that.
             </small>
           </div>
           <div className="results-summary__actions">
@@ -253,14 +285,11 @@ export function PublicCustomerListingsExperience({
           <div className="live-listings-card__grid">
             <article className="list-panel live-listings-card__message">
               <h3>Checking verified providers</h3>
-              <p>Looking at route openings, rating history, and service fit for this area.</p>
+              <p>Checking route openings, service fit, and reliability.</p>
             </article>
             <article className="list-panel live-listings-card__message">
-              <h3>Sorting real route availability</h3>
-              <p>
-                GreenRain weighs which providers serve this area well and which crews still have
-                room in the schedule.
-              </p>
+              <h3>Sorting real availability</h3>
+              <p>Only providers with real local coverage make the shortlist.</p>
             </article>
           </div>
         ) : null}
@@ -275,7 +304,10 @@ export function PublicCustomerListingsExperience({
         {searchState === "loaded" && !selectedSuggestion ? (
           <article className="list-panel live-listings-card__message">
             <h3>No suggested area matched that search yet.</h3>
-            <p>Try a nearby city, a ZIP code, or a more specific address so we can locate providers accurately.</p>
+            <p>
+              {errorMessage ??
+                "Try a nearby city, ZIP code, or fuller address so we can match the right market."}
+            </p>
           </article>
         ) : null}
 
@@ -283,8 +315,7 @@ export function PublicCustomerListingsExperience({
           <article className="list-panel live-listings-card__message">
             <h3>No verified providers are live in this area yet.</h3>
             <p>
-              We do not currently have a verified landscaping business serving this search area.
-              Try a nearby market or contact support so we can flag the area for expansion.
+              We do not have a verified provider serving this exact area yet. Try a nearby market or flag the area for expansion.
             </p>
             <div className="cta-row">
               <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
@@ -300,24 +331,22 @@ export function PublicCustomerListingsExperience({
               <article className="list-panel live-listings-card__banner">
                 <h3>Providers cover this area, but their near-term route windows are full.</h3>
                 <p>
-                  You can still compare the best local businesses below, then create an account to
-                  watch for the next route opening.
+                  You can still review the best local businesses below and be ready when the next route window opens.
                 </p>
               </article>
             ) : null}
             {recommendedProvider ? (
               <LiveProviderCard
+                choicePresentation={providerChoicePresentations[0]}
                 result={recommendedProvider}
                 rank={1}
-                rankLabel="Recommended for this property"
               />
             ) : null}
             {alternativeProviders.length > 0 && !showAlternativeProviders ? (
               <article className="list-panel live-listings-card__banner">
-                <h3>Want a few other qualified options?</h3>
+                <h3>Want a backup option before you book?</h3>
                 <p>
-                  We keep the recommendation primary, but you can still inspect a short list of
-                  nearby alternatives if you want to compare.
+                  The recommendation stays primary, but you can still open a short backup list for a confidence check.
                 </p>
                 <div className="cta-row">
                   <button
@@ -336,7 +365,7 @@ export function PublicCustomerListingsExperience({
                     }}
                     type="button"
                   >
-                    Show other qualified providers
+                    Show backup options
                   </button>
                 </div>
               </article>
@@ -344,10 +373,10 @@ export function PublicCustomerListingsExperience({
             {showAlternativeProviders
               ? alternativeProviders.map((result, index) => (
                   <LiveProviderCard
+                    choicePresentation={providerChoicePresentations[index + 1]}
                     key={result.provider.id}
                     result={result}
                     rank={index + 2}
-                    rankLabel={index === 0 ? "Alternative qualified match" : undefined}
                   />
                 ))
               : null}
@@ -357,10 +386,9 @@ export function PublicCustomerListingsExperience({
 
       <section className="stack-lg">
         <div className="section-header">
-          <h2>What fully booked calendars can look like</h2>
+          <h2>What busy provider calendars can look like</h2>
           <p>
-            This showcase gives customers a cleaner feel for route density and how busy established
-            GreenRain providers can look when their schedules are packed.
+            A quick look at route density once a local market starts to fill in.
           </p>
         </div>
         <BookedBusinessResults allowMapToggle />
@@ -370,11 +398,11 @@ export function PublicCustomerListingsExperience({
 }
 
 function LiveProviderCard({
-  rankLabel,
+  choicePresentation,
   rank,
   result
 }: {
-  rankLabel?: string;
+  choicePresentation?: { badge: string; heading: string; detail: string };
   rank: number;
   result: SearchProviderResult;
 }) {
@@ -389,7 +417,7 @@ function LiveProviderCard({
         <div className="search-result-title">
           <h3>{provider.companyName}</h3>
           <div className="live-provider-card__badges">
-            {rankLabel ? <span className="result-badge">{rankLabel}</span> : rank === 1 ? <span className="result-badge">Best fit</span> : null}
+            {choicePresentation ? <span className="result-badge">{choicePresentation.badge}</span> : rank === 1 ? <span className="result-badge">Best fit</span> : null}
             {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
             <span className={`result-badge${result.hasOpenSlot ? "" : " result-badge--neutral"}`}>
               {result.hasOpenSlot ? "Open route window" : "Route full"}
@@ -400,6 +428,18 @@ function LiveProviderCard({
           {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality •{" "}
           {provider.reviewCount} reviews
         </p>
+      </div>
+
+      {choicePresentation ? (
+        <div className="live-provider-card__decision">
+          <strong>{choicePresentation.heading}</strong>
+          <p>{choicePresentation.detail}</p>
+        </div>
+      ) : null}
+
+      <div className="live-provider-card__decision live-provider-card__decision--summary">
+        <strong>{result.selectionSummaryLabel}</strong>
+        <p>{result.selectionSummaryDetail}</p>
       </div>
 
       <div className="calendar-card__metric-row">
@@ -415,6 +455,9 @@ function LiveProviderCard({
       </p>
 
       <div className="stack-sm" style={{ paddingBottom: 0 }}>
+        <p className="live-provider-card__address">
+          <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
+        </p>
         <p className="live-provider-card__address">
           <strong>{result.neighborhoodFamiliarityLabel}.</strong> {result.neighborhoodFamiliarityDetail}
         </p>
@@ -446,7 +489,7 @@ function LiveProviderCard({
 
       <div className="cta-row">
         <a className="button" href="/auth">
-          Create account to book
+          {rank === 1 ? "Create account to book" : "Create account to book this provider"}
         </a>
         <a className="button-secondary" href="/login/customer">
           Log in

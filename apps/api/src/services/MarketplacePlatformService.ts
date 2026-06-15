@@ -73,6 +73,7 @@ import {
   CreateSupportTicketRequest,
   UpdateSupportTicketRequest,
   Booking,
+  BookingServiceWindowKey,
   BookingInterventionRecord,
   BookingRouteStop,
   CrewMemberProfile,
@@ -106,6 +107,7 @@ import {
   SyncStaleProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
   ProviderDispatchRangeSummary,
+  ProviderDispatchRouteStatus,
   PlaceSearchResponse,
   RegisterUserRequest,
   ReviewProviderVerificationRequest,
@@ -157,6 +159,7 @@ import {
 import { HttpError } from "../http";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
 import { NotificationDeliveryService } from "./NotificationDeliveryService";
+import { AddressValidationOutcome, AddressValidationService } from "./AddressValidationService";
 import { PlaceSearchService } from "./PlaceSearchService";
 import { PaymentCheckoutGateway, StripeCheckoutService } from "./StripeCheckoutService";
 
@@ -213,6 +216,9 @@ export class MarketplacePlatformService {
   private readonly bookingAddressPolicy = new BookingAddressPolicyService(this.geoService);
   private readonly instantQuoteEngine = new InstantQuoteEngine();
   private readonly placeSearch = new PlaceSearchService(process.env.GOOGLE_MAPS_API_KEY);
+  private readonly addressValidation = new AddressValidationService(
+    process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY
+  );
   private readonly notificationDelivery = new NotificationDeliveryService();
   private readonly stripeCheckout: PaymentCheckoutGateway;
   private readonly appBaseUrl: string;
@@ -235,7 +241,8 @@ export class MarketplacePlatformService {
     passwordHash?: string
   ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
     const now = new Date().toISOString();
-    const normalizedAddress = this.normalizeAddress(payload.address);
+    const validatedAddress = await this.normalizeAndValidateAddress(payload.address);
+    const normalizedAddress = validatedAddress.address;
 
     if (payload.role === "customer") {
       const primaryProperty = {
@@ -735,10 +742,12 @@ export class MarketplacePlatformService {
   }
 
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
-    const normalizedAddress = this.normalizeAddress(payload.address);
+    const normalizedAddress = (await this.normalizeAndValidateAddress(payload.address)).address;
     const recommendationSessionId = crypto.randomUUID();
+    const providerDecisionMetrics = this.buildProviderDecisionMetrics();
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.providerSearchPerformed, "anonymous", {
+      recommendationSessionId,
       dateIso: payload.dateIso,
       categoryCount: payload.categories.length,
       city: normalizedAddress.city,
@@ -789,7 +798,8 @@ export class MarketplacePlatformService {
               provider,
               providerBookings,
               distanceMiles,
-              suggestedSlot
+              suggestedSlot,
+              providerDecisionMetrics.get(provider.id)
             );
 
             return {
@@ -816,7 +826,9 @@ export class MarketplacePlatformService {
       });
 
     const suggestedSlots = rankedCandidates.flatMap((candidate) => candidate.matchingSlots);
-    const rankedProviders = rankedCandidates.map((candidate) => candidate.ranking);
+    const rankedProviders = this.withCustomerSelectionSummaries(
+      rankedCandidates.map((candidate) => candidate.ranking)
+    );
     const matchingProviders = rankedProviders.map((candidate) => candidate.provider);
     const recommendedProviderId = rankedProviders[0]?.provider.id;
 
@@ -833,6 +845,34 @@ export class MarketplacePlatformService {
         requestSource: payload.requestSource ?? "unknown"
       }
     });
+
+    if (matchingProviders.length === 0) {
+      this.analytics.record({
+        id: crypto.randomUUID(),
+        name: MarketplaceTelemetryEventCatalog.providerSearchNoResults,
+        occurredAt: new Date().toISOString(),
+        properties: {
+          recommendationSessionId,
+          providerCount: 0,
+          slotCount: 0,
+          city: normalizedAddress.city,
+          requestSource: payload.requestSource ?? "unknown"
+        }
+      });
+    } else if (suggestedSlots.length === 0) {
+      this.analytics.record({
+        id: crypto.randomUUID(),
+        name: MarketplaceTelemetryEventCatalog.providerSearchNoOpenWindows,
+        occurredAt: new Date().toISOString(),
+        properties: {
+          recommendationSessionId,
+          providerCount: matchingProviders.length,
+          slotCount: 0,
+          city: normalizedAddress.city,
+          requestSource: payload.requestSource ?? "unknown"
+        }
+      });
+    }
 
     if (recommendedProviderId) {
       this.analytics.record({
@@ -3024,7 +3064,15 @@ export class MarketplacePlatformService {
     }
 
     const rawAddress = property?.address ?? payload.address;
-    const normalizedAddress = this.normalizeAddress(rawAddress);
+    const validatedAddress = property
+      ? {
+          address: rawAddress,
+          source: "local-rules" as const,
+          confidence: "local-only" as const,
+          message: undefined
+        }
+      : await this.normalizeAndValidateAddress(rawAddress);
+    const normalizedAddress = validatedAddress.address;
 
     const quote = this.instantQuoteEngine.buildQuote({
       request: {
@@ -3032,7 +3080,7 @@ export class MarketplacePlatformService {
         address: normalizedAddress
       },
       property,
-      normalizedAddress: this.buildNormalizedAddressSummary(rawAddress, normalizedAddress)
+      normalizedAddress: this.buildNormalizedAddressSummary(rawAddress, normalizedAddress, validatedAddress)
     });
 
     this.analytics.record({
@@ -3079,11 +3127,15 @@ export class MarketplacePlatformService {
       throw new Error("Selected property does not belong to the customer");
     }
 
+    const validatedServiceAddress = selectedProperty
+      ? selectedProperty.address
+      : (await this.normalizeAndValidateAddress(payload.serviceAddress)).address;
+
     const plan: RecurringServicePlan = {
       id: crypto.randomUUID(),
       customerId,
       providerId: payload.providerId,
-      serviceAddress: selectedProperty?.address ?? payload.serviceAddress,
+      serviceAddress: validatedServiceAddress,
       servicePropertyId: payload.servicePropertyId,
       category: payload.category,
       frequency: payload.frequency,
@@ -3101,7 +3153,7 @@ export class MarketplacePlatformService {
       customerId,
       {
         providerId: payload.providerId,
-        serviceAddress: payload.serviceAddress,
+        serviceAddress: validatedServiceAddress,
         servicePropertyId: payload.servicePropertyId,
         category: payload.category,
         scheduledStartIso: payload.scheduledStartIso,
@@ -3240,10 +3292,14 @@ export class MarketplacePlatformService {
       throw new Error("Selected property does not belong to the customer");
     }
 
+    const validatedServiceAddress = selectedProperty
+      ? selectedProperty.address
+      : (await this.normalizeAndValidateAddress(payload.serviceAddress)).address;
+
     const bookingBase = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
       customerId,
       ...payload,
-      serviceAddress: selectedProperty?.address ?? this.normalizeAddress(payload.serviceAddress)
+      serviceAddress: validatedServiceAddress
     });
 
     const booking: Booking = {
@@ -3269,6 +3325,7 @@ export class MarketplacePlatformService {
         category: payload.category,
         servicePropertyId: payload.servicePropertyId ?? "custom-address"
       });
+      this.recordRecommendationBookingIntent(customerId, payload, Boolean(options?.recurringPlanId));
       this.recordRecommendationSelection(customerId, booking, payload, Boolean(options?.recurringPlanId));
     }
 
@@ -3307,6 +3364,27 @@ export class MarketplacePlatformService {
 
     this.analytics.recordFunnelStep(eventName, customerId, {
       bookingId: booking.id,
+      providerId: payload.providerId,
+      category: payload.category,
+      recommendationSessionId: payload.recommendationSessionId,
+      recommendedProviderId: payload.recommendedProviderId ?? "unknown",
+      selectedProviderRank: payload.selectedProviderRank ?? "unknown",
+      viewedAlternativeProviders: payload.viewedAlternativeProviders ?? false,
+      recommendationSource: payload.recommendationSource ?? "unknown",
+      recurringPlanStarted
+    });
+  }
+
+  private recordRecommendationBookingIntent(
+    customerId: string,
+    payload: CreateBookingRequest,
+    recurringPlanStarted: boolean
+  ): void {
+    if (!payload.recommendationSessionId) {
+      return;
+    }
+
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.recommendationBookingIntent, customerId, {
       providerId: payload.providerId,
       category: payload.category,
       recommendationSessionId: payload.recommendationSessionId,
@@ -3487,6 +3565,14 @@ export class MarketplacePlatformService {
 
     if (parsed.actions.length === 1 && parsed.actions[0]?.actionType === "summarize-dispatch") {
       return this.runProviderAssistantDispatchSummary(providerId, parsed.actions[0], command);
+    }
+
+    if (parsed.actions.length === 1 && parsed.actions[0]?.actionType === "recommend-dispatch-adjustment") {
+      return this.runProviderAssistantDispatchAdjustment(providerId, parsed.actions[0], command);
+    }
+
+    if (parsed.actions.length === 1 && parsed.actions[0]?.actionType === "recommend-staffing-adjustment") {
+      return this.runProviderAssistantStaffingAdjustment(providerId, parsed.actions[0], command);
     }
 
     const upcomingBookings = await this.listProviderAssistantCandidates(providerId);
@@ -3774,6 +3860,311 @@ export class MarketplacePlatformService {
         targetDay.crewGap
       }, and about ${targetDay.estimatedDriveMiles.toFixed(1)} route miles.${firstStopText}${recommendationText}`,
       bookingCandidates: []
+    };
+  }
+
+  private async runProviderAssistantDispatchAdjustment(
+    providerId: string,
+    action: ParsedProviderAssistantAction,
+    originalCommand: string
+  ): Promise<ProviderAssistantCommandResponse> {
+    const window = this.buildProviderAssistantDispatchWindow(action.dispatchScope ?? "today");
+    const overview = await this.getProviderCalendarOverview(providerId, window);
+    const scopeLabel = this.providerAssistantDispatchScopeLabel(action.dispatchScope ?? "today");
+    const targetDay =
+      action.dispatchScope === "next-7-days"
+        ? this.selectProviderAssistantWeekAttentionDay(overview)
+        : overview.dispatchDays.find((day) =>
+            this.doIntervalsOverlap(
+              day.dateIso,
+              new Date(new Date(day.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+              window.fromIso,
+              window.toIso
+            )
+          ) ?? overview.dispatchDays[0];
+
+    if (!targetDay) {
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "recommend-dispatch-adjustment",
+        actionTypes: ["recommend-dispatch-adjustment"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        previewLabel: `${scopeLabel} looks open`,
+        previewMessage: `There are no YardMatch jobs or outside calendar blocks on ${scopeLabel.toLowerCase()}, so no dispatch adjustment is needed.`,
+        bookingCandidates: []
+      };
+    }
+
+    const focusWindow = this.selectProviderAssistantDispatchFocusWindow(targetDay);
+    if (!focusWindow || focusWindow.yardmatchJobCount === 0) {
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "recommend-dispatch-adjustment",
+        actionTypes: ["recommend-dispatch-adjustment"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        dispatchDaySummary: targetDay,
+        previewLabel: `${scopeLabel} does not need a move`,
+        previewMessage: `${targetDay.dayLabel} does not have a pressured YardMatch window that needs a reschedule recommendation right now.`,
+        bookingCandidates: []
+      };
+    }
+
+    const focusCandidates = this.buildProviderAssistantDispatchBookingCandidates(overview, targetDay, focusWindow);
+    if (focusCandidates.length === 0) {
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "recommend-dispatch-adjustment",
+        actionTypes: ["recommend-dispatch-adjustment"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        dispatchDaySummary: targetDay,
+        dispatchWindowSummary: focusWindow,
+        previewLabel: `${scopeLabel} needs manual review`,
+        previewMessage: `The ${focusWindow.label.toLowerCase()} window looks pressured, but the assistant could not isolate a booking candidate to move yet.`,
+        bookingCandidates: []
+      };
+    }
+
+    const suggestedWindow = this.selectProviderAssistantReliefWindow(targetDay, focusWindow);
+    const providerBookings = await this.listProviderAssistantCandidates(providerId);
+    const providerBookingsById = new Map(providerBookings.map((booking) => [booking.id, booking]));
+    const orderedCandidates = this.orderProviderAssistantDispatchAdjustmentCandidates(
+      focusCandidates,
+      focusWindow.windowKey,
+      suggestedWindow?.windowKey
+    );
+    const recommendedCandidate =
+      orderedCandidates
+        .map((candidate) => providerBookingsById.get(candidate.bookingId))
+        .find((candidate): candidate is Awaited<ReturnType<typeof this.listProviderAssistantCandidates>>[number] =>
+          Boolean(candidate)
+        ) ?? providerBookingsById.get(orderedCandidates[0]!.bookingId);
+
+    if (!recommendedCandidate) {
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "recommend-dispatch-adjustment",
+        actionTypes: ["recommend-dispatch-adjustment"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        dispatchDaySummary: targetDay,
+        dispatchWindowSummary: focusWindow,
+        previewLabel: `${scopeLabel} needs manual review`,
+        previewMessage: `The ${focusWindow.label.toLowerCase()} window looks pressured, but the assistant could not load the booking details needed to recommend a move.`,
+        bookingCandidates: orderedCandidates
+      };
+    }
+
+    const crossDayReliefSlot =
+      suggestedWindow
+        ? undefined
+        : await this.findProviderAssistantCrossDayReliefSlot(
+            providerId,
+            recommendedCandidate,
+            new Date(new Date(targetDay.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString()
+          );
+    const suggestedTimes = suggestedWindow
+      ? this.buildProviderAssistantTargetWindow(recommendedCandidate, suggestedWindow.windowKey)
+      : crossDayReliefSlot
+        ? this.buildProviderAssistantTargetWindowFromSlot(recommendedCandidate, crossDayReliefSlot)
+        : undefined;
+    const targetWindowLabel = suggestedWindow
+      ? suggestedWindow.label
+      : crossDayReliefSlot
+        ? this.formatBookingWindowWithDate(crossDayReliefSlot.startIso)
+        : undefined;
+    const recommendationContext = suggestedWindow
+      ? `${focusWindow.label} currently has ${focusWindow.yardmatchJobCount} job${
+          focusWindow.yardmatchJobCount === 1 ? "" : "s"
+        }, crew gap ${focusWindow.crewGap}, and ${focusWindow.blockedMinutes} blocked minutes, while ${
+          suggestedWindow.label
+        } is lighter with ${suggestedWindow.yardmatchJobCount} job${
+          suggestedWindow.yardmatchJobCount === 1 ? "" : "s"
+        } and crew gap ${suggestedWindow.crewGap}.`
+      : crossDayReliefSlot
+        ? `${focusWindow.label} currently has ${focusWindow.yardmatchJobCount} job${
+            focusWindow.yardmatchJobCount === 1 ? "" : "s"
+          }, crew gap ${focusWindow.crewGap}, and ${focusWindow.blockedMinutes} blocked minutes. The next cleaner route opening lands on ${this.formatBookingWindowWithDate(
+            crossDayReliefSlot.startIso
+          )}.`
+      : `${focusWindow.label} currently has ${focusWindow.yardmatchJobCount} job${
+          focusWindow.yardmatchJobCount === 1 ? "" : "s"
+        }, crew gap ${focusWindow.crewGap}, and ${focusWindow.blockedMinutes} blocked minutes.`;
+    const recommendationTail = suggestedWindow
+      ? ` Move ${recommendedCandidate.customerName}'s ${this.providerAssistantWindowLabel(
+          getBookingServiceWindow(recommendedCandidate.scheduledStartIso).key
+        ).toLowerCase()} appointment into ${suggestedWindow.label.toLowerCase()} first.`
+      : crossDayReliefSlot
+        ? ` Move ${recommendedCandidate.customerName}'s ${this.providerAssistantWindowLabel(
+            getBookingServiceWindow(recommendedCandidate.scheduledStartIso).key
+          ).toLowerCase()} appointment to ${this.formatBookingWindowWithDate(crossDayReliefSlot.startIso).toLowerCase()} first.`
+      : ` Review ${recommendedCandidate.customerName}'s ${this.providerAssistantWindowLabel(
+          getBookingServiceWindow(recommendedCandidate.scheduledStartIso).key
+        ).toLowerCase()} appointment first if you need to free space in that window.`;
+
+    return {
+      command: originalCommand,
+      understood: true,
+      actionType: "recommend-dispatch-adjustment",
+      actionTypes: ["recommend-dispatch-adjustment"],
+      requiresBookingSelection: false,
+      requiresConfirmation: false,
+      executed: false,
+      notifyCustomer: false,
+      matchedBookingId: recommendedCandidate.id,
+      matchedCustomerName: recommendedCandidate.customerName,
+      sourceWindowKey: focusWindow.windowKey,
+      targetWindowKey: suggestedWindow?.windowKey ?? (crossDayReliefSlot ? getBookingServiceWindow(crossDayReliefSlot.startIso).key : undefined),
+      targetWindowLabel,
+      suggestedStartIso: suggestedTimes?.startIso,
+      suggestedEndIso: suggestedTimes?.endIso,
+      dispatchDaySummary: targetDay,
+      dispatchWindowSummary: focusWindow,
+      previewLabel: `${scopeLabel} booking to move`,
+      previewMessage: `${recommendationContext}${recommendationTail}`,
+      bookingCandidates: orderedCandidates
+    };
+  }
+
+  private async runProviderAssistantStaffingAdjustment(
+    providerId: string,
+    action: ParsedProviderAssistantAction,
+    originalCommand: string
+  ): Promise<ProviderAssistantCommandResponse> {
+    const window = this.buildProviderAssistantDispatchWindow(action.dispatchScope ?? "today");
+    const overview = await this.getProviderCalendarOverview(providerId, window);
+    const staffing = await this.getProviderStaffingOverview(providerId);
+    const scopeLabel = this.providerAssistantDispatchScopeLabel(action.dispatchScope ?? "today");
+    const targetDay =
+      action.dispatchScope === "next-7-days"
+        ? this.selectProviderAssistantWeekAttentionDay(overview)
+        : overview.dispatchDays.find((day) =>
+            this.doIntervalsOverlap(
+              day.dateIso,
+              new Date(new Date(day.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString(),
+              window.fromIso,
+              window.toIso
+            )
+          ) ?? overview.dispatchDays[0];
+
+    if (!targetDay) {
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "recommend-staffing-adjustment",
+        actionTypes: ["recommend-staffing-adjustment"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        previewLabel: `${scopeLabel} looks covered`,
+        previewMessage: `There are no active YardMatch jobs on ${scopeLabel.toLowerCase()}, so no extra crew recommendation is needed.`,
+        bookingCandidates: []
+      };
+    }
+
+    const dayStartIso = targetDay.dateIso;
+    const dayEndIso = new Date(new Date(targetDay.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const jobsNeedingCrew = staffing.jobs
+      .filter(
+        (job) =>
+          job.crewGap > 0 &&
+          this.doIntervalsOverlap(job.scheduledStartIso, job.scheduledEndIso, dayStartIso, dayEndIso)
+      )
+      .sort((left, right) => {
+        const uncoveredGapDelta =
+          this.getProviderAssistantUncoveredCrewGap(right) - this.getProviderAssistantUncoveredCrewGap(left);
+        if (uncoveredGapDelta !== 0) {
+          return uncoveredGapDelta;
+        }
+
+        const gapDelta = right.crewGap - left.crewGap;
+        if (gapDelta !== 0) {
+          return gapDelta;
+        }
+
+        return new Date(left.scheduledStartIso).getTime() - new Date(right.scheduledStartIso).getTime();
+      });
+
+    if (jobsNeedingCrew.length === 0) {
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "recommend-staffing-adjustment",
+        actionTypes: ["recommend-staffing-adjustment"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        dispatchDaySummary: targetDay,
+        previewLabel: `${scopeLabel} does not need more crew`,
+        previewMessage: `${targetDay.dayLabel} has no open crew gap right now. If the route still feels tight, a move recommendation is probably more useful than adding people.`,
+        bookingCandidates: []
+      };
+    }
+
+    const recommendedJob = jobsNeedingCrew[0]!;
+    const bookingCandidates = jobsNeedingCrew.map((job) => this.toProviderAssistantBookingCandidateFromStaffingJob(job));
+    const matchedBookingId = bookingCandidates[0]?.bookingId;
+    const pendingMatchCount = this.getProviderAssistantPendingMatchCount(recommendedJob);
+    const uncoveredCrewGap = this.getProviderAssistantUncoveredCrewGap(recommendedJob);
+    const recommendationLead =
+      pendingMatchCount >= recommendedJob.crewGap
+        ? `Review pending crew matches for ${recommendedJob.customerName}'s ${this.providerAssistantWindowLabel(
+            getBookingServiceWindow(recommendedJob.scheduledStartIso).key
+          ).toLowerCase()} ${this.titleCaseCategory(recommendedJob.category).toLowerCase()} booking first.`
+        : pendingMatchCount > 0
+          ? `Review the pending matches for ${recommendedJob.customerName}'s ${this.providerAssistantWindowLabel(
+              getBookingServiceWindow(recommendedJob.scheduledStartIso).key
+            ).toLowerCase()} ${this.titleCaseCategory(recommendedJob.category).toLowerCase()} booking, then source more crew if needed.`
+          : `Source more crew for ${recommendedJob.customerName}'s ${this.providerAssistantWindowLabel(
+              getBookingServiceWindow(recommendedJob.scheduledStartIso).key
+            ).toLowerCase()} ${this.titleCaseCategory(recommendedJob.category).toLowerCase()} booking first.`;
+    const recommendationDetail =
+      pendingMatchCount >= recommendedJob.crewGap
+        ? `It still shows a crew gap of ${recommendedJob.crewGap}, but ${pendingMatchCount} pending match${
+            pendingMatchCount === 1 ? "" : "es"
+          } already exist and could close that gap without sourcing new people.`
+        : pendingMatchCount > 0
+          ? `It still shows a crew gap of ${recommendedJob.crewGap}, with ${pendingMatchCount} pending match${
+              pendingMatchCount === 1 ? "" : "es"
+            } already in review. Even after those, about ${uncoveredCrewGap} more crew member${
+              uncoveredCrewGap === 1 ? "" : "s"
+            } may still need coverage.`
+          : `It still shows a crew gap of ${recommendedJob.crewGap} and has no pending matches in review, so the shortage is not likely to close on its own.`;
+
+    return {
+      command: originalCommand,
+      understood: true,
+      actionType: "recommend-staffing-adjustment",
+      actionTypes: ["recommend-staffing-adjustment"],
+      requiresBookingSelection: false,
+      requiresConfirmation: false,
+      executed: false,
+      notifyCustomer: false,
+      matchedBookingId,
+      matchedCustomerName: recommendedJob.customerName,
+      sourceWindowKey: getBookingServiceWindow(recommendedJob.scheduledStartIso).key,
+      dispatchDaySummary: targetDay,
+      previewLabel: `${scopeLabel} crew gap recommendation`,
+      previewMessage: `${recommendationLead} ${recommendationDetail} ${targetDay.dayLabel} carries ${
+        targetDay.crewGap
+      } total open crew slot${targetDay.crewGap === 1 ? "" : "s"} right now.`,
+      bookingCandidates
     };
   }
 
@@ -5455,9 +5846,10 @@ export class MarketplacePlatformService {
       throw new Error("Customer not found");
     }
 
+    const validatedAddress = await this.normalizeAndValidateAddress(payload.address);
     const property = this.propertyBook.createProperty(crypto.randomUUID(), {
       ...payload,
-      address: this.normalizeAddress(payload.address),
+      address: validatedAddress.address,
       customerId
     });
     const properties = customer.properties.map((existingProperty) => ({
@@ -5601,7 +5993,9 @@ export class MarketplacePlatformService {
       throw new Error("Selected property does not belong to the customer");
     }
 
-    const requestedAddress = selectedProperty?.address ?? this.normalizeAddress(payload.newAddress);
+    const requestedAddress = selectedProperty
+      ? selectedProperty.address
+      : (await this.normalizeAndValidateAddress(payload.newAddress)).address;
 
     const provider = await this.repository.findProviderById(booking.providerId);
     if (!provider) {
@@ -8186,6 +8580,16 @@ export class MarketplacePlatformService {
       (/\b(?:how|what|show|summarize|summary|review)\b/.test(normalized) ||
         /\b(?:route|dispatch|schedule)\b/.test(normalized)) &&
       !/\b(?:appointment|booking|job|visit)\b/.test(normalized);
+    const isDispatchAdjustmentCommand =
+      Boolean(dispatchScope) &&
+      /\b(?:what|which|suggest|recommend)\b/.test(normalized) &&
+      /\b(?:move|reschedule|shift|push)\b/.test(normalized) &&
+      !/\b(?:appointment|booking|job|visit)\b/.test(normalized);
+    const isStaffingAdjustmentCommand =
+      Boolean(dispatchScope) &&
+      /\b(?:need|add|bring|get|send|assign|where)\b/.test(normalized) &&
+      /\b(?:crew|staffing|hands|people)\b/.test(normalized) &&
+      !/\b(?:appointment|booking|job|visit)\b/.test(normalized);
     const isAcceptCrewCommand =
       Boolean(crewMatchCrewNameQuery) &&
       /\b(?:accept|approve)\b/.test(normalized) &&
@@ -8216,6 +8620,10 @@ export class MarketplacePlatformService {
         ? "clear-route-stop"
       : isSetRouteStopCommand
         ? "set-route-stop"
+      : isStaffingAdjustmentCommand
+        ? "recommend-staffing-adjustment"
+      : isDispatchAdjustmentCommand
+        ? "recommend-dispatch-adjustment"
       : isDispatchSummaryCommand
         ? "summarize-dispatch"
       : isAcceptBestCrewCommand
@@ -8472,6 +8880,29 @@ export class MarketplacePlatformService {
     };
   }
 
+  private toProviderAssistantBookingCandidateFromStaffingJob(
+    job: ProviderStaffingJobSummary
+  ): ProviderAssistantBookingCandidate {
+    const window = getBookingServiceWindow(job.scheduledStartIso);
+    return {
+      bookingId: job.bookingId,
+      customerName: job.customerName,
+      scheduledStartIso: job.scheduledStartIso,
+      scheduledEndIso: job.scheduledEndIso,
+      currentWindowKey: window.key,
+      currentWindowLabel: window.label,
+      addressLine: this.formatAddressLine(job.serviceAddress)
+    };
+  }
+
+  private getProviderAssistantPendingMatchCount(job: ProviderStaffingJobSummary): number {
+    return job.matches.filter((match) => match.status === "pending-provider-review").length;
+  }
+
+  private getProviderAssistantUncoveredCrewGap(job: ProviderStaffingJobSummary): number {
+    return Math.max(job.crewGap - this.getProviderAssistantPendingMatchCount(job), 0);
+  }
+
   private selectProviderAssistantDispatchFocusWindow(
     targetDay: ProviderCalendarOverviewResponse["dispatchDays"][number]
   ): ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number] | undefined {
@@ -8488,6 +8919,136 @@ export class MarketplacePlatformService {
 
       return right.blockedMinutes - left.blockedMinutes;
     })[0];
+  }
+
+  private selectProviderAssistantWeekAttentionDay(
+    overview: ProviderCalendarOverviewResponse
+  ): ProviderCalendarOverviewResponse["dispatchDays"][number] | undefined {
+    if (overview.dispatchDays.length === 0) {
+      return undefined;
+    }
+
+    return [...overview.dispatchDays].sort((left, right) => {
+      const routeStatusDelta = this.providerDispatchRoutePriority(right.routeStatus) - this.providerDispatchRoutePriority(left.routeStatus);
+      if (routeStatusDelta !== 0) {
+        return routeStatusDelta;
+      }
+
+      const crewGapDelta = right.crewGap - left.crewGap;
+      if (crewGapDelta !== 0) {
+        return crewGapDelta;
+      }
+
+      const driveDelta = right.estimatedDriveMiles - left.estimatedDriveMiles;
+      if (driveDelta !== 0) {
+        return driveDelta;
+      }
+
+      return right.yardmatchJobCount - left.yardmatchJobCount;
+    })[0];
+  }
+
+  private providerDispatchRoutePriority(status: ProviderDispatchRouteStatus): number {
+    if (status === "overloaded") {
+      return 3;
+    }
+
+    if (status === "watch") {
+      return 2;
+    }
+
+    return 1;
+  }
+
+  private selectProviderAssistantReliefWindow(
+    targetDay: ProviderCalendarOverviewResponse["dispatchDays"][number],
+    focusWindow: ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number]
+  ): ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number] | undefined {
+    const focusPressure = this.calculateProviderAssistantDispatchWindowPressure(focusWindow);
+    const bestWindow = [...targetDay.windowSummaries]
+      .filter((window) => window.windowKey !== focusWindow.windowKey)
+      .sort((left, right) => {
+        const pressureDelta =
+          this.calculateProviderAssistantDispatchWindowPressure(left) -
+          this.calculateProviderAssistantDispatchWindowPressure(right);
+        if (pressureDelta !== 0) {
+          return pressureDelta;
+        }
+
+        return left.yardmatchJobCount - right.yardmatchJobCount;
+      })[0];
+
+    if (!bestWindow) {
+      return undefined;
+    }
+
+    const bestPressure = this.calculateProviderAssistantDispatchWindowPressure(bestWindow);
+    return bestPressure + 45 <= focusPressure ? bestWindow : undefined;
+  }
+
+  private calculateProviderAssistantDispatchWindowPressure(
+    window: ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number]
+  ): number {
+    return window.crewGap * 240 + window.bookedMinutes + window.blockedMinutes + window.yardmatchJobCount * 45;
+  }
+
+  private buildProviderAssistantTargetWindowFromSlot(
+    booking: Booking,
+    slot: AvailabilitySlot
+  ) {
+    const durationMs =
+      new Date(booking.scheduledEndIso).getTime() - new Date(booking.scheduledStartIso).getTime();
+    const start = new Date(slot.startIso);
+    return {
+      startIso: start.toISOString(),
+      endIso: new Date(start.getTime() + durationMs).toISOString()
+    };
+  }
+
+  private async findProviderAssistantCrossDayReliefSlot(
+    providerId: string,
+    booking: Booking,
+    afterIso: string
+  ): Promise<AvailabilitySlot | undefined> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      return undefined;
+    }
+
+    const durationMinutes = Math.max(
+      30,
+      (new Date(booking.scheduledEndIso).getTime() - new Date(booking.scheduledStartIso).getTime()) / 60_000
+    );
+    const providerSlots = this.filterProviderSlotsAgainstExternalBlocks(
+      provider,
+      await this.repository.listSlotsByProvider(provider.id)
+    );
+    const candidateSlots = providerSlots.filter(
+      (slot) =>
+        Date.parse(slot.startIso) >= Date.parse(afterIso) &&
+        this.isWithinProviderAcceptanceWindow(provider, slot.startIso)
+    );
+
+    return this.schedulingService.findFirstAvailableSlot(candidateSlots, durationMinutes);
+  }
+
+  private orderProviderAssistantDispatchAdjustmentCandidates(
+    candidates: ProviderAssistantBookingCandidate[],
+    sourceWindowKey: BookingServiceWindowKey,
+    targetWindowKey?: BookingServiceWindowKey
+  ): ProviderAssistantBookingCandidate[] {
+    const ordered = [...candidates].sort((left, right) =>
+      new Date(left.scheduledStartIso).getTime() - new Date(right.scheduledStartIso).getTime()
+    );
+
+    if (!targetWindowKey || targetWindowKey === sourceWindowKey) {
+      return ordered.reverse();
+    }
+
+    const moveEarlier =
+      sourceWindowKey === "late-afternoon-night" ||
+      (sourceWindowKey === "afternoon" && targetWindowKey === "morning");
+    return moveEarlier ? ordered : ordered.reverse();
   }
 
   private buildProviderAssistantDispatchBookingCandidates(
@@ -9612,7 +10173,11 @@ export class MarketplacePlatformService {
     provider: ProviderProfile,
     providerBookings: Booking[],
     distanceMiles: number,
-    suggestedSlot?: AvailabilitySlot
+    suggestedSlot?: AvailabilitySlot,
+    providerDecisionMetrics?: {
+      confirmations: number;
+      declines: number;
+    }
   ): SearchProviderResult {
     const matchedCategories = payload.categories.filter((category) => provider.categories.includes(category));
     const requestedCategoryCount = Math.max(payload.categories.length, 1);
@@ -9627,6 +10192,27 @@ export class MarketplacePlatformService {
     const disputedBookings = providerBookings.filter((booking) => booking.status === "disputed").length;
     const refundedBookings = providerBookings.filter((booking) => booking.status === "refunded").length;
     const activeExceptionBookings = providerBookings.filter((booking) => Boolean(booking.activeExceptionType)).length;
+    const nonRequestedActiveBookings = providerBookings.filter(
+      (booking) => booking.status !== "requested" && booking.status !== "cancelled"
+    );
+    const lateNoticeCount = providerBookings.filter((booking) => Boolean(booking.lateNoticeSentAt)).length;
+    const lateNoticeRate = lateNoticeCount / Math.max(nonRequestedActiveBookings.length, 1);
+    const providerConfirmations = providerDecisionMetrics?.confirmations ?? 0;
+    const providerDeclines = providerDecisionMetrics?.declines ?? 0;
+    const providerDecisionCount = providerConfirmations + providerDeclines;
+    const providerAcceptanceRate =
+      providerDecisionCount > 0 ? providerConfirmations / providerDecisionCount : undefined;
+    const adjustedAcceptanceScore =
+      providerDecisionCount === 0
+        ? 0.78
+        : providerDecisionCount < 5
+          ? 0.78 + ((providerAcceptanceRate ?? 0.78) - 0.78) * (providerDecisionCount / 5)
+          : providerAcceptanceRate ?? 0.78;
+    const rawLateScore = Math.max(0, 1 - lateNoticeRate);
+    const adjustedLateScore =
+      nonRequestedActiveBookings.length < 5
+        ? 0.84 + (rawLateScore - 0.84) * (nonRequestedActiveBookings.length / 5)
+        : rawLateScore;
     const issueRate =
       (disputedBookings + refundedBookings + activeExceptionBookings) /
       Math.max(providerBookings.length, 1);
@@ -9656,6 +10242,7 @@ export class MarketplacePlatformService {
           (Math.min(provider.reviewCount, 100) / 100) * 4 +
           (Math.min(completedBookings, 75) / 75) * 5
       ),
+      operationalReliability: Math.round(adjustedAcceptanceScore * 7 + adjustedLateScore * 5),
       experience: Math.round((Math.min(provider.yearsExperience, 15) / 15) * 6),
       availability: suggestedSlot ? 8 : 0,
       sponsorship: provider.sponsoredListingEnabled ? 5 : 0,
@@ -9666,10 +10253,11 @@ export class MarketplacePlatformService {
 
     const score = Math.max(
       0,
-      factors.serviceFit +
+        factors.serviceFit +
         factors.specialization +
         factors.distance +
         factors.reliability +
+        factors.operationalReliability +
         factors.experience +
         factors.availability +
         factors.sponsorship -
@@ -9702,6 +10290,12 @@ export class MarketplacePlatformService {
     if (provider.timelinessRating >= 4.8) {
       reasons.push("High punctuality rating");
     }
+    if (providerDecisionCount >= 5 && (providerAcceptanceRate ?? 0) >= 0.9) {
+      reasons.push("Usually accepts matching requests");
+    }
+    if (nonRequestedActiveBookings.length >= 5 && lateNoticeRate <= 0.08) {
+      reasons.push("Rarely sends late updates");
+    }
     if (provider.rating >= 4.8 && provider.reviewCount >= 50) {
       reasons.push("Strong reliability and review history");
     }
@@ -9726,6 +10320,55 @@ export class MarketplacePlatformService {
         : availabilityConfidence === "medium"
           ? "Good chance this window holds"
           : "No live route window right now";
+    const hasWeakOperationalSignals =
+      providerDecisionCount >= 5 && (providerAcceptanceRate ?? 1) < 0.75
+        ? true
+        : nonRequestedActiveBookings.length >= 5 && lateNoticeRate > 0.2;
+    const reliabilityLabel =
+      factors.issuePenalty >= 5 ||
+      provider.timelinessRating < 4.4 ||
+      provider.rating < 4.4 ||
+      hasWeakOperationalSignals
+        ? "Reliability record trails the top match"
+        : provider.rating >= 4.85 &&
+            provider.timelinessRating >= 4.8 &&
+            (provider.reviewCount >= 50 || completedBookings >= 25) &&
+            factors.issuePenalty === 0 &&
+            factors.operationalReliability >= 10
+          ? "Proven dependable track record"
+        : provider.rating >= 4.7 &&
+            provider.timelinessRating >= 4.7 &&
+            (provider.reviewCount >= 20 || completedBookings >= 10) &&
+            factors.issuePenalty <= 2 &&
+            factors.operationalReliability >= 8
+            ? "Consistently strong service history"
+          : provider.reviewCount >= 5 || completedBookings >= 3
+              ? "Solid early reliability signs"
+              : "Still building a YardMatch track record";
+    const reliabilityDetail =
+      factors.issuePenalty >= 5 || provider.timelinessRating < 4.4 || provider.rating < 4.4 || hasWeakOperationalSignals
+        ? `${provider.companyName} still qualifies for the area, but GreenRain ranks it below the top recommendation because its recent reliability signals are weaker${
+            providerDecisionCount >= 5 && (providerAcceptanceRate ?? 1) < 0.75
+              ? ", including a higher recent request-decline rate"
+              : nonRequestedActiveBookings.length >= 5 && lateNoticeRate > 0.2
+                ? ", including more late updates than the strongest matches"
+                : ""
+          }.`
+        : provider.rating >= 4.85 &&
+            provider.timelinessRating >= 4.8 &&
+            (provider.reviewCount >= 50 || completedBookings >= 25) &&
+            factors.issuePenalty === 0 &&
+            factors.operationalReliability >= 10
+          ? `${provider.companyName} pairs strong reviews with on-time performance, a larger completed-job history, and steady booking follow-through.`
+          : provider.rating >= 4.7 &&
+              provider.timelinessRating >= 4.7 &&
+              (provider.reviewCount >= 20 || completedBookings >= 10) &&
+              factors.issuePenalty <= 2 &&
+              factors.operationalReliability >= 8
+            ? `${provider.companyName} has a healthy mix of customer reviews, punctuality, completed work history, and stable booking follow-through.`
+            : provider.reviewCount >= 5 || completedBookings >= 3
+              ? `${provider.companyName} has enough completed work and customer feedback to show encouraging reliability signs, even if the history is lighter than the top match.`
+              : `${provider.companyName} is still building up more completed work and customer feedback on YardMatch.`;
     const neighborhoodFamiliarityLabel =
       nearbyCompletedBookings >= 10
         ? "Works this area every week"
@@ -9752,10 +10395,184 @@ export class MarketplacePlatformService {
       nearbyCompletedJobCount: nearbyCompletedBookings,
       availabilityConfidence,
       availabilityConfidenceLabel,
+      reliabilityLabel,
+      reliabilityDetail,
+      selectionSummaryLabel: "Qualified match for this property",
+      selectionSummaryDetail: `${provider.companyName} serves the area and meets the baseline fit requirements for this request.`,
       neighborhoodFamiliarityLabel,
       neighborhoodFamiliarityDetail,
       factors
     };
+  }
+
+  private withCustomerSelectionSummaries(
+    rankedProviders: SearchProviderResult[]
+  ): SearchProviderResult[] {
+    if (rankedProviders.length === 0) {
+      return rankedProviders;
+    }
+
+    const topResult = rankedProviders[0];
+    const nextResult = rankedProviders[1];
+
+    return rankedProviders.map((result, index) => {
+      if (index === 0) {
+        return {
+          ...result,
+          ...this.buildTopSelectionSummary(result, nextResult)
+        };
+      }
+
+      return {
+        ...result,
+        ...this.buildAlternativeSelectionSummary(result, topResult)
+      };
+    });
+  }
+
+  private buildTopSelectionSummary(
+    result: SearchProviderResult,
+    nextResult?: SearchProviderResult
+  ): Pick<SearchProviderResult, "selectionSummaryLabel" | "selectionSummaryDetail"> {
+    const strengths: string[] = [];
+
+    if (result.hasOpenSlot && !nextResult?.hasOpenSlot) {
+      strengths.push("it has a real route opening when nearby backups do not");
+    } else if (result.hasOpenSlot) {
+      strengths.push("it has a real route opening for this request");
+    }
+
+    if ((nextResult?.factors.serviceFit ?? 0) + 3 <= result.factors.serviceFit) {
+      strengths.push("its service fit is materially stronger than the next backup");
+    } else if ((nextResult?.factors.specialization ?? 0) + 2 <= result.factors.specialization) {
+      strengths.push("it is more focused on this kind of work");
+    }
+
+    if ((nextResult?.factors.reliability ?? 0) + 5 <= result.factors.reliability) {
+      strengths.push("its reliability signals are stronger than the next option");
+    } else if (result.reliabilityLabel === "Proven dependable track record") {
+      strengths.push("its review and punctuality history is unusually strong");
+    }
+
+    if ((nextResult?.factors.operationalReliability ?? 0) + 3 <= result.factors.operationalReliability) {
+      strengths.push("it has steadier booking follow-through than the next option");
+    }
+
+    if (nextResult && nextResult.distanceMiles - result.distanceMiles >= 2) {
+      strengths.push("it is meaningfully closer to the property");
+    }
+
+    if (nextResult && result.nearbyCompletedJobCount - nextResult.nearbyCompletedJobCount >= 3) {
+      strengths.push("it has deeper nearby service history");
+    }
+
+    if (strengths.length === 0) {
+      strengths.push("it gives the best combined balance of fit, trust, and route efficiency");
+    }
+
+    const summaryLabel =
+      result.hasOpenSlot && strengths.some((strength) => strength.includes("route opening"))
+        ? "Best mix of trust and bookable availability"
+        : strengths.some((strength) => strength.includes("reliability"))
+          ? "Strongest overall trust signal"
+          : strengths.some((strength) => strength.includes("service fit"))
+            ? "Best fit for this request"
+            : "Best overall match for this property";
+
+    return {
+      selectionSummaryLabel: summaryLabel,
+      selectionSummaryDetail: `GreenRain recommended ${result.provider.companyName} because ${strengths
+        .slice(0, 3)
+        .join(", ")}.`
+    };
+  }
+
+  private buildAlternativeSelectionSummary(
+    result: SearchProviderResult,
+    topResult: SearchProviderResult
+  ): Pick<SearchProviderResult, "selectionSummaryLabel" | "selectionSummaryDetail"> {
+    const tradeoffs: string[] = [];
+
+    if (!result.hasOpenSlot && topResult.hasOpenSlot) {
+      tradeoffs.push("the recommendation has the cleaner route opening");
+    }
+    if (topResult.factors.reliability - result.factors.reliability >= 5) {
+      tradeoffs.push("the recommendation has stronger reliability signals");
+    }
+    if (topResult.factors.operationalReliability - result.factors.operationalReliability >= 3) {
+      tradeoffs.push("the recommendation has steadier booking follow-through");
+    }
+    if (topResult.factors.serviceFit - result.factors.serviceFit >= 3) {
+      tradeoffs.push("the recommendation is a tighter service-fit match");
+    }
+    if (result.distanceMiles - topResult.distanceMiles >= 2) {
+      tradeoffs.push("the recommendation is closer to the property");
+    }
+    if (topResult.nearbyCompletedJobCount - result.nearbyCompletedJobCount >= 3) {
+      tradeoffs.push("the recommendation has deeper nearby route history");
+    }
+
+    const fallbackStrengths: string[] = [];
+    if (result.hasOpenSlot) {
+      fallbackStrengths.push("it still has a bookable route opening");
+    }
+    if (result.factors.specialization >= topResult.factors.specialization) {
+      fallbackStrengths.push("it is still focused on this kind of work");
+    }
+    if (result.factors.reliability >= topResult.factors.reliability - 2) {
+      fallbackStrengths.push("its trust profile is still competitive");
+    }
+    if (fallbackStrengths.length === 0) {
+      fallbackStrengths.push("it still serves the area and fits the request");
+    }
+
+    const summaryLabel =
+      tradeoffs.length > 0 ? "Why it ranks behind the recommendation" : "Still a qualified fallback";
+    const summaryDetail =
+      tradeoffs.length > 0
+        ? `${result.provider.companyName} remains qualified, but GreenRain kept it behind the main recommendation because ${tradeoffs
+            .slice(0, 2)
+            .join(" and ")}.`
+        : `${result.provider.companyName} still works as a fallback because ${fallbackStrengths
+            .slice(0, 2)
+            .join(" and ")}.`;
+
+    return {
+      selectionSummaryLabel: summaryLabel,
+      selectionSummaryDetail: summaryDetail
+    };
+  }
+
+  private buildProviderDecisionMetrics(): Map<string, { confirmations: number; declines: number }> {
+    const metrics = new Map<string, { confirmations: number; declines: number }>();
+
+    for (const event of this.analytics.listEvents()) {
+      if (
+        event.name !== MarketplaceTelemetryEventCatalog.bookingConfirmed &&
+        event.name !== MarketplaceTelemetryEventCatalog.bookingDeclinedByProvider
+      ) {
+        continue;
+      }
+
+      if (!event.actorId) {
+        continue;
+      }
+
+      const current = metrics.get(event.actorId) ?? {
+        confirmations: 0,
+        declines: 0
+      };
+
+      if (event.name === MarketplaceTelemetryEventCatalog.bookingConfirmed) {
+        current.confirmations += 1;
+      } else {
+        current.declines += 1;
+      }
+
+      metrics.set(event.actorId, current);
+    }
+
+    return metrics;
   }
 
   private formatBookingWindowWithDate(iso: string): string {
@@ -10500,7 +11317,20 @@ export class MarketplacePlatformService {
     };
   }
 
-  private buildNormalizedAddressSummary(original: Address, normalized: Address) {
+  private async normalizeAndValidateAddress(address: Address): Promise<AddressValidationOutcome> {
+    const normalizedAddress = this.normalizeAddress(address);
+    const validatedAddress = await this.addressValidation.validateAddress(normalizedAddress);
+    return {
+      ...validatedAddress,
+      address: this.normalizeAddress(validatedAddress.address)
+    };
+  }
+
+  private buildNormalizedAddressSummary(
+    original: Address,
+    normalized: Address,
+    validation?: AddressValidationOutcome
+  ) {
     const normalizedFields = (
       [
         ["line1", original.line1, normalized.line1],
@@ -10517,7 +11347,10 @@ export class MarketplacePlatformService {
     return {
       displayLabel: this.formatAddressLine(normalized),
       wasNormalized: normalizedFields.length > 0,
-      normalizedFields
+      normalizedFields,
+      validationSource: validation?.source,
+      validationConfidence: validation?.confidence,
+      validationMessage: validation?.message
     };
   }
 

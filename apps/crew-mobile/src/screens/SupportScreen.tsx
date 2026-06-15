@@ -174,7 +174,11 @@ export function SupportScreen() {
   }
 
   return (
-    <ScreenShell eyebrow="Account" title="Earnings and help">
+    <ScreenShell
+      eyebrow="Account"
+      title="Earnings and help"
+      description="Pay status, alerts, support, and app lock."
+    >
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 

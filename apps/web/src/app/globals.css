@@ -664,6 +664,10 @@ body {
   gap: var(--ym-space-2);
 }
 
+.home-hero__headline-accent {
+  color: var(--ym-color-primary-strong);
+}
+
 .home-hero__lede {
   max-width: 44rem;
   font-size: 1.08rem;
@@ -743,6 +747,58 @@ body {
   border-radius: 999px;
   background: linear-gradient(180deg, #6cc85b, #2c8f43);
   box-shadow: 0 0 0 4px rgba(108, 200, 91, 0.16);
+}
+
+.market-home__proof,
+.market-home__market-grid {
+  display: grid;
+  gap: var(--ym-space-3);
+}
+
+.market-home__proof {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: var(--ym-space-2);
+}
+
+.market-home__proof-card,
+.market-home__step,
+.market-home__business-card {
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--ym-shadow-soft);
+}
+
+.market-home__proof-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: var(--ym-space-4);
+  border-radius: 24px;
+}
+
+.market-home__proof-card strong {
+  font-family: var(--ym-font-display);
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.market-home__proof-card span {
+  color: var(--ym-color-muted);
+}
+
+.market-home__step strong,
+.market-home__business-card strong {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.market-home__step p,
+.market-home__business-card p {
+  margin: 0;
+}
+
+.market-home__business-card {
+  display: grid;
+  gap: 0.4rem;
 }
 
 .home-service-scroller.is-animating .home-service-scroller__item--active {
@@ -1248,6 +1304,13 @@ body {
 
 .customer-search-shell__action {
   min-width: 11rem;
+}
+
+.customer-search-shell__guidance {
+  margin: var(--ym-space-3) 0 0;
+  color: #945b18;
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 .customer-search-shell__suggestions {
@@ -2684,6 +2747,24 @@ body {
   gap: var(--ym-space-4);
 }
 
+.live-provider-card__decision {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.95rem 1rem;
+  border-radius: 20px;
+  background: rgba(47, 125, 76, 0.08);
+  border: 1px solid rgba(47, 125, 76, 0.12);
+}
+
+.live-provider-card__decision strong,
+.live-provider-card__decision p {
+  margin: 0;
+}
+
+.live-provider-card__decision p {
+  color: var(--ym-color-ink-soft);
+}
+
 .live-provider-card__header,
 .live-provider-card__reasons {
   display: grid;
@@ -3261,6 +3342,7 @@ body {
   .site-header__inner,
   .page-hero--listings,
   .page-hero__metrics,
+  .market-home__proof,
   .role-login-shell,
   .role-login-shell__metrics,
   .role-login-shell__feature-panel {
