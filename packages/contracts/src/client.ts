@@ -272,6 +272,10 @@ export class MarketplaceApiClient {
     return this.getJson(ApiRoutes.crewOpportunities);
   }
 
+  public getPublicCrewOpportunities(): Promise<CrewOpportunity[]> {
+    return this.getJson(ApiRoutes.publicCrewOpportunities);
+  }
+
   public getProviderStaffingOverview(): Promise<ProviderStaffingOverview> {
     return this.getJson(ApiRoutes.providerStaffingOverview);
   }

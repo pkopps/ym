@@ -2,6 +2,7 @@
 
 import {
   buildCustomerProviderChoicePresentations,
+  GeoPoint,
   isPlaceSuggestionSafeToAutoSelect,
   PlaceSuggestion,
   SearchProviderResult,
@@ -91,13 +92,55 @@ function formatAreaDescription(
   timing: CustomerTimingPreference
 ) {
   const resolvedArea = areaLabel?.trim() || "your area";
-  return `See one recommended ${serviceLabel.toLowerCase()} provider for ${getCustomerTimingLabel(
+  return `See the strongest ${serviceLabel.toLowerCase()} matches for ${getCustomerTimingLabel(
     timing
-  ).toLowerCase()} in ${resolvedArea}, then open a short backup list only if you want it.`;
+  ).toLowerCase()} in ${resolvedArea}, led by one highlighted recommendation and a nearby provider map.`;
 }
 
 function formatCompletedJobLabel(completedJobCount: number) {
   return completedJobCount > 0 ? `${completedJobCount} completed jobs` : "New on GreenRain";
+}
+
+function buildBoundingBox(origin: GeoPoint, results: SearchProviderResult[]) {
+  const points = [origin, ...results.map((result) => result.provider.address.point)];
+  const latitudes = points.map((point) => point.latitude);
+  const longitudes = points.map((point) => point.longitude);
+  const minLat = Math.min(...latitudes);
+  const maxLat = Math.max(...latitudes);
+  const minLng = Math.min(...longitudes);
+  const maxLng = Math.max(...longitudes);
+  const latPadding = Math.max(0.01, (maxLat - minLat) * 0.45);
+  const lngPadding = Math.max(0.01, (maxLng - minLng) * 0.45);
+
+  return {
+    left: minLng - lngPadding,
+    right: maxLng + lngPadding,
+    top: maxLat + latPadding,
+    bottom: minLat - latPadding
+  };
+}
+
+function buildMapUrl(origin: GeoPoint, results: SearchProviderResult[]) {
+  const bbox = buildBoundingBox(origin, results);
+  const params = new URLSearchParams({
+    bbox: `${bbox.left},${bbox.bottom},${bbox.right},${bbox.top}`,
+    layer: "mapnik",
+    marker: `${origin.latitude},${origin.longitude}`
+  });
+
+  return `https://www.openstreetmap.org/export/embed.html?${params.toString()}`;
+}
+
+function buildMarkerPosition(point: GeoPoint, bbox: ReturnType<typeof buildBoundingBox>) {
+  const width = Math.max(bbox.right - bbox.left, 0.0001);
+  const height = Math.max(bbox.top - bbox.bottom, 0.0001);
+  const left = ((point.longitude - bbox.left) / width) * 100;
+  const top = ((bbox.top - point.latitude) / height) * 100;
+
+  return {
+    left: `${Math.min(94, Math.max(6, left)).toFixed(2)}%`,
+    top: `${Math.min(92, Math.max(8, top)).toFixed(2)}%`
+  };
 }
 
 export function PublicCustomerListingsExperience({
@@ -140,16 +183,28 @@ export function PublicCustomerListingsExperience({
   const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>(
     initialTiming ?? "tomorrow-morning"
   );
-  const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
 
   const serviceLabel = serviceCategoryLabels[selectedService];
   const timingLabel = getCustomerTimingLabel(selectedTiming);
   const rankedProviders = providerResults?.rankedProviders ?? [];
   const providerChoicePresentations = buildCustomerProviderChoicePresentations(rankedProviders);
-  const recommendedProvider = rankedProviders[0];
-  const alternativeProviders = rankedProviders.slice(1, 4);
+  const featuredProviders = rankedProviders.slice(0, 3);
   const liveMetrics = formatSearchMetrics(providerResults);
   const providersWithOpenWindows = rankedProviders.filter((provider) => provider.hasOpenSlot);
+  const listingsMapRadiusMiles = rankedProviders.length
+    ? Math.max(
+        12,
+        Math.min(
+          25,
+          Math.ceil(
+            rankedProviders[Math.min(rankedProviders.length, 6) - 1]?.distanceMiles ??
+              rankedProviders[rankedProviders.length - 1]?.distanceMiles ??
+              12
+          )
+        )
+      )
+    : 12;
+  const mapProviders = rankedProviders.filter((provider) => provider.distanceMiles <= listingsMapRadiusMiles);
 
   async function runSearch({
     nextAreaQuery,
@@ -233,7 +288,6 @@ export function PublicCustomerListingsExperience({
       setSelectedService(nextService);
       setSelectedTiming(nextTiming);
       setProviderResults(nextResults);
-      setShowAlternativeProviders(false);
       setSearchState("loaded");
 
       if (shouldUpdateUrl) {
@@ -299,7 +353,7 @@ export function PublicCustomerListingsExperience({
               {serviceLabel} near {resolvedAreaLabel}
             </span>
             <small>
-              One verified recommendation first. Short backup options after that.
+              Top verified recommendations first, with the lead match highlighted.
             </small>
           </div>
           <div className="results-summary__actions">
@@ -366,51 +420,26 @@ export function PublicCustomerListingsExperience({
                 </p>
               </article>
             ) : null}
-            {recommendedProvider ? (
-              <LiveProviderCard
-                choicePresentation={providerChoicePresentations[0]}
-                result={recommendedProvider}
-                rank={1}
+            <div className="live-listings-card__featured-grid">
+              {featuredProviders.map((result, index) => (
+                <LiveProviderCard
+                  choicePresentation={providerChoicePresentations[index]}
+                  isPrimaryRecommendation={index === 0}
+                  key={result.provider.id}
+                  result={result}
+                  rank={index + 1}
+                />
+              ))}
+            </div>
+            {selectedSuggestion && mapProviders.length > 0 ? (
+              <LiveProviderMap
+                areaLabel={resolvedAreaLabel}
+                providerResults={mapProviders}
+                radiusMiles={listingsMapRadiusMiles}
+                selectedSuggestion={selectedSuggestion}
+                serviceLabel={serviceLabel}
               />
             ) : null}
-            {alternativeProviders.length > 0 && !showAlternativeProviders ? (
-              <article className="list-panel live-listings-card__banner">
-                <h3>Want a backup option before you book?</h3>
-                <p>
-                  The recommendation stays primary, but you can still open a short backup list for a confidence check.
-                </p>
-                <div className="cta-row">
-                  <button
-                    className="button-secondary"
-                    onClick={() => {
-                      setShowAlternativeProviders(true);
-                      void trackWebEvent(
-                        MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
-                        {
-                          recommendationSessionId: providerResults?.recommendationSessionId ?? "unknown",
-                          recommendedProviderId: providerResults?.recommendedProviderId ?? "none",
-                          providerCount: rankedProviders.length,
-                          requestSource: "public-web-listings"
-                        }
-                      );
-                    }}
-                    type="button"
-                  >
-                    Show backup options
-                  </button>
-                </div>
-              </article>
-            ) : null}
-            {showAlternativeProviders
-              ? alternativeProviders.map((result, index) => (
-                  <LiveProviderCard
-                    choicePresentation={providerChoicePresentations[index + 1]}
-                    key={result.provider.id}
-                    result={result}
-                    rank={index + 2}
-                  />
-                ))
-              : null}
           </div>
         ) : null}
       </section>
@@ -421,10 +450,12 @@ export function PublicCustomerListingsExperience({
 
 function LiveProviderCard({
   choicePresentation,
+  isPrimaryRecommendation = false,
   rank,
   result
 }: {
   choicePresentation?: { badge: string; heading: string; detail: string };
+  isPrimaryRecommendation?: boolean;
   rank: number;
   result: SearchProviderResult;
 }) {
@@ -434,7 +465,7 @@ function LiveProviderCard({
     .map((category) => serviceCategoryLabels[category]);
 
   return (
-    <article className="list-panel live-provider-card">
+    <article className={`list-panel live-provider-card${isPrimaryRecommendation ? " live-provider-card--recommended" : ""}`}>
       <div className="live-provider-card__header">
         <div className="search-result-title">
           <h3>{provider.companyName}</h3>
@@ -518,5 +549,80 @@ function LiveProviderCard({
         </a>
       </div>
     </article>
+  );
+}
+
+function LiveProviderMap({
+  areaLabel,
+  providerResults,
+  radiusMiles,
+  selectedSuggestion,
+  serviceLabel
+}: {
+  areaLabel: string;
+  providerResults: SearchProviderResult[];
+  radiusMiles: number;
+  selectedSuggestion: PlaceSuggestion;
+  serviceLabel: string;
+}) {
+  const origin = selectedSuggestion.address.point;
+  const bbox = buildBoundingBox(origin, providerResults);
+  const mapUrl = buildMapUrl(origin, providerResults);
+  const customerMarker = buildMarkerPosition(origin, bbox);
+
+  return (
+    <section className="map-panel live-provider-map">
+      <div className="map-panel__toolbar">
+        <span className="eyebrow">Nearby providers</span>
+        <strong>
+          {providerResults.length} verified providers within {radiusMiles} miles of {areaLabel}
+        </strong>
+        <p>
+          These are the nearby businesses GreenRain considered for this {serviceLabel.toLowerCase()} request.
+        </p>
+      </div>
+
+      <div className="map-viewport" aria-label="Map of nearby provider recommendations">
+        <iframe
+          className="map-viewport__frame"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          src={mapUrl}
+          title="Nearby provider recommendation map"
+        />
+        <div className="map-viewport__overlay" />
+        <div className="map-user-marker" style={customerMarker}>
+          <span>Property</span>
+        </div>
+        {providerResults.map((result, index) => (
+          <div
+            className={`map-business-marker${index === 0 ? " map-business-marker--recommended" : ""}`}
+            key={`${result.provider.id}-marker`}
+            style={buildMarkerPosition(result.provider.address.point, bbox)}
+          >
+            <strong>{index + 1}</strong>
+            <span>{result.distanceMiles.toFixed(1)} mi</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="map-legend">
+        {providerResults.map((result, index) => (
+          <article className="map-legend__row" key={`${result.provider.id}-legend`}>
+            <div className="map-legend__business">
+              <strong>{index + 1}</strong>
+              <div>
+                <h4>{result.provider.companyName}</h4>
+                <p>
+                  {result.provider.address.city}, {result.provider.address.state}
+                  {index === 0 ? " • Recommended first" : ""}
+                </p>
+              </div>
+            </div>
+            <span>{result.distanceMiles.toFixed(1)} mi</span>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }

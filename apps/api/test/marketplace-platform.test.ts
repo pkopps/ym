@@ -7369,10 +7369,24 @@ test("public marketplace overview returns only verified providers and live aggre
 
   assert.equal(overview.verifiedProviderCount, verifiedProviders.length);
   assert.equal(overview.featuredProviders.length, Math.min(verifiedProviders.length, 6));
+  assert.equal(overview.topRatedProviders.length, Math.min(verifiedProviders.length, 8));
+  assert.equal(overview.mostOnTimeProviders.length, Math.min(verifiedProviders.length, 8));
   assert.ok(overview.averageRating >= 0);
   assert.ok(overview.activeCategoryCount > 0);
   assert.equal(
     overview.featuredProviders.every((provider) =>
+      verifiedProviders.some((candidate) => candidate.id === provider.id)
+    ),
+    true
+  );
+  assert.equal(
+    overview.topRatedProviders.every((provider) =>
+      verifiedProviders.some((candidate) => candidate.id === provider.id)
+    ),
+    true
+  );
+  assert.equal(
+    overview.mostOnTimeProviders.every((provider) =>
       verifiedProviders.some((candidate) => candidate.id === provider.id)
     ),
     true

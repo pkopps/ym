@@ -65,6 +65,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/providers/verification/queue") ||
       (context.method === "POST" && context.path === "/api/providers/verification/review") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
+      (context.method === "GET" && context.path === "/api/crew/opportunities/public") ||
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/route-leader") ||
@@ -226,6 +227,11 @@ export class MarketplaceController implements ApiController {
 
     if (context.method === "GET" && context.path === "/api/crew/opportunities") {
       await requireRole(context, this.platform, "crew-member");
+      sendJson(response, 200, await this.platform.listCrewOpportunities());
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/crew/opportunities/public") {
       sendJson(response, 200, await this.platform.listCrewOpportunities());
       return;
     }

@@ -17,6 +17,7 @@ export class ApiRoutes {
   public static readonly providerVerificationQueue = "/api/providers/verification/queue";
   public static readonly providerVerificationReview = "/api/providers/verification/review";
   public static readonly crewOpportunities = "/api/crew/opportunities";
+  public static readonly publicCrewOpportunities = "/api/crew/opportunities/public";
   public static readonly providerStaffingOverview = "/api/providers/staffing";
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";
   public static readonly providerAssignBookingRouteLeader = "/api/providers/staffing/route-leader";

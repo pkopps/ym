@@ -1270,10 +1270,14 @@ export interface SearchProvidersResponse {
 export interface PublicMarketplaceFeaturedProvider {
   id: string;
   companyName: string;
+  ownerName: string;
   city: string;
   state: string;
   rating: number;
+  timelinessRating: number;
   reviewCount: number;
+  yearsExperience: number;
+  serviceRadiusMiles: number;
   primaryCategory?: ServiceCategory;
 }
 
@@ -1283,6 +1287,8 @@ export interface PublicMarketplaceOverviewResponse {
   averageRating: number;
   activeCategoryCount: number;
   featuredProviders: PublicMarketplaceFeaturedProvider[];
+  topRatedProviders: PublicMarketplaceFeaturedProvider[];
+  mostOnTimeProviders: PublicMarketplaceFeaturedProvider[];
 }
 
 export interface SearchProviderResult {

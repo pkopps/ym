@@ -62,8 +62,6 @@ export function CustomerListingsHero({
   return (
     <section className="page-hero page-hero--listings">
       <div className="page-hero__copy">
-        <span className="eyebrow">Recommended match</span>
-        <h1>Start with the best local fit for {serviceLabel.toLowerCase()}.</h1>
         <p>
           {description ??
             `GreenRain will recommend the best local fit for ${timingLabel.toLowerCase()} first, then keep a short backup list ready if you want to compare.`}

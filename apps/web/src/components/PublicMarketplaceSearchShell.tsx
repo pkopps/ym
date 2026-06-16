@@ -48,6 +48,13 @@ export type CustomerTimingPreference =
   | "day-after-morning"
   | "day-after-afternoon";
 
+export type CustomerQuickServiceChip = {
+  label: string;
+  service: ServiceCategory;
+  imageSrc?: string;
+  description?: string;
+};
+
 export const customerTimingOptions: Array<{ value: CustomerTimingPreference; label: string }> = [
   { value: "tomorrow-morning", label: "Tomorrow morning" },
   { value: "tomorrow-afternoon", label: "Tomorrow afternoon" },
@@ -55,6 +62,22 @@ export const customerTimingOptions: Array<{ value: CustomerTimingPreference; lab
   { value: "day-after-morning", label: "Day after morning" },
   { value: "day-after-afternoon", label: "Day after afternoon" }
 ];
+
+const customerServicePickerLabels: Record<ServiceCategory, string> = {
+  "lawn-mowing": "Lawn mowing",
+  "hedge-trimming": "Hedges",
+  "mulch-installation": "Mulch",
+  "seasonal-cleanup": "Cleanup",
+  "weed-control": "Weeds",
+  "irrigation-check": "Irrigation",
+  "leaf-blowing": "Leaf blowing",
+  "aeration": "Aeration",
+  "fertilization": "Fertilization",
+  "gutter-cleaning": "Gutter clean",
+  "snow-shoveling": "Snow shoveling",
+  "ice-melt-salting": "Ice melt",
+  "snow-blowing": "Snow blowing"
+};
 
 export function getCustomerTimingLabel(timing: CustomerTimingPreference) {
   return (
@@ -207,7 +230,7 @@ export function PublicMarketplaceSearchShell({
           >
             {Object.entries(serviceCategoryLabels).map(([value, label]) => (
               <option key={value} value={value}>
-                {label}
+                {customerServicePickerLabels[value as ServiceCategory] ?? label}
               </option>
             ))}
           </select>

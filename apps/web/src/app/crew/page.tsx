@@ -11,8 +11,7 @@ export default function CrewPage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <h1>Live crew openings.</h1>
-        <p>See real demand coming from provider bookings.</p>
+        <h1>No equipment, no problem. View openings on local crews.</h1>
       </section>
       <CrewLiveDashboard />
     </main>

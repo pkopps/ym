@@ -904,6 +904,19 @@ export class MarketplacePlatformService {
     const providers = (await this.repository.listProviders()).filter(
       (provider) => provider.verificationStatus === "verified"
     );
+    const mapFeaturedProvider = (provider: ProviderProfile) => ({
+      id: provider.id,
+      companyName: provider.companyName,
+      ownerName: provider.fullName,
+      city: provider.address.city,
+      state: provider.address.state,
+      rating: provider.rating,
+      timelinessRating: provider.timelinessRating,
+      reviewCount: provider.reviewCount,
+      yearsExperience: provider.yearsExperience,
+      serviceRadiusMiles: provider.serviceRadiusMiles,
+      primaryCategory: provider.categories[0]
+    });
     const featuredProviders = providers
       .slice()
       .sort((left, right) => {
@@ -916,15 +929,39 @@ export class MarketplacePlatformService {
         return left.companyName.localeCompare(right.companyName);
       })
       .slice(0, 6)
-      .map((provider) => ({
-        id: provider.id,
-        companyName: provider.companyName,
-        city: provider.address.city,
-        state: provider.address.state,
-        rating: provider.rating,
-        reviewCount: provider.reviewCount,
-        primaryCategory: provider.categories[0]
-      }));
+      .map(mapFeaturedProvider);
+    const topRatedProviders = providers
+      .slice()
+      .sort((left, right) => {
+        if (right.rating !== left.rating) {
+          return right.rating - left.rating;
+        }
+        if (right.reviewCount !== left.reviewCount) {
+          return right.reviewCount - left.reviewCount;
+        }
+        if (right.timelinessRating !== left.timelinessRating) {
+          return right.timelinessRating - left.timelinessRating;
+        }
+        return left.companyName.localeCompare(right.companyName);
+      })
+      .slice(0, 8)
+      .map(mapFeaturedProvider);
+    const mostOnTimeProviders = providers
+      .slice()
+      .sort((left, right) => {
+        if (right.timelinessRating !== left.timelinessRating) {
+          return right.timelinessRating - left.timelinessRating;
+        }
+        if (right.rating !== left.rating) {
+          return right.rating - left.rating;
+        }
+        if (right.reviewCount !== left.reviewCount) {
+          return right.reviewCount - left.reviewCount;
+        }
+        return left.companyName.localeCompare(right.companyName);
+      })
+      .slice(0, 8)
+      .map(mapFeaturedProvider);
 
     const averageRating =
       providers.length > 0
@@ -944,7 +981,9 @@ export class MarketplacePlatformService {
       verifiedProviderCount: providers.length,
       averageRating,
       activeCategoryCount,
-      featuredProviders
+      featuredProviders,
+      topRatedProviders,
+      mostOnTimeProviders
     };
   }
 

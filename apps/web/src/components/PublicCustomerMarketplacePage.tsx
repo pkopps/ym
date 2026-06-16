@@ -2,14 +2,16 @@
 
 import {
   PlaceSuggestion,
+  PublicMarketplaceFeaturedProvider,
   PublicMarketplaceOverviewResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { faqItems, serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeServiceScroller } from "./HomeServiceScroller";
 import {
+  CustomerQuickServiceChip,
   CustomerTimingPreference,
   buildCustomerListingsSearchParams,
   PublicMarketplaceSearchShell
@@ -18,6 +20,144 @@ import { createWebApiClient } from "../lib/api";
 import { StructuredData } from "./StructuredData";
 
 const rotatingServices = ["lawn mowing", "cleanup", "hedge trimming", "mulch refresh"] as const;
+
+function getProviderInitials(provider: PublicMarketplaceFeaturedProvider) {
+  return provider.companyName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
+}
+
+function MarketplaceProviderRail({
+  ctaLabel,
+  description,
+  onCta,
+  providers,
+  title,
+  variant
+}: {
+  ctaLabel: string;
+  description: string;
+  onCta: () => void;
+  providers: PublicMarketplaceFeaturedProvider[];
+  title: string;
+  variant: "top-rated" | "most-on-time";
+}) {
+  const railRef = useRef<HTMLDivElement | null>(null);
+
+  function scrollRail(direction: -1 | 1) {
+    railRef.current?.scrollBy({
+      left: direction * 344,
+      behavior: "smooth"
+    });
+  }
+
+  return (
+    <section className="container stack-lg market-home__provider-rail-section">
+      <div className="market-home__provider-rail-header">
+        <div>
+          <h2>{title}</h2>
+          <p>{description}</p>
+        </div>
+        <div className="market-home__provider-rail-actions">
+          <button className="button-secondary market-home__provider-rail-link" onClick={onCta} type="button">
+            {ctaLabel}
+          </button>
+          <div className="market-home__provider-rail-nav">
+            <button aria-label={`Scroll ${title} left`} onClick={() => scrollRail(-1)} type="button">
+              ‹
+            </button>
+            <button aria-label={`Scroll ${title} right`} onClick={() => scrollRail(1)} type="button">
+              ›
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="market-home__provider-rail" ref={railRef}>
+        {providers.map((provider) => {
+          const displayRating = provider.rating ?? 0;
+          const displayTimeliness = provider.timelinessRating ?? provider.rating ?? 0;
+          const emphasisLine =
+            variant === "top-rated"
+              ? `${displayRating.toFixed(1)} overall • ${provider.reviewCount} reviews`
+              : `${displayTimeliness.toFixed(1)} punctuality • ${provider.reviewCount} reviews`;
+          const detailLine =
+            variant === "top-rated"
+              ? provider.yearsExperience
+                ? `${provider.yearsExperience}+ years of repeat local work`
+                : "Verified local provider with active customer reviews"
+              : provider.serviceRadiusMiles
+                ? `${provider.serviceRadiusMiles}-mile route with strong on-time history`
+                : "Verified local provider with steady arrival history";
+          const availabilityLine = provider.ownerName
+            ? `Owned by ${provider.ownerName} • Verified local coverage`
+            : "Verified local coverage";
+
+          return (
+            <article className="market-home__provider-rail-card" key={`${variant}-${provider.id}`}>
+              <div className="market-home__provider-rail-top">
+                <span className="market-home__provider-avatar" aria-hidden="true">
+                  {getProviderInitials(provider)}
+                </span>
+                <div className="market-home__provider-copy">
+                  <strong>{provider.companyName}</strong>
+                  <span>
+                    {provider.primaryCategory
+                      ? serviceCategoryLabels[provider.primaryCategory]
+                      : "Landscaping business"}
+                  </span>
+                </div>
+              </div>
+              <p className="market-home__provider-rating">★ {emphasisLine}</p>
+              <p className="market-home__provider-location">
+                {provider.city}, {provider.state}
+              </p>
+              <p className="market-home__provider-detail">{detailLine}</p>
+              <p className="market-home__provider-availability">{availabilityLine}</p>
+              <button className="button market-home__provider-cta" onClick={onCta} type="button">
+                Find my match
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+const quickServiceChips: CustomerQuickServiceChip[] = [
+  {
+    label: "Lawn mowing",
+    service: "lawn-mowing",
+    imageSrc: "/media/landscaping-tools/lawn-mower.png",
+    description: "Routine weekly or biweekly cuts"
+  },
+  {
+    label: "Mulch refresh",
+    service: "mulch-installation",
+    imageSrc: "/media/landscaping-tools/mulch-refresh.png",
+    description: "Freshen beds and sharpen edges"
+  },
+  {
+    label: "Gutter cleaning",
+    service: "gutter-cleaning",
+    imageSrc: "/media/landscaping-tools/gutter-cleaning.png",
+    description: "Clear overflow before it backs up"
+  },
+  {
+    label: "Seasonal cleanup",
+    service: "seasonal-cleanup",
+    imageSrc: "/media/landscaping-tools/leaf-blower.png",
+    description: "Leaves, debris, and reset work"
+  },
+  {
+    label: "Hedge trimming",
+    service: "hedge-trimming",
+    imageSrc: "/media/landscaping-tools/hedge-trimmer.png",
+    description: "Shape shrubs and tidy lines"
+  }
+];
 
 export function PublicCustomerMarketplacePage() {
   const router = useRouter();
@@ -50,6 +190,13 @@ export function PublicCustomerMarketplacePage() {
     router.push(`/customer/listings?${params.toString()}`);
   }
 
+  function handleBrowseRecommendedProviders() {
+    handleSearch(selectedService, selectedSuggestion, selectedTiming);
+  }
+
+  const topRatedProviders = overview?.topRatedProviders ?? overview?.featuredProviders ?? [];
+  const mostOnTimeProviders = overview?.mostOnTimeProviders ?? overview?.featuredProviders ?? [];
+
   return (
     <main className="market-home">
       <StructuredData
@@ -69,21 +216,12 @@ export function PublicCustomerMarketplacePage() {
 
       <section className="container hero home-hero customer-public-hero">
         <div className="home-hero__content">
-          <span className="eyebrow">GreenRain by YardMatch</span>
           <h1 className="home-hero__headline">
             <span>Tell us what needs care.</span>
             <span className="home-hero__headline-accent">
               We’ll match the best local fit for <HomeServiceScroller services={rotatingServices} />.
             </span>
           </h1>
-          <p className="home-hero__lede">
-            Start with one recommended provider, a real route opening, and short backup options only if you want them.
-          </p>
-          <div className="home-hero__trust-strip" aria-label="Why customers book with GreenRain">
-            <span>One best match first</span>
-            <span>Real route openings</span>
-            <span>Support if plans change</span>
-          </div>
           <PublicMarketplaceSearchShell
             areaQuery={areaQuery}
             onAreaQueryChange={setAreaQuery}
@@ -96,9 +234,6 @@ export function PublicCustomerMarketplacePage() {
             selectedTiming={selectedTiming}
           />
           <div className="cta-row">
-            <button className="button" onClick={() => handleSearch(selectedService, selectedSuggestion, selectedTiming)} type="button">
-              See my recommended provider
-            </button>
             <a className="button-secondary" href="/auth/provider">
               I run a landscaping business
             </a>
@@ -106,24 +241,30 @@ export function PublicCustomerMarketplacePage() {
               I want crew work
             </a>
           </div>
-          {overview ? (
-            <div className="market-home__proof">
-              <div className="market-home__proof-card">
-                <strong>{overview.verifiedProviderCount}</strong>
-                <span>verified providers</span>
-              </div>
-              <div className="market-home__proof-card">
-                <strong>{overview.averageRating.toFixed(1)}</strong>
-                <span>average rating</span>
-              </div>
-              <div className="market-home__proof-card">
-                <strong>{overview.activeCategoryCount}</strong>
-                <span>active service categories</span>
-              </div>
-            </div>
-          ) : null}
         </div>
       </section>
+
+      {topRatedProviders.length ? (
+        <MarketplaceProviderRail
+          ctaLabel="See all matches"
+          description="Highly reviewed local providers customers keep choosing again."
+          onCta={handleBrowseRecommendedProviders}
+          providers={topRatedProviders}
+          title="Top-rated providers"
+          variant="top-rated"
+        />
+      ) : null}
+
+      {mostOnTimeProviders.length ? (
+        <MarketplaceProviderRail
+          ctaLabel="See all matches"
+          description="Providers with the strongest punctuality track record in the live marketplace."
+          onCta={handleBrowseRecommendedProviders}
+          providers={mostOnTimeProviders}
+          title="Most on-time providers"
+          variant="most-on-time"
+        />
+      ) : null}
 
       <section className="container stack-lg">
         <div className="section-header">
@@ -148,6 +289,35 @@ export function PublicCustomerMarketplacePage() {
 
       <section className="container stack-lg">
         <div className="section-header">
+          <h2>Popular Services</h2>
+          <p>Choose the type of work first and jump straight into matching.</p>
+        </div>
+        <div className="service-tile-grid">
+          {quickServiceChips.map((item) => (
+            <button
+              className="service-tile-card"
+              key={item.service}
+              onClick={() => handleSearch(item.service, selectedSuggestion, selectedTiming)}
+              type="button"
+            >
+              <span className="service-tile-card__image-wrap" aria-hidden="true">
+                <img
+                  alt=""
+                  className="service-tile-card__image"
+                  height={128}
+                  src={item.imageSrc}
+                  width={128}
+                />
+              </span>
+              <strong>{item.label}</strong>
+              <span>{item.description}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="container stack-lg">
+        <div className="section-header">
           <h2>Built for every side of the work</h2>
           <p>One system for homeowners, businesses, and crews.</p>
         </div>
@@ -166,33 +336,6 @@ export function PublicCustomerMarketplacePage() {
           </article>
         </div>
       </section>
-
-      {overview?.featuredProviders.length ? (
-        <section className="container stack-lg market-home__market-proof">
-          <div className="section-header">
-            <h2>Verified providers already active on GreenRain</h2>
-            <p>These businesses are coming from the live marketplace, not a static directory.</p>
-          </div>
-          <div className="grid-three market-home__market-grid">
-            {overview.featuredProviders.map((provider) => (
-              <article className="card market-home__business-card" key={provider.id}>
-                <strong>{provider.companyName}</strong>
-                <p>
-                  {provider.city}, {provider.state}
-                </p>
-                <p>
-                  {provider.rating.toFixed(1)} stars • {provider.reviewCount} reviews
-                </p>
-                <p>
-                  {provider.primaryCategory
-                    ? serviceCategoryLabels[provider.primaryCategory]
-                    : "Landscaping services"}
-                </p>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       <section className="container stack-lg">
         <div className="section-header">

@@ -2,11 +2,12 @@
 
 import {
   CrewAvailabilityDay,
+  CrewOpportunity,
   CrewMatchesResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
-import { createAuthenticatedWebApiClient } from "../lib/api";
+import { createAuthenticatedWebApiClient, createWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 
 const allDays: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -38,6 +39,7 @@ export function CrewLiveDashboard() {
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
+  const [publicOpportunities, setPublicOpportunities] = useState<CrewOpportunity[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
@@ -48,6 +50,13 @@ export function CrewLiveDashboard() {
     () => matches.filter((match) => match.status === "accepted"),
     [matches]
   );
+  const previewOpportunities = useMemo(() => publicOpportunities.slice(0, 6), [publicOpportunities]);
+
+  async function loadPublicPreview() {
+    const api = createWebApiClient();
+    const opportunities = await api.getPublicCrewOpportunities();
+    setPublicOpportunities(opportunities);
+  }
 
   async function loadCrewView() {
     if (!session || session.role !== "crew-member") {
@@ -68,6 +77,11 @@ export function CrewLiveDashboard() {
 
     if (!session || session.role !== "crew-member") {
       setAccessDenied(true);
+      void loadPublicPreview().catch((error) => {
+        setErrorMessage(
+          error instanceof Error ? error.message : "Unable to load live crew openings right now."
+        );
+      });
       return;
     }
 
@@ -168,15 +182,69 @@ export function CrewLiveDashboard() {
 
   if (accessDenied) {
     return (
-      <section className="card">
-        <h2>Crew member login required</h2>
-        <p>Log in to see live staffing matches, accepted work, and crew chat.</p>
-        <div className="cta-row">
-          <a className="button" href="/login/crew">
-            Go to crew login
-          </a>
-        </div>
-      </section>
+      <div className="stack-lg">
+        {previewOpportunities.length > 0 ? (
+          <section className="stack-lg">
+            <div className="section-header">
+              <h2>Providers hiring now</h2>
+            </div>
+            <div className="grid-three">
+              {previewOpportunities.map((opportunity) => (
+                <article className="crew-opportunity-card" key={opportunity.id}>
+                  <div className="crew-opportunity-card__header">
+                    <div>
+                      <div className="search-result-title">
+                        <h3>{opportunity.providerCompanyName}</h3>
+                        <span className="result-badge">Hiring</span>
+                      </div>
+                      <p>{opportunity.title}</p>
+                    </div>
+                    <strong>{formatCurrency(opportunity.hourlyRateCents)}/hr</strong>
+                  </div>
+
+                  <div className="crew-opportunity-card__grid">
+                    <div>
+                      <h4>When</h4>
+                      <p>{formatDateTime(opportunity.neededByStartIso)}</p>
+                      <p>{formatDateTime(opportunity.neededByEndIso)}</p>
+                    </div>
+                    <div>
+                      <h4>Where</h4>
+                      <p>
+                        {opportunity.city}, {opportunity.state}
+                      </p>
+                      <p>{opportunity.preferredSchedule} schedule</p>
+                    </div>
+                  </div>
+
+                  <p>{opportunity.summary}</p>
+
+                  <div className="chip-row">
+                    {opportunity.categories.map((category) => (
+                      <span key={`${opportunity.id}-${category}`}>{category.replaceAll("-", " ")}</span>
+                    ))}
+                    {opportunity.equipmentProvided ? <span>Equipment provided</span> : null}
+                    {opportunity.trainingProvided ? <span>Training provided</span> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="card">
+          <h2>Log in or sign up for crew work</h2>
+          <p>Create an account or log in to unlock acceptance, schedule details, and crew chat.</p>
+          <div className="cta-row">
+            <a className="button" href="/login/crew">
+              Crew login
+            </a>
+            <a className="button-secondary" href="/auth/crew">
+              Crew sign up
+            </a>
+          </div>
+        </section>
+      </div>
     );
   }
 
