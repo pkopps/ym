@@ -93,6 +93,8 @@ import {
   SessionHeartbeatRequest,
   SearchProvidersRequest,
   SearchProvidersResponse,
+  SelectPublicCrewOpportunityRequest,
+  SelectPublicCrewOpportunityResponse,
   SupportOpsTicket,
   SupportTicket,
   ProviderCrewConversationThread,
@@ -279,6 +281,12 @@ export class MarketplaceApiClient {
 
   public getPublicCrewOpportunities(): Promise<CrewOpportunity[]> {
     return this.getJson(ApiRoutes.publicCrewOpportunities);
+  }
+
+  public selectPublicCrewOpportunity(
+    payload: SelectPublicCrewOpportunityRequest
+  ): Promise<SelectPublicCrewOpportunityResponse> {
+    return this.postJson(ApiRoutes.selectPublicCrewOpportunity, payload);
   }
 
   public getProviderStaffingOverview(): Promise<ProviderStaffingOverview> {

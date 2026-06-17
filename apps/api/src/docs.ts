@@ -1103,7 +1103,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Perform a direct ops intervention on a booking",
         description:
-          "Lets customer service add an internal intervention note, reschedule a booking, or directly restore, cancel, or complete the booking while appending an audit trail to the booking record.",
+          "Lets customer service add an internal intervention note, reschedule a booking, or directly restore, cancel, or complete the booking while appending an audit trail to the booking record. Outcome-changing interventions on disputed or evidence-backed cases must link the related support ticket, follow the same reviewed-evidence direction guard used by support-ticket resolution, and use a specific intervention rationale when the reviewed evidence is mixed or inconclusive.",
         requestBody: {
           required: true,
           content: {
@@ -1550,7 +1550,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Create a Stripe Checkout session for a booking",
         description:
-          "Creates a hosted Stripe Checkout session for a customer-owned booking and returns the checkout URL.",
+          "Creates a hosted Stripe Checkout session for a customer-owned booking and returns the checkout URL. Disputed bookings must be resolved by support before payment can continue.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1565,7 +1565,8 @@ export const apiSpec = {
           }
         },
         responses: {
-          "201": { description: "Stripe checkout session created" }
+          "201": { description: "Stripe checkout session created" },
+          "409": { description: "Booking is already paid or blocked from payment while under dispute" }
         }
       }
     },
@@ -1597,7 +1598,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Create an internal payment record",
         description:
-          "Legacy/internal payment record creation path. Stripe Checkout should be used for real customer card payments.",
+          "Legacy/internal payment record creation path. Stripe Checkout should be used for real customer card payments. Disputed bookings must be resolved by support before payment can continue.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1611,7 +1612,8 @@ export const apiSpec = {
           }
         },
         responses: {
-          "201": { description: "Payment authorized" }
+          "201": { description: "Payment authorized" },
+          "409": { description: "Booking is blocked from payment while under dispute" }
         }
       }
     },
@@ -1674,7 +1676,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "List the internal support operations queue",
         description:
-          "Returns support tickets with linked booking, payment, and participant context so operations can triage disputes, refund reviews, no-shows, and service issues.",
+          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, and backend-authored resolution policy data so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive resolution guardrails in the client.",
         responses: {
           "200": { description: "Support operations queue" }
         }
@@ -1719,7 +1721,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Triages or resolves a support ticket",
         description:
-          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket.",
+          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket, the chosen resolution direction must match the reviewed evidence signal, and mixed evidence requires a specific written rationale before the case can close.",
         requestBody: {
           required: true,
           content: {

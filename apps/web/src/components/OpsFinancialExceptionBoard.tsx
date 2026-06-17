@@ -4,6 +4,7 @@ import {
   MarketplaceApiClient,
   OpsBookingExceptionSummaryItem,
   OpsFinancialExceptionSummaryResponse,
+  OpsPayoutHoldSummaryItem,
   OpsRefundSummaryItem
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
@@ -43,6 +44,32 @@ function RefundReviewRow({ item }: { item: OpsRefundSummaryItem }) {
       <p>{item.refundReason ?? "No refund reason recorded."}</p>
       <p>
         Booking {item.bookingId} • payment {item.paymentId} • booking state {item.bookingStatus}
+      </p>
+    </article>
+  );
+}
+
+function PayoutHoldRow({ item }: { item: OpsPayoutHoldSummaryItem }) {
+  return (
+    <article className="list-panel">
+      <div className="search-result-title">
+        <div>
+          <h3>{item.providerName ?? "Provider"} • {formatCurrency(item.amountCents)}</h3>
+          <p>
+            {item.customerName ?? "Customer"} • opened {formatDateTime(item.openedAt)}
+          </p>
+        </div>
+        <span className="result-badge">{item.holdReason === "refund-review" ? "refund review" : "dispute"}</span>
+      </div>
+      <p>{item.notes ?? "No hold note recorded."}</p>
+      <p>
+        {item.category.replaceAll("-", " ")} • booking state {item.bookingStatus}
+        {item.paymentStatus ? ` • payment ${item.paymentStatus}` : ""}
+        {item.openedByRole ? ` • opened by ${item.openedByRole}` : ""}
+      </p>
+      <p>
+        Booking {item.bookingId}
+        {item.paymentId ? ` • payment ${item.paymentId}` : ""}
       </p>
     </article>
   );
@@ -125,26 +152,41 @@ export function OpsFinancialExceptionBoard() {
 
           <div className="grid-two">
             <article className="list-panel">
-              <h3>Open refund reviews</h3>
+              <h3>Payout holds</h3>
               <div className="stack-md" style={{ paddingBottom: 0 }}>
-                {summary.refundReviews.length > 0 ? (
-                  summary.refundReviews.map((item) => <RefundReviewRow item={item} key={item.paymentId} />)
+                {summary.payoutHolds.length > 0 ? (
+                  summary.payoutHolds.map((item) => (
+                    <PayoutHoldRow item={item} key={`${item.bookingId}:${item.paymentId ?? item.holdReason}`} />
+                  ))
                 ) : (
-                  <p>No open refund reviews right now.</p>
+                  <p>No payout holds right now.</p>
                 )}
               </div>
             </article>
 
-            <article className="list-panel">
-              <h3>Active field exceptions</h3>
-              <div className="stack-md" style={{ paddingBottom: 0 }}>
-                {summary.activeExceptions.length > 0 ? (
-                  summary.activeExceptions.map((item) => <ExceptionRow item={item} key={item.bookingId} />)
-                ) : (
-                  <p>No active field exceptions right now.</p>
-                )}
-              </div>
-            </article>
+            <div className="stack-lg">
+              <article className="list-panel">
+                <h3>Open refund reviews</h3>
+                <div className="stack-md" style={{ paddingBottom: 0 }}>
+                  {summary.refundReviews.length > 0 ? (
+                    summary.refundReviews.map((item) => <RefundReviewRow item={item} key={item.paymentId} />)
+                  ) : (
+                    <p>No open refund reviews right now.</p>
+                  )}
+                </div>
+              </article>
+
+              <article className="list-panel">
+                <h3>Active field exceptions</h3>
+                <div className="stack-md" style={{ paddingBottom: 0 }}>
+                  {summary.activeExceptions.length > 0 ? (
+                    summary.activeExceptions.map((item) => <ExceptionRow item={item} key={item.bookingId} />)
+                  ) : (
+                    <p>No active field exceptions right now.</p>
+                  )}
+                </div>
+              </article>
+            </div>
           </div>
         </div>
       ) : (

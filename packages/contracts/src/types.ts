@@ -843,6 +843,26 @@ export interface SupportResolutionGuidance {
   rationale: string;
 }
 
+export type SupportResolutionEvidenceSignal =
+  | "no-evidence"
+  | "unreviewed"
+  | "supports-customer"
+  | "supports-provider"
+  | "mixed"
+  | "inconclusive";
+
+export interface SupportResolutionPolicy {
+  evidenceSignal: SupportResolutionEvidenceSignal;
+  confidence: "high" | "medium" | "low";
+  requiresEvidenceReview: boolean;
+  blockedActions: SupportBookingResolution[];
+  requiresDetailedRationale: boolean;
+  warnings: string[];
+  rationalePrompt?: string;
+  minimumDetailedRationaleLength?: number;
+  disallowedDetailedRationaleNotes?: string[];
+}
+
 export type SupportTimelineActorRole =
   | MarketplaceRole
   | "ops"
@@ -875,6 +895,7 @@ export interface SupportOpsTicket {
   providerName?: string;
   evidenceSummary?: SupportEvidenceSummary;
   resolutionGuidance?: SupportResolutionGuidance;
+  resolutionPolicy?: SupportResolutionPolicy;
   timeline: SupportTimelineEntry[];
 }
 
@@ -903,6 +924,21 @@ export interface OpsBookingExceptionSummaryItem {
   notes?: string;
 }
 
+export interface OpsPayoutHoldSummaryItem {
+  bookingId: string;
+  paymentId?: string;
+  customerName?: string;
+  providerName?: string;
+  category: ServiceCategory;
+  bookingStatus: BookingStatus;
+  paymentStatus?: PaymentStatus;
+  amountCents: number;
+  holdReason: "refund-review" | "dispute";
+  openedAt?: string;
+  openedByRole?: RefundActorRole;
+  notes?: string;
+}
+
 export interface OpsFinancialExceptionSummaryResponse {
   generatedAt: string;
   refundReviewOpenCount: number;
@@ -911,6 +947,7 @@ export interface OpsFinancialExceptionSummaryResponse {
   activeBookingExceptionCount: number;
   disputedBookingCount: number;
   openBillingTicketCount: number;
+  payoutHolds: OpsPayoutHoldSummaryItem[];
   refundReviews: OpsRefundSummaryItem[];
   activeExceptions: OpsBookingExceptionSummaryItem[];
 }
@@ -1634,6 +1671,19 @@ export interface UpdateCrewPreferencesRequest {
 export interface CancelCrewMatchRequest {
   crewMatchId: string;
   reason?: string;
+}
+
+export interface SelectPublicCrewOpportunityRequest {
+  opportunityId: string;
+}
+
+export interface SelectPublicCrewOpportunityResponse {
+  opportunityId: string;
+  providerId: string;
+  providerCompanyName: string;
+  staffingMode: ProviderStaffingMode;
+  notificationTitle: string;
+  notificationBody: string;
 }
 
 export interface ReviewCrewMatchRequest {

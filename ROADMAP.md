@@ -31,6 +31,7 @@ Avoid drifting into:
 - Verify production-style Stripe webhook handling end to end with live credentials now that local webhook reconciliation covers checkout completion, expiry, payment failures, and refund events.
 - Use checkout start/capture/failure telemetry in ops while validating the live Stripe cutover so abandoned or expired payment sessions are visible without raw event digging.
 - Validate live Stripe refund synchronization in development and staging after ops approves a refund review.
+- Keep validating dispute-related settlement freezes now that disputed bookings block new payment attempts and hold captured provider/crew payouts until support resolves them.
 - Define payout disbursement rules and eventual payout rails for providers and crew.
 
 ### Notification Delivery
@@ -47,8 +48,10 @@ Avoid drifting into:
 
 ### Production Operations
 
-- Keep extending support and financial exception tooling beyond the current structured ticket timeline, refund review history, booking intervention history, evidence-review history, and the new evidence-before-resolution guard for disputes and refund reviews.
-- Keep tightening dispute evidence workflows beyond the current before/after photos, notes, and checklists now that ops must review at least one submitted evidence item before resolving dispute/service-quality/refund-review tickets.
+- Keep extending support and financial exception tooling beyond the current structured ticket timeline, payout-hold queue, refund review history, booking intervention history, evidence-review history, and the new evidence-before-resolution guard for disputes and refund reviews.
+- Keep testing completed-job dispute scenarios now that provider-favoring resolutions should return those bookings to `completed` and release payout holds cleanly.
+- Keep tightening dispute evidence workflows beyond the current before/after photos, notes, and checklists now that ops must review at least one submitted evidence item before resolving dispute/service-quality/refund-review tickets, the final resolution direction must match the reviewed evidence signal, mixed evidence requires a specific written rationale before the case can close, and the ops UI now reads those guardrails from a backend-authored resolution policy instead of client-side heuristics.
+- Keep aligning manual intervention tooling with the same dispute/refund controls now that outcome-changing ops interventions must also link the support ticket, respect reviewed evidence direction, and use a specific intervention rationale when the evidence is mixed or inconclusive.
 - Continue testing booking interventions, refund reviews, and payout holds with real-world scenarios.
 
 ## Priority 2: Marketplace Quality

@@ -32,6 +32,7 @@ import {
   ProcessReviewInvitesRequest,
   CreateRefundRequest,
   ReviewCrewMatchRequest,
+  SelectPublicCrewOpportunityRequest,
   RemovePushDeviceRequest,
   RemoveExternalCalendarImportRequest,
   SendCustomerProviderMessageRequest,
@@ -75,6 +76,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/verification/review") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities/public") ||
+      (context.method === "POST" && context.path === "/api/crew/opportunities/public/select") ||
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/route-leader") ||
@@ -248,6 +250,15 @@ export class MarketplaceController implements ApiController {
 
     if (context.method === "GET" && context.path === "/api/crew/opportunities/public") {
       sendJson(response, 200, await this.platform.listCrewOpportunities());
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/crew/opportunities/public/select") {
+      sendJson(
+        response,
+        200,
+        await this.platform.selectPublicCrewOpportunity(context.body as SelectPublicCrewOpportunityRequest)
+      );
       return;
     }
 

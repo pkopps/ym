@@ -241,7 +241,8 @@ export function ProviderPaymentsBoard() {
             <strong>Next step</strong>
             <p>
               Bank accounts, weekly disbursement runs, and instant cash-out remain separate roadmap work.
-              This ledger shows what is actually earned and what is still blocked by payment or refund state.
+              This ledger shows what is actually earned and what is still blocked by payment, refund-review,
+              or dispute state.
             </p>
           </div>
         </article>

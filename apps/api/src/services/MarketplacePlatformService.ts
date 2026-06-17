@@ -38,6 +38,7 @@ import {
   NotificationOpsRetrySweepResponse,
   OpsBookingExceptionSummaryItem,
   OpsFinancialExceptionSummaryResponse,
+  OpsPayoutHoldSummaryItem,
   OpsPayoutRunPreviewResponse,
   OpsRefundSummaryItem,
   ProviderCrewConversation,
@@ -126,6 +127,8 @@ import {
   SearchProvidersRequest,
   SearchProviderResult,
   SearchProvidersResponse,
+  SelectPublicCrewOpportunityRequest,
+  SelectPublicCrewOpportunityResponse,
   StartBookingRequest,
   ConfirmPasswordResetRequest,
   UpdateBookingRouteLocationRequest,
@@ -205,6 +208,20 @@ type ParsedProviderAssistantCommand = {
   exceptionType?: MarkBookingExceptionRequest["exceptionType"];
   exceptionNotes?: string;
 };
+
+const MIN_DETAILED_SUPPORT_RATIONALE_LENGTH = 48;
+
+const GENERIC_SUPPORT_RESOLUTION_NOTES = [
+  "support approved the refund review and reversed the customer payment.",
+  "support reviewed the refund request and kept the payment captured.",
+  "support approved the refund review after checking the booking.",
+  "support reviewed the issue and restored the booking to the active schedule.",
+  "support resolved the issue by cancelling the booking.",
+  "support confirmed the service should be treated as complete.",
+  "support reviewed the issue and kept the booking marked complete.",
+  "support reviewed the dispute and restored the booking.",
+  "support reviewed the dispute and kept the booking marked complete."
+] as const;
 
 export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
@@ -2711,6 +2728,52 @@ export class MarketplacePlatformService {
         return opportunity;
       })
       .filter((opportunity): opportunity is CrewOpportunity => opportunity !== undefined);
+  }
+
+  public async selectPublicCrewOpportunity(
+    payload: SelectPublicCrewOpportunityRequest
+  ): Promise<SelectPublicCrewOpportunityResponse> {
+    const opportunityId = payload.opportunityId?.trim();
+    if (!opportunityId) {
+      throw new HttpError(400, "opportunityId is required");
+    }
+
+    const opportunity = (await this.listCrewOpportunities()).find((item) => item.id === opportunityId);
+    if (!opportunity) {
+      throw new HttpError(404, "Crew opportunity not found");
+    }
+
+    const provider = await this.repository.findProviderById(opportunity.providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found for this crew opportunity");
+    }
+
+    const staffingMode = provider.staffingMode ?? "review-first";
+    const isAutoAccept = staffingMode === "auto-accept";
+    const notificationTitle = isAutoAccept
+      ? "Your crew opening was filled"
+      : "Crew opening needs review";
+    const notificationBody = isAutoAccept
+      ? `A crew member selected your ${opportunity.title} opening in ${opportunity.city}, ${opportunity.state}. Your auto-accept setting marked the opening as filled.`
+      : `A crew member selected your ${opportunity.title} opening in ${opportunity.city}, ${opportunity.state}. Review this match before adding them to the crew.`;
+
+    await this.createNotification({
+      recipientId: provider.id,
+      recipientRole: "provider",
+      category: "staffing",
+      title: notificationTitle,
+      body: notificationBody,
+      actionHref: "/provider/management"
+    });
+
+    return {
+      opportunityId: opportunity.id,
+      providerId: provider.id,
+      providerCompanyName: provider.companyName,
+      staffingMode,
+      notificationTitle,
+      notificationBody
+    };
   }
 
   public async updateProviderSettings(
@@ -6236,7 +6299,7 @@ export class MarketplacePlatformService {
           paymentStatus: payment?.status,
           status: payoutStatus,
           availableAtIso,
-          note: this.buildProviderPayoutNote(payoutStatus, payment, acceptedMatches.length)
+          note: this.buildProviderPayoutNote(booking, payoutStatus, payment, acceptedMatches.length)
         };
 
         return entry;
@@ -6305,7 +6368,7 @@ export class MarketplacePlatformService {
           paymentStatus: payment?.status,
           status: payoutStatus,
           availableAtIso,
-          note: this.buildCrewPayoutNote(payoutStatus, payment)
+          note: this.buildCrewPayoutNote(booking, payoutStatus, payment)
         };
 
         return entry;
@@ -6445,6 +6508,10 @@ export class MarketplacePlatformService {
 
     if (booking.status === "cancelled" || booking.status === "refunded") {
       throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
+    }
+
+    if (booking.status === "disputed") {
+      throw new HttpError(409, "Disputed bookings must be resolved by support before payment can continue");
     }
 
     const customer = await this.repository.findCustomerById(customerId);
@@ -6655,6 +6722,19 @@ export class MarketplacePlatformService {
   }
 
   public async createPaymentIntent(payload: CreatePaymentIntentRequest): Promise<PaymentRecord> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    if (booking.status === "cancelled" || booking.status === "refunded") {
+      throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
+    }
+
+    if (booking.status === "disputed") {
+      throw new HttpError(409, "Disputed bookings must be resolved by support before payment can continue");
+    }
+
     const now = new Date().toISOString();
     const payment: PaymentRecord = {
       id: crypto.randomUUID(),
@@ -6921,6 +7001,30 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "This support ticket is not tied to the selected booking");
     }
 
+    const interventionResolutionAction = this.getResolutionActionForIntervention(payload.action);
+    if (interventionResolutionAction) {
+      if (!ticket && (booking.status === "disputed" || booking.serviceEvidence.length > 0)) {
+        throw new HttpError(
+          409,
+          "Link the related support ticket before changing the final outcome of this booking"
+        );
+      }
+
+      if (ticket) {
+        this.assertEvidenceReviewedBeforeSensitiveSupportResolution(
+          ticket,
+          booking,
+          interventionResolutionAction
+        );
+        this.assertDetailedRationaleForLowConfidenceSensitiveSupportResolution(
+          ticket,
+          booking,
+          interventionResolutionAction,
+          note
+        );
+      }
+    }
+
     const now = new Date().toISOString();
     let scheduledStartIso = payload.scheduledStartIso;
     let scheduledEndIso = payload.scheduledEndIso;
@@ -7153,6 +7257,10 @@ export class MarketplacePlatformService {
           booking && evidenceSummary
             ? this.buildSupportResolutionGuidance(ticket, booking, payment, evidenceSummary)
             : undefined;
+        const resolutionPolicy =
+          booking && evidenceSummary && resolutionGuidance
+            ? this.buildSupportResolutionPolicy(ticket, booking, evidenceSummary, resolutionGuidance)
+            : undefined;
         const requesterRole = this.resolveSupportTimelineActorRole(
           ticket.requesterId,
           customerById,
@@ -7168,6 +7276,7 @@ export class MarketplacePlatformService {
           providerName: provider?.companyName,
           evidenceSummary,
           resolutionGuidance,
+          resolutionPolicy,
           timeline: this.buildSupportTimeline(ticket, booking, payment, requesterRole)
         } satisfies SupportOpsTicket;
       })
@@ -7212,6 +7321,51 @@ export class MarketplacePlatformService {
         (right.refundRequestedAt ?? "").localeCompare(left.refundRequestedAt ?? "")
       );
 
+    const payoutHolds = bookings.reduce<OpsPayoutHoldSummaryItem[]>((items, booking) => {
+        const payment = payments.find((candidate) => candidate.bookingId === booking.id);
+        const holdReason = this.getPayoutHoldReason(booking, payment);
+        if (!holdReason) {
+          return items;
+        }
+
+        const customer = customerById.get(booking.customerId);
+        const provider = providerById.get(booking.providerId);
+        items.push({
+          bookingId: booking.id,
+          ...(payment?.id ? { paymentId: payment.id } : {}),
+          ...(customer?.fullName ? { customerName: customer.fullName } : {}),
+          ...(provider?.companyName ? { providerName: provider.companyName } : {}),
+          category: booking.category,
+          bookingStatus: booking.status,
+          ...(payment?.status ? { paymentStatus: payment.status } : {}),
+          amountCents: payment?.amountCents ?? booking.totalCents,
+          holdReason,
+          ...(holdReason === "refund-review"
+            ? payment?.refundRequestedAt
+              ? { openedAt: payment.refundRequestedAt }
+              : {}
+            : booking.disputedAt
+              ? { openedAt: booking.disputedAt }
+              : {}),
+          ...(holdReason === "refund-review"
+            ? payment?.refundRequestedByRole
+              ? { openedByRole: payment.refundRequestedByRole }
+              : {}
+            : booking.disputedByRole
+              ? { openedByRole: booking.disputedByRole }
+              : {}),
+          ...(holdReason === "refund-review"
+            ? payment?.refundReason
+              ? { notes: payment.refundReason }
+              : {}
+            : booking.disputeReason
+              ? { notes: booking.disputeReason }
+              : {})
+        });
+        return items;
+      }, [])
+      .sort((left, right) => (right.openedAt ?? "").localeCompare(left.openedAt ?? ""));
+
     const activeExceptions = bookings
       .filter(
         (booking) =>
@@ -7247,12 +7401,13 @@ export class MarketplacePlatformService {
             new Date(payment.refundReviewedAt).getTime() >= thirtyDaysAgo
         )
         .reduce((sum, payment) => sum + payment.amountCents, 0),
-      payoutHoldCount: payments.filter((payment) => payment.refundReviewStatus === "requested").length,
+      payoutHoldCount: payoutHolds.length,
       activeBookingExceptionCount: activeExceptions.length,
       disputedBookingCount: bookings.filter((booking) => booking.status === "disputed").length,
       openBillingTicketCount: tickets.filter(
         (ticket) => ticket.issueType === "billing" && ticket.status !== "resolved"
       ).length,
+      payoutHolds,
       refundReviews,
       activeExceptions
     };
@@ -7282,6 +7437,12 @@ export class MarketplacePlatformService {
             ticket,
             booking,
             payload.resolutionAction
+          );
+          this.assertDetailedRationaleForLowConfidenceSensitiveSupportResolution(
+            ticket,
+            booking,
+            payload.resolutionAction,
+            resolutionNotes
           );
           if (payload.resolutionAction === "approve-refund" || payload.resolutionAction === "deny-refund") {
             await this.applySupportResolutionToRefund(booking, payload.resolutionAction, resolutionNotes as string);
@@ -7350,11 +7511,29 @@ export class MarketplacePlatformService {
     }
 
     if (action === "restore-active-booking") {
-      return booking.onRouteConfirmedAt || booking.completedAt ? "in-progress" : "confirmed";
+      return this.getResolvedActiveBookingStatus(booking);
     }
 
     if (action === "reschedule-booking") {
       return "confirmed";
+    }
+
+    return undefined;
+  }
+
+  private getResolutionActionForIntervention(
+    action: CreateOpsBookingInterventionRequest["action"]
+  ): UpdateSupportTicketRequest["resolutionAction"] | undefined {
+    if (action === "restore-active-booking") {
+      return "restore-active-booking";
+    }
+
+    if (action === "complete-booking") {
+      return "complete-booking";
+    }
+
+    if (action === "cancel-booking") {
+      return "cancel-booking";
     }
 
     return undefined;
@@ -7466,8 +7645,7 @@ export class MarketplacePlatformService {
       return completedBooking;
     }
 
-    const restoredStatus: Booking["status"] =
-      booking.onRouteConfirmedAt || booking.completedAt ? "in-progress" : "confirmed";
+    const restoredStatus = this.getResolvedActiveBookingStatus(booking);
     const restoredBooking = await this.repository.updateBooking(booking.id, {
       ...baseUpdates,
       status: restoredStatus,
@@ -7484,8 +7662,10 @@ export class MarketplacePlatformService {
 
     await this.notifyOpsBookingIntervention(
       booking,
-      "Support restored your booking",
-      "YardMatch support reviewed the issue and restored this booking to the active schedule."
+      restoredStatus === "completed" ? "Support kept your booking complete" : "Support restored your booking",
+      restoredStatus === "completed"
+        ? "YardMatch support reviewed the issue and kept this booking marked complete."
+        : "YardMatch support reviewed the issue and restored this booking to the active schedule."
     );
     return restoredBooking;
   }
@@ -7523,7 +7703,11 @@ export class MarketplacePlatformService {
     booking: Booking,
     resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
   ): Promise<void> {
-    const action = resolutionAction ?? "restore-active-booking";
+    const action =
+      resolutionAction ??
+      (this.getResolvedActiveBookingStatus(booking) === "completed"
+        ? "complete-booking"
+        : "restore-active-booking");
 
     const baseUpdates: Partial<Booking> = {
       activeExceptionType: undefined,
@@ -7567,8 +7751,7 @@ export class MarketplacePlatformService {
       return;
     }
 
-    const restoredStatus: Booking["status"] =
-      booking.onRouteConfirmedAt || booking.completedAt ? "in-progress" : "confirmed";
+    const restoredStatus = this.getResolvedActiveBookingStatus(booking);
 
     await this.repository.updateBooking(booking.id, {
       ...baseUpdates,
@@ -7579,7 +7762,10 @@ export class MarketplacePlatformService {
       recipientRole: "customer",
       category: "support",
       title: "Support resolved your booking issue",
-      body: "YardMatch support reviewed the issue and restored the booking to the active schedule.",
+      body:
+        restoredStatus === "completed"
+          ? "YardMatch support reviewed the issue and kept the booking marked complete."
+          : "YardMatch support reviewed the issue and restored the booking to the active schedule.",
       actionHref: `/customer/dashboard?bookingId=${booking.id}`
     });
   }
@@ -10366,7 +10552,11 @@ export class MarketplacePlatformService {
     if (providerLead >= 2 || (providerLead >= 1 && booking.status === "disputed")) {
       const confidence: "high" | "medium" = providerLead >= 2 ? "high" : "medium";
       return {
-        recommendedAction: refundOpen ? "deny-refund" : "restore-active-booking",
+        recommendedAction: refundOpen
+          ? "deny-refund"
+          : this.getResolvedActiveBookingStatus(booking) === "completed"
+            ? "complete-booking"
+            : "restore-active-booking",
         confidence,
         rationale:
           "Reviewed evidence currently leans toward the provider, so ops should consider restoring the job or keeping payment in place."
@@ -10376,8 +10566,82 @@ export class MarketplacePlatformService {
     return {
       confidence: "low" as const,
       rationale:
-        "Reviewed evidence is mixed or inconclusive. Add more evidence review notes or use a manual ops intervention before resolving."
+        "Reviewed evidence is mixed or inconclusive. Add more evidence review notes or document a specific ops rationale before finalizing the outcome."
     } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
+  }
+
+  private buildSupportResolutionPolicy(
+    ticket: SupportTicket,
+    booking: Booking,
+    evidenceSummary: NonNullable<SupportOpsTicket["evidenceSummary"]>,
+    guidance: NonNullable<SupportOpsTicket["resolutionGuidance"]>
+  ) {
+    const requiresEvidenceReview = this.requiresReviewedEvidenceBeforeSensitiveSupportOutcome(ticket, booking);
+    const supportsCustomerLead =
+      evidenceSummary.supportsCustomerCount > evidenceSummary.supportsProviderCount;
+    const supportsProviderLead =
+      evidenceSummary.supportsProviderCount > evidenceSummary.supportsCustomerCount;
+    const blockedActions: NonNullable<SupportOpsTicket["resolutionPolicy"]>["blockedActions"] =
+      supportsProviderLead
+        ? ["approve-refund", "cancel-booking"]
+        : supportsCustomerLead
+          ? ["deny-refund", "restore-active-booking", "complete-booking"]
+          : [];
+    const requiresDetailedRationale = this.requiresDetailedRationaleForLowConfidenceSensitiveSupportDecision(
+      ticket,
+      booking,
+      evidenceSummary
+    );
+    const evidenceSignal: NonNullable<SupportOpsTicket["resolutionPolicy"]>["evidenceSignal"] =
+      booking.serviceEvidence.length === 0
+        ? "no-evidence"
+        : evidenceSummary.reviewedCount === 0
+          ? "unreviewed"
+          : evidenceSummary.supportsProviderCount > 0 && evidenceSummary.supportsCustomerCount > 0
+            ? "mixed"
+            : evidenceSummary.supportsProviderCount > 0
+              ? "supports-provider"
+              : evidenceSummary.supportsCustomerCount > 0
+                ? "supports-customer"
+                : "inconclusive";
+    const warnings: string[] = [];
+
+    if (requiresEvidenceReview && evidenceSummary.reviewedCount === 0) {
+      warnings.push("Resolve actions stay locked until ops reviews at least one submitted evidence item.");
+    }
+
+    if (supportsProviderLead) {
+      warnings.push(
+        "Reviewed evidence currently leans toward the provider, so customer-favoring outcomes stay locked unless ops adds stronger review support."
+      );
+    } else if (supportsCustomerLead) {
+      warnings.push(
+        "Reviewed evidence currently leans toward the customer, so provider-favoring outcomes stay locked unless ops adds stronger review support."
+      );
+    }
+
+    if (requiresDetailedRationale) {
+      warnings.push(
+        "Reviewed evidence is still low-confidence for this case, so ops must document a specific rationale before finalizing the outcome."
+      );
+    }
+
+    return {
+      evidenceSignal,
+      confidence: guidance.confidence,
+      requiresEvidenceReview,
+      blockedActions,
+      requiresDetailedRationale,
+      warnings,
+      ...(requiresDetailedRationale
+        ? {
+            rationalePrompt:
+              "Explain why this final outcome is still the safest supported choice based on the reviewed evidence and any follow-up context.",
+            minimumDetailedRationaleLength: MIN_DETAILED_SUPPORT_RATIONALE_LENGTH,
+            disallowedDetailedRationaleNotes: [...GENERIC_SUPPORT_RESOLUTION_NOTES]
+          }
+        : {})
+    } satisfies NonNullable<SupportOpsTicket["resolutionPolicy"]>;
   }
 
   private assertEvidenceReviewedBeforeSensitiveSupportResolution(
@@ -10391,12 +10655,120 @@ export class MarketplacePlatformService {
 
     const evidenceSummary = this.buildSupportEvidenceSummary(booking);
     if (evidenceSummary.reviewedCount > 0) {
+      this.assertEvidenceDirectionSupportsResolution(evidenceSummary, resolutionAction);
       return;
     }
 
     throw new HttpError(
       409,
       "Review at least one submitted evidence item before resolving this refund or dispute"
+    );
+  }
+
+  private assertEvidenceDirectionSupportsResolution(
+    evidenceSummary: ReturnType<MarketplacePlatformService["buildSupportEvidenceSummary"]>,
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
+  ) {
+    if (!resolutionAction) {
+      return;
+    }
+
+    const supportsCustomerLead =
+      evidenceSummary.supportsCustomerCount > evidenceSummary.supportsProviderCount;
+    const supportsProviderLead =
+      evidenceSummary.supportsProviderCount > evidenceSummary.supportsCustomerCount;
+
+    if (
+      this.isCustomerFavoringSupportResolution(resolutionAction) &&
+      supportsProviderLead
+    ) {
+      throw new HttpError(
+        409,
+        "Reviewed evidence does not currently support a customer-favoring resolution. Add stronger evidence review first."
+      );
+    }
+
+    if (
+      this.isProviderFavoringSupportResolution(resolutionAction) &&
+      supportsCustomerLead
+    ) {
+      throw new HttpError(
+        409,
+        "Reviewed evidence does not currently support a provider-favoring resolution. Add stronger evidence review first."
+      );
+    }
+  }
+
+  private assertDetailedRationaleForLowConfidenceSensitiveSupportResolution(
+    ticket: SupportTicket,
+    booking: Booking,
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"],
+    rationale: string | undefined
+  ) {
+    if (!resolutionAction) {
+      return;
+    }
+
+    const evidenceSummary = this.buildSupportEvidenceSummary(booking);
+    if (!this.requiresDetailedRationaleForLowConfidenceSensitiveSupportDecision(ticket, booking, evidenceSummary)) {
+      return;
+    }
+
+    if (this.isDetailedManualSupportRationale(rationale)) {
+      return;
+    }
+
+    throw new HttpError(
+      409,
+      "Reviewed evidence is mixed or inconclusive. Add a specific manual rationale before finalizing this refund or dispute outcome."
+    );
+  }
+
+  private isCustomerFavoringSupportResolution(
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
+  ) {
+    return resolutionAction === "approve-refund" || resolutionAction === "cancel-booking";
+  }
+
+  private isProviderFavoringSupportResolution(
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
+  ) {
+    return (
+      resolutionAction === "deny-refund" ||
+      resolutionAction === "restore-active-booking" ||
+      resolutionAction === "complete-booking"
+    );
+  }
+
+  private requiresDetailedRationaleForLowConfidenceSensitiveSupportDecision(
+    ticket: SupportTicket,
+    booking: Booking,
+    evidenceSummary: ReturnType<MarketplacePlatformService["buildSupportEvidenceSummary"]>
+  ) {
+    if (evidenceSummary.reviewedCount === 0) {
+      return false;
+    }
+
+    const providerLead = evidenceSummary.supportsProviderCount - evidenceSummary.supportsCustomerCount;
+    const customerLead = evidenceSummary.supportsCustomerCount - evidenceSummary.supportsProviderCount;
+    const hasCustomerConfidence = customerLead >= 2 || (customerLead >= 1 && ticket.issueType === "billing");
+    const hasProviderConfidence = providerLead >= 2 || (providerLead >= 1 && booking.status === "disputed");
+
+    return !hasCustomerConfidence && !hasProviderConfidence;
+  }
+
+  private isDetailedManualSupportRationale(rationale: string | undefined) {
+    const normalized = rationale?.trim().replace(/\s+/g, " ").toLowerCase();
+    if (!normalized || normalized.length < MIN_DETAILED_SUPPORT_RATIONALE_LENGTH) {
+      return false;
+    }
+
+    return !this.isGenericSupportResolutionRationale(normalized);
+  }
+
+  private isGenericSupportResolutionRationale(normalized: string) {
+    return GENERIC_SUPPORT_RESOLUTION_NOTES.includes(
+      normalized as (typeof GENERIC_SUPPORT_RESOLUTION_NOTES)[number]
     );
   }
 
@@ -10414,6 +10786,33 @@ export class MarketplacePlatformService {
     const isDisputeResolution = booking.status === "disputed" || ticket.issueType === "service-quality";
 
     return isRefundResolution || isDisputeResolution;
+  }
+
+  private requiresReviewedEvidenceBeforeSensitiveSupportOutcome(
+    ticket: SupportTicket,
+    booking: Booking
+  ) {
+    if (booking.serviceEvidence.length === 0) {
+      return false;
+    }
+
+    return (
+      ticket.issueType === "billing" ||
+      ticket.issueType === "service-quality" ||
+      booking.status === "disputed"
+    );
+  }
+
+  private getResolvedActiveBookingStatus(booking: Booking): Booking["status"] {
+    if (booking.completedAt) {
+      return "completed";
+    }
+
+    if (booking.onRouteConfirmedAt) {
+      return "in-progress";
+    }
+
+    return "confirmed";
   }
 
   private resolveSupportTimelineActorRole(
@@ -11637,7 +12036,11 @@ export class MarketplacePlatformService {
   }
 
   private isPayoutRelevantBooking(booking: Booking): boolean {
-    return booking.status === "completed" || booking.status === "refunded";
+    return (
+      booking.status === "completed" ||
+      booking.status === "refunded" ||
+      (booking.status === "disputed" && Boolean(booking.completedAt))
+    );
   }
 
   private estimateCrewMatchPayoutCents(booking: Booking, hourlyRateCents: number): number {
@@ -11699,7 +12102,7 @@ export class MarketplacePlatformService {
       return "reversed";
     }
 
-    if (payment?.refundReviewStatus === "requested") {
+    if (this.getPayoutHoldReason(booking, payment)) {
       return "on-hold";
     }
 
@@ -11710,6 +12113,21 @@ export class MarketplacePlatformService {
     const completedAtMs = Date.parse(booking.completedAt ?? booking.scheduledEndIso);
     const readyAtMs = completedAtMs + this.payoutHoldHours * 60 * 60 * 1000;
     return readyAtMs <= Date.now() ? "ready" : "scheduled";
+  }
+
+  private getPayoutHoldReason(
+    booking: Booking,
+    payment?: PaymentRecord
+  ): "refund-review" | "dispute" | undefined {
+    if (payment?.refundReviewStatus === "requested") {
+      return "refund-review";
+    }
+
+    if (booking.status === "disputed" && booking.completedAt) {
+      return "dispute";
+    }
+
+    return undefined;
   }
 
   private getPayoutAvailabilityIso(
@@ -11883,6 +12301,7 @@ export class MarketplacePlatformService {
   }
 
   private buildProviderPayoutNote(
+    booking: Booking,
     status: ProviderPayoutLedgerEntry["status"],
     payment: PaymentRecord | undefined,
     assignedCrewCount: number
@@ -11896,6 +12315,11 @@ export class MarketplacePlatformService {
     }
 
     if (status === "on-hold") {
+      const holdReason = this.getPayoutHoldReason(booking, payment);
+      if (holdReason === "dispute") {
+        return `A booking dispute is open for this job, so provider payout is on hold. Latest note: ${booking.disputeReason ?? "Support is reviewing the disputed service outcome."}`;
+      }
+
       return `A refund review is open for this booking, so provider payout is on hold. Latest note: ${payment?.refundReason ?? "Refund review requested."}`;
     }
 
@@ -11911,6 +12335,7 @@ export class MarketplacePlatformService {
   }
 
   private buildCrewPayoutNote(
+    booking: Booking,
     status: CrewPayoutLedgerEntry["status"],
     payment?: PaymentRecord
   ): string {
@@ -11923,6 +12348,11 @@ export class MarketplacePlatformService {
     }
 
     if (status === "on-hold") {
+      const holdReason = this.getPayoutHoldReason(booking, payment);
+      if (holdReason === "dispute") {
+        return `A booking dispute is open for this job, so crew payout is on hold. Latest note: ${booking.disputeReason ?? "Support is reviewing the disputed service outcome."}`;
+      }
+
       return `A refund review is open for this booking, so crew payout is on hold. Latest note: ${payment?.refundReason ?? "Refund review requested."}`;
     }
 

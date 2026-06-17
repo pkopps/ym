@@ -43,6 +43,8 @@ export function CrewLiveDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
+  const [selectedPublicOpportunityId, setSelectedPublicOpportunityId] = useState<string | undefined>();
+  const [notifyingOpportunityId, setNotifyingOpportunityId] = useState<string | undefined>();
 
   const crewMember = matchesResponse?.crewMember;
   const matches = matchesResponse?.matches ?? [];
@@ -51,9 +53,17 @@ export function CrewLiveDashboard() {
     [matches]
   );
   const previewOpportunities = useMemo(() => publicOpportunities.slice(0, 6), [publicOpportunities]);
+  const selectedPublicOpportunity = useMemo(
+    () => publicOpportunities.find((opportunity) => opportunity.id === selectedPublicOpportunityId),
+    [publicOpportunities, selectedPublicOpportunityId]
+  );
+  const crewSignupHref = selectedPublicOpportunity
+    ? `/auth/crew?opportunityId=${encodeURIComponent(selectedPublicOpportunity.id)}`
+    : "/auth/crew";
 
   async function loadPublicPreview() {
     const api = createWebApiClient();
+    setErrorMessage(undefined);
     const opportunities = await api.getPublicCrewOpportunities();
     setPublicOpportunities(opportunities);
   }
@@ -172,6 +182,37 @@ export function CrewLiveDashboard() {
     void cancelCrewMatch(matchId);
   }
 
+  async function selectPublicOpportunity(opportunityId: string) {
+    setSelectedPublicOpportunityId(opportunityId);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+    setNotifyingOpportunityId(opportunityId);
+
+    try {
+      const api = createWebApiClient();
+      const selection = await api.selectPublicCrewOpportunity({ opportunityId });
+      setStatusMessage(
+        selection.staffingMode === "auto-accept"
+          ? `${selection.providerCompanyName} was notified by SMS that their opening was filled.`
+          : `${selection.providerCompanyName} was notified by SMS that this opening needs review.`
+      );
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to notify this provider about your selected opening."
+      );
+    } finally {
+      setNotifyingOpportunityId(undefined);
+    }
+
+    window.requestAnimationFrame(() => {
+      const cta = document.getElementById("crew-signup-cta");
+      cta?.scrollIntoView({ behavior: "smooth", block: "start" });
+      cta?.focus({ preventScroll: true });
+    });
+  }
+
   if (!sessionReady) {
     return (
       <section className="card">
@@ -226,21 +267,81 @@ export function CrewLiveDashboard() {
                     {opportunity.equipmentProvided ? <span>Equipment provided</span> : null}
                     {opportunity.trainingProvided ? <span>Training provided</span> : null}
                   </div>
+
+                  <div className="cta-row">
+                    <button
+                      className="button"
+                      disabled={notifyingOpportunityId === opportunity.id}
+                      onClick={() => void selectPublicOpportunity(opportunity.id)}
+                      type="button"
+                    >
+                      {notifyingOpportunityId === opportunity.id
+                        ? "Selecting..."
+                        : selectedPublicOpportunityId === opportunity.id
+                          ? "Selected"
+                          : "Select opening"}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>
           </section>
-        ) : null}
+        ) : (
+          <section className="card">
+            <span className="eyebrow">Crew openings</span>
+            <h2>No crews hiring in your area right now.</h2>
+            <p>
+              We do not have any open crew listings to show currently. Sign up or log in and
+              YardMatch can show new openings as soon as local providers post them.
+            </p>
+            {errorMessage ? (
+              <p className="warning-copy">
+                The live crew list could not be refreshed, so this may be temporary.
+              </p>
+            ) : null}
+          </section>
+        )}
 
-        <section className="card">
-          <h2>Log in or sign up for crew work</h2>
-          <p>Create an account or log in to unlock acceptance, schedule details, and crew chat.</p>
+        <section className="card" id="crew-signup-cta" tabIndex={-1}>
+          {statusMessage ? (
+            <div className="list-panel">
+              <strong>Provider notified</strong>
+              <p>{statusMessage}</p>
+            </div>
+          ) : null}
+          {errorMessage ? (
+            <div className="list-panel" role="alert">
+              <strong>Provider notification failed</strong>
+              <p>{errorMessage}</p>
+            </div>
+          ) : null}
+          {selectedPublicOpportunity ? (
+            <div className="list-panel">
+              <span className="eyebrow">Selected opening</span>
+              <h3>{selectedPublicOpportunity.providerCompanyName}</h3>
+              <p>
+                {selectedPublicOpportunity.title} in {selectedPublicOpportunity.city},{" "}
+                {selectedPublicOpportunity.state} at{" "}
+                {formatCurrency(selectedPublicOpportunity.hourlyRateCents)}/hr.
+              </p>
+            </div>
+          ) : null}
+          <h2>
+            {selectedPublicOpportunity
+              ? "Sign up to request this crew opening"
+              : "Log in or sign up for crew work"}
+          </h2>
+          <p>
+            {selectedPublicOpportunity
+              ? "Create a crew profile so the business owner can review your skills, availability, and contact details."
+              : "Create an account or log in to unlock acceptance, schedule details, and crew chat."}
+          </p>
           <div className="cta-row">
             <a className="button" href="/login/crew">
               Crew login
             </a>
-            <a className="button-secondary" href="/auth/crew">
-              Crew sign up
+            <a className="button-secondary" href={crewSignupHref}>
+              {selectedPublicOpportunity ? "Sign up for this opening" : "Crew sign up"}
             </a>
           </div>
         </section>

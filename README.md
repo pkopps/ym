@@ -116,7 +116,11 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
 - Real customer card payments are now prepared through Stripe hosted Checkout.
 - Stripe webhook reconciliation now covers checkout completion, checkout expiry, payment-intent failures, and refund events so Stripe-originated payment state changes can flow back into the local booking and payout records.
-- Provider and crew payout ledgers now read from real completed bookings, captured customer payments, accepted crew matches, and refund state.
+- Disputed bookings now freeze settlement until support resolves them:
+  - customers cannot continue Stripe Checkout or legacy payment authorization while the booking is disputed
+  - captured disputed bookings now hold provider and crew payouts instead of settling normally
+  - if ops resolves a completed disputed booking in the provider's favor, the booking now returns to `completed` instead of reopening as active work
+- Provider and crew payout ledgers now read from real completed bookings, captured customer payments, accepted crew matches, refund state, and dispute holds.
 - Providers can now choose a weekly payout day and whether instant payouts are enabled, and ops can preview upcoming payout runs before real bank-transfer rails are switched on.
 - Refunds now flow through an internal review path instead of an instant customer-side reversal:
   - customers can request a refund review from completed paid bookings
@@ -124,8 +128,12 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - ops can approve or deny the review from the internal queue
   - provider and crew payouts move to `on-hold` while the refund review is open
   - when the original payment used Stripe Checkout and Stripe is configured, ops approval now triggers the live Stripe refund before the booking and payout ledger move to the refunded state
+- The ops financial-exception board now lists payout holds directly, including both refund-review holds and dispute-driven settlement holds, instead of only surfacing a hold count.
 - The ops support queue now builds a structured ticket timeline from ticket lifecycle changes, refund review events, booking interventions, and evidence reviews so financial and service decisions are easier to audit without reading raw descriptions.
-- When a dispute, service-quality case, or refund review includes submitted booking evidence, ops must review at least one evidence item before resolving the ticket.
+- The ops support queue now steers completed disputed bookings toward "keep complete" actions when reviewed evidence supports the provider, instead of suggesting a return to the active schedule.
+- When a dispute, service-quality case, or refund review includes submitted booking evidence, ops must review at least one evidence item before resolving the ticket, and the final resolution must match the direction supported by the reviewed evidence. If the reviewed evidence is mixed or inconclusive, ops now must add a specific manual rationale before closing the case.
+- Manual ops booking interventions can still add notes or reschedule freely, but disputed outcome changes now must link the related support ticket, follow the same reviewed-evidence direction guard, and use a specific intervention note when the evidence is mixed or inconclusive.
+- The ops support queue now consumes a backend-authored resolution policy payload, so evidence-review locks, blocked resolution directions, and detailed-rationale requirements come from the same source of truth the API enforces instead of being re-derived separately in the browser.
 - To turn the real checkout path on locally, set:
   - `STRIPE_SECRET_KEY`
   - `STRIPE_WEBHOOK_SECRET`
