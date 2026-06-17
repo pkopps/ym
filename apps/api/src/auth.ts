@@ -10,6 +10,7 @@ export interface SessionActor {
   email: string;
   role: "customer" | "provider" | "crew-member";
   sessionVersion: number;
+  issuedAt?: number;
 }
 
 interface JwtPayload extends SessionActor {
@@ -174,7 +175,8 @@ export function verifySessionToken(token: string): SessionActor {
     userId: parsedPayload.userId,
     email: parsedPayload.email,
     role: parsedPayload.role,
-    sessionVersion: parsedPayload.sessionVersion ?? 1
+    sessionVersion: parsedPayload.sessionVersion ?? 1,
+    issuedAt: parsedPayload.iat
   };
 }
 

@@ -1471,8 +1471,82 @@ body {
   font: inherit;
 }
 
+.customer-search-shell__location-action {
+  justify-self: start;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ym-color-primary-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
+}
+
+.customer-search-shell__location-action:disabled {
+  color: var(--ym-color-muted);
+  cursor: wait;
+}
+
 .customer-search-shell__action {
   min-width: 11rem;
+}
+
+.customer-search-shell__backup-windows {
+  display: grid;
+  gap: var(--ym-space-2);
+  margin-top: var(--ym-space-3);
+  padding-top: var(--ym-space-3);
+  border-top: 1px solid rgba(20, 40, 29, 0.08);
+}
+
+.customer-search-shell__backup-windows > span,
+.customer-search-shell__window-picks > span {
+  color: var(--ym-color-muted);
+  font-weight: 600;
+}
+
+.customer-search-shell__backup-options {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.customer-search-shell__choice {
+  appearance: none;
+  min-height: 2.45rem;
+  padding: 0 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ym-color-ink-soft);
+  cursor: pointer;
+  font: inherit;
+}
+
+.customer-search-shell__choice--active {
+  border-color: rgba(47, 125, 76, 0.35);
+  background: rgba(47, 125, 76, 0.1);
+  color: var(--ym-color-primary-strong);
+  font-weight: 700;
+}
+
+.customer-search-shell__custom-date {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(14rem, 1.2fr);
+  gap: var(--ym-space-3);
+  margin-top: var(--ym-space-3);
+  padding-top: var(--ym-space-3);
+  border-top: 1px solid rgba(20, 40, 29, 0.08);
+}
+
+.customer-search-shell__window-picks {
+  display: grid;
+  gap: var(--ym-space-2);
+  align-self: end;
 }
 
 .customer-search-shell__guidance {
@@ -3695,6 +3769,7 @@ body {
   .provider-story__grid,
   .results-shell,
   .customer-search-shell__grid,
+  .customer-search-shell__custom-date,
   .property-guide__grid,
   .history-card__grid,
   .arrival-tracking__details,

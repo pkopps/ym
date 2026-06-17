@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { PublicCustomerListingsExperience } from "../../../components/PublicCustomerListingsExperience";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { ServiceCategory } from "@yardmatch/contracts";
-import { CustomerTimingPreference } from "../../../components/PublicMarketplaceSearchShell";
+import {
+  CustomerCustomTimingWindow,
+  CustomerTimingPreference
+} from "../../../components/PublicMarketplaceSearchShell";
 
 export const metadata: Metadata = {
   title: "Recommended landscaping match",
@@ -33,6 +36,26 @@ export default async function CustomerListingsPage({
     typeof resolvedSearchParams.when === "string"
       ? (resolvedSearchParams.when as CustomerTimingPreference)
       : undefined;
+  const initialCustomDate =
+    typeof resolvedSearchParams.start === "string"
+      ? resolvedSearchParams.start
+      : typeof resolvedSearchParams.date === "string"
+        ? resolvedSearchParams.date
+        : undefined;
+  const initialCustomEndDate =
+    typeof resolvedSearchParams.end === "string" ? resolvedSearchParams.end : undefined;
+  const initialCustomWindow =
+    typeof resolvedSearchParams.window === "string"
+      ? (resolvedSearchParams.window as CustomerCustomTimingWindow)
+      : undefined;
+  const initialCustomWindows =
+    typeof resolvedSearchParams.windows === "string"
+      ? (resolvedSearchParams.windows.split(",").filter(Boolean) as CustomerCustomTimingWindow[])
+      : undefined;
+  const initialAdditionalTimings =
+    typeof resolvedSearchParams.also === "string"
+      ? (resolvedSearchParams.also.split(",").filter(Boolean) as CustomerTimingPreference[])
+      : undefined;
   const lat =
     typeof resolvedSearchParams.lat === "string" ? Number.parseFloat(resolvedSearchParams.lat) : undefined;
   const lng =
@@ -46,6 +69,11 @@ export default async function CustomerListingsPage({
         initialLat={Number.isFinite(lat) ? lat : undefined}
         initialLng={Number.isFinite(lng) ? lng : undefined}
         initialPostalCode={postalCode}
+        initialAdditionalTimings={initialAdditionalTimings}
+        initialCustomDate={initialCustomDate}
+        initialCustomEndDate={initialCustomEndDate}
+        initialCustomWindow={initialCustomWindow}
+        initialCustomWindows={initialCustomWindows}
         initialService={initialService}
         initialState={state}
         initialTiming={initialTiming}

@@ -116,8 +116,10 @@ export class DataEngineeringLogger {
         event.name === MarketplaceTelemetryEventCatalog.bookingCancelled &&
         event.properties.actorRole === "customer"
     ).length;
+    const paymentCheckoutStarts = this.countEvents(MarketplaceTelemetryEventCatalog.paymentCheckoutStarted);
     const paymentAuthorizations = this.countEvents(MarketplaceTelemetryEventCatalog.paymentAuthorized);
     const paymentCaptures = this.countEvents(MarketplaceTelemetryEventCatalog.paymentCaptured);
+    const paymentFailures = this.countEvents(MarketplaceTelemetryEventCatalog.paymentFailed);
     const recommendationMetricsBySource = this.buildRecommendationMetricsBySource();
     const recommendationRates = this.buildRecommendationSessionMetrics();
 
@@ -150,8 +152,10 @@ export class DataEngineeringLogger {
       providerBookingConfirmations,
       providerBookingDeclines,
       customerBookingCancellations,
+      paymentCheckoutStarts,
       paymentAuthorizations,
       paymentCaptures,
+      paymentFailures,
       recommendationMetricsBySource,
       activeUsers5m: activeSessions.length,
       activeCustomers5m: activeSessions.filter((session) => session.role === "customer").length,

@@ -306,15 +306,21 @@ export function ProviderLiveManagementBoard() {
       const api = createAuthenticatedWebApiClient();
       await api.updateProviderSettings({
         serviceRadiusMiles: updates.serviceRadiusMiles ?? provider.serviceRadiusMiles,
-        minimumBookingLeadHours: updates.minimumBookingLeadHours ?? provider.minimumBookingLeadHours,
-        staffingMode: updates.staffingMode ?? provider.staffingMode,
-        crewReviewLeadHours: updates.crewReviewLeadHours ?? provider.crewReviewLeadHours,
-        departureReminderLeadMinutes:
-          updates.departureReminderLeadMinutes ?? provider.departureReminderLeadMinutes,
-        routeLeaderMode: updates.routeLeaderMode ?? provider.routeLeaderMode,
-        weeklyPayoutDay: updates.weeklyPayoutDay ?? provider.weeklyPayoutDay,
-        instantPayoutsEnabled:
-          updates.instantPayoutsEnabled ?? provider.instantPayoutsEnabled,
+        ...(updates.minimumBookingLeadHours !== undefined
+          ? { minimumBookingLeadHours: updates.minimumBookingLeadHours }
+          : {}),
+        ...(updates.staffingMode !== undefined ? { staffingMode: updates.staffingMode } : {}),
+        ...(updates.crewReviewLeadHours !== undefined
+          ? { crewReviewLeadHours: updates.crewReviewLeadHours }
+          : {}),
+        ...(updates.departureReminderLeadMinutes !== undefined
+          ? { departureReminderLeadMinutes: updates.departureReminderLeadMinutes }
+          : {}),
+        ...(updates.routeLeaderMode !== undefined ? { routeLeaderMode: updates.routeLeaderMode } : {}),
+        ...(updates.weeklyPayoutDay !== undefined ? { weeklyPayoutDay: updates.weeklyPayoutDay } : {}),
+        ...(updates.instantPayoutsEnabled !== undefined
+          ? { instantPayoutsEnabled: updates.instantPayoutsEnabled }
+          : {}),
         sponsoredListingEnabled: provider.sponsoredListingEnabled
       });
       setStatusMessage(successMessage);
@@ -1104,6 +1110,7 @@ export function ProviderLiveManagementBoard() {
           <span className="eyebrow">Payout timing</span>
           <h2>{provider ? formatWeekdayLabel(provider.weeklyPayoutDay) : "Thursday"}</h2>
           <p>Choose the weekly day YardMatch groups provider payouts for this business.</p>
+          <p>YardMatch may ask for a fresh sign-in before changing payout controls.</p>
           <div className="cta-row">
             {(["Tue", "Thu", "Fri"] as const).map((weekday) => (
               <button

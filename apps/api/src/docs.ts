@@ -725,6 +725,30 @@ export const apiSpec = {
         }
       }
     },
+    "/api/places/reverse-geocode": {
+      post: {
+        tags: ["Search"],
+        summary: "Resolve browser coordinates to a booking area",
+        description:
+          "Uses Google Maps reverse geocoding when GOOGLE_MAPS_API_KEY is configured, with a conservative local service-area fallback when live geocoding is unavailable.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                latitude: 35.9251,
+                longitude: -86.8689
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Location-derived place suggestion returned"
+          }
+        }
+      }
+    },
     "/api/providers/search": {
       post: {
         tags: ["Providers"],
@@ -765,7 +789,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Update provider business settings",
         description:
-          "Lets a landscaping business owner change the service radius used to match against each customer property address, choose whether matched crew members are auto-accepted or reviewed first, tune staffing/departure reminder timing, control whether accepted crew can act as route leaders, and manage outside-calendar blocking that protects YardMatch availability from direct clients or personal time.",
+          "Lets a landscaping business owner change the service radius used to match against each customer property address, choose whether matched crew members are auto-accepted or reviewed first, tune staffing/departure reminder timing, control whether accepted crew can act as route leaders, and manage outside-calendar blocking that protects YardMatch availability from direct clients or personal time. Changes to payout timing or instant-payout controls require a freshly authenticated session.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -793,7 +817,8 @@ export const apiSpec = {
           }
         },
         responses: {
-          "200": { description: "Updated provider profile" }
+          "200": { description: "Updated provider profile" },
+          "401": { description: "Fresh re-authentication required for payout-setting changes" }
         }
       }
     },
@@ -1595,7 +1620,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Request a refund review",
         description:
-          "Creates a billing review for a captured customer payment, opens a support ticket, and puts provider/crew payouts on hold until ops approves or denies the refund.",
+          "Creates a billing review for a captured customer payment, opens a support ticket, and puts provider/crew payouts on hold until ops approves or denies the refund. If ops later approves a Stripe-backed refund and Stripe is configured, YardMatch also syncs the live Stripe refund before marking the booking refunded locally.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1694,7 +1719,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Triages or resolves a support ticket",
         description:
-          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment.",
+          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket.",
         requestBody: {
           required: true,
           content: {

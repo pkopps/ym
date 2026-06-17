@@ -47,6 +47,47 @@ const localPlaceSeeds: LocalPlaceSeed[] = [
 export class PlaceSearchService {
   public constructor(private readonly googleMapsApiKey?: string) {}
 
+  public async geocodeAddress(address: Address): Promise<PlaceSuggestion | undefined> {
+    const query = [address.line1, address.line2, address.city, address.state, address.postalCode, address.country]
+      .filter(Boolean)
+      .join(", ");
+    return (await this.searchGoogle(query))[0];
+  }
+
+  public async reverseGeocode(latitude: number, longitude: number): Promise<PlaceSearchResponse> {
+    if (!this.isValidCoordinate(latitude, longitude)) {
+      return {
+        query: "current-location",
+        searchMode: "none",
+        searchConfidence: "low",
+        searchMessage: "We could not read a valid browser location. Try typing your city, ZIP, or address.",
+        suggestions: []
+      };
+    }
+
+    const googleSuggestions = await this.reverseGeocodeGoogle(latitude, longitude);
+    if (googleSuggestions.length > 0) {
+      return {
+        query: "current-location",
+        searchMode: "google-geocoding",
+        searchConfidence: "high",
+        searchMessage: "Using your browser location with Google-verified area details.",
+        suggestions: googleSuggestions
+      };
+    }
+
+    const localSuggestion = this.findNearestLocalSuggestion(latitude, longitude);
+    return {
+      query: "current-location",
+      searchMode: localSuggestion ? "local-dataset" : "none",
+      searchConfidence: localSuggestion?.matchQuality === "high" ? "medium" : "low",
+      searchMessage: localSuggestion
+        ? "Google location lookup is unavailable, so this is the closest supported service area near your browser location."
+        : "Google location lookup is unavailable and this browser location is outside our seeded service areas. Try typing your city, ZIP, or address.",
+      suggestions: localSuggestion ? [localSuggestion] : []
+    };
+  }
+
   public async search(query: string): Promise<PlaceSearchResponse> {
     const trimmed = query.trim();
     if (trimmed.length < 2) {
@@ -178,6 +219,96 @@ export class PlaceSearchService {
     }
   }
 
+  private async reverseGeocodeGoogle(latitude: number, longitude: number): Promise<PlaceSuggestion[]> {
+    if (!this.googleMapsApiKey) {
+      return [];
+    }
+
+    try {
+      const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+      url.searchParams.set("latlng", `${latitude},${longitude}`);
+      url.searchParams.set("result_type", "street_address|premise|postal_code|locality|neighborhood");
+      url.searchParams.set("key", this.googleMapsApiKey);
+
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        return [];
+      }
+
+      const payload = (await response.json()) as {
+        results?: Array<{
+          formatted_address: string;
+          geometry?: { location?: { lat: number; lng: number } };
+          place_id?: string;
+          address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
+        }>;
+      };
+
+      return (payload.results ?? [])
+        .map((result) => this.fromGoogleResult(result))
+        .filter((suggestion): suggestion is PlaceSuggestion => Boolean(suggestion))
+        .slice(0, 5);
+    } catch {
+      return [];
+    }
+  }
+
+  private findNearestLocalSuggestion(latitude: number, longitude: number): PlaceSuggestion | undefined {
+    const nearest = localPlaceSeeds
+      .map((seed) => ({
+        seed,
+        distanceMiles: this.calculateDistanceMiles(latitude, longitude, seed.latitude, seed.longitude)
+      }))
+      .sort((left, right) => left.distanceMiles - right.distanceMiles)[0];
+
+    if (!nearest || nearest.distanceMiles > 125) {
+      return undefined;
+    }
+
+    const suggestion = this.toSuggestion(nearest.seed, "local-dataset", this.normalizeQuery(nearest.seed.label), "");
+    const roundedDistance = Math.max(1, Math.round(nearest.distanceMiles));
+    return {
+      ...suggestion,
+      matchQuality: nearest.distanceMiles <= 25 ? "high" : "medium",
+      matchReason: `Nearest supported service area, about ${roundedDistance} miles from your browser location`
+    };
+  }
+
+  private calculateDistanceMiles(
+    originLatitude: number,
+    originLongitude: number,
+    destinationLatitude: number,
+    destinationLongitude: number
+  ) {
+    const earthRadiusMiles = 3958.8;
+    const latitudeDelta = this.toRadians(destinationLatitude - originLatitude);
+    const longitudeDelta = this.toRadians(destinationLongitude - originLongitude);
+    const originLatRadians = this.toRadians(originLatitude);
+    const destinationLatRadians = this.toRadians(destinationLatitude);
+    const haversine =
+      Math.sin(latitudeDelta / 2) ** 2 +
+      Math.cos(originLatRadians) *
+        Math.cos(destinationLatRadians) *
+        Math.sin(longitudeDelta / 2) ** 2;
+
+    return 2 * earthRadiusMiles * Math.asin(Math.sqrt(haversine));
+  }
+
+  private toRadians(value: number) {
+    return (value * Math.PI) / 180;
+  }
+
+  private isValidCoordinate(latitude: number, longitude: number) {
+    return (
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180
+    );
+  }
+
   private fromGoogleResult(result: {
     formatted_address: string;
     geometry?: { location?: { lat: number; lng: number } };
@@ -218,7 +349,10 @@ export class PlaceSearchService {
         point: {
           latitude: location.lat,
           longitude: location.lng
-        }
+        },
+        geocodedAt: new Date().toISOString(),
+        geocodePrecision: streetNumber && route ? "address" : postalCode !== "00000" ? "postal-code" : "city",
+        geocodeProvider: "google-geocoding"
       }
     };
   }

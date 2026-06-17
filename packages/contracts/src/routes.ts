@@ -8,6 +8,7 @@ export class ApiRoutes {
   public static readonly googleAuthStart = "/api/auth/google/start";
   public static readonly appleAuthStart = "/api/auth/apple/start";
   public static readonly placeSearch = "/api/places/search";
+  public static readonly placeReverseGeocode = "/api/places/reverse-geocode";
   public static readonly customerProperties = "/api/customers/properties";
   public static readonly defaultCustomerProperty = "/api/customers/properties/default";
   public static readonly createInstantQuote = "/api/quotes/instant";

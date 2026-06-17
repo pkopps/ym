@@ -34,8 +34,10 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly bookingConfirmed = "booking_confirmed";
   public static readonly bookingDeclinedByProvider = "booking_declined_by_provider";
   public static readonly bookingCompleted = "booking_completed";
+  public static readonly paymentCheckoutStarted = "payment_checkout_started";
   public static readonly paymentAuthorized = "payment_authorized";
   public static readonly paymentCaptured = "payment_captured";
+  public static readonly paymentFailed = "payment_failed";
   public static readonly refundRequested = "refund_requested";
   public static readonly refundCompleted = "refund_completed";
   public static readonly supportTicketOpened = "support_ticket_opened";

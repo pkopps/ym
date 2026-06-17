@@ -40,7 +40,11 @@ function availabilityDayForIso(iso: string) {
     | "Sat";
 }
 
-function createFakeStripeGateway(): PaymentCheckoutGateway {
+function createFakeStripeGateway(overrides?: {
+  verifyCheckoutSession?: PaymentCheckoutGateway["verifyCheckoutSession"];
+  parseWebhookEvent?: PaymentCheckoutGateway["parseWebhookEvent"];
+  createRefund?: PaymentCheckoutGateway["createRefund"];
+}): PaymentCheckoutGateway {
   return {
     isConfigured() {
       return true;
@@ -52,21 +56,27 @@ function createFakeStripeGateway(): PaymentCheckoutGateway {
         paymentIntentId: "pi_test_123"
       };
     },
-    async verifyCheckoutSession() {
-      return {
+    verifyCheckoutSession:
+      overrides?.verifyCheckoutSession ??
+      (async () => ({
         checkoutSessionId: "cs_test_123",
         paymentIntentId: "pi_test_123",
         paid: true
-      };
-    },
-    async parseWebhookEvent() {
-      return {
+      })),
+    parseWebhookEvent:
+      overrides?.parseWebhookEvent ??
+      (async () => ({
         type: "checkout.session.completed",
         checkoutSessionId: "cs_test_123",
         paymentIntentId: "pi_test_123",
         paid: true
-      };
-    }
+      })),
+    createRefund:
+      overrides?.createRefund ??
+      (async () => ({
+        refundId: "re_test_123",
+        status: "succeeded"
+      }))
   };
 }
 
@@ -294,6 +304,103 @@ test("customer addresses are normalized before properties and booking snapshots 
   assert.equal(booking.serviceAddress.city, "Austin");
   assert.equal(booking.serviceAddress.state, "TX");
   assert.equal(booking.serviceAddress.country, "US");
+});
+
+test("saved customer properties reuse cached geocodes for the same normalized address", async () => {
+  const originalMapsKey = process.env.GOOGLE_MAPS_API_KEY;
+  const originalAddressValidationKey = process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+  const originalFetch = global.fetch;
+  let fetchCalls = 0;
+
+  process.env.GOOGLE_MAPS_API_KEY = "test-maps-key";
+  delete process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+  global.fetch = (async () => {
+    fetchCalls += 1;
+    return {
+      ok: true,
+      async json() {
+        return {
+          results: [
+            {
+              formatted_address: "12 Oak Lane, Franklin, TN 37064, USA",
+              place_id: "google-oak-lane-franklin",
+              geometry: {
+                location: {
+                  lat: 35.9302,
+                  lng: -86.8721
+                }
+              },
+              address_components: [
+                { long_name: "12", short_name: "12", types: ["street_number"] },
+                { long_name: "Oak Lane", short_name: "Oak Ln", types: ["route"] },
+                { long_name: "Franklin", short_name: "Franklin", types: ["locality"] },
+                { long_name: "Tennessee", short_name: "TN", types: ["administrative_area_level_1"] },
+                { long_name: "37064", short_name: "37064", types: ["postal_code"] },
+                { long_name: "United States", short_name: "US", types: ["country"] }
+              ]
+            }
+          ]
+        };
+      }
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const repository = new InMemoryMarketplaceRepository();
+    await repository.createCustomer({
+      id: "customer-geocode-cache",
+      fullName: "Geocode Cache",
+      email: "geocode-cache@example.com",
+      phone: "555-0101",
+      role: "customer",
+      address: createAddress("1 Existing Home", 35.92, -86.86),
+      createdAt: new Date().toISOString(),
+      propertyNotes: "",
+      lawnSizeSqFt: 0,
+      properties: [],
+      defaultPropertyId: ""
+    });
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+    const firstProperty = await platform.createCustomerProperty("customer-geocode-cache", {
+      label: "Front lawn",
+      address: {
+        line1: "12 oak lane",
+        city: "franklin",
+        state: "tn",
+        postalCode: "37064",
+        country: "us",
+        point: {
+          latitude: 0,
+          longitude: 0
+        }
+      }
+    });
+    const secondProperty = await platform.createCustomerProperty("customer-geocode-cache", {
+      label: "Same address",
+      address: {
+        line1: "  12   Oak  Lane ",
+        city: " Franklin ",
+        state: " TN ",
+        postalCode: "37064",
+        country: "US",
+        point: {
+          latitude: 1,
+          longitude: 1
+        }
+      }
+    });
+
+    assert.equal(fetchCalls, 1);
+    assert.equal(firstProperty.address.point.latitude, 35.9302);
+    assert.equal(firstProperty.address.point.longitude, -86.8721);
+    assert.deepEqual(secondProperty.address.point, firstProperty.address.point);
+    assert.equal(secondProperty.address.geocodeCacheKey, firstProperty.address.geocodeCacheKey);
+    assert.equal(secondProperty.address.geocodeProvider, "google-geocoding");
+  } finally {
+    process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
+    process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalAddressValidationKey;
+    global.fetch = originalFetch;
+  }
 });
 
 test("provider search returns ranked results with score reasons and reliability-aware ordering", async () => {
@@ -1552,6 +1659,76 @@ test("ops can resolve a disputed booking and restore it to the active schedule",
   assert.equal(restoredBooking?.activeExceptionType, undefined);
 });
 
+test("ops cannot resolve a disputed booking with submitted evidence before reviewing any evidence", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-dispute-evidence-gate@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(10),
+    scheduledEndIso: futureIso(12),
+    notes: "Dispute evidence gate test",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, {
+    bookingId: booking.id
+  });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+
+  await platform.createBookingDispute(
+    {
+      userId: customer.id,
+      email: customer.email,
+      role: "customer"
+    },
+    {
+      bookingId: booking.id,
+      reason: "Need support to review the submitted service evidence."
+    }
+  );
+
+  const disputeTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.bookingId === booking.id && entry.ticket.status === "open"
+  );
+  assert.ok(disputeTicket);
+
+  await assert.rejects(
+    () =>
+      platform.updateSupportTicketForOps({
+        ticketId: disputeTicket?.ticket.id ?? "",
+        status: "resolved",
+        resolutionAction: "restore-active-booking",
+        resolutionNotes: "Support resolved the dispute and restored the booking."
+      }),
+    /review at least one submitted evidence item/i
+  );
+
+  const updatedBooking = await repository.findBookingById(booking.id);
+  assert.equal(updatedBooking?.status, "disputed");
+});
+
 test("customers can create and finalize Stripe checkout for their own bookings", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(
@@ -1659,6 +1836,261 @@ test("stripe webhook capture updates pending payments without a customer redirec
   assert.equal(payments[0]?.status, "captured");
 });
 
+test("failed checkout finalization marks the payment failed and records payment failure telemetry", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(
+    repository,
+    analytics,
+    createFakeStripeGateway({
+      verifyCheckoutSession: async () => ({
+        checkoutSessionId: "cs_test_123",
+        paymentIntentId: "pi_test_123",
+        paid: false,
+        failureReason: "Stripe payment has not completed yet."
+      })
+    })
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-payment-failure@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Checkout failure test",
+    totalCents: 7200
+  });
+
+  const checkout = await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+
+  await assert.rejects(
+    () =>
+      platform.finalizeCheckoutSession(customer.id, {
+        checkoutSessionId: checkout.payment.checkoutSessionId ?? ""
+      }),
+    /Stripe payment has not completed yet\./
+  );
+
+  const payments = await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  });
+  assert.equal(payments[0]?.status, "failed");
+
+  const paymentFailureEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.paymentFailed);
+  assert.ok(paymentFailureEvent);
+  assert.equal(paymentFailureEvent?.properties.failureStage, "checkout-finalize");
+  assert.equal(paymentFailureEvent?.properties.failureReasonCategory, "not-completed");
+});
+
+test("expired checkout webhooks record payment failure telemetry for ops", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(
+    repository,
+    analytics,
+    createFakeStripeGateway({
+      parseWebhookEvent: async () => ({
+        type: "checkout.session.expired",
+        checkoutSessionId: "cs_test_123",
+        paid: false,
+        failureReason: "Stripe checkout expired."
+      })
+    })
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-payment-expired@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Webhook expiration test",
+    totalCents: 9800
+  });
+
+  const checkout = await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+
+  const webhook = await platform.processStripeWebhook("{}", "sig_test");
+  assert.equal(webhook.eventType, "checkout.session.expired");
+  assert.equal(webhook.paymentId, checkout.payment.id);
+
+  const overview = await platform.getObservabilityOverview();
+  assert.equal(overview.paymentCheckoutStarts, 1);
+  assert.equal(overview.paymentFailures, 1);
+
+  const paymentFailureEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.paymentFailed);
+  assert.ok(paymentFailureEvent);
+  assert.equal(paymentFailureEvent?.properties.failureStage, "webhook");
+  assert.equal(paymentFailureEvent?.properties.failureReasonCategory, "expired");
+});
+
+test("payment failure webhooks can reconcile pending Stripe payments by payment intent", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(
+    repository,
+    analytics,
+    createFakeStripeGateway({
+      parseWebhookEvent: async () => ({
+        type: "payment_intent.payment_failed",
+        paymentIntentId: "pi_test_123",
+        failureReason: "Your card was declined."
+      })
+    })
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-payment-failed-webhook@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Payment failure webhook test",
+    totalCents: 7200
+  });
+
+  const checkout = await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+  assert.equal(checkout.payment.processorPaymentIntentId, "pi_test_123");
+
+  const webhook = await platform.processStripeWebhook("{}", "sig_test");
+  assert.equal(webhook.eventType, "payment_intent.payment_failed");
+  assert.equal(webhook.paymentId, checkout.payment.id);
+
+  const payment = await repository.findPaymentById(checkout.payment.id);
+  assert.equal(payment?.status, "failed");
+
+  const paymentFailureEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.paymentFailed);
+  assert.ok(paymentFailureEvent);
+  assert.equal(paymentFailureEvent?.properties.failureStage, "webhook");
+  assert.equal(paymentFailureEvent?.properties.failureReasonCategory, "declined-or-failed");
+});
+
+test("refund webhooks can reconcile captured Stripe payments by payment intent", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(
+    repository,
+    analytics,
+    createFakeStripeGateway({
+      parseWebhookEvent: async () => ({
+        type: "charge.refunded",
+        paymentIntentId: "pi_test_123"
+      })
+    })
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-refund-webhook@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Refund webhook test",
+    totalCents: 9800
+  });
+
+  await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+  await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  const webhook = await platform.processStripeWebhook("{}", "sig_test");
+  assert.equal(webhook.eventType, "charge.refunded");
+
+  const payment = (await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  }))[0];
+  assert.equal(payment?.status, "refunded");
+
+  const updatedBooking = await repository.findBookingById(booking.id);
+  assert.equal(updatedBooking?.status, "refunded");
+
+  const refundCompletedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.refundCompleted);
+  assert.ok(refundCompletedEvent);
+  assert.equal(refundCompletedEvent?.properties.source, "stripe-webhook");
+});
+
 test("provider payout ledger shows completed jobs waiting on customer payment", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -1706,10 +2138,19 @@ test("provider payout ledger shows completed jobs waiting on customer payment", 
 
 test("refund review requests hold payouts until ops approves the refund", async () => {
   const repository = new InMemoryMarketplaceRepository();
+  let refundedPaymentIntentId: string | undefined;
   const platform = new MarketplacePlatformService(
     repository,
     new DataEngineeringLogger(),
-    createFakeStripeGateway()
+    createFakeStripeGateway({
+      createRefund: async (input) => {
+        refundedPaymentIntentId = input.paymentIntentId;
+        return {
+          refundId: "re_test_approved",
+          status: "succeeded"
+        };
+      }
+    })
   );
 
   const customer = await platform.registerUser({
@@ -1830,6 +2271,15 @@ test("refund review requests hold payouts until ops approves the refund", async 
     (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "billing"
   );
   assert.ok(refundTicket);
+  assert.ok(refundTicket?.booking?.serviceEvidence[0]);
+
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    ticketId: refundTicket?.ticket.id ?? "",
+    evidenceId: refundTicket?.booking?.serviceEvidence[0]?.id ?? "",
+    reviewStatus: "supports-customer",
+    reviewNotes: "Evidence review completed before approving the refund."
+  });
 
   await platform.updateSupportTicketForOps({
     ticketId: refundTicket?.ticket.id ?? "",
@@ -1837,6 +2287,8 @@ test("refund review requests hold payouts until ops approves the refund", async 
     resolutionAction: "approve-refund",
     resolutionNotes: "Support approved the refund review after checking the booking."
   });
+
+  assert.equal(refundedPaymentIntentId, "pi_test_123");
 
   const reversedProviderLedger = await platform.getProviderPayoutLedger(provider.id);
   assert.equal(
@@ -1849,6 +2301,99 @@ test("refund review requests hold payouts until ops approves the refund", async 
     reversedCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
     "reversed"
   );
+});
+
+test("ops cannot approve a Stripe refund review without a saved payment intent", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-refund-missing-intent@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Missing payment intent refund test",
+    totalCents: 7200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  const bookingWithEvidence = await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+
+  const manualStripeLikePayment = await repository.createPayment({
+    id: "payment-missing-intent",
+    bookingId: booking.id,
+    amountCents: 7200,
+    currency: "usd",
+    status: "captured",
+    processor: "stripe",
+    refundable: false,
+    refundReason: "Support is reviewing this payment.",
+    refundReviewStatus: "requested",
+    refundRequestedAt: new Date().toISOString(),
+    refundRequestedByRole: "customer",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+  assert.equal(manualStripeLikePayment.processorPaymentIntentId, undefined);
+
+  await repository.createSupportTicket({
+    id: "ticket-missing-intent",
+    bookingId: booking.id,
+    requesterId: customer.id,
+    subject: "Refund review requested",
+    description: "Customer requested a refund review.",
+    issueType: "billing",
+    status: "open",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    ticketId: "ticket-missing-intent",
+    evidenceId: bookingWithEvidence.serviceEvidence[0]?.id ?? "",
+    reviewStatus: "supports-customer",
+    reviewNotes: "Ops reviewed the submitted evidence before attempting refund resolution."
+  });
+
+  await assert.rejects(
+    () =>
+      platform.updateSupportTicketForOps({
+        ticketId: "ticket-missing-intent",
+        status: "resolved",
+        resolutionAction: "approve-refund",
+        resolutionNotes: "Support approved the refund review after checking the booking."
+      }),
+    /Stripe refund sync requires a saved payment intent/i
+  );
+
+  const updatedPayment = await repository.findPaymentById("payment-missing-intent");
+  assert.equal(updatedPayment?.status, "captured");
+  assert.equal(updatedPayment?.refundReviewStatus, "requested");
 });
 
 test("ops can deny a refund review and return payouts to the normal schedule", async () => {
@@ -1918,6 +2463,15 @@ test("ops can deny a refund review and return payouts to the normal schedule", a
     (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "billing"
   );
   assert.ok(refundTicket);
+  assert.ok(refundTicket?.booking?.serviceEvidence[0]);
+
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    ticketId: refundTicket?.ticket.id ?? "",
+    evidenceId: refundTicket?.booking?.serviceEvidence[0]?.id ?? "",
+    reviewStatus: "supports-provider",
+    reviewNotes: "Ops reviewed the service proof before denying the refund."
+  });
 
   await platform.updateSupportTicketForOps({
     ticketId: refundTicket?.ticket.id ?? "",
@@ -1936,6 +2490,89 @@ test("ops can deny a refund review and return payouts to the normal schedule", a
     providerLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
     "scheduled"
   );
+});
+
+test("ops cannot resolve a refund review with submitted evidence before reviewing any evidence", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-refund-evidence-gate@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(76),
+    scheduledEndIso: futureIso(77),
+    notes: "Refund evidence gate test",
+    totalCents: 7200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  const payment = (await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  }))[0];
+  assert.ok(payment);
+
+  await platform.createRefund(
+    {
+      userId: customer.id,
+      email: customer.email,
+      role: "customer"
+    },
+    {
+      paymentId: payment?.id ?? "",
+      reason: "Please review this payment."
+    }
+  );
+
+  const refundTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "billing"
+  );
+  assert.ok(refundTicket);
+
+  await assert.rejects(
+    () =>
+      platform.updateSupportTicketForOps({
+        ticketId: refundTicket?.ticket.id ?? "",
+        status: "resolved",
+        resolutionAction: "deny-refund",
+        resolutionNotes: "Support reviewed the refund request and kept the payment captured."
+      }),
+    /review at least one submitted evidence item/i
+  );
+
+  const updatedPayment = await repository.findPaymentById(payment?.id ?? "");
+  assert.equal(updatedPayment?.refundReviewStatus, "requested");
 });
 
 test("provider payout ledger exposes weekly and instant payout schedule details", async () => {
@@ -3714,6 +4351,117 @@ test("ops support tickets include evidence summaries and resolution guidance", a
   assert.equal(opsTicket?.evidenceSummary?.supportsProviderCount, 1);
   assert.equal(opsTicket?.resolutionGuidance?.recommendedAction, "restore-active-booking");
   assert.equal(opsTicket?.resolutionGuidance?.confidence, "medium");
+});
+
+test("ops support tickets include a structured audit timeline for refund, evidence, and resolution events", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-support-timeline@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Support timeline test",
+    totalCents: 7200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+  await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  const payment = (await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  }))[0];
+  assert.ok(payment);
+
+  await platform.createRefund(
+    {
+      userId: customer.id,
+      email: customer.email,
+      role: "customer"
+    },
+    {
+      paymentId: payment?.id ?? "",
+      reason: "Customer requested a refund review for the timeline."
+    }
+  );
+
+  const ticket = (await platform.listOpsSupportTickets()).find(
+    (candidate) => candidate.ticket.bookingId === booking.id && candidate.ticket.issueType === "billing"
+  );
+  assert.ok(ticket?.booking);
+  assert.ok(ticket?.booking?.serviceEvidence[0]);
+
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    ticketId: ticket?.ticket.id ?? "",
+    evidenceId: ticket?.booking?.serviceEvidence[0]?.id ?? "",
+    reviewStatus: "supports-customer",
+    reviewNotes: "Reviewed timeline evidence."
+  });
+
+  await platform.updateSupportTicketForOps({
+    ticketId: ticket?.ticket.id ?? "",
+    status: "triaged"
+  });
+
+  await platform.updateSupportTicketForOps({
+    ticketId: ticket?.ticket.id ?? "",
+    status: "resolved",
+    resolutionAction: "deny-refund",
+    resolutionNotes: "Support reviewed the refund request and kept the payment captured."
+  });
+
+  const refreshedTicket = (await platform.listOpsSupportTickets()).find(
+    (candidate) => candidate.ticket.id === ticket?.ticket.id
+  );
+  assert.ok(refreshedTicket);
+  const timelineKinds = refreshedTicket?.timeline.map((entry) => entry.kind) ?? [];
+  assert.ok(timelineKinds.includes("ticket-opened"));
+  assert.ok(timelineKinds.includes("refund-review-opened"));
+  assert.ok(timelineKinds.includes("evidence-reviewed"));
+  assert.ok(timelineKinds.includes("ticket-triaged"));
+  assert.ok(timelineKinds.includes("refund-review-resolved"));
+  assert.ok(timelineKinds.includes("ticket-resolved"));
+  assert.ok(
+    refreshedTicket?.timeline.some(
+      (entry) =>
+        entry.kind === "ticket-resolved" &&
+        /kept the payment captured/i.test(entry.detail)
+    )
+  );
 });
 
 test("providers cannot complete requested bookings before confirmation", async () => {

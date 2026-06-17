@@ -51,8 +51,10 @@ async function getOverview(): Promise<ObservabilityOverview> {
       providerBookingConfirmations: 0,
       providerBookingDeclines: 0,
       customerBookingCancellations: 0,
+      paymentCheckoutStarts: 0,
       paymentAuthorizations: 0,
       paymentCaptures: 0,
+      paymentFailures: 0,
       recommendationMetricsBySource: [],
       activeUsers5m: 0,
       activeCustomers5m: 0,
@@ -172,12 +174,20 @@ export default async function OpsPage() {
 
       <section className="grid-three">
         <article className="card">
+          <h2>{overview.paymentCheckoutStarts}</h2>
+          <p>Stripe checkout sessions started</p>
+        </article>
+        <article className="card">
           <h2>{overview.paymentAuthorizations}</h2>
           <p>Payment authorizations recorded</p>
         </article>
         <article className="card">
           <h2>{overview.paymentCaptures}</h2>
           <p>Payments captured</p>
+        </article>
+        <article className="card">
+          <h2>{overview.paymentFailures}</h2>
+          <p>Payments that failed or expired</p>
         </article>
         <article className="card">
           <h2>{overview.refundRequestedCount}</h2>
@@ -224,6 +234,10 @@ export default async function OpsPage() {
             <li>
               <strong>9</strong>
               <span>{overview.paymentCaptures} bookings have reached captured payment status</span>
+            </li>
+            <li>
+              <strong>10</strong>
+              <span>{overview.paymentFailures} checkout attempts failed or expired before capture</span>
             </li>
           </ul>
         </article>

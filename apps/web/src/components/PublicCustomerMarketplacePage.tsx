@@ -12,8 +12,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeServiceScroller } from "./HomeServiceScroller";
 import {
   CustomerQuickServiceChip,
+  CustomerCustomTimingWindow,
   CustomerTimingPreference,
   buildCustomerListingsSearchParams,
+  getDefaultCustomerCustomEndDateString,
+  getDefaultCustomerCustomDateString,
   PublicMarketplaceSearchShell
 } from "./PublicMarketplaceSearchShell";
 import { createWebApiClient } from "../lib/api";
@@ -166,6 +169,11 @@ export function PublicCustomerMarketplacePage() {
   const [areaQuery, setAreaQuery] = useState("Brooklyn, NY");
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
+  const [selectedAdditionalTimings, setSelectedAdditionalTimings] = useState<CustomerTimingPreference[]>([]);
+  const [selectedCustomDate, setSelectedCustomDate] = useState(getDefaultCustomerCustomDateString());
+  const [selectedCustomEndDate, setSelectedCustomEndDate] = useState(getDefaultCustomerCustomEndDateString());
+  const [selectedCustomWindow, setSelectedCustomWindow] = useState<CustomerCustomTimingWindow>("morning");
+  const [selectedCustomWindows, setSelectedCustomWindows] = useState<CustomerCustomTimingWindow[]>(["morning"]);
   const [overview, setOverview] = useState<PublicMarketplaceOverviewResponse | undefined>();
 
   useEffect(() => {
@@ -178,20 +186,27 @@ export function PublicCustomerMarketplacePage() {
   function handleSearch(
     service: ServiceCategory,
     suggestion: PlaceSuggestion | undefined,
-    timing: CustomerTimingPreference
+    timing: CustomerTimingPreference,
+    customDate = selectedCustomDate,
+    customWindow = selectedCustomWindow
   ) {
     const params = buildCustomerListingsSearchParams({
       areaQuery,
       selectedService: service,
       selectedSuggestion: suggestion,
-      selectedTiming: timing
+      selectedTiming: timing,
+      selectedCustomDate: customDate,
+      selectedCustomEndDate,
+      selectedCustomWindow: customWindow,
+      selectedCustomWindows,
+      selectedAdditionalTimings
     });
 
     router.push(`/customer/listings?${params.toString()}`);
   }
 
   function handleBrowseRecommendedProviders() {
-    handleSearch(selectedService, selectedSuggestion, selectedTiming);
+    handleSearch(selectedService, selectedSuggestion, selectedTiming, selectedCustomDate, selectedCustomWindow);
   }
 
   const topRatedProviders = overview?.topRatedProviders ?? overview?.featuredProviders ?? [];
@@ -226,9 +241,19 @@ export function PublicCustomerMarketplacePage() {
             areaQuery={areaQuery}
             onAreaQueryChange={setAreaQuery}
             onSearch={handleSearch}
+            onSelectedAdditionalTimingsChange={setSelectedAdditionalTimings}
+            onSelectedCustomDateChange={setSelectedCustomDate}
+            onSelectedCustomEndDateChange={setSelectedCustomEndDate}
+            onSelectedCustomWindowChange={setSelectedCustomWindow}
+            onSelectedCustomWindowsChange={setSelectedCustomWindows}
             onSelectedServiceChange={setSelectedService}
             onSelectedSuggestionChange={setSelectedSuggestion}
             onSelectedTimingChange={setSelectedTiming}
+            selectedAdditionalTimings={selectedAdditionalTimings}
+            selectedCustomDate={selectedCustomDate}
+            selectedCustomEndDate={selectedCustomEndDate}
+            selectedCustomWindow={selectedCustomWindow}
+            selectedCustomWindows={selectedCustomWindows}
             selectedService={selectedService}
             selectedSuggestion={selectedSuggestion}
             selectedTiming={selectedTiming}
@@ -238,7 +263,7 @@ export function PublicCustomerMarketplacePage() {
               I run a landscaping business
             </a>
             <a className="button-secondary" href="/auth/crew">
-              I want crew work
+              I am looking to join a crew
             </a>
           </div>
         </div>
@@ -297,7 +322,9 @@ export function PublicCustomerMarketplacePage() {
             <button
               className="service-tile-card"
               key={item.service}
-              onClick={() => handleSearch(item.service, selectedSuggestion, selectedTiming)}
+              onClick={() =>
+                handleSearch(item.service, selectedSuggestion, selectedTiming, selectedCustomDate, selectedCustomWindow)
+              }
               type="button"
             >
               <span className="service-tile-card__image-wrap" aria-hidden="true">

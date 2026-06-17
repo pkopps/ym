@@ -27,6 +27,24 @@ function formatDateTimeLocalInput(iso: string) {
   return local.toISOString().slice(0, 16);
 }
 
+function requiresReviewedEvidenceBeforeResolution(ticket: SupportOpsTicket) {
+  const hasEvidence = (ticket.booking?.serviceEvidence.length ?? 0) > 0;
+  if (!hasEvidence) {
+    return false;
+  }
+
+  const reviewedCount = ticket.evidenceSummary?.reviewedCount ?? 0;
+  if (reviewedCount > 0) {
+    return false;
+  }
+
+  return (
+    ticket.ticket.issueType === "billing" ||
+    ticket.ticket.issueType === "service-quality" ||
+    ticket.booking?.status === "disputed"
+  );
+}
+
 export function OpsSupportQueue() {
   const [tickets, setTickets] = useState<SupportOpsTicket[]>([]);
   const [refundOverrideDrafts, setRefundOverrideDrafts] = useState<Record<string, string>>({});
@@ -244,7 +262,21 @@ export function OpsSupportQueue() {
       {errorMessage ? <p>{errorMessage}</p> : null}
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
         {tickets.length > 0 ? (
-          tickets.map(({ ticket, booking, payment, customerName, providerName, evidenceSummary, resolutionGuidance }) => (
+          tickets.map((supportTicket) => {
+            const {
+              ticket,
+              booking,
+              payment,
+              customerName,
+              providerName,
+              evidenceSummary,
+              resolutionGuidance,
+              timeline
+            } = supportTicket;
+            const resolutionLockedForEvidenceReview =
+              requiresReviewedEvidenceBeforeResolution(supportTicket);
+
+            return (
             <article className="list-panel" key={ticket.id}>
               <div className="search-result-title">
                 <div>
@@ -291,6 +323,11 @@ export function OpsSupportQueue() {
                             ? `${resolutionGuidance.recommendedAction.replaceAll("-", " ")}`
                             : "manual review"}{" "}
                           • {resolutionGuidance.confidence} confidence • {resolutionGuidance.rationale}
+                        </p>
+                      ) : null}
+                      {resolutionLockedForEvidenceReview ? (
+                        <p className="warning-copy" style={{ marginBottom: 0 }}>
+                          Resolve actions stay locked until ops reviews at least one submitted evidence item.
                         </p>
                       ) : null}
                     </div>
@@ -419,7 +456,7 @@ export function OpsSupportQueue() {
                                     disabled={isWorking}
                                     onClick={() =>
                                       void reviewEvidence(
-                                        { ticket, booking, payment, customerName, providerName },
+                                        supportTicket,
                                         evidence.id
                                       )
                                     }
@@ -445,6 +482,20 @@ export function OpsSupportQueue() {
                 </div>
               ) : null}
               {ticket.resolutionNotes ? <p>Resolution: {ticket.resolutionNotes}</p> : null}
+              {timeline.length > 0 ? (
+                <div className="stack-md">
+                  <p>Support timeline</p>
+                  {timeline.map((entry) => (
+                    <article className="list-panel" key={entry.id}>
+                      <h3>{entry.title}</h3>
+                      <p>
+                        {formatDateTime(entry.occurredAt)} • {entry.actorRole.replaceAll("-", " ")}
+                      </p>
+                      <p>{entry.detail}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
               {booking ? (
                 <div className="stack-md">
                   <label>
@@ -452,15 +503,15 @@ export function OpsSupportQueue() {
                     <textarea
                       onChange={(event) =>
                         setInterventionDrafts((current) => ({
-                          ...current,
-                          [ticket.id]: {
-                            ...getInterventionDraft({ ticket, booking, payment, customerName, providerName }),
+                            ...current,
+                            [ticket.id]: {
+                            ...getInterventionDraft(supportTicket),
                             note: event.target.value
                           }
                         }))
                       }
                       rows={3}
-                      value={getInterventionDraft({ ticket, booking, payment, customerName, providerName }).note}
+                      value={getInterventionDraft(supportTicket).note}
                     />
                   </label>
                   <div className="grid-two">
@@ -471,13 +522,13 @@ export function OpsSupportQueue() {
                           setInterventionDrafts((current) => ({
                             ...current,
                             [ticket.id]: {
-                              ...getInterventionDraft({ ticket, booking, payment, customerName, providerName }),
+                              ...getInterventionDraft(supportTicket),
                               scheduledStartLocal: event.target.value
                             }
                           }))
                         }
                         type="datetime-local"
-                        value={getInterventionDraft({ ticket, booking, payment, customerName, providerName }).scheduledStartLocal}
+                        value={getInterventionDraft(supportTicket).scheduledStartLocal}
                       />
                     </label>
                     <label>
@@ -487,13 +538,13 @@ export function OpsSupportQueue() {
                           setInterventionDrafts((current) => ({
                             ...current,
                             [ticket.id]: {
-                              ...getInterventionDraft({ ticket, booking, payment, customerName, providerName }),
+                              ...getInterventionDraft(supportTicket),
                               scheduledEndLocal: event.target.value
                             }
                           }))
                         }
                         type="datetime-local"
-                        value={getInterventionDraft({ ticket, booking, payment, customerName, providerName }).scheduledEndLocal}
+                        value={getInterventionDraft(supportTicket).scheduledEndLocal}
                       />
                     </label>
                   </div>
@@ -501,7 +552,7 @@ export function OpsSupportQueue() {
                     <button
                       className="button-secondary"
                       disabled={isWorking}
-                      onClick={() => void applyIntervention({ ticket, booking, payment, customerName, providerName }, "add-note")}
+                      onClick={() => void applyIntervention(supportTicket, "add-note")}
                       type="button"
                     >
                       Save note
@@ -511,7 +562,7 @@ export function OpsSupportQueue() {
                       disabled={isWorking}
                       onClick={() =>
                         void applyIntervention(
-                          { ticket, booking, payment, customerName, providerName },
+                          supportTicket,
                           "reschedule-booking"
                         )
                       }
@@ -524,7 +575,7 @@ export function OpsSupportQueue() {
                       disabled={isWorking}
                       onClick={() =>
                         void applyIntervention(
-                          { ticket, booking, payment, customerName, providerName },
+                          supportTicket,
                           "restore-active-booking"
                         )
                       }
@@ -537,7 +588,7 @@ export function OpsSupportQueue() {
                       disabled={isWorking}
                       onClick={() =>
                         void applyIntervention(
-                          { ticket, booking, payment, customerName, providerName },
+                          supportTicket,
                           "complete-booking"
                         )
                       }
@@ -550,7 +601,7 @@ export function OpsSupportQueue() {
                       disabled={isWorking}
                       onClick={() =>
                         void applyIntervention(
-                          { ticket, booking, payment, customerName, providerName },
+                          supportTicket,
                           "cancel-booking"
                         )
                       }
@@ -597,12 +648,12 @@ export function OpsSupportQueue() {
                 ) : null}
                 {ticket.status !== "resolved" && ticket.issueType === "billing" && payment?.refundReviewStatus === "requested" ? (
                   <>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void updateTicket(
-                          ticket.id,
+                  <button
+                    className="button-secondary"
+                    disabled={isWorking || resolutionLockedForEvidenceReview}
+                    onClick={() =>
+                      void updateTicket(
+                        ticket.id,
                           "resolved",
                           "approve-refund",
                           "Support approved the refund review and reversed the customer payment."
@@ -612,12 +663,12 @@ export function OpsSupportQueue() {
                     >
                       Approve refund
                     </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void updateTicket(
-                          ticket.id,
+                  <button
+                    className="button-secondary"
+                    disabled={isWorking || resolutionLockedForEvidenceReview}
+                    onClick={() =>
+                      void updateTicket(
+                        ticket.id,
                           "resolved",
                           "deny-refund",
                           "Support reviewed the refund request and kept the payment captured."
@@ -661,7 +712,7 @@ export function OpsSupportQueue() {
                   <>
                     <button
                       className="button-secondary"
-                      disabled={isWorking}
+                      disabled={isWorking || resolutionLockedForEvidenceReview}
                       onClick={() =>
                         void updateTicket(
                           ticket.id,
@@ -676,7 +727,7 @@ export function OpsSupportQueue() {
                     </button>
                     <button
                       className="button-secondary"
-                      disabled={isWorking}
+                      disabled={isWorking || resolutionLockedForEvidenceReview}
                       onClick={() =>
                         void updateTicket(
                           ticket.id,
@@ -691,7 +742,7 @@ export function OpsSupportQueue() {
                     </button>
                     <button
                       className="button-secondary"
-                      disabled={isWorking}
+                      disabled={isWorking || resolutionLockedForEvidenceReview}
                       onClick={() =>
                         void updateTicket(
                           ticket.id,
@@ -708,7 +759,8 @@ export function OpsSupportQueue() {
                 ) : null}
               </div>
             </article>
-          ))
+          );
+          })
         ) : (
           <p>No support tickets yet.</p>
         )}

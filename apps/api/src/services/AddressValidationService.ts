@@ -109,7 +109,19 @@ export class AddressValidationService {
               latitude: location.latitude,
               longitude: location.longitude
             }
-          : fallbackAddress.point
+          : fallbackAddress.point,
+      geocodedAt:
+        location?.latitude !== undefined && location?.longitude !== undefined
+          ? new Date().toISOString()
+          : fallbackAddress.geocodedAt,
+      geocodePrecision:
+        location?.latitude !== undefined && location?.longitude !== undefined
+          ? "address"
+          : fallbackAddress.geocodePrecision,
+      geocodeProvider:
+        location?.latitude !== undefined && location?.longitude !== undefined
+          ? "google-address-validation"
+          : fallbackAddress.geocodeProvider
     };
 
     const addressComplete = verdict?.addressComplete === true;

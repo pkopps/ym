@@ -31,6 +31,19 @@ export interface StripeWebhookEvent {
   failureReason?: string;
 }
 
+export interface CreateStripeRefundInput {
+  paymentIntentId: string;
+  amountCents: number;
+  reason: string;
+  bookingId: string;
+  paymentId: string;
+}
+
+export interface CreatedStripeRefund {
+  refundId: string;
+  status: string;
+}
+
 export interface PaymentCheckoutGateway {
   isConfigured(): boolean;
   createCheckoutSession(
@@ -38,6 +51,7 @@ export interface PaymentCheckoutGateway {
   ): Promise<CreatedStripeCheckoutSession>;
   verifyCheckoutSession(checkoutSessionId: string): Promise<VerifiedStripeCheckoutSession>;
   parseWebhookEvent(rawBody: string, signature: string): Promise<StripeWebhookEvent>;
+  createRefund(input: CreateStripeRefundInput): Promise<CreatedStripeRefund>;
 }
 
 function prettifyCategory(category: string): string {
@@ -179,8 +193,48 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       };
     }
 
+    if (event.type === "payment_intent.payment_failed") {
+      const intent = event.data.object as Stripe.PaymentIntent;
+      return {
+        type: event.type,
+        paymentIntentId: intent.id,
+        failureReason: intent.last_payment_error?.message ?? "Stripe payment failed."
+      };
+    }
+
+    if (event.type === "charge.refunded") {
+      const charge = event.data.object as Stripe.Charge;
+      return {
+        type: event.type,
+        paymentIntentId:
+          typeof charge.payment_intent === "string" ? charge.payment_intent : undefined
+      };
+    }
+
     return {
       type: event.type
+    };
+  }
+
+  public async createRefund(input: CreateStripeRefundInput): Promise<CreatedStripeRefund> {
+    if (!this.stripe) {
+      throw new HttpError(503, "Stripe is not configured yet.");
+    }
+
+    const refund = await this.stripe.refunds.create({
+      payment_intent: input.paymentIntentId,
+      amount: input.amountCents,
+      reason: "requested_by_customer",
+      metadata: {
+        bookingId: input.bookingId,
+        paymentId: input.paymentId,
+        refundReason: input.reason
+      }
+    });
+
+    return {
+      refundId: refund.id,
+      status: refund.status ?? "unknown"
     };
   }
 }

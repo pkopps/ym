@@ -19,7 +19,10 @@ import { trackWebEvent } from "../lib/tracking";
 import {
   buildCustomerListingsSearchParams,
   buildDateIsoForCustomerTiming,
+  CustomerCustomTimingWindow,
   CustomerTimingPreference,
+  getDefaultCustomerCustomEndDateString,
+  getDefaultCustomerCustomDateString,
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
 import { CustomerListingsHero } from "./CustomerListingsHero";
@@ -89,11 +92,15 @@ function formatSearchMetrics(results?: SearchProvidersResponse): Array<{ value: 
 function formatAreaDescription(
   areaLabel: string | undefined,
   serviceLabel: string,
-  timing: CustomerTimingPreference
+  timing: CustomerTimingPreference,
+  customDate?: string,
+  customWindow?: CustomerCustomTimingWindow
 ) {
   const resolvedArea = areaLabel?.trim() || "your area";
   return `See the strongest ${serviceLabel.toLowerCase()} matches for ${getCustomerTimingLabel(
-    timing
+    timing,
+    customDate,
+    customWindow
   ).toLowerCase()} in ${resolvedArea}, led by one highlighted recommendation and a nearby provider map.`;
 }
 
@@ -149,6 +156,11 @@ export function PublicCustomerListingsExperience({
   initialLat,
   initialLng,
   initialPostalCode,
+  initialAdditionalTimings,
+  initialCustomDate,
+  initialCustomEndDate,
+  initialCustomWindow,
+  initialCustomWindows,
   initialService,
   initialTiming,
   initialState
@@ -158,6 +170,11 @@ export function PublicCustomerListingsExperience({
   initialLat?: number;
   initialLng?: number;
   initialPostalCode?: string;
+  initialAdditionalTimings?: CustomerTimingPreference[];
+  initialCustomDate?: string;
+  initialCustomEndDate?: string;
+  initialCustomWindow?: CustomerCustomTimingWindow;
+  initialCustomWindows?: CustomerCustomTimingWindow[];
   initialService?: ServiceCategory;
   initialTiming?: CustomerTimingPreference;
   initialState?: string;
@@ -183,9 +200,24 @@ export function PublicCustomerListingsExperience({
   const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>(
     initialTiming ?? "tomorrow-morning"
   );
+  const [selectedAdditionalTimings, setSelectedAdditionalTimings] = useState<CustomerTimingPreference[]>(
+    initialAdditionalTimings ?? []
+  );
+  const [selectedCustomDate, setSelectedCustomDate] = useState(
+    initialCustomDate ?? getDefaultCustomerCustomDateString()
+  );
+  const [selectedCustomEndDate, setSelectedCustomEndDate] = useState(
+    initialCustomEndDate ?? getDefaultCustomerCustomEndDateString()
+  );
+  const [selectedCustomWindow, setSelectedCustomWindow] = useState<CustomerCustomTimingWindow>(
+    initialCustomWindow ?? "morning"
+  );
+  const [selectedCustomWindows, setSelectedCustomWindows] = useState<CustomerCustomTimingWindow[]>(
+    initialCustomWindows?.length ? initialCustomWindows : [initialCustomWindow ?? "morning"]
+  );
 
   const serviceLabel = serviceCategoryLabels[selectedService];
-  const timingLabel = getCustomerTimingLabel(selectedTiming);
+  const timingLabel = getCustomerTimingLabel(selectedTiming, selectedCustomDate, selectedCustomWindow);
   const rankedProviders = providerResults?.rankedProviders ?? [];
   const providerChoicePresentations = buildCustomerProviderChoicePresentations(rankedProviders);
   const featuredProviders = rankedProviders.slice(0, 3);
@@ -211,12 +243,22 @@ export function PublicCustomerListingsExperience({
     nextService,
     nextSuggestion,
     nextTiming,
+    nextAdditionalTimings,
+    nextCustomDate,
+    nextCustomEndDate,
+    nextCustomWindow,
+    nextCustomWindows,
     shouldUpdateUrl
   }: {
     nextAreaQuery: string;
     nextService: ServiceCategory;
     nextSuggestion?: PlaceSuggestion;
     nextTiming: CustomerTimingPreference;
+    nextAdditionalTimings: CustomerTimingPreference[];
+    nextCustomDate: string;
+    nextCustomEndDate: string;
+    nextCustomWindow: CustomerCustomTimingWindow;
+    nextCustomWindows: CustomerCustomTimingWindow[];
     shouldUpdateUrl: boolean;
   }) {
     setSearchState("loading");
@@ -251,7 +293,12 @@ export function PublicCustomerListingsExperience({
             const params = buildCustomerListingsSearchParams({
               areaQuery: nextAreaQuery,
               selectedService: nextService,
-              selectedTiming: nextTiming
+              selectedTiming: nextTiming,
+              selectedCustomDate: nextCustomDate,
+              selectedCustomEndDate: nextCustomEndDate,
+              selectedCustomWindow: nextCustomWindow,
+              selectedCustomWindows: nextCustomWindows,
+              selectedAdditionalTimings: nextAdditionalTimings
             });
             router.replace(`/customer/listings?${params.toString()}`);
           }
@@ -268,7 +315,12 @@ export function PublicCustomerListingsExperience({
           const params = buildCustomerListingsSearchParams({
             areaQuery: nextAreaQuery,
             selectedService: nextService,
-            selectedTiming: nextTiming
+            selectedTiming: nextTiming,
+            selectedCustomDate: nextCustomDate,
+            selectedCustomEndDate: nextCustomEndDate,
+            selectedCustomWindow: nextCustomWindow,
+            selectedCustomWindows: nextCustomWindows,
+            selectedAdditionalTimings: nextAdditionalTimings
           });
           router.replace(`/customer/listings?${params.toString()}`);
         }
@@ -278,7 +330,7 @@ export function PublicCustomerListingsExperience({
       const nextResults = await api.searchProviders({
         address: resolvedSuggestion.address,
         categories: [nextService],
-        dateIso: buildDateIsoForCustomerTiming(nextTiming),
+        dateIso: buildDateIsoForCustomerTiming(nextTiming, nextCustomDate, nextCustomWindow),
         requestSource: "public-web-listings"
       });
 
@@ -287,6 +339,11 @@ export function PublicCustomerListingsExperience({
       setSelectedSuggestion(resolvedSuggestion);
       setSelectedService(nextService);
       setSelectedTiming(nextTiming);
+      setSelectedAdditionalTimings(nextAdditionalTimings);
+      setSelectedCustomDate(nextCustomDate);
+      setSelectedCustomEndDate(nextCustomEndDate);
+      setSelectedCustomWindow(nextCustomWindow);
+      setSelectedCustomWindows(nextCustomWindows);
       setProviderResults(nextResults);
       setSearchState("loaded");
 
@@ -295,7 +352,12 @@ export function PublicCustomerListingsExperience({
           areaQuery: resolvedSuggestion.label,
           selectedService: nextService,
           selectedSuggestion: resolvedSuggestion,
-          selectedTiming: nextTiming
+          selectedTiming: nextTiming,
+          selectedCustomDate: nextCustomDate,
+          selectedCustomEndDate: nextCustomEndDate,
+          selectedCustomWindow: nextCustomWindow,
+          selectedCustomWindows: nextCustomWindows,
+          selectedAdditionalTimings: nextAdditionalTimings
         });
         router.replace(`/customer/listings?${params.toString()}`);
       }
@@ -312,6 +374,11 @@ export function PublicCustomerListingsExperience({
       nextService: selectedService,
       nextSuggestion: selectedSuggestion,
       nextTiming: selectedTiming,
+      nextAdditionalTimings: selectedAdditionalTimings,
+      nextCustomDate: selectedCustomDate,
+      nextCustomEndDate: selectedCustomEndDate,
+      nextCustomWindow: selectedCustomWindow,
+      nextCustomWindows: selectedCustomWindows,
       shouldUpdateUrl: false
     });
     // This runs once on mount to hydrate the page with the current URL state.
@@ -322,24 +389,50 @@ export function PublicCustomerListingsExperience({
     <>
       <CustomerListingsHero
         areaQuery={areaQuery}
-        description={formatAreaDescription(resolvedAreaLabel, serviceLabel, selectedTiming)}
+        description={formatAreaDescription(
+          resolvedAreaLabel,
+          serviceLabel,
+          selectedTiming,
+          selectedCustomDate,
+          selectedCustomWindow
+        )}
         initialAreaLabel={initialAreaLabel}
+        initialAdditionalTimings={initialAdditionalTimings}
+        initialCustomDate={initialCustomDate}
+        initialCustomEndDate={initialCustomEndDate}
+        initialCustomWindow={initialCustomWindow}
+        initialCustomWindows={initialCustomWindows}
         initialService={initialService}
         initialTiming={initialTiming}
         metrics={liveMetrics}
         onAreaQueryChange={setAreaQuery}
-        onSearch={(service, suggestion, timing) =>
+        onSearch={(service, suggestion, timing, customDate = selectedCustomDate, customWindow = selectedCustomWindow) =>
           void runSearch({
             nextAreaQuery: suggestion?.label ?? areaQuery,
             nextService: service,
             nextSuggestion: suggestion,
             nextTiming: timing,
+            nextAdditionalTimings: selectedAdditionalTimings,
+            nextCustomDate: customDate,
+            nextCustomEndDate: selectedCustomEndDate,
+            nextCustomWindow: customWindow,
+            nextCustomWindows: selectedCustomWindows,
             shouldUpdateUrl: true
           })
         }
+        onSelectedAdditionalTimingsChange={setSelectedAdditionalTimings}
+        onSelectedCustomDateChange={setSelectedCustomDate}
+        onSelectedCustomEndDateChange={setSelectedCustomEndDate}
+        onSelectedCustomWindowChange={setSelectedCustomWindow}
+        onSelectedCustomWindowsChange={setSelectedCustomWindows}
         onSelectedServiceChange={setSelectedService}
         onSelectedSuggestionChange={setSelectedSuggestion}
         onSelectedTimingChange={setSelectedTiming}
+        selectedAdditionalTimings={selectedAdditionalTimings}
+        selectedCustomDate={selectedCustomDate}
+        selectedCustomEndDate={selectedCustomEndDate}
+        selectedCustomWindow={selectedCustomWindow}
+        selectedCustomWindows={selectedCustomWindows}
         selectedService={selectedService}
         selectedSuggestion={selectedSuggestion}
         selectedTiming={selectedTiming}

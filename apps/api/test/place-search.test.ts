@@ -53,6 +53,38 @@ test("place search returns deterministic fallback suggestions", async () => {
   assert.ok(payload.suggestions[0].matchReason);
 });
 
+test("place reverse geocode uses browser coordinates without defaulting to Brooklyn", async () => {
+  const originalGoogleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY;
+  delete process.env.GOOGLE_MAPS_API_KEY;
+
+  try {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+    const controller = new MarketplaceController(platform);
+    const response = createMockResponse();
+
+    await controller.handle(
+      {
+        method: "POST",
+        path: "/api/places/reverse-geocode",
+        body: { latitude: 35.9251, longitude: -86.8689 },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 200);
+    const payload = response.readJson();
+    assert.equal(payload.searchMode, "local-dataset");
+    assert.ok(payload.suggestions.length > 0);
+    assert.equal(payload.suggestions[0].address.city, "Franklin");
+    assert.notEqual(payload.suggestions[0].address.city, "Brooklyn");
+  } finally {
+    process.env.GOOGLE_MAPS_API_KEY = originalGoogleMapsApiKey;
+  }
+});
+
 test("place search matches state names and postal queries against fallback suggestions", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

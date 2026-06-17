@@ -164,6 +164,10 @@ export interface Address {
   postalCode: string;
   country: string;
   point: GeoPoint;
+  geocodeCacheKey?: string;
+  geocodedAt?: string;
+  geocodePrecision?: "address" | "postal-code" | "city" | "customer-provided";
+  geocodeProvider?: "google-address-validation" | "google-geocoding" | "customer-provided";
 }
 
 export interface BookingRouteStop {
@@ -190,6 +194,11 @@ export interface PlaceSearchResponse {
   searchConfidence: "high" | "medium" | "low";
   searchMessage?: string;
   suggestions: PlaceSuggestion[];
+}
+
+export interface ReverseGeocodePlaceRequest {
+  latitude: number;
+  longitude: number;
 }
 
 export function isPlaceSuggestionSafeToAutoSelect(
@@ -834,6 +843,30 @@ export interface SupportResolutionGuidance {
   rationale: string;
 }
 
+export type SupportTimelineActorRole =
+  | MarketplaceRole
+  | "ops"
+  | "provider-assistant"
+  | "system";
+
+export type SupportTimelineEntryKind =
+  | "ticket-opened"
+  | "ticket-triaged"
+  | "ticket-resolved"
+  | "refund-review-opened"
+  | "refund-review-resolved"
+  | "booking-intervention"
+  | "evidence-reviewed";
+
+export interface SupportTimelineEntry {
+  id: string;
+  occurredAt: string;
+  actorRole: SupportTimelineActorRole;
+  kind: SupportTimelineEntryKind;
+  title: string;
+  detail: string;
+}
+
 export interface SupportOpsTicket {
   ticket: SupportTicket;
   booking?: Booking;
@@ -842,6 +875,7 @@ export interface SupportOpsTicket {
   providerName?: string;
   evidenceSummary?: SupportEvidenceSummary;
   resolutionGuidance?: SupportResolutionGuidance;
+  timeline: SupportTimelineEntry[];
 }
 
 export interface OpsRefundSummaryItem {
@@ -2070,8 +2104,10 @@ export interface ObservabilityOverview {
   providerBookingConfirmations: number;
   providerBookingDeclines: number;
   customerBookingCancellations: number;
+  paymentCheckoutStarts: number;
   paymentAuthorizations: number;
   paymentCaptures: number;
+  paymentFailures: number;
   recommendationMetricsBySource: RecommendationSurfaceMetrics[];
   activeUsers5m: number;
   activeCustomers5m: number;

@@ -77,6 +77,7 @@ import {
   SetBookingRouteStopRequest,
   RegisterPushDeviceRequest,
   RecurringServicePlanSummary,
+  ReverseGeocodePlaceRequest,
   MarkBookingOnRouteRequest,
   MarkBookingLateRequest,
   MarkBookingExceptionRequest,
@@ -228,6 +229,10 @@ export class MarketplaceApiClient {
 
   public searchPlaces(query: string): Promise<PlaceSearchResponse> {
     return this.getJson(`${ApiRoutes.placeSearch}?query=${encodeURIComponent(query)}`);
+  }
+
+  public reverseGeocodePlace(payload: ReverseGeocodePlaceRequest): Promise<PlaceSearchResponse> {
+    return this.postJson(ApiRoutes.placeReverseGeocode, payload);
   }
 
   public createCustomerProperty(payload: CreateCustomerPropertyRequest) {

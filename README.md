@@ -43,6 +43,11 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - Machine-readable spec: `GET /api/docs/openapi.json`
 - The docs page is served directly by the monolith so other developers can inspect routes and example payloads without extra tooling.
 
+## Product roadmap
+
+- Active roadmap and backlog: [ROADMAP.md](/Users/patrickkopps/Documents/app/ROADMAP.md)
+- Cost sheet and future P&L starter: [COSTS.md](/Users/patrickkopps/Documents/app/COSTS.md)
+
 ## Backend hardening status
 
 - Local email/password auth is now wired with bearer-token sessions through:
@@ -73,6 +78,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - provider search inputs
   - direct booking and booking-address update inputs
 - Protected customer/provider routes now derive identity from the bearer token instead of trusting caller-supplied IDs.
+- Provider payout-setting changes now require a recently refreshed session, so weekly payout timing and instant-payout toggles have a stronger re-auth gate than ordinary provider control updates.
 - The API keeps the current route families, but ownership is enforced for:
   - customer properties
   - customer bookings and booking address changes
@@ -109,6 +115,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
 - Real customer card payments are now prepared through Stripe hosted Checkout.
+- Stripe webhook reconciliation now covers checkout completion, checkout expiry, payment-intent failures, and refund events so Stripe-originated payment state changes can flow back into the local booking and payout records.
 - Provider and crew payout ledgers now read from real completed bookings, captured customer payments, accepted crew matches, and refund state.
 - Providers can now choose a weekly payout day and whether instant payouts are enabled, and ops can preview upcoming payout runs before real bank-transfer rails are switched on.
 - Refunds now flow through an internal review path instead of an instant customer-side reversal:
@@ -116,6 +123,9 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - a billing support ticket is created automatically
   - ops can approve or deny the review from the internal queue
   - provider and crew payouts move to `on-hold` while the refund review is open
+  - when the original payment used Stripe Checkout and Stripe is configured, ops approval now triggers the live Stripe refund before the booking and payout ledger move to the refunded state
+- The ops support queue now builds a structured ticket timeline from ticket lifecycle changes, refund review events, booking interventions, and evidence reviews so financial and service decisions are easier to audit without reading raw descriptions.
+- When a dispute, service-quality case, or refund review includes submitted booking evidence, ops must review at least one evidence item before resolving the ticket.
 - To turn the real checkout path on locally, set:
   - `STRIPE_SECRET_KEY`
   - `STRIPE_WEBHOOK_SECRET`
@@ -398,7 +408,7 @@ Current baseline instrumentation:
 - Active users are defined by a heartbeat model: a session is considered active if it has reported within the last 5 minutes.
 - Booking and refund KPIs should be authored by the backend on successful state changes, not by frontend-only clicks.
 - The internal ops telemetry view should surface marketplace counters like recommendation acceptance alongside booking and support activity.
-- The internal ops telemetry view now also tracks provider booking confirmations, provider booking declines, customer cancellations, and payment authorization/capture counts so booking and payment health do not rely on raw event inspection.
+- The internal ops telemetry view now also tracks provider booking confirmations, provider booking declines, customer cancellations, Stripe checkout starts, payment failures/expirations, and payment authorization/capture counts so booking and payment health do not rely on raw event inspection.
 
 ## Review policy
 

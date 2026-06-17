@@ -22,6 +22,7 @@ import {
   MarkBookingLateRequest,
   MarkNotificationsReadRequest,
   RegisterPushDeviceRequest,
+  ReverseGeocodePlaceRequest,
   SetBookingRouteStopRequest,
   UpdateBookingRouteLocationRequest,
   UpdateNotificationPreferencesRequest,
@@ -44,11 +45,18 @@ import {
   UpdateProviderSettingsRequest,
   UpdateBookingAddressRequest
 } from "@yardmatch/contracts";
-import { getOptionalAuthenticatedIdentity, requireAuthenticatedIdentity, requireRole } from "../controller-auth";
+import {
+  getOptionalAuthenticatedIdentity,
+  requireAuthenticatedIdentity,
+  requireFreshRole,
+  requireRole
+} from "../controller-auth";
 import { ApiController, RequestContext, sendJson, sendText } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
 export class MarketplaceController implements ApiController {
+  private static readonly providerPayoutSettingsReauthMaxAgeSeconds = 15 * 60;
+
   public constructor(private readonly platform: MarketplacePlatformService) {}
 
   public canHandle(context: RequestContext): boolean {
@@ -59,6 +67,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/customers/review-opportunities") ||
       (context.method === "POST" && context.path === "/api/quotes/instant") ||
       (context.method === "GET" && context.path === "/api/places/search") ||
+      (context.method === "POST" && context.path === "/api/places/reverse-geocode") ||
       (context.method === "POST" && context.path === "/api/providers/search") ||
       (context.method === "GET" && context.path === "/api/providers/public-overview") ||
       (context.method === "GET" && context.path === "/api/providers/profile") ||
@@ -187,6 +196,12 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "POST" && context.path === "/api/places/reverse-geocode") {
+      const payload = context.body as ReverseGeocodePlaceRequest;
+      sendJson(response, 200, await this.platform.reverseGeocodePlace(payload.latitude, payload.longitude));
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/providers/search") {
       sendJson(response, 200, await this.platform.searchProviders(context.body as SearchProvidersRequest));
       return;
@@ -259,11 +274,20 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/providers/settings") {
-      const identity = await requireRole(context, this.platform, "provider");
+      const payload = context.body as UpdateProviderSettingsRequest;
+      const identity = MarketplaceController.requiresFreshProviderPayoutReauth(payload)
+        ? await requireFreshRole(
+            context,
+            this.platform,
+            "provider",
+            MarketplaceController.providerPayoutSettingsReauthMaxAgeSeconds,
+            "Re-authentication required for payout settings. Sign in again and retry within 15 minutes."
+          )
+        : await requireRole(context, this.platform, "provider");
       sendJson(
         response,
         200,
-        await this.platform.updateProviderSettings(identity.userId, context.body as UpdateProviderSettingsRequest)
+        await this.platform.updateProviderSettings(identity.userId, payload)
       );
       return;
     }
@@ -823,5 +847,9 @@ export class MarketplaceController implements ApiController {
 
     const identity = await requireRole(context, this.platform, "provider");
     sendText(response, 200, await this.platform.buildCalendarFeed(identity.userId));
+  }
+
+  private static requiresFreshProviderPayoutReauth(payload: UpdateProviderSettingsRequest): boolean {
+    return payload.weeklyPayoutDay !== undefined || payload.instantPayoutsEnabled !== undefined;
   }
 }

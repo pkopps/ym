@@ -135,6 +135,8 @@ import {
   RemovePushDeviceRequest,
   UpdateProviderSettingsRequest,
   SupportTicket,
+  SupportTimelineActorRole,
+  SupportTimelineEntry,
   SupportOpsTicket,
   SyncExternalCalendarImportRequest,
   UpdateBookingAddressRequest,
@@ -162,7 +164,11 @@ import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/Marke
 import { NotificationDeliveryService } from "./NotificationDeliveryService";
 import { AddressValidationOutcome, AddressValidationService } from "./AddressValidationService";
 import { PlaceSearchService } from "./PlaceSearchService";
-import { PaymentCheckoutGateway, StripeCheckoutService } from "./StripeCheckoutService";
+import {
+  PaymentCheckoutGateway,
+  StripeCheckoutService,
+  StripeWebhookEvent
+} from "./StripeCheckoutService";
 
 type ParsedProviderAssistantAction = {
   command: string;
@@ -243,7 +249,7 @@ export class MarketplacePlatformService {
   ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
     const now = new Date().toISOString();
     const validatedAddress = await this.normalizeAndValidateAddress(payload.address);
-    const normalizedAddress = validatedAddress.address;
+    const normalizedAddress = await this.resolveSavedPropertyAddress(validatedAddress.address, []);
 
     if (payload.role === "customer") {
       const primaryProperty = {
@@ -450,6 +456,10 @@ export class MarketplacePlatformService {
 
   public async searchPlaces(query: string): Promise<PlaceSearchResponse> {
     return this.placeSearch.search(query);
+  }
+
+  public async reverseGeocodePlace(latitude: number, longitude: number): Promise<PlaceSearchResponse> {
+    return this.placeSearch.reverseGeocode(latitude, longitude);
   }
 
   public async listNotifications(identity: AuthIdentityRecord): Promise<NotificationListResponse> {
@@ -5935,9 +5945,10 @@ export class MarketplacePlatformService {
     }
 
     const validatedAddress = await this.normalizeAndValidateAddress(payload.address);
+    const cachedAddress = await this.resolveSavedPropertyAddress(validatedAddress.address, customer.properties);
     const property = this.propertyBook.createProperty(crypto.randomUUID(), {
       ...payload,
-      address: validatedAddress.address,
+      address: cachedAddress,
       customerId
     });
     const properties = customer.properties.map((existingProperty) => ({
@@ -6510,6 +6521,13 @@ export class MarketplacePlatformService {
       throw new HttpError(500, "Payment record could not be created");
     }
 
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCheckoutStarted, booking.id, {
+      paymentId: payment.id,
+      processor: payment.processor,
+      amountCents: payment.amountCents,
+      bookingStatus: booking.status
+    });
+
     return {
       checkoutUrl: session.checkoutUrl,
       payment
@@ -6539,7 +6557,12 @@ export class MarketplacePlatformService {
       return this.capturePaymentRecord(payment, booking, session.paymentIntentId);
     }
 
-    await this.failPaymentRecord(payment, session.failureReason ?? "Stripe payment has not completed yet.");
+    await this.failPaymentRecord(
+      payment,
+      booking,
+      session.failureReason ?? "Stripe payment has not completed yet.",
+      "checkout-finalize"
+    );
     throw new HttpError(409, session.failureReason ?? "Stripe payment has not completed yet.");
   }
 
@@ -6549,17 +6572,12 @@ export class MarketplacePlatformService {
     paymentId?: string;
   }> {
     const event = await this.stripeCheckout.parseWebhookEvent(rawBody, signatureHeader);
-
-    if (!event.checkoutSessionId) {
+    const payment = await this.findPaymentForStripeWebhookEvent(event);
+    if (!payment) {
       return {
         received: true,
         eventType: event.type
       };
-    }
-
-    const payment = await this.repository.findPaymentByCheckoutSessionId(event.checkoutSessionId);
-    if (!payment) {
-      throw new HttpError(404, "Payment session not found");
     }
 
     const booking = await this.repository.findBookingById(payment.bookingId);
@@ -6579,8 +6597,33 @@ export class MarketplacePlatformService {
     if (event.type === "checkout.session.expired") {
       const updatedPayment = await this.failPaymentRecord(
         payment,
-        event.failureReason ?? "Stripe checkout expired."
+        booking,
+        event.failureReason ?? "Stripe checkout expired.",
+        "webhook"
       );
+      return {
+        received: true,
+        eventType: event.type,
+        paymentId: updatedPayment.id
+      };
+    }
+
+    if (event.type === "payment_intent.payment_failed") {
+      const updatedPayment = await this.failPaymentRecord(
+        payment,
+        booking,
+        event.failureReason ?? "Stripe payment failed.",
+        "webhook"
+      );
+      return {
+        received: true,
+        eventType: event.type,
+        paymentId: updatedPayment.id
+      };
+    }
+
+    if (event.type === "charge.refunded") {
+      const updatedPayment = await this.markPaymentRefundedFromProcessor(payment, booking);
       return {
         received: true,
         eventType: event.type,
@@ -6593,6 +6636,22 @@ export class MarketplacePlatformService {
       eventType: event.type,
       paymentId: payment.id
     };
+  }
+
+  private async findPaymentForStripeWebhookEvent(
+    event: StripeWebhookEvent
+  ): Promise<PaymentRecord | undefined> {
+    if (event.checkoutSessionId) {
+      return this.repository.findPaymentByCheckoutSessionId(event.checkoutSessionId);
+    }
+
+    if (event.paymentIntentId) {
+      return (await this.repository.listPayments()).find(
+        (payment) => payment.processorPaymentIntentId === event.paymentIntentId
+      );
+    }
+
+    return undefined;
   }
 
   public async createPaymentIntent(payload: CreatePaymentIntentRequest): Promise<PaymentRecord> {
@@ -7063,13 +7122,17 @@ export class MarketplacePlatformService {
   }
 
   public async listOpsSupportTickets(): Promise<SupportOpsTicket[]> {
-    const [tickets, bookings, payments, customers, providers] = await Promise.all([
+    const [tickets, bookings, payments, customers, providers, crewMembers] = await Promise.all([
       this.repository.listSupportTickets(),
       this.repository.listBookings(),
       this.repository.listPayments(),
       this.repository.listCustomers(),
-      this.repository.listProviders()
+      this.repository.listProviders(),
+      this.repository.listCrewMembers()
     ]);
+    const customerById = new Map(customers.map((customer) => [customer.id, customer]));
+    const providerById = new Map(providers.map((provider) => [provider.id, provider]));
+    const crewMemberById = new Map(crewMembers.map((crewMember) => [crewMember.id, crewMember]));
 
     return tickets
       .map((ticket) => {
@@ -7080,16 +7143,22 @@ export class MarketplacePlatformService {
           ? payments.find((candidate) => candidate.bookingId === booking.id)
           : undefined;
         const customer = booking
-          ? customers.find((candidate) => candidate.id === booking.customerId)
+          ? customerById.get(booking.customerId)
           : undefined;
         const provider = booking
-          ? providers.find((candidate) => candidate.id === booking.providerId)
+          ? providerById.get(booking.providerId)
           : undefined;
         const evidenceSummary = booking ? this.buildSupportEvidenceSummary(booking) : undefined;
         const resolutionGuidance =
           booking && evidenceSummary
             ? this.buildSupportResolutionGuidance(ticket, booking, payment, evidenceSummary)
             : undefined;
+        const requesterRole = this.resolveSupportTimelineActorRole(
+          ticket.requesterId,
+          customerById,
+          providerById,
+          crewMemberById
+        );
 
         return {
           ticket,
@@ -7098,7 +7167,8 @@ export class MarketplacePlatformService {
           customerName: customer?.fullName,
           providerName: provider?.companyName,
           evidenceSummary,
-          resolutionGuidance
+          resolutionGuidance,
+          timeline: this.buildSupportTimeline(ticket, booking, payment, requesterRole)
         } satisfies SupportOpsTicket;
       })
       .sort((left, right) => right.ticket.createdAt.localeCompare(left.ticket.createdAt));
@@ -7208,6 +7278,11 @@ export class MarketplacePlatformService {
       const booking = await this.repository.findBookingById(ticket.bookingId);
       if (booking) {
         if (payload.status === "resolved") {
+          this.assertEvidenceReviewedBeforeSensitiveSupportResolution(
+            ticket,
+            booking,
+            payload.resolutionAction
+          );
           if (payload.resolutionAction === "approve-refund" || payload.resolutionAction === "deny-refund") {
             await this.applySupportResolutionToRefund(booking, payload.resolutionAction, resolutionNotes as string);
           } else {
@@ -7529,6 +7604,7 @@ export class MarketplacePlatformService {
     const now = new Date().toISOString();
 
     if (resolutionAction === "approve-refund") {
+      await this.syncApprovedRefundIfNeeded(payment, booking);
       const updatedPayment = await this.repository.updatePayment(payment.id, {
         status: "refunded",
         refundable: false,
@@ -7602,6 +7678,73 @@ export class MarketplacePlatformService {
         actionHref: `/provider/management?bookingId=${booking.id}`
       })
     ]);
+  }
+
+  private async syncApprovedRefundIfNeeded(payment: PaymentRecord, booking: Booking): Promise<void> {
+    if (payment.processor !== "stripe") {
+      return;
+    }
+
+    if (!payment.processorPaymentIntentId) {
+      throw new HttpError(
+        409,
+        "Stripe refund sync requires a saved payment intent before ops can approve this refund."
+      );
+    }
+
+    await this.stripeCheckout.createRefund({
+      paymentIntentId: payment.processorPaymentIntentId,
+      amountCents: payment.amountCents,
+      reason: payment.refundReason ?? "Refund review approved by YardMatch support.",
+      bookingId: booking.id,
+      paymentId: payment.id
+    });
+  }
+
+  private async markPaymentRefundedFromProcessor(
+    payment: PaymentRecord,
+    booking: Booking
+  ): Promise<PaymentRecord> {
+    const wasAlreadyRefunded = payment.status === "refunded";
+    if (wasAlreadyRefunded && booking.status === "refunded") {
+      return payment;
+    }
+
+    const now = new Date().toISOString();
+    const refundReviewResolved = payment.refundReviewStatus === "requested";
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      status: "refunded",
+      refundable: false,
+      refundReviewStatus: refundReviewResolved ? "approved" : payment.refundReviewStatus,
+      refundReviewedAt: refundReviewResolved ? payment.refundReviewedAt ?? now : payment.refundReviewedAt,
+      refundReviewedByRole: refundReviewResolved ? payment.refundReviewedByRole ?? "ops" : payment.refundReviewedByRole,
+      refundDecisionNotes:
+        payment.refundDecisionNotes ?? "Refund synchronized from Stripe webhook.",
+      updatedAt: now
+    });
+
+    if (!updatedPayment) {
+      throw new HttpError(500, "Payment record could not be updated");
+    }
+
+    if (booking.status !== "refunded") {
+      const updatedBooking = await this.repository.updateBooking(booking.id, {
+        status: "refunded"
+      });
+      if (!updatedBooking) {
+        throw new HttpError(500, "Booking record could not be updated");
+      }
+    }
+
+    if (!wasAlreadyRefunded) {
+      this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.refundCompleted, booking.id, {
+        paymentId: updatedPayment.id,
+        processor: updatedPayment.processor,
+        source: "stripe-webhook"
+      });
+    }
+
+    return updatedPayment;
   }
 
   public async processReviewInvites(
@@ -10237,6 +10380,171 @@ export class MarketplacePlatformService {
     } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
   }
 
+  private assertEvidenceReviewedBeforeSensitiveSupportResolution(
+    ticket: SupportTicket,
+    booking: Booking,
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
+  ) {
+    if (!this.requiresReviewedEvidenceBeforeSensitiveSupportResolution(ticket, booking, resolutionAction)) {
+      return;
+    }
+
+    const evidenceSummary = this.buildSupportEvidenceSummary(booking);
+    if (evidenceSummary.reviewedCount > 0) {
+      return;
+    }
+
+    throw new HttpError(
+      409,
+      "Review at least one submitted evidence item before resolving this refund or dispute"
+    );
+  }
+
+  private requiresReviewedEvidenceBeforeSensitiveSupportResolution(
+    ticket: SupportTicket,
+    booking: Booking,
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
+  ) {
+    if (booking.serviceEvidence.length === 0) {
+      return false;
+    }
+
+    const isRefundResolution =
+      resolutionAction === "approve-refund" || resolutionAction === "deny-refund";
+    const isDisputeResolution = booking.status === "disputed" || ticket.issueType === "service-quality";
+
+    return isRefundResolution || isDisputeResolution;
+  }
+
+  private resolveSupportTimelineActorRole(
+    requesterId: string,
+    customers: Map<string, CustomerProfile>,
+    providers: Map<string, ProviderProfile>,
+    crewMembers: Map<string, CrewMemberProfile>
+  ): SupportTimelineActorRole {
+    if (customers.has(requesterId)) {
+      return "customer";
+    }
+
+    if (providers.has(requesterId)) {
+      return "provider";
+    }
+
+    if (crewMembers.has(requesterId)) {
+      return "crew-member";
+    }
+
+    return "system";
+  }
+
+  private buildSupportTimeline(
+    ticket: SupportTicket,
+    booking: Booking | undefined,
+    payment: PaymentRecord | undefined,
+    requesterRole: SupportTimelineActorRole
+  ): SupportTimelineEntry[] {
+    const timeline: SupportTimelineEntry[] = [
+      {
+        id: `${ticket.id}-opened`,
+        occurredAt: ticket.createdAt,
+        actorRole: requesterRole,
+        kind: "ticket-opened",
+        title: "Support ticket opened",
+        detail: `${ticket.issueType.replaceAll("-", " ")} issue opened: ${ticket.subject}`
+      }
+    ];
+
+    if (payment?.refundRequestedAt) {
+      timeline.push({
+        id: `${ticket.id}-refund-requested`,
+        occurredAt: payment.refundRequestedAt,
+        actorRole: payment.refundRequestedByRole ?? "system",
+        kind: "refund-review-opened",
+        title: "Refund review opened",
+        detail: payment.refundReason ?? "A refund review was opened for the captured payment."
+      });
+    }
+
+    if (ticket.triagedAt) {
+      timeline.push({
+        id: `${ticket.id}-triaged`,
+        occurredAt: ticket.triagedAt,
+        actorRole: "ops",
+        kind: "ticket-triaged",
+        title: "Support ticket triaged",
+        detail:
+          ticket.issueType === "billing"
+            ? "Ops triaged the billing issue and moved it into active review."
+            : "Ops triaged the ticket and moved it into active review."
+      });
+    }
+
+    if (booking) {
+      for (const intervention of booking.interventions.filter(
+        (candidate) => candidate.ticketId === ticket.id
+      )) {
+        timeline.push({
+          id: intervention.id,
+          occurredAt: intervention.createdAt,
+          actorRole: intervention.actorRole,
+          kind: "booking-intervention",
+          title: `Booking intervention: ${intervention.action.replaceAll("-", " ")}`,
+          detail: intervention.note
+        });
+      }
+
+      for (const evidence of booking.serviceEvidence.filter(
+        (candidate) => Boolean(candidate.reviewStatus) && Boolean(candidate.reviewedAt)
+      )) {
+        timeline.push({
+          id: `${ticket.id}-evidence-${evidence.id}`,
+          occurredAt: evidence.reviewedAt as string,
+          actorRole: evidence.reviewedByRole ?? "ops",
+          kind: "evidence-reviewed",
+          title: `${evidence.phase === "before" ? "Before" : "After"} evidence reviewed`,
+          detail: `${(evidence.reviewStatus ?? "inconclusive").replaceAll("-", " ")}${
+            evidence.reviewNotes ? ` • ${evidence.reviewNotes}` : ""
+          }`
+        });
+      }
+    }
+
+    if (payment?.refundReviewedAt && payment.refundReviewStatus) {
+      timeline.push({
+        id: `${ticket.id}-refund-reviewed`,
+        occurredAt: payment.refundReviewedAt,
+        actorRole: payment.refundReviewedByRole ?? "ops",
+        kind: "refund-review-resolved",
+        title:
+          payment.refundReviewStatus === "approved"
+            ? "Refund approved"
+            : "Refund review denied",
+        detail:
+          payment.refundDecisionNotes ??
+          (payment.refundReviewStatus === "approved"
+            ? "Ops approved the refund review."
+            : "Ops denied the refund review.")
+      });
+    }
+
+    if (ticket.resolvedAt) {
+      timeline.push({
+        id: `${ticket.id}-resolved`,
+        occurredAt: ticket.resolvedAt,
+        actorRole: "ops",
+        kind: "ticket-resolved",
+        title: "Support ticket resolved",
+        detail:
+          ticket.resolutionNotes ??
+          (ticket.resolutionAction
+            ? `Resolved with ${ticket.resolutionAction.replaceAll("-", " ")}.`
+            : "Ops resolved the support ticket.")
+      });
+    }
+
+    return timeline.sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+  }
+
   private localDateKey(iso: string): string {
     const date = new Date(iso);
     const year = date.getFullYear();
@@ -11258,8 +11566,13 @@ export class MarketplacePlatformService {
     return updatedPayment;
   }
 
-  private async failPaymentRecord(payment: PaymentRecord, failureReason: string): Promise<PaymentRecord> {
-    if (payment.status === "captured") {
+  private async failPaymentRecord(
+    payment: PaymentRecord,
+    booking: Booking,
+    failureReason: string,
+    failureStage: "checkout-finalize" | "webhook"
+  ): Promise<PaymentRecord> {
+    if (payment.status === "captured" || payment.status === "refunded") {
       return payment;
     }
 
@@ -11274,7 +11587,33 @@ export class MarketplacePlatformService {
       throw new HttpError(500, "Payment record could not be updated");
     }
 
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentFailed, booking.id, {
+      paymentId: updatedPayment.id,
+      processor: updatedPayment.processor,
+      amountCents: updatedPayment.amountCents,
+      failureStage,
+      failureReasonCategory: this.classifyPaymentFailureReason(failureReason)
+    });
+
     return updatedPayment;
+  }
+
+  private classifyPaymentFailureReason(failureReason: string): string {
+    const normalizedReason = failureReason.trim().toLowerCase();
+
+    if (normalizedReason.includes("expired")) {
+      return "expired";
+    }
+
+    if (normalizedReason.includes("not completed") || normalizedReason.includes("not complete")) {
+      return "not-completed";
+    }
+
+    if (normalizedReason.includes("declin") || normalizedReason.includes("fail")) {
+      return "declined-or-failed";
+    }
+
+    return "other";
   }
 
   private estimateCrewHourlyRate(category: Booking["category"]): number {
@@ -11412,6 +11751,73 @@ export class MarketplacePlatformService {
       ...validatedAddress,
       address: this.normalizeAddress(validatedAddress.address)
     };
+  }
+
+  private async resolveSavedPropertyAddress(
+    address: Address,
+    existingProperties: CustomerProperty[]
+  ): Promise<Address> {
+    const normalizedAddress = this.normalizeAddress(address);
+    const geocodeCacheKey = this.buildAddressGeocodeCacheKey(normalizedAddress);
+    const cachedProperty = existingProperties.find((property) => {
+      const existingKey =
+        property.address.geocodeCacheKey ?? this.buildAddressGeocodeCacheKey(this.normalizeAddress(property.address));
+      return existingKey === geocodeCacheKey;
+    });
+
+    if (cachedProperty?.address.point) {
+      return {
+        ...normalizedAddress,
+        point: cachedProperty.address.point,
+        geocodeCacheKey,
+        geocodedAt: cachedProperty.address.geocodedAt,
+        geocodePrecision: cachedProperty.address.geocodePrecision,
+        geocodeProvider: cachedProperty.address.geocodeProvider
+      };
+    }
+
+    const alreadyGoogleGeocoded =
+      normalizedAddress.geocodeProvider === "google-address-validation" ||
+      normalizedAddress.geocodeProvider === "google-geocoding";
+    if (alreadyGoogleGeocoded) {
+      return {
+        ...normalizedAddress,
+        geocodeCacheKey
+      };
+    }
+
+    const googleSuggestion = await this.placeSearch.geocodeAddress(normalizedAddress);
+    if (googleSuggestion) {
+      return {
+        ...normalizedAddress,
+        point: googleSuggestion.address.point,
+        geocodeCacheKey,
+        geocodedAt: googleSuggestion.address.geocodedAt,
+        geocodePrecision: googleSuggestion.address.geocodePrecision,
+        geocodeProvider: googleSuggestion.address.geocodeProvider
+      };
+    }
+
+    return {
+      ...normalizedAddress,
+      geocodeCacheKey,
+      geocodedAt: normalizedAddress.geocodedAt ?? new Date().toISOString(),
+      geocodePrecision: normalizedAddress.geocodePrecision ?? "customer-provided",
+      geocodeProvider: normalizedAddress.geocodeProvider ?? "customer-provided"
+    };
+  }
+
+  private buildAddressGeocodeCacheKey(address: Address): string {
+    return [
+      address.line1,
+      address.line2 ?? "",
+      address.city,
+      address.state,
+      address.postalCode,
+      address.country
+    ]
+      .map((part) => this.normalizeAddressText(part).toLowerCase())
+      .join("|");
   }
 
   private buildNormalizedAddressSummary(

@@ -2,7 +2,7 @@ import { getBearerToken, verifySessionToken } from "./auth";
 import { HttpError, RequestContext } from "./http";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
 
-export async function requireAuthenticatedIdentity(
+async function requireAuthenticatedSession(
   context: RequestContext,
   platform: MarketplacePlatformService
 ) {
@@ -25,7 +25,17 @@ export async function requireAuthenticatedIdentity(
     throw new HttpError(401, "Session has been replaced");
   }
 
-  return identity;
+  return {
+    identity,
+    session
+  };
+}
+
+export async function requireAuthenticatedIdentity(
+  context: RequestContext,
+  platform: MarketplacePlatformService
+) {
+  return (await requireAuthenticatedSession(context, platform)).identity;
 }
 
 export async function getOptionalAuthenticatedIdentity(
@@ -54,10 +64,30 @@ export async function requireRole(
   platform: MarketplacePlatformService,
   role: "customer" | "provider" | "crew-member" | Array<"customer" | "provider" | "crew-member">
 ) {
-  const identity = await requireAuthenticatedIdentity(context, platform);
+  const { identity } = await requireAuthenticatedSession(context, platform);
   const allowedRoles = Array.isArray(role) ? role : [role];
   if (!allowedRoles.includes(identity.role)) {
     throw new HttpError(403, `This route requires a ${allowedRoles.join(" or ")} account`);
+  }
+
+  return identity;
+}
+
+export async function requireFreshRole(
+  context: RequestContext,
+  platform: MarketplacePlatformService,
+  role: "customer" | "provider" | "crew-member" | Array<"customer" | "provider" | "crew-member">,
+  maxAgeSeconds: number,
+  errorMessage: string
+) {
+  const { identity, session } = await requireAuthenticatedSession(context, platform);
+  const allowedRoles = Array.isArray(role) ? role : [role];
+  if (!allowedRoles.includes(identity.role)) {
+    throw new HttpError(403, `This route requires a ${allowedRoles.join(" or ")} account`);
+  }
+  const ageSeconds = Math.max(0, Math.floor(Date.now() / 1000) - (session.issuedAt ?? 0));
+  if (ageSeconds > maxAgeSeconds) {
+    throw new HttpError(401, errorMessage);
   }
 
   return identity;

@@ -77,6 +77,16 @@ async function registerUser(
   };
 }
 
+async function withMockedNow<T>(nowMs: number, run: () => Promise<T>): Promise<T> {
+  const originalNow = Date.now;
+  Date.now = () => nowMs;
+  try {
+    return await run();
+  } finally {
+    Date.now = originalNow;
+  }
+}
+
 test("provider settings reject customer tokens", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -112,6 +122,96 @@ test("provider settings reject customer tokens", async () => {
   });
 
   assert.equal(response.getStatusCode(), 403);
+});
+
+test("provider payout setting changes require a fresh provider session", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const marketplaceController = new MarketplaceController(platform);
+
+  const staleProvider = await withMockedNow(Date.now() - 31 * 60 * 1000, () =>
+    registerUser(authController, {
+      fullName: "Avery Green",
+      email: "avery-stale@example.com",
+      password: "Password123!",
+      phone: "555-0203",
+      role: "provider"
+    })
+  );
+
+  const staleResponse = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "POST",
+      path: "/api/providers/settings",
+      body: {
+        serviceRadiusMiles: 20,
+        weeklyPayoutDay: "Tue"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${staleProvider.session.token}`
+      }
+    },
+    staleResponse as never
+  ).catch((error: Error) => {
+    staleResponse.writeHead(401);
+    staleResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(staleResponse.getStatusCode(), 401);
+  assert.match(
+    staleResponse.readJson().message,
+    /Re-authentication required for payout settings/i
+  );
+
+  const staleNonSensitiveResponse = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "POST",
+      path: "/api/providers/settings",
+      body: {
+        serviceRadiusMiles: 25
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${staleProvider.session.token}`
+      }
+    },
+    staleNonSensitiveResponse as never
+  );
+
+  assert.equal(staleNonSensitiveResponse.getStatusCode(), 200);
+
+  const freshProvider = await registerUser(authController, {
+    fullName: "Morgan Fresh",
+    email: "morgan-fresh@example.com",
+    password: "Password123!",
+    phone: "555-0204",
+    role: "provider"
+  });
+
+  const freshResponse = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "POST",
+      path: "/api/providers/settings",
+      body: {
+        serviceRadiusMiles: 20,
+        instantPayoutsEnabled: true
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${freshProvider.session.token}`
+      }
+    },
+    freshResponse as never
+  );
+
+  assert.equal(freshResponse.getStatusCode(), 200);
+  const updatedProvider = freshResponse.readJson();
+  assert.equal(updatedProvider.instantPayoutsEnabled, true);
 });
 
 test("support tickets are attributed to the authenticated requester", async () => {
