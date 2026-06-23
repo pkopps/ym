@@ -15,6 +15,7 @@ export class ApiRoutes {
   public static readonly searchProviders = "/api/providers/search";
   public static readonly publicMarketplaceOverview = "/api/providers/public-overview";
   public static readonly providerProfile = "/api/providers/profile";
+  public static readonly updateProviderProfile = "/api/providers/profile";
   public static readonly providerVerificationQueue = "/api/providers/verification/queue";
   public static readonly providerVerificationReview = "/api/providers/verification/review";
   public static readonly crewOpportunities = "/api/crew/opportunities";
@@ -75,6 +76,13 @@ export class ApiRoutes {
   public static readonly createRefund = "/api/payments/refund";
   public static readonly supportTickets = "/api/support/tickets";
   public static readonly createSupportTicket = "/api/support/tickets";
+  public static readonly launchLeads = "/api/launch/leads";
+  public static readonly inboundLaunchLeads = "/api/launch/inbound";
+  public static readonly inboundLaunchEmail = "/api/launch/inbound/email";
+  public static readonly inboundLaunchGoogleBusinessProfile = "/api/launch/inbound/google-business-profile";
+  public static readonly inboundLaunchReferral = "/api/launch/inbound/referral";
+  public static readonly opsLaunchLeads = "/api/launch/ops/leads";
+  public static readonly opsLaunchLeadsUpdate = "/api/launch/ops/leads/update";
   public static readonly createAnalyticsEvent = "/api/analytics/events";
   public static readonly createSessionHeartbeat = "/api/observability/session-heartbeat";
   public static readonly getObservabilityOverview = "/api/observability/overview";

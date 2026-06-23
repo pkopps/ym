@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import {
   PlaceSuggestion,
+  PublicMarketplaceCoverageArea,
   PublicMarketplaceFeaturedProvider,
+  PublicMarketplaceHighlightedReview,
   PublicMarketplaceOverviewResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
@@ -10,6 +13,7 @@ import { faqItems, serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { HomeServiceScroller } from "./HomeServiceScroller";
+import { LaunchLeadCaptureCard } from "./LaunchLeadCaptureCard";
 import {
   CustomerQuickServiceChip,
   CustomerCustomTimingWindow,
@@ -20,6 +24,8 @@ import {
   PublicMarketplaceSearchShell
 } from "./PublicMarketplaceSearchShell";
 import { createWebApiClient } from "../lib/api";
+import { buildSiteUrl, launchAreaLabel } from "../lib/site";
+import { trustPolicyPages } from "../lib/trustPolicyContent";
 import { StructuredData } from "./StructuredData";
 
 const rotatingServices = ["lawn mowing", "cleanup", "hedge trimming", "mulch refresh"] as const;
@@ -30,6 +36,18 @@ function getProviderInitials(provider: PublicMarketplaceFeaturedProvider) {
     .slice(0, 2)
     .map((part) => part.charAt(0).toUpperCase())
     .join("");
+}
+
+function formatHighlightedReviewText(review: PublicMarketplaceHighlightedReview, maxLength = 160) {
+  const normalized = review.reviewText.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function formatCoverageAreaLabel(area: PublicMarketplaceCoverageArea) {
+  return `${area.city}, ${area.state}`;
 }
 
 function MarketplaceProviderRail({
@@ -165,8 +183,12 @@ const quickServiceChips: CustomerQuickServiceChip[] = [
 export function PublicCustomerMarketplacePage() {
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
+  const homeTrustPages = useMemo(
+    () => trustPolicyPages.filter((page) => page.surfaces.includes("home")),
+    []
+  );
   const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
-  const [areaQuery, setAreaQuery] = useState("Brooklyn, NY");
+  const [areaQuery, setAreaQuery] = useState(launchAreaLabel);
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
   const [selectedAdditionalTimings, setSelectedAdditionalTimings] = useState<CustomerTimingPreference[]>([]);
@@ -211,6 +233,32 @@ export function PublicCustomerMarketplacePage() {
 
   const topRatedProviders = overview?.topRatedProviders ?? overview?.featuredProviders ?? [];
   const mostOnTimeProviders = overview?.mostOnTimeProviders ?? overview?.featuredProviders ?? [];
+  const highlightedReviews = useMemo(() => {
+    const reviews = overview?.highlightedReviews ?? [];
+    const categoryMatches = reviews.filter((review) => review.primaryCategory === selectedService);
+    const selected = categoryMatches.length > 0 ? categoryMatches : reviews;
+    return selected.slice(0, 2);
+  }, [overview, selectedService]);
+  const highlightedCoverageAreas = useMemo(() => {
+    const areas = overview?.coverageAreas ?? [];
+    const categoryMatches = areas.filter((area) => area.supportedCategories.includes(selectedService));
+    const selected = categoryMatches.length > 0 ? categoryMatches : areas;
+    return selected.slice(0, 3);
+  }, [overview, selectedService]);
+  const proofStats = [
+    {
+      label: "Verified providers in the live overview",
+      value: overview?.verifiedProviderCount ? String(overview.verifiedProviderCount) : "Growing"
+    },
+    {
+      label: "Average rating across verified providers",
+      value: overview?.averageRating ? `${overview.averageRating.toFixed(1)}★` : "New"
+    },
+    {
+      label: "Active service categories in the launch mix",
+      value: overview?.activeCategoryCount ? String(overview.activeCategoryCount) : "Focused"
+    }
+  ] as const;
 
   return (
     <main className="market-home">
@@ -223,7 +271,7 @@ export function PublicCustomerMarketplacePage() {
             "Marketplace for lawn care bookings, landscaping business operations, and crew-member staffing.",
           potentialAction: {
             "@type": "SearchAction",
-            target: "https://yardmatch.example/customer?query={search_term_string}",
+            target: buildSiteUrl("/customer?query={search_term_string}"),
             "query-input": "required name=search_term_string"
           }
         }}
@@ -269,6 +317,16 @@ export function PublicCustomerMarketplacePage() {
         </div>
       </section>
 
+      <section className="container stack-lg">
+        <LaunchLeadCaptureCard
+          defaultAreaLabel={areaQuery}
+          defaultServiceCategory={selectedService}
+          description="Not ready to commit to a route window yet? Ask GreenRain to confirm coverage, timing, or the right launch service before you jump into the full booking flow."
+          requestSource="public-homepage-lead-form"
+          title="Request a callback or email follow-up"
+        />
+      </section>
+
       {topRatedProviders.length ? (
         <MarketplaceProviderRail
           ctaLabel="See all matches"
@@ -309,6 +367,121 @@ export function PublicCustomerMarketplacePage() {
             <strong>3. Book and track</strong>
             <p>Hold the route window, pay in one flow, and track arrival without chasing texts.</p>
           </article>
+        </div>
+      </section>
+
+      <section className="container stack-lg">
+        <div className="section-header">
+          <h2>What backs the recommendation</h2>
+          <p>Verification, real marketplace signals, and a tighter launch footprint matter more than a giant directory at this stage.</p>
+        </div>
+        <div className="grid-three">
+          {proofStats.map((item) => (
+            <article className="card" key={item.label}>
+              <strong>{item.value}</strong>
+              <p>{item.label}</p>
+            </article>
+          ))}
+        </div>
+        <div className="grid-two">
+          <article className="card">
+            <h3>Why verified supply matters</h3>
+            <p>
+              GreenRain is trying to show verified providers in the public marketplace overview, so
+              the launch trust layer starts with screened local supply instead of open-ended listing
+              volume.
+            </p>
+            <div className="cta-row" style={{ marginTop: "1rem" }}>
+              <Link className="button-secondary" href="/provider-verification">
+                See how provider verification works
+              </Link>
+            </div>
+          </article>
+          <article className="card">
+            <h3>Why the launch radius stays tight</h3>
+            <p>
+              Better trust comes from denser routes, fewer impossible windows, and clearer support
+              follow-through, not from pretending every nearby town is fully covered on day one.
+            </p>
+            <div className="cta-row" style={{ marginTop: "1rem" }}>
+              <Link className="button-secondary" href="/barnegat-nj">
+                See launch-area context
+              </Link>
+            </div>
+          </article>
+        </div>
+        {highlightedReviews.length > 0 ? (
+          <article className="card">
+            <h3>Recent verified customer feedback</h3>
+            <p>
+              These quotes come from completed-booking reviews tied to verified providers in the
+              live marketplace overview.
+            </p>
+            <div className="grid-two" style={{ marginTop: "1rem" }}>
+              {highlightedReviews.map((review) => (
+                <article className="list-panel" key={review.reviewId}>
+                  <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <strong>{review.providerCompanyName}</strong>
+                      <p>
+                        {review.city}, {review.state}
+                        {review.primaryCategory
+                          ? ` • ${serviceCategoryLabels[review.primaryCategory]}`
+                          : ""}
+                      </p>
+                    </div>
+                    <span>{review.overallRating.toFixed(1)}★</span>
+                  </div>
+                  <p>"{formatHighlightedReviewText(review)}"</p>
+                </article>
+              ))}
+            </div>
+          </article>
+        ) : null}
+        {highlightedCoverageAreas.length > 0 ? (
+          <article className="card">
+            <h3>Current coverage pockets</h3>
+            <p>
+              These are the areas where the live marketplace overview already shows verified supply
+              or completed-job proof for the selected service.
+            </p>
+            <div className="grid-three" style={{ marginTop: "1rem" }}>
+              {highlightedCoverageAreas.map((area) => (
+                <article className="list-panel" key={`${area.city}-${area.state}`}>
+                  <strong>{formatCoverageAreaLabel(area)}</strong>
+                  <p>{area.verifiedProviderCount} verified providers</p>
+                  <p>
+                    {area.completedBookingCount} completed jobs tracked
+                    {area.recentCompletedBookingCount > 0
+                      ? ` • ${area.recentCompletedBookingCount} recent`
+                      : ""}
+                  </p>
+                  <p>
+                    {area.supportedCategories
+                      .slice(0, 3)
+                      .map((category) => serviceCategoryLabels[category])
+                      .join(" • ")}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </article>
+        ) : null}
+      </section>
+
+      <section className="container stack-lg">
+        <div className="section-header">
+          <h2>Know the support rules before you book</h2>
+          <p>Clear launch-era expectations around help, cancellations, refunds, and what GreenRain manages after booking.</p>
+        </div>
+        <div className="grid-two">
+          {homeTrustPages.map((page) => (
+            <Link className="list-panel" href={page.href} key={page.id}>
+              <span className="eyebrow">{page.eyebrow}</span>
+              <h3>{page.title}</h3>
+              <p>{page.summary}</p>
+            </Link>
+          ))}
         </div>
       </section>
 

@@ -252,6 +252,8 @@ export const apiSpec = {
       get: {
         tags: ["Providers"],
         summary: "Fetch a provider profile by id",
+        description:
+          "Returns the provider business profile plus backend-authored verification summary guidance, including the current checklist and any next steps the provider can handle before or during launch review.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -266,6 +268,30 @@ export const apiSpec = {
           "400": { description: "Missing providerId" },
           "401": { description: "Missing or invalid bearer token" }
         }
+      },
+      post: {
+        tags: ["Providers"],
+        summary: "Update the authenticated provider's business profile",
+        description:
+          "Lets a provider update verification-relevant business details such as company name, bio, years of experience, and service categories. If a previously rejected provider makes a meaningful change, the business automatically moves back into pending review.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                companyName: "Barnegat Lawn Co.",
+                bio: "Weekly mowing, seasonal cleanup, and careful customer communication for busy homeowners.",
+                yearsExperience: 4,
+                categories: ["lawn-mowing", "seasonal-cleanup"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated provider profile" },
+          "401": { description: "Missing or invalid bearer token" }
+        }
       }
     },
     "/api/providers/public-overview": {
@@ -273,7 +299,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Fetch live public marketplace overview data",
         description:
-          "Returns live aggregate provider counts and a featured provider list for the public GreenRain homepage so customer-facing marketing surfaces do not rely on hardcoded showcase records.",
+          "Returns live aggregate provider counts, featured providers, verified-review snippets, and current coverage-area signals for the public GreenRain surfaces so customer-facing marketing pages do not rely on hardcoded showcase records.",
         responses: {
           "200": { description: "Public marketplace overview" }
         }
@@ -284,7 +310,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "List providers waiting on verification review",
         description:
-          "Returns provider businesses that are still pending review or were sent back for updates before they can appear in public search.",
+          "Returns provider businesses that are still pending review or were sent back for updates before they can appear in public search, along with backend-authored launch-fit guidance and checklist items covering profile completeness, service scope, launch-area fit, service-quality expectations, and intervention readiness so ops can approve or return them consistently. When guidance does not recommend approval, the payload also includes the override-note requirements needed to make an auditable exception.",
         responses: {
           "200": { description: "Provider verification queue" }
         }
@@ -301,7 +327,8 @@ export const apiSpec = {
               example: {
                 providerId: "provider_123",
                 action: "approve",
-                notes: "Business profile looks good and can go live."
+                notes:
+                  "Ops confirmed the provider tightened the launch radius, can meet exception-response expectations, and is safe to release with first-week oversight."
               }
             }
           }
@@ -1652,6 +1679,8 @@ export const apiSpec = {
       post: {
         tags: ["Support"],
         summary: "Open a support ticket",
+        description:
+          "Creates a support ticket for an authenticated user. Booking-linked tickets stay in the normal support flow, while no-booking customer tickets for general or account help also auto-create a linked launch follow-up lead so customer-service questions still land in the owned launch queue without manual re-entry by ops.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1671,12 +1700,190 @@ export const apiSpec = {
         }
       }
     },
+    "/api/launch/leads": {
+      post: {
+        tags: ["Launch"],
+        summary: "Capture a public launch follow-up request",
+        description:
+          "Stores a website follow-up request with privacy-safe attribution metadata, a first-response SLA timestamp, and the details operations need to assign an owner and close the inquiry cleanly instead of letting demand disappear into a generic inbox. The returned lead id can later be linked to self-serve bookings and reviews so ops can see actual conversion activity, and matching email or phone identity can also auto-link manually entered leads later on.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                requestSource: "launch-town-page-lead-form",
+                contactName: "Jamie Homeowner",
+                email: "jamie@example.com",
+                preferredContactMethod: "text",
+                areaLabel: "Barnegat, NJ",
+                serviceCategory: "lawn-mowing",
+                message: "Need help confirming weekly mowing coverage next week."
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Launch lead captured" }
+        }
+      }
+    },
+    "/api/launch/inbound": {
+      post: {
+        tags: ["Launch"],
+        summary: "Capture a non-website inbound launch lead",
+        description:
+          "Server-to-server intake for automated sources like direct email forwarding, Google Business Profile message relays, or referral processors. Requires the shared `x-yardmatch-inbound-secret` header and a source reference id so retries can return the same lead instead of creating duplicates. Channel-mediated sources can also use `preferredContactMethod: platform-message` when the follow-up should happen in the original thread instead of through direct email or phone.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                sourceChannel: "email",
+                requestSource: "direct-email-forward",
+                sourceReferenceId: "msg_123",
+                email: "jamie@example.com",
+                subject: "Coverage question",
+                message: "Do you serve Barnegat yet?"
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Inbound launch lead captured or deduplicated" },
+          "401": { description: "Missing or invalid inbound lead secret" },
+          "503": { description: "Inbound lead webhook secret is not configured yet" }
+        }
+      }
+    },
+    "/api/launch/inbound/email": {
+      post: {
+        tags: ["Launch"],
+        summary: "Capture a direct email inbound launch lead",
+        description:
+          "Specialized server-to-server intake for direct email forwarders. Accepts sender and message fields instead of the full lead schema, then maps them into the launch lead queue using the shared `x-yardmatch-inbound-secret` header and `sourceReferenceId` retry deduplication.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                sourceReferenceId: "email_msg_456",
+                senderEmail: "sam.homeowner@example.com",
+                senderName: "Sam Homeowner",
+                subject: "Need mowing help in Barnegat",
+                textBody: "Can GreenRain handle weekly mowing starting next Tuesday?",
+                areaLabel: "Barnegat, NJ"
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Inbound email launch lead captured or deduplicated" },
+          "401": { description: "Missing or invalid inbound lead secret" },
+          "503": { description: "Inbound lead webhook secret is not configured yet" }
+        }
+      }
+    },
+    "/api/launch/inbound/google-business-profile": {
+      post: {
+        tags: ["Launch"],
+        summary: "Capture a Google Business Profile inbound launch lead",
+        description:
+          "Specialized server-to-server intake for Google Business Profile message relays. Accepts the GBP thread metadata plus customer message text, maps the lead into the launch queue, and defaults follow-up to `platform-message` so ops can work the original GBP thread even when no direct email or phone number is available yet.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                sourceReferenceId: "gbp_thread_789",
+                customerName: "Pat Homeowner",
+                messageText: "Do you service Barnegat for weekly mowing?",
+                threadUrl: "https://business.google.com/messages/thread/gbp_thread_789",
+                profileLocationName: "GreenRain Barnegat",
+                areaLabel: "Barnegat, NJ",
+                serviceCategory: "lawn-mowing"
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Inbound Google Business Profile lead captured or deduplicated" },
+          "401": { description: "Missing or invalid inbound lead secret" },
+          "503": { description: "Inbound lead webhook secret is not configured yet" }
+        }
+      }
+    },
+    "/api/launch/inbound/referral": {
+      post: {
+        tags: ["Launch"],
+        summary: "Capture a referral inbound launch lead",
+        description:
+          "Specialized server-to-server intake for referral processors, referral forms, or other handoff tools. It can follow up through the referred customer when direct contact details are provided, or fall back to the referrer when they are not, while keeping the lead source explicit and retry-safe through `sourceReferenceId` deduplication.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                sourceReferenceId: "ref_123",
+                referrerName: "Alex Neighbor",
+                referrerEmail: "alex@example.com",
+                referredCustomerName: "Jamie Homeowner",
+                areaLabel: "Barnegat, NJ",
+                serviceCategory: "lawn-mowing",
+                messageText: "Neighbor wants help getting weekly mowing started."
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Inbound referral lead captured or deduplicated" },
+          "401": { description: "Missing or invalid inbound lead secret" },
+          "503": { description: "Inbound lead webhook secret is not configured yet" }
+        }
+      }
+    },
+    "/api/launch/ops/leads": {
+      get: {
+        tags: ["Launch"],
+        summary: "List the internal launch lead queue",
+        description:
+          "Returns follow-up requests with owner assignment, response deadlines, follow-up deadlines, attribution context, linked booking or review activity, structured channel metadata for sources like GBP threads or referral fallback contacts, suggested booking matches, and backend-authored response guidance with copy-ready follow-up drafts so ops can work inbound demand by channel instead of relying on manual inbox triage. Conversions can come from explicit website lead ids, later customer identity matching on email or phone, or an ops-side manual attachment when the booking predates the lead.",
+        responses: {
+          "200": { description: "Launch lead queue" }
+        }
+      }
+    },
+    "/api/launch/ops/leads/update": {
+      post: {
+        tags: ["Launch"],
+        summary: "Update a launch lead's owner, follow-up state, or final outcome",
+        description:
+          "Lets ops assign an owner, record the first response, schedule the next follow-up, close the loop with a documented converted or closed-lost outcome, and manually attach a booking when the lead was captured after the customer already booked. Website-linked bookings and reviews can also advance that lead automatically when the customer self-serves.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                leadId: "lead_123",
+                status: "contacted",
+                assignedOwner: "Casey Ops",
+                linkBookingId: "booking_123",
+                nextFollowUpDueAt: "2026-06-18T14:00:00.000Z",
+                outcomeSummary: "Coverage confirmed and waiting on the homeowner's preferred start date."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated launch lead" }
+        }
+      }
+    },
     "/api/support/ops/tickets": {
       get: {
         tags: ["Support"],
         summary: "List the internal support operations queue",
         description:
-          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, and backend-authored resolution policy data so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive resolution guardrails in the client.",
+          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, backend-authored resolution policy data, and copy-ready customer update drafts so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive guardrails or rewriting the next customer message in the client.",
         responses: {
           "200": { description: "Support operations queue" }
         }
@@ -1762,6 +1969,8 @@ export const apiSpec = {
       get: {
         tags: ["Observability"],
         summary: "Fetch the live operational telemetry summary",
+        description:
+          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, and recent telemetry events.",
         responses: {
           "200": { description: "Operations overview" }
         }

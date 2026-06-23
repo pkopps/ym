@@ -10,6 +10,7 @@ import {
   PublicMarketplaceSearchShell,
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
+import { launchAreaLabel } from "../lib/site";
 
 export function CustomerListingsHero({
   initialAreaLabel,
@@ -78,7 +79,7 @@ export function CustomerListingsHero({
   metrics?: Array<{ value: string; label: string }>;
   description?: string;
 }) {
-  const [localAreaQuery, setLocalAreaQuery] = useState(initialAreaLabel ?? "Brooklyn, NY");
+  const [localAreaQuery, setLocalAreaQuery] = useState(initialAreaLabel ?? launchAreaLabel);
   const [localSelectedService, setLocalSelectedService] = useState<ServiceCategory>(initialService ?? "lawn-mowing");
   const [localSelectedSuggestion, setLocalSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [localSelectedTiming, setLocalSelectedTiming] = useState<CustomerTimingPreference>(

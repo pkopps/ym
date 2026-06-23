@@ -41,6 +41,9 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly refundRequested = "refund_requested";
   public static readonly refundCompleted = "refund_completed";
   public static readonly supportTicketOpened = "support_ticket_opened";
+  public static readonly launchLeadCaptured = "launch_lead_captured";
+  public static readonly launchLeadContacted = "launch_lead_contacted";
+  public static readonly launchLeadClosed = "launch_lead_closed";
   public static readonly sessionHeartbeat = "session_heartbeat";
   public static readonly pageViewed = "page_viewed";
 }

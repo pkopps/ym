@@ -3,6 +3,8 @@ import { MarketplaceApiClient, ObservabilityOverview } from "@yardmatch/contract
 import { getWebApiBaseUrl } from "../../lib/api";
 import { NotificationOpsBoard } from "../../components/NotificationOpsBoard";
 import { OpsFinancialExceptionBoard } from "../../components/OpsFinancialExceptionBoard";
+import { OpsLaunchLeadBoard } from "../../components/OpsLaunchLeadBoard";
+import { OpsLaunchPlaybook } from "../../components/OpsLaunchPlaybook";
 import { OpsPayoutRunBoard } from "../../components/OpsPayoutRunBoard";
 import { OpsProviderVerificationQueue } from "../../components/OpsProviderVerificationQueue";
 import { OpsSupportQueue } from "../../components/OpsSupportQueue";
@@ -25,11 +27,11 @@ async function getOverview(): Promise<ObservabilityOverview> {
   try {
     return await api.getObservabilityOverview();
   } catch {
-    return {
-      generatedAt: new Date().toISOString(),
-      totalBookings: 0,
-      requestedBookings: 0,
-      bookingsLast24Hours: 0,
+      return {
+        generatedAt: new Date().toISOString(),
+        totalBookings: 0,
+        requestedBookings: 0,
+        bookingsLast24Hours: 0,
       refundRequestedCount: 0,
       openSupportTickets: 0,
       providerSearches: 0,
@@ -51,12 +53,27 @@ async function getOverview(): Promise<ObservabilityOverview> {
       providerBookingConfirmations: 0,
       providerBookingDeclines: 0,
       customerBookingCancellations: 0,
-      paymentCheckoutStarts: 0,
-      paymentAuthorizations: 0,
-      paymentCaptures: 0,
-      paymentFailures: 0,
-      recommendationMetricsBySource: [],
-      activeUsers5m: 0,
+        paymentCheckoutStarts: 0,
+        paymentAuthorizations: 0,
+        paymentCaptures: 0,
+        paymentFailures: 0,
+        totalReviewInvites: 0,
+        scheduledReviewInvites: 0,
+        sentReviewInvites: 0,
+        openedReviewInvites: 0,
+        completedReviewInvites: 0,
+        expiredReviewInvites: 0,
+        reviewRequestCompletionRate: 0,
+        totalLaunchLeads: 0,
+        openLaunchLeads: 0,
+        overdueLaunchLeads: 0,
+        firstResponseOverdueLaunchLeads: 0,
+        followUpOverdueLaunchLeads: 0,
+        convertedLaunchLeads: 0,
+        closedLostLaunchLeads: 0,
+        launchLeadSourceMetrics: [],
+        recommendationMetricsBySource: [],
+        activeUsers5m: 0,
       activeCustomers5m: 0,
       activeProviders5m: 0,
       activeCrewMembers5m: 0,
@@ -174,6 +191,36 @@ export default async function OpsPage() {
 
       <section className="grid-three">
         <article className="card">
+          <h2>{overview.openLaunchLeads}</h2>
+          <p>Open launch leads needing follow-up</p>
+        </article>
+        <article className="card">
+          <h2>{overview.overdueLaunchLeads}</h2>
+          <p>Launch leads currently overdue</p>
+        </article>
+        <article className="card">
+          <h2>{overview.convertedLaunchLeads}</h2>
+          <p>Launch leads already converted</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.firstResponseOverdueLaunchLeads}</h2>
+          <p>First responses overdue</p>
+        </article>
+        <article className="card">
+          <h2>{overview.followUpOverdueLaunchLeads}</h2>
+          <p>Follow-up actions overdue</p>
+        </article>
+        <article className="card">
+          <h2>{overview.closedLostLaunchLeads}</h2>
+          <p>Launch leads closed lost</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
           <h2>{overview.paymentCheckoutStarts}</h2>
           <p>Stripe checkout sessions started</p>
         </article>
@@ -192,6 +239,21 @@ export default async function OpsPage() {
         <article className="card">
           <h2>{overview.refundRequestedCount}</h2>
           <p>Refund requests raised</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.totalReviewInvites}</h2>
+          <p>Review requests created</p>
+        </article>
+        <article className="card">
+          <h2>{overview.completedReviewInvites}</h2>
+          <p>Reviews received from invite flow</p>
+        </article>
+        <article className="card">
+          <h2>{formatRate(overview.reviewRequestCompletionRate)}</h2>
+          <p>Review request completion rate</p>
         </article>
       </section>
 
@@ -258,6 +320,51 @@ export default async function OpsPage() {
               <p>Crew members active in the last 5 minutes</p>
             </article>
           </div>
+        </article>
+        <article className="card">
+          <h2>Launch lead sources</h2>
+          {overview.launchLeadSourceMetrics.length === 0 ? (
+            <p>No launch lead activity yet.</p>
+          ) : (
+            <ul className="timeline">
+              {overview.launchLeadSourceMetrics.slice(0, 5).map((metric) => (
+                <li key={metric.sourceChannel}>
+                  <strong>{metric.sourceChannel.replaceAll("-", " ")}</strong>
+                  <span>
+                    {metric.totalCount} total
+                    {` • ${metric.openCount} open`}
+                    {metric.overdueCount ? ` • ${metric.overdueCount} overdue` : ""}
+                    {metric.convertedCount ? ` • ${metric.convertedCount} converted` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </article>
+        <article className="card">
+          <h2>Review workflow</h2>
+          <ul className="timeline">
+            <li>
+              <strong>1</strong>
+              <span>{overview.scheduledReviewInvites} review invites still scheduled</span>
+            </li>
+            <li>
+              <strong>2</strong>
+              <span>{overview.sentReviewInvites} review invites already sent</span>
+            </li>
+            <li>
+              <strong>3</strong>
+              <span>{overview.openedReviewInvites} review invites opened</span>
+            </li>
+            <li>
+              <strong>4</strong>
+              <span>{overview.completedReviewInvites} invites completed into real reviews</span>
+            </li>
+            <li>
+              <strong>5</strong>
+              <span>{overview.expiredReviewInvites} invites expired without a review</span>
+            </li>
+          </ul>
         </article>
       </section>
 
@@ -333,9 +440,11 @@ export default async function OpsPage() {
         </article>
       </section>
 
+      <OpsLaunchPlaybook />
       <NotificationOpsBoard />
       <OpsPayoutRunBoard />
       <OpsFinancialExceptionBoard />
+      <OpsLaunchLeadBoard />
       <OpsProviderVerificationQueue />
       <OpsSupportQueue />
     </main>

@@ -19,6 +19,7 @@ import {
   RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
+  LaunchLead,
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
@@ -32,6 +33,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly bookings: Booking[] = [];
   private readonly recurringServicePlans: RecurringServicePlan[] = [];
   private readonly payments: PaymentRecord[] = [];
+  private readonly launchLeads: LaunchLead[] = [];
   private readonly providerReviews: ProviderReview[] = [];
   private readonly reviewInvites: ReviewInvite[] = [];
   private readonly supportTickets: SupportTicket[] = [];
@@ -226,6 +228,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return invite;
   }
 
+  public async listReviewInvites(): Promise<ReviewInvite[]> {
+    return this.reviewInvites.map((invite) => ({ ...invite }));
+  }
+
   public async listReviewInvitesByCustomer(customerId: string): Promise<ReviewInvite[]> {
     return this.reviewInvites
       .filter((invite) => invite.customerId === customerId)
@@ -319,6 +325,38 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
     Object.assign(payment, updates);
     return payment;
+  }
+
+  public async createLaunchLead(lead: LaunchLead): Promise<LaunchLead> {
+    this.launchLeads.push(lead);
+    return lead;
+  }
+
+  public async listLaunchLeads(): Promise<LaunchLead[]> {
+    return this.launchLeads.map((lead) => ({ ...lead }));
+  }
+
+  public async findLaunchLeadById(leadId: string): Promise<LaunchLead | undefined> {
+    const lead = this.launchLeads.find((item) => item.id === leadId);
+    return lead ? { ...lead } : undefined;
+  }
+
+  public async findLaunchLeadBySourceReferenceId(sourceReferenceId: string): Promise<LaunchLead | undefined> {
+    const lead = this.launchLeads.find((item) => item.sourceReferenceId === sourceReferenceId);
+    return lead ? { ...lead } : undefined;
+  }
+
+  public async updateLaunchLead(
+    leadId: string,
+    updates: Partial<LaunchLead>
+  ): Promise<LaunchLead | undefined> {
+    const lead = this.launchLeads.find((item) => item.id === leadId);
+    if (!lead) {
+      return undefined;
+    }
+
+    Object.assign(lead, updates);
+    return lead;
   }
 
   public async createSupportTicket(ticket: SupportTicket): Promise<SupportTicket> {

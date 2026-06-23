@@ -23,6 +23,10 @@ import {
   CreateCheckoutSessionResponse,
   CreateBookingDisputeRequest,
   CreateExternalCalendarImportRequest,
+  CreateInboundEmailLaunchLeadRequest,
+  CreateInboundGoogleBusinessProfileLeadRequest,
+  CreateInboundLaunchLeadRequest,
+  CreateInboundReferralLaunchLeadRequest,
   CrewMatchSummary,
   CrewMatchesResponse,
   CrewOpportunity,
@@ -63,8 +67,11 @@ import {
   CreateOpsBookingInterventionRequest,
   ReviewBookingEvidenceForOpsRequest,
   CreateRefundRequest,
+  CreateLaunchLeadRequest,
   CreateSupportTicketRequest,
+  LaunchLead,
   ObservabilityOverview,
+  OpsLaunchLead,
   ProviderCrewConversation,
   ProviderCalendarSubscriptionResponse,
   ProviderCalendarImportsResponse,
@@ -104,7 +111,9 @@ import {
   CrewPayoutLedgerResponse,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
+  UpdateProviderProfileRequest,
   UpdateProviderSettingsRequest,
+  UpdateLaunchLeadRequest,
   UpdateSupportTicketRequest,
   UpdateBookingAddressRequest,
   StartBookingRequest
@@ -303,6 +312,10 @@ export class MarketplaceApiClient {
 
   public updateProviderSettings(payload: UpdateProviderSettingsRequest) {
     return this.postJson<ProviderProfile>(ApiRoutes.updateProviderSettings, payload);
+  }
+
+  public updateProviderProfile(payload: UpdateProviderProfileRequest) {
+    return this.postJson<ProviderProfile>(ApiRoutes.updateProviderProfile, payload);
   }
 
   public runProviderAssistantCommand(payload: ProviderAssistantCommandRequest) {
@@ -585,12 +598,40 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.createRefund, payload);
   }
 
-  public createSupportTicket(payload: CreateSupportTicketRequest) {
+  public createSupportTicket(payload: CreateSupportTicketRequest): Promise<SupportTicket> {
     return this.postJson(ApiRoutes.createSupportTicket, payload);
+  }
+
+  public createLaunchLead(payload: CreateLaunchLeadRequest): Promise<LaunchLead> {
+    return this.postJson(ApiRoutes.launchLeads, payload);
+  }
+
+  public createInboundLaunchLead(payload: CreateInboundLaunchLeadRequest): Promise<LaunchLead> {
+    return this.postJson(ApiRoutes.inboundLaunchLeads, payload);
+  }
+
+  public createInboundEmailLaunchLead(payload: CreateInboundEmailLaunchLeadRequest): Promise<LaunchLead> {
+    return this.postJson(ApiRoutes.inboundLaunchEmail, payload);
+  }
+
+  public createInboundGoogleBusinessProfileLead(
+    payload: CreateInboundGoogleBusinessProfileLeadRequest
+  ): Promise<LaunchLead> {
+    return this.postJson(ApiRoutes.inboundLaunchGoogleBusinessProfile, payload);
+  }
+
+  public createInboundReferralLaunchLead(
+    payload: CreateInboundReferralLaunchLeadRequest
+  ): Promise<LaunchLead> {
+    return this.postJson(ApiRoutes.inboundLaunchReferral, payload);
   }
 
   public getSupportTickets(): Promise<SupportTicket[]> {
     return this.getJson(ApiRoutes.supportTickets);
+  }
+
+  public getOpsLaunchLeads(): Promise<OpsLaunchLead[]> {
+    return this.getJson(ApiRoutes.opsLaunchLeads);
   }
 
   public getOpsSupportTickets(): Promise<SupportOpsTicket[]> {
@@ -615,6 +656,10 @@ export class MarketplaceApiClient {
 
   public updateOpsSupportTicket(payload: UpdateSupportTicketRequest): Promise<SupportTicket> {
     return this.postJson(ApiRoutes.opsSupportTicketsUpdate, payload);
+  }
+
+  public updateOpsLaunchLead(payload: UpdateLaunchLeadRequest) {
+    return this.postJson(ApiRoutes.opsLaunchLeadsUpdate, payload);
   }
 
   public processReviewInvites(

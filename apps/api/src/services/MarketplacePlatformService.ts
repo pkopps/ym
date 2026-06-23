@@ -47,6 +47,8 @@ import {
   ProviderPayoutLedgerEntry,
   ProviderPayoutLedgerResponse,
   PublicMarketplaceOverviewResponse,
+  PublicMarketplaceHighlightedReview,
+  PublicMarketplaceCoverageArea,
   CrewOpportunity,
   CrewPayoutLedgerEntry,
   CrewPayoutLedgerResponse,
@@ -72,7 +74,15 @@ import {
   RequestPasswordResetRequest,
   RequestPasswordResetResponse,
   CreateRefundRequest,
+  CreateInboundEmailLaunchLeadRequest,
+  CreateInboundGoogleBusinessProfileLeadRequest,
+  CreateInboundLaunchLeadRequest,
+  CreateInboundReferralLaunchLeadRequest,
+  CreateLaunchLeadRequest,
   CreateSupportTicketRequest,
+  LaunchLeadReplyTemplate,
+  LaunchLeadResponseGuidance,
+  UpdateLaunchLeadRequest,
   UpdateSupportTicketRequest,
   Booking,
   BookingServiceWindowKey,
@@ -95,6 +105,7 @@ import {
   RecurringServicePlan,
   RecurringServicePlanSummary,
   ProviderProfile,
+  ProviderVerificationStatusSummary,
   ProviderVerificationQueueItem,
   ExternalCalendarBlock,
   ExternalCalendarSubscription,
@@ -118,6 +129,12 @@ import {
   RescheduleBookingRequest,
   ReviewInvite,
   ReviewInviteDispatch,
+  LaunchLead,
+  LaunchLeadBookingMatch,
+  LaunchLeadStatus,
+  LaunchLeadLossReason,
+  LaunchLeadSourceChannel,
+  LaunchLeadContactPreference,
   ClearBookingRouteStopRequest,
   SendCustomerProviderMessageRequest,
   SendProviderCrewMessageRequest,
@@ -134,13 +151,16 @@ import {
   UpdateBookingRouteLocationRequest,
   UpdateCrewPreferencesRequest,
   UpdateNotificationPreferencesRequest,
+  UpdateProviderProfileRequest,
   RegisterPushDeviceRequest,
   RemovePushDeviceRequest,
   UpdateProviderSettingsRequest,
   SupportTicket,
+  LaunchAttributionContext,
   SupportTimelineActorRole,
   SupportTimelineEntry,
   SupportOpsTicket,
+  OpsLaunchLead,
   SyncExternalCalendarImportRequest,
   UpdateBookingAddressRequest,
   UpdateBookingAddressResponse
@@ -209,7 +229,10 @@ type ParsedProviderAssistantCommand = {
   exceptionNotes?: string;
 };
 
+type LaunchLeadLinkMode = "explicit-id" | "email-match" | "phone-match";
+
 const MIN_DETAILED_SUPPORT_RATIONALE_LENGTH = 48;
+const MIN_PROVIDER_APPROVAL_OVERRIDE_NOTE_LENGTH = 56;
 
 const GENERIC_SUPPORT_RESOLUTION_NOTES = [
   "support approved the refund review and reversed the customer payment.",
@@ -223,12 +246,20 @@ const GENERIC_SUPPORT_RESOLUTION_NOTES = [
   "support reviewed the dispute and kept the booking marked complete."
 ] as const;
 
+const GENERIC_PROVIDER_APPROVAL_OVERRIDE_NOTES = [
+  "ops approved the business for public marketplace visibility after checking launch fit and operational readiness.",
+  "ops approved the business after manual verification review confirmed the launch fit was acceptable.",
+  "business profile is complete and ready to go live.",
+  "provider looks ready for launch visibility."
+] as const;
+
 export class MarketplacePlatformService {
   private static readonly reviewInviteDelayHours = 48;
   private static readonly reviewInviteExpiryDays = 30;
   private static readonly liveRouteLocationStaleMinutes = 5;
   private static readonly routeStopReachedThresholdMiles = 0.12;
   private static readonly routeStopDwellMinutes = 6;
+  private static readonly launchLeadFirstResponseSlaMinutes = 120;
   private readonly payoutHoldHours = 48;
   private readonly instantPayoutMinimumCents = 10_000;
   private readonly crewPayoutWeekday: CrewAvailabilityDay = "Fri";
@@ -779,7 +810,8 @@ export class MarketplacePlatformService {
       dateIso: payload.dateIso,
       categoryCount: payload.categories.length,
       city: normalizedAddress.city,
-      requestSource: payload.requestSource ?? "unknown"
+      requestSource: payload.requestSource ?? "unknown",
+      ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
     });
 
     const [providers, bookings] = await Promise.all([
@@ -870,7 +902,8 @@ export class MarketplacePlatformService {
         providerCount: matchingProviders.length,
         slotCount: suggestedSlots.length,
         city: normalizedAddress.city,
-        requestSource: payload.requestSource ?? "unknown"
+        requestSource: payload.requestSource ?? "unknown",
+        ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
       }
     });
 
@@ -884,7 +917,8 @@ export class MarketplacePlatformService {
           providerCount: 0,
           slotCount: 0,
           city: normalizedAddress.city,
-          requestSource: payload.requestSource ?? "unknown"
+          requestSource: payload.requestSource ?? "unknown",
+          ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
         }
       });
     } else if (suggestedSlots.length === 0) {
@@ -897,7 +931,8 @@ export class MarketplacePlatformService {
           providerCount: matchingProviders.length,
           slotCount: 0,
           city: normalizedAddress.city,
-          requestSource: payload.requestSource ?? "unknown"
+          requestSource: payload.requestSource ?? "unknown",
+          ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
         }
       });
     }
@@ -913,7 +948,8 @@ export class MarketplacePlatformService {
           providerCount: matchingProviders.length,
           city: normalizedAddress.city,
           hasOpenSlot: Boolean(rankedProviders[0]?.hasOpenSlot),
-          requestSource: payload.requestSource ?? "unknown"
+          requestSource: payload.requestSource ?? "unknown",
+          ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
         }
       });
     }
@@ -928,9 +964,12 @@ export class MarketplacePlatformService {
   }
 
   public async getPublicMarketplaceOverview(): Promise<PublicMarketplaceOverviewResponse> {
-    const providers = (await this.repository.listProviders()).filter(
-      (provider) => provider.verificationStatus === "verified"
-    );
+    const [allProviders, bookings] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listBookings()
+    ]);
+    const providers = allProviders.filter((provider) => provider.verificationStatus === "verified");
+    const providerMap = new Map(providers.map((provider) => [provider.id, provider]));
     const mapFeaturedProvider = (provider: ProviderProfile) => ({
       id: provider.id,
       companyName: provider.companyName,
@@ -989,6 +1028,17 @@ export class MarketplacePlatformService {
       })
       .slice(0, 8)
       .map(mapFeaturedProvider);
+    const highlightedReviews = (
+      await Promise.all(
+        providers.map(async (provider) => {
+          const reviews = await this.repository.listProviderReviews(provider.id);
+          return reviews.map((review) => this.mapPublicHighlightedReview(provider, review));
+        })
+      )
+    )
+      .flat()
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+      .slice(0, 6);
 
     const averageRating =
       providers.length > 0
@@ -1002,6 +1052,7 @@ export class MarketplacePlatformService {
     const activeCategoryCount = new Set(
       providers.flatMap((provider) => provider.categories)
     ).size;
+    const coverageAreas = this.buildPublicCoverageAreas(providers, bookings, providerMap);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -1010,8 +1061,117 @@ export class MarketplacePlatformService {
       activeCategoryCount,
       featuredProviders,
       topRatedProviders,
-      mostOnTimeProviders
+      mostOnTimeProviders,
+      highlightedReviews,
+      coverageAreas
     };
+  }
+
+  private mapPublicHighlightedReview(
+    provider: ProviderProfile,
+    review: ProviderReview
+  ): PublicMarketplaceHighlightedReview {
+    return {
+      reviewId: review.id,
+      providerId: provider.id,
+      providerCompanyName: provider.companyName,
+      city: provider.address.city,
+      state: provider.address.state,
+      primaryCategory: provider.categories[0],
+      overallRating: review.overallRating,
+      reviewText: review.reviewText,
+      createdAt: review.createdAt
+    };
+  }
+
+  private buildPublicCoverageAreas(
+    providers: ProviderProfile[],
+    bookings: Booking[],
+    providerMap: Map<string, ProviderProfile>
+  ): PublicMarketplaceCoverageArea[] {
+    const recentWindowMs = 90 * 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const areaMap = new Map<
+      string,
+      {
+        city: string;
+        state: string;
+        providerIds: Set<string>;
+        completedBookingCount: number;
+        recentCompletedBookingCount: number;
+        supportedCategories: Set<ProviderProfile["categories"][number]>;
+      }
+    >();
+
+    const touchArea = (address: Address) => {
+      const city = this.toTitleCase(this.normalizeAddressText(address.city));
+      const state = this.normalizeAddressText(address.state).toUpperCase();
+      const key = `${city.toLowerCase()}|${state.toLowerCase()}`;
+      const current = areaMap.get(key);
+      if (current) {
+        return current;
+      }
+
+      const created = {
+        city,
+        state,
+        providerIds: new Set<string>(),
+        completedBookingCount: 0,
+        recentCompletedBookingCount: 0,
+        supportedCategories: new Set<ProviderProfile["categories"][number]>()
+      };
+      areaMap.set(key, created);
+      return created;
+    };
+
+    for (const provider of providers) {
+      const area = touchArea(provider.address);
+      area.providerIds.add(provider.id);
+      provider.categories.forEach((category) => area.supportedCategories.add(category));
+    }
+
+    for (const booking of bookings) {
+      const provider = providerMap.get(booking.providerId);
+      if (!provider || booking.status !== "completed") {
+        continue;
+      }
+
+      const area = touchArea(booking.serviceAddress);
+      area.providerIds.add(provider.id);
+      area.completedBookingCount += 1;
+      area.supportedCategories.add(booking.category);
+
+      const completedAtMs = Date.parse(booking.completedAt ?? booking.scheduledEndIso);
+      if (Number.isFinite(completedAtMs) && nowMs - completedAtMs <= recentWindowMs) {
+        area.recentCompletedBookingCount += 1;
+      }
+    }
+
+    return [...areaMap.values()]
+      .map((area) => ({
+        city: area.city,
+        state: area.state,
+        verifiedProviderCount: area.providerIds.size,
+        completedBookingCount: area.completedBookingCount,
+        recentCompletedBookingCount: area.recentCompletedBookingCount,
+        supportedCategories: [...area.supportedCategories].sort()
+      }))
+      .sort((left, right) => {
+        if (right.recentCompletedBookingCount !== left.recentCompletedBookingCount) {
+          return right.recentCompletedBookingCount - left.recentCompletedBookingCount;
+        }
+        if (right.completedBookingCount !== left.completedBookingCount) {
+          return right.completedBookingCount - left.completedBookingCount;
+        }
+        if (right.verifiedProviderCount !== left.verifiedProviderCount) {
+          return right.verifiedProviderCount - left.verifiedProviderCount;
+        }
+        if (left.state !== right.state) {
+          return left.state.localeCompare(right.state);
+        }
+        return left.city.localeCompare(right.city);
+      })
+      .slice(0, 6);
   }
 
   public async getProviderProfile(providerId: string): Promise<ProviderProfile> {
@@ -1020,7 +1180,13 @@ export class MarketplacePlatformService {
       throw new Error("Provider not found");
     }
 
-    return provider;
+    const openBookingCount = this.countOpenProviderBookings(provider.id, await this.repository.listBookings());
+    const guidance = this.buildProviderVerificationGuidance(provider, openBookingCount);
+
+    return {
+      ...provider,
+      verificationSummary: this.buildProviderVerificationStatusSummary(provider, guidance)
+    };
   }
 
   public async listProviderVerificationQueue(): Promise<ProviderVerificationQueueItem[]> {
@@ -1031,22 +1197,72 @@ export class MarketplacePlatformService {
 
     return providers
       .filter((provider) => provider.verificationStatus !== "verified")
-      .map((provider) => ({
-        provider,
-        openBookingCount: bookings.filter(
-          (booking) =>
-            booking.providerId === provider.id &&
-            booking.status !== "completed" &&
-            booking.status !== "cancelled" &&
-            booking.status !== "refunded"
-        ).length,
-        reviewCount: provider.reviewCount
-      }))
+      .map((provider) => {
+        const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
+
+        return {
+          provider,
+          openBookingCount,
+          reviewCount: provider.reviewCount,
+          guidance: this.buildProviderVerificationGuidance(provider, openBookingCount)
+        };
+      })
       .sort((left, right) => {
         const rightSubmitted = right.provider.verificationSubmittedAt ?? right.provider.createdAt;
         const leftSubmitted = left.provider.verificationSubmittedAt ?? left.provider.createdAt;
         return rightSubmitted.localeCompare(leftSubmitted);
       });
+  }
+
+  public async updateProviderProfile(
+    providerId: string,
+    payload: UpdateProviderProfileRequest
+  ): Promise<ProviderProfile> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new Error("Provider not found");
+    }
+
+    const companyName = payload.companyName?.trim() ?? provider.companyName;
+    if (companyName.length < 2) {
+      throw new Error("companyName must be at least 2 characters");
+    }
+
+    const bio = payload.bio?.trim() ?? provider.bio;
+    if (bio.length < 10) {
+      throw new Error("bio must be at least 10 characters");
+    }
+
+    const rawYearsExperience = payload.yearsExperience ?? provider.yearsExperience ?? 0;
+    const yearsExperience = Math.round(rawYearsExperience);
+    if (!Number.isFinite(yearsExperience) || yearsExperience < 0 || yearsExperience > 60) {
+      throw new Error("yearsExperience must be between 0 and 60");
+    }
+
+    const categories = payload.categories
+      ? Array.from(new Set(payload.categories))
+      : provider.categories;
+    if (categories.length === 0) {
+      throw new Error("Select at least one service category");
+    }
+
+    const profileUpdates: Partial<ProviderProfile> = {
+      companyName,
+      bio,
+      yearsExperience,
+      categories
+    };
+
+    const updatedProvider = await this.repository.updateProvider(provider.id, {
+      ...profileUpdates,
+      ...this.buildRejectedProviderVerificationResubmissionUpdates(provider, profileUpdates)
+    });
+
+    if (!updatedProvider) {
+      throw new Error("Provider profile could not be updated");
+    }
+
+    return this.getProviderProfile(provider.id);
   }
 
   public async reviewProviderVerification(
@@ -1060,6 +1276,25 @@ export class MarketplacePlatformService {
     const notes = payload.notes?.trim();
     if (payload.action === "reject" && !notes) {
       throw new HttpError(400, "Notes are required when rejecting a provider verification");
+    }
+
+    if (payload.action === "approve") {
+      const openBookingCount = (await this.repository.listBookings()).filter(
+        (booking) =>
+          booking.providerId === provider.id &&
+          booking.status !== "completed" &&
+          booking.status !== "cancelled" &&
+          booking.status !== "refunded"
+      ).length;
+      const guidance = this.buildProviderVerificationGuidance(provider, openBookingCount);
+
+      if (guidance.requiresApprovalOverrideNotes && !this.isDetailedProviderApprovalOverrideNote(notes)) {
+        throw new HttpError(
+          400,
+          guidance.approvalOverridePrompt ??
+            "Add a specific approval override note before sending this provider live."
+        );
+      }
     }
 
     const updatedProvider = await this.repository.updateProvider(provider.id, {
@@ -1093,6 +1328,347 @@ export class MarketplacePlatformService {
     });
 
     return updatedProvider;
+  }
+
+  private buildProviderVerificationGuidance(
+    provider: ProviderProfile,
+    openBookingCount: number
+  ): ProviderVerificationQueueItem["guidance"] {
+    const checklist: ProviderVerificationQueueItem["guidance"]["checklist"] = [];
+
+    const normalizedBio = provider.bio.trim();
+    checklist.push({
+      key: "profile-completeness",
+      label: "Profile completeness",
+      status: normalizedBio.length >= 40 ? "ready" : normalizedBio.length >= 20 ? "review" : "missing",
+      detail:
+        normalizedBio.length >= 40
+          ? "The business profile has enough detail for a customer-facing launch listing."
+          : normalizedBio.length >= 20
+            ? "The profile exists, but the business description is still thin for a trust-sensitive launch."
+            : "The business profile needs a fuller customer-facing description before going live."
+    });
+
+    checklist.push({
+      key: "service-scope",
+      label: "Service scope fit",
+      status: provider.categories.length >= 1 ? "ready" : "missing",
+      detail:
+        provider.categories.length >= 1
+          ? `Current service scope: ${provider.categories
+              .map((category) => this.titleCaseCategory(category))
+              .join(", ")}.`
+          : "No launch service categories are configured yet."
+    });
+
+    checklist.push({
+      key: "launch-area-fit",
+      label: "Launch-area fit",
+      status:
+        provider.serviceRadiusMiles <= 25 ? "ready" : provider.serviceRadiusMiles <= 35 ? "review" : "missing",
+      detail:
+        provider.serviceRadiusMiles <= 25
+          ? `A ${provider.serviceRadiusMiles}-mile radius is still tight enough for a dense launch route.`
+          : provider.serviceRadiusMiles <= 35
+            ? `A ${provider.serviceRadiusMiles}-mile radius may be workable, but ops should confirm it does not stretch the launch pocket too thin.`
+            : `A ${provider.serviceRadiusMiles}-mile radius is too broad for the current launch density and needs tightening before go-live.`
+    });
+
+    checklist.push({
+      key: "experience-signal",
+      label: "Experience signal",
+      status:
+        provider.yearsExperience >= 3 ? "ready" : provider.yearsExperience >= 1 ? "review" : "missing",
+      detail:
+        provider.yearsExperience >= 3
+          ? `${provider.yearsExperience} years of experience is strong enough for launch visibility.`
+          : provider.yearsExperience >= 1
+            ? `${provider.yearsExperience} year of experience may be acceptable, but ops should confirm service reliability expectations directly.`
+            : "Experience history is too light to approve without a stronger ops review."
+    });
+
+    checklist.push({
+      key: "operational-readiness",
+      label: "Operational readiness",
+      status:
+        provider.minimumBookingLeadHours <= 24 && openBookingCount <= 5
+          ? "ready"
+          : provider.minimumBookingLeadHours <= 48 && openBookingCount <= 8
+            ? "review"
+            : "missing",
+      detail:
+        provider.minimumBookingLeadHours <= 24 && openBookingCount <= 5
+          ? `Lead time and current open workload look manageable for launch.`
+          : provider.minimumBookingLeadHours <= 48 && openBookingCount <= 8
+            ? `Ops should confirm that a ${provider.minimumBookingLeadHours}-hour lead window and ${openBookingCount} open bookings will not create a fragile launch experience.`
+            : `Current lead-time or workload settings suggest the provider is not yet ready for a low-friction launch experience.`
+    });
+
+    checklist.push({
+      key: "service-quality-expectations",
+      label: "Service-quality expectations",
+      status:
+        provider.yearsExperience >= 3
+          ? "ready"
+          : provider.yearsExperience >= 1
+            ? "review"
+            : "missing",
+      detail:
+        provider.yearsExperience >= 3
+          ? "Experience level is high enough that ops can hold this provider to normal launch service-quality expectations."
+          : provider.yearsExperience >= 1
+            ? "Ops should confirm how this provider handles evidence, service recovery, and customer communication before go-live."
+            : "Service-quality expectations need an explicit ops review before this provider should be exposed publicly."
+    });
+
+    checklist.push({
+      key: "intervention-readiness",
+      label: "Intervention readiness",
+      status:
+        provider.crewReviewLeadHours >= 24 &&
+        provider.departureReminderLeadMinutes >= 30 &&
+        Boolean(provider.staffingMode)
+          ? "ready"
+          : provider.crewReviewLeadHours >= 12 && provider.departureReminderLeadMinutes > 0
+            ? "review"
+            : "missing",
+      detail:
+        provider.crewReviewLeadHours >= 24 &&
+        provider.departureReminderLeadMinutes >= 30 &&
+        Boolean(provider.staffingMode)
+          ? "The current staffing and route settings are aligned with launch intervention and escalation expectations."
+          : provider.crewReviewLeadHours >= 12 && provider.departureReminderLeadMinutes > 0
+            ? "Ops should confirm the provider can follow launch rules for late updates, exceptions, and support handoffs."
+            : "Current staffing or route settings do not yet support the intervention standards expected during launch."
+    });
+
+    const missingCount = checklist.filter((item) => item.status === "missing").length;
+    const reviewCount = checklist.filter((item) => item.status === "review").length;
+    const warnings: string[] = [];
+
+    if (provider.serviceRadiusMiles > 25) {
+      warnings.push("Confirm the real service pocket before exposing this provider in customer search.");
+    }
+    if (provider.minimumBookingLeadHours > 24) {
+      warnings.push("Long lead-time settings may undercut the launch promise of fast managed booking.");
+    }
+    if (normalizedBio.length < 40) {
+      warnings.push("The public profile still needs a stronger trust signal before launch traffic ramps.");
+    }
+    if (provider.yearsExperience < 3) {
+      warnings.push("Confirm the provider understands the launch service-quality bar before approving public visibility.");
+    }
+    if (provider.crewReviewLeadHours < 24 || provider.departureReminderLeadMinutes < 30) {
+      warnings.push("Double-check late-update, exception, and staffing escalation readiness before go-live.");
+    }
+
+    if (missingCount > 0) {
+      return {
+        recommendedAction: "reject",
+        rationale:
+          "One or more launch-readiness basics are missing, so ops should send this provider back with explicit changes before go-live.",
+        warnings,
+        checklist,
+        requiresApprovalOverrideNotes: true,
+        approvalOverridePrompt:
+          "Document the specific missing launch-readiness gaps you reviewed and why approving this provider is still safe right now.",
+        minimumApprovalOverrideNoteLength: MIN_PROVIDER_APPROVAL_OVERRIDE_NOTE_LENGTH,
+        disallowedApprovalOverrideNotes: [...GENERIC_PROVIDER_APPROVAL_OVERRIDE_NOTES]
+      };
+    }
+
+    if (reviewCount > 0) {
+      return {
+        recommendedAction: "manual-review",
+        rationale:
+          "The provider may be viable, but ops should confirm route density, service scope, and reliability expectations before approving public visibility.",
+        warnings,
+        checklist,
+        requiresApprovalOverrideNotes: true,
+        approvalOverridePrompt:
+          "Document the specific launch-fit checks you completed and why this provider is still ready to go live despite the checklist watchouts.",
+        minimumApprovalOverrideNoteLength: MIN_PROVIDER_APPROVAL_OVERRIDE_NOTE_LENGTH,
+        disallowedApprovalOverrideNotes: [...GENERIC_PROVIDER_APPROVAL_OVERRIDE_NOTES]
+      };
+    }
+
+    return {
+      recommendedAction: "approve",
+      rationale:
+        "The profile, service scope, launch-area fit, and operational settings all look ready for recommendation-first launch visibility.",
+      warnings,
+      checklist,
+      requiresApprovalOverrideNotes: false
+    };
+  }
+
+  private buildProviderVerificationStatusSummary(
+    provider: ProviderProfile,
+    guidance: ProviderVerificationQueueItem["guidance"]
+  ): ProviderVerificationStatusSummary {
+    const nextSteps = this.buildProviderVerificationNextSteps(
+      guidance.checklist,
+      provider.verificationStatus
+    );
+
+    if (provider.verificationStatus === "verified") {
+      return {
+        headline: "Your business is verified and visible in search.",
+        summary:
+          nextSteps.length > 0
+            ? "Customers can already discover this business in public YardMatch search results. Keep the flagged launch details current so the listing stays in good standing."
+            : "Customers can now discover this business in public YardMatch search results.",
+        nextSteps,
+        checklist: guidance.checklist
+      };
+    }
+
+    if (provider.verificationStatus === "rejected") {
+      return {
+        headline: "Your business needs a few updates before it can go live.",
+        summary:
+          provider.verificationNotes?.trim() ??
+          "Ops reviewed the business and needs the items below updated before it can be shown to customers.",
+        nextSteps,
+        checklist: guidance.checklist
+      };
+    }
+
+    if (provider.verificationReviewedAt && provider.verificationNotes?.trim()) {
+      return {
+        headline: "Your business is back in review after the latest updates.",
+        summary: `Ops is re-reviewing the business. Last review note: ${provider.verificationNotes.trim()}`,
+        nextSteps,
+        checklist: guidance.checklist
+      };
+    }
+
+    return {
+      headline: "Your business is pending review before it appears in search.",
+      summary:
+        guidance.recommendedAction === "manual-review"
+          ? "Ops is checking route fit, service scope, and reliability details before this business goes live."
+          : "Ops will review the business profile, service area, and marketplace details before customers can book.",
+      nextSteps,
+      checklist: guidance.checklist
+    };
+  }
+
+  private buildProviderVerificationNextSteps(
+    checklist: ProviderVerificationQueueItem["guidance"]["checklist"],
+    verificationStatus: ProviderProfile["verificationStatus"]
+  ) {
+    const steps = checklist
+      .filter((item) => item.status !== "ready")
+      .map((item) => this.getProviderVerificationNextStep(item.key));
+    const uniqueSteps = Array.from(new Set(steps));
+
+    if (verificationStatus === "rejected" && uniqueSteps.length > 0) {
+      return [
+        "Update the profile or dispatch settings below and save them to send the business back into ops review automatically.",
+        ...uniqueSteps
+      ];
+    }
+
+    return uniqueSteps;
+  }
+
+  private getProviderVerificationNextStep(
+    key: ProviderVerificationQueueItem["guidance"]["checklist"][number]["key"]
+  ) {
+    switch (key) {
+      case "profile-completeness":
+        return "Expand the business description with enough detail to explain service quality, reliability, and what customers should expect.";
+      case "service-scope":
+        return "Add at least one launch service category so GreenRain knows what work this business is ready to fulfill.";
+      case "launch-area-fit":
+        return "Tighten the service radius to the launch pocket the team can reliably serve right now.";
+      case "experience-signal":
+        return "Update the years-of-experience detail so ops has a clearer reliability signal before go-live.";
+      case "operational-readiness":
+        return "Lower the minimum booking lead time or clear enough workload headroom to keep launch booking promises realistic.";
+      case "service-quality-expectations":
+        return "Be ready to handle evidence requests, service recovery, and customer communication at the launch service standard.";
+      case "intervention-readiness":
+        return "Set staffing mode, crew review timing, and departure reminders so late updates and field exceptions can be handled cleanly.";
+    }
+  }
+
+  private isDetailedProviderApprovalOverrideNote(note: string | undefined) {
+    const normalized = note?.trim().replace(/\s+/g, " ").toLowerCase();
+    if (!normalized || normalized.length < MIN_PROVIDER_APPROVAL_OVERRIDE_NOTE_LENGTH) {
+      return false;
+    }
+
+    return !this.isGenericProviderApprovalOverrideNote(normalized);
+  }
+
+  private isGenericProviderApprovalOverrideNote(normalized: string) {
+    return GENERIC_PROVIDER_APPROVAL_OVERRIDE_NOTES.includes(
+      normalized as (typeof GENERIC_PROVIDER_APPROVAL_OVERRIDE_NOTES)[number]
+    );
+  }
+
+  private countOpenProviderBookings(providerId: string, bookings: Booking[]) {
+    return bookings.filter(
+      (booking) =>
+        booking.providerId === providerId &&
+        booking.status !== "completed" &&
+        booking.status !== "cancelled" &&
+        booking.status !== "refunded"
+    ).length;
+  }
+
+  private buildRejectedProviderVerificationResubmissionUpdates(
+    provider: ProviderProfile,
+    updates: Partial<ProviderProfile>
+  ): Partial<ProviderProfile> {
+    if (!this.shouldResubmitRejectedProviderVerification(provider, updates)) {
+      return {};
+    }
+
+    return {
+      verificationStatus: "pending-review",
+      verificationSubmittedAt: new Date().toISOString()
+    };
+  }
+
+  private shouldResubmitRejectedProviderVerification(
+    provider: ProviderProfile,
+    updates: Partial<ProviderProfile>
+  ) {
+    if (provider.verificationStatus !== "rejected") {
+      return false;
+    }
+
+    return (
+      (updates.companyName !== undefined && updates.companyName !== provider.companyName) ||
+      (updates.bio !== undefined && updates.bio !== provider.bio) ||
+      (updates.yearsExperience !== undefined && updates.yearsExperience !== provider.yearsExperience) ||
+      (updates.serviceRadiusMiles !== undefined && updates.serviceRadiusMiles !== provider.serviceRadiusMiles) ||
+      (updates.minimumBookingLeadHours !== undefined &&
+        updates.minimumBookingLeadHours !== provider.minimumBookingLeadHours) ||
+      (updates.staffingMode !== undefined && updates.staffingMode !== provider.staffingMode) ||
+      (updates.crewReviewLeadHours !== undefined &&
+        updates.crewReviewLeadHours !== provider.crewReviewLeadHours) ||
+      (updates.departureReminderLeadMinutes !== undefined &&
+        updates.departureReminderLeadMinutes !== provider.departureReminderLeadMinutes) ||
+      (updates.routeLeaderMode !== undefined && updates.routeLeaderMode !== provider.routeLeaderMode) ||
+      (updates.categories !== undefined && !this.haveSameProviderCategories(updates.categories, provider.categories))
+    );
+  }
+
+  private haveSameProviderCategories(
+    left: ProviderProfile["categories"],
+    right: ProviderProfile["categories"]
+  ) {
+    if (left.length !== right.length) {
+      return false;
+    }
+
+    const leftSorted = [...left].sort();
+    const rightSorted = [...right].sort();
+    return leftSorted.every((value, index) => value === rightSorted[index]);
   }
 
   public async updateCrewPreferences(
@@ -1132,11 +1708,7 @@ export class MarketplacePlatformService {
   }
 
   public async getProviderStaffingOverview(providerId: string): Promise<ProviderStaffingOverview> {
-    const provider = await this.repository.findProviderById(providerId);
-    if (!provider) {
-      throw new Error("Provider not found");
-    }
-
+    const provider = await this.getProviderProfile(providerId);
     const jobs = await this.buildProviderStaffingSummaries(provider);
     return {
       provider,
@@ -2853,7 +3425,7 @@ export class MarketplacePlatformService {
       calendarConnection: nextCalendarConnection
     });
 
-    const updatedProvider = await this.repository.updateProvider(provider.id, {
+    const providerUpdates: Partial<ProviderProfile> = {
       serviceRadiusMiles: normalizedRadius,
       minimumBookingLeadHours,
       staffingMode,
@@ -2865,6 +3437,11 @@ export class MarketplacePlatformService {
       sponsoredListingEnabled:
         payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
       calendarConnection: nextCalendarConnection
+    };
+
+    const updatedProvider = await this.repository.updateProvider(provider.id, {
+      ...providerUpdates,
+      ...this.buildRejectedProviderVerificationResubmissionUpdates(provider, providerUpdates)
     });
 
     if (!updatedProvider) {
@@ -2912,7 +3489,7 @@ export class MarketplacePlatformService {
       });
     }
 
-    return updatedProvider;
+    return this.getProviderProfile(provider.id);
   }
 
   public async createProviderReview(
@@ -2983,6 +3560,10 @@ export class MarketplacePlatformService {
       reviewCount: nextReviewCount
     });
 
+    const linkedLead = booking.launchLeadId
+      ? await this.syncLaunchLeadAfterReview(booking.launchLeadId, savedReview)
+      : undefined;
+
     this.analytics.record({
       id: crypto.randomUUID(),
       name: MarketplaceTelemetryEventCatalog.providerReviewSubmitted,
@@ -2994,7 +3575,10 @@ export class MarketplacePlatformService {
         overallRating: payload.overallRating,
         timelinessRating: payload.timelinessRating,
         attentionToDetailRating: payload.attentionToDetailRating,
-        hasReviewText: true
+        hasReviewText: true,
+        ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution ?? linkedLead?.attribution),
+        ...this.buildLaunchLeadAnalyticsProperties(linkedLead),
+        ...(linkedLead ? { launchLeadReviewCount: linkedLead.reviewIds.length } : {})
       }
     });
 
@@ -3291,11 +3875,13 @@ export class MarketplacePlatformService {
     const validatedServiceAddress = selectedProperty
       ? selectedProperty.address
       : (await this.normalizeAndValidateAddress(payload.serviceAddress)).address;
+    const { lead: linkedLaunchLead } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     const plan: RecurringServicePlan = {
       id: crypto.randomUUID(),
       customerId,
       providerId: payload.providerId,
+      launchLeadId: linkedLaunchLead?.id,
       serviceAddress: validatedServiceAddress,
       servicePropertyId: payload.servicePropertyId,
       category: payload.category,
@@ -3321,11 +3907,13 @@ export class MarketplacePlatformService {
         scheduledEndIso: payload.scheduledEndIso,
         notes: payload.notes,
         totalCents: payload.totalCents,
+        launchLeadId: linkedLaunchLead?.id,
         recommendationSessionId: payload.recommendationSessionId,
         recommendedProviderId: payload.recommendedProviderId,
         selectedProviderRank: payload.selectedProviderRank,
         viewedAlternativeProviders: payload.viewedAlternativeProviders,
-        recommendationSource: payload.recommendationSource
+        recommendationSource: payload.recommendationSource,
+        attribution: payload.attribution
       },
       {
         recurringPlanId: plan.id,
@@ -3456,10 +4044,12 @@ export class MarketplacePlatformService {
     const validatedServiceAddress = selectedProperty
       ? selectedProperty.address
       : (await this.normalizeAndValidateAddress(payload.serviceAddress)).address;
+    const { lead: linkedLaunchLead, linkMode } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     const bookingBase = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
       customerId,
       ...payload,
+      launchLeadId: linkedLaunchLead?.id,
       serviceAddress: validatedServiceAddress
     });
 
@@ -3478,16 +4068,37 @@ export class MarketplacePlatformService {
     }
 
     const result = await this.repository.createBooking(booking);
+    const linkedLead = result.launchLeadId
+      ? await this.syncLaunchLeadAfterBooking(result.launchLeadId, result)
+      : undefined;
 
     if (!options?.skipRequestedFunnelEvent) {
       this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, customerId, {
         providerId: payload.providerId,
         totalCents: payload.totalCents,
         category: payload.category,
-        servicePropertyId: payload.servicePropertyId ?? "custom-address"
+        servicePropertyId: payload.servicePropertyId ?? "custom-address",
+        ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution ?? linkedLead?.attribution),
+        ...this.buildLaunchLeadAnalyticsProperties(linkedLead, linkMode),
+        ...(linkedLead
+          ? { launchLeadConvertedBookingCount: linkedLead.convertedBookingIds.length }
+          : {})
       });
-      this.recordRecommendationBookingIntent(customerId, payload, Boolean(options?.recurringPlanId));
-      this.recordRecommendationSelection(customerId, booking, payload, Boolean(options?.recurringPlanId));
+      this.recordRecommendationBookingIntent(
+        customerId,
+        payload,
+        Boolean(options?.recurringPlanId),
+        linkedLead,
+        linkMode
+      );
+      this.recordRecommendationSelection(
+        customerId,
+        result,
+        payload,
+        Boolean(options?.recurringPlanId),
+        linkedLead,
+        linkMode
+      );
     }
 
     await this.createNotification({
@@ -3510,7 +4121,9 @@ export class MarketplacePlatformService {
     customerId: string,
     booking: Booking,
     payload: CreateBookingRequest,
-    recurringPlanStarted: boolean
+    recurringPlanStarted: boolean,
+    linkedLead?: LaunchLead,
+    linkMode?: LaunchLeadLinkMode
   ): void {
     if (!payload.recommendationSessionId) {
       return;
@@ -3532,14 +4145,21 @@ export class MarketplacePlatformService {
       selectedProviderRank: payload.selectedProviderRank ?? "unknown",
       viewedAlternativeProviders: payload.viewedAlternativeProviders ?? false,
       recommendationSource: payload.recommendationSource ?? "unknown",
-      recurringPlanStarted
+      recurringPlanStarted,
+      ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution ?? linkedLead?.attribution),
+      ...this.buildLaunchLeadAnalyticsProperties(linkedLead, linkMode),
+      ...(linkedLead
+        ? { launchLeadConvertedBookingCount: linkedLead.convertedBookingIds.length }
+        : {})
     });
   }
 
   private recordRecommendationBookingIntent(
     customerId: string,
     payload: CreateBookingRequest,
-    recurringPlanStarted: boolean
+    recurringPlanStarted: boolean,
+    linkedLead?: LaunchLead,
+    linkMode?: LaunchLeadLinkMode
   ): void {
     if (!payload.recommendationSessionId) {
       return;
@@ -3553,7 +4173,12 @@ export class MarketplacePlatformService {
       selectedProviderRank: payload.selectedProviderRank ?? "unknown",
       viewedAlternativeProviders: payload.viewedAlternativeProviders ?? false,
       recommendationSource: payload.recommendationSource ?? "unknown",
-      recurringPlanStarted
+      recurringPlanStarted,
+      ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution ?? linkedLead?.attribution),
+      ...this.buildLaunchLeadAnalyticsProperties(linkedLead, linkMode),
+      ...(linkedLead
+        ? { launchLeadConvertedBookingCount: linkedLead.convertedBookingIds.length }
+        : {})
     });
   }
 
@@ -7214,7 +7839,497 @@ export class MarketplacePlatformService {
       issueType: payload.issueType,
       bookingId: payload.bookingId ?? "none"
     });
-    return this.repository.createSupportTicket(ticket);
+    const savedTicket = await this.repository.createSupportTicket(ticket);
+    const linkedLead = await this.maybeCreateLaunchLeadFromSupportTicket(requester, payload);
+    if (!linkedLead) {
+      return savedTicket;
+    }
+
+    return (
+      (await this.repository.updateSupportTicket(savedTicket.id, {
+        launchLeadId: linkedLead.id,
+        updatedAt: new Date().toISOString()
+      })) ?? { ...savedTicket, launchLeadId: linkedLead.id }
+    );
+  }
+
+  public async createLaunchLead(payload: CreateLaunchLeadRequest): Promise<LaunchLead> {
+    const sourceReferenceId = payload.sourceReferenceId?.trim() || undefined;
+    if (sourceReferenceId) {
+      const existingLead = await this.repository.findLaunchLeadBySourceReferenceId(sourceReferenceId);
+      if (existingLead) {
+        return existingLead;
+      }
+    }
+
+    const contactName = payload.contactName.trim().replace(/\s+/g, " ");
+    if (contactName.length < 2) {
+      throw new HttpError(400, "A contact name is required.");
+    }
+
+    const email = payload.email?.trim().toLowerCase() || undefined;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new HttpError(400, "A valid email address is required.");
+    }
+
+    const areaLabel = payload.areaLabel.trim().replace(/\s+/g, " ");
+    if (areaLabel.length < 2) {
+      throw new HttpError(400, "An area or town is required.");
+    }
+
+    const message = payload.message.trim().replace(/\s+/g, " ");
+    if (message.length < 12) {
+      throw new HttpError(400, "Add a little more detail so ops can follow up clearly.");
+    }
+
+    const phone = this.normalizeLaunchLeadPhone(payload.phone);
+    const allowsPlatformMessageOnly =
+      payload.preferredContactMethod === "platform-message" &&
+      this.sourceChannelSupportsPlatformMessage(payload.sourceChannel ?? "website");
+    if (!email && !phone && !allowsPlatformMessageOnly) {
+      throw new HttpError(400, "Add at least one contact method: email or phone.");
+    }
+    if (payload.preferredContactMethod === "email" && !email) {
+      throw new HttpError(400, "Add an email address for email follow-up.");
+    }
+    if ((payload.preferredContactMethod === "phone" || payload.preferredContactMethod === "text") && !phone) {
+      throw new HttpError(400, "Add a phone number for phone or text follow-up.");
+    }
+    if (payload.preferredContactMethod === "platform-message" && !allowsPlatformMessageOnly) {
+      throw new HttpError(
+        400,
+        "Platform-message follow-up is only supported for channel-mediated sources like Google Business Profile or social."
+      );
+    }
+    const assignedOwner = payload.assignedOwner?.trim()
+      ? payload.assignedOwner.trim().replace(/\s+/g, " ")
+      : undefined;
+
+    const now = new Date();
+    const createdAt = now.toISOString();
+    const lead: LaunchLead = {
+      id: crypto.randomUUID(),
+      sourceChannel: payload.sourceChannel ?? "website",
+      requestSource: payload.requestSource?.trim() || undefined,
+      sourceReferenceId,
+      channelMetadata: payload.channelMetadata,
+      attribution: payload.attribution,
+      contactName,
+      email,
+      phone,
+      preferredContactMethod: payload.preferredContactMethod,
+      areaLabel,
+      serviceCategory: payload.serviceCategory,
+      message,
+      status: "new",
+      assignedOwner,
+      firstResponseDueAt: new Date(
+        now.getTime() + MarketplacePlatformService.launchLeadFirstResponseSlaMinutes * 60_000
+      ).toISOString(),
+      convertedBookingIds: [],
+      reviewIds: [],
+      createdAt,
+      updatedAt: createdAt
+    };
+
+    const savedLead = await this.repository.createLaunchLead(lead);
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.launchLeadCaptured,
+      occurredAt: createdAt,
+      properties: {
+        leadId: savedLead.id,
+        sourceChannel: savedLead.sourceChannel,
+        requestSource: savedLead.requestSource ?? "unknown",
+        preferredContactMethod: savedLead.preferredContactMethod,
+        hasEmail: Boolean(savedLead.email),
+        hasPhone: Boolean(savedLead.phone),
+        hasAssignedOwner: Boolean(savedLead.assignedOwner),
+        serviceCategory: savedLead.serviceCategory ?? "unknown",
+        ...this.buildLaunchAttributionAnalyticsProperties(savedLead.attribution)
+      }
+    });
+
+    return savedLead;
+  }
+
+  public async createInboundLaunchLead(
+    payload: CreateInboundLaunchLeadRequest,
+    secretHeader: string | undefined
+  ): Promise<LaunchLead> {
+    const configuredSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET?.trim();
+    if (!configuredSecret) {
+      throw new HttpError(503, "Inbound lead webhook secret is not configured yet.");
+    }
+    if (!secretHeader || secretHeader.trim() !== configuredSecret) {
+      throw new HttpError(401, "Invalid inbound lead secret.");
+    }
+    if (payload.sourceChannel === "website") {
+      throw new HttpError(400, "Website leads should use the public launch lead form.");
+    }
+    if (!payload.sourceReferenceId.trim()) {
+      throw new HttpError(400, "Inbound leads require a sourceReferenceId for idempotency.");
+    }
+
+    const email = payload.email?.trim().toLowerCase() || undefined;
+    const phone = this.normalizeLaunchLeadPhone(payload.phone);
+    const allowsPlatformMessageOnly =
+      payload.preferredContactMethod === "platform-message" &&
+      this.sourceChannelSupportsPlatformMessage(payload.sourceChannel);
+    if (!email && !phone && !allowsPlatformMessageOnly) {
+      throw new HttpError(400, "Inbound leads require at least one contact method: email or phone.");
+    }
+
+    const subject = payload.subject?.trim().replace(/\s+/g, " ") || undefined;
+    const messageBody = payload.message?.trim().replace(/\s+/g, " ") || undefined;
+    const message =
+      subject && messageBody ? `${subject}. ${messageBody}` : subject ?? messageBody ?? "Inbound lead captured for ops follow-up.";
+    const contactName =
+      payload.contactName?.trim().replace(/\s+/g, " ") ||
+      this.deriveInboundContactName(email, phone, payload.sourceChannel);
+    const preferredContactMethod =
+      payload.preferredContactMethod ??
+      (email ? "email" : phone ? "phone" : this.sourceChannelSupportsPlatformMessage(payload.sourceChannel) ? "platform-message" : "phone");
+
+    return this.createLaunchLead({
+      sourceChannel: payload.sourceChannel,
+      requestSource: payload.requestSource?.trim() || `inbound-${payload.sourceChannel}`,
+      sourceReferenceId: payload.sourceReferenceId,
+      channelMetadata: payload.channelMetadata,
+      contactName,
+      email,
+      phone,
+      preferredContactMethod,
+      areaLabel: payload.areaLabel?.trim().replace(/\s+/g, " ") || "Needs area confirmation",
+      serviceCategory: payload.serviceCategory,
+      message,
+      assignedOwner: payload.assignedOwner?.trim() || undefined
+    });
+  }
+
+  public async createInboundEmailLaunchLead(
+    payload: CreateInboundEmailLaunchLeadRequest,
+    secretHeader: string | undefined
+  ): Promise<LaunchLead> {
+    const senderEmail = payload.senderEmail?.trim().toLowerCase();
+    if (!senderEmail) {
+      throw new HttpError(400, "Inbound email leads require a sender email address.");
+    }
+
+    const subject = payload.subject?.trim().replace(/\s+/g, " ") || undefined;
+    const textBody = payload.textBody?.trim().replace(/\s+/g, " ") || undefined;
+
+    return this.createInboundLaunchLead(
+      {
+        sourceChannel: "email",
+        requestSource: "direct-email-forward",
+        sourceReferenceId: payload.sourceReferenceId,
+        contactName: payload.senderName?.trim().replace(/\s+/g, " ") || this.deriveInboundContactName(senderEmail, undefined, "email"),
+        email: senderEmail,
+        preferredContactMethod: "email",
+        areaLabel: payload.areaLabel?.trim().replace(/\s+/g, " ") || "Needs area confirmation",
+        serviceCategory: payload.serviceCategory,
+        subject,
+        message: textBody ?? subject ?? "Inbound email lead captured for ops follow-up.",
+        assignedOwner: payload.assignedOwner?.trim() || undefined
+      },
+      secretHeader
+    );
+  }
+
+  public async createInboundGoogleBusinessProfileLead(
+    payload: CreateInboundGoogleBusinessProfileLeadRequest,
+    secretHeader: string | undefined
+  ): Promise<LaunchLead> {
+    const messageText = payload.messageText?.trim().replace(/\s+/g, " ");
+    if (!messageText) {
+      throw new HttpError(400, "Inbound Google Business Profile leads require the message text.");
+    }
+
+    const customerEmail = payload.customerEmail?.trim().toLowerCase() || undefined;
+    const customerPhone = this.normalizeLaunchLeadPhone(payload.customerPhone);
+    const threadUrl = payload.threadUrl?.trim();
+    const profileLocationName = payload.profileLocationName?.trim().replace(/\s+/g, " ");
+    const message =
+      `${messageText}` +
+      `${profileLocationName ? ` Google Business Profile location: ${profileLocationName}.` : ""}`;
+
+    return this.createInboundLaunchLead(
+      {
+        sourceChannel: "google-business-profile",
+        requestSource: "google-business-profile-message",
+        sourceReferenceId: payload.sourceReferenceId,
+        channelMetadata: {
+          threadUrl,
+          profileLocationName
+        },
+        contactName:
+          payload.customerName?.trim().replace(/\s+/g, " ") ||
+          this.deriveInboundContactName(customerEmail, customerPhone, "google-business-profile"),
+        email: customerEmail,
+        phone: customerPhone,
+        preferredContactMethod: customerEmail || customerPhone ? "platform-message" : "platform-message",
+        areaLabel: payload.areaLabel?.trim().replace(/\s+/g, " ") || "Needs area confirmation",
+        serviceCategory: payload.serviceCategory,
+        message,
+        assignedOwner: payload.assignedOwner?.trim() || undefined
+      },
+      secretHeader
+    );
+  }
+
+  public async createInboundReferralLaunchLead(
+    payload: CreateInboundReferralLaunchLeadRequest,
+    secretHeader: string | undefined
+  ): Promise<LaunchLead> {
+    const referrerName = payload.referrerName?.trim().replace(/\s+/g, " ");
+    if (!referrerName) {
+      throw new HttpError(400, "Inbound referral leads require a referrer name.");
+    }
+
+    const referredCustomerEmail = payload.referredCustomerEmail?.trim().toLowerCase() || undefined;
+    const referredCustomerPhone = this.normalizeLaunchLeadPhone(payload.referredCustomerPhone);
+    const referrerEmail = payload.referrerEmail?.trim().toLowerCase() || undefined;
+    const referrerPhone = this.normalizeLaunchLeadPhone(payload.referrerPhone);
+
+    if (!referredCustomerEmail && !referredCustomerPhone && !referrerEmail && !referrerPhone) {
+      throw new HttpError(
+        400,
+        "Inbound referral leads require a way to follow up with either the referred customer or the referrer."
+      );
+    }
+
+    const contactName =
+      payload.referredCustomerName?.trim().replace(/\s+/g, " ") ||
+      referrerName;
+    const contactEmail = referredCustomerEmail ?? referrerEmail;
+    const contactPhone = referredCustomerPhone ?? referrerPhone;
+    const preferredContactMethod = contactEmail ? "email" : "phone";
+    const details = payload.messageText?.trim().replace(/\s+/g, " ");
+    const referredCustomerName = payload.referredCustomerName?.trim().replace(/\s+/g, " ");
+    const message =
+      `Referral from ${referrerName}.` +
+      `${referredCustomerName ? ` Referred customer: ${referredCustomerName}.` : ""}` +
+      `${details ? ` Notes: ${details}` : ""}`;
+
+    return this.createInboundLaunchLead(
+      {
+        sourceChannel: "referral",
+        requestSource: "referral-forwarder",
+        sourceReferenceId: payload.sourceReferenceId,
+        channelMetadata: {
+          referrerName,
+          referrerEmail,
+          referrerPhone,
+          referralFollowUpTarget:
+            !referredCustomerEmail && !referredCustomerPhone ? "referrer" : "referred-customer"
+        },
+        contactName,
+        email: contactEmail,
+        phone: contactPhone,
+        preferredContactMethod,
+        areaLabel: payload.areaLabel?.trim().replace(/\s+/g, " ") || "Needs area confirmation",
+        serviceCategory: payload.serviceCategory,
+        message,
+        assignedOwner: payload.assignedOwner?.trim() || undefined
+      },
+      secretHeader
+    );
+  }
+
+  public async listOpsLaunchLeads(): Promise<OpsLaunchLead[]> {
+    const now = Date.now();
+    const [leads, bookings, customers, providers] = await Promise.all([
+      this.repository.listLaunchLeads(),
+      this.repository.listBookings(),
+      this.repository.listCustomers(),
+      this.repository.listProviders()
+    ]);
+
+    return leads
+      .map((lead) => {
+        const isClosed = lead.status === "converted" || lead.status === "closed-lost";
+        const nextActionDueAt = isClosed
+          ? undefined
+          : lead.firstRespondedAt
+            ? lead.nextFollowUpDueAt
+            : lead.firstResponseDueAt;
+        const isFirstResponseOverdue = !isClosed && !lead.firstRespondedAt && new Date(lead.firstResponseDueAt).getTime() < now;
+        const isFollowUpOverdue =
+          !isClosed &&
+          Boolean(lead.firstRespondedAt) &&
+          Boolean(lead.nextFollowUpDueAt) &&
+          new Date(lead.nextFollowUpDueAt ?? "").getTime() < now;
+        const suggestedBookingMatches = this.buildSuggestedLaunchLeadBookingMatches(
+          lead,
+          bookings,
+          customers,
+          providers
+        );
+
+        return {
+          lead,
+          nextActionDueAt,
+          isFirstResponseOverdue,
+          isFollowUpOverdue,
+          suggestedBookingMatches,
+          responseGuidance: this.buildLaunchLeadResponseGuidance(
+            lead,
+            suggestedBookingMatches,
+            bookings,
+            providers
+          ),
+          hoursSinceCreated: Math.max(
+            0,
+            Math.round(((now - new Date(lead.createdAt).getTime()) / (60 * 60 * 1000)) * 10) / 10
+          )
+        } satisfies OpsLaunchLead;
+      })
+      .sort((left, right) => {
+        const leftClosed = left.lead.status === "converted" || left.lead.status === "closed-lost";
+        const rightClosed = right.lead.status === "converted" || right.lead.status === "closed-lost";
+        if (leftClosed !== rightClosed) {
+          return leftClosed ? 1 : -1;
+        }
+
+        const leftUrgency = left.isFirstResponseOverdue || left.isFollowUpOverdue ? 0 : 1;
+        const rightUrgency = right.isFirstResponseOverdue || right.isFollowUpOverdue ? 0 : 1;
+        if (leftUrgency !== rightUrgency) {
+          return leftUrgency - rightUrgency;
+        }
+
+        if (left.nextActionDueAt && right.nextActionDueAt && left.nextActionDueAt !== right.nextActionDueAt) {
+          return left.nextActionDueAt.localeCompare(right.nextActionDueAt);
+        }
+
+        return right.lead.createdAt.localeCompare(left.lead.createdAt);
+      });
+  }
+
+  public async updateLaunchLeadForOps(payload: UpdateLaunchLeadRequest): Promise<LaunchLead> {
+    const lead = (await this.repository.listLaunchLeads()).find((candidate) => candidate.id === payload.leadId);
+    if (!lead) {
+      throw new HttpError(404, "Launch lead not found.");
+    }
+
+    const linkedBooking = payload.linkBookingId
+      ? await this.repository.findBookingById(payload.linkBookingId)
+      : undefined;
+    if (payload.linkBookingId && !linkedBooking) {
+      throw new HttpError(404, "Booking to link was not found.");
+    }
+    if (linkedBooking?.launchLeadId && linkedBooking.launchLeadId !== lead.id) {
+      throw new HttpError(400, "That booking is already linked to a different launch lead.");
+    }
+
+    const effectiveStatus = linkedBooking ? "converted" : payload.status;
+
+    const assignedOwner = payload.assignedOwner?.trim()
+      ? payload.assignedOwner.trim().replace(/\s+/g, " ")
+      : payload.assignedOwner === undefined
+        ? lead.assignedOwner
+        : undefined;
+    if (effectiveStatus !== "new" && !assignedOwner) {
+      throw new HttpError(400, "Assign an owner before moving this lead forward.");
+    }
+
+    const nextFollowUpDueAt = payload.nextFollowUpDueAt
+      ? new Date(payload.nextFollowUpDueAt).toISOString()
+      : effectiveStatus === "contacted" || effectiveStatus === "qualified"
+        ? lead.nextFollowUpDueAt
+        : undefined;
+    if ((effectiveStatus === "contacted" || effectiveStatus === "qualified") && !nextFollowUpDueAt) {
+      throw new HttpError(400, "Set the next follow-up time before saving this lead status.");
+    }
+
+    const outcomeSummary = payload.outcomeSummary?.trim()
+      ? payload.outcomeSummary.trim().replace(/\s+/g, " ")
+      : payload.outcomeSummary === undefined
+        ? lead.outcomeSummary
+        : undefined;
+    const autoGeneratedOutcomeSummary = linkedBooking
+      ? `Ops linked booking ${linkedBooking.id} back to this lead for marketplace conversion tracking.`
+      : undefined;
+    if ((effectiveStatus === "converted" || effectiveStatus === "closed-lost") && !outcomeSummary && !autoGeneratedOutcomeSummary) {
+      throw new HttpError(400, "Add an outcome summary before closing this lead.");
+    }
+
+    const lossReason =
+      effectiveStatus === "closed-lost"
+        ? payload.lossReason ?? lead.lossReason
+        : undefined;
+    if (effectiveStatus === "closed-lost" && !lossReason) {
+      throw new HttpError(400, "Choose a closed-lost reason before closing this lead.");
+    }
+
+    const updatedAt = new Date().toISOString();
+    const firstRespondedAt =
+      lead.firstRespondedAt ??
+      (effectiveStatus === "contacted" ||
+      effectiveStatus === "qualified" ||
+      effectiveStatus === "converted" ||
+      effectiveStatus === "closed-lost"
+        ? updatedAt
+        : undefined);
+    const lastContactedAt =
+      effectiveStatus === "contacted" || effectiveStatus === "qualified" ? updatedAt : lead.lastContactedAt;
+    const closedAt =
+      effectiveStatus === "converted" || effectiveStatus === "closed-lost" ? updatedAt : undefined;
+
+    const updatedLead = await this.repository.updateLaunchLead(lead.id, {
+      status: effectiveStatus,
+      assignedOwner,
+      nextFollowUpDueAt,
+      outcomeSummary: outcomeSummary ?? autoGeneratedOutcomeSummary,
+      lossReason,
+      firstRespondedAt,
+      lastContactedAt,
+      closedAt,
+      updatedAt
+    });
+
+    if (!updatedLead) {
+      throw new HttpError(500, "Launch lead could not be updated.");
+    }
+
+    const finalLead = linkedBooking
+      ? await this.linkBookingToLaunchLead(updatedLead, linkedBooking, updatedAt)
+      : updatedLead;
+
+    if (!lead.firstRespondedAt && firstRespondedAt) {
+      this.analytics.record({
+        id: crypto.randomUUID(),
+        name: MarketplaceTelemetryEventCatalog.launchLeadContacted,
+        occurredAt: updatedAt,
+        properties: {
+          leadId: finalLead.id,
+          status: finalLead.status,
+          sourceChannel: finalLead.sourceChannel,
+          requestSource: finalLead.requestSource ?? "unknown",
+          hasAssignedOwner: Boolean(finalLead.assignedOwner),
+          ...this.buildLaunchAttributionAnalyticsProperties(finalLead.attribution)
+        }
+      });
+    }
+
+    if (finalLead.status === "converted" || finalLead.status === "closed-lost") {
+      this.analytics.record({
+        id: crypto.randomUUID(),
+        name: MarketplaceTelemetryEventCatalog.launchLeadClosed,
+        occurredAt: updatedAt,
+        properties: {
+          leadId: finalLead.id,
+          status: finalLead.status,
+          sourceChannel: finalLead.sourceChannel,
+          requestSource: finalLead.requestSource ?? "unknown",
+          lossReason: finalLead.lossReason ?? "none",
+          hasAssignedOwner: Boolean(finalLead.assignedOwner),
+          ...this.buildLaunchAttributionAnalyticsProperties(finalLead.attribution)
+        }
+      });
+    }
+
+    return finalLead;
   }
 
   public async listSupportTicketsForRequester(
@@ -7255,7 +8370,14 @@ export class MarketplacePlatformService {
         const evidenceSummary = booking ? this.buildSupportEvidenceSummary(booking) : undefined;
         const resolutionGuidance =
           booking && evidenceSummary
-            ? this.buildSupportResolutionGuidance(ticket, booking, payment, evidenceSummary)
+            ? this.buildSupportResolutionGuidance(
+                ticket,
+                booking,
+                payment,
+                evidenceSummary,
+                customer?.fullName,
+                provider?.companyName
+              )
             : undefined;
         const resolutionPolicy =
           booking && evidenceSummary && resolutionGuidance
@@ -8006,6 +9128,8 @@ export class MarketplacePlatformService {
   public async getObservabilityOverview(): Promise<ObservabilityOverview> {
     return this.analytics.getOverview({
       bookings: await this.repository.listBookings(),
+      launchLeads: await this.repository.listLaunchLeads(),
+      reviewInvites: await this.repository.listReviewInvites(),
       supportTickets: await this.repository.listSupportTickets()
     });
   }
@@ -10422,6 +11546,7 @@ export class MarketplacePlatformService {
         plan.customerId,
         {
           providerId: plan.providerId,
+          launchLeadId: plan.launchLeadId,
           serviceAddress: plan.serviceAddress,
           servicePropertyId: plan.servicePropertyId,
           category: plan.category,
@@ -10522,16 +11647,29 @@ export class MarketplacePlatformService {
     ticket: SupportTicket,
     booking: Booking,
     payment: PaymentRecord | undefined,
-    evidenceSummary: SupportOpsTicket["evidenceSummary"]
+    evidenceSummary: SupportOpsTicket["evidenceSummary"],
+    customerName?: string,
+    providerName?: string
   ) {
     if (!evidenceSummary) {
       return undefined;
     }
 
     if (evidenceSummary.reviewedCount === 0) {
-      return {
+      const guidance = {
         confidence: "low" as const,
         rationale: "No reviewed evidence yet. Start by annotating the strongest booking evidence before resolving."
+      } satisfies Omit<NonNullable<SupportOpsTicket["resolutionGuidance"]>, "templates">;
+      return {
+        ...guidance,
+        templates: this.buildSupportResolutionReplyTemplates(
+          ticket,
+          booking,
+          payment,
+          guidance,
+          customerName,
+          providerName
+        )
       } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
     }
 
@@ -10541,17 +11679,28 @@ export class MarketplacePlatformService {
 
     if (customerLead >= 2 || (customerLead >= 1 && ticket.issueType === "billing")) {
       const confidence: "high" | "medium" = customerLead >= 2 ? "high" : "medium";
-      return {
+      const guidance = {
         recommendedAction: refundOpen ? "approve-refund" : "cancel-booking",
         confidence,
         rationale:
           "Reviewed evidence currently leans toward the customer, so ops should consider a customer-favoring resolution."
+      } satisfies Omit<NonNullable<SupportOpsTicket["resolutionGuidance"]>, "templates">;
+      return {
+        ...guidance,
+        templates: this.buildSupportResolutionReplyTemplates(
+          ticket,
+          booking,
+          payment,
+          guidance,
+          customerName,
+          providerName
+        )
       } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
     }
 
     if (providerLead >= 2 || (providerLead >= 1 && booking.status === "disputed")) {
       const confidence: "high" | "medium" = providerLead >= 2 ? "high" : "medium";
-      return {
+      const guidance = {
         recommendedAction: refundOpen
           ? "deny-refund"
           : this.getResolvedActiveBookingStatus(booking) === "completed"
@@ -10560,14 +11709,152 @@ export class MarketplacePlatformService {
         confidence,
         rationale:
           "Reviewed evidence currently leans toward the provider, so ops should consider restoring the job or keeping payment in place."
+      } satisfies Omit<NonNullable<SupportOpsTicket["resolutionGuidance"]>, "templates">;
+      return {
+        ...guidance,
+        templates: this.buildSupportResolutionReplyTemplates(
+          ticket,
+          booking,
+          payment,
+          guidance,
+          customerName,
+          providerName
+        )
       } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
     }
 
-    return {
+    const guidance = {
       confidence: "low" as const,
       rationale:
         "Reviewed evidence is mixed or inconclusive. Add more evidence review notes or document a specific ops rationale before finalizing the outcome."
+    } satisfies Omit<NonNullable<SupportOpsTicket["resolutionGuidance"]>, "templates">;
+    return {
+      ...guidance,
+      templates: this.buildSupportResolutionReplyTemplates(
+        ticket,
+        booking,
+        payment,
+        guidance,
+        customerName,
+        providerName
+      )
     } satisfies NonNullable<SupportOpsTicket["resolutionGuidance"]>;
+  }
+
+  private buildSupportResolutionReplyTemplates(
+    ticket: SupportTicket,
+    booking: Booking,
+    payment: PaymentRecord | undefined,
+    guidance: Omit<NonNullable<SupportOpsTicket["resolutionGuidance"]>, "templates">,
+    customerName?: string,
+    providerName?: string
+  ) {
+    const templates: NonNullable<SupportOpsTicket["resolutionGuidance"]>["templates"] = [];
+    const firstName = this.getFirstName(customerName);
+    const providerLabel = providerName?.trim() || "GreenRain's provider team";
+    const serviceLabel = this.titleCaseCategory(booking.category).toLowerCase();
+    const visitWindow = this.formatBookingWindowWithDate(booking.scheduledStartIso);
+    const exceptionLabel = booking.activeExceptionType
+      ? getBookingExceptionLabel(booking.activeExceptionType).toLowerCase()
+      : undefined;
+
+    if (booking.lateEtaIso || booking.activeExceptionType) {
+      const delayDetail = booking.lateEtaIso
+        ? `The team now expects to arrive around ${new Date(booking.lateEtaIso).toLocaleTimeString([], {
+            timeStyle: "short"
+          })}.`
+        : undefined;
+      const reasonDetail = booking.lateReason?.trim() || booking.activeExceptionNotes?.trim() || undefined;
+      templates.push({
+        key: "delay-update",
+        title: "Delay or field-issue update",
+        channel: "email",
+        reason:
+          "Use this when the visit is delayed or blocked by an active field issue and the customer needs a clean expectation reset.",
+        subject: "GreenRain update on your service",
+        body:
+          `Hi ${firstName},\n\n` +
+          `I am following up on your ${serviceLabel} visit scheduled for ${visitWindow}. ` +
+          `${delayDetail ?? "Our team ran into a field issue before the service could continue."}\n\n` +
+          `${exceptionLabel ? `The current issue is ${exceptionLabel}. ` : ""}` +
+          `${reasonDetail ? `Details: ${reasonDetail}\n\n` : "\n\n"}` +
+          `I will keep the next step explicit once support confirms whether we should continue, reschedule, or close this out another way.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    if (guidance.recommendedAction === "cancel-booking") {
+      templates.push({
+        key: "cancellation-update",
+        title: "Cancellation follow-up",
+        channel: "email",
+        reason: "Use this when ops is unwinding the booking after review and needs a direct customer-facing closeout note.",
+        subject: "GreenRain service update",
+        body:
+          `Hi ${firstName},\n\n` +
+          `I reviewed the support case on your ${serviceLabel} booking for ${visitWindow}. Based on the service issue we documented, GreenRain is cancelling this visit rather than forcing the wrong outcome through.\n\n` +
+          `If there is a payment adjustment tied to this case, I will keep that update explicit too. If you want help rebooking once the issue is cleared up, reply here and support can guide the next step.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    if (payment?.refundReviewStatus === "requested" && guidance.recommendedAction === "approve-refund") {
+      templates.push({
+        key: "refund-approved",
+        title: "Refund approved update",
+        channel: "email",
+        reason: "Use this once ops is approving a refund review so the customer gets a plain-language payment update.",
+        subject: "Your GreenRain refund review is approved",
+        body:
+          `Hi ${firstName},\n\n` +
+          `I reviewed the refund request tied to your ${serviceLabel} booking with ${providerLabel}, and GreenRain is approving the refund review.\n\n` +
+          `We are reversing the customer payment from our side now. Bank timing can still vary a little after that, but you should not need to reopen this ticket unless the refund does not show up as expected.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    if (payment?.refundReviewStatus === "requested" && guidance.recommendedAction === "deny-refund") {
+      templates.push({
+        key: "refund-denied",
+        title: "Refund denied update",
+        channel: "email",
+        reason: "Use this when ops keeps the payment captured after reviewing the refund request and supporting evidence.",
+        subject: "Your GreenRain refund review update",
+        body:
+          `Hi ${firstName},\n\n` +
+          `I reviewed the refund request tied to your ${serviceLabel} booking with ${providerLabel}. Based on the service record and reviewed evidence, GreenRain is closing the refund review and keeping the payment captured.\n\n` +
+          `If there is still a detail we missed, reply with that specific point so support can document it clearly instead of reopening the full case without new context.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    if (
+      ticket.issueType === "service-quality" ||
+      booking.status === "disputed" ||
+      guidance.recommendedAction === "restore-active-booking" ||
+      guidance.recommendedAction === "complete-booking"
+    ) {
+      const outcomeText =
+        guidance.recommendedAction === "complete-booking"
+          ? "GreenRain is keeping the visit marked complete after review."
+          : guidance.recommendedAction === "restore-active-booking"
+            ? "GreenRain is restoring the booking to the active service path after review."
+            : "GreenRain support is still working through the service-quality details before finalizing the outcome.";
+      templates.push({
+        key: "issue-resolution",
+        title: "Issue-resolution update",
+        channel: "email",
+        reason: "Use this for dispute or service-quality follow-up when the customer needs a concise explanation of what support is doing next.",
+        subject: "GreenRain support update",
+        body:
+          `Hi ${firstName},\n\n` +
+          `I reviewed the support case tied to your ${serviceLabel} booking for ${visitWindow}. ${outcomeText}\n\n` +
+          `If there is one specific detail you still want considered, reply with that detail directly so support can attach it to the case without losing the current review trail.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    return templates.slice(0, 3);
   }
 
   private buildSupportResolutionPolicy(
@@ -10950,6 +12237,727 @@ export class MarketplacePlatformService {
     const month = `${date.getMonth() + 1}`.padStart(2, "0");
     const day = `${date.getDate()}`.padStart(2, "0");
     return `${year}-${month}-${day}`;
+  }
+
+  private buildLaunchLeadResponseGuidance(
+    lead: LaunchLead,
+    suggestedBookingMatches: LaunchLeadBookingMatch[],
+    bookings: Booking[],
+    providers: ProviderProfile[]
+  ): LaunchLeadResponseGuidance {
+    const warnings: string[] = [];
+    if (!lead.assignedOwner) {
+      warnings.push("Assign an owner before moving this inquiry beyond new.");
+    }
+    if (lead.areaLabel === "Needs area confirmation") {
+      warnings.push("Confirm the service area before promising timing or pricing.");
+    }
+    if (!lead.serviceCategory) {
+      warnings.push("Confirm the exact service before quoting scope or availability.");
+    }
+    if (suggestedBookingMatches.length > 0) {
+      warnings.push("A possible booking match already exists, so attach it before starting duplicate follow-up.");
+    }
+    if (
+      lead.requestSource === "customer-service-help-request" ||
+      lead.requestSource === "customer-support-no-booking-ticket"
+    ) {
+      warnings.push("If this turns out to be an existing booking or billing issue, keep the final resolution in support as well.");
+    }
+    if (lead.sourceChannel === "referral") {
+      warnings.push(
+        "Confirm whether follow-up should go straight to the customer or back through the referrer before promising next steps."
+      );
+    }
+
+    const linkedBookings = bookings
+      .filter((booking) => booking.launchLeadId === lead.id)
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
+    const templates = this.buildLaunchLeadReplyTemplates(lead, linkedBookings, providers);
+
+    if (lead.status === "converted") {
+      return {
+        recommendedAction:
+          linkedBookings.length > 0
+            ? "The booking is already linked. Use this card for confirmation, repeat-service, or post-job follow-up instead of re-qualifying the lead."
+            : "The lead is marked converted. Confirm the linked booking path is accurate, then shift future communication to booking follow-up.",
+        warnings,
+        templates
+      };
+    }
+
+    if (lead.status === "closed-lost") {
+      return {
+        recommendedAction:
+          "This lead is closed-lost. Keep the outcome summary clear enough that the next operator knows whether to reopen, reassign, or leave it closed.",
+        warnings,
+        templates
+      };
+    }
+
+    if (lead.status === "qualified") {
+      return {
+        recommendedAction:
+          "Push this inquiry toward a concrete next step now: confirm scope, lock timing, and either link a booking or close the loop with a specific follow-up date.",
+        warnings,
+        templates
+      };
+    }
+
+    if (lead.status === "contacted") {
+      return {
+        recommendedAction:
+          "Keep momentum after the first touch. Follow up on missing address, timing, or scope details and make the next action explicit before this goes stale.",
+        warnings,
+        templates
+      };
+    }
+
+    return {
+      recommendedAction:
+        lead.preferredContactMethod === "platform-message"
+          ? "Reply in the source thread today, confirm coverage and service details there, and document the next follow-up before this request goes stale."
+          : lead.preferredContactMethod === "email"
+          ? "Send the first email response today, confirm coverage and service details, and set the next follow-up before this request ages out."
+          : "Make the first callback or text touch today, confirm coverage and service details, and set the next follow-up before this request ages out.",
+      warnings,
+      templates
+    };
+  }
+
+  private buildLaunchLeadReplyTemplates(
+    lead: LaunchLead,
+    linkedBookings: Booking[],
+    providers: ProviderProfile[]
+  ): LaunchLeadReplyTemplate[] {
+    const templates: LaunchLeadReplyTemplate[] = [];
+    const firstName = this.getLeadFirstName(lead.contactName);
+    const serviceLabel = lead.serviceCategory ? this.titleCaseCategory(lead.serviceCategory) : "yard care";
+    const serviceLabelLower = serviceLabel.toLowerCase();
+    const areaLabel = lead.areaLabel === "Needs area confirmation" ? "your area" : lead.areaLabel;
+    const signoff = lead.assignedOwner?.trim() || "GreenRain team";
+    const supportLike =
+      lead.requestSource === "customer-service-help-request" ||
+      lead.requestSource === "customer-support-no-booking-ticket";
+    const primaryLinkedBooking = linkedBookings[0];
+    const latestCompletedBooking = [...linkedBookings]
+      .filter((booking) => booking.status === "completed")
+      .sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso))[0];
+    const suggestedProviderCompanies = providers
+      .filter(
+        (provider) =>
+          provider.verificationStatus === "verified" &&
+          (!lead.serviceCategory || provider.categories.includes(lead.serviceCategory))
+      )
+      .sort((left, right) => {
+        if (left.reviewCount !== right.reviewCount) {
+          return right.reviewCount - left.reviewCount;
+        }
+        if (left.rating !== right.rating) {
+          return right.rating - left.rating;
+        }
+        return left.companyName.localeCompare(right.companyName);
+      })
+      .slice(0, 3)
+      .map((provider) => provider.companyName);
+    const providerTargetSummary =
+      suggestedProviderCompanies.length > 0
+        ? suggestedProviderCompanies.length === 1
+          ? suggestedProviderCompanies[0]
+          : `${suggestedProviderCompanies.slice(0, -1).join(", ")}, and ${suggestedProviderCompanies.at(-1)}`
+        : "verified local providers";
+    const firstResponseChannel = lead.preferredContactMethod === "platform-message"
+      ? "platform-message"
+      : lead.preferredContactMethod === "text"
+      ? "text"
+      : lead.preferredContactMethod === "phone" && lead.sourceChannel === "phone"
+        ? "phone"
+        : lead.preferredContactMethod;
+
+    if (lead.status === "closed-lost") {
+      const followUpChannel =
+        lead.preferredContactMethod === "platform-message"
+          ? "platform-message"
+          : lead.preferredContactMethod === "phone"
+            ? "email"
+            : lead.preferredContactMethod;
+      const subject =
+        followUpChannel === "email"
+          ? lead.lossReason === "out-of-area"
+            ? "GreenRain service area update"
+            : "GreenRain follow-up on your request"
+          : undefined;
+      const body =
+        lead.lossReason === "out-of-area"
+          ? `Hi ${firstName},\n\n` +
+            `Thanks again for reaching out to GreenRain. We are not reliably covering ${areaLabel} yet, so I do not want to over-promise timing or service quality.\n\n` +
+            `If our coverage expands there, I am happy to reconnect. If you want, reply with the neighborhood and service type and I can keep that on file for a future check-in.\n\n` +
+            `Thanks,\n${signoff}`
+          : lead.lossReason === "timeline-mismatch"
+            ? `Hi ${firstName},\n\n` +
+              `Thanks for the follow-up. We could not support the timing you needed for ${serviceLabelLower} in ${areaLabel} without setting the wrong expectation.\n\n` +
+              `If your window changes, reply with the new timing and I can check again before you start from scratch.\n\n` +
+              `Thanks,\n${signoff}`
+            : lead.lossReason === "price-mismatch"
+              ? `Hi ${firstName},\n\n` +
+                `Thanks again for considering GreenRain. We were not able to line up the right fit on pricing for this ${serviceLabelLower} request in ${areaLabel}.\n\n` +
+                `If the scope changes or you want us to re-check a simpler version of the job later, reply here and I can take another look.\n\n` +
+                `Thanks,\n${signoff}`
+              : `Hi ${firstName},\n\n` +
+                `Closing the loop on your GreenRain request for ${serviceLabelLower} in ${areaLabel}. We are marking it closed for now so the queue stays accurate.\n\n` +
+                `If you want to reopen it later, reply here with the latest timing and service details and we can pick it back up.\n\n` +
+                `Thanks,\n${signoff}`;
+      templates.push({
+        key: "closed-lost-follow-up",
+        audience: "customer",
+        title: "Closed-lost closeout",
+        channel: followUpChannel,
+        reason: "Use this to close the loop clearly without leaving the customer wondering whether someone will still follow up.",
+        subject,
+        body
+      });
+      return templates;
+    }
+
+    if (lead.status === "converted") {
+      if (primaryLinkedBooking) {
+        templates.push({
+          key: "booking-confirmation",
+          audience: "customer",
+          title: "Booking confirmation follow-up",
+          channel: lead.preferredContactMethod === "phone" ? "email" : lead.preferredContactMethod,
+          reason: "Use this once the lead is already converted and you need a clean confirmation or reassurance note.",
+          subject: "Your GreenRain request is in motion",
+          body:
+            `Hi ${firstName},\n\n` +
+            `Your ${serviceLabelLower} request is now in motion for ${this.formatBookingWindowWithDate(primaryLinkedBooking.scheduledStartIso)}. ` +
+            `If anything changes with access, gates, pets, weather concerns, or timing, reply here and we will update it quickly.\n\n` +
+            `Thanks,\n${signoff}`
+        });
+      }
+
+      if (latestCompletedBooking && lead.reviewIds.length === 0) {
+        templates.push({
+          key: "review-request",
+          audience: "customer",
+          title: "Review request",
+          channel: lead.preferredContactMethod === "phone" ? "email" : lead.preferredContactMethod,
+          reason: "Use this after a completed booking when the lead has converted but has not left a review yet.",
+          subject: "Quick GreenRain favor",
+          body:
+            `Hi ${firstName},\n\n` +
+            `Thanks again for trusting GreenRain for your ${serviceLabelLower}. If the visit on ${this.formatBookingWindowWithDate(latestCompletedBooking.scheduledStartIso)} went the way it should have, a short reply or review would help a lot while we keep building in ${areaLabel}.\n\n` +
+            `Even one or two sentences about how the job went is useful.\n\n` +
+            `Thanks,\n${signoff}`
+        });
+      }
+
+      if (lead.reviewIds.length > 0 || linkedBookings.length > 1) {
+        templates.push({
+          key: "referral-request",
+          audience: "customer",
+          title: "Referral ask",
+          channel: lead.preferredContactMethod === "phone" ? "email" : lead.preferredContactMethod,
+          reason: "Use this when the customer has already converted and shown repeat or review behavior.",
+          subject: "Quick favor from GreenRain",
+          body:
+            `Hi ${firstName},\n\n` +
+            `Thanks again for working with GreenRain. If you know a neighbor or friend in ${areaLabel} who wants the same low-friction experience, feel free to send them our way and mention your name when they reach out.\n\n` +
+            `We appreciate it,\n${signoff}`
+        });
+      }
+
+      return templates.slice(0, 3);
+    }
+
+    if (firstResponseChannel === "email") {
+      templates.push({
+        key: "first-response-email",
+        audience: "customer",
+        title: "First-response email",
+        channel: "email",
+        reason: "Use this for email-first contact-us requests and inbox-forwarded inquiries.",
+        subject: `GreenRain follow-up for your ${serviceLabelLower} request`,
+        body:
+          `Hi ${firstName},\n\n` +
+          `Thanks for reaching out to GreenRain about ${serviceLabelLower} in ${areaLabel}. I can help from here.\n\n` +
+          `Before I line up the best next step, please reply with:\n` +
+          `- the service address\n` +
+          `- your ideal timing\n` +
+          `- anything we should know about access, gates, pets, or property conditions\n\n` +
+          `If you'd rather switch to text or a quick call, send the best number and I will use that instead.\n\n` +
+          `Thanks,\n${signoff}`
+      });
+    } else if (firstResponseChannel === "platform-message") {
+      templates.push({
+        key: "first-response-platform-message",
+        audience: "customer",
+        title: "Platform message reply",
+        channel: "platform-message",
+        reason: "Use this when the inquiry arrived through Google Business Profile or another channel-managed thread.",
+        body:
+          `Hi ${firstName}, thanks for reaching out to GreenRain. I can help from here. ` +
+          `Please send the service address, the timing you want, and anything we should know about access or property conditions so I can line up the best next step.`
+      });
+    } else if (firstResponseChannel === "text") {
+      templates.push({
+        key: "first-response-text",
+        audience: "customer",
+        title: "First-response text",
+        channel: "text",
+        reason: "Use this when the customer prefers text or came through a text-style support path.",
+        body:
+          `Hi ${firstName}, this is ${signoff} with GreenRain. Thanks for reaching out about ${serviceLabelLower} in ${areaLabel}. ` +
+          `I can help. What is the service address, your ideal timing, and anything we should know before we line up the next step?`
+      });
+    } else {
+      templates.push({
+        key: "missed-call-callback",
+        audience: "customer",
+        title: "Missed-call callback",
+        channel: "phone",
+        reason: "Use this when the lead came in by phone and needs a same-day callback script.",
+        body:
+          `Hi ${firstName}, this is ${signoff} with GreenRain returning your call about ${serviceLabelLower} in ${areaLabel}. ` +
+          `I can help. The quickest next step is confirming the service address, timing, and any access notes. ` +
+          `Call or text me back at this number and I'll keep it moving.`
+      });
+    }
+
+    if (supportLike) {
+      templates.push({
+        key: "issue-help-follow-up",
+        audience: "customer",
+        title: "Customer-service follow-up",
+        channel: lead.preferredContactMethod === "phone" ? "phone" : lead.preferredContactMethod,
+        reason: "Use this when a no-booking help request needs a clear split between pre-booking follow-up and true support.",
+        subject:
+          lead.preferredContactMethod === "email" ? "GreenRain follow-up on your help request" : undefined,
+        body:
+          `Hi ${firstName},\n\n` +
+          `Thanks for reaching out. I am treating this as a pre-booking help request so it stays in our follow-up queue and does not get lost.\n\n` +
+          `If this is tied to an existing booking, payment, or account issue, reply with the booking email or service address and I will route it through support too. ` +
+          `If not, send the service address plus the timing you want and I will help line up the next step.\n\n` +
+          `Thanks,\n${signoff}`
+      });
+    } else {
+      templates.push({
+        key: "quote-follow-up",
+        audience: "customer",
+        title: "Quote and timing follow-up",
+        channel: lead.preferredContactMethod === "phone" ? "email" : lead.preferredContactMethod,
+        reason: "Use this after the first touch when you still need scope, timing, or address details before booking.",
+        subject: "Checking back on your GreenRain request",
+        body:
+          `Hi ${firstName},\n\n` +
+          `Checking back on your ${serviceLabelLower} request for ${areaLabel}. If you still want to move forward, reply with the service address, the timing you want, and any property notes that might affect the visit.\n\n` +
+          `Once I have that, I can recommend the best next step instead of sending you in circles.\n\n` +
+          `Thanks,\n${signoff}`
+      });
+    }
+
+    if (lead.serviceCategory) {
+      templates.push({
+        key: "provider-outreach",
+        audience: "provider",
+        title: "Provider availability outreach",
+        channel: "email",
+        reason: `Use this when you need live capacity confirmation before promising timing. Start with ${providerTargetSummary}.`,
+        subject: `GreenRain availability check for ${serviceLabelLower} in ${areaLabel}`,
+        body:
+          `Hi [Provider name],\n\n` +
+          `GreenRain has a ${serviceLabelLower} request in ${areaLabel} that still needs live availability confirmation before we lock customer expectations.\n\n` +
+          `Can you reply with:\n` +
+          `- whether you can take similar work in that area soon\n` +
+          `- your realistic timing window\n` +
+          `- any scope constraints or payout guardrails we should respect before we promise anything\n\n` +
+          `A quick yes or no is useful. I would rather set the right expectation now than force a scramble later.\n\n` +
+          `Thanks,\n${signoff}`
+      });
+    }
+
+    if (lead.sourceChannel === "referral" && lead.channelMetadata?.referrerName) {
+      templates.push({
+        key: "partner-follow-up",
+        audience: "partner",
+        title: "Referral-source follow-up",
+        channel: lead.channelMetadata.referrerEmail ? "email" : "phone",
+        reason: "Use this to close the loop with the referrer while you confirm whether follow-up should stay with them or go directly to the customer.",
+        subject: lead.channelMetadata.referrerEmail ? "GreenRain received your referral" : undefined,
+        body:
+          `Hi ${lead.channelMetadata.referrerName},\n\n` +
+          `Thanks for sending ${firstName}'s ${serviceLabelLower} request to GreenRain. I have it in our follow-up queue now.\n\n` +
+          `${lead.channelMetadata.referralFollowUpTarget === "referrer"
+            ? `I am treating you as the active contact until we have the customer's direct details, so send over anything else we should know before I reply.`
+            : `I plan to follow up with the customer directly, but I wanted you to know the handoff is moving.`}\n\n` +
+          `If timing, access, or scope details would change the fit, send those over now so I can keep expectations accurate.\n\n` +
+          `Thanks,\n${signoff}`
+      });
+    }
+
+    return templates.slice(0, 5);
+  }
+
+  private normalizeLaunchLeadPhone(phone?: string): string | undefined {
+    if (!phone) {
+      return undefined;
+    }
+
+    const normalized = phone.replace(/[^\d+]/g, "");
+    return normalized.length >= 10 ? normalized.slice(0, 18) : undefined;
+  }
+
+  private sourceChannelSupportsPlatformMessage(sourceChannel: LaunchLeadSourceChannel): boolean {
+    return sourceChannel === "google-business-profile" || sourceChannel === "social";
+  }
+
+  private deriveInboundContactName(
+    email: string | undefined,
+    phone: string | undefined,
+    sourceChannel: LaunchLeadSourceChannel
+  ): string {
+    if (email) {
+      const localPart = email.split("@")[0] ?? "customer";
+      return this.toTitleCase(localPart.replace(/[._-]+/g, " "));
+    }
+    if (phone) {
+      return `Inbound ${this.toTitleCase(sourceChannel.replaceAll("-", " "))} contact`;
+    }
+    return "Inbound contact";
+  }
+
+  private getFirstName(name: string | undefined, fallback = "there"): string {
+    const normalized = name?.trim().replace(/\s+/g, " ");
+    if (!normalized) {
+      return fallback;
+    }
+
+    return normalized.split(" ")[0] ?? normalized;
+  }
+
+  private getLeadFirstName(contactName: string): string {
+    return this.getFirstName(contactName, "customer");
+  }
+
+  private async maybeCreateLaunchLeadFromSupportTicket(
+    requester: { userId: string; role: "customer" | "provider" | "crew-member" },
+    payload: CreateSupportTicketRequest
+  ): Promise<LaunchLead | undefined> {
+    if (
+      requester.role !== "customer" ||
+      payload.bookingId ||
+      (payload.issueType !== "general" && payload.issueType !== "account")
+    ) {
+      return undefined;
+    }
+
+    const customer = await this.repository.findCustomerById(requester.userId);
+    if (!customer) {
+      return undefined;
+    }
+
+    const defaultProperty =
+      customer.properties.find((property) => property.id === customer.defaultPropertyId) ??
+      customer.properties[0];
+    const areaAddress = defaultProperty?.address ?? customer.address;
+    const areaLabel = `${areaAddress.city}, ${areaAddress.state}`;
+    const subject = payload.subject.trim().replace(/\s+/g, " ");
+    const description = payload.description.trim().replace(/\s+/g, " ");
+
+    return this.createLaunchLead({
+      sourceChannel: "email",
+      requestSource: "customer-support-no-booking-ticket",
+      contactName: customer.fullName,
+      email: customer.email,
+      phone: customer.phone,
+      preferredContactMethod: "email",
+      areaLabel,
+      message: `Customer service help request from support ticket: ${subject}. ${description}`
+    });
+  }
+
+  private buildLaunchAttributionAnalyticsProperties(
+    attribution?: LaunchAttributionContext
+  ): AnalyticsEvent["properties"] {
+    if (!attribution) {
+      return {};
+    }
+
+    const properties: AnalyticsEvent["properties"] = {};
+    if (attribution.source) {
+      properties.attributionSource = attribution.source;
+    }
+    if (attribution.medium) {
+      properties.attributionMedium = attribution.medium;
+    }
+    if (attribution.campaign) {
+      properties.attributionCampaign = attribution.campaign;
+    }
+    if (attribution.term) {
+      properties.attributionTerm = attribution.term;
+    }
+    if (attribution.content) {
+      properties.attributionContent = attribution.content;
+    }
+    if (attribution.referrerHost) {
+      properties.attributionReferrerHost = attribution.referrerHost;
+    }
+    if (attribution.landingPath) {
+      properties.attributionLandingPath = attribution.landingPath;
+    }
+    if (attribution.capturedAt) {
+      properties.attributionCapturedAt = attribution.capturedAt;
+    }
+
+    return properties;
+  }
+
+  private buildLaunchLeadAnalyticsProperties(
+    lead?: LaunchLead,
+    linkMode?: LaunchLeadLinkMode
+  ): AnalyticsEvent["properties"] {
+    if (!lead) {
+      return {};
+    }
+
+    return {
+      launchLeadId: lead.id,
+      launchLeadSourceChannel: lead.sourceChannel,
+      launchLeadRequestSource: lead.requestSource ?? "unknown",
+      ...(linkMode ? { launchLeadLinkMode: linkMode } : {})
+    };
+  }
+
+  private buildSuggestedLaunchLeadBookingMatches(
+    lead: LaunchLead,
+    bookings: Booking[],
+    customers: CustomerProfile[],
+    providers: ProviderProfile[]
+  ): LaunchLeadBookingMatch[] {
+    const normalizedLeadEmail = lead.email?.trim().toLowerCase();
+    const normalizedLeadPhone = this.normalizeLaunchLeadPhone(lead.phone);
+    if (!normalizedLeadEmail && !normalizedLeadPhone) {
+      return [];
+    }
+
+    const customersById = new Map(customers.map((customer) => [customer.id, customer]));
+    const providersById = new Map(providers.map((provider) => [provider.id, provider]));
+
+    const matches: LaunchLeadBookingMatch[] = [];
+    for (const booking of bookings) {
+      if (
+        lead.convertedBookingIds.includes(booking.id) ||
+        (booking.launchLeadId && booking.launchLeadId !== lead.id)
+      ) {
+        continue;
+      }
+
+      const customer = customersById.get(booking.customerId);
+      if (!customer) {
+        continue;
+      }
+
+      const emailMatch = Boolean(normalizedLeadEmail) && customer.email.trim().toLowerCase() === normalizedLeadEmail;
+      const phoneMatch =
+        Boolean(normalizedLeadPhone) && this.normalizeLaunchLeadPhone(customer.phone) === normalizedLeadPhone;
+      if (!emailMatch && !phoneMatch) {
+        continue;
+      }
+
+      const provider = providersById.get(booking.providerId);
+      matches.push({
+        bookingId: booking.id,
+        customerId: booking.customerId,
+        customerName: customer.fullName,
+        providerId: booking.providerId,
+        providerName: provider?.companyName,
+        category: booking.category,
+        bookingStatus: booking.status,
+        scheduledStartIso: booking.scheduledStartIso,
+        requestedAt: booking.requestedAt,
+        matchReason: emailMatch && phoneMatch ? "email-and-phone" : emailMatch ? "email" : "phone"
+      });
+    }
+
+    return matches
+      .sort((left, right) => {
+        const leftCategoryScore = this.scoreLaunchLeadCategoryMatch(lead, left.category);
+        const rightCategoryScore = this.scoreLaunchLeadCategoryMatch(lead, right.category);
+        if (leftCategoryScore !== rightCategoryScore) {
+          return leftCategoryScore - rightCategoryScore;
+        }
+
+        const leftLinkedScore = lead.convertedBookingIds.includes(left.bookingId) ? 0 : 1;
+        const rightLinkedScore = lead.convertedBookingIds.includes(right.bookingId) ? 0 : 1;
+        if (leftLinkedScore !== rightLinkedScore) {
+          return leftLinkedScore - rightLinkedScore;
+        }
+
+        return right.requestedAt.localeCompare(left.requestedAt);
+      })
+      .slice(0, 4);
+  }
+
+  private async resolveLaunchLeadForCustomer(
+    customer: CustomerProfile,
+    payload: Pick<CreateBookingRequest, "launchLeadId" | "category">
+  ): Promise<{
+    lead?: LaunchLead;
+    linkMode?: LaunchLeadLinkMode;
+  }> {
+    if (payload.launchLeadId) {
+      const explicitLead = await this.repository.findLaunchLeadById(payload.launchLeadId);
+      if (explicitLead && explicitLead.status !== "closed-lost") {
+        return {
+          lead: explicitLead,
+          linkMode: "explicit-id"
+        };
+      }
+    }
+
+    const normalizedEmail = customer.email.trim().toLowerCase();
+    const normalizedPhone = this.normalizeLaunchLeadPhone(customer.phone);
+    if (!normalizedEmail && !normalizedPhone) {
+      return {};
+    }
+
+    const candidates = (await this.repository.listLaunchLeads())
+      .filter((lead) => lead.status !== "closed-lost")
+      .map((lead) => ({
+        lead,
+        emailMatch: Boolean(normalizedEmail) && lead.email === normalizedEmail,
+        phoneMatch: Boolean(normalizedPhone) && lead.phone === normalizedPhone
+      }))
+      .filter((candidate) => candidate.emailMatch || candidate.phoneMatch)
+      .sort((left, right) => {
+        const leftCategoryScore = this.scoreLaunchLeadCategoryMatch(left.lead, payload.category);
+        const rightCategoryScore = this.scoreLaunchLeadCategoryMatch(right.lead, payload.category);
+        if (leftCategoryScore !== rightCategoryScore) {
+          return leftCategoryScore - rightCategoryScore;
+        }
+
+        const leftStatusScore = left.lead.status === "converted" ? 1 : 0;
+        const rightStatusScore = right.lead.status === "converted" ? 1 : 0;
+        if (leftStatusScore !== rightStatusScore) {
+          return leftStatusScore - rightStatusScore;
+        }
+
+        if (left.emailMatch !== right.emailMatch) {
+          return left.emailMatch ? -1 : 1;
+        }
+
+        return right.lead.updatedAt.localeCompare(left.lead.updatedAt);
+      });
+
+    const selected = candidates[0];
+    if (!selected) {
+      return {};
+    }
+
+    return {
+      lead: selected.lead,
+      linkMode: selected.emailMatch ? "email-match" : "phone-match"
+    };
+  }
+
+  private async linkBookingToLaunchLead(
+    lead: LaunchLead,
+    booking: Booking,
+    linkedAtIso = new Date().toISOString()
+  ): Promise<LaunchLead> {
+    if (!booking.launchLeadId) {
+      await this.repository.updateBooking(booking.id, {
+        launchLeadId: lead.id
+      });
+    }
+
+    if (booking.recurringPlanId) {
+      const plan = await this.repository.findRecurringServicePlanById(booking.recurringPlanId);
+      if (plan) {
+        if (plan.launchLeadId && plan.launchLeadId !== lead.id) {
+          throw new HttpError(400, "That booking's recurring plan is already linked to a different launch lead.");
+        }
+
+        if (!plan.launchLeadId) {
+          await this.repository.updateRecurringServicePlan(plan.id, {
+            launchLeadId: lead.id
+          });
+        }
+      }
+    }
+
+    return (await this.syncLaunchLeadAfterBooking(lead.id, {
+      ...booking,
+      launchLeadId: lead.id
+    }, linkedAtIso)) ?? lead;
+  }
+
+  private scoreLaunchLeadCategoryMatch(
+    lead: LaunchLead,
+    bookingCategory: CreateBookingRequest["category"]
+  ): number {
+    if (lead.serviceCategory === bookingCategory) {
+      return 0;
+    }
+    if (!lead.serviceCategory) {
+      return 1;
+    }
+    return 2;
+  }
+
+  private async syncLaunchLeadAfterBooking(
+    launchLeadId: string,
+    booking: Booking,
+    linkedAtIso = booking.requestedAt
+  ): Promise<LaunchLead | undefined> {
+    const lead = await this.repository.findLaunchLeadById(launchLeadId);
+    if (!lead) {
+      return undefined;
+    }
+
+    const convertedBookingIds = lead.convertedBookingIds.includes(booking.id)
+      ? lead.convertedBookingIds
+      : [...lead.convertedBookingIds, booking.id];
+    const conversionSummary =
+      convertedBookingIds.length === 1
+        ? `Converted to booking ${booking.id} through the managed marketplace flow.`
+        : `Converted lead has now generated ${convertedBookingIds.length} bookings through the managed marketplace flow.`;
+    const updatedLead = await this.repository.updateLaunchLead(lead.id, {
+      status: "converted",
+      firstRespondedAt: lead.firstRespondedAt ?? linkedAtIso,
+      closedAt: linkedAtIso,
+      nextFollowUpDueAt: undefined,
+      lossReason: undefined,
+      outcomeSummary:
+        lead.status === "converted" && lead.outcomeSummary
+          ? lead.outcomeSummary
+          : conversionSummary,
+      convertedBookingIds,
+      firstConvertedBookingAt: lead.firstConvertedBookingAt ?? booking.requestedAt,
+      lastConvertedBookingAt: booking.requestedAt,
+      updatedAt: linkedAtIso
+    });
+
+    return updatedLead ?? lead;
+  }
+
+  private async syncLaunchLeadAfterReview(
+    launchLeadId: string,
+    review: ProviderReview
+  ): Promise<LaunchLead | undefined> {
+    const lead = await this.repository.findLaunchLeadById(launchLeadId);
+    if (!lead) {
+      return undefined;
+    }
+
+    const reviewIds = lead.reviewIds.includes(review.id) ? lead.reviewIds : [...lead.reviewIds, review.id];
+    const updatedLead = await this.repository.updateLaunchLead(lead.id, {
+      reviewIds,
+      lastReviewSubmittedAt: review.createdAt,
+      updatedAt: review.createdAt
+    });
+
+    return updatedLead ?? lead;
   }
 
   private getServiceWindowKey(iso: string): "morning" | "afternoon" | "late-afternoon-night" {

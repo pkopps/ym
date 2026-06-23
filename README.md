@@ -69,6 +69,9 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `APPLE_KEY_ID`
   - `APPLE_PRIVATE_KEY`
   - `APP_BASE_URL` (for example `http://localhost:3000`)
+- To tune public web launch SEO and geography defaults locally, set:
+  - `NEXT_PUBLIC_SITE_URL` (for example `http://localhost:3000`)
+  - `NEXT_PUBLIC_DEFAULT_SERVICE_AREA_LABEL` (defaults to `Barnegat, NJ`)
 - To turn Google Address Validation enrichment on locally, set:
   - `GOOGLE_ADDRESS_VALIDATION_API_KEY`
 - When configured, Google Address Validation can enrich:
@@ -105,6 +108,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - To turn real email/SMS delivery on locally, set:
   - `RESEND_API_KEY`
   - `NOTIFICATION_EMAIL_FROM`
+  - `INBOUND_LEAD_WEBHOOK_SECRET`
   - `TWILIO_ACCOUNT_SID`
   - `TWILIO_AUTH_TOKEN`
   - `TWILIO_FROM_NUMBER`
@@ -134,6 +138,28 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - When a dispute, service-quality case, or refund review includes submitted booking evidence, ops must review at least one evidence item before resolving the ticket, and the final resolution must match the direction supported by the reviewed evidence. If the reviewed evidence is mixed or inconclusive, ops now must add a specific manual rationale before closing the case.
 - Manual ops booking interventions can still add notes or reschedule freely, but disputed outcome changes now must link the related support ticket, follow the same reviewed-evidence direction guard, and use a specific intervention note when the evidence is mixed or inconclusive.
 - The ops support queue now consumes a backend-authored resolution policy payload, so evidence-review locks, blocked resolution directions, and detailed-rationale requirements come from the same source of truth the API enforces instead of being re-derived separately in the browser.
+- The ops support queue now also includes backend-authored customer update drafts for active field issues, cancellations, refund approvals or denials, and dispute/service-resolution follow-up, so the same queue that recommends a decision also gives ops a copy-ready customer message for the likely next step.
+- The public web SEO layer now uses a configurable `NEXT_PUBLIC_SITE_URL`, keeps the sitemap focused on launch-facing public pages, disallows auth/internal flows in `robots.txt`, and defaults the public customer search experience to `Barnegat, NJ` unless a different launch area label is configured.
+- The duplicate public `/customer` experience now points search engines back to the homepage canonical, and parameter-driven `/customer/listings` result pages are marked `noindex` until dedicated town/service landing pages exist.
+- The first launch-facing landing pages are now live for `/barnegat-nj`, `/services/lawn-mowing`, `/services/yard-cleanup`, `/barnegat-nj/lawn-mowing`, and `/barnegat-nj/yard-cleanup`, and the public footer now points at real launch pages instead of placeholder routes that did not exist yet.
+- The public web now captures privacy-safe first-touch attribution from `utm_*` tags, external referrers, and launch landing paths, then carries that context into search, booking, recurring-plan, review, and general web analytics events so launch channels can be traced through the marketplace funnel without logging raw personal URLs.
+- Public launch pages, the homepage, and the Help center now include an email-first Contact us path, and ops can also log phone, GBP, referral, social, mail, and customer-service help requests into the same launch-lead queue with an owner, a first-response SLA timestamp, next-follow-up scheduling, and converted/closed-lost outcomes. No-booking customer `general` or `account` support tickets now auto-create a linked follow-up lead too, so those help requests do not rely on manual ops re-entry.
+- There is now a shared-secret inbound launch-lead endpoint for automated non-website sources like direct email forwarding, GBP message relays, or referral processors, and it deduplicates retries by `sourceReferenceId` so external forwarders can safely resend the same lead.
+- Direct email forwarders also have a specialized `/api/launch/inbound/email` payload shape now, so sender/subject/body relays do not need to construct the full lead schema themselves before landing in the queue.
+- Google Business Profile forwarders now also have a specialized `/api/launch/inbound/google-business-profile` payload shape, and the lead model now supports `platform-message` follow-up for channel-managed threads so GBP inquiries can land in the queue even before ops has a direct phone or email for the customer.
+- Referral forwarders now have a specialized `/api/launch/inbound/referral` payload shape too, and that path can fall back to the referrer as the follow-up contact when the referred customer’s direct email or phone is not available yet.
+- GBP thread details and referral fallback-contact details now persist as structured launch-lead channel metadata instead of only being buried in freeform notes, so the ops queue can show the source thread or referrer context directly.
+- Website-created launch leads now persist a privacy-safe lead id in the browser, and manually entered email-first or phone-first leads can also auto-link later when the same customer books with matching contact identity. That means self-serve bookings, recurring visits, and review generation can now flow back into the ops lead queue as real conversion activity instead of disconnected records.
+- When a booking existed before the lead was captured, the ops launch-lead queue now surfaces likely booking matches and lets ops attach the booking explicitly, including recurring-plan linkage for future follow-on visits.
+- The ops launch-lead queue now also returns backend-authored next-step guidance plus grouped copy-ready drafts for customer follow-up, provider availability outreach, and referral-source follow-up. The current set covers first-response email/text/callbacks, customer-service help follow-up, quote/timing follow-up, booking confirmations, completed-job review requests, closed-lost closeout replies, provider availability checks, referral-source handoff notes, and referral asks so the team is not rewriting launch responses from scratch at each lead stage.
+- The ops overview now also includes launch-lead backlog metrics such as open leads, overdue first responses, overdue follow-ups, converted/closed-lost counts, and source-channel rollups so the team can see queue pressure without opening every lead card.
+- The ops overview now also surfaces review-request workflow counts, including review invites created, sent, opened, completed, expired, and the completion rate from invite to submitted review, so launch ops has one place to track reviews requested versus reviews received.
+- The ops dashboard now includes a structured launch operations playbook for coverage limits, low-supply recovery, weather and delay handling, no-shows, and provider go-live decisions, so those launch rules are visible in-product instead of only buried in checklist notes.
+- The provider verification queue now includes backend-authored launch-fit guidance, warnings, and a concrete checklist for profile completeness, service scope, launch-area fit, experience signal, operational readiness, service-quality expectations, and intervention readiness, and approvals that go against a `manual-review` or `reject` recommendation now require a detailed override note instead of a generic go-live click-through.
+- The provider management board now also shows that same verification checklist in provider-friendly language, plus concrete next steps. Providers can update company name, bio, experience, and service categories directly in the dashboard, and rejected businesses are automatically moved back into `pending-review` when they make meaningful verification-related profile or dispatch-setting changes.
+- The public site now includes dedicated trust pages for support expectations, cancellations, refund reviews, and booking expectations, and those pages are linked from the homepage, Help center, footer, and sitemap so launch visitors can verify how GreenRain behaves before they book.
+- The legal and provider-facing trust layer is now live too: privacy basics, launch terms, and provider standards pages are published and linked from Help, the footer, the sitemap, and the provider marketing surface so both sides of the marketplace can see clearer launch expectations before committing.
+- The homepage, Barnegat launch page, and launch service landing pages now surface stronger proof signals from the real public marketplace overview, including verified-provider counts, average rating, active service-category breadth, recent completed-booking review snippets tied to verified providers, current coverage-pocket cards based on verified supply and completed jobs, and a dedicated provider-verification explainer so public trust is grounded in current marketplace state instead of policy language alone.
 - To turn the real checkout path on locally, set:
   - `STRIPE_SECRET_KEY`
   - `STRIPE_WEBHOOK_SECRET`

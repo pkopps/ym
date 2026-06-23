@@ -20,6 +20,7 @@ import {
   RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
+  LaunchLead,
   SupportOpsTicket,
   ReviewInvite,
   SupportTicket
@@ -74,6 +75,7 @@ export interface MarketplaceRepository {
   listProviderReviews(providerId: string): Promise<ProviderReview[]>;
   findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined>;
   createReviewInvite(invite: ReviewInvite): Promise<ReviewInvite>;
+  listReviewInvites(): Promise<ReviewInvite[]>;
   listReviewInvitesByCustomer(customerId: string): Promise<ReviewInvite[]>;
   findReviewInviteByBookingId(bookingId: string): Promise<ReviewInvite | undefined>;
   listScheduledReviewInvites(): Promise<ReviewInvite[]>;
@@ -89,6 +91,11 @@ export interface MarketplaceRepository {
   findPaymentByCheckoutSessionId(checkoutSessionId: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
+  createLaunchLead(lead: LaunchLead): Promise<LaunchLead>;
+  listLaunchLeads(): Promise<LaunchLead[]>;
+  findLaunchLeadById(leadId: string): Promise<LaunchLead | undefined>;
+  findLaunchLeadBySourceReferenceId(sourceReferenceId: string): Promise<LaunchLead | undefined>;
+  updateLaunchLead(leadId: string, updates: Partial<LaunchLead>): Promise<LaunchLead | undefined>;
   createSupportTicket(ticket: SupportTicket): Promise<SupportTicket>;
   listSupportTickets(): Promise<SupportTicket[]>;
   updateSupportTicket(ticketId: string, updates: Partial<SupportTicket>): Promise<SupportTicket | undefined>;

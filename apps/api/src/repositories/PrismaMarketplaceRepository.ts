@@ -21,6 +21,7 @@ import {
   RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
+  LaunchLead,
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
@@ -409,6 +410,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         id: booking.id,
         customerId: booking.customerId,
         providerId: booking.providerId,
+        launchLeadId: booking.launchLeadId,
         recurringPlanId: booking.recurringPlanId,
         recurringOccurrenceIndex: booking.recurringOccurrenceIndex,
         serviceAddress: asJson(booking.serviceAddress),
@@ -475,6 +477,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       data: {
         customerId: updates.customerId,
         providerId: updates.providerId,
+        launchLeadId: "launchLeadId" in updates ? updates.launchLeadId ?? null : undefined,
         recurringPlanId:
           "recurringPlanId" in updates ? updates.recurringPlanId ?? null : undefined,
         recurringOccurrenceIndex:
@@ -579,6 +582,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         id: plan.id,
         customerId: plan.customerId,
         providerId: plan.providerId,
+        launchLeadId: plan.launchLeadId,
         serviceAddress: asJson(plan.serviceAddress),
         servicePropertyId: plan.servicePropertyId,
         category: plan.category,
@@ -631,6 +635,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       data: {
         customerId: updates.customerId,
         providerId: updates.providerId,
+        launchLeadId: "launchLeadId" in updates ? updates.launchLeadId ?? null : undefined,
         serviceAddress: updates.serviceAddress ? asJson(updates.serviceAddress) : undefined,
         servicePropertyId: "servicePropertyId" in updates ? updates.servicePropertyId ?? null : undefined,
         category: updates.category,
@@ -813,6 +818,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       }
     });
     return invite;
+  }
+
+  public async listReviewInvites(): Promise<ReviewInvite[]> {
+    const invites = await this.prisma.reviewInvite.findMany();
+    return invites.map((invite: any) => this.mapReviewInvite(invite));
   }
 
   public async listReviewInvitesByCustomer(customerId: string): Promise<ReviewInvite[]> {
@@ -1011,10 +1021,152 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapPaymentRecord(payment);
   }
 
+  public async createLaunchLead(lead: LaunchLead): Promise<LaunchLead> {
+    await this.prisma.launchLead.create({
+      data: {
+        ...lead,
+        sourceReferenceId: lead.sourceReferenceId,
+        channelMetadata: lead.channelMetadata ? asJson(lead.channelMetadata) : undefined,
+        attribution: lead.attribution ? asJson(lead.attribution) : undefined,
+        email: lead.email,
+        phone: lead.phone,
+        serviceCategory: lead.serviceCategory,
+        requestSource: lead.requestSource,
+        assignedOwner: lead.assignedOwner,
+        firstResponseDueAt: new Date(lead.firstResponseDueAt),
+        firstRespondedAt: lead.firstRespondedAt ? new Date(lead.firstRespondedAt) : undefined,
+        lastContactedAt: lead.lastContactedAt ? new Date(lead.lastContactedAt) : undefined,
+        nextFollowUpDueAt: lead.nextFollowUpDueAt ? new Date(lead.nextFollowUpDueAt) : undefined,
+        closedAt: lead.closedAt ? new Date(lead.closedAt) : undefined,
+        lossReason: lead.lossReason,
+        outcomeSummary: lead.outcomeSummary,
+        createdAt: new Date(lead.createdAt),
+        updatedAt: new Date(lead.updatedAt)
+      }
+    });
+    return lead;
+  }
+
+  public async listLaunchLeads(): Promise<LaunchLead[]> {
+    const leads = await this.prisma.launchLead.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+    return leads.map((lead: any) => this.mapLaunchLead(lead));
+  }
+
+  public async findLaunchLeadById(leadId: string): Promise<LaunchLead | undefined> {
+    const lead = await this.prisma.launchLead.findUnique({
+      where: { id: leadId }
+    });
+    return lead ? this.mapLaunchLead(lead) : undefined;
+  }
+
+  public async findLaunchLeadBySourceReferenceId(
+    sourceReferenceId: string
+  ): Promise<LaunchLead | undefined> {
+    const lead = await this.prisma.launchLead.findUnique({
+      where: { sourceReferenceId }
+    });
+    return lead ? this.mapLaunchLead(lead) : undefined;
+  }
+
+  public async updateLaunchLead(
+    leadId: string,
+    updates: Partial<LaunchLead>
+  ): Promise<LaunchLead | undefined> {
+    const current = await this.prisma.launchLead.findUnique({
+      where: { id: leadId }
+    });
+
+    if (!current) {
+      return undefined;
+    }
+
+    const lead = await this.prisma.launchLead.update({
+      where: { id: leadId },
+      data: {
+        sourceChannel: updates.sourceChannel,
+        requestSource: updates.requestSource,
+        sourceReferenceId: updates.sourceReferenceId,
+        channelMetadata:
+          updates.channelMetadata === undefined
+            ? undefined
+            : updates.channelMetadata
+              ? asJson(updates.channelMetadata)
+              : null,
+        attribution:
+          updates.attribution === undefined
+            ? undefined
+            : updates.attribution
+              ? asJson(updates.attribution)
+              : null,
+        contactName: updates.contactName,
+        email: updates.email,
+        phone: updates.phone,
+        preferredContactMethod: updates.preferredContactMethod,
+        areaLabel: updates.areaLabel,
+        serviceCategory: updates.serviceCategory,
+        message: updates.message,
+        status: updates.status,
+        assignedOwner: updates.assignedOwner,
+        firstResponseDueAt: updates.firstResponseDueAt ? new Date(updates.firstResponseDueAt) : undefined,
+        firstRespondedAt:
+          updates.firstRespondedAt
+            ? new Date(updates.firstRespondedAt)
+            : updates.firstRespondedAt === undefined
+              ? undefined
+              : null,
+        lastContactedAt:
+          updates.lastContactedAt
+            ? new Date(updates.lastContactedAt)
+            : updates.lastContactedAt === undefined
+              ? undefined
+              : null,
+        nextFollowUpDueAt:
+          updates.nextFollowUpDueAt
+            ? new Date(updates.nextFollowUpDueAt)
+            : updates.nextFollowUpDueAt === undefined
+              ? undefined
+              : null,
+        closedAt:
+          updates.closedAt ? new Date(updates.closedAt) : updates.closedAt === undefined ? undefined : null,
+        lossReason: updates.lossReason === undefined ? undefined : updates.lossReason,
+        outcomeSummary:
+          updates.outcomeSummary === undefined ? undefined : updates.outcomeSummary,
+        convertedBookingIds:
+          updates.convertedBookingIds === undefined ? undefined : updates.convertedBookingIds,
+        reviewIds: updates.reviewIds === undefined ? undefined : updates.reviewIds,
+        firstConvertedBookingAt:
+          updates.firstConvertedBookingAt
+            ? new Date(updates.firstConvertedBookingAt)
+            : updates.firstConvertedBookingAt === undefined
+              ? undefined
+              : null,
+        lastConvertedBookingAt:
+          updates.lastConvertedBookingAt
+            ? new Date(updates.lastConvertedBookingAt)
+            : updates.lastConvertedBookingAt === undefined
+              ? undefined
+              : null,
+        lastReviewSubmittedAt:
+          updates.lastReviewSubmittedAt
+            ? new Date(updates.lastReviewSubmittedAt)
+            : updates.lastReviewSubmittedAt === undefined
+              ? undefined
+              : null,
+        createdAt: updates.createdAt ? new Date(updates.createdAt) : undefined,
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined
+      }
+    });
+
+    return this.mapLaunchLead(lead);
+  }
+
   public async createSupportTicket(ticket: SupportTicket): Promise<SupportTicket> {
     await this.prisma.supportTicket.create({
       data: {
         ...ticket,
+        launchLeadId: ticket.launchLeadId,
         createdAt: new Date(ticket.createdAt),
         updatedAt: new Date(ticket.updatedAt),
         triagedAt: ticket.triagedAt ? new Date(ticket.triagedAt) : undefined,
@@ -1049,6 +1201,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       where: { id: ticketId },
       data: {
         bookingId: updates.bookingId,
+        launchLeadId: updates.launchLeadId,
         requesterId: updates.requesterId,
         subject: updates.subject,
         description: updates.description,
@@ -1782,6 +1935,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     id: string;
     customerId: string;
     providerId: string;
+    launchLeadId: string | null;
     recurringPlanId: string | null;
     recurringOccurrenceIndex: number | null;
     serviceAddress: unknown;
@@ -1821,6 +1975,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       id: record.id,
       customerId: record.customerId,
       providerId: record.providerId,
+      launchLeadId: record.launchLeadId ?? undefined,
       recurringPlanId: record.recurringPlanId ?? undefined,
       recurringOccurrenceIndex: record.recurringOccurrenceIndex ?? undefined,
       serviceAddress: readJson<Address>(record.serviceAddress),
@@ -1862,6 +2017,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     id: string;
     customerId: string;
     providerId: string;
+    launchLeadId: string | null;
     serviceAddress: unknown;
     servicePropertyId: string | null;
     category: string;
@@ -1883,6 +2039,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       id: record.id,
       customerId: record.customerId,
       providerId: record.providerId,
+      launchLeadId: record.launchLeadId ?? undefined,
       serviceAddress: readJson<Address>(record.serviceAddress),
       servicePropertyId: record.servicePropertyId ?? undefined,
       category: record.category as RecurringServicePlan["category"],
@@ -1937,6 +2094,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   private mapSupportTicket(record: {
     id: string;
     bookingId: string | null;
+    launchLeadId: string | null;
     requesterId: string;
     subject: string;
     description: string;
@@ -1952,6 +2110,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return {
       id: record.id,
       bookingId: record.bookingId ?? undefined,
+      launchLeadId: record.launchLeadId ?? undefined,
       requesterId: record.requesterId,
       subject: record.subject,
       description: record.description,
@@ -1963,6 +2122,73 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       resolvedAt: record.resolvedAt?.toISOString(),
       resolutionNotes: record.resolutionNotes ?? undefined,
       resolutionAction: record.resolutionAction as SupportTicket["resolutionAction"]
+    };
+  }
+
+  private mapLaunchLead(record: {
+    id: string;
+    sourceChannel: string;
+    requestSource: string | null;
+    sourceReferenceId: string | null;
+    channelMetadata: unknown | null;
+    attribution: unknown | null;
+    contactName: string;
+    email: string | null;
+    phone: string | null;
+    preferredContactMethod: string;
+    areaLabel: string;
+    serviceCategory: string | null;
+    message: string;
+    status: string;
+    assignedOwner: string | null;
+    firstResponseDueAt: Date;
+    firstRespondedAt: Date | null;
+    lastContactedAt: Date | null;
+    nextFollowUpDueAt: Date | null;
+    closedAt: Date | null;
+    lossReason: string | null;
+    outcomeSummary: string | null;
+    convertedBookingIds: string[];
+    reviewIds: string[];
+    firstConvertedBookingAt: Date | null;
+    lastConvertedBookingAt: Date | null;
+    lastReviewSubmittedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): LaunchLead {
+    return {
+      id: record.id,
+      sourceChannel: record.sourceChannel as LaunchLead["sourceChannel"],
+      requestSource: record.requestSource ?? undefined,
+      sourceReferenceId: record.sourceReferenceId ?? undefined,
+      channelMetadata: record.channelMetadata
+        ? readJson<LaunchLead["channelMetadata"]>(record.channelMetadata)
+        : undefined,
+      attribution: record.attribution ? readJson<LaunchLead["attribution"]>(record.attribution) : undefined,
+      contactName: record.contactName,
+      email: record.email ?? undefined,
+      phone: record.phone ?? undefined,
+      preferredContactMethod:
+        record.preferredContactMethod as LaunchLead["preferredContactMethod"],
+      areaLabel: record.areaLabel,
+      serviceCategory: record.serviceCategory as LaunchLead["serviceCategory"],
+      message: record.message,
+      status: record.status as LaunchLead["status"],
+      assignedOwner: record.assignedOwner ?? undefined,
+      firstResponseDueAt: record.firstResponseDueAt.toISOString(),
+      firstRespondedAt: record.firstRespondedAt?.toISOString(),
+      lastContactedAt: record.lastContactedAt?.toISOString(),
+      nextFollowUpDueAt: record.nextFollowUpDueAt?.toISOString(),
+      closedAt: record.closedAt?.toISOString(),
+      lossReason: record.lossReason as LaunchLead["lossReason"],
+      outcomeSummary: record.outcomeSummary ?? undefined,
+      convertedBookingIds: record.convertedBookingIds,
+      reviewIds: record.reviewIds,
+      firstConvertedBookingAt: record.firstConvertedBookingAt?.toISOString(),
+      lastConvertedBookingAt: record.lastConvertedBookingAt?.toISOString(),
+      lastReviewSubmittedAt: record.lastReviewSubmittedAt?.toISOString(),
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString()
     };
   }
 

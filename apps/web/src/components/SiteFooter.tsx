@@ -4,43 +4,56 @@ const footerColumns = [
     links: [
       { href: "/", label: "Home" },
       { href: "/about", label: "About Us" },
-      { href: "/press", label: "Press" },
-      { href: "/careers", label: "Careers" },
-      { href: "/contact", label: "Contact us" },
+      { href: "/barnegat-nj", label: "Barnegat launch page" },
+      { href: "/customer", label: "Book a service" },
       { href: "/help", label: "Help" }
     ]
   },
   {
     title: "Discover",
     links: [
-      { href: "/stories", label: "The YardMatch Stories for and about property owners" },
+      { href: "/services/lawn-mowing", label: "Lawn mowing" },
+      { href: "/services/yard-cleanup", label: "Yard cleanup" },
+      { href: "/barnegat-nj/lawn-mowing", label: "Barnegat lawn mowing" },
+      { href: "/barnegat-nj/yard-cleanup", label: "Barnegat yard cleanup" },
       { href: "/provider", label: "Business Resources for landscaping owners" },
-      { href: "/community-standards", label: "Community standards" },
-      { href: "/privacy", label: "Data and privacy" },
-      { href: "/reviews", label: "Verified reviews" },
-      { href: "/tech-blog", label: "Tech Blog" }
+      { href: "/crew", label: "Crew hiring" }
     ]
   },
   {
     title: "Grow with YardMatch",
     links: [
       { href: "/provider", label: "Are you a top landscaper or outdoor service?" },
-      { href: "/ai-assistant", label: "Try Zo, your AI Phone Assistant" },
       { href: "/auth/provider", label: "List your business on YardMatch" },
       { href: "/crew", label: "Find crew members for growing demand" },
-      { href: "/enterprise", label: "Learn about YardMatch Enterprise Solutions" },
-      { href: "/api/docs", label: "Access YardMatch for Developers" }
+      { href: "/provider", label: "Provider growth tools" },
+      { href: "/about", label: "How the marketplace works" },
+      { href: "/help", label: "Support and help center" }
     ]
   },
   {
-    title: "Directories",
+    title: "Launch focus",
     links: [
-      { href: "/directories/service-areas", label: "Service Areas" },
-      { href: "/directories/top-services", label: "Top Services" },
-      { href: "/directories/seasons", label: "Seasonal Services" },
-      { href: "/customer", label: "Book local lawn care" },
-      { href: "/provider-mobile", label: "Get the YardMatch business app" },
-      { href: "/customer-mobile", label: "Get the YardMatch customer app" }
+      { href: "/barnegat-nj", label: "Launch area overview" },
+      { href: "/services/lawn-mowing", label: "Core recurring service" },
+      { href: "/services/yard-cleanup", label: "Core reset service" },
+      { href: "/customer", label: "Recommendation-first booking" },
+      { href: "/about", label: "Why GreenRain is managed" },
+      { href: "/provider", label: "Provider-side marketplace story" }
+    ]
+  },
+  {
+    title: "Trust and policies",
+    links: [
+      { href: "/support", label: "Support expectations" },
+      { href: "/cancellation-policy", label: "Cancellation policy" },
+      { href: "/refund-policy", label: "Refund policy" },
+      { href: "/booking-expectations", label: "Booking expectations" },
+      { href: "/provider-verification", label: "Provider verification" },
+      { href: "/privacy-policy", label: "Privacy policy" },
+      { href: "/terms-of-service", label: "Terms of service" },
+      { href: "/provider-standards", label: "Provider standards" },
+      { href: "/help", label: "Help center" }
     ]
   }
 ] as const;
@@ -125,10 +138,14 @@ export function SiteFooter() {
             </p>
             <div className="site-footer__meta">
               <span>&copy; 2026 YardMatch, Inc.</span>
-              <a href="/terms">Terms</a>
-              <a href="/privacy">Privacy</a>
-              <a href="/consumer-services">Consumer Services</a>
-              <a href="/privacy-choices">Your privacy choices</a>
+              <a href="/about">About</a>
+              <a href="/help">Help</a>
+              <a href="/support">Support</a>
+              <a href="/refund-policy">Refunds</a>
+              <a href="/privacy-policy">Privacy</a>
+              <a href="/terms-of-service">Terms</a>
+              <a href="/barnegat-nj">Launch area</a>
+              <a href="/provider">For providers</a>
             </div>
           </div>
 

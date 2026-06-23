@@ -18,8 +18,21 @@ function formatDateTime(iso?: string) {
   });
 }
 
+function defaultReviewNotes(item: ProviderVerificationQueueItem, action: "approve" | "reject") {
+  if (action === "approve") {
+    return item.guidance.recommendedAction === "approve"
+      ? "Ops approved the business for public marketplace visibility after checking launch fit and operational readiness."
+      : "Ops approved the business after manual verification review confirmed the launch fit was acceptable.";
+  }
+
+  return item.guidance.recommendedAction === "reject"
+    ? "Please tighten the launch-area fit or profile details noted in the verification checklist before going live."
+    : "Please confirm the business details, launch-area fit, and operational settings noted in the checklist before going live.";
+}
+
 export function OpsProviderVerificationQueue() {
   const [items, setItems] = useState<ProviderVerificationQueueItem[]>([]);
+  const [approvalOverrideNotes, setApprovalOverrideNotes] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
@@ -35,25 +48,39 @@ export function OpsProviderVerificationQueue() {
     });
   }, []);
 
-  async function reviewProvider(providerId: string, action: "approve" | "reject") {
+  async function reviewProvider(item: ProviderVerificationQueueItem, action: "approve" | "reject") {
     try {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
       const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const overrideNote = approvalOverrideNotes[item.provider.id]?.trim();
       await api.reviewProviderVerification({
-        providerId,
+        providerId: item.provider.id,
         action,
         notes:
-          action === "approve"
-            ? "Ops approved the business for public marketplace visibility."
-            : "Please confirm the business details and service area before going live."
+          action === "approve" && item.guidance.requiresApprovalOverrideNotes
+            ? overrideNote
+            : defaultReviewNotes(item, action)
       });
       setStatusMessage(
         action === "approve"
-          ? "Provider approved and moved into the live marketplace."
+          ? item.guidance.requiresApprovalOverrideNotes
+            ? "Provider approved with an explicit launch override note."
+            : "Provider approved and moved into the live marketplace."
           : "Provider sent back for profile updates."
       );
+      if (action === "approve") {
+        setApprovalOverrideNotes((current) => {
+          if (!current[item.provider.id]) {
+            return current;
+          }
+
+          const next = { ...current };
+          delete next[item.provider.id];
+          return next;
+        });
+      }
       await loadQueue();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to review that provider.");
@@ -74,7 +101,14 @@ export function OpsProviderVerificationQueue() {
       {errorMessage ? <p>{errorMessage}</p> : null}
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
         {items.length > 0 ? (
-          items.map(({ provider, openBookingCount, reviewCount }) => (
+          items.map((item) => {
+            const { provider, openBookingCount, reviewCount } = item;
+            const overrideNote = approvalOverrideNotes[provider.id] ?? "";
+            const minimumOverrideLength = item.guidance.minimumApprovalOverrideNoteLength ?? 0;
+            const needsApprovalOverride = item.guidance.requiresApprovalOverrideNotes;
+            const overrideLooksPresent = overrideNote.trim().length >= minimumOverrideLength;
+
+            return (
             <article className="list-panel" key={provider.id}>
               <div className="search-result-title">
                 <div>
@@ -97,28 +131,82 @@ export function OpsProviderVerificationQueue() {
                   {openBookingCount === 1 ? "" : "s"}
                 </p>
                 <p>Services: {provider.categories.map((category) => category.replaceAll("-", " ")).join(", ")}</p>
+                <p>
+                  Recommended action: {item.guidance.recommendedAction.replaceAll("-", " ")} •{" "}
+                  {item.guidance.rationale}
+                </p>
+                {item.guidance.warnings.length > 0 ? (
+                  <div className="stack-sm">
+                    <p>Watchouts</p>
+                    <ul className="timeline">
+                      {item.guidance.warnings.map((warning: string) => (
+                        <li key={warning}>
+                          <strong>!</strong>
+                          <span>{warning}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {needsApprovalOverride ? (
+                  <div className="stack-sm">
+                    <p>Approval override required</p>
+                    <p>{item.guidance.approvalOverridePrompt}</p>
+                    <textarea
+                      className="input"
+                      disabled={isWorking}
+                      onChange={(event) =>
+                        setApprovalOverrideNotes((current) => ({
+                          ...current,
+                          [provider.id]: event.target.value
+                        }))
+                      }
+                      placeholder="Explain the specific launch-fit checks, exceptions, and safeguards that make this approval safe."
+                      rows={4}
+                      value={overrideNote}
+                    />
+                    <p>
+                      Add at least {minimumOverrideLength} characters and avoid generic approval notes so
+                      the launch override is auditable.
+                    </p>
+                  </div>
+                ) : null}
+                <div className="stack-sm">
+                  <p>Verification checklist</p>
+                  <ul className="timeline">
+                    {item.guidance.checklist.map((check) => (
+                      <li key={check.key}>
+                        <strong>{check.status}</strong>
+                        <span>
+                          {check.label} • {check.detail}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
                 {provider.verificationNotes ? <p>Latest ops note: {provider.verificationNotes}</p> : null}
               </div>
               <div className="cta-row">
                 <button
                   className="button-secondary"
-                  disabled={isWorking}
-                  onClick={() => void reviewProvider(provider.id, "approve")}
+                  disabled={isWorking || (needsApprovalOverride && !overrideLooksPresent)}
+                  onClick={() => void reviewProvider(item, "approve")}
                   type="button"
                 >
-                  Approve provider
+                  {needsApprovalOverride ? "Approve with override" : "Approve provider"}
                 </button>
                 <button
                   className="button-secondary"
                   disabled={isWorking}
-                  onClick={() => void reviewProvider(provider.id, "reject")}
+                  onClick={() => void reviewProvider(item, "reject")}
                   type="button"
                 >
                   Send back for updates
                 </button>
               </div>
             </article>
-          ))
+          );
+          })
         ) : (
           <p>No providers are waiting on verification right now.</p>
         )}

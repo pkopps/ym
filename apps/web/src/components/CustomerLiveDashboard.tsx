@@ -22,6 +22,7 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { getLaunchAttributionContext, getStoredLaunchLeadId } from "../lib/launchAttribution";
 import { useStoredWebSession } from "../lib/session";
 import { trackWebEvent } from "../lib/tracking";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
@@ -337,7 +338,8 @@ export function CustomerLiveDashboard() {
         categories: [selectedCategory],
         dateIso: buildDateIsoForCustomerTiming(selectedTiming),
         estimatedDurationMinutes: quote?.estimatedDurationMinutes,
-        requestSource: "customer-web-dashboard"
+        requestSource: "customer-web-dashboard",
+        attribution: getLaunchAttributionContext()
       });
       setProviderResults(results);
       setShowAlternativeProviders(false);
@@ -369,9 +371,11 @@ export function CustomerLiveDashboard() {
 
     try {
       const api = createAuthenticatedWebApiClient();
+      const launchLeadId = getStoredLaunchLeadId();
       if (selectedCadence === "one-time") {
         await api.createBooking({
           providerId: provider.id,
+          launchLeadId,
           serviceAddress: activeProperty.address,
           servicePropertyId: activeProperty.id,
           category: selectedCategory,
@@ -383,7 +387,8 @@ export function CustomerLiveDashboard() {
           recommendedProviderId: providerResults?.recommendedProviderId,
           selectedProviderRank: rank,
           viewedAlternativeProviders: showAlternativeProviders,
-          recommendationSource: "customer-web-dashboard"
+          recommendationSource: "customer-web-dashboard",
+          attribution: getLaunchAttributionContext()
         });
         setBookingMessage(
           `Booked ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
@@ -391,6 +396,7 @@ export function CustomerLiveDashboard() {
       } else {
         const recurringPlan = await api.createRecurringServicePlan({
           providerId: provider.id,
+          launchLeadId,
           serviceAddress: activeProperty.address,
           servicePropertyId: activeProperty.id,
           category: selectedCategory,
@@ -403,7 +409,8 @@ export function CustomerLiveDashboard() {
           recommendedProviderId: providerResults?.recommendedProviderId,
           selectedProviderRank: rank,
           viewedAlternativeProviders: showAlternativeProviders,
-          recommendationSource: "customer-web-dashboard"
+          recommendationSource: "customer-web-dashboard",
+          attribution: getLaunchAttributionContext()
         });
         setBookingMessage(
           `Started an ${formatRecurringFrequency(selectedCadence).toLowerCase()} plan with ${provider.companyName}. First visit requested for ${formatBookingWindowSummary(
@@ -456,7 +463,8 @@ export function CustomerLiveDashboard() {
         overallRating: 5,
         timelinessRating: 5,
         attentionToDetailRating: 5,
-        reviewText
+        reviewText,
+        attribution: getLaunchAttributionContext()
       });
       await loadDashboard();
     } catch (error) {

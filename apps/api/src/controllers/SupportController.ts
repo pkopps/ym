@@ -1,9 +1,15 @@
 import {
+  CreateInboundEmailLaunchLeadRequest,
+  CreateInboundGoogleBusinessProfileLeadRequest,
+  CreateInboundReferralLaunchLeadRequest,
   AnalyticsEvent,
+  CreateInboundLaunchLeadRequest,
+  CreateLaunchLeadRequest,
   CreateOpsBookingInterventionRequest,
   CreateOpsRefundOverrideRequest,
   ReviewBookingEvidenceForOpsRequest,
   CreateSupportTicketRequest,
+  UpdateLaunchLeadRequest,
   UpdateSupportTicketRequest
 } from "@yardmatch/contracts";
 import { requireAuthenticatedIdentity } from "../controller-auth";
@@ -15,6 +21,13 @@ export class SupportController implements ApiController {
 
   public canHandle(context: RequestContext): boolean {
     return (
+      (context.method === "POST" && context.path === "/api/launch/leads") ||
+      (context.method === "POST" && context.path === "/api/launch/inbound") ||
+      (context.method === "POST" && context.path === "/api/launch/inbound/email") ||
+      (context.method === "POST" && context.path === "/api/launch/inbound/google-business-profile") ||
+      (context.method === "POST" && context.path === "/api/launch/inbound/referral") ||
+      (context.method === "GET" && context.path === "/api/launch/ops/leads") ||
+      (context.method === "POST" && context.path === "/api/launch/ops/leads/update") ||
       (context.method === "GET" && context.path === "/api/support/tickets") ||
       (context.method === "POST" && context.path === "/api/support/tickets") ||
       (context.method === "GET" && context.path === "/api/support/ops/summary") ||
@@ -28,6 +41,69 @@ export class SupportController implements ApiController {
   }
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
+    if (context.path === "/api/launch/ops/leads") {
+      sendJson(response, 200, await this.platform.listOpsLaunchLeads());
+      return;
+    }
+
+    if (context.path === "/api/launch/ops/leads/update") {
+      sendJson(response, 200, await this.platform.updateLaunchLeadForOps(context.body as UpdateLaunchLeadRequest));
+      return;
+    }
+
+    if (context.path === "/api/launch/leads") {
+      sendJson(response, 201, await this.platform.createLaunchLead(context.body as CreateLaunchLeadRequest));
+      return;
+    }
+
+    if (context.path === "/api/launch/inbound") {
+      sendJson(
+        response,
+        201,
+        await this.platform.createInboundLaunchLead(
+          context.body as CreateInboundLaunchLeadRequest,
+          context.headers["x-yardmatch-inbound-secret"]
+        )
+      );
+      return;
+    }
+
+    if (context.path === "/api/launch/inbound/email") {
+      sendJson(
+        response,
+        201,
+        await this.platform.createInboundEmailLaunchLead(
+          context.body as CreateInboundEmailLaunchLeadRequest,
+          context.headers["x-yardmatch-inbound-secret"]
+        )
+      );
+      return;
+    }
+
+    if (context.path === "/api/launch/inbound/google-business-profile") {
+      sendJson(
+        response,
+        201,
+        await this.platform.createInboundGoogleBusinessProfileLead(
+          context.body as CreateInboundGoogleBusinessProfileLeadRequest,
+          context.headers["x-yardmatch-inbound-secret"]
+        )
+      );
+      return;
+    }
+
+    if (context.path === "/api/launch/inbound/referral") {
+      sendJson(
+        response,
+        201,
+        await this.platform.createInboundReferralLaunchLead(
+          context.body as CreateInboundReferralLaunchLeadRequest,
+          context.headers["x-yardmatch-inbound-secret"]
+        )
+      );
+      return;
+    }
+
     if (context.path === "/api/support/ops/summary") {
       sendJson(response, 200, await this.platform.getOpsFinancialExceptionSummary());
       return;

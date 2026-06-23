@@ -409,6 +409,40 @@ export function OpsSupportQueue() {
                           {warning}
                         </p>
                       ))}
+                      {resolutionGuidance?.templates.length ? (
+                        <div className="stack-sm" style={{ marginTop: "0.75rem" }}>
+                          <p>Suggested customer updates</p>
+                          <div className="stack-sm">
+                            {resolutionGuidance.templates.map((template) => (
+                              <article className="card" key={`${ticket.id}-${template.key}`}>
+                                <div className="cta-row" style={{ justifyContent: "space-between", gap: "1rem" }}>
+                                  <div>
+                                    <strong>{template.title}</strong>
+                                    <p>
+                                      {template.channel} • {template.reason}
+                                    </p>
+                                  </div>
+                                  <span className="eyebrow">{template.key.replaceAll("-", " ")}</span>
+                                </div>
+                                {template.subject ? (
+                                  <label className="form-field">
+                                    <span>Subject</span>
+                                    <input readOnly value={template.subject} />
+                                  </label>
+                                ) : null}
+                                <label className="form-field">
+                                  <span>Copy-ready draft</span>
+                                  <textarea
+                                    readOnly
+                                    rows={Math.min(10, Math.max(4, template.body.split("\n").length + 1))}
+                                    value={template.body}
+                                  />
+                                </label>
+                              </article>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <p>

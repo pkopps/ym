@@ -124,6 +124,7 @@ model Booking {
   id                   String   @id
   customerId           String
   providerId           String
+  launchLeadId         String?
   recurringPlanId      String?
   recurringOccurrenceIndex Int?
   serviceAddress       Json
@@ -166,6 +167,7 @@ model RecurringServicePlan {
   id                     String   @id
   customerId             String
   providerId             String
+  launchLeadId           String?
   serviceAddress         Json
   servicePropertyId      String?
   category               String
@@ -327,6 +329,7 @@ model PaymentRecord {
 model SupportTicket {
   id          String   @id
   bookingId   String?
+  launchLeadId String?
   requesterId String
   subject     String
   description String
@@ -340,6 +343,42 @@ model SupportTicket {
   resolutionAction String?
 
   @@map("support_tickets")
+}
+
+model LaunchLead {
+  id                     String   @id
+  sourceChannel          String
+  requestSource          String?
+  sourceReferenceId      String?  @unique
+  channelMetadata        Json?
+  attribution            Json?
+  contactName            String
+  email                  String?
+  phone                  String?
+  preferredContactMethod String
+  areaLabel              String
+  serviceCategory        String?
+  message                String
+  status                 String
+  assignedOwner          String?
+  firstResponseDueAt     DateTime
+  firstRespondedAt       DateTime?
+  lastContactedAt        DateTime?
+  nextFollowUpDueAt      DateTime?
+  closedAt               DateTime?
+  lossReason             String?
+  outcomeSummary         String?
+  convertedBookingIds    String[]
+  reviewIds              String[]
+  firstConvertedBookingAt DateTime?
+  lastConvertedBookingAt DateTime?
+  lastReviewSubmittedAt  DateTime?
+  createdAt              DateTime
+  updatedAt              DateTime
+
+  @@index([status, createdAt])
+  @@index([assignedOwner, status])
+  @@map("launch_leads")
 }
 
 model AppNotification {

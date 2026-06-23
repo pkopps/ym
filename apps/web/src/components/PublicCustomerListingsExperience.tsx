@@ -15,6 +15,8 @@ import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWebApiClient } from "../lib/api";
+import { getLaunchAttributionContext } from "../lib/launchAttribution";
+import { launchAreaLabel } from "../lib/site";
 import { trackWebEvent } from "../lib/tracking";
 import {
   buildCustomerListingsSearchParams,
@@ -181,7 +183,7 @@ export function PublicCustomerListingsExperience({
 }) {
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
-  const [areaQuery, setAreaQuery] = useState(initialAreaLabel ?? "Brooklyn, NY");
+  const [areaQuery, setAreaQuery] = useState(initialAreaLabel ?? launchAreaLabel);
   const [selectedService, setSelectedService] = useState<ServiceCategory>(initialService ?? "lawn-mowing");
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>(
     buildInitialSuggestion({
@@ -196,7 +198,7 @@ export function PublicCustomerListingsExperience({
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
   const [searchState, setSearchState] = useState<"loading" | "loaded" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  const [resolvedAreaLabel, setResolvedAreaLabel] = useState(initialAreaLabel ?? "Brooklyn, NY");
+  const [resolvedAreaLabel, setResolvedAreaLabel] = useState(initialAreaLabel ?? launchAreaLabel);
   const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>(
     initialTiming ?? "tomorrow-morning"
   );
@@ -331,7 +333,8 @@ export function PublicCustomerListingsExperience({
         address: resolvedSuggestion.address,
         categories: [nextService],
         dateIso: buildDateIsoForCustomerTiming(nextTiming, nextCustomDate, nextCustomWindow),
-        requestSource: "public-web-listings"
+        requestSource: "public-web-listings",
+        attribution: getLaunchAttributionContext()
       });
 
       setAreaQuery(resolvedSuggestion.label);

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { ProviderRadiusSettingsCard } from "../../components/ProviderRadiusSettingsCard";
+import { trustPolicyPages } from "../../lib/trustPolicyContent";
 
 export const metadata: Metadata = {
   title: "Grow your landscaping business",
@@ -71,6 +73,8 @@ const staffingValue = [
 ] as const;
 
 export default function ProviderPage() {
+  const providerPolicyPages = trustPolicyPages.filter((page) => page.surfaces.includes("provider"));
+
   return (
     <main>
       <section className="container hero provider-landing-hero">
@@ -183,6 +187,22 @@ export default function ProviderPage() {
               <h3>{item.title}</h3>
               <p>{item.body}</p>
             </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="container stack-lg">
+        <div className="section-header">
+          <h2>Provider standards before you scale</h2>
+          <p>See the quality, verification, support, and operating expectations that are meant to hold the marketplace together.</p>
+        </div>
+        <div className="grid-two">
+          {providerPolicyPages.map((page) => (
+            <Link className="list-panel" href={page.href} key={page.id}>
+              <span className="eyebrow">{page.eyebrow}</span>
+              <h3>{page.title}</h3>
+              <p>{page.summary}</p>
+            </Link>
           ))}
         </div>
       </section>

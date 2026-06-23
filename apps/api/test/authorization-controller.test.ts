@@ -124,6 +124,45 @@ test("provider settings reject customer tokens", async () => {
   assert.equal(response.getStatusCode(), 403);
 });
 
+test("provider profile updates reject customer tokens", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const marketplaceController = new MarketplaceController(platform);
+
+  const customer = await registerUser(authController, {
+    fullName: "Jordan Rivera",
+    email: "jordan-profile-update@example.com",
+    password: "Password123!",
+    phone: "555-0201",
+    role: "customer"
+  });
+
+  const response = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "POST",
+      path: "/api/providers/profile",
+      body: {
+        companyName: "Should Not Work",
+        bio: "Trying to update a provider profile with a customer token.",
+        yearsExperience: 4,
+        categories: ["lawn-mowing"]
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    response as never
+  ).catch((error: Error) => {
+    response.writeHead(403);
+    response.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(response.getStatusCode(), 403);
+});
+
 test("provider payout setting changes require a fresh provider session", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -250,6 +289,284 @@ test("support tickets are attributed to the authenticated requester", async () =
   const ticket = response.readJson();
   assert.equal(ticket.requesterId, customer.user.id);
   assert.equal(ticket.issueType, "billing");
+  assert.equal(ticket.launchLeadId, undefined);
+});
+
+test("no-booking customer general support tickets also enter the launch follow-up queue", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const supportController = new SupportController(platform);
+
+  const customer = await registerUser(authController, {
+    fullName: "Jordan Rivera",
+    email: "support-followup@example.com",
+    password: "Password123!",
+    phone: "555-0299",
+    role: "customer"
+  });
+
+  const response = createMockResponse();
+  await supportController.handle(
+    {
+      method: "POST",
+      path: "/api/support/tickets",
+      body: {
+        subject: "Need help understanding launch coverage",
+        description: "I have not booked yet and want a person to confirm what area GreenRain serves.",
+        issueType: "general"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    response as never
+  );
+
+  assert.equal(response.getStatusCode(), 201);
+  const ticket = response.readJson();
+  assert.equal(ticket.requesterId, customer.user.id);
+  assert.ok(ticket.launchLeadId);
+
+  const leads = await platform.listOpsLaunchLeads();
+  const linkedLead = leads.find((item) => item.lead.id === ticket.launchLeadId);
+  assert.ok(linkedLead);
+  assert.equal(linkedLead?.lead.requestSource, "customer-support-no-booking-ticket");
+  assert.equal(linkedLead?.lead.sourceChannel, "email");
+  assert.equal(linkedLead?.lead.contactName, "Jordan Rivera");
+  assert.match(linkedLead?.lead.message ?? "", /launch coverage/i);
+});
+
+test("inbound launch lead endpoint is secret-protected and idempotent by source reference", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const supportController = new SupportController(platform);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const unauthorizedResponse = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound",
+        body: {
+          sourceChannel: "email",
+          sourceReferenceId: "msg_123",
+          email: "jamie@example.com",
+          subject: "Coverage question",
+          message: "Do you serve Barnegat yet?"
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      unauthorizedResponse as never
+    ).catch((error: Error) => {
+      unauthorizedResponse.writeHead(401);
+      unauthorizedResponse.end(JSON.stringify({ message: error.message }));
+    });
+
+    assert.equal(unauthorizedResponse.getStatusCode(), 401);
+
+    const response = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound",
+        body: {
+          sourceChannel: "email",
+          requestSource: "direct-email-forward",
+          sourceReferenceId: "msg_123",
+          email: "jamie@example.com",
+          subject: "Coverage question",
+          message: "Do you serve Barnegat yet?"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const firstLead = response.readJson();
+    assert.equal(firstLead.sourceReferenceId, "msg_123");
+    assert.equal(firstLead.requestSource, "direct-email-forward");
+    assert.equal(firstLead.areaLabel, "Needs area confirmation");
+    assert.equal(firstLead.contactName, "Jamie");
+
+    const retryResponse = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound",
+        body: {
+          sourceChannel: "email",
+          requestSource: "direct-email-forward",
+          sourceReferenceId: "msg_123",
+          email: "jamie@example.com",
+          subject: "Coverage question",
+          message: "Do you serve Barnegat yet?"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      retryResponse as never
+    );
+
+    assert.equal(retryResponse.getStatusCode(), 201);
+    const retryLead = retryResponse.readJson();
+    assert.equal(retryLead.id, firstLead.id);
+    assert.equal((await platform.listOpsLaunchLeads()).length, 1);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
+});
+
+test("direct email inbound endpoint maps sender payloads into launch leads", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const supportController = new SupportController(platform);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const response = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound/email",
+        body: {
+          sourceReferenceId: "email_msg_456",
+          senderEmail: "sam.homeowner@example.com",
+          senderName: "Sam Homeowner",
+          subject: "Need mowing help in Barnegat",
+          textBody: "Can GreenRain handle weekly mowing starting next Tuesday?",
+          areaLabel: "Barnegat, NJ"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const lead = response.readJson();
+    assert.equal(lead.sourceChannel, "email");
+    assert.equal(lead.requestSource, "direct-email-forward");
+    assert.equal(lead.sourceReferenceId, "email_msg_456");
+    assert.equal(lead.contactName, "Sam Homeowner");
+    assert.equal(lead.email, "sam.homeowner@example.com");
+    assert.equal(lead.preferredContactMethod, "email");
+    assert.equal(lead.areaLabel, "Barnegat, NJ");
+    assert.match(lead.message, /weekly mowing/i);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
+});
+
+test("google business profile inbound endpoint supports platform-message leads without direct contact details", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const supportController = new SupportController(platform);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const response = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound/google-business-profile",
+        body: {
+          sourceReferenceId: "gbp_thread_789",
+          customerName: "Pat Homeowner",
+          messageText: "Do you service Barnegat for weekly mowing?",
+          threadUrl: "https://business.google.com/messages/thread/gbp_thread_789",
+          profileLocationName: "GreenRain Barnegat",
+          areaLabel: "Barnegat, NJ",
+          serviceCategory: "lawn-mowing"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const lead = response.readJson();
+    assert.equal(lead.sourceChannel, "google-business-profile");
+    assert.equal(lead.requestSource, "google-business-profile-message");
+    assert.equal(lead.sourceReferenceId, "gbp_thread_789");
+    assert.equal(lead.contactName, "Pat Homeowner");
+    assert.equal(lead.email, undefined);
+    assert.equal(lead.phone, undefined);
+    assert.equal(lead.preferredContactMethod, "platform-message");
+    assert.equal(lead.channelMetadata?.profileLocationName, "GreenRain Barnegat");
+    assert.equal(lead.channelMetadata?.threadUrl, "https://business.google.com/messages/thread/gbp_thread_789");
+    assert.match(lead.message, /GreenRain Barnegat/i);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
+});
+
+test("referral inbound endpoint can fall back to the referrer's contact details", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const supportController = new SupportController(platform);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const response = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound/referral",
+        body: {
+          sourceReferenceId: "ref_123",
+          referrerName: "Alex Neighbor",
+          referrerEmail: "alex@example.com",
+          referredCustomerName: "Jamie Homeowner",
+          areaLabel: "Barnegat, NJ",
+          serviceCategory: "lawn-mowing",
+          messageText: "Neighbor wants help getting weekly mowing started."
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const lead = response.readJson();
+    assert.equal(lead.sourceChannel, "referral");
+    assert.equal(lead.requestSource, "referral-forwarder");
+    assert.equal(lead.sourceReferenceId, "ref_123");
+    assert.equal(lead.contactName, "Jamie Homeowner");
+    assert.equal(lead.email, "alex@example.com");
+    assert.equal(lead.preferredContactMethod, "email");
+    assert.equal(lead.channelMetadata?.referrerName, "Alex Neighbor");
+    assert.equal(lead.channelMetadata?.referrerEmail, "alex@example.com");
+    assert.equal(lead.channelMetadata?.referralFollowUpTarget, "referrer");
+    assert.match(lead.message, /Referral from Alex Neighbor/i);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
 });
 
 test("support tickets list only the authenticated user's tickets and reject unrelated bookings", async () => {

@@ -104,13 +104,17 @@ export function HelpSupportTicketPanel() {
       setIsWorking(true);
       setErrorMessage(undefined);
       const api = createAuthenticatedWebApiClient();
-      await api.createSupportTicket({
+      const ticket = await api.createSupportTicket({
         bookingId: selectedBookingId || undefined,
         issueType,
         subject: subject.trim(),
         description: description.trim()
       } satisfies CreateSupportTicketRequest);
-      setStatusMessage("Support ticket submitted.");
+      setStatusMessage(
+        ticket.launchLeadId
+          ? "Support ticket submitted and added to the follow-up queue."
+          : "Support ticket submitted."
+      );
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
@@ -135,7 +139,7 @@ export function HelpSupportTicketPanel() {
     return (
       <article className="card">
         <h2>Open a support ticket</h2>
-        <p>Log in first so YardMatch can attach your request to the right account and booking.</p>
+        <p>Log in first if you need help with an existing booking, billing issue, or account problem. For pre-booking questions, use the Contact us form above so ops can respond by email first.</p>
         <div className="cta-row" style={{ marginTop: "1rem" }}>
           <a className="button" href="/login">
             Log in
@@ -201,6 +205,7 @@ export function HelpSupportTicketPanel() {
             <p>
               {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
               {ticket.bookingId ? ` • ${ticket.bookingId}` : ""}
+              {ticket.launchLeadId ? ` • follow-up queue ${ticket.launchLeadId}` : ""}
             </p>
             <p>{ticket.description}</p>
             {ticket.resolutionNotes ? (

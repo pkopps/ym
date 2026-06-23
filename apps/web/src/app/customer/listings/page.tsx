@@ -6,11 +6,13 @@ import {
   CustomerCustomTimingWindow,
   CustomerTimingPreference
 } from "../../../components/PublicMarketplaceSearchShell";
+import { launchAreaLabel, noIndexRobots } from "../../../lib/site";
 
 export const metadata: Metadata = {
-  title: "Recommended landscaping match",
+  title: `Recommended landscaping match in ${launchAreaLabel}`,
   description:
-    "Pick the job and timing, then review one recommended provider first with a short backup list if needed."
+    "Pick the job and timing, then review one recommended provider first with a short backup list if needed.",
+  robots: noIndexRobots
 };
 
 export default async function CustomerListingsPage({

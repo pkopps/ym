@@ -15,7 +15,8 @@ import {
   ProviderCalendarOverviewResponse,
   ProviderProfile,
   ProviderCalendarSubscriptionResponse,
-  ProviderStaffingOverview
+  ProviderStaffingOverview,
+  ServiceCategory
 } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
@@ -112,6 +113,17 @@ function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup
   }
 }
 
+function formatVerificationChecklistStatus(status: "ready" | "review" | "missing") {
+  switch (status) {
+    case "ready":
+      return "Ready";
+    case "review":
+      return "Review";
+    case "missing":
+      return "Needs update";
+  }
+}
+
 const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "off-platform-client",
   "personal-time",
@@ -119,6 +131,15 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "equipment-maintenance"
 ];
 const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
+const providerCategoryOptions: Array<{ value: ServiceCategory; label: string }> = [
+  { value: "lawn-mowing", label: "Lawn mowing" },
+  { value: "hedge-trimming", label: "Hedge trimming" },
+  { value: "mulch-installation", label: "Mulch installation" },
+  { value: "seasonal-cleanup", label: "Seasonal cleanup" },
+  { value: "weed-control", label: "Weed control" },
+  { value: "irrigation-check", label: "Irrigation check" },
+  { value: "leaf-blowing", label: "Leaf blowing" }
+];
 
 export function ProviderLiveManagementBoard() {
   const { session, sessionReady } = useStoredWebSession();
@@ -156,6 +177,10 @@ export function ProviderLiveManagementBoard() {
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
+  const [profileCompanyName, setProfileCompanyName] = useState("");
+  const [profileBio, setProfileBio] = useState("");
+  const [profileYearsExperience, setProfileYearsExperience] = useState("1");
+  const [profileCategories, setProfileCategories] = useState<ServiceCategory[]>([]);
 
   const provider = overview?.provider;
   const jobs = overview?.jobs ?? [];
@@ -175,6 +200,17 @@ export function ProviderLiveManagementBoard() {
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
     [jobs]
   );
+
+  useEffect(() => {
+    if (!provider) {
+      return;
+    }
+
+    setProfileCompanyName(provider.companyName);
+    setProfileBio(provider.bio);
+    setProfileYearsExperience(String(provider.yearsExperience));
+    setProfileCategories(provider.categories);
+  }, [provider]);
 
   async function loadProviderView() {
     if (!session || session.role !== "provider") {
@@ -260,19 +296,68 @@ export function ProviderLiveManagementBoard() {
 
     try {
       const api = createAuthenticatedWebApiClient();
-      await api.updateProviderSettings({
+      const updatedProvider = await api.updateProviderSettings({
         serviceRadiusMiles: provider.serviceRadiusMiles,
         staffingMode,
         sponsoredListingEnabled: provider.sponsoredListingEnabled
       });
       setStatusMessage(
-        staffingMode === "auto-accept"
-          ? "Auto-accept is on for future crew matches."
-          : "Provider review is now required before crew is added."
+        provider.verificationStatus === "rejected" && updatedProvider.verificationStatus === "pending-review"
+          ? "Staffing settings updated and the business is back in verification review."
+          : staffingMode === "auto-accept"
+            ? "Auto-accept is on for future crew matches."
+            : "Provider review is now required before crew is added."
       );
       await loadProviderView();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to update staffing mode right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  function toggleProfileCategory(category: ServiceCategory, checked: boolean) {
+    setProfileCategories((current) =>
+      checked ? Array.from(new Set([...current, category])) : current.filter((item) => item !== category)
+    );
+  }
+
+  async function handleProviderProfileUpdate() {
+    if (!provider) {
+      return;
+    }
+
+    const parsedYearsExperience = Number(profileYearsExperience);
+    if (
+      !profileCompanyName.trim() ||
+      !profileBio.trim() ||
+      profileCategories.length === 0 ||
+      !Number.isFinite(parsedYearsExperience)
+    ) {
+      setErrorMessage("Add a company name, business description, and at least one service category.");
+      return;
+    }
+
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const updatedProvider = await api.updateProviderProfile({
+        companyName: profileCompanyName.trim(),
+        bio: profileBio.trim(),
+        yearsExperience: parsedYearsExperience,
+        categories: profileCategories
+      });
+      setStatusMessage(
+        provider.verificationStatus === "rejected" && updatedProvider.verificationStatus === "pending-review"
+          ? "Profile updated and automatically sent back into verification review."
+          : "Business profile updated."
+      );
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update the business profile right now.");
     } finally {
       setIsWorking(false);
     }
@@ -304,7 +389,7 @@ export function ProviderLiveManagementBoard() {
 
     try {
       const api = createAuthenticatedWebApiClient();
-      await api.updateProviderSettings({
+      const updatedProvider = await api.updateProviderSettings({
         serviceRadiusMiles: updates.serviceRadiusMiles ?? provider.serviceRadiusMiles,
         ...(updates.minimumBookingLeadHours !== undefined
           ? { minimumBookingLeadHours: updates.minimumBookingLeadHours }
@@ -323,7 +408,11 @@ export function ProviderLiveManagementBoard() {
           : {}),
         sponsoredListingEnabled: provider.sponsoredListingEnabled
       });
-      setStatusMessage(successMessage);
+      setStatusMessage(
+        provider.verificationStatus === "rejected" && updatedProvider.verificationStatus === "pending-review"
+          ? `${successMessage} The business is also back in verification review.`
+          : successMessage
+      );
       await loadProviderView();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to update provider controls right now.");
@@ -757,19 +846,21 @@ export function ProviderLiveManagementBoard() {
         <section className="card">
           <span className="eyebrow">Business verification</span>
           <h2>
-            {provider.verificationStatus === "verified"
-              ? "Your business is verified and visible in search."
-              : provider.verificationStatus === "rejected"
-                ? "Your business needs a quick profile update before going live."
-                : "Your business is pending review before it appears in search."}
+            {provider.verificationSummary?.headline ??
+              (provider.verificationStatus === "verified"
+                ? "Your business is verified and visible in search."
+                : provider.verificationStatus === "rejected"
+                  ? "Your business needs a quick profile update before going live."
+                  : "Your business is pending review before it appears in search.")}
           </h2>
           <p>
-            {provider.verificationStatus === "verified"
-              ? "Customers can now discover this business in public YardMatch search results."
-              : provider.verificationStatus === "rejected"
-                ? provider.verificationNotes ??
-                  "Ops left review notes for this business before it can be shown to customers."
-                : "Ops will review the business profile, service area, and marketplace details before customers can book."}
+            {provider.verificationSummary?.summary ??
+              (provider.verificationStatus === "verified"
+                ? "Customers can now discover this business in public YardMatch search results."
+                : provider.verificationStatus === "rejected"
+                  ? provider.verificationNotes ??
+                    "Ops left review notes for this business before it can be shown to customers."
+                  : "Ops will review the business profile, service area, and marketplace details before customers can book.")}
           </p>
           <div className="chip-row">
             <span>Status: {provider.verificationStatus.replaceAll("-", " ")}</span>
@@ -778,8 +869,95 @@ export function ProviderLiveManagementBoard() {
               {formatDateTime(provider.verificationSubmittedAt ?? provider.createdAt)}
             </span>
             {provider.verificationReviewedAt ? (
-              <span>Reviewed: {formatDateTime(provider.verificationReviewedAt)}</span>
+              <span>Last review: {formatDateTime(provider.verificationReviewedAt)}</span>
             ) : null}
+          </div>
+          {provider.verificationSummary?.nextSteps.length ? (
+            <div className="stack-sm">
+              <p>Next steps</p>
+              <ul className="timeline">
+                {provider.verificationSummary.nextSteps.map((step) => (
+                  <li key={step}>
+                    <strong>Next</strong>
+                    <span>{step}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {provider.verificationSummary?.checklist.length ? (
+            <div className="stack-sm">
+              <p>Launch checklist</p>
+              <ul className="timeline">
+                {provider.verificationSummary.checklist.map((item) => (
+                  <li key={item.key}>
+                    <strong>{formatVerificationChecklistStatus(item.status)}</strong>
+                    <span>
+                      {item.label} • {item.detail}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {provider ? (
+        <section className="card">
+          <span className="eyebrow">Verification profile</span>
+          <h2>Keep the public business profile ready for launch review.</h2>
+          <p>
+            Update the customer-facing business details ops checks before this company goes live in
+            recommendation-first search.
+          </p>
+          <div className="stack-md">
+            <label className="form-field form-field--full">
+              <span>Company name</span>
+              <input
+                type="text"
+                value={profileCompanyName}
+                onChange={(event) => setProfileCompanyName(event.target.value)}
+              />
+            </label>
+            <label className="form-field form-field--full">
+              <span>Business description</span>
+              <textarea
+                rows={4}
+                value={profileBio}
+                onChange={(event) => setProfileBio(event.target.value)}
+              />
+            </label>
+            <label className="form-field">
+              <span>Years of experience</span>
+              <input
+                min={0}
+                max={60}
+                type="number"
+                value={profileYearsExperience}
+                onChange={(event) => setProfileYearsExperience(event.target.value)}
+              />
+            </label>
+            <div className="stack-sm">
+              <p>Services offered</p>
+              <div className="chip-row">
+                {providerCategoryOptions.map((option) => (
+                  <label key={option.value} className="result-badge">
+                    <input
+                      type="checkbox"
+                      checked={profileCategories.includes(option.value)}
+                      onChange={(event) => toggleProfileCategory(option.value, event.target.checked)}
+                    />{" "}
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="cta-row">
+            <button className="button-secondary" disabled={isWorking} onClick={() => void handleProviderProfileUpdate()} type="button">
+              Save business profile
+            </button>
           </div>
         </section>
       ) : null}

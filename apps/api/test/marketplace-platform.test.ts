@@ -3,6 +3,7 @@ import test from "node:test";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import { getBookingServiceWindow } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
+import { HttpError } from "../src/http";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
 import { PaymentCheckoutGateway } from "../src/services/StripeCheckoutService";
@@ -675,6 +676,8 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
 
   const overview = analytics.getOverview({
     bookings: await repository.listBookings(),
+    launchLeads: await repository.listLaunchLeads(),
+    reviewInvites: await repository.listReviewInvites(),
     supportTickets: await repository.listSupportTickets()
   });
 
@@ -685,10 +688,157 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
   assert.equal(overview.paymentCaptures, 1);
 });
 
+test("observability overview includes launch lead backlog and source metrics", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const overdueLead = await platform.createLaunchLead({
+    sourceChannel: "email",
+    requestSource: "direct-email-forward",
+    contactName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Need help getting weekly mowing started."
+  });
+  await repository.updateLaunchLead(overdueLead.id, {
+    firstResponseDueAt: new Date(Date.now() - 60 * 60 * 1000).toISOString()
+  });
+
+  const followUpLead = await platform.createLaunchLead({
+    sourceChannel: "google-business-profile",
+    requestSource: "google-business-profile-message",
+    channelMetadata: {
+      threadUrl: "https://business.google.com/messages/thread/gbp_thread_789"
+    },
+    contactName: "Pat Homeowner",
+    preferredContactMethod: "platform-message",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "seasonal-cleanup",
+    message: "Can GreenRain help with a cleanup this week?"
+  });
+  await platform.updateLaunchLeadForOps({
+    leadId: followUpLead.id,
+    status: "contacted",
+    assignedOwner: "Casey Ops",
+    nextFollowUpDueAt: new Date(Date.now() - 30 * 60 * 1000).toISOString()
+  });
+
+  const closedLead = await platform.createLaunchLead({
+    sourceChannel: "referral",
+    requestSource: "referral-forwarder",
+    channelMetadata: {
+      referrerName: "Alex Neighbor",
+      referralFollowUpTarget: "referrer"
+    },
+    contactName: "Taylor Homeowner",
+    email: "taylor@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Referral asking whether GreenRain can help this month."
+  });
+  await platform.updateLaunchLeadForOps({
+    leadId: closedLead.id,
+    status: "closed-lost",
+    assignedOwner: "Casey Ops",
+    lossReason: "not-ready",
+    outcomeSummary: "Customer wants to wait until next season."
+  });
+
+  const reviewInviteBaseTime = new Date().toISOString();
+  await repository.createReviewInvite({
+    id: "review-invite-scheduled",
+    bookingId: "booking-review-scheduled",
+    customerId: "customer-review-scheduled",
+    providerId: "provider-review-scheduled",
+    email: "scheduled@example.com",
+    status: "scheduled",
+    channels: ["email"],
+    scheduledSendIso: reviewInviteBaseTime,
+    expiresAtIso: futureIso(48),
+    deepLinkPath: "/customer/dashboard?review=scheduled"
+  });
+  await repository.createReviewInvite({
+    id: "review-invite-sent",
+    bookingId: "booking-review-sent",
+    customerId: "customer-review-sent",
+    providerId: "provider-review-sent",
+    email: "sent@example.com",
+    status: "sent",
+    channels: ["email"],
+    scheduledSendIso: reviewInviteBaseTime,
+    sentAt: reviewInviteBaseTime,
+    expiresAtIso: futureIso(48),
+    deepLinkPath: "/customer/dashboard?review=sent"
+  });
+  await repository.createReviewInvite({
+    id: "review-invite-completed",
+    bookingId: "booking-review-completed",
+    customerId: "customer-review-completed",
+    providerId: "provider-review-completed",
+    email: "completed@example.com",
+    status: "completed",
+    channels: ["email"],
+    scheduledSendIso: reviewInviteBaseTime,
+    sentAt: reviewInviteBaseTime,
+    openedAt: reviewInviteBaseTime,
+    completedAt: reviewInviteBaseTime,
+    expiresAtIso: futureIso(48),
+    deepLinkPath: "/customer/dashboard?review=completed"
+  });
+  await repository.createReviewInvite({
+    id: "review-invite-expired",
+    bookingId: "booking-review-expired",
+    customerId: "customer-review-expired",
+    providerId: "provider-review-expired",
+    email: "expired@example.com",
+    status: "expired",
+    channels: ["email"],
+    scheduledSendIso: reviewInviteBaseTime,
+    sentAt: reviewInviteBaseTime,
+    expiresAtIso: reviewInviteBaseTime,
+    deepLinkPath: "/customer/dashboard?review=expired"
+  });
+
+  const overview = await platform.getObservabilityOverview();
+  assert.equal(overview.totalLaunchLeads, 3);
+  assert.equal(overview.openLaunchLeads, 2);
+  assert.equal(overview.overdueLaunchLeads, 2);
+  assert.equal(overview.firstResponseOverdueLaunchLeads, 1);
+  assert.equal(overview.followUpOverdueLaunchLeads, 1);
+  assert.equal(overview.closedLostLaunchLeads, 1);
+  assert.equal(overview.convertedLaunchLeads, 0);
+  assert.equal(overview.totalReviewInvites, 4);
+  assert.equal(overview.scheduledReviewInvites, 1);
+  assert.equal(overview.sentReviewInvites, 1);
+  assert.equal(overview.openedReviewInvites, 0);
+  assert.equal(overview.completedReviewInvites, 1);
+  assert.equal(overview.expiredReviewInvites, 1);
+  assert.equal(overview.reviewRequestCompletionRate, 0.25);
+
+  const emailMetric = overview.launchLeadSourceMetrics.find((metric) => metric.sourceChannel === "email");
+  const gbpMetric = overview.launchLeadSourceMetrics.find(
+    (metric) => metric.sourceChannel === "google-business-profile"
+  );
+  assert.equal(emailMetric?.overdueCount, 1);
+  assert.equal(gbpMetric?.openCount, 1);
+});
+
 test("recommendation telemetry tracks views, alternatives, accepted recommendations, and swaps", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const analytics = new DataEngineeringLogger();
   const platform = new MarketplacePlatformService(repository, analytics);
+  const launchAttribution = {
+    source: "google",
+    medium: "cpc",
+    campaign: "barnegat-launch",
+    referrerHost: "www.google.com",
+    landingPath: "/barnegat-nj/lawn-mowing",
+    capturedAt: "2026-06-17T12:00:00.000Z"
+  };
 
   const [recommendedSeedProvider, alternateSeedProvider] = (await repository.listProviders()).slice(0, 2);
   assert.ok(recommendedSeedProvider);
@@ -735,7 +885,8 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
     categories: ["lawn-mowing"],
     dateIso: new Date().toISOString(),
     estimatedDurationMinutes: 60,
-    requestSource: "customer-web-dashboard"
+    requestSource: "customer-web-dashboard",
+    attribution: launchAttribution
   });
 
   await platform.searchProviders({
@@ -844,7 +995,8 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
     recommendedProviderId: results.recommendedProviderId,
     selectedProviderRank: 1,
     viewedAlternativeProviders: false,
-    recommendationSource: "customer-web-dashboard"
+    recommendationSource: "customer-web-dashboard",
+    attribution: launchAttribution
   });
 
   await platform.createBooking(customer.id, {
@@ -860,11 +1012,14 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
     recommendedProviderId: results.recommendedProviderId,
     selectedProviderRank: 2,
     viewedAlternativeProviders: true,
-    recommendationSource: "customer-web-dashboard"
+    recommendationSource: "customer-web-dashboard",
+    attribution: launchAttribution
   });
 
   const overview = analytics.getOverview({
     bookings: await repository.listBookings(),
+    launchLeads: await repository.listLaunchLeads(),
+    reviewInvites: await repository.listReviewInvites(),
     supportTickets: await repository.listSupportTickets()
   });
 
@@ -928,11 +1083,772 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
   assert.equal(mobileMetrics?.recommendationViews, 1);
   assert.equal(mobileMetrics?.recommendationAcceptanceRate, 0);
   assert.equal(mobileMetrics?.recommendationBookingIntentRate, 0);
+
+  const searchEvent = analytics
+    .listEvents()
+    .find(
+      (event) =>
+        event.name === MarketplaceTelemetryEventCatalog.providerSearchPerformed &&
+        event.properties.requestSource === "customer-web-dashboard"
+    );
+  assert.equal(searchEvent?.properties.attributionSource, "google");
+  assert.equal(searchEvent?.properties.attributionMedium, "cpc");
+  assert.equal(searchEvent?.properties.attributionCampaign, "barnegat-launch");
+  assert.equal(searchEvent?.properties.attributionReferrerHost, "www.google.com");
+  assert.equal(searchEvent?.properties.attributionLandingPath, "/barnegat-nj/lawn-mowing");
+
+  const bookingRequestedEvent = analytics
+    .listEvents()
+    .find(
+      (event) =>
+        event.name === MarketplaceTelemetryEventCatalog.bookingRequested &&
+        event.properties.recommendationSource === undefined &&
+        event.properties.attributionSource === "google"
+    );
+  assert.ok(bookingRequestedEvent);
+
+  const acceptedRecommendationEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.recommendationAccepted);
+  assert.equal(acceptedRecommendationEvent?.properties.attributionSource, "google");
+  assert.equal(acceptedRecommendationEvent?.properties.attributionLandingPath, "/barnegat-nj/lawn-mowing");
+});
+
+test("launch leads capture attribution and require owners, follow-up dates, and closed outcomes", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    requestSource: "launch-town-page-lead-form",
+    attribution: {
+      source: "google",
+      medium: "organic",
+      campaign: "barnegat-launch",
+      landingPath: "/barnegat-nj",
+      capturedAt: "2026-06-17T10:00:00.000Z"
+    },
+    contactName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    phone: "(555) 210-0000",
+    preferredContactMethod: "text",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Need help figuring out whether weekly mowing is available next week."
+  });
+
+  assert.equal(lead.status, "new");
+  assert.ok(lead.firstResponseDueAt);
+  assert.equal(lead.sourceChannel, "website");
+
+  const capturedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.launchLeadCaptured);
+  assert.ok(capturedEvent);
+  assert.equal(capturedEvent?.properties.attributionSource, "google");
+  assert.equal(capturedEvent?.properties.attributionMedium, "organic");
+  assert.equal(capturedEvent?.properties.requestSource, "launch-town-page-lead-form");
+  assert.equal(capturedEvent?.properties.hasPhone, true);
+  assert.equal("email" in (capturedEvent?.properties ?? {}), false);
+
+  await assert.rejects(
+    platform.updateLaunchLeadForOps({
+      leadId: lead.id,
+      status: "contacted",
+      nextFollowUpDueAt: futureIso(24)
+    }),
+    /assign an owner/i
+  );
+
+  await assert.rejects(
+    platform.updateLaunchLeadForOps({
+      leadId: lead.id,
+      status: "contacted",
+      assignedOwner: "Casey Ops"
+    }),
+    /next follow-up/i
+  );
+
+  const contacted = await platform.updateLaunchLeadForOps({
+    leadId: lead.id,
+    status: "contacted",
+    assignedOwner: "Casey Ops",
+    nextFollowUpDueAt: futureIso(24)
+  });
+  assert.equal(contacted.assignedOwner, "Casey Ops");
+  assert.ok(contacted.firstRespondedAt);
+  assert.ok(contacted.lastContactedAt);
+
+  const contactedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.launchLeadContacted);
+  assert.ok(contactedEvent);
+  assert.equal(contactedEvent?.properties.hasAssignedOwner, true);
+
+  await assert.rejects(
+    platform.updateLaunchLeadForOps({
+      leadId: lead.id,
+      status: "closed-lost",
+      assignedOwner: "Casey Ops",
+      lossReason: "no-response"
+    }),
+    /outcome summary/i
+  );
+
+  const closed = await platform.updateLaunchLeadForOps({
+    leadId: lead.id,
+    status: "closed-lost",
+    assignedOwner: "Casey Ops",
+    lossReason: "no-response",
+    outcomeSummary: "Three follow-ups across text and email with no reply."
+  });
+  assert.equal(closed.status, "closed-lost");
+  assert.equal(closed.lossReason, "no-response");
+  assert.ok(closed.closedAt);
+
+  const queue = await platform.listOpsLaunchLeads();
+  assert.equal(queue[0]?.lead.id, lead.id);
+  assert.equal(queue[0]?.isFirstResponseOverdue, false);
+  assert.equal(queue[0]?.isFollowUpOverdue, false);
+
+  const closedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.launchLeadClosed);
+  assert.ok(closedEvent);
+  assert.equal(closedEvent?.properties.lossReason, "no-response");
+});
+
+test("launch leads can be captured from phone-first customer service requests without an email address", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "phone",
+    requestSource: "customer-service-help-request",
+    contactName: "Taylor Caller",
+    phone: "555-111-2222",
+    preferredContactMethod: "phone",
+    areaLabel: "Barnegat, NJ",
+    message: "Called in asking whether GreenRain can handle a cleanup before guests arrive.",
+    assignedOwner: "Casey Ops"
+  });
+
+  assert.equal(lead.email, undefined);
+  assert.ok(lead.phone);
+  assert.equal(lead.assignedOwner, "Casey Ops");
+  assert.equal(lead.sourceChannel, "phone");
+
+  const capturedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.launchLeadCaptured);
+  assert.ok(capturedEvent);
+  assert.equal(capturedEvent?.properties.hasEmail, false);
+  assert.equal(capturedEvent?.properties.hasPhone, true);
+  assert.equal(capturedEvent?.properties.hasAssignedOwner, true);
+  assert.equal(capturedEvent?.properties.sourceChannel, "phone");
+});
+
+test("ops lead queue includes backend-authored response guidance and reply drafts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "email",
+    requestSource: "customer-service-help-request",
+    contactName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Needs area confirmation",
+    message: "I need help understanding whether GreenRain can help with service before I book."
+  });
+
+  const queue = await platform.listOpsLaunchLeads();
+  const queuedLead = queue.find((item) => item.lead.id === lead.id);
+  assert.ok(queuedLead);
+  assert.match(queuedLead.responseGuidance.recommendedAction, /first email response/i);
+  assert.ok(
+    queuedLead.responseGuidance.warnings.some((warning) => /assign an owner/i.test(warning))
+  );
+  assert.ok(
+    queuedLead.responseGuidance.warnings.some((warning) => /confirm the service area/i.test(warning))
+  );
+  assert.ok(
+    queuedLead.responseGuidance.warnings.some((warning) => /keep the final resolution in support/i.test(warning))
+  );
+  assert.equal(queuedLead.responseGuidance.templates[0]?.key, "first-response-email");
+  assert.ok(
+    queuedLead.responseGuidance.templates.some((template) => template.key === "issue-help-follow-up")
+  );
+});
+
+test("active category-qualified launch leads include provider outreach drafts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "website",
+    requestSource: "launch-town-page-lead-form",
+    contactName: "Morgan Homeowner",
+    email: "morgan@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Need weekly mowing and edging.",
+    assignedOwner: "Casey Ops"
+  });
+
+  const queue = await platform.listOpsLaunchLeads();
+  const queuedLead = queue.find((item) => item.lead.id === lead.id);
+  assert.ok(queuedLead);
+
+  const providerTemplate = queuedLead.responseGuidance.templates.find(
+    (template) => template.key === "provider-outreach"
+  );
+  assert.ok(providerTemplate);
+  assert.equal(providerTemplate.audience, "provider");
+  assert.match(providerTemplate.subject ?? "", /availability check/i);
+  assert.match(providerTemplate.reason, /live capacity confirmation/i);
+  assert.match(providerTemplate.body, /\[Provider name\]/i);
+});
+
+test("converted completed launch leads surface review-request drafts instead of new-lead scripts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const customer = await platform.registerUser({
+    fullName: "Jamie Homeowner",
+    email: "jamie-review@example.com",
+    password: "Password123!",
+    phone: "555-9922",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const providers = await repository.listProviders();
+  const provider = providers[0];
+  assert.ok(provider);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "email",
+    requestSource: "launch-town-page-lead-form",
+    contactName: "Jamie Homeowner",
+    email: customer.email,
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "I want to get mowing started this week.",
+    assignedOwner: "Casey Ops"
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    launchLeadId: lead.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(Date.now() + 49 * 60 * 60 * 1000).toISOString(),
+    notes: "Please mow and edge.",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+
+  const queue = await platform.listOpsLaunchLeads();
+  const queuedLead = queue.find((item) => item.lead.id === lead.id);
+  assert.ok(queuedLead);
+  assert.match(queuedLead.responseGuidance.recommendedAction, /booking is already linked/i);
+  assert.ok(
+    queuedLead.responseGuidance.templates.some((template) => template.key === "booking-confirmation")
+  );
+  assert.ok(
+    queuedLead.responseGuidance.templates.some((template) => template.key === "review-request")
+  );
+  assert.ok(
+    queuedLead.responseGuidance.templates.every((template) => !template.key.startsWith("first-response"))
+  );
+});
+
+test("closed-lost launch leads surface a closeout template instead of first-response drafts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "email",
+    requestSource: "launch-town-page-lead-form",
+    contactName: "Dana Homeowner",
+    email: "dana@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Forked River, NJ",
+    serviceCategory: "yard-cleanup",
+    message: "Can you handle a cleanup by tomorrow morning?",
+    assignedOwner: "Casey Ops"
+  });
+
+  await platform.updateLaunchLeadForOps({
+    leadId: lead.id,
+    status: "closed-lost",
+    assignedOwner: "Casey Ops",
+    lossReason: "timeline-mismatch",
+    outcomeSummary: "Customer needed next-morning service outside our launch capacity."
+  });
+
+  const queue = await platform.listOpsLaunchLeads();
+  const queuedLead = queue.find((item) => item.lead.id === lead.id);
+  assert.ok(queuedLead);
+  assert.match(queuedLead.responseGuidance.recommendedAction, /closed-lost/i);
+  assert.equal(queuedLead.responseGuidance.templates[0]?.key, "closed-lost-follow-up");
+  assert.ok(
+    queuedLead.responseGuidance.templates.every((template) => !template.key.startsWith("first-response"))
+  );
+});
+
+test("google business profile leads can use platform-message follow-up without direct contact details", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "google-business-profile",
+    requestSource: "google-business-profile-message",
+    sourceReferenceId: "gbp_thread_789",
+    channelMetadata: {
+      threadUrl: "https://business.google.com/messages/thread/gbp_thread_789"
+    },
+    contactName: "Pat Homeowner",
+    preferredContactMethod: "platform-message",
+    areaLabel: "Needs area confirmation",
+    serviceCategory: "lawn-mowing",
+    message:
+      "Google Business Profile message asking whether GreenRain can handle weekly mowing. Reply thread: https://business.google.com/messages/thread/gbp_thread_789"
+  });
+
+  assert.equal(lead.email, undefined);
+  assert.equal(lead.phone, undefined);
+  assert.equal(lead.preferredContactMethod, "platform-message");
+  assert.equal(lead.channelMetadata?.threadUrl, "https://business.google.com/messages/thread/gbp_thread_789");
+  assert.equal(lead.channelMetadata?.profileLocationName, undefined);
+
+  const queue = await platform.listOpsLaunchLeads();
+  const queuedLead = queue.find((item) => item.lead.id === lead.id);
+  assert.ok(queuedLead);
+  assert.match(queuedLead.responseGuidance.recommendedAction, /reply in the source thread/i);
+  assert.equal(queuedLead.responseGuidance.templates[0]?.key, "first-response-platform-message");
+
+  const capturedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.launchLeadCaptured);
+  assert.equal(capturedEvent?.properties.sourceChannel, "google-business-profile");
+  assert.equal(capturedEvent?.properties.hasEmail, false);
+  assert.equal(capturedEvent?.properties.hasPhone, false);
+  assert.equal(capturedEvent?.properties.preferredContactMethod, "platform-message");
+});
+
+test("referral leads can guide ops to coordinate through the referrer when customer contact is missing", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const lead = await platform.createInboundReferralLaunchLead(
+      {
+        sourceReferenceId: "ref_123",
+        referrerName: "Alex Neighbor",
+        referrerEmail: "alex@example.com",
+        referredCustomerName: "Jamie Homeowner",
+        areaLabel: "Barnegat, NJ",
+        serviceCategory: "lawn-mowing",
+        messageText: "Neighbor wants help getting weekly mowing started."
+      },
+      "launch-webhook-secret"
+    );
+
+    assert.equal(lead.sourceChannel, "referral");
+    assert.equal(lead.email, "alex@example.com");
+    assert.equal(lead.phone, undefined);
+    assert.equal(lead.channelMetadata?.referrerName, "Alex Neighbor");
+    assert.equal(lead.channelMetadata?.referralFollowUpTarget, "referrer");
+
+    const queue = await platform.listOpsLaunchLeads();
+    const queuedLead = queue.find((item) => item.lead.id === lead.id);
+    assert.ok(queuedLead);
+    assert.ok(
+      queuedLead.responseGuidance.warnings.some((warning) => /back through the referrer/i.test(warning))
+    );
+    assert.match(queuedLead.responseGuidance.recommendedAction, /first email response/i);
+    const partnerTemplate = queuedLead.responseGuidance.templates.find(
+      (template) => template.key === "partner-follow-up"
+    );
+    assert.ok(partnerTemplate);
+    assert.equal(partnerTemplate.audience, "partner");
+    assert.match(partnerTemplate.body, /active contact/i);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
+});
+
+test("ops lead queue suggests existing booking matches and can manually attach them", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const customer = await platform.registerUser({
+    fullName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    password: "Password123!",
+    phone: "555-2200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const providers = await repository.listProviders();
+  const provider = providers[0];
+  assert.ok(provider);
+
+  const recurring = await platform.createRecurringServicePlan(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(Date.now() + 73 * 60 * 60 * 1000).toISOString(),
+    notes: "Start weekly mowing",
+    totalCents: 6200,
+    frequency: "weekly"
+  });
+  assert.equal(recurring.initialBooking.launchLeadId, undefined);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "email",
+    requestSource: "customer-service-help-request",
+    contactName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Customer emailed after booking and wants the inquiry tracked in the launch queue.",
+    assignedOwner: "Casey Ops"
+  });
+
+  const queue = await platform.listOpsLaunchLeads();
+  const queuedLead = queue.find((item) => item.lead.id === lead.id);
+  assert.ok(queuedLead);
+  assert.equal(queuedLead?.suggestedBookingMatches[0]?.bookingId, recurring.initialBooking.id);
+  assert.equal(queuedLead?.suggestedBookingMatches[0]?.matchReason, "email");
+
+  const updatedLead = await platform.updateLaunchLeadForOps({
+    leadId: lead.id,
+    status: "qualified",
+    assignedOwner: "Casey Ops",
+    linkBookingId: recurring.initialBooking.id
+  });
+  assert.equal(updatedLead.status, "converted");
+  assert.deepEqual(updatedLead.convertedBookingIds, [recurring.initialBooking.id]);
+  assert.ok(new Date(updatedLead.closedAt ?? "").getTime() >= new Date(updatedLead.createdAt).getTime());
+
+  const linkedBooking = await repository.findBookingById(recurring.initialBooking.id);
+  assert.equal(linkedBooking?.launchLeadId, lead.id);
+  const linkedPlan = await repository.findRecurringServicePlanById(recurring.plan.plan.id);
+  assert.equal(linkedPlan?.launchLeadId, lead.id);
+
+  const closedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.launchLeadClosed);
+  assert.equal(closedEvent?.properties.status, "converted");
+});
+
+test("manual email leads auto-link to later bookings from the same customer identity", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "email",
+    requestSource: "customer-service-help-request",
+    contactName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Can GreenRain help me get weekly mowing set up soon?"
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    password: "Password123!",
+    phone: "555-2200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const providers = await repository.listProviders();
+  const provider = providers[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(Date.now() + 73 * 60 * 60 * 1000).toISOString(),
+    notes: "Please mow weekly.",
+    totalCents: 6200
+  });
+
+  assert.equal(booking.launchLeadId, lead.id);
+  const convertedLead = await repository.findLaunchLeadById(lead.id);
+  assert.equal(convertedLead?.status, "converted");
+  assert.deepEqual(convertedLead?.convertedBookingIds, [booking.id]);
+
+  const bookingRequestedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.bookingRequested);
+  assert.equal(bookingRequestedEvent?.properties.launchLeadId, lead.id);
+  assert.equal(bookingRequestedEvent?.properties.launchLeadLinkMode, "email-match");
+  assert.equal(bookingRequestedEvent?.properties.launchLeadSourceChannel, "email");
+});
+
+test("converted launch leads surface booking follow-up drafts instead of requalification copy", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "email",
+    requestSource: "customer-service-help-request",
+    contactName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Can GreenRain help me get weekly mowing set up soon?"
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    password: "Password123!",
+    phone: "555-2200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const providers = await repository.listProviders();
+  const provider = providers[0];
+  assert.ok(provider);
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(Date.now() + 73 * 60 * 60 * 1000).toISOString(),
+    notes: "Please mow weekly.",
+    totalCents: 6200
+  });
+
+  const queue = await platform.listOpsLaunchLeads();
+  const queuedLead = queue.find((item) => item.lead.id === lead.id);
+  assert.ok(queuedLead);
+  assert.match(queuedLead.responseGuidance.recommendedAction, /already linked/i);
+  assert.ok(
+    queuedLead.responseGuidance.templates.some((template) => template.key === "booking-confirmation")
+  );
+});
+
+test("manual phone leads auto-link to later bookings when email is unavailable", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const lead = await platform.createLaunchLead({
+    sourceChannel: "phone",
+    requestSource: "customer-service-help-request",
+    contactName: "Taylor Caller",
+    phone: "(555) 111-2222",
+    preferredContactMethod: "phone",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "seasonal-cleanup",
+    message: "Can someone help me get a cleanup scheduled before guests arrive?"
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Taylor Caller",
+    email: "taylor@example.com",
+    password: "Password123!",
+    phone: "5551112222",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const providers = await repository.listProviders();
+  const provider = providers[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "seasonal-cleanup",
+    scheduledStartIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(Date.now() + 74 * 60 * 60 * 1000).toISOString(),
+    notes: "Seasonal cleanup before family visits.",
+    totalCents: 8200
+  });
+
+  assert.equal(booking.launchLeadId, lead.id);
+  const convertedLead = await repository.findLaunchLeadById(lead.id);
+  assert.equal(convertedLead?.status, "converted");
+  assert.deepEqual(convertedLead?.convertedBookingIds, [booking.id]);
+
+  const bookingRequestedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.bookingRequested);
+  assert.equal(bookingRequestedEvent?.properties.launchLeadId, lead.id);
+  assert.equal(bookingRequestedEvent?.properties.launchLeadLinkMode, "phone-match");
+  assert.equal(bookingRequestedEvent?.properties.launchLeadSourceChannel, "phone");
+});
+
+test("launch leads stay linked through recurring bookings and review generation", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "launch-linked@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const providers = await repository.listProviders();
+  const provider = providers[0];
+  assert.ok(provider);
+
+  const lead = await platform.createLaunchLead({
+    requestSource: "launch-town-page-lead-form",
+    attribution: {
+      source: "google",
+      medium: "organic",
+      campaign: "barnegat-launch",
+      landingPath: "/barnegat-nj/lawn-mowing",
+      capturedAt: "2026-06-17T10:00:00.000Z"
+    },
+    contactName: "Jamie Homeowner",
+    email: "jamie@example.com",
+    preferredContactMethod: "email",
+    areaLabel: "Barnegat, NJ",
+    serviceCategory: "lawn-mowing",
+    message: "Please help me get mowing started now and keep it going weekly."
+  });
+
+  const recurring = await platform.createRecurringServicePlan(customer.id, {
+    providerId: provider.id,
+    launchLeadId: lead.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(Date.now() + 73 * 60 * 60 * 1000).toISOString(),
+    notes: "Start weekly mowing",
+    totalCents: 6200,
+    frequency: "weekly"
+  });
+
+  assert.equal(recurring.plan.plan.launchLeadId, lead.id);
+  assert.equal(recurring.initialBooking.launchLeadId, lead.id);
+
+  const convertedLead = await repository.findLaunchLeadById(lead.id);
+  assert.equal(convertedLead?.status, "converted");
+  assert.deepEqual(convertedLead?.convertedBookingIds, [recurring.initialBooking.id]);
+  assert.equal(convertedLead?.firstConvertedBookingAt, recurring.initialBooking.requestedAt);
+  assert.equal(convertedLead?.lastConvertedBookingAt, recurring.initialBooking.requestedAt);
+
+  const bookingRequestedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.bookingRequested);
+  assert.equal(bookingRequestedEvent?.properties.launchLeadId, lead.id);
+  assert.equal(bookingRequestedEvent?.properties.launchLeadSourceChannel, "website");
+  assert.equal(bookingRequestedEvent?.properties.attributionSource, "google");
+  assert.equal(bookingRequestedEvent?.properties.launchLeadConvertedBookingCount, 1);
+
+  await platform.confirmBooking(provider.id, {
+    bookingId: recurring.initialBooking.id
+  });
+
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    recurring.initialBooking.id,
+    "after"
+  );
+
+  await platform.completeBooking(provider.id, {
+    bookingId: recurring.initialBooking.id
+  });
+
+  const allBookings = await repository.listBookings();
+  const nextRecurringBooking = allBookings.find(
+    (booking) =>
+      booking.recurringPlanId === recurring.plan.plan.id && booking.recurringOccurrenceIndex === 2
+  );
+  assert.ok(nextRecurringBooking);
+  assert.equal(nextRecurringBooking?.launchLeadId, lead.id);
+
+  const leadAfterRepeatBooking = await repository.findLaunchLeadById(lead.id);
+  assert.deepEqual(leadAfterRepeatBooking?.convertedBookingIds, [
+    recurring.initialBooking.id,
+    nextRecurringBooking?.id
+  ]);
+  assert.equal(leadAfterRepeatBooking?.lastConvertedBookingAt, nextRecurringBooking?.requestedAt);
+
+  await platform.processReviewInvites({
+    nowIso: new Date(Date.now() + 96 * 60 * 60 * 1000).toISOString()
+  });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: recurring.initialBooking.id,
+    overallRating: 5,
+    timelinessRating: 5,
+    attentionToDetailRating: 5,
+    reviewText: "Weekly setup was smooth and the crew did a great job."
+  });
+
+  const leadAfterReview = await repository.findLaunchLeadById(lead.id);
+  assert.deepEqual(leadAfterReview?.reviewIds, [review.id]);
+  assert.equal(leadAfterReview?.lastReviewSubmittedAt, review.createdAt);
+
+  const reviewSubmittedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.providerReviewSubmitted);
+  assert.equal(reviewSubmittedEvent?.properties.launchLeadId, lead.id);
+  assert.equal(reviewSubmittedEvent?.properties.launchLeadReviewCount, 1);
+  assert.equal(reviewSubmittedEvent?.properties.attributionSource, "google");
 });
 
 test("completed bookings unlock review invites and reject duplicate reviews", async () => {
   const repository = new InMemoryMarketplaceRepository();
-  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
 
   const customer = await platform.registerUser({
     fullName: "Jordan Rivera",
@@ -992,9 +1908,24 @@ test("completed bookings unlock review invites and reject duplicate reviews", as
     overallRating: 5,
     timelinessRating: 5,
     attentionToDetailRating: 4,
-    reviewText: "Fast, neat, and on time."
+    reviewText: "Fast, neat, and on time.",
+    attribution: {
+      source: "google",
+      medium: "organic",
+      campaign: "barnegat-reviews",
+      landingPath: "/barnegat-nj",
+      capturedAt: "2026-06-17T14:30:00.000Z"
+    }
   });
   assert.equal(review.providerId, provider.id);
+
+  const reviewSubmittedEvent = analytics
+    .listEvents()
+    .find((event) => event.name === MarketplaceTelemetryEventCatalog.providerReviewSubmitted);
+  assert.equal(reviewSubmittedEvent?.properties.attributionSource, "google");
+  assert.equal(reviewSubmittedEvent?.properties.attributionMedium, "organic");
+  assert.equal(reviewSubmittedEvent?.properties.attributionCampaign, "barnegat-reviews");
+  assert.equal(reviewSubmittedEvent?.properties.attributionLandingPath, "/barnegat-nj");
 
   await assert.rejects(
     platform.createProviderReview(customer.id, {
@@ -1517,6 +2448,60 @@ test("providers can log active booking exceptions and notify customers", async (
         /side gate is locked/i.test(notification.body)
     )
   );
+});
+
+test("ops support queue includes delay-update drafts for active field exceptions", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-exception-support@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(6),
+    scheduledEndIso: futureIso(8),
+    notes: "Support template exception test",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.markBookingException(provider.id, {
+    bookingId: booking.id,
+    exceptionType: "unable-to-access-property",
+    notes: "The side gate is locked and there is no alternate entry."
+  });
+
+  const ticket = await platform.createSupportTicket(
+    { userId: customer.id, role: "customer" },
+    {
+      bookingId: booking.id,
+      subject: "Access issue",
+      description: "Customer wants an update on the blocked visit.",
+      issueType: "service-quality"
+    }
+  );
+
+  const opsTicket = (await platform.listOpsSupportTickets()).find((candidate) => candidate.ticket.id === ticket.id);
+  assert.ok(opsTicket?.resolutionGuidance);
+  assert.equal(opsTicket?.resolutionGuidance?.confidence, "low");
+  const delayTemplate = opsTicket?.resolutionGuidance?.templates.find(
+    (template) => template.key === "delay-update"
+  );
+  assert.ok(delayTemplate);
+  assert.match(delayTemplate?.body ?? "", /side gate is locked/i);
+  assert.match(delayTemplate?.body ?? "", /unable to access property/i);
 });
 
 test("customers can dispute a booking and automatically create support context", async () => {
@@ -2709,6 +3694,93 @@ test("ops can deny a refund review and return payouts to the normal schedule", a
     providerLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
     "scheduled"
   );
+});
+
+test("refund-review support tickets include refund-approved drafts when reviewed evidence supports the customer", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-refund-template@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Refund support template test",
+    totalCents: 7200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  const bookingWithEvidence = await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  const payment = (await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  }))[0];
+  assert.ok(payment);
+
+  await platform.createRefund(
+    {
+      userId: customer.id,
+      email: customer.email,
+      role: "customer"
+    },
+    {
+      paymentId: payment?.id ?? "",
+      reason: "Please review this payment."
+    }
+  );
+
+  const refundTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "billing"
+  );
+  assert.ok(refundTicket);
+
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    ticketId: refundTicket?.ticket.id ?? "",
+    evidenceId: bookingWithEvidence.serviceEvidence[0]?.id ?? "",
+    reviewStatus: "supports-customer",
+    reviewNotes: "Ops reviewed the submitted evidence before refund approval."
+  });
+
+  const updatedRefundTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.id === refundTicket?.ticket.id
+  );
+  assert.equal(updatedRefundTicket?.resolutionGuidance?.recommendedAction, "approve-refund");
+  const refundTemplate = updatedRefundTicket?.resolutionGuidance?.templates.find(
+    (template) => template.key === "refund-approved"
+  );
+  assert.ok(refundTemplate);
+  assert.match(refundTemplate?.body ?? "", /approving the refund review/i);
 });
 
 test("ops cannot resolve a refund review with submitted evidence before reviewing any evidence", async () => {
@@ -4699,6 +5771,9 @@ test("ops support tickets include evidence summaries and resolution guidance", a
   assert.equal(opsTicket?.evidenceSummary?.supportsProviderCount, 1);
   assert.equal(opsTicket?.resolutionGuidance?.recommendedAction, "restore-active-booking");
   assert.equal(opsTicket?.resolutionGuidance?.confidence, "medium");
+  assert.ok(
+    opsTicket?.resolutionGuidance?.templates.some((template) => template.key === "issue-resolution")
+  );
   assert.equal(opsTicket?.resolutionPolicy?.evidenceSignal, "supports-provider");
   assert.equal(opsTicket?.resolutionPolicy?.requiresDetailedRationale, false);
   assert.ok(opsTicket?.resolutionPolicy?.blockedActions.includes("cancel-booking"));
@@ -6232,7 +7307,8 @@ test("providers can import an external iCal feed and use it to block YardMatch a
   await platform.reviewProviderVerification({
     providerId: provider.id,
     action: "approve",
-    notes: "Calendar import test provider can be shown in search."
+    notes:
+      "Ops confirmed this calendar-import test provider still has a tight launch radius, current category coverage, and reliable exception handling for live search visibility."
   });
 
   const matchingSlots = await platform.searchProviders({
@@ -8924,7 +10000,27 @@ test("new providers stay out of public search until ops approves verification", 
   assert.equal(provider.verificationStatus, "pending-review");
 
   const queueBeforeReview = await platform.listProviderVerificationQueue();
-  assert.ok(queueBeforeReview.some((item) => item.provider.id === provider.id));
+  const queuedProvider = queueBeforeReview.find((item) => item.provider.id === provider.id);
+  assert.ok(queuedProvider);
+  assert.equal(queuedProvider?.guidance.recommendedAction, "manual-review");
+  assert.ok(
+    queuedProvider?.guidance.checklist.some((item) => item.key === "profile-completeness")
+  );
+  assert.ok(
+    queuedProvider?.guidance.checklist.some(
+      (item) => item.key === "experience-signal" && item.status === "review"
+    )
+  );
+  assert.ok(
+    queuedProvider?.guidance.checklist.some(
+      (item) => item.key === "service-quality-expectations" && item.status === "review"
+    )
+  );
+  assert.ok(
+    queuedProvider?.guidance.checklist.some(
+      (item) => item.key === "intervention-readiness" && item.status === "ready"
+    )
+  );
 
   const searchBeforeApproval = await platform.searchProviders({
     address: createAddress("112 Garden Row", 30.2435, -97.7638),
@@ -8934,10 +10030,24 @@ test("new providers stay out of public search until ops approves verification", 
   });
   assert.equal(searchBeforeApproval.providers.some((item) => item.id === provider.id), false);
 
+  await assert.rejects(
+    () =>
+      platform.reviewProviderVerification({
+        providerId: provider.id,
+        action: "approve",
+        notes: "Business profile is complete and ready to go live."
+      }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 400 &&
+      /launch-fit checks|ready to go live despite the checklist watchouts/i.test(error.message)
+  );
+
   const approvedProvider = await platform.reviewProviderVerification({
     providerId: provider.id,
     action: "approve",
-    notes: "Business profile is complete and ready to go live."
+    notes:
+      "Ops confirmed the provider can keep the Barnegat launch radius tight, respond to field exceptions quickly, and handle the lighter experience history with managed first-week oversight."
   });
   assert.equal(approvedProvider.verificationStatus, "verified");
   assert.ok(approvedProvider.verificationReviewedAt);
@@ -8952,6 +10062,197 @@ test("new providers stay out of public search until ops approves verification", 
     estimatedDurationMinutes: 45
   });
   assert.equal(searchAfterApproval.providers.some((item) => item.id === provider.id), true);
+});
+
+test("provider verification guidance flags missing launch-fit basics before go-live", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Riley Sparse",
+    email: "provider-verification-thin@example.com",
+    password: "Password123!",
+    phone: "555-4499",
+    role: "provider",
+    companyName: "Sparse Launch Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 45,
+    address: createAddress("119 Maple Ave", 30.2438, -97.7639)
+  });
+
+  await repository.updateProvider(provider.id, {
+    bio: "Reliable lawns.",
+    yearsExperience: 0,
+    minimumBookingLeadHours: 72
+  });
+
+  const queue = await platform.listProviderVerificationQueue();
+  const queuedProvider = queue.find((item) => item.provider.id === provider.id);
+  assert.ok(queuedProvider);
+  assert.equal(queuedProvider?.guidance.recommendedAction, "reject");
+  assert.ok(
+    queuedProvider?.guidance.checklist.some(
+      (item) => item.key === "launch-area-fit" && item.status === "missing"
+    )
+  );
+  assert.ok(
+    queuedProvider?.guidance.checklist.some(
+      (item) => item.key === "experience-signal" && item.status === "missing"
+    )
+  );
+  assert.ok(
+    queuedProvider?.guidance.checklist.some(
+      (item) => item.key === "service-quality-expectations" && item.status === "missing"
+    )
+  );
+  assert.ok(
+    queuedProvider?.guidance.warnings.some((warning) => /lead-time|launch pocket/i.test(warning))
+  );
+
+  await assert.rejects(
+    () =>
+      platform.reviewProviderVerification({
+        providerId: provider.id,
+        action: "approve",
+        notes: "Provider looks ready for launch visibility."
+      }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 400 &&
+      /specific missing launch-readiness gaps|safe right now/i.test(error.message)
+  );
+
+  const approvedProvider = await platform.reviewProviderVerification({
+    providerId: provider.id,
+    action: "approve",
+    notes:
+      "Ops is approving a narrow pilot because the provider agreed to reduce the service pocket immediately, tighten lead-time settings before first booking release, and stay on same-day support escalation for the first launch jobs."
+  });
+  assert.equal(approvedProvider.verificationStatus, "verified");
+});
+
+test("provider profiles include backend-authored verification next steps while pending review", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Jamie Pending",
+    email: "provider-pending-summary@example.com",
+    password: "Password123!",
+    phone: "555-4411",
+    role: "provider",
+    companyName: "Pending Pocket Lawns",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 35,
+    address: createAddress("120 Maple Ave", 30.2438, -97.7639)
+  });
+
+  const profile = await platform.getProviderProfile(provider.id);
+  assert.equal(profile.verificationStatus, "pending-review");
+  assert.ok(profile.verificationSummary);
+  assert.match(profile.verificationSummary?.headline ?? "", /pending review/i);
+  assert.ok(
+    profile.verificationSummary?.nextSteps.some((step) => /service radius|launch pocket/i.test(step))
+  );
+  assert.ok(
+    profile.verificationSummary?.checklist.some(
+      (item) => item.key === "launch-area-fit" && item.status === "review"
+    )
+  );
+});
+
+test("rejected providers are automatically resubmitted when they update business profile details", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Taylor Retry",
+    email: "provider-retry-profile@example.com",
+    password: "Password123!",
+    phone: "555-4412",
+    role: "provider",
+    companyName: "Retry Lawns",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("121 Maple Ave", 30.2438, -97.7639)
+  });
+
+  await repository.updateProvider(provider.id, {
+    bio: "Short bio.",
+    yearsExperience: 0
+  });
+
+  const rejectedProvider = await platform.reviewProviderVerification({
+    providerId: provider.id,
+    action: "reject",
+    notes: "Add more detail about experience and the customer-facing service quality standard before relaunch."
+  });
+  assert.equal(rejectedProvider.verificationStatus, "rejected");
+
+  const resubmittedProvider = await platform.updateProviderProfile(provider.id, {
+    companyName: "Retry Lawns and Cleanup",
+    bio: "Weekly mowing and seasonal cleanup with careful communication, photo-backed field updates, and launch-ready customer follow-through.",
+    yearsExperience: 4,
+    categories: ["lawn-mowing", "seasonal-cleanup"]
+  });
+
+  assert.equal(resubmittedProvider.verificationStatus, "pending-review");
+  assert.equal(resubmittedProvider.companyName, "Retry Lawns and Cleanup");
+  assert.equal(resubmittedProvider.yearsExperience, 4);
+  assert.ok(resubmittedProvider.verificationSubmittedAt);
+  assert.match(resubmittedProvider.verificationSummary?.headline ?? "", /back in review/i);
+  assert.match(
+    resubmittedProvider.verificationSummary?.summary ?? "",
+    /last review note: add more detail about experience/i
+  );
+});
+
+test("rejected providers are automatically resubmitted when they fix launch settings", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Morgan Dispatch",
+    email: "provider-retry-settings@example.com",
+    password: "Password123!",
+    phone: "555-4413",
+    role: "provider",
+    companyName: "Dispatch Retry Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 45,
+    address: createAddress("122 Maple Ave", 30.2438, -97.7639)
+  });
+
+  await repository.updateProvider(provider.id, {
+    bio: "Launch-ready mowing and cleanup support with clear customer updates.",
+    yearsExperience: 4,
+    minimumBookingLeadHours: 72,
+    crewReviewLeadHours: 6,
+    departureReminderLeadMinutes: 10
+  });
+
+  const rejectedProvider = await platform.reviewProviderVerification({
+    providerId: provider.id,
+    action: "reject",
+    notes: "Tighten the launch radius and staffing-response settings before this business goes live."
+  });
+  assert.equal(rejectedProvider.verificationStatus, "rejected");
+
+  const resubmittedProvider = await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: 20,
+    minimumBookingLeadHours: 24,
+    staffingMode: "review-first",
+    crewReviewLeadHours: 24,
+    departureReminderLeadMinutes: 45
+  });
+
+  assert.equal(resubmittedProvider.verificationStatus, "pending-review");
+  assert.equal(resubmittedProvider.serviceRadiusMiles, 20);
+  assert.equal(resubmittedProvider.minimumBookingLeadHours, 24);
+  assert.match(
+    resubmittedProvider.verificationSummary?.summary ?? "",
+    /last review note: tighten the launch radius/i
+  );
 });
 
 test("ops summary reports refund reviews and active booking exceptions", async () => {
@@ -9049,10 +10350,58 @@ test("ops summary reports refund reviews and active booking exceptions", async (
 test("public marketplace overview returns only verified providers and live aggregate stats", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "public-overview-customer@example.com",
+    password: "Password123!",
+    phone: "555-0101",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress()
+  });
 
   const verifiedProviders = (await repository.listProviders()).filter(
     (provider) => provider.verificationStatus === "verified"
   );
+  const provider = verifiedProviders[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: {
+      line1: "45 Bayview Ave",
+      city: "Barnegat",
+      state: "NJ",
+      postalCode: "08005",
+      country: "US",
+      point: {
+        latitude: 39.7532,
+        longitude: -74.2229
+      }
+    },
+    category: provider.categories[0] ?? "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Public overview review coverage booking"
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.processReviewInvites({ nowIso: futureIso(96) });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: booking.id,
+    overallRating: 5,
+    timelinessRating: 5,
+    attentionToDetailRating: 5,
+    reviewText: "The crew was on time, careful around the beds, and the lawn looked great."
+  });
 
   const overview = await platform.getPublicMarketplaceOverview();
 
@@ -9080,4 +10429,26 @@ test("public marketplace overview returns only verified providers and live aggre
     ),
     true
   );
+  assert.equal(
+    overview.highlightedReviews.every((highlightedReview) =>
+      verifiedProviders.some((candidate) => candidate.id === highlightedReview.providerId)
+    ),
+    true
+  );
+  assert.ok(
+    overview.highlightedReviews.some(
+      (highlightedReview) =>
+        highlightedReview.reviewId === review.id &&
+        highlightedReview.providerId === provider.id &&
+        highlightedReview.providerCompanyName === provider.companyName
+    )
+  );
+  const barnegatCoverage = overview.coverageAreas.find(
+    (area) => area.city === "Barnegat" && area.state === "NJ"
+  );
+  assert.ok(barnegatCoverage);
+  assert.equal(barnegatCoverage?.verifiedProviderCount, 1);
+  assert.equal(barnegatCoverage?.completedBookingCount, 1);
+  assert.equal(barnegatCoverage?.recentCompletedBookingCount, 1);
+  assert.ok(barnegatCoverage?.supportedCategories.includes(provider.categories[0] ?? "lawn-mowing"));
 });

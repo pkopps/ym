@@ -2,6 +2,7 @@
 
 import { AnalyticsEvent } from "@yardmatch/contracts";
 import { createWebApiClient, loadStoredSession } from "./api";
+import { buildLaunchAttributionAnalyticsProperties } from "./launchAttribution";
 
 function getPlatformSurface(): "web-mobile" | "web-desktop" {
   return window.innerWidth < 900 ? "web-mobile" : "web-desktop";
@@ -24,6 +25,7 @@ export async function trackWebEvent(
         role: session?.role ?? "anonymous",
         platform: getPlatformSurface(),
         path: window.location.pathname,
+        ...buildLaunchAttributionAnalyticsProperties(),
         ...properties
       }
     });

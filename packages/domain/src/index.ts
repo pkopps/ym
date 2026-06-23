@@ -639,6 +639,7 @@ export class BookingLifecycleService {
       id,
       customerId: payload.customerId,
       providerId: payload.providerId,
+      launchLeadId: payload.launchLeadId,
       serviceAddress: payload.serviceAddress,
       servicePropertyId: payload.servicePropertyId,
       category: payload.category,

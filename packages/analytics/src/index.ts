@@ -2,8 +2,11 @@ import {
   ActiveSession,
   AnalyticsEvent,
   Booking,
+  LaunchLead,
   ObservabilityOverview,
   RecommendationSurfaceMetrics,
+  LaunchLeadSourceMetrics,
+  ReviewInvite,
   SessionHeartbeatRequest,
   SupportTicket,
   TelemetryPlatformSurface
@@ -91,6 +94,8 @@ export class DataEngineeringLogger {
 
   public getOverview(input: {
     bookings: Booking[];
+    launchLeads: LaunchLead[];
+    reviewInvites: ReviewInvite[];
     supportTickets: SupportTicket[];
   }): ObservabilityOverview {
     const activeSessions = this.getActiveSessions();
@@ -120,6 +125,8 @@ export class DataEngineeringLogger {
     const paymentAuthorizations = this.countEvents(MarketplaceTelemetryEventCatalog.paymentAuthorized);
     const paymentCaptures = this.countEvents(MarketplaceTelemetryEventCatalog.paymentCaptured);
     const paymentFailures = this.countEvents(MarketplaceTelemetryEventCatalog.paymentFailed);
+    const reviewInviteMetrics = this.buildReviewInviteMetrics(input.reviewInvites);
+    const launchLeadMetrics = this.buildLaunchLeadMetrics(input.launchLeads);
     const recommendationMetricsBySource = this.buildRecommendationMetricsBySource();
     const recommendationRates = this.buildRecommendationSessionMetrics();
 
@@ -156,6 +163,21 @@ export class DataEngineeringLogger {
       paymentAuthorizations,
       paymentCaptures,
       paymentFailures,
+      totalReviewInvites: reviewInviteMetrics.totalReviewInvites,
+      scheduledReviewInvites: reviewInviteMetrics.scheduledReviewInvites,
+      sentReviewInvites: reviewInviteMetrics.sentReviewInvites,
+      openedReviewInvites: reviewInviteMetrics.openedReviewInvites,
+      completedReviewInvites: reviewInviteMetrics.completedReviewInvites,
+      expiredReviewInvites: reviewInviteMetrics.expiredReviewInvites,
+      reviewRequestCompletionRate: reviewInviteMetrics.reviewRequestCompletionRate,
+      totalLaunchLeads: launchLeadMetrics.totalLaunchLeads,
+      openLaunchLeads: launchLeadMetrics.openLaunchLeads,
+      overdueLaunchLeads: launchLeadMetrics.overdueLaunchLeads,
+      firstResponseOverdueLaunchLeads: launchLeadMetrics.firstResponseOverdueLaunchLeads,
+      followUpOverdueLaunchLeads: launchLeadMetrics.followUpOverdueLaunchLeads,
+      convertedLaunchLeads: launchLeadMetrics.convertedLaunchLeads,
+      closedLostLaunchLeads: launchLeadMetrics.closedLostLaunchLeads,
+      launchLeadSourceMetrics: launchLeadMetrics.launchLeadSourceMetrics,
       recommendationMetricsBySource,
       activeUsers5m: activeSessions.length,
       activeCustomers5m: activeSessions.filter((session) => session.role === "customer").length,
@@ -201,6 +223,100 @@ export class DataEngineeringLogger {
 
   private countEvents(name: string): number {
     return this.events.filter((event) => event.name === name).length;
+  }
+
+  private buildLaunchLeadMetrics(launchLeads: LaunchLead[]): {
+    totalLaunchLeads: number;
+    openLaunchLeads: number;
+    overdueLaunchLeads: number;
+    firstResponseOverdueLaunchLeads: number;
+    followUpOverdueLaunchLeads: number;
+    convertedLaunchLeads: number;
+    closedLostLaunchLeads: number;
+    launchLeadSourceMetrics: LaunchLeadSourceMetrics[];
+  } {
+    const now = Date.now();
+    const openLaunchLeads = launchLeads.filter(
+      (lead) => lead.status !== "converted" && lead.status !== "closed-lost"
+    );
+    const firstResponseOverdueLaunchLeads = openLaunchLeads.filter(
+      (lead) => !lead.firstRespondedAt && new Date(lead.firstResponseDueAt).getTime() < now
+    ).length;
+    const followUpOverdueLaunchLeads = openLaunchLeads.filter(
+      (lead) =>
+        Boolean(lead.firstRespondedAt) &&
+        Boolean(lead.nextFollowUpDueAt) &&
+        new Date(lead.nextFollowUpDueAt ?? "").getTime() < now
+    ).length;
+
+    const sourceAccumulator = new Map<
+      LaunchLead["sourceChannel"],
+      LaunchLeadSourceMetrics
+    >();
+    for (const lead of launchLeads) {
+      const isOpen = lead.status !== "converted" && lead.status !== "closed-lost";
+      const isOverdue =
+        (!lead.firstRespondedAt && new Date(lead.firstResponseDueAt).getTime() < now) ||
+        (Boolean(lead.firstRespondedAt) &&
+          Boolean(lead.nextFollowUpDueAt) &&
+          new Date(lead.nextFollowUpDueAt ?? "").getTime() < now);
+      const current =
+        sourceAccumulator.get(lead.sourceChannel) ??
+        {
+          sourceChannel: lead.sourceChannel,
+          totalCount: 0,
+          openCount: 0,
+          overdueCount: 0,
+          convertedCount: 0
+        };
+      current.totalCount += 1;
+      if (isOpen) {
+        current.openCount += 1;
+      }
+      if (isOverdue && isOpen) {
+        current.overdueCount += 1;
+      }
+      if (lead.status === "converted") {
+        current.convertedCount += 1;
+      }
+      sourceAccumulator.set(lead.sourceChannel, current);
+    }
+
+    return {
+      totalLaunchLeads: launchLeads.length,
+      openLaunchLeads: openLaunchLeads.length,
+      overdueLaunchLeads: firstResponseOverdueLaunchLeads + followUpOverdueLaunchLeads,
+      firstResponseOverdueLaunchLeads,
+      followUpOverdueLaunchLeads,
+      convertedLaunchLeads: launchLeads.filter((lead) => lead.status === "converted").length,
+      closedLostLaunchLeads: launchLeads.filter((lead) => lead.status === "closed-lost").length,
+      launchLeadSourceMetrics: [...sourceAccumulator.values()].sort((left, right) => {
+        if (right.openCount !== left.openCount) {
+          return right.openCount - left.openCount;
+        }
+        return right.totalCount - left.totalCount;
+      })
+    };
+  }
+
+  private buildReviewInviteMetrics(reviewInvites: ReviewInvite[]) {
+    const totalReviewInvites = reviewInvites.length;
+    const scheduledReviewInvites = reviewInvites.filter((invite) => invite.status === "scheduled").length;
+    const sentReviewInvites = reviewInvites.filter((invite) => invite.status === "sent").length;
+    const openedReviewInvites = reviewInvites.filter((invite) => invite.status === "opened").length;
+    const completedReviewInvites = reviewInvites.filter((invite) => invite.status === "completed").length;
+    const expiredReviewInvites = reviewInvites.filter((invite) => invite.status === "expired").length;
+
+    return {
+      totalReviewInvites,
+      scheduledReviewInvites,
+      sentReviewInvites,
+      openedReviewInvites,
+      completedReviewInvites,
+      expiredReviewInvites,
+      reviewRequestCompletionRate:
+        totalReviewInvites === 0 ? 0 : completedReviewInvites / totalReviewInvites
+    };
   }
 
   private buildRecommendationSessionMetrics(

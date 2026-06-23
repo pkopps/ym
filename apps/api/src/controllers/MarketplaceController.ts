@@ -43,6 +43,7 @@ import {
   StartBookingRequest,
   RescheduleBookingRequest,
   UpdateCrewPreferencesRequest,
+  UpdateProviderProfileRequest,
   UpdateProviderSettingsRequest,
   UpdateBookingAddressRequest
 } from "@yardmatch/contracts";
@@ -72,6 +73,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/search") ||
       (context.method === "GET" && context.path === "/api/providers/public-overview") ||
       (context.method === "GET" && context.path === "/api/providers/profile") ||
+      (context.method === "POST" && context.path === "/api/providers/profile") ||
       (context.method === "GET" && context.path === "/api/providers/verification/queue") ||
       (context.method === "POST" && context.path === "/api/providers/verification/review") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
@@ -225,6 +227,16 @@ export class MarketplaceController implements ApiController {
       }
 
       sendJson(response, 200, await this.platform.getProviderProfile(providerId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/profile") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.updateProviderProfile(identity.userId, context.body as UpdateProviderProfileRequest)
+      );
       return;
     }
 

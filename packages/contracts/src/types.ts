@@ -61,6 +61,39 @@ export type PayoutLedgerStatus =
 
 export type SupportTicketStatus = "open" | "triaged" | "resolved";
 export type SupportIssueType = "billing" | "service-quality" | "account" | "general";
+export type LaunchLeadStatus = "new" | "contacted" | "qualified" | "converted" | "closed-lost";
+export type LaunchLeadSourceChannel =
+  | "website"
+  | "phone"
+  | "email"
+  | "social"
+  | "referral"
+  | "mail"
+  | "seo"
+  | "google-business-profile";
+export type LaunchLeadContactPreference = "email" | "phone" | "text" | "platform-message";
+export type LaunchLeadLossReason =
+  | "out-of-area"
+  | "no-response"
+  | "price-mismatch"
+  | "timeline-mismatch"
+  | "not-ready"
+  | "duplicate"
+  | "other";
+export type LaunchLeadReplyTemplateKey =
+  | "first-response-email"
+  | "first-response-text"
+  | "first-response-platform-message"
+  | "missed-call-callback"
+  | "quote-follow-up"
+  | "issue-help-follow-up"
+  | "booking-confirmation"
+  | "review-request"
+  | "closed-lost-follow-up"
+  | "provider-outreach"
+  | "partner-follow-up"
+  | "referral-request";
+export type LaunchLeadReplyTemplateAudience = "customer" | "provider" | "partner";
 export type SupportBookingResolution =
   | "restore-active-booking"
   | "cancel-booking"
@@ -298,6 +331,7 @@ export interface ProviderProfile extends BaseUser {
   verificationSubmittedAt?: string;
   verificationReviewedAt?: string;
   verificationNotes?: string;
+  verificationSummary?: ProviderVerificationStatusSummary;
   sponsoredListingEnabled: boolean;
   categories: ServiceCategory[];
   rating: number;
@@ -529,6 +563,7 @@ export interface Booking {
   id: string;
   customerId: string;
   providerId: string;
+  launchLeadId?: string;
   recurringPlanId?: string;
   recurringOccurrenceIndex?: number;
   serviceAddress: Address;
@@ -632,6 +667,7 @@ export interface RecurringServicePlan {
   id: string;
   customerId: string;
   providerId: string;
+  launchLeadId?: string;
   serviceAddress: Address;
   servicePropertyId?: string;
   category: ServiceCategory;
@@ -813,6 +849,7 @@ export interface OpsPayoutRunPreviewResponse {
 export interface SupportTicket {
   id: string;
   bookingId?: string;
+  launchLeadId?: string;
   requesterId: string;
   subject: string;
   description: string;
@@ -841,6 +878,23 @@ export interface SupportResolutionGuidance {
   recommendedAction?: SupportBookingResolution;
   confidence: "high" | "medium" | "low";
   rationale: string;
+  templates: SupportResolutionReplyTemplate[];
+}
+
+export type SupportResolutionReplyTemplateKey =
+  | "delay-update"
+  | "cancellation-update"
+  | "issue-resolution"
+  | "refund-approved"
+  | "refund-denied";
+
+export interface SupportResolutionReplyTemplate {
+  key: SupportResolutionReplyTemplateKey;
+  title: string;
+  channel: "email" | "text";
+  reason: string;
+  subject?: string;
+  body: string;
 }
 
 export type SupportResolutionEvidenceSignal =
@@ -897,6 +951,86 @@ export interface SupportOpsTicket {
   resolutionGuidance?: SupportResolutionGuidance;
   resolutionPolicy?: SupportResolutionPolicy;
   timeline: SupportTimelineEntry[];
+}
+
+export interface LaunchLead {
+  id: string;
+  sourceChannel: LaunchLeadSourceChannel;
+  requestSource?: string;
+  sourceReferenceId?: string;
+  channelMetadata?: LaunchLeadChannelMetadata;
+  attribution?: LaunchAttributionContext;
+  contactName: string;
+  email?: string;
+  phone?: string;
+  preferredContactMethod: LaunchLeadContactPreference;
+  areaLabel: string;
+  serviceCategory?: ServiceCategory;
+  message: string;
+  status: LaunchLeadStatus;
+  assignedOwner?: string;
+  firstResponseDueAt: string;
+  firstRespondedAt?: string;
+  lastContactedAt?: string;
+  nextFollowUpDueAt?: string;
+  closedAt?: string;
+  lossReason?: LaunchLeadLossReason;
+  outcomeSummary?: string;
+  convertedBookingIds: string[];
+  reviewIds: string[];
+  firstConvertedBookingAt?: string;
+  lastConvertedBookingAt?: string;
+  lastReviewSubmittedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LaunchLeadChannelMetadata {
+  threadUrl?: string;
+  profileLocationName?: string;
+  referrerName?: string;
+  referrerEmail?: string;
+  referrerPhone?: string;
+  referralFollowUpTarget?: "referred-customer" | "referrer";
+}
+
+export interface LaunchLeadReplyTemplate {
+  key: LaunchLeadReplyTemplateKey;
+  audience: LaunchLeadReplyTemplateAudience;
+  title: string;
+  channel: LaunchLeadContactPreference;
+  reason: string;
+  subject?: string;
+  body: string;
+}
+
+export interface LaunchLeadResponseGuidance {
+  recommendedAction: string;
+  warnings: string[];
+  templates: LaunchLeadReplyTemplate[];
+}
+
+export interface OpsLaunchLead {
+  lead: LaunchLead;
+  nextActionDueAt?: string;
+  isFirstResponseOverdue: boolean;
+  isFollowUpOverdue: boolean;
+  hoursSinceCreated: number;
+  suggestedBookingMatches: LaunchLeadBookingMatch[];
+  responseGuidance: LaunchLeadResponseGuidance;
+}
+
+export interface LaunchLeadBookingMatch {
+  bookingId: string;
+  customerId: string;
+  customerName?: string;
+  providerId: string;
+  providerName?: string;
+  category: ServiceCategory;
+  bookingStatus: BookingStatus;
+  scheduledStartIso: string;
+  requestedAt: string;
+  matchReason: "email" | "phone" | "email-and-phone";
 }
 
 export interface OpsRefundSummaryItem {
@@ -956,6 +1090,41 @@ export interface ProviderVerificationQueueItem {
   provider: ProviderProfile;
   openBookingCount: number;
   reviewCount: number;
+  guidance: ProviderVerificationGuidance;
+}
+
+export interface ProviderVerificationStatusSummary {
+  headline: string;
+  summary: string;
+  nextSteps: string[];
+  checklist: ProviderVerificationChecklistItem[];
+}
+
+export type ProviderVerificationChecklistStatus = "ready" | "review" | "missing";
+
+export interface ProviderVerificationChecklistItem {
+  key:
+    | "profile-completeness"
+    | "service-scope"
+    | "launch-area-fit"
+    | "experience-signal"
+    | "operational-readiness"
+    | "service-quality-expectations"
+    | "intervention-readiness";
+  label: string;
+  status: ProviderVerificationChecklistStatus;
+  detail: string;
+}
+
+export interface ProviderVerificationGuidance {
+  recommendedAction: "approve" | "reject" | "manual-review";
+  rationale: string;
+  warnings: string[];
+  checklist: ProviderVerificationChecklistItem[];
+  requiresApprovalOverrideNotes: boolean;
+  approvalOverridePrompt?: string;
+  minimumApprovalOverrideNoteLength?: number;
+  disallowedApprovalOverrideNotes?: string[];
 }
 
 export interface AppNotification {
@@ -1328,6 +1497,7 @@ export interface SearchProvidersRequest {
   dateIso: string;
   estimatedDurationMinutes?: number;
   requestSource?: string;
+  attribution?: LaunchAttributionContext;
 }
 
 export interface SearchProvidersResponse {
@@ -1352,6 +1522,27 @@ export interface PublicMarketplaceFeaturedProvider {
   primaryCategory?: ServiceCategory;
 }
 
+export interface PublicMarketplaceHighlightedReview {
+  reviewId: string;
+  providerId: string;
+  providerCompanyName: string;
+  city: string;
+  state: string;
+  primaryCategory?: ServiceCategory;
+  overallRating: ReviewScore;
+  reviewText: string;
+  createdAt: string;
+}
+
+export interface PublicMarketplaceCoverageArea {
+  city: string;
+  state: string;
+  verifiedProviderCount: number;
+  completedBookingCount: number;
+  recentCompletedBookingCount: number;
+  supportedCategories: ServiceCategory[];
+}
+
 export interface PublicMarketplaceOverviewResponse {
   generatedAt: string;
   verifiedProviderCount: number;
@@ -1360,6 +1551,8 @@ export interface PublicMarketplaceOverviewResponse {
   featuredProviders: PublicMarketplaceFeaturedProvider[];
   topRatedProviders: PublicMarketplaceFeaturedProvider[];
   mostOnTimeProviders: PublicMarketplaceFeaturedProvider[];
+  highlightedReviews: PublicMarketplaceHighlightedReview[];
+  coverageAreas: PublicMarketplaceCoverageArea[];
 }
 
 export interface SearchProviderResult {
@@ -1560,8 +1753,20 @@ export function buildCustomerProviderChoicePresentations(
   return presentations;
 }
 
+export interface LaunchAttributionContext {
+  source?: string;
+  medium?: string;
+  campaign?: string;
+  term?: string;
+  content?: string;
+  referrerHost?: string;
+  landingPath?: string;
+  capturedAt?: string;
+}
+
 export interface CreateBookingRequest {
   providerId: string;
+  launchLeadId?: string;
   serviceAddress: Address;
   servicePropertyId?: string;
   category: ServiceCategory;
@@ -1574,6 +1779,7 @@ export interface CreateBookingRequest {
   selectedProviderRank?: number;
   viewedAlternativeProviders?: boolean;
   recommendationSource?: string;
+  attribution?: LaunchAttributionContext;
 }
 
 export interface CreateRecurringServicePlanRequest extends CreateBookingRequest {
@@ -1632,6 +1838,13 @@ export interface UpdateProviderSettingsRequest {
     createdAt?: string;
     subscriptionId?: string;
   }>;
+}
+
+export interface UpdateProviderProfileRequest {
+  companyName?: string;
+  bio?: string;
+  yearsExperience?: number;
+  categories?: ServiceCategory[];
 }
 
 export interface AssignBookingRouteLeaderRequest {
@@ -1934,11 +2147,91 @@ export interface CreateSupportTicketRequest {
   issueType: SupportIssueType;
 }
 
+export interface CreateLaunchLeadRequest {
+  sourceChannel?: LaunchLeadSourceChannel;
+  requestSource?: string;
+  sourceReferenceId?: string;
+  channelMetadata?: LaunchLeadChannelMetadata;
+  attribution?: LaunchAttributionContext;
+  contactName: string;
+  email?: string;
+  phone?: string;
+  preferredContactMethod: LaunchLeadContactPreference;
+  areaLabel: string;
+  serviceCategory?: ServiceCategory;
+  message: string;
+  assignedOwner?: string;
+}
+
+export interface CreateInboundLaunchLeadRequest {
+  sourceChannel: LaunchLeadSourceChannel;
+  requestSource?: string;
+  sourceReferenceId: string;
+  channelMetadata?: LaunchLeadChannelMetadata;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  preferredContactMethod?: LaunchLeadContactPreference;
+  areaLabel?: string;
+  serviceCategory?: ServiceCategory;
+  subject?: string;
+  message?: string;
+  assignedOwner?: string;
+}
+
+export interface CreateInboundEmailLaunchLeadRequest {
+  sourceReferenceId: string;
+  senderEmail: string;
+  senderName?: string;
+  subject?: string;
+  textBody?: string;
+  areaLabel?: string;
+  serviceCategory?: ServiceCategory;
+  assignedOwner?: string;
+}
+
+export interface CreateInboundGoogleBusinessProfileLeadRequest {
+  sourceReferenceId: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  messageText: string;
+  threadUrl?: string;
+  profileLocationName?: string;
+  areaLabel?: string;
+  serviceCategory?: ServiceCategory;
+  assignedOwner?: string;
+}
+
+export interface CreateInboundReferralLaunchLeadRequest {
+  sourceReferenceId: string;
+  referrerName: string;
+  referrerEmail?: string;
+  referrerPhone?: string;
+  referredCustomerName?: string;
+  referredCustomerEmail?: string;
+  referredCustomerPhone?: string;
+  areaLabel?: string;
+  serviceCategory?: ServiceCategory;
+  messageText?: string;
+  assignedOwner?: string;
+}
+
 export interface UpdateSupportTicketRequest {
   ticketId: string;
   status: SupportTicketStatus;
   resolutionNotes?: string;
   resolutionAction?: SupportBookingResolution;
+}
+
+export interface UpdateLaunchLeadRequest {
+  leadId: string;
+  status: LaunchLeadStatus;
+  assignedOwner?: string;
+  nextFollowUpDueAt?: string;
+  outcomeSummary?: string;
+  lossReason?: LaunchLeadLossReason;
+  linkBookingId?: string;
 }
 
 export interface CreateOpsBookingInterventionRequest {
@@ -2056,6 +2349,7 @@ export interface CreateProviderReviewRequest {
   timelinessRating: ReviewScore;
   attentionToDetailRating: ReviewScore;
   reviewText: string;
+  attribution?: LaunchAttributionContext;
 }
 
 export interface ListCustomerReviewOpportunitiesResponse {
@@ -2128,6 +2422,14 @@ export interface RecommendationSurfaceMetrics {
   recommendationSwapRate: number;
 }
 
+export interface LaunchLeadSourceMetrics {
+  sourceChannel: LaunchLeadSourceChannel;
+  totalCount: number;
+  openCount: number;
+  overdueCount: number;
+  convertedCount: number;
+}
+
 export interface ObservabilityOverview {
   generatedAt: string;
   totalBookings: number;
@@ -2158,6 +2460,21 @@ export interface ObservabilityOverview {
   paymentAuthorizations: number;
   paymentCaptures: number;
   paymentFailures: number;
+  totalReviewInvites: number;
+  scheduledReviewInvites: number;
+  sentReviewInvites: number;
+  openedReviewInvites: number;
+  completedReviewInvites: number;
+  expiredReviewInvites: number;
+  reviewRequestCompletionRate: number;
+  totalLaunchLeads: number;
+  openLaunchLeads: number;
+  overdueLaunchLeads: number;
+  firstResponseOverdueLaunchLeads: number;
+  followUpOverdueLaunchLeads: number;
+  convertedLaunchLeads: number;
+  closedLostLaunchLeads: number;
+  launchLeadSourceMetrics: LaunchLeadSourceMetrics[];
   recommendationMetricsBySource: RecommendationSurfaceMetrics[];
   activeUsers5m: number;
   activeCustomers5m: number;

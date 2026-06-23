@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ObservabilityProvider } from "../components/ObservabilityProvider";
 import { SiteHeader } from "../components/SiteHeader";
 import { SiteFooter } from "../components/SiteFooter";
+import { publicSiteUrl } from "../lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,11 +21,11 @@ export const metadata: Metadata = {
     "landscaping crew app",
     "landscaper staffing marketplace"
   ],
-  metadataBase: new URL("https://yardmatch.example"),
+  metadataBase: new URL(`${publicSiteUrl}/`),
   openGraph: {
     title: "YardMatch",
     description: "Book trusted lawn care and landscaping professionals in minutes.",
-    url: "https://yardmatch.example",
+    url: publicSiteUrl,
     siteName: "YardMatch",
     type: "website"
   },
