@@ -193,6 +193,36 @@ async function main() {
     await ensureProviderAvailability(existingProvider?.id ?? provider.id, index);
   }
 
+  const seededOpsEmail = "ops@example.com";
+  const existingOps = await prisma.userAccount.findUnique({
+    where: { email: seededOpsEmail }
+  });
+  if (!existingOps) {
+    await repository.createOpsUser(
+      {
+        id: crypto.randomUUID(),
+        fullName: "Casey Ops",
+        email: seededOpsEmail,
+        phone: "555-0990",
+        role: "ops",
+        address: createAddress("18 Bay Ave", "Barnegat", "NJ", "08005", 39.7532, -74.2229),
+        createdAt: now,
+        internalScope: "operations"
+      },
+      seededPassword
+    );
+  } else if (existingOps.role === "ops") {
+    await prisma.userAccount.update({
+      where: { id: existingOps.id },
+      data: {
+        fullName: "Casey Ops",
+        phone: "555-0990",
+        address: createAddress("18 Bay Ave", "Barnegat", "NJ", "08005", 39.7532, -74.2229),
+        passwordHash: seededPassword
+      }
+    });
+  }
+
   const seededCustomerEmail = "jordan@example.com";
   const existingCustomer = await prisma.userAccount.findUnique({
     where: { email: seededCustomerEmail }

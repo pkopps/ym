@@ -51,7 +51,7 @@ Current state:
 - the Help center now has an email-first Contact us path for pre-booking questions
 - no-booking customer `general` and `account` support tickets now auto-create linked follow-up leads, so customer-service help requests do not depend on manual ops re-entry
 - automated non-website sources can now post into the launch queue through shared-secret inbound endpoints with retry-safe `sourceReferenceId` deduplication, including direct email, Google Business Profile, and referral-specific payload shapes
-- direct-email lead intake can now infer likely service, launch area, callback/text number, and follow-up preference from the relayed message while keeping intake notes visible for ops confirmation
+- direct-email lead intake can now infer likely service, launch area, callback/text number, and follow-up preference from the relayed message while keeping intake notes visible for ops confirmation, and it can now also dedupe from inbound email `messageId` metadata while preserving reply-to and thread details for ops
 - ops can now manually log phone, text, mail, social, referral, GBP, and customer-service help requests into the same queue
 - GBP-style inbound leads can now stay in a `platform-message` follow-up mode when there is no direct phone or email yet, so ops can still work the original thread cleanly
 - referral forwarders can now fall back to the referrer as the live follow-up contact when the referred customer's direct contact details are still partial
@@ -287,7 +287,7 @@ Important rule:
 
 - templates should save time without sounding robotic
 - the current ops lead queue now covers customer, provider, and referral-source drafts, the ops support queue covers delay, cancellation, refund, and issue-resolution customer updates, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, persisted posted/skipped state, and an explicit path to open or link service-quality follow-up from negative reviews; remaining work is the real posting habit and deeper exception-handling scripts plus the broader local ops playbook
-- the internal ops dashboard and its launch/support/review/payout/verification tools now require an authenticated internal session instead of loading anonymously in the browser; dedicated `ops` logins now exist, and the remaining work is removing the temporary provider/business-owner fallback and finishing the fuller ops/admin role lifecycle
+- the internal ops dashboard and its launch/support/review/payout/verification tools now require an authenticated `ops` session instead of loading anonymously in the browser; seeded local ops access and the CLI provisioning path now exist, and the remaining work is the fuller ops/admin role lifecycle beyond that bootstrap path
 
 ## 11. Launch Dashboard
 

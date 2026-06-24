@@ -1112,6 +1112,10 @@ export interface LaunchLead {
 export interface LaunchLeadChannelMetadata {
   threadUrl?: string;
   profileLocationName?: string;
+  emailMessageId?: string;
+  emailThreadId?: string;
+  replyToEmail?: string;
+  replyToName?: string;
   referrerName?: string;
   referrerEmail?: string;
   referrerPhone?: string;
@@ -2309,9 +2313,13 @@ export interface CreateInboundLaunchLeadRequest {
 }
 
 export interface CreateInboundEmailLaunchLeadRequest {
-  sourceReferenceId: string;
+  sourceReferenceId?: string;
+  messageId?: string;
+  threadId?: string;
   senderEmail: string;
   senderName?: string;
+  replyToEmail?: string;
+  replyToName?: string;
   subject?: string;
   textBody?: string;
   areaLabel?: string;

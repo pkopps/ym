@@ -24,6 +24,7 @@ import {
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
+import { hashPassword } from "../auth";
 import { AuthIdentityRecord, MarketplaceRepository } from "./MarketplaceRepository";
 
 export class InMemoryMarketplaceRepository implements MarketplaceRepository {
@@ -52,6 +53,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public constructor() {
     this.seedProviders();
+    this.seedOpsUsers();
   }
 
   public async createCustomer(customer: CustomerProfile, passwordHash?: string): Promise<CustomerProfile> {
@@ -818,6 +820,28 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
           isBooked: false
         }
       );
+    });
+  }
+
+  private seedOpsUsers(): void {
+    const now = new Date().toISOString();
+    const defaultOpsPassword = hashPassword("YardMatch123!");
+    const opsUsers: OpsProfile[] = [
+      {
+        id: crypto.randomUUID(),
+        fullName: "Casey Ops",
+        email: "ops@example.com",
+        phone: "555-0990",
+        role: "ops",
+        address: this.createAddress("18 Bay Ave", "Barnegat", "NJ", "08005", 39.7532, -74.2229),
+        createdAt: now,
+        internalScope: "operations"
+      }
+    ];
+
+    opsUsers.forEach((opsUser) => {
+      this.opsUsers.push(opsUser);
+      this.saveAuthIdentity(opsUser.id, opsUser.email, opsUser.role, defaultOpsPassword);
     });
   }
 

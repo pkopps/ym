@@ -90,7 +90,7 @@ export async function requireOpsAccess(
   context: RequestContext,
   platform: MarketplacePlatformService
 ) {
-  return requireRole(context, platform, ["ops", "provider"]);
+  return requireRole(context, platform, "ops");
 }
 
 export async function requireFreshRole(

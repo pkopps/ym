@@ -335,6 +335,32 @@ test("public signup rejects ops accounts", async () => {
   assert.match(response.readJson().message, /Ops accounts cannot be created through the public signup flow/i);
 });
 
+test("seeded in-memory ops account can log in", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  const response = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "ops@example.com",
+        password: "YardMatch123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    response as never
+  );
+
+  assert.equal(response.getStatusCode(), 200);
+  const envelope = response.readJson();
+  assert.equal(envelope.user.role, "ops");
+  assert.equal(envelope.user.email, "ops@example.com");
+});
+
 test("support tickets are attributed to the authenticated requester", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -644,6 +670,80 @@ test("direct email inbound endpoint infers service, area, and text follow-up fro
   }
 });
 
+test("direct email inbound endpoint can derive idempotency from message id and honor reply-to metadata", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const supportController = new SupportController(platform);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const response = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound/email",
+        body: {
+          messageId: "<email_msg_999@example.com>",
+          threadId: "thread_999",
+          senderEmail: "\"Jamie Homeowner\" <forwarder@example.com>",
+          replyToEmail: "Jamie Homeowner <jamie.homeowner@example.com>",
+          subject: "Question about mowing",
+          textBody: "Can you help with mowing in Barnegat?"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const firstLead = response.readJson();
+    assert.equal(firstLead.sourceReferenceId, "email_msg_999@example.com");
+    assert.equal(firstLead.email, "jamie.homeowner@example.com");
+    assert.equal(firstLead.contactName, "Jamie Homeowner");
+    assert.equal(firstLead.channelMetadata?.emailMessageId, "email_msg_999@example.com");
+    assert.equal(firstLead.channelMetadata?.emailThreadId, "thread_999");
+    assert.equal(firstLead.channelMetadata?.replyToEmail, "jamie.homeowner@example.com");
+    assert.equal(firstLead.channelMetadata?.replyToName, "Jamie Homeowner");
+    assert.ok(
+      firstLead.channelMetadata?.intakeNotes?.some((note: string) =>
+        /sourceReferenceId was derived from the inbound email message id/i.test(note)
+      )
+    );
+
+    const retryResponse = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound/email",
+        body: {
+          messageId: "<email_msg_999@example.com>",
+          senderEmail: "forwarder@example.com",
+          replyToEmail: "jamie.homeowner@example.com",
+          subject: "Question about mowing",
+          textBody: "Can you help with mowing in Barnegat?"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      retryResponse as never
+    );
+
+    assert.equal(retryResponse.getStatusCode(), 201);
+    const retryLead = retryResponse.readJson();
+    assert.equal(retryLead.id, firstLead.id);
+    assert.equal((await platform.listOpsLaunchLeads()).length, 1);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
+});
+
 test("google business profile inbound endpoint supports platform-message leads without direct contact details", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -747,12 +847,9 @@ test("ops review response endpoint records posted public replies", async () => {
   const marketplaceController = new MarketplaceController(platform);
   const seededProvider = (await repository.listProviders())[0];
   assert.ok(seededProvider);
-  const opsProvider = await registerUser(authController, {
-    fullName: "Casey Ops",
+  const opsUser = await createOpsSession(authController, platform, {
     email: "ops-review-handler@example.com",
-    password: "Password123!",
-    phone: "555-0332",
-    role: "provider"
+    phone: "555-0332"
   });
 
   const customer = await platform.registerUser({
@@ -819,7 +916,7 @@ test("ops review response endpoint records posted public replies", async () => {
       },
       query: new URLSearchParams(),
       headers: {
-        authorization: `Bearer ${opsProvider.session.token}`
+        authorization: `Bearer ${opsUser.session.token}`
       }
     },
     response as never
@@ -849,12 +946,9 @@ test("ops review escalation endpoint opens a linked support follow-up", async ()
     propertyLabel: "Home",
     address: createAddress("18 Cedar Lane", 39.7536, -74.2219)
   });
-  const opsProvider = await registerUser(authController, {
-    fullName: "Casey Ops",
+  const opsUser = await createOpsSession(authController, platform, {
     email: "ops-review-escalation-handler@example.com",
-    password: "Password123!",
-    phone: "555-03025",
-    role: "provider"
+    phone: "555-03025"
   });
 
   const nowIso = new Date().toISOString();
@@ -908,7 +1002,7 @@ test("ops review escalation endpoint opens a linked support follow-up", async ()
       },
       query: new URLSearchParams(),
       headers: {
-        authorization: `Bearer ${opsProvider.session.token}`
+        authorization: `Bearer ${opsUser.session.token}`
       }
     },
     response as never
@@ -922,7 +1016,7 @@ test("ops review escalation endpoint opens a linked support follow-up", async ()
   assert.equal(escalatedItem.supportFollowUpRecommended, false);
 });
 
-test("ops overview route requires an ops or provider session", async () => {
+test("ops overview route requires an ops session", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
   const authController = new AuthController(platform);
@@ -993,8 +1087,11 @@ test("ops overview route requires an ops or provider session", async () => {
       }
     },
     providerResponse as never
-  );
-  assert.equal(providerResponse.getStatusCode(), 200);
+  ).catch((error: Error) => {
+    providerResponse.writeHead(403);
+    providerResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(providerResponse.getStatusCode(), 403);
 
   const opsResponse = createMockResponse();
   await observabilityController.handle(
@@ -1012,7 +1109,7 @@ test("ops overview route requires an ops or provider session", async () => {
   assert.equal(opsResponse.getStatusCode(), 200);
 });
 
-test("support ops routes require an ops or provider session", async () => {
+test("support ops routes require an ops session", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
   const authController = new AuthController(platform);
@@ -1067,8 +1164,11 @@ test("support ops routes require an ops or provider session", async () => {
       }
     },
     providerResponse as never
-  );
-  assert.equal(providerResponse.getStatusCode(), 200);
+  ).catch((error: Error) => {
+    providerResponse.writeHead(403);
+    providerResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(providerResponse.getStatusCode(), 403);
 
   const opsResponse = createMockResponse();
   await supportController.handle(

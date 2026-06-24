@@ -438,6 +438,21 @@ export function OpsLaunchLeadBoard() {
                     {item.lead.channelMetadata?.threadUrl ? ` • ${item.lead.channelMetadata.threadUrl}` : ""}
                   </p>
                 ) : null}
+                {item.lead.channelMetadata?.emailMessageId ||
+                item.lead.channelMetadata?.emailThreadId ||
+                item.lead.channelMetadata?.replyToEmail ? (
+                  <p>
+                    {item.lead.channelMetadata?.emailMessageId
+                      ? `Email message id: ${item.lead.channelMetadata.emailMessageId}`
+                      : "Inbound email metadata"}
+                    {item.lead.channelMetadata?.emailThreadId
+                      ? ` • thread ${item.lead.channelMetadata.emailThreadId}`
+                      : ""}
+                    {item.lead.channelMetadata?.replyToEmail
+                      ? ` • reply to ${item.lead.channelMetadata.replyToName ? `${item.lead.channelMetadata.replyToName} ` : ""}${item.lead.channelMetadata.replyToEmail}`
+                      : ""}
+                  </p>
+                ) : null}
                 {item.lead.channelMetadata?.referrerName ? (
                   <p>
                     Referral from {item.lead.channelMetadata.referrerName}

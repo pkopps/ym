@@ -310,7 +310,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "List providers waiting on verification review",
         description:
-          "Returns provider businesses that are still pending review or were sent back for updates before they can appear in public search, along with backend-authored launch-fit guidance and checklist items covering profile completeness, service scope, launch-area fit, service-quality expectations, and intervention readiness so ops can approve or return them consistently. When guidance does not recommend approval, the payload also includes the override-note requirements needed to make an auditable exception. This internal queue now requires an authenticated ops or business-owner session instead of loading anonymously.",
+          "Returns provider businesses that are still pending review or were sent back for updates before they can appear in public search, along with backend-authored launch-fit guidance and checklist items covering profile completeness, service scope, launch-area fit, service-quality expectations, and intervention readiness so ops can approve or return them consistently. When guidance does not recommend approval, the payload also includes the override-note requirements needed to make an auditable exception. This internal queue now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Provider verification queue" }
@@ -986,7 +986,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Record public review-response handling for ops",
         description:
-          "Stores whether a submitted review still needs a public reply, was replied to publicly, or was intentionally skipped, along with the reply body or ops note used to justify that state. This internal review workflow now requires an authenticated ops or business-owner session instead of loading anonymously.",
+          "Stores whether a submitted review still needs a public reply, was replied to publicly, or was intentionally skipped, along with the reply body or ops note used to justify that state. This internal review workflow now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1013,7 +1013,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Open or link a service-quality support follow-up from a public review",
         description:
-          "Turns a negative or high-risk public review into an owned service-quality support follow-up, either by creating a new support ticket for the booking or by linking the review to an already-open support case. This internal review workflow now requires an authenticated ops or business-owner session instead of loading anonymously.",
+          "Turns a negative or high-risk public review into an owned service-quality support follow-up, either by creating a new support ticket for the booking or by linking the review to an already-open support case. This internal review workflow now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1826,15 +1826,16 @@ export const apiSpec = {
         tags: ["Launch"],
         summary: "Capture a direct email inbound launch lead",
         description:
-          "Specialized server-to-server intake for direct email forwarders. Accepts sender and message fields instead of the full lead schema, then maps them into the launch lead queue using the shared `x-yardmatch-inbound-secret` header and `sourceReferenceId` retry deduplication. The current intake path can also infer likely service, launch area, callback number, and text-vs-call preference from the relayed message while preserving those inference notes for ops confirmation.",
+          "Specialized server-to-server intake for direct email forwarders. Accepts sender and message fields instead of the full lead schema, then maps them into the launch lead queue using the shared `x-yardmatch-inbound-secret` header and either an explicit `sourceReferenceId` or a normalized inbound `messageId` for retry deduplication. The current intake path can also honor reply-to metadata, preserve email thread/message metadata for ops, and infer likely service, launch area, callback number, and text-vs-call preference from the relayed message while preserving those inference notes for ops confirmation.",
         requestBody: {
           required: true,
           content: {
             "application/json": {
               example: {
-                sourceReferenceId: "email_msg_456",
-                senderEmail: "sam.homeowner@example.com",
-                senderName: "Sam Homeowner",
+                messageId: "<email_msg_456@example.com>",
+                threadId: "thread_456",
+                senderEmail: "\"GreenRain contact\" <forwarder@example.com>",
+                replyToEmail: "Sam Homeowner <sam.homeowner@example.com>",
                 subject: "Need mowing help in Barnegat",
                 textBody: "Can GreenRain handle weekly mowing starting next Tuesday?",
                 areaLabel: "Barnegat, NJ"
@@ -1949,7 +1950,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "List the internal support operations queue",
         description:
-          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, backend-authored resolution policy data, and copy-ready customer update drafts so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive guardrails or rewriting the next customer message in the client. This internal support queue now requires an authenticated ops or business-owner session instead of loading anonymously.",
+          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, backend-authored resolution policy data, and copy-ready customer update drafts so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive guardrails or rewriting the next customer message in the client. This internal support queue now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Support operations queue" }
@@ -1961,7 +1962,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Get refund and field-exception summary data for operations",
         description:
-          "Returns aggregate metrics and detailed rows for open refund reviews, payout holds, disputed jobs, and active booking exceptions so operations can spot where service and billing risk is concentrating. This internal support board now requires an authenticated ops or business-owner session instead of loading anonymously.",
+          "Returns aggregate metrics and detailed rows for open refund reviews, payout holds, disputed jobs, and active booking exceptions so operations can spot where service and billing risk is concentrating. This internal support board now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Support operations financial and exception summary" }
@@ -1996,7 +1997,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Triages or resolves a support ticket",
         description:
-          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket, the chosen resolution direction must match the reviewed evidence signal, and mixed evidence requires a specific written rationale before the case can close. This internal support workflow now requires an authenticated ops or business-owner session instead of loading anonymously.",
+          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket, the chosen resolution direction must match the reviewed evidence signal, and mixed evidence requires a specific written rationale before the case can close. This internal support workflow now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -2039,7 +2040,7 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "Fetch the live operational telemetry summary",
         description:
-          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, a backend-authored public review-response queue with persisted response state and linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint now requires an authenticated ops or business-owner session instead of loading anonymously.",
+          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, a backend-authored public review-response queue with persisted response state and linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Operations overview" }

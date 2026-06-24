@@ -8537,21 +8537,49 @@ export class MarketplacePlatformService {
     payload: CreateInboundEmailLaunchLeadRequest,
     secretHeader: string | undefined
   ): Promise<LaunchLead> {
-    const senderEmail = payload.senderEmail?.trim().toLowerCase();
-    if (!senderEmail) {
+    const senderIdentity = this.parseInboundMailboxIdentity(payload.senderEmail, payload.senderName);
+    const replyToIdentity = this.parseInboundMailboxIdentity(payload.replyToEmail, payload.replyToName);
+    const senderEmail = senderIdentity.email;
+    const contactEmail = replyToIdentity.email ?? senderEmail;
+    if (!senderEmail || !contactEmail) {
       throw new HttpError(400, "Inbound email leads require a sender email address.");
+    }
+
+    const sourceReferenceId =
+      payload.sourceReferenceId?.trim() || this.normalizeInboundMessageReference(payload.messageId);
+    if (!sourceReferenceId) {
+      throw new HttpError(400, "Inbound email leads require a sourceReferenceId or messageId for idempotency.");
     }
 
     const subject = payload.subject?.trim().replace(/\s+/g, " ") || undefined;
     const textBody = payload.textBody?.trim().replace(/\s+/g, " ") || undefined;
+    const replyToName = replyToIdentity.name;
+    const replyToEmail = replyToIdentity.email;
+    const inferredNotes: string[] = [];
+    if (!payload.sourceReferenceId?.trim() && payload.messageId?.trim()) {
+      inferredNotes.push("sourceReferenceId was derived from the inbound email message id for retry-safe deduplication.");
+    }
+    if (replyToEmail && replyToEmail !== senderEmail) {
+      inferredNotes.push("Follow up on the reply-to address from the inbound email metadata before assuming the original sender mailbox is monitored.");
+    }
 
     return this.createInboundLaunchLead(
       {
         sourceChannel: "email",
         requestSource: "direct-email-forward",
-        sourceReferenceId: payload.sourceReferenceId,
-        contactName: payload.senderName?.trim().replace(/\s+/g, " ") || this.deriveInboundContactName(senderEmail, undefined, "email"),
-        email: senderEmail,
+        sourceReferenceId,
+        channelMetadata: {
+          emailMessageId: this.normalizeInboundMessageReference(payload.messageId),
+          emailThreadId: payload.threadId?.trim() || undefined,
+          replyToEmail,
+          replyToName,
+          intakeNotes: inferredNotes.length > 0 ? inferredNotes : undefined
+        },
+        contactName:
+          replyToName ||
+          senderIdentity.name ||
+          this.deriveInboundContactName(contactEmail, undefined, "email"),
+        email: contactEmail,
         areaLabel: payload.areaLabel?.trim().replace(/\s+/g, " ") || undefined,
         serviceCategory: payload.serviceCategory,
         subject,
@@ -13637,6 +13665,51 @@ export class MarketplacePlatformService {
       return `Inbound ${this.toTitleCase(sourceChannel.replaceAll("-", " "))} contact`;
     }
     return "Inbound contact";
+  }
+
+  private parseInboundMailboxIdentity(
+    mailbox: string | undefined,
+    fallbackName?: string
+  ): { email?: string; name?: string } {
+    const trimmedMailbox = mailbox?.trim();
+    const explicitName = fallbackName?.trim().replace(/\s+/g, " ") || undefined;
+    if (!trimmedMailbox) {
+      return {
+        email: undefined,
+        name: explicitName
+      };
+    }
+
+    const bracketMatch = trimmedMailbox.match(/^(.*)<([^>]+)>$/);
+    if (bracketMatch) {
+      const parsedName = bracketMatch[1]?.trim().replace(/^"|"$/g, "").replace(/\s+/g, " ") || explicitName;
+      const parsedEmail = bracketMatch[2]?.trim().toLowerCase();
+      return {
+        email: parsedEmail || undefined,
+        name: parsedName || undefined
+      };
+    }
+
+    if (trimmedMailbox.includes("@")) {
+      return {
+        email: trimmedMailbox.toLowerCase(),
+        name: explicitName
+      };
+    }
+
+    return {
+      email: undefined,
+      name: explicitName ?? trimmedMailbox.replace(/\s+/g, " ")
+    };
+  }
+
+  private normalizeInboundMessageReference(reference: string | undefined): string | undefined {
+    const trimmed = reference?.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    return trimmed.replace(/^<+/, "").replace(/>+$/, "") || undefined;
   }
 
   private getFirstName(name: string | undefined, fallback = "there"): string {

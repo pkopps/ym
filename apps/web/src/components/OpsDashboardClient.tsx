@@ -90,7 +90,7 @@ export function OpsDashboardClient() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(true);
 
-  const hasOpsAccess = session?.role === "ops" || session?.role === "provider";
+  const hasOpsAccess = session?.role === "ops";
 
   useEffect(() => {
     if (!sessionReady) {
@@ -136,11 +136,11 @@ export function OpsDashboardClient() {
         <section className="page-hero">
           <span className="eyebrow">Live operations</span>
           <h1>Bookings, activity, and support.</h1>
-          <p>This internal dashboard now requires an internal ops or business owner session instead of loading anonymously.</p>
+          <p>This internal dashboard now requires an authorized ops session instead of loading anonymously.</p>
         </section>
         <section className="card">
           <h2>Internal login required</h2>
-          <p>Sign in with an authorized ops account, or use the business owner fallback while the dedicated admin rollout is still in transition.</p>
+          <p>Sign in with an authorized ops account to open the internal operations workspace.</p>
           <a className="button" href="/login/ops">
             Go to ops login
           </a>
