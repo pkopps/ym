@@ -51,10 +51,11 @@ Current state:
 - the Help center now has an email-first Contact us path for pre-booking questions
 - no-booking customer `general` and `account` support tickets now auto-create linked follow-up leads, so customer-service help requests do not depend on manual ops re-entry
 - automated non-website sources can now post into the launch queue through shared-secret inbound endpoints with retry-safe `sourceReferenceId` deduplication, including direct email, Google Business Profile, and referral-specific payload shapes
+- direct-email lead intake can now infer likely service, launch area, callback/text number, and follow-up preference from the relayed message while keeping intake notes visible for ops confirmation
 - ops can now manually log phone, text, mail, social, referral, GBP, and customer-service help requests into the same queue
 - GBP-style inbound leads can now stay in a `platform-message` follow-up mode when there is no direct phone or email yet, so ops can still work the original thread cleanly
 - referral forwarders can now fall back to the referrer as the live follow-up contact when the referred customer's direct contact details are still partial
-- the ops lead queue now preserves GBP thread details and referral fallback-contact details as structured metadata instead of only burying them inside the lead notes
+- the ops lead queue now preserves GBP thread details, referral fallback-contact details, and inbound intake notes as structured metadata instead of only burying them inside the lead notes
 - website leads now stay linked to later self-serve booking, recurring follow-on bookings, and review generation, and matching manual email/phone leads can auto-convert too, so the ops queue can show real conversion activity
 - the ops lead queue now surfaces likely booking matches and supports manual booking attachment when the booking happened before the lead was captured
 - the ops lead queue now also returns backend-authored next-step guidance plus grouped copy-ready drafts for customer follow-up, provider availability outreach, and referral-source handoff, including first responses, customer-service help follow-up, quote/timing follow-up, booking confirmations, completed-job review requests, closed-lost closeout replies, provider availability checks, referral-source follow-up, and referral asks
@@ -249,12 +250,14 @@ The hybrid model gets much stronger when repeat behavior is real.
 
 Checklist:
 
-- define which services should push toward recurring cadence
-- define rebooking prompts after completed jobs
-- define 30-day, 60-day, and 90-day follow-up
-- define how to ask for weekly versus biweekly service
-- define seasonal reminder flows
-- define loyalty or repeat-customer messaging
+- the customer dashboard now surfaces backend-authored “book again” and “start recurring mowing” nudges after completed jobs, and those nudges re-price the service plus reload a fresh recommendation instead of blindly cloning the last booking
+- the first timing rules are now live too: recent-completion mowing nudges, 30-day cleanup follow-up, 60-day hedge-trimming reminders, spring mulch-refresh and fertilization reminders, fall leaf-return and aeration reminders, and a broader 90-day rebook fallback
+- mowing retention now also distinguishes between weekly and every-2-weeks plans from recent booking history and calls out repeat-customer/provider-loyal context when the same property has already completed multiple visits
+- loyalty-backed retention rebooks can now softly prefer a proven prior provider when the same property has strong completed-job history, while still running a fresh recommendation flow with alternatives
+- the ops overview now tracks retention nudge views, clicks, acceptance rate, strategy-level performance, and actual repeat-service conversions by retention source and provider so repeat-service momentum is visible before volume gets large
+- remaining gap: define which additional services should push toward recurring cadence beyond the first mowing loop
+- deepen seasonal reminder flows beyond the current mulch, fertilization, leaf-return, and aeration windows
+- broaden loyalty or repeat-customer messaging beyond the current in-product retention prompts
 - track repeat-service conversion by source and by provider
 
 Best early retention candidates:
@@ -283,7 +286,7 @@ Checklist:
 Important rule:
 
 - templates should save time without sounding robotic
-- the current ops lead queue now covers customer, provider, and referral-source drafts, and the ops support queue now covers delay, cancellation, refund, and issue-resolution customer updates; remaining work is any deeper review-response or exception-handling scripts plus the broader local ops playbook
+- the current ops lead queue now covers customer, provider, and referral-source drafts, the ops support queue covers delay, cancellation, refund, and issue-resolution customer updates, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, and persisted posted/skipped state; remaining work is the real posting habit and deeper exception-handling scripts plus the broader local ops playbook
 
 ## 11. Launch Dashboard
 

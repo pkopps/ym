@@ -778,6 +778,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         timelinessRating: review.timelinessRating,
         attentionToDetailRating: review.attentionToDetailRating,
         reviewText: review.reviewText,
+        responseStatus: review.responseStatus,
+        responseHandledAt: review.responseHandledAt ? new Date(review.responseHandledAt) : undefined,
+        responseHandledBy: review.responseHandledBy,
+        responseNotes: review.responseNotes,
+        publicReplyBody: review.publicReplyBody,
         createdAt: new Date(review.createdAt)
       }
     });
@@ -792,10 +797,48 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return reviews.map((review: any) => this.mapProviderReview(review));
   }
 
+  public async findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined> {
+    const review = await this.prisma.providerReview.findUnique({
+      where: { id: reviewId }
+    });
+    return review ? this.mapProviderReview(review) : undefined;
+  }
+
   public async findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined> {
     const review = await this.prisma.providerReview.findUnique({
       where: { bookingId }
     });
+    return review ? this.mapProviderReview(review) : undefined;
+  }
+
+  public async updateProviderReview(
+    reviewId: string,
+    updates: Partial<ProviderReview>
+  ): Promise<ProviderReview | undefined> {
+    const review = await this.prisma.providerReview.update({
+      where: { id: reviewId },
+      data: {
+        bookingId: updates.bookingId,
+        providerId: updates.providerId,
+        customerId: updates.customerId,
+        overallRating: updates.overallRating,
+        timelinessRating: updates.timelinessRating,
+        attentionToDetailRating: updates.attentionToDetailRating,
+        reviewText: updates.reviewText,
+        responseStatus: updates.responseStatus,
+        responseHandledAt:
+          "responseHandledAt" in updates
+            ? updates.responseHandledAt ? new Date(updates.responseHandledAt) : null
+            : undefined,
+        responseHandledBy:
+          "responseHandledBy" in updates ? updates.responseHandledBy ?? null : undefined,
+        responseNotes: "responseNotes" in updates ? updates.responseNotes ?? null : undefined,
+        publicReplyBody:
+          "publicReplyBody" in updates ? updates.publicReplyBody ?? null : undefined,
+        createdAt: updates.createdAt ? new Date(updates.createdAt) : undefined
+      }
+    }).catch(() => undefined);
+
     return review ? this.mapProviderReview(review) : undefined;
   }
 
@@ -2201,6 +2244,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     timelinessRating: number;
     attentionToDetailRating: number;
     reviewText: string;
+    responseStatus: string;
+    responseHandledAt: Date | null;
+    responseHandledBy: string | null;
+    responseNotes: string | null;
+    publicReplyBody: string | null;
     createdAt: Date;
   }): ProviderReview {
     return {
@@ -2213,6 +2261,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       attentionToDetailRating:
         record.attentionToDetailRating as ProviderReview["attentionToDetailRating"],
       reviewText: record.reviewText,
+      responseStatus: record.responseStatus as ProviderReview["responseStatus"],
+      responseHandledAt: record.responseHandledAt?.toISOString(),
+      responseHandledBy: record.responseHandledBy ?? undefined,
+      responseNotes: record.responseNotes ?? undefined,
+      publicReplyBody: record.publicReplyBody ?? undefined,
       createdAt: record.createdAt.toISOString()
     };
   }

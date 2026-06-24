@@ -73,7 +73,9 @@ export interface MarketplaceRepository {
   findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined>;
   createProviderReview(review: ProviderReview): Promise<ProviderReview>;
   listProviderReviews(providerId: string): Promise<ProviderReview[]>;
+  findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined>;
   findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined>;
+  updateProviderReview(reviewId: string, updates: Partial<ProviderReview>): Promise<ProviderReview | undefined>;
   createReviewInvite(invite: ReviewInvite): Promise<ReviewInvite>;
   listReviewInvites(): Promise<ReviewInvite[]>;
   listReviewInvitesByCustomer(customerId: string): Promise<ReviewInvite[]>;

@@ -11,6 +11,7 @@ import {
   CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
   CreateProviderReviewRequest,
+  UpdateReviewResponseRequest,
   ProviderAssistantCommandRequest,
   ReviewProviderVerificationRequest,
   CreateCustomerPropertyRequest,
@@ -67,6 +68,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/customers/properties") ||
       (context.method === "POST" && context.path === "/api/customers/properties/default") ||
       (context.method === "GET" && context.path === "/api/customers/review-opportunities") ||
+      (context.method === "GET" && context.path === "/api/customers/retention-opportunities") ||
       (context.method === "POST" && context.path === "/api/quotes/instant") ||
       (context.method === "GET" && context.path === "/api/places/search") ||
       (context.method === "POST" && context.path === "/api/places/reverse-geocode") ||
@@ -86,6 +88,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/assistant") ||
       (context.method === "GET" && context.path === "/api/providers/reviews") ||
       (context.method === "POST" && context.path === "/api/providers/reviews") ||
+      (context.method === "POST" && context.path === "/api/providers/reviews/response") ||
       (context.method === "GET" && context.path === "/api/notifications") ||
       (context.method === "POST" && context.path === "/api/notifications/read") ||
       (context.method === "GET" && context.path === "/api/notifications/preferences") ||
@@ -230,6 +233,12 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "GET" && context.path === "/api/customers/retention-opportunities") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.listCustomerRetentionOpportunities(identity.userId));
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/providers/profile") {
       const identity = await requireRole(context, this.platform, "provider");
       sendJson(
@@ -344,6 +353,15 @@ export class MarketplaceController implements ApiController {
         response,
         201,
         await this.platform.createProviderReview(identity.userId, context.body as CreateProviderReviewRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/reviews/response") {
+      sendJson(
+        response,
+        200,
+        await this.platform.updateReviewResponse(context.body as UpdateReviewResponseRequest)
       );
       return;
     }

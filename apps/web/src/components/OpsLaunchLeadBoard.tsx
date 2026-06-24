@@ -453,6 +453,19 @@ export function OpsLaunchLeadBoard() {
                       : ""}
                   </p>
                 ) : null}
+                {item.lead.channelMetadata?.intakeNotes?.length ? (
+                  <div className="stack-sm">
+                    <p>Intake notes</p>
+                    <ul className="timeline">
+                      {item.lead.channelMetadata.intakeNotes.map((note) => (
+                        <li key={`${item.lead.id}-${note}`}>
+                          <strong>i</strong>
+                          <span>{note}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 <p>
                   Linked bookings: {linkedBookingCount}
                   {repeatBookingCount ? ` • repeat bookings: ${repeatBookingCount}` : ""}

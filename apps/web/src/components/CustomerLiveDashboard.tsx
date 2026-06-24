@@ -4,6 +4,7 @@ import {
   BookingArrivalTracking,
   Booking,
   buildCustomerProviderChoicePresentations,
+  CustomerRetentionOpportunity,
   CustomerProviderConversationThread,
   CustomerProfile,
   CustomerProperty,
@@ -19,7 +20,7 @@ import {
   ServiceCategory
 } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { getLaunchAttributionContext, getStoredLaunchLeadId } from "../lib/launchAttribution";
@@ -78,6 +79,28 @@ function formatRecurringFrequency(frequency: RecurringServiceFrequency) {
   return frequency === "biweekly" ? "Every 2 weeks" : "Every week";
 }
 
+function formatRetentionTrigger(trigger: CustomerRetentionOpportunity["trigger"]) {
+  return trigger === "recent-completion"
+    ? "Recent completion"
+    : trigger === "30-day-follow-up"
+      ? "30-day follow-up"
+      : trigger === "60-day-follow-up"
+        ? "60-day reminder"
+        : trigger === "spring-season-window"
+          ? "Spring reminder"
+          : trigger === "fall-season-window"
+            ? "Fall reminder"
+            : "90-day follow-up";
+}
+
+function formatRetentionLoyaltyLabel(segment: CustomerRetentionOpportunity["loyaltySegment"]) {
+  return segment === "provider-loyal"
+    ? "Same provider repeat"
+    : segment === "repeat-customer"
+      ? "Repeat customer"
+      : "First repeat";
+}
+
 function formatCompletedJobTrustLine(completedJobCount: number) {
   return completedJobCount > 0
     ? `${completedJobCount} completed YardMatch jobs.`
@@ -94,6 +117,9 @@ export function CustomerLiveDashboard() {
   const [paymentsByBookingId, setPaymentsByBookingId] = useState<Record<string, PaymentRecord>>({});
   const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
   const [reviewOpportunities, setReviewOpportunities] = useState<CustomerReviewOpportunity[]>([]);
+  const [retentionOpportunities, setRetentionOpportunities] = useState<CustomerRetentionOpportunity[]>([]);
+  const [activeRetentionOpportunity, setActiveRetentionOpportunity] =
+    useState<CustomerRetentionOpportunity | undefined>();
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<ServiceCategory>("lawn-mowing");
   const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
@@ -118,6 +144,7 @@ export function CustomerLiveDashboard() {
   const [paymentActionHandled, setPaymentActionHandled] = useState(false);
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
+  const trackedRetentionPromptIds = useRef(new Set<string>());
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
   const timingLabel = getCustomerTimingLabel(selectedTiming);
@@ -158,11 +185,20 @@ export function CustomerLiveDashboard() {
 
     setAccessDenied(false);
     const api = createAuthenticatedWebApiClient();
-    const [meResponse, propertyList, bookingList, reviewResponse, payments, recurringPlanResponse] = await Promise.all([
+    const [
+      meResponse,
+      propertyList,
+      bookingList,
+      reviewResponse,
+      retentionResponse,
+      payments,
+      recurringPlanResponse
+    ] = await Promise.all([
       api.getCurrentUser(),
       api.getCustomerProperties(),
       api.getBookings(),
       api.getCustomerReviewOpportunities(),
+      api.getCustomerRetentionOpportunities(),
       api.getPayments(),
       api.getRecurringServicePlans()
     ]);
@@ -211,6 +247,7 @@ export function CustomerLiveDashboard() {
       }, {})
     );
     setReviewOpportunities(reviewResponse.opportunities);
+    setRetentionOpportunities(retentionResponse.opportunities);
     setRecurringPlans(recurringPlanResponse.plans);
 
     if (!selectedPropertyId && propertyList[0]) {
@@ -232,6 +269,36 @@ export function CustomerLiveDashboard() {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load your customer account.");
     });
   }, [sessionReady, session?.token, session?.role]);
+
+  useEffect(() => {
+    if (retentionOpportunities.length === 0) {
+      return;
+    }
+
+    for (const opportunity of retentionOpportunities) {
+      if (trackedRetentionPromptIds.current.has(opportunity.id)) {
+        continue;
+      }
+
+      trackedRetentionPromptIds.current.add(opportunity.id);
+      void trackWebEvent(MarketplaceTelemetryEventCatalog.retentionPromptPresented, {
+        opportunityId: opportunity.id,
+        opportunityKind: opportunity.kind,
+        retentionStrategyKey: opportunity.strategyKey,
+        retentionTrigger: opportunity.trigger,
+        category: opportunity.category,
+        daysSinceCompleted: opportunity.daysSinceCompleted,
+        completedCategoryCount: opportunity.completedCategoryCount,
+        sameProviderCompletedCount: opportunity.sameProviderCompletedCount,
+        loyaltySegment: opportunity.loyaltySegment,
+        recommendedCadence: opportunity.recommendedCadence,
+        ...(opportunity.lastServiceGapDays !== undefined
+          ? { lastServiceGapDays: opportunity.lastServiceGapDays }
+          : {}),
+        requestSource: "customer-web-dashboard"
+      });
+    }
+  }, [retentionOpportunities]);
 
   useEffect(() => {
     if (!sessionReady || paymentActionHandled) {
@@ -352,6 +419,87 @@ export function CustomerLiveDashboard() {
     }
   }
 
+  async function handleApplyRetentionOpportunity(opportunity: CustomerRetentionOpportunity) {
+    const property = properties.find((candidate) => candidate.id === opportunity.propertyId);
+    if (!property) {
+      setErrorMessage("That saved property is no longer available.");
+      return;
+    }
+
+    setSelectedPropertyId(property.id);
+    setSelectedCategory(opportunity.category);
+    setSelectedCadence(opportunity.recommendedCadence);
+    setSelectedTiming("tomorrow-morning");
+    setShowAlternativeProviders(false);
+    setLoadingState("loading");
+    setProviderSearchState("loading");
+    setErrorMessage(undefined);
+    setBookingMessage(undefined);
+
+    try {
+      await trackWebEvent(MarketplaceTelemetryEventCatalog.retentionPromptAccepted, {
+        opportunityId: opportunity.id,
+        opportunityKind: opportunity.kind,
+        retentionStrategyKey: opportunity.strategyKey,
+        retentionTrigger: opportunity.trigger,
+        category: opportunity.category,
+        daysSinceCompleted: opportunity.daysSinceCompleted,
+        completedCategoryCount: opportunity.completedCategoryCount,
+        sameProviderCompletedCount: opportunity.sameProviderCompletedCount,
+        loyaltySegment: opportunity.loyaltySegment,
+        recommendedCadence: opportunity.recommendedCadence,
+        sourceBookingId: opportunity.sourceBookingId,
+        providerId: opportunity.providerId,
+        ...(opportunity.lastServiceGapDays !== undefined
+          ? { lastServiceGapDays: opportunity.lastServiceGapDays }
+          : {}),
+        requestSource: "customer-retention-nudge"
+      });
+
+      const api = createAuthenticatedWebApiClient();
+      setActiveRetentionOpportunity(opportunity);
+      const nextQuote = await api.createInstantQuote({
+        address: property.address,
+        category: opportunity.category,
+        propertyId: property.id
+      });
+      setQuote(nextQuote);
+
+      const results = await api.searchProviders({
+        address: property.address,
+        categories: [opportunity.category],
+        dateIso: buildDateIsoForCustomerTiming("tomorrow-morning"),
+        estimatedDurationMinutes: nextQuote.estimatedDurationMinutes,
+        requestSource: "customer-retention-nudge",
+        retentionPreference: {
+          priorProviderId: opportunity.providerId,
+          sourceBookingId: opportunity.sourceBookingId,
+          strategyKey: opportunity.strategyKey,
+          trigger: opportunity.trigger,
+          loyaltySegment: opportunity.loyaltySegment,
+          completedCategoryCount: opportunity.completedCategoryCount,
+          sameProviderCompletedCount: opportunity.sameProviderCompletedCount
+        },
+        attribution: getLaunchAttributionContext()
+      });
+
+      setProviderResults(results);
+      setProviderSearchState("loaded");
+      setBookingMessage(
+        opportunity.kind === "start-recurring-plan"
+          ? "Recurring mowing setup is ready. Review the recommendation and route window to start the plan."
+          : "Your next service request is ready. Review the recommendation and route window to book again."
+      );
+    } catch (error) {
+      setProviderSearchState("idle");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to prepare that follow-up service right now."
+      );
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
   async function handleCreateBooking(providerCard: (typeof providerCards)[number], rank: number) {
     if (!activeProperty) {
       setErrorMessage("Choose a property first.");
@@ -372,6 +520,16 @@ export function CustomerLiveDashboard() {
     try {
       const api = createAuthenticatedWebApiClient();
       const launchLeadId = getStoredLaunchLeadId();
+      const requestSource = activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard";
+      const retentionContext = activeRetentionOpportunity
+        ? {
+            opportunityId: activeRetentionOpportunity.id,
+            sourceBookingId: activeRetentionOpportunity.sourceBookingId,
+            kind: activeRetentionOpportunity.kind,
+            strategyKey: activeRetentionOpportunity.strategyKey,
+            trigger: activeRetentionOpportunity.trigger
+          }
+        : undefined;
       if (selectedCadence === "one-time") {
         await api.createBooking({
           providerId: provider.id,
@@ -387,7 +545,9 @@ export function CustomerLiveDashboard() {
           recommendedProviderId: providerResults?.recommendedProviderId,
           selectedProviderRank: rank,
           viewedAlternativeProviders: showAlternativeProviders,
-          recommendationSource: "customer-web-dashboard",
+          requestSource,
+          recommendationSource: requestSource,
+          retentionContext,
           attribution: getLaunchAttributionContext()
         });
         setBookingMessage(
@@ -409,7 +569,9 @@ export function CustomerLiveDashboard() {
           recommendedProviderId: providerResults?.recommendedProviderId,
           selectedProviderRank: rank,
           viewedAlternativeProviders: showAlternativeProviders,
-          recommendationSource: "customer-web-dashboard",
+          requestSource,
+          recommendationSource: requestSource,
+          retentionContext,
           attribution: getLaunchAttributionContext()
         });
         setBookingMessage(
@@ -419,6 +581,7 @@ export function CustomerLiveDashboard() {
         );
       }
       await loadDashboard();
+      setActiveRetentionOpportunity(undefined);
       setProviderResults(undefined);
       setShowAlternativeProviders(false);
       setProviderSearchState("idle");
@@ -1160,6 +1323,66 @@ export function CustomerLiveDashboard() {
           <p>Start a weekly or every-2-weeks service plan after choosing a provider and route window.</p>
         )}
       </section>
+
+      {retentionOpportunities.length ? (
+        <section className="card">
+          <h2>Suggested next services</h2>
+          <p>
+            Keep completed jobs moving without rebuilding the request from scratch. GreenRain will
+            still price the work again and recommend the best route before you book.
+          </p>
+          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            {retentionOpportunities.map((opportunity) => (
+              <article className="list-panel" key={opportunity.id}>
+                <div className="search-result-title">
+                  <div>
+                    <h3>{opportunity.title}</h3>
+                    <p>
+                      {opportunity.providerName} • {opportunity.category.replaceAll("-", " ")}
+                    </p>
+                  </div>
+                  <span className="result-badge">
+                    {opportunity.recommendedCadence === "one-time"
+                      ? "One-time rebook"
+                      : formatRecurringFrequency(opportunity.recommendedCadence)}
+                  </span>
+                  <span className="result-badge">{formatRetentionTrigger(opportunity.trigger)}</span>
+                  <span className="result-badge">
+                    {formatRetentionLoyaltyLabel(opportunity.loyaltySegment)}
+                  </span>
+                </div>
+                <p>{opportunity.message}</p>
+                <p>
+                  Last completed: {formatDateTime(opportunity.completedAt)} • {opportunity.daysSinceCompleted} day
+                  {opportunity.daysSinceCompleted === 1 ? "" : "s"} ago
+                </p>
+                <p>
+                  {opportunity.completedCategoryCount} completed {opportunity.category.replaceAll("-", " ")} visit
+                  {opportunity.completedCategoryCount === 1 ? "" : "s"} at this property
+                  {opportunity.sameProviderCompletedCount > 1
+                    ? ` • ${opportunity.sameProviderCompletedCount} with ${opportunity.providerName}`
+                    : ""}
+                  {opportunity.lastServiceGapDays
+                    ? ` • last gap ${opportunity.lastServiceGapDays} day${
+                        opportunity.lastServiceGapDays === 1 ? "" : "s"
+                      }`
+                    : ""}
+                </p>
+                <div className="cta-row">
+                  <button
+                    className="button-secondary"
+                    disabled={loadingState === "loading"}
+                    onClick={() => void handleApplyRetentionOpportunity(opportunity)}
+                    type="button"
+                  >
+                    {opportunity.actionLabel}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="grid-two">
         <article className="card">

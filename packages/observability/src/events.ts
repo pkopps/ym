@@ -20,6 +20,8 @@ export class MarketplaceTelemetryEventCatalog {
   public static readonly providerReviewSubmitted = "provider_review_submitted";
   public static readonly reviewInviteScheduled = "review_invite_scheduled";
   public static readonly reviewInviteSent = "review_invite_sent";
+  public static readonly retentionPromptPresented = "retention_prompt_presented";
+  public static readonly retentionPromptAccepted = "retention_prompt_accepted";
   public static readonly instantQuoteGenerated = "instant_quote_generated";
   public static readonly instantQuoteNeedsFollowUp = "instant_quote_needs_follow_up";
   public static readonly providerCashOutInitiated = "provider_cash_out_initiated";

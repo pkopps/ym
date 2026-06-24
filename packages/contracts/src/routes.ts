@@ -11,6 +11,7 @@ export class ApiRoutes {
   public static readonly placeReverseGeocode = "/api/places/reverse-geocode";
   public static readonly customerProperties = "/api/customers/properties";
   public static readonly defaultCustomerProperty = "/api/customers/properties/default";
+  public static readonly customerRetentionOpportunities = "/api/customers/retention-opportunities";
   public static readonly createInstantQuote = "/api/quotes/instant";
   public static readonly searchProviders = "/api/providers/search";
   public static readonly publicMarketplaceOverview = "/api/providers/public-overview";
@@ -27,6 +28,7 @@ export class ApiRoutes {
   public static readonly updateProviderSettings = "/api/providers/settings";
   public static readonly providerAssistantCommand = "/api/providers/assistant";
   public static readonly providerReviews = "/api/providers/reviews";
+  public static readonly updateReviewResponse = "/api/providers/reviews/response";
   public static readonly notifications = "/api/notifications";
   public static readonly notificationsRead = "/api/notifications/read";
   public static readonly notificationPreferences = "/api/notifications/preferences";

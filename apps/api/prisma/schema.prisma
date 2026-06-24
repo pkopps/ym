@@ -277,6 +277,11 @@ model ProviderReview {
   timelinessRating       Int
   attentionToDetailRating Int
   reviewText             String
+  responseStatus         String
+  responseHandledAt      DateTime?
+  responseHandledBy      String?
+  responseNotes          String?
+  publicReplyBody        String?
   createdAt              DateTime
 
   @@map("provider_reviews")

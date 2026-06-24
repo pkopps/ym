@@ -703,7 +703,52 @@ export interface ProviderReview {
   timelinessRating: ReviewScore;
   attentionToDetailRating: ReviewScore;
   reviewText: string;
+  responseStatus: ProviderReviewResponseStatus;
+  responseHandledAt?: string;
+  responseHandledBy?: string;
+  responseNotes?: string;
+  publicReplyBody?: string;
   createdAt: string;
+}
+
+export type ProviderReviewResponseStatus = "pending" | "posted" | "skipped";
+export type ReviewResponsePriority = "urgent" | "watch" | "routine";
+export type ReviewResponseSentiment = "positive" | "mixed" | "negative";
+export type ReviewResponseTemplateKey =
+  | "public-thank-you"
+  | "public-watchout"
+  | "public-recovery";
+
+export interface ReviewResponseTemplate {
+  key: ReviewResponseTemplateKey;
+  title: string;
+  channel: "public-review-reply";
+  reason: string;
+  body: string;
+}
+
+export interface OpsReviewResponseItem {
+  reviewId: string;
+  bookingId: string;
+  providerId: string;
+  providerName: string;
+  category: ServiceCategory;
+  overallRating: ReviewScore;
+  reviewText: string;
+  createdAt: string;
+  responseStatus: ProviderReviewResponseStatus;
+  responseHandledAt?: string;
+  responseHandledBy?: string;
+  responseNotes?: string;
+  publicReplyBody?: string;
+  responseDueAt?: string;
+  isResponseOverdue: boolean;
+  sentiment: ReviewResponseSentiment;
+  priority: ReviewResponsePriority;
+  issueSignals: string[];
+  watchouts: string[];
+  recommendedAction: string;
+  publicReplyTemplate: ReviewResponseTemplate;
 }
 
 export interface ReviewInvite {
@@ -735,6 +780,69 @@ export interface CustomerReviewOpportunity {
   canReviewNow: boolean;
   reviewAlreadySubmitted: boolean;
   reason: string;
+}
+
+export type CustomerRetentionOpportunityKind = "start-recurring-plan" | "rebook-service";
+export type CustomerRetentionTimingTrigger =
+  | "recent-completion"
+  | "30-day-follow-up"
+  | "60-day-follow-up"
+  | "90-day-follow-up"
+  | "spring-season-window"
+  | "fall-season-window";
+export type CustomerRetentionStrategyKey =
+  | "lawn-mowing-recurring"
+  | "lawn-mowing-biweekly-repeat"
+  | "seasonal-cleanup-follow-up"
+  | "hedge-trimming-reminder"
+  | "mulch-refresh-spring"
+  | "leaf-blowing-fall-return"
+  | "fertilization-spring-return"
+  | "aeration-fall-return"
+  | "general-90-day-rebook";
+export type CustomerRetentionLoyaltySegment =
+  | "new-repeat"
+  | "repeat-customer"
+  | "provider-loyal";
+
+export interface CustomerRetentionOpportunity {
+  id: string;
+  sourceBookingId: string;
+  propertyId: string;
+  providerId: string;
+  providerName: string;
+  category: ServiceCategory;
+  completedAt: string;
+  daysSinceCompleted: number;
+  completedCategoryCount: number;
+  sameProviderCompletedCount: number;
+  loyaltySegment: CustomerRetentionLoyaltySegment;
+  lastServiceGapDays?: number;
+  kind: CustomerRetentionOpportunityKind;
+  strategyKey: CustomerRetentionStrategyKey;
+  trigger: CustomerRetentionTimingTrigger;
+  title: string;
+  message: string;
+  actionLabel: string;
+  recommendedCadence: "one-time" | RecurringServiceFrequency;
+}
+
+export interface CustomerRetentionContext {
+  opportunityId: string;
+  sourceBookingId: string;
+  kind: CustomerRetentionOpportunityKind;
+  strategyKey: CustomerRetentionStrategyKey;
+  trigger: CustomerRetentionTimingTrigger;
+}
+
+export interface SearchRetentionPreference {
+  priorProviderId: string;
+  sourceBookingId: string;
+  strategyKey: CustomerRetentionStrategyKey;
+  trigger: CustomerRetentionTimingTrigger;
+  loyaltySegment: CustomerRetentionLoyaltySegment;
+  completedCategoryCount: number;
+  sameProviderCompletedCount: number;
 }
 
 export interface PaymentRecord {
@@ -992,6 +1100,7 @@ export interface LaunchLeadChannelMetadata {
   referrerEmail?: string;
   referrerPhone?: string;
   referralFollowUpTarget?: "referred-customer" | "referrer";
+  intakeNotes?: string[];
 }
 
 export interface LaunchLeadReplyTemplate {
@@ -1497,6 +1606,7 @@ export interface SearchProvidersRequest {
   dateIso: string;
   estimatedDurationMinutes?: number;
   requestSource?: string;
+  retentionPreference?: SearchRetentionPreference;
   attribution?: LaunchAttributionContext;
 }
 
@@ -1580,6 +1690,7 @@ export interface SearchProviderResult {
     operationalReliability: number;
     experience: number;
     availability: number;
+    loyalty: number;
     sponsorship: number;
     issuePenalty: number;
   };
@@ -1778,7 +1889,9 @@ export interface CreateBookingRequest {
   recommendedProviderId?: string;
   selectedProviderRank?: number;
   viewedAlternativeProviders?: boolean;
+  requestSource?: string;
   recommendationSource?: string;
+  retentionContext?: CustomerRetentionContext;
   attribution?: LaunchAttributionContext;
 }
 
@@ -2352,8 +2465,20 @@ export interface CreateProviderReviewRequest {
   attribution?: LaunchAttributionContext;
 }
 
+export interface UpdateReviewResponseRequest {
+  reviewId: string;
+  responseStatus: ProviderReviewResponseStatus;
+  responseHandledBy?: string;
+  responseNotes?: string;
+  publicReplyBody?: string;
+}
+
 export interface ListCustomerReviewOpportunitiesResponse {
   opportunities: CustomerReviewOpportunity[];
+}
+
+export interface ListCustomerRetentionOpportunitiesResponse {
+  opportunities: CustomerRetentionOpportunity[];
 }
 
 export interface ProcessReviewInvitesRequest {
@@ -2422,6 +2547,38 @@ export interface RecommendationSurfaceMetrics {
   recommendationSwapRate: number;
 }
 
+export interface RetentionStrategyMetrics {
+  strategyKey: CustomerRetentionStrategyKey;
+  trigger: CustomerRetentionTimingTrigger;
+  category: ServiceCategory;
+  promptViews: number;
+  promptAccepts: number;
+  acceptanceRate: number;
+}
+
+export interface RetentionSourceMetrics {
+  requestSource: string;
+  strategyKey: CustomerRetentionStrategyKey;
+  trigger: CustomerRetentionTimingTrigger;
+  category: ServiceCategory;
+  promptAccepts: number;
+  bookingRequests: number;
+  oneTimeRebooks: number;
+  recurringPlanStarts: number;
+  clickToBookingRate: number;
+}
+
+export interface RetentionProviderMetrics {
+  providerId: string;
+  providerName?: string;
+  strategyKey: CustomerRetentionStrategyKey;
+  trigger: CustomerRetentionTimingTrigger;
+  category: ServiceCategory;
+  bookingRequests: number;
+  oneTimeRebooks: number;
+  recurringPlanStarts: number;
+}
+
 export interface LaunchLeadSourceMetrics {
   sourceChannel: LaunchLeadSourceChannel;
   totalCount: number;
@@ -2467,6 +2624,17 @@ export interface ObservabilityOverview {
   completedReviewInvites: number;
   expiredReviewInvites: number;
   reviewRequestCompletionRate: number;
+  pendingReviewResponses: number;
+  urgentReviewResponses: number;
+  watchReviewResponses: number;
+  overdueReviewResponses: number;
+  recentReviewResponses: OpsReviewResponseItem[];
+  retentionPromptViews: number;
+  retentionPromptAccepts: number;
+  retentionPromptAcceptanceRate: number;
+  retentionMetricsByStrategy: RetentionStrategyMetrics[];
+  retentionMetricsBySource: RetentionSourceMetrics[];
+  retentionMetricsByProvider: RetentionProviderMetrics[];
   totalLaunchLeads: number;
   openLaunchLeads: number;
   overdueLaunchLeads: number;

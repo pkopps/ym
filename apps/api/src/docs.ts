@@ -410,6 +410,18 @@ export const apiSpec = {
         }
       }
     },
+    "/api/customers/retention-opportunities": {
+      get: {
+        tags: ["Customers"],
+        summary: "List completed-job rebooking and recurring-service nudges for a customer",
+        description:
+          "Returns backend-authored retention opportunities based on completed jobs, active recurring plans, and whether the same property already has future work queued. The current timing rules cover recent-completion mowing follow-up, 30-day seasonal cleanup nudges, 60-day hedge-trimming reminders, spring mulch-refresh and fertilization windows, fall leaf-return and aeration windows, and a broader 90-day rebook fallback. Mowing prompts now also distinguish between weekly and every-2-weeks cadence from recent booking history and carry repeat-customer/provider-loyal context, and loyalty-backed rebooks can softly prefer a proven prior provider when the same property has strong history, all without abandoning the recommendation-first marketplace flow.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Retention opportunity list" }
+        }
+      }
+    },
     "/api/bookings/cancel": {
       post: {
         tags: ["Bookings"],
@@ -964,6 +976,32 @@ export const apiSpec = {
         },
         responses: {
           "201": { description: "Provider review created" }
+        }
+      }
+    },
+    "/api/providers/reviews/response": {
+      post: {
+        tags: ["Providers"],
+        summary: "Record public review-response handling for ops",
+        description:
+          "Stores whether a submitted review still needs a public reply, was replied to publicly, or was intentionally skipped, along with the reply body or ops note used to justify that state.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                reviewId: "review_123",
+                responseStatus: "posted",
+                responseHandledBy: "Casey Ops",
+                responseNotes: "Posted after checking the related support case.",
+                publicReplyBody:
+                  "Thank you for the feedback. We are sorry this visit missed the mark and are reviewing the details internally so the follow-up stays specific."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated provider review response state" }
         }
       }
     },
@@ -1732,7 +1770,7 @@ export const apiSpec = {
         tags: ["Launch"],
         summary: "Capture a non-website inbound launch lead",
         description:
-          "Server-to-server intake for automated sources like direct email forwarding, Google Business Profile message relays, or referral processors. Requires the shared `x-yardmatch-inbound-secret` header and a source reference id so retries can return the same lead instead of creating duplicates. Channel-mediated sources can also use `preferredContactMethod: platform-message` when the follow-up should happen in the original thread instead of through direct email or phone.",
+          "Server-to-server intake for automated sources like direct email forwarding, Google Business Profile message relays, or referral processors. Requires the shared `x-yardmatch-inbound-secret` header and a source reference id so retries can return the same lead instead of creating duplicates. Channel-mediated sources can also use `preferredContactMethod: platform-message` when the follow-up should happen in the original thread instead of through direct email or phone. When area, service, or callback details are missing, the intake path now tries to infer likely launch-safe values from the relayed message and preserves confirmation notes for ops.",
         requestBody: {
           required: true,
           content: {
@@ -1760,7 +1798,7 @@ export const apiSpec = {
         tags: ["Launch"],
         summary: "Capture a direct email inbound launch lead",
         description:
-          "Specialized server-to-server intake for direct email forwarders. Accepts sender and message fields instead of the full lead schema, then maps them into the launch lead queue using the shared `x-yardmatch-inbound-secret` header and `sourceReferenceId` retry deduplication.",
+          "Specialized server-to-server intake for direct email forwarders. Accepts sender and message fields instead of the full lead schema, then maps them into the launch lead queue using the shared `x-yardmatch-inbound-secret` header and `sourceReferenceId` retry deduplication. The current intake path can also infer likely service, launch area, callback number, and text-vs-call preference from the relayed message while preserving those inference notes for ops confirmation.",
         requestBody: {
           required: true,
           content: {
@@ -1970,7 +2008,7 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "Fetch the live operational telemetry summary",
         description:
-          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, and recent telemetry events.",
+          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, a backend-authored public review-response queue with persisted response state, and recent telemetry events.",
         responses: {
           "200": { description: "Operations overview" }
         }

@@ -7,6 +7,7 @@ import { OpsLaunchLeadBoard } from "../../components/OpsLaunchLeadBoard";
 import { OpsLaunchPlaybook } from "../../components/OpsLaunchPlaybook";
 import { OpsPayoutRunBoard } from "../../components/OpsPayoutRunBoard";
 import { OpsProviderVerificationQueue } from "../../components/OpsProviderVerificationQueue";
+import { OpsReviewResponseBoard } from "../../components/OpsReviewResponseBoard";
 import { OpsSupportQueue } from "../../components/OpsSupportQueue";
 
 export const metadata: Metadata = {
@@ -64,6 +65,17 @@ async function getOverview(): Promise<ObservabilityOverview> {
         completedReviewInvites: 0,
         expiredReviewInvites: 0,
         reviewRequestCompletionRate: 0,
+        pendingReviewResponses: 0,
+        urgentReviewResponses: 0,
+        watchReviewResponses: 0,
+        overdueReviewResponses: 0,
+        recentReviewResponses: [],
+        retentionPromptViews: 0,
+        retentionPromptAccepts: 0,
+        retentionPromptAcceptanceRate: 0,
+        retentionMetricsByStrategy: [],
+        retentionMetricsBySource: [],
+        retentionMetricsByProvider: [],
         totalLaunchLeads: 0,
         openLaunchLeads: 0,
         overdueLaunchLeads: 0,
@@ -254,6 +266,130 @@ export default async function OpsPage() {
         <article className="card">
           <h2>{formatRate(overview.reviewRequestCompletionRate)}</h2>
           <p>Review request completion rate</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.pendingReviewResponses}</h2>
+          <p>Recent public review replies to work</p>
+        </article>
+        <article className="card">
+          <h2>{overview.urgentReviewResponses}</h2>
+          <p>Review replies that should go out today</p>
+        </article>
+        <article className="card">
+          <h2>{overview.overdueReviewResponses}</h2>
+          <p>Pending review replies already overdue</p>
+        </article>
+      </section>
+
+      <section className="grid-three">
+        <article className="card">
+          <h2>{overview.retentionPromptViews}</h2>
+          <p>Retention nudges shown</p>
+        </article>
+        <article className="card">
+          <h2>{overview.retentionPromptAccepts}</h2>
+          <p>Retention nudges clicked</p>
+        </article>
+        <article className="card">
+          <h2>{formatRate(overview.retentionPromptAcceptanceRate)}</h2>
+          <p>Retention nudge acceptance rate</p>
+        </article>
+      </section>
+
+      <OpsReviewResponseBoard initialItems={overview.recentReviewResponses} />
+
+      <section className="card">
+        <h2>Retention strategy performance</h2>
+        {overview.retentionMetricsByStrategy.length === 0 ? (
+          <p>No retention strategy events recorded yet.</p>
+        ) : (
+          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            {overview.retentionMetricsByStrategy.map((metric) => (
+              <article className="list-panel" key={`${metric.strategyKey}:${metric.category}`}>
+                <div className="search-result-title">
+                  <div>
+                    <h3>{metric.strategyKey.replaceAll("-", " ")}</h3>
+                    <p>
+                      {metric.category.replaceAll("-", " ")} • {metric.trigger.replaceAll("-", " ")}
+                    </p>
+                  </div>
+                  <span className="result-badge">{formatRate(metric.acceptanceRate)}</span>
+                </div>
+                <p>
+                  {metric.promptViews} prompt view{metric.promptViews === 1 ? "" : "s"} •{" "}
+                  {metric.promptAccepts} click{metric.promptAccepts === 1 ? "" : "s"}
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="grid-two">
+        <article className="card">
+          <h2>Retention conversion by source</h2>
+          {overview.retentionMetricsBySource.length === 0 ? (
+            <p>No repeat-service conversions recorded from retention flows yet.</p>
+          ) : (
+            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              {overview.retentionMetricsBySource.map((metric) => (
+                <article
+                  className="list-panel"
+                  key={`${metric.requestSource}:${metric.strategyKey}:${metric.category}`}
+                >
+                  <div className="search-result-title">
+                    <div>
+                      <h3>{metric.requestSource.replaceAll("-", " ")}</h3>
+                      <p>
+                        {metric.strategyKey.replaceAll("-", " ")} • {metric.category.replaceAll("-", " ")}
+                      </p>
+                    </div>
+                    <span className="result-badge">{formatRate(metric.clickToBookingRate)}</span>
+                  </div>
+                  <p>
+                    {metric.bookingRequests} booking request{metric.bookingRequests === 1 ? "" : "s"} from{" "}
+                    {metric.promptAccepts} click{metric.promptAccepts === 1 ? "" : "s"} •{" "}
+                    {metric.recurringPlanStarts} recurring plan
+                    {metric.recurringPlanStarts === 1 ? "" : "s"} • {metric.oneTimeRebooks} one-time rebook
+                    {metric.oneTimeRebooks === 1 ? "" : "s"}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
+        </article>
+
+        <article className="card">
+          <h2>Retention conversion by provider</h2>
+          {overview.retentionMetricsByProvider.length === 0 ? (
+            <p>No provider-level repeat-service conversions recorded from retention flows yet.</p>
+          ) : (
+            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              {overview.retentionMetricsByProvider.map((metric) => (
+                <article
+                  className="list-panel"
+                  key={`${metric.providerId}:${metric.strategyKey}:${metric.category}`}
+                >
+                  <div className="search-result-title">
+                    <div>
+                      <h3>{metric.providerName ?? "Provider"}</h3>
+                      <p>
+                        {metric.strategyKey.replaceAll("-", " ")} • {metric.category.replaceAll("-", " ")}
+                      </p>
+                    </div>
+                    <span className="result-badge">{metric.bookingRequests} repeat bookings</span>
+                  </div>
+                  <p>
+                    {metric.recurringPlanStarts} recurring plan{metric.recurringPlanStarts === 1 ? "" : "s"} •{" "}
+                    {metric.oneTimeRebooks} one-time rebook{metric.oneTimeRebooks === 1 ? "" : "s"}
+                  </p>
+                </article>
+              ))}
+            </div>
+          )}
         </article>
       </section>
 

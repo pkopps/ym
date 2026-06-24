@@ -30,6 +30,16 @@ function futureIso(hoursFromNow: number) {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
 }
 
+async function withMockedNow<T>(iso: string, callback: () => Promise<T> | T): Promise<T> {
+  const originalNow = Date.now;
+  Date.now = () => new Date(iso).getTime();
+  try {
+    return await callback();
+  } finally {
+    Date.now = originalNow;
+  }
+}
+
 function availabilityDayForIso(iso: string) {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date(iso).getDay()] as
     | "Sun"
@@ -581,6 +591,114 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.match(sponsoredResult?.selectionSummaryLabel ?? "", /ranks behind|fallback/i);
 });
 
+test("provider search can softly prefer a proven provider for retention-driven rebooks", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const [priorProvider, challengerProvider] = (await repository.listProviders()).slice(0, 2);
+  assert.ok(priorProvider);
+  assert.ok(challengerProvider);
+
+  await repository.updateProvider(priorProvider.id, {
+    companyName: "Trusted Repeat Lawn",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    serviceRadiusMiles: 20,
+    sponsoredListingEnabled: false,
+    categories: ["lawn-mowing"],
+    rating: 4.6,
+    timelinessRating: 4.5,
+    attentionToDetailRating: 4.6,
+    reviewCount: 18,
+    yearsExperience: 6,
+    verificationStatus: "verified"
+  });
+
+  await repository.updateProvider(challengerProvider.id, {
+    companyName: "Top Fresh Match Lawn",
+    address: createAddress("114 Garden Row", 30.2436, -97.7639),
+    serviceRadiusMiles: 20,
+    sponsoredListingEnabled: false,
+    categories: ["lawn-mowing"],
+    rating: 4.95,
+    timelinessRating: 4.95,
+    attentionToDetailRating: 4.95,
+    reviewCount: 160,
+    yearsExperience: 12,
+    verificationStatus: "verified"
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-retention-ranking@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  for (let index = 0; index < 2; index += 1) {
+    const booking = await platform.createBooking(customer.id, {
+      providerId: priorProvider.id,
+      serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "lawn-mowing",
+      scheduledStartIso: futureIso(48 + index * 24),
+      scheduledEndIso: futureIso(49 + index * 24),
+      notes: `Repeat mowing history ${index + 1}`,
+      totalCents: 6200
+    });
+
+    await repository.updateBooking(booking.id, {
+      status: "completed",
+      completedAt: new Date(Date.now() - (21 - index * 14) * 24 * 60 * 60 * 1000).toISOString()
+    });
+  }
+
+  const withoutRetention = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "customer-web-dashboard"
+  });
+  assert.equal(withoutRetention.rankedProviders[0]?.provider.id, challengerProvider.id);
+
+  const withRetention = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "customer-retention-nudge",
+    retentionPreference: {
+      priorProviderId: priorProvider.id,
+      sourceBookingId: "retention-source-booking",
+      strategyKey: "lawn-mowing-biweekly-repeat",
+      trigger: "recent-completion",
+      loyaltySegment: "provider-loyal",
+      completedCategoryCount: 2,
+      sameProviderCompletedCount: 2
+    }
+  });
+
+  assert.equal(withRetention.rankedProviders[0]?.provider.id, priorProvider.id);
+  assert.ok(withRetention.rankedProviders[0]?.reasons.includes("Already completed this service at the property"));
+  assert.equal(withRetention.rankedProviders[0]?.factors.loyalty, 10);
+  assert.match(withRetention.rankedProviders[0]?.selectionSummaryLabel ?? "", /trusted repeat-provider/i);
+
+  const retentionPresentedEvent = analytics
+    .listEvents()
+    .filter((event) => event.name === MarketplaceTelemetryEventCatalog.recommendationPresented)
+    .find(
+      (event) =>
+        event.properties.requestSource === "customer-retention-nudge" &&
+        event.properties.retentionStrategyKey === "lawn-mowing-biweekly-repeat"
+    );
+  assert.ok(retentionPresentedEvent);
+  assert.equal(retentionPresentedEvent?.properties.loyaltySegment, "provider-loyal");
+});
+
 test("provider decline flow and ops overview counters cover confirms, declines, cancellations, and payment milestones", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const analytics = new DataEngineeringLogger();
@@ -692,6 +810,8 @@ test("observability overview includes launch lead backlog and source metrics", a
   const repository = new InMemoryMarketplaceRepository();
   const analytics = new DataEngineeringLogger();
   const platform = new MarketplacePlatformService(repository, analytics);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
 
   const overdueLead = await platform.createLaunchLead({
     sourceChannel: "email",
@@ -803,6 +923,57 @@ test("observability overview includes launch lead backlog and source metrics", a
     deepLinkPath: "/customer/dashboard?review=expired"
   });
 
+  platform.createAnalyticsEvent({
+    id: crypto.randomUUID(),
+    name: MarketplaceTelemetryEventCatalog.retentionPromptPresented,
+    actorId: "customer-retention",
+    occurredAt: new Date().toISOString(),
+    properties: {
+      retentionStrategyKey: "lawn-mowing-recurring",
+      retentionTrigger: "recent-completion",
+      category: "lawn-mowing",
+      requestSource: "customer-web-dashboard"
+    }
+  });
+  platform.createAnalyticsEvent({
+    id: crypto.randomUUID(),
+    name: MarketplaceTelemetryEventCatalog.retentionPromptPresented,
+    actorId: "customer-retention",
+    occurredAt: new Date().toISOString(),
+    properties: {
+      retentionStrategyKey: "lawn-mowing-recurring",
+      retentionTrigger: "recent-completion",
+      category: "lawn-mowing",
+      requestSource: "customer-web-dashboard"
+    }
+  });
+  platform.createAnalyticsEvent({
+    id: crypto.randomUUID(),
+    name: MarketplaceTelemetryEventCatalog.retentionPromptAccepted,
+    actorId: "customer-retention",
+    occurredAt: new Date().toISOString(),
+    properties: {
+      retentionStrategyKey: "lawn-mowing-recurring",
+      retentionTrigger: "recent-completion",
+      category: "lawn-mowing",
+      requestSource: "customer-web-dashboard"
+    }
+  });
+  platform.createAnalyticsEvent({
+    id: crypto.randomUUID(),
+    name: MarketplaceTelemetryEventCatalog.bookingRequested,
+    actorId: "customer-retention",
+    occurredAt: new Date().toISOString(),
+    properties: {
+      providerId: seededProvider.id,
+      category: "lawn-mowing",
+      requestSource: "customer-retention-nudge",
+      recurringPlanStarted: true,
+      retentionStrategyKey: "lawn-mowing-recurring",
+      retentionTrigger: "recent-completion"
+    }
+  });
+
   const overview = await platform.getObservabilityOverview();
   assert.equal(overview.totalLaunchLeads, 3);
   assert.equal(overview.openLaunchLeads, 2);
@@ -818,6 +989,9 @@ test("observability overview includes launch lead backlog and source metrics", a
   assert.equal(overview.completedReviewInvites, 1);
   assert.equal(overview.expiredReviewInvites, 1);
   assert.equal(overview.reviewRequestCompletionRate, 0.25);
+  assert.equal(overview.retentionPromptViews, 2);
+  assert.equal(overview.retentionPromptAccepts, 1);
+  assert.equal(overview.retentionPromptAcceptanceRate, 0.5);
 
   const emailMetric = overview.launchLeadSourceMetrics.find((metric) => metric.sourceChannel === "email");
   const gbpMetric = overview.launchLeadSourceMetrics.find(
@@ -825,6 +999,145 @@ test("observability overview includes launch lead backlog and source metrics", a
   );
   assert.equal(emailMetric?.overdueCount, 1);
   assert.equal(gbpMetric?.openCount, 1);
+
+  const mowingRetentionMetric = overview.retentionMetricsByStrategy.find(
+    (metric) => metric.strategyKey === "lawn-mowing-recurring"
+  );
+  assert.equal(mowingRetentionMetric?.promptViews, 2);
+  assert.equal(mowingRetentionMetric?.promptAccepts, 1);
+  assert.equal(mowingRetentionMetric?.acceptanceRate, 0.5);
+
+  const retentionSourceMetric = overview.retentionMetricsBySource.find(
+    (metric) =>
+      metric.requestSource === "customer-retention-nudge" &&
+      metric.strategyKey === "lawn-mowing-recurring"
+  );
+  assert.equal(retentionSourceMetric?.bookingRequests, 1);
+  assert.equal(retentionSourceMetric?.recurringPlanStarts, 1);
+  assert.equal(retentionSourceMetric?.oneTimeRebooks, 0);
+
+  const retentionProviderMetric = overview.retentionMetricsByProvider.find(
+    (metric) =>
+      metric.providerId === seededProvider.id && metric.strategyKey === "lawn-mowing-recurring"
+  );
+  assert.equal(retentionProviderMetric?.providerName, seededProvider.companyName);
+  assert.equal(retentionProviderMetric?.bookingRequests, 1);
+  assert.equal(retentionProviderMetric?.recurringPlanStarts, 1);
+});
+
+test("observability overview includes a public review response queue with urgency and drafts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
+
+  const customer = await platform.registerUser({
+    fullName: "Casey Homeowner",
+    email: "review-response@example.com",
+    password: "Password123!",
+    phone: "555-0301",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress("15 Cedar Lane", 39.7532, -74.2221)
+  });
+
+  const nowIso = new Date().toISOString();
+  const booking = await repository.createBooking({
+    id: crypto.randomUUID(),
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    status: "completed",
+    requestedAt: nowIso,
+    scheduledStartIso: nowIso,
+    scheduledEndIso: futureIso(1),
+    completedAt: nowIso,
+    notes: "Completed booking for review queue test",
+    totalCents: 6800
+  });
+
+  await repository.createReviewInvite({
+    id: crypto.randomUUID(),
+    bookingId: booking.id,
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    email: customer.email,
+    status: "sent",
+    channels: ["email"],
+    scheduledSendIso: nowIso,
+    sentAt: nowIso,
+    expiresAtIso: futureIso(72),
+    deepLinkPath: `/bookings/${booking.id}/review`
+  });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: booking.id,
+    overallRating: 2,
+    timelinessRating: 2,
+    attentionToDetailRating: 2,
+    reviewText: "The crew was late and left clippings behind, so the yard still looked rushed."
+  });
+  await repository.updateProviderReview(review.id, {
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  await repository.createSupportTicket({
+    id: crypto.randomUUID(),
+    bookingId: booking.id,
+    requesterId: customer.id,
+    subject: "Service follow-up",
+    description: "Customer wants a follow-up on lateness and quality.",
+    issueType: "service-quality",
+    status: "open",
+    createdAt: nowIso,
+    updatedAt: nowIso
+  });
+
+  const overview = await platform.getObservabilityOverview();
+  assert.equal(overview.pendingReviewResponses, 1);
+  assert.equal(overview.urgentReviewResponses, 1);
+  assert.equal(overview.watchReviewResponses, 0);
+  assert.equal(overview.overdueReviewResponses, 1);
+
+  const responseItem = overview.recentReviewResponses.find((item) => item.reviewId === review.id);
+  assert.ok(responseItem);
+  assert.equal(responseItem?.priority, "urgent");
+  assert.equal(responseItem?.sentiment, "negative");
+  assert.equal(responseItem?.isResponseOverdue, true);
+  assert.ok(responseItem?.responseDueAt);
+  assert.equal(responseItem?.providerName, seededProvider.companyName);
+  assert.equal(responseItem?.category, "lawn-mowing");
+  assert.ok(responseItem?.issueSignals.includes("timing"));
+  assert.ok(responseItem?.issueSignals.includes("quality"));
+  assert.match(responseItem?.recommendedAction ?? "", /reply publicly today/i);
+  assert.ok(
+    responseItem?.watchouts.some((watchout) => /open support ticket already exists/i.test(watchout))
+  );
+  assert.equal(responseItem?.publicReplyTemplate.key, "public-recovery");
+  assert.match(responseItem?.publicReplyTemplate.body ?? "", /sorry/i);
+
+  const updatedReview = await platform.updateReviewResponse({
+    reviewId: review.id,
+    responseStatus: "posted",
+    responseHandledBy: "Casey Ops",
+    responseNotes: "Posted publicly after checking the open support thread.",
+    publicReplyBody:
+      "Thank you for the candid feedback. We are sorry this lawn mowing visit missed the mark, and we are reviewing the details internally so the follow-up stays specific."
+  });
+  assert.equal(updatedReview.responseStatus, "posted");
+  assert.equal(updatedReview.responseHandledBy, "Casey Ops");
+  assert.ok(updatedReview.responseHandledAt);
+
+  const updatedOverview = await platform.getObservabilityOverview();
+  assert.equal(updatedOverview.pendingReviewResponses, 0);
+  assert.equal(updatedOverview.urgentReviewResponses, 0);
+  assert.equal(updatedOverview.overdueReviewResponses, 0);
+  const updatedResponseItem = updatedOverview.recentReviewResponses.find((item) => item.reviewId === review.id);
+  assert.equal(updatedResponseItem?.responseStatus, "posted");
+  assert.match(updatedResponseItem?.recommendedAction ?? "", /already recorded/i);
 });
 
 test("recommendation telemetry tracks views, alternatives, accepted recommendations, and swaps", async () => {
@@ -1247,6 +1560,49 @@ test("launch leads can be captured from phone-first customer service requests wi
   assert.equal(capturedEvent?.properties.hasPhone, true);
   assert.equal(capturedEvent?.properties.hasAssignedOwner, true);
   assert.equal(capturedEvent?.properties.sourceChannel, "phone");
+});
+
+test("ops launch lead guidance preserves inbound intake notes for inferred email details", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const lead = await platform.createInboundEmailLaunchLead(
+      {
+        sourceReferenceId: "email_ops_123",
+        senderEmail: "jamie.homeowner@example.com",
+        subject: "Need help with mulch",
+        textBody: "Please call me at 609-555-0101 about mulch refresh in Barnegat before the weekend."
+      },
+      "launch-webhook-secret"
+    );
+
+    assert.equal(lead.areaLabel, "Barnegat, NJ");
+    assert.equal(lead.serviceCategory, "mulch-installation");
+    assert.equal(lead.phone, "6095550101");
+    assert.equal(lead.preferredContactMethod, "phone");
+
+    const queue = await platform.listOpsLaunchLeads();
+    const queuedLead = queue.find((item) => item.lead.id === lead.id);
+    assert.ok(queuedLead);
+    assert.ok(
+      queuedLead?.lead.channelMetadata?.intakeNotes?.some((note) => /Area was inferred from the inbound message/i.test(note))
+    );
+    assert.ok(
+      queuedLead?.lead.channelMetadata?.intakeNotes?.some((note) => /Service was inferred from the inbound message/i.test(note))
+    );
+    assert.ok(
+      queuedLead?.responseGuidance.warnings.some((warning) =>
+        /Follow-up preference was inferred from the inbound message as phone/i.test(warning)
+      )
+    );
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
 });
 
 test("ops lead queue includes backend-authored response guidance and reply drafts", async () => {
@@ -1937,6 +2293,610 @@ test("completed bookings unlock review invites and reject duplicate reviews", as
     }),
     /already been submitted/
   );
+});
+
+test("customer retention opportunities suggest recurring mowing and one-time rebooks", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-retention@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const mowingBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Mow and edge",
+    totalCents: 6200
+  });
+  await repository.updateBooking(mowingBooking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  const cleanupBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "seasonal-cleanup",
+    scheduledStartIso: futureIso(96),
+    scheduledEndIso: futureIso(98),
+    notes: "Cleanup leaves and beds",
+    totalCents: 8400
+  });
+  await repository.updateBooking(cleanupBooking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  const retention = await platform.listCustomerRetentionOpportunities(customer.id);
+  assert.equal(retention.opportunities.length, 2);
+  assert.equal(retention.opportunities[0]?.kind, "start-recurring-plan");
+  assert.equal(retention.opportunities[0]?.recommendedCadence, "weekly");
+  assert.equal(retention.opportunities[0]?.strategyKey, "lawn-mowing-recurring");
+  assert.equal(retention.opportunities[0]?.trigger, "recent-completion");
+  assert.equal(retention.opportunities[0]?.daysSinceCompleted, 7);
+  assert.equal(retention.opportunities[0]?.completedCategoryCount, 1);
+  assert.equal(retention.opportunities[0]?.sameProviderCompletedCount, 1);
+  assert.equal(retention.opportunities[0]?.loyaltySegment, "new-repeat");
+  assert.match(retention.opportunities[0]?.message ?? "", /weekly plan/i);
+  assert.equal(retention.opportunities[1]?.kind, "rebook-service");
+  assert.equal(retention.opportunities[1]?.recommendedCadence, "one-time");
+  assert.equal(retention.opportunities[1]?.strategyKey, "seasonal-cleanup-follow-up");
+  assert.equal(retention.opportunities[1]?.trigger, "30-day-follow-up");
+  assert.match(retention.opportunities[1]?.title ?? "", /plan the next cleanup pass/i);
+});
+
+test("customer retention opportunities recommend biweekly mowing for repeat customers with the same provider", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-retention-biweekly@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const earlierMowing = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Earlier mowing visit",
+    totalCents: 6200
+  });
+  await repository.updateBooking(earlierMowing.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  const recentMowing = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(96),
+    scheduledEndIso: futureIso(97),
+    notes: "Recent mowing visit",
+    totalCents: 6200
+  });
+  await repository.updateBooking(recentMowing.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  const retention = await platform.listCustomerRetentionOpportunities(customer.id);
+  const mowingOpportunity = retention.opportunities.find((item) => item.category === "lawn-mowing");
+  assert.ok(mowingOpportunity);
+  assert.equal(mowingOpportunity?.recommendedCadence, "biweekly");
+  assert.equal(mowingOpportunity?.strategyKey, "lawn-mowing-biweekly-repeat");
+  assert.equal(mowingOpportunity?.loyaltySegment, "provider-loyal");
+  assert.equal(mowingOpportunity?.completedCategoryCount, 2);
+  assert.equal(mowingOpportunity?.sameProviderCompletedCount, 2);
+  assert.equal(mowingOpportunity?.lastServiceGapDays, 14);
+  assert.match(mowingOpportunity?.title ?? "", /every-2-weeks route/i);
+  assert.match(mowingOpportunity?.message ?? "", /same relationship|already completed 2 lawn mowing visits/i);
+});
+
+test("retention rebooks and recurring plans flow into repeat-service conversion analytics", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-retention-analytics@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const mowingBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Mow and edge",
+    totalCents: 6200
+  });
+  await repository.updateBooking(mowingBooking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  const cleanupBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "seasonal-cleanup",
+    scheduledStartIso: futureIso(96),
+    scheduledEndIso: futureIso(98),
+    notes: "Cleanup leaves and beds",
+    totalCents: 8400
+  });
+  await repository.updateBooking(cleanupBooking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  const retention = await platform.listCustomerRetentionOpportunities(customer.id);
+  const mowingOpportunity = retention.opportunities.find((item) => item.category === "lawn-mowing");
+  const cleanupOpportunity = retention.opportunities.find((item) => item.category === "seasonal-cleanup");
+  assert.ok(mowingOpportunity);
+  assert.ok(cleanupOpportunity);
+
+  await platform.createRecurringServicePlan(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(144),
+    scheduledEndIso: futureIso(145),
+    notes: "Recurring mowing from retention flow",
+    totalCents: 6200,
+    frequency: "weekly",
+    requestSource: "customer-retention-nudge",
+    recommendationSource: "customer-retention-nudge",
+    retentionContext: {
+      opportunityId: mowingOpportunity.id,
+      sourceBookingId: mowingOpportunity.sourceBookingId,
+      kind: mowingOpportunity.kind,
+      strategyKey: mowingOpportunity.strategyKey,
+      trigger: mowingOpportunity.trigger
+    }
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "seasonal-cleanup",
+    scheduledStartIso: futureIso(168),
+    scheduledEndIso: futureIso(170),
+    notes: "Cleanup rebook from retention flow",
+    totalCents: 8400,
+    requestSource: "customer-retention-nudge",
+    recommendationSource: "customer-retention-nudge",
+    retentionContext: {
+      opportunityId: cleanupOpportunity.id,
+      sourceBookingId: cleanupOpportunity.sourceBookingId,
+      kind: cleanupOpportunity.kind,
+      strategyKey: cleanupOpportunity.strategyKey,
+      trigger: cleanupOpportunity.trigger
+    }
+  });
+
+  const bookingRequestedEvents = analytics
+    .listEvents()
+    .filter((event) => event.name === MarketplaceTelemetryEventCatalog.bookingRequested);
+  assert.ok(
+    bookingRequestedEvents.some(
+      (event) =>
+        event.properties.retentionStrategyKey === "lawn-mowing-recurring" &&
+        event.properties.requestSource === "customer-retention-nudge" &&
+        event.properties.recurringPlanStarted === true
+    )
+  );
+  assert.ok(
+    bookingRequestedEvents.some(
+      (event) =>
+        event.properties.retentionStrategyKey === "seasonal-cleanup-follow-up" &&
+        event.properties.requestSource === "customer-retention-nudge" &&
+        event.properties.recurringPlanStarted === false
+    )
+  );
+
+  const overview = await platform.getObservabilityOverview();
+  const sourceMetric = overview.retentionMetricsBySource.find(
+    (metric) =>
+      metric.requestSource === "customer-retention-nudge" &&
+      metric.strategyKey === "lawn-mowing-recurring"
+  );
+  assert.equal(sourceMetric?.bookingRequests, 1);
+  assert.equal(sourceMetric?.recurringPlanStarts, 1);
+
+  const cleanupSourceMetric = overview.retentionMetricsBySource.find(
+    (metric) =>
+      metric.requestSource === "customer-retention-nudge" &&
+      metric.strategyKey === "seasonal-cleanup-follow-up"
+  );
+  assert.equal(cleanupSourceMetric?.bookingRequests, 1);
+  assert.equal(cleanupSourceMetric?.oneTimeRebooks, 1);
+
+  const providerMetric = overview.retentionMetricsByProvider.find(
+    (metric) =>
+      metric.providerId === provider.id && metric.strategyKey === "lawn-mowing-recurring"
+  );
+  assert.equal(providerMetric?.providerName, provider.companyName);
+  assert.equal(providerMetric?.recurringPlanStarts, 1);
+});
+
+test("customer retention opportunities skip categories that already have future work queued", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-retention-future@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const completedBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Mow and edge",
+    totalCents: 6200
+  });
+  await repository.updateBooking(completedBooking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(120),
+    scheduledEndIso: futureIso(121),
+    notes: "Already booked again",
+    totalCents: 6200
+  });
+
+  const retention = await platform.listCustomerRetentionOpportunities(customer.id);
+  assert.equal(retention.opportunities.some((item) => item.category === "lawn-mowing"), false);
+});
+
+test("customer retention opportunities wait for hedge trimming reminder timing", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-retention-hedges@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const earlyBooking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "hedge-trimming",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Trim the front hedge",
+    totalCents: 5400
+  });
+  await repository.updateBooking(earlyBooking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  let retention = await platform.listCustomerRetentionOpportunities(customer.id);
+  assert.equal(retention.opportunities.some((item) => item.category === "hedge-trimming"), false);
+
+  await repository.updateBooking(earlyBooking.id, {
+    completedAt: new Date(Date.now() - 65 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  retention = await platform.listCustomerRetentionOpportunities(customer.id);
+  const hedgeOpportunity = retention.opportunities.find((item) => item.category === "hedge-trimming");
+  assert.ok(hedgeOpportunity);
+  assert.equal(hedgeOpportunity?.strategyKey, "hedge-trimming-reminder");
+  assert.equal(hedgeOpportunity?.trigger, "60-day-follow-up");
+  assert.equal(hedgeOpportunity?.daysSinceCompleted, 65);
+});
+
+test("customer retention opportunities use spring and fall season windows for seasonal services", async () => {
+  await withMockedNow("2026-04-15T12:00:00.000Z", async () => {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-retention-spring@example.com",
+      password: "Password123!",
+      phone: "555-0200",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress()
+    });
+
+    const provider = (await repository.listProviders())[0];
+    assert.ok(provider);
+
+    const mulchBooking = await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "mulch-installation",
+      scheduledStartIso: futureIso(72),
+      scheduledEndIso: futureIso(75),
+      notes: "Refresh mulch beds",
+      totalCents: 9200
+    });
+    await repository.updateBooking(mulchBooking.id, {
+      status: "completed",
+      completedAt: "2025-04-20T12:00:00.000Z"
+    });
+
+    const springRetention = await platform.listCustomerRetentionOpportunities(customer.id);
+    const mulchOpportunity = springRetention.opportunities.find(
+      (item) => item.category === "mulch-installation"
+    );
+    assert.ok(mulchOpportunity);
+    assert.equal(mulchOpportunity?.strategyKey, "mulch-refresh-spring");
+    assert.equal(mulchOpportunity?.trigger, "spring-season-window");
+    assert.match(mulchOpportunity?.title ?? "", /refresh the mulch/i);
+  });
+
+  await withMockedNow("2026-07-15T12:00:00.000Z", async () => {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-retention-summer@example.com",
+      password: "Password123!",
+      phone: "555-0200",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress()
+    });
+
+    const provider = (await repository.listProviders())[0];
+    assert.ok(provider);
+
+    const mulchBooking = await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "mulch-installation",
+      scheduledStartIso: futureIso(72),
+      scheduledEndIso: futureIso(75),
+      notes: "Refresh mulch beds",
+      totalCents: 9200
+    });
+    await repository.updateBooking(mulchBooking.id, {
+      status: "completed",
+      completedAt: "2025-04-20T12:00:00.000Z"
+    });
+
+    const summerRetention = await platform.listCustomerRetentionOpportunities(customer.id);
+    assert.equal(
+      summerRetention.opportunities.some((item) => item.strategyKey === "mulch-refresh-spring"),
+      false
+    );
+  });
+
+  await withMockedNow("2026-10-10T12:00:00.000Z", async () => {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-retention-fall@example.com",
+      password: "Password123!",
+      phone: "555-0200",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress()
+    });
+
+    const provider = (await repository.listProviders())[0];
+    assert.ok(provider);
+
+    const leafBooking = await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "leaf-blowing",
+      scheduledStartIso: futureIso(72),
+      scheduledEndIso: futureIso(73),
+      notes: "Clear leaves from the yard",
+      totalCents: 5600
+    });
+    await repository.updateBooking(leafBooking.id, {
+      status: "completed",
+      completedAt: "2025-10-18T12:00:00.000Z"
+    });
+
+    const fallRetention = await platform.listCustomerRetentionOpportunities(customer.id);
+    const leafOpportunity = fallRetention.opportunities.find((item) => item.category === "leaf-blowing");
+    assert.ok(leafOpportunity);
+    assert.equal(leafOpportunity?.strategyKey, "leaf-blowing-fall-return");
+    assert.equal(leafOpportunity?.trigger, "fall-season-window");
+    assert.match(leafOpportunity?.title ?? "", /leaf cycle/i);
+  });
+
+  await withMockedNow("2026-04-15T12:00:00.000Z", async () => {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-retention-fertilization@example.com",
+      password: "Password123!",
+      phone: "555-0200",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress()
+    });
+
+    const provider = (await repository.listProviders())[0];
+    assert.ok(provider);
+
+    const fertilizationBooking = await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "fertilization",
+      scheduledStartIso: futureIso(72),
+      scheduledEndIso: futureIso(73),
+      notes: "Spring lawn treatment",
+      totalCents: 5900
+    });
+    await repository.updateBooking(fertilizationBooking.id, {
+      status: "completed",
+      completedAt: "2025-09-20T12:00:00.000Z"
+    });
+
+    const springRetention = await platform.listCustomerRetentionOpportunities(customer.id);
+    const fertilizationOpportunity = springRetention.opportunities.find(
+      (item) => item.category === "fertilization"
+    );
+    assert.ok(fertilizationOpportunity);
+    assert.equal(fertilizationOpportunity?.strategyKey, "fertilization-spring-return");
+    assert.equal(fertilizationOpportunity?.trigger, "spring-season-window");
+    assert.match(fertilizationOpportunity?.title ?? "", /spring fertilization/i);
+  });
+
+  await withMockedNow("2026-10-10T12:00:00.000Z", async () => {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-retention-aeration@example.com",
+      password: "Password123!",
+      phone: "555-0200",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress()
+    });
+
+    const provider = (await repository.listProviders())[0];
+    assert.ok(provider);
+
+    const aerationBooking = await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "aeration",
+      scheduledStartIso: futureIso(72),
+      scheduledEndIso: futureIso(73),
+      notes: "Fall core aeration",
+      totalCents: 6100
+    });
+    await repository.updateBooking(aerationBooking.id, {
+      status: "completed",
+      completedAt: "2026-04-20T12:00:00.000Z"
+    });
+
+    const fallRetention = await platform.listCustomerRetentionOpportunities(customer.id);
+    const aerationOpportunity = fallRetention.opportunities.find((item) => item.category === "aeration");
+    assert.ok(aerationOpportunity);
+    assert.equal(aerationOpportunity?.strategyKey, "aeration-fall-return");
+    assert.equal(aerationOpportunity?.trigger, "fall-season-window");
+    assert.match(aerationOpportunity?.title ?? "", /fall aeration/i);
+  });
+});
+
+test("customer retention opportunities fall back to a 90-day rebook for other services", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-retention-general@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "weed-control",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Treat weeds around the beds",
+    totalCents: 5100
+  });
+  await repository.updateBooking(booking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 95 * 24 * 60 * 60 * 1000).toISOString()
+  });
+
+  const retention = await platform.listCustomerRetentionOpportunities(customer.id);
+  const generalOpportunity = retention.opportunities.find((item) => item.category === "weed-control");
+  assert.ok(generalOpportunity);
+  assert.equal(generalOpportunity?.strategyKey, "general-90-day-rebook");
+  assert.equal(generalOpportunity?.trigger, "90-day-follow-up");
+  assert.equal(generalOpportunity?.recommendedCadence, "one-time");
 });
 
 test("customers can change addresses only when the booking state allows it", async () => {

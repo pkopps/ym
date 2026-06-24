@@ -37,6 +37,7 @@ import {
   RequestPasswordResetRequest,
   RequestPasswordResetResponse,
   MarkNotificationsReadRequest,
+  ListCustomerRetentionOpportunitiesResponse,
   ListCustomerReviewOpportunitiesResponse,
   NotificationDeliveriesResponse,
   NotificationListResponse,
@@ -57,6 +58,7 @@ import {
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
   CreateProviderReviewRequest,
+  UpdateReviewResponseRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
   FinalizeCheckoutSessionRequest,
@@ -482,6 +484,10 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.providerReviews, payload);
   }
 
+  public updateReviewResponse(payload: UpdateReviewResponseRequest): Promise<ProviderReview> {
+    return this.postJson(ApiRoutes.updateReviewResponse, payload);
+  }
+
   public getProviderReviews(providerId: string): Promise<ProviderReview[]> {
     return this.getJson<ProviderReview[]>(
       `${ApiRoutes.providerReviews}?providerId=${encodeURIComponent(providerId)}`
@@ -490,6 +496,12 @@ export class MarketplaceApiClient {
 
   public getCustomerReviewOpportunities(): Promise<ListCustomerReviewOpportunitiesResponse> {
     return this.getJson<ListCustomerReviewOpportunitiesResponse>(ApiRoutes.customerReviewOpportunities);
+  }
+
+  public getCustomerRetentionOpportunities(): Promise<ListCustomerRetentionOpportunitiesResponse> {
+    return this.getJson<ListCustomerRetentionOpportunitiesResponse>(
+      ApiRoutes.customerRetentionOpportunities
+    );
   }
 
   public getBookings(): Promise<Booking[]> {

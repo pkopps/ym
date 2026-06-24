@@ -219,8 +219,30 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.providerReviews.filter((review) => review.providerId === providerId).map((review) => ({ ...review }));
   }
 
+  public async findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined> {
+    const review = this.providerReviews.find((item) => item.id === reviewId);
+    return review ? { ...review } : undefined;
+  }
+
   public async findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined> {
-    return this.providerReviews.find((review) => review.bookingId === bookingId);
+    const review = this.providerReviews.find((item) => item.bookingId === bookingId);
+    return review ? { ...review } : undefined;
+  }
+
+  public async updateProviderReview(
+    reviewId: string,
+    updates: Partial<ProviderReview>
+  ): Promise<ProviderReview | undefined> {
+    const index = this.providerReviews.findIndex((review) => review.id === reviewId);
+    if (index === -1) {
+      return undefined;
+    }
+
+    this.providerReviews[index] = {
+      ...this.providerReviews[index],
+      ...updates
+    };
+    return { ...this.providerReviews[index] };
   }
 
   public async createReviewInvite(invite: ReviewInvite): Promise<ReviewInvite> {

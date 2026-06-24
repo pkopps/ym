@@ -338,6 +338,40 @@ test("no-booking customer general support tickets also enter the launch follow-u
   assert.match(linkedLead?.lead.message ?? "", /launch coverage/i);
 });
 
+test("customer retention opportunities reject provider tokens", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const marketplaceController = new MarketplaceController(platform);
+
+  const provider = await registerUser(authController, {
+    fullName: "Avery Green",
+    email: "provider-retention-route@example.com",
+    password: "Password123!",
+    phone: "555-0202",
+    role: "provider"
+  });
+
+  const response = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "GET",
+      path: "/api/customers/retention-opportunities",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${provider.session.token}`
+      }
+    },
+    response as never
+  ).catch((error: Error) => {
+    response.writeHead(403);
+    response.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(response.getStatusCode(), 403);
+});
+
 test("inbound launch lead endpoint is secret-protected and idempotent by source reference", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -395,8 +429,13 @@ test("inbound launch lead endpoint is secret-protected and idempotent by source 
     const firstLead = response.readJson();
     assert.equal(firstLead.sourceReferenceId, "msg_123");
     assert.equal(firstLead.requestSource, "direct-email-forward");
-    assert.equal(firstLead.areaLabel, "Needs area confirmation");
+    assert.equal(firstLead.areaLabel, "Barnegat, NJ");
     assert.equal(firstLead.contactName, "Jamie");
+    assert.ok(
+      firstLead.channelMetadata?.intakeNotes?.some((note: string) =>
+        /Area was inferred from the inbound message as Barnegat, NJ/i.test(note)
+      )
+    );
 
     const retryResponse = createMockResponse();
     await supportController.handle(
@@ -468,6 +507,56 @@ test("direct email inbound endpoint maps sender payloads into launch leads", asy
     assert.equal(lead.preferredContactMethod, "email");
     assert.equal(lead.areaLabel, "Barnegat, NJ");
     assert.match(lead.message, /weekly mowing/i);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
+});
+
+test("direct email inbound endpoint infers service, area, and text follow-up from the message body", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const supportController = new SupportController(platform);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const response = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound/email",
+        body: {
+          sourceReferenceId: "email_msg_789",
+          senderEmail: "jamie.homeowner@example.com",
+          senderName: "Jamie Homeowner",
+          subject: "Question about weekly mowing",
+          textBody: "Can you text me at (609) 555-0100 about weekly mowing in Barnegat next week?"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const lead = response.readJson();
+    assert.equal(lead.sourceChannel, "email");
+    assert.equal(lead.areaLabel, "Barnegat, NJ");
+    assert.equal(lead.serviceCategory, "lawn-mowing");
+    assert.equal(lead.phone, "6095550100");
+    assert.equal(lead.preferredContactMethod, "text");
+    assert.ok(
+      lead.channelMetadata?.intakeNotes?.some((note: string) => /Area was inferred from the inbound message/i.test(note))
+    );
+    assert.ok(
+      lead.channelMetadata?.intakeNotes?.some((note: string) => /Service was inferred from the inbound message/i.test(note))
+    );
+    assert.ok(
+      lead.channelMetadata?.intakeNotes?.some((note: string) => /phone number was inferred/i.test(note))
+    );
   } finally {
     process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
   }
@@ -567,6 +656,88 @@ test("referral inbound endpoint can fall back to the referrer's contact details"
   } finally {
     process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
   }
+});
+
+test("ops review response endpoint records posted public replies", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const marketplaceController = new MarketplaceController(platform);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Reviewer",
+    email: "ops-review-route@example.com",
+    password: "Password123!",
+    phone: "555-0333",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress()
+  });
+
+  const nowIso = new Date().toISOString();
+  const booking = await repository.createBooking({
+    id: "booking-review-route",
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    status: "completed",
+    requestedAt: nowIso,
+    scheduledStartIso: nowIso,
+    scheduledEndIso: nowIso,
+    completedAt: nowIso,
+    notes: "Completed booking for review response route test",
+    totalCents: 6200
+  });
+
+  await repository.createReviewInvite({
+    id: "invite-review-route",
+    bookingId: booking.id,
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    email: customer.email,
+    status: "sent",
+    channels: ["email"],
+    scheduledSendIso: nowIso,
+    sentAt: nowIso,
+    expiresAtIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    deepLinkPath: `/bookings/${booking.id}/review`
+  });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: booking.id,
+    overallRating: 3,
+    timelinessRating: 3,
+    attentionToDetailRating: 3,
+    reviewText: "Solid overall, but we wanted a slightly cleaner finish."
+  });
+
+  const response = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "POST",
+      path: "/api/providers/reviews/response",
+      body: {
+        reviewId: review.id,
+        responseStatus: "posted",
+        responseHandledBy: "Casey Ops",
+        responseNotes: "Posted after checking the support context.",
+        publicReplyBody:
+          "Thank you for the feedback. We appreciate the note about the finish details and are using it to keep the next visit tighter."
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    response as never
+  );
+
+  assert.equal(response.getStatusCode(), 200);
+  const updatedReview = response.readJson();
+  assert.equal(updatedReview.responseStatus, "posted");
+  assert.equal(updatedReview.responseHandledBy, "Casey Ops");
+  assert.match(updatedReview.publicReplyBody, /finish details/i);
 });
 
 test("support tickets list only the authenticated user's tickets and reject unrelated bookings", async () => {

@@ -5,6 +5,9 @@ import {
   LaunchLead,
   ObservabilityOverview,
   RecommendationSurfaceMetrics,
+  RetentionProviderMetrics,
+  RetentionSourceMetrics,
+  RetentionStrategyMetrics,
   LaunchLeadSourceMetrics,
   ReviewInvite,
   SessionHeartbeatRequest,
@@ -129,6 +132,15 @@ export class DataEngineeringLogger {
     const launchLeadMetrics = this.buildLaunchLeadMetrics(input.launchLeads);
     const recommendationMetricsBySource = this.buildRecommendationMetricsBySource();
     const recommendationRates = this.buildRecommendationSessionMetrics();
+    const retentionPromptViews = this.countEvents(
+      MarketplaceTelemetryEventCatalog.retentionPromptPresented
+    );
+    const retentionPromptAccepts = this.countEvents(
+      MarketplaceTelemetryEventCatalog.retentionPromptAccepted
+    );
+    const retentionMetricsByStrategy = this.buildRetentionMetricsByStrategy();
+    const retentionMetricsBySource = this.buildRetentionMetricsBySource();
+    const retentionMetricsByProvider = this.buildRetentionMetricsByProvider();
 
     return {
       generatedAt: new Date().toISOString(),
@@ -170,6 +182,18 @@ export class DataEngineeringLogger {
       completedReviewInvites: reviewInviteMetrics.completedReviewInvites,
       expiredReviewInvites: reviewInviteMetrics.expiredReviewInvites,
       reviewRequestCompletionRate: reviewInviteMetrics.reviewRequestCompletionRate,
+      pendingReviewResponses: 0,
+      urgentReviewResponses: 0,
+      watchReviewResponses: 0,
+      overdueReviewResponses: 0,
+      recentReviewResponses: [],
+      retentionPromptViews,
+      retentionPromptAccepts,
+      retentionPromptAcceptanceRate:
+        retentionPromptViews > 0 ? retentionPromptAccepts / retentionPromptViews : 0,
+      retentionMetricsByStrategy,
+      retentionMetricsBySource,
+      retentionMetricsByProvider,
       totalLaunchLeads: launchLeadMetrics.totalLaunchLeads,
       openLaunchLeads: launchLeadMetrics.openLaunchLeads,
       overdueLaunchLeads: launchLeadMetrics.overdueLaunchLeads,
@@ -529,6 +553,198 @@ export class DataEngineeringLogger {
 
       return left.requestSource.localeCompare(right.requestSource);
     });
+  }
+
+  private buildRetentionMetricsByStrategy(): RetentionStrategyMetrics[] {
+    const relevantEvents = this.events.filter((event) =>
+      [
+        MarketplaceTelemetryEventCatalog.retentionPromptPresented,
+        MarketplaceTelemetryEventCatalog.retentionPromptAccepted
+      ].includes(event.name)
+    );
+    const metrics = new Map<string, RetentionStrategyMetrics>();
+
+    for (const event of relevantEvents) {
+      const strategyKey =
+        typeof event.properties.retentionStrategyKey === "string" &&
+        event.properties.retentionStrategyKey.trim().length > 0
+          ? event.properties.retentionStrategyKey
+          : "unknown";
+      const trigger =
+        typeof event.properties.retentionTrigger === "string" &&
+        event.properties.retentionTrigger.trim().length > 0
+          ? event.properties.retentionTrigger
+          : "recent-completion";
+      const category =
+        typeof event.properties.category === "string" && event.properties.category.trim().length > 0
+          ? event.properties.category
+          : "lawn-mowing";
+      const key = `${strategyKey}:${trigger}:${category}`;
+      const current =
+        metrics.get(key) ??
+        {
+          strategyKey: strategyKey as RetentionStrategyMetrics["strategyKey"],
+          trigger: trigger as RetentionStrategyMetrics["trigger"],
+          category: category as RetentionStrategyMetrics["category"],
+          promptViews: 0,
+          promptAccepts: 0,
+          acceptanceRate: 0
+        } satisfies RetentionStrategyMetrics;
+
+      if (event.name === MarketplaceTelemetryEventCatalog.retentionPromptPresented) {
+        current.promptViews += 1;
+      } else if (event.name === MarketplaceTelemetryEventCatalog.retentionPromptAccepted) {
+        current.promptAccepts += 1;
+      }
+
+      current.acceptanceRate = current.promptViews > 0 ? current.promptAccepts / current.promptViews : 0;
+      metrics.set(key, current);
+    }
+
+    return [...metrics.values()].sort((left, right) => {
+      if (right.promptViews !== left.promptViews) {
+        return right.promptViews - left.promptViews;
+      }
+
+      return left.strategyKey.localeCompare(right.strategyKey);
+    });
+  }
+
+  private buildRetentionMetricsBySource(): RetentionSourceMetrics[] {
+    const relevantEvents = this.events.filter(
+      (event) =>
+        event.name === MarketplaceTelemetryEventCatalog.retentionPromptAccepted ||
+        event.name === MarketplaceTelemetryEventCatalog.bookingRequested
+    );
+    const metrics = new Map<string, RetentionSourceMetrics>();
+
+    for (const event of relevantEvents) {
+      const strategyKey = this.resolveRetentionStrategyKey(event);
+      const trigger = this.resolveRetentionTrigger(event);
+      const category = this.resolveRetentionCategory(event);
+      if (!strategyKey || !trigger || !category) {
+        continue;
+      }
+
+      const requestSource = this.resolveRecommendationRequestSource(event);
+      const key = `${requestSource}:${strategyKey}:${trigger}:${category}`;
+      const current =
+        metrics.get(key) ??
+        {
+          requestSource,
+          strategyKey,
+          trigger,
+          category,
+          promptAccepts: 0,
+          bookingRequests: 0,
+          oneTimeRebooks: 0,
+          recurringPlanStarts: 0,
+          clickToBookingRate: 0
+        } satisfies RetentionSourceMetrics;
+
+      if (event.name === MarketplaceTelemetryEventCatalog.retentionPromptAccepted) {
+        current.promptAccepts += 1;
+      } else if (event.name === MarketplaceTelemetryEventCatalog.bookingRequested) {
+        current.bookingRequests += 1;
+        if (event.properties.recurringPlanStarted === true) {
+          current.recurringPlanStarts += 1;
+        } else {
+          current.oneTimeRebooks += 1;
+        }
+      }
+
+      current.clickToBookingRate =
+        current.promptAccepts > 0 ? current.bookingRequests / current.promptAccepts : 0;
+      metrics.set(key, current);
+    }
+
+    return [...metrics.values()].sort((left, right) => {
+      if (right.bookingRequests !== left.bookingRequests) {
+        return right.bookingRequests - left.bookingRequests;
+      }
+
+      if (right.promptAccepts !== left.promptAccepts) {
+        return right.promptAccepts - left.promptAccepts;
+      }
+
+      return left.requestSource.localeCompare(right.requestSource);
+    });
+  }
+
+  private buildRetentionMetricsByProvider(): RetentionProviderMetrics[] {
+    const relevantEvents = this.events.filter(
+      (event) => event.name === MarketplaceTelemetryEventCatalog.bookingRequested
+    );
+    const metrics = new Map<string, RetentionProviderMetrics>();
+
+    for (const event of relevantEvents) {
+      const strategyKey = this.resolveRetentionStrategyKey(event);
+      const trigger = this.resolveRetentionTrigger(event);
+      const category = this.resolveRetentionCategory(event);
+      const providerId =
+        typeof event.properties.providerId === "string" && event.properties.providerId.trim().length > 0
+          ? event.properties.providerId
+          : undefined;
+      if (!strategyKey || !trigger || !category || !providerId) {
+        continue;
+      }
+
+      const key = `${providerId}:${strategyKey}:${trigger}:${category}`;
+      const current =
+        metrics.get(key) ??
+        {
+          providerId,
+          strategyKey,
+          trigger,
+          category,
+          bookingRequests: 0,
+          oneTimeRebooks: 0,
+          recurringPlanStarts: 0
+        } satisfies RetentionProviderMetrics;
+
+      current.bookingRequests += 1;
+      if (event.properties.recurringPlanStarted === true) {
+        current.recurringPlanStarts += 1;
+      } else {
+        current.oneTimeRebooks += 1;
+      }
+
+      metrics.set(key, current);
+    }
+
+    return [...metrics.values()].sort((left, right) => {
+      if (right.bookingRequests !== left.bookingRequests) {
+        return right.bookingRequests - left.bookingRequests;
+      }
+
+      return left.providerId.localeCompare(right.providerId);
+    });
+  }
+
+  private resolveRetentionStrategyKey(
+    event: AnalyticsEvent
+  ): RetentionStrategyMetrics["strategyKey"] | undefined {
+    return typeof event.properties.retentionStrategyKey === "string" &&
+      event.properties.retentionStrategyKey.trim().length > 0
+      ? (event.properties.retentionStrategyKey as RetentionStrategyMetrics["strategyKey"])
+      : undefined;
+  }
+
+  private resolveRetentionTrigger(
+    event: AnalyticsEvent
+  ): RetentionStrategyMetrics["trigger"] | undefined {
+    return typeof event.properties.retentionTrigger === "string" &&
+      event.properties.retentionTrigger.trim().length > 0
+      ? (event.properties.retentionTrigger as RetentionStrategyMetrics["trigger"])
+      : undefined;
+  }
+
+  private resolveRetentionCategory(
+    event: AnalyticsEvent
+  ): RetentionStrategyMetrics["category"] | undefined {
+    return typeof event.properties.category === "string" && event.properties.category.trim().length > 0
+      ? (event.properties.category as RetentionStrategyMetrics["category"])
+      : undefined;
   }
 
   private resolveRecommendationRequestSource(event: AnalyticsEvent): string {
