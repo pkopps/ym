@@ -282,6 +282,10 @@ model ProviderReview {
   responseHandledBy      String?
   responseNotes          String?
   publicReplyBody        String?
+  supportTicketId        String?
+  escalatedAt           DateTime?
+  escalatedBy           String?
+  escalationNotes       String?
   createdAt              DateTime
 
   @@map("provider_reviews")

@@ -1,14 +1,13 @@
 "use client";
 
 import {
-  MarketplaceApiClient,
   NotificationDeliveryRecord,
   NotificationOpsEscalationResponse,
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
-import { getWebApiBaseUrl } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
 
 function formatDateTime(iso?: string) {
   if (!iso) {
@@ -53,7 +52,7 @@ export function NotificationOpsBoard() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   async function loadHealth() {
-    const api = new MarketplaceApiClient(getWebApiBaseUrl());
+    const api = createAuthenticatedWebApiClient();
     const response = await api.getNotificationOpsHealth();
     setHealth(response);
   }
@@ -72,10 +71,10 @@ export function NotificationOpsBoard() {
   }, []);
 
   async function handleRetrySweep() {
-    try {
-      setIsRetrying(true);
-      setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      try {
+        setIsRetrying(true);
+        setErrorMessage(undefined);
+      const api = createAuthenticatedWebApiClient();
       const response = await api.retryDueNotificationDeliveriesForOps();
       setRetryResult(response);
       await loadHealth();
@@ -87,10 +86,10 @@ export function NotificationOpsBoard() {
   }
 
   async function handleEscalate() {
-    try {
-      setIsEscalating(true);
-      setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      try {
+        setIsEscalating(true);
+        setErrorMessage(undefined);
+      const api = createAuthenticatedWebApiClient();
       const response = await api.escalateNotificationOpsAlerts();
       setEscalationResult(response);
       await loadHealth();

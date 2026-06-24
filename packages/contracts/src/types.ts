@@ -1,4 +1,4 @@
-export type MarketplaceRole = "customer" | "provider" | "crew-member";
+export type MarketplaceRole = "customer" | "provider" | "crew-member" | "ops";
 export type AuthFlowMode = "signup" | "login";
 export type AuthProvider = "google" | "apple";
 export type TelemetryPlatformSurface =
@@ -359,6 +359,11 @@ export interface CrewMemberProfile extends BaseUser {
   assignedProviderId?: string;
 }
 
+export interface OpsProfile extends BaseUser {
+  role: "ops";
+  internalScope: "operations";
+}
+
 export interface CrewOpportunity {
   id: string;
   providerId: string;
@@ -708,6 +713,10 @@ export interface ProviderReview {
   responseHandledBy?: string;
   responseNotes?: string;
   publicReplyBody?: string;
+  supportTicketId?: string;
+  escalatedAt?: string;
+  escalatedBy?: string;
+  escalationNotes?: string;
   createdAt: string;
 }
 
@@ -741,12 +750,19 @@ export interface OpsReviewResponseItem {
   responseHandledBy?: string;
   responseNotes?: string;
   publicReplyBody?: string;
+  supportTicketId?: string;
+  supportTicketStatus?: SupportTicketStatus;
+  supportTicketSubject?: string;
+  escalatedAt?: string;
+  escalatedBy?: string;
+  escalationNotes?: string;
   responseDueAt?: string;
   isResponseOverdue: boolean;
   sentiment: ReviewResponseSentiment;
   priority: ReviewResponsePriority;
   issueSignals: string[];
   watchouts: string[];
+  supportFollowUpRecommended: boolean;
   recommendedAction: string;
   publicReplyTemplate: ReviewResponseTemplate;
 }
@@ -1548,11 +1564,11 @@ export interface AuthenticatedSession {
 
 export interface AuthenticatedUserEnvelope {
   session: AuthenticatedSession;
-  user: CustomerProfile | ProviderProfile | CrewMemberProfile;
+  user: CustomerProfile | ProviderProfile | CrewMemberProfile | OpsProfile;
 }
 
 export interface CurrentUserResponse {
-  user: CustomerProfile | ProviderProfile | CrewMemberProfile;
+  user: CustomerProfile | ProviderProfile | CrewMemberProfile | OpsProfile;
 }
 
 export interface GoogleAuthStartRequest {
@@ -2471,6 +2487,12 @@ export interface UpdateReviewResponseRequest {
   responseHandledBy?: string;
   responseNotes?: string;
   publicReplyBody?: string;
+}
+
+export interface EscalateReviewSupportRequest {
+  reviewId: string;
+  escalatedBy?: string;
+  escalationNotes?: string;
 }
 
 export interface ListCustomerReviewOpportunitiesResponse {

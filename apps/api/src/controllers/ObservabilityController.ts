@@ -1,4 +1,5 @@
 import { SessionHeartbeatRequest } from "@yardmatch/contracts";
+import { requireOpsAccess } from "../controller-auth";
 import { ApiController, RequestContext, sendJson } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
@@ -14,6 +15,7 @@ export class ObservabilityController implements ApiController {
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
     if (context.path === "/api/observability/overview") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.getObservabilityOverview());
       return;
     }

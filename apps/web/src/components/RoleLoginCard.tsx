@@ -25,6 +25,11 @@ const roleCopy: Record<
     helper: "Open the management board for routes, staffing, payouts, and calendar sync.",
     redirectPath: "/provider/management"
   },
+  ops: {
+    title: "Sign in",
+    helper: "Open the internal operations workspace for support, launch leads, reviews, and observability.",
+    redirectPath: "/ops"
+  },
   "crew-member": {
     title: "Sign in",
     helper: "See upcoming assignments, directions, and your work schedule in one place.",
@@ -187,7 +192,7 @@ export function RoleLoginCard({
           </a>
         </div>
 
-        <AuthIdentityOptions mode="login" role={role} />
+        {role === "ops" ? null : <AuthIdentityOptions mode="login" role={role} />}
       </form>
 
       {showRecovery ? (

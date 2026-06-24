@@ -6,13 +6,12 @@ import {
   LaunchLeadLossReason,
   LaunchLeadSourceChannel,
   LaunchLeadStatus,
-  MarketplaceApiClient,
   OpsLaunchLead,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useEffect, useState } from "react";
-import { getWebApiBaseUrl } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
 
 const statusOptions: LaunchLeadStatus[] = ["new", "contacted", "qualified", "converted", "closed-lost"];
 const sourceChannelOptions: LaunchLeadSourceChannel[] = [
@@ -122,7 +121,7 @@ export function OpsLaunchLeadBoard() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   async function loadBoard() {
-    const api = new MarketplaceApiClient(getWebApiBaseUrl());
+    const api = createAuthenticatedWebApiClient();
     setLeads(await api.getOpsLaunchLeads());
   }
 
@@ -150,7 +149,7 @@ export function OpsLaunchLeadBoard() {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       await api.createLaunchLead({
         sourceChannel: newLeadDraft.sourceChannel,
         requestSource: newLeadDraft.requestSource.trim() || undefined,
@@ -191,7 +190,7 @@ export function OpsLaunchLeadBoard() {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       await api.updateOpsLaunchLead({
         leadId: item.lead.id,
         status: draft.status,

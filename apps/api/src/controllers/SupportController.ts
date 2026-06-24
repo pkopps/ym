@@ -12,7 +12,7 @@ import {
   UpdateLaunchLeadRequest,
   UpdateSupportTicketRequest
 } from "@yardmatch/contracts";
-import { requireAuthenticatedIdentity } from "../controller-auth";
+import { requireOpsAccess, requireRole } from "../controller-auth";
 import { ApiController, RequestContext, sendJson } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
@@ -42,11 +42,13 @@ export class SupportController implements ApiController {
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
     if (context.path === "/api/launch/ops/leads") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.listOpsLaunchLeads());
       return;
     }
 
     if (context.path === "/api/launch/ops/leads/update") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.updateLaunchLeadForOps(context.body as UpdateLaunchLeadRequest));
       return;
     }
@@ -105,16 +107,19 @@ export class SupportController implements ApiController {
     }
 
     if (context.path === "/api/support/ops/summary") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.getOpsFinancialExceptionSummary());
       return;
     }
 
     if (context.path === "/api/support/ops/tickets") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.listOpsSupportTickets());
       return;
     }
 
     if (context.path === "/api/support/ops/refund-override") {
+      await requireOpsAccess(context, this.platform);
       sendJson(
         response,
         200,
@@ -124,6 +129,7 @@ export class SupportController implements ApiController {
     }
 
     if (context.path === "/api/support/ops/bookings/intervene") {
+      await requireOpsAccess(context, this.platform);
       sendJson(
         response,
         200,
@@ -133,6 +139,7 @@ export class SupportController implements ApiController {
     }
 
     if (context.path === "/api/support/ops/bookings/evidence/review") {
+      await requireOpsAccess(context, this.platform);
       sendJson(
         response,
         200,
@@ -142,6 +149,7 @@ export class SupportController implements ApiController {
     }
 
     if (context.path === "/api/support/ops/tickets/update") {
+      await requireOpsAccess(context, this.platform);
       sendJson(
         response,
         200,
@@ -151,15 +159,28 @@ export class SupportController implements ApiController {
     }
 
     if (context.path === "/api/support/tickets") {
-      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      const identity = await requireRole(context, this.platform, ["customer", "provider", "crew-member"]);
       if (context.method === "GET") {
-        sendJson(response, 200, await this.platform.listSupportTicketsForRequester(identity));
+        sendJson(
+          response,
+          200,
+          await this.platform.listSupportTicketsForRequester({
+            userId: identity.userId,
+            role: identity.role as "customer" | "provider" | "crew-member"
+          })
+        );
         return;
       }
       sendJson(
         response,
         201,
-        await this.platform.createSupportTicket(identity, context.body as CreateSupportTicketRequest)
+        await this.platform.createSupportTicket(
+          {
+            userId: identity.userId,
+            role: identity.role as "customer" | "provider" | "crew-member"
+          },
+          context.body as CreateSupportTicketRequest
+        )
       );
       return;
     }

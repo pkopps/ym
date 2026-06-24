@@ -3,7 +3,6 @@
 import {
   BookingEvidenceReviewStatus,
   CreateOpsBookingInterventionRequest,
-  MarketplaceApiClient,
   CreateOpsRefundOverrideRequest,
   ReviewBookingEvidenceForOpsRequest,
   SupportOpsTicket,
@@ -11,7 +10,7 @@ import {
   SupportTicketStatus
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
-import { getWebApiBaseUrl } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -69,7 +68,7 @@ export function OpsSupportQueue() {
   const [isWorking, setIsWorking] = useState(false);
 
   async function loadQueue() {
-    const api = new MarketplaceApiClient(getWebApiBaseUrl());
+    const api = createAuthenticatedWebApiClient();
     const nextTickets = await api.getOpsSupportTickets();
     setTickets(nextTickets);
   }
@@ -90,7 +89,7 @@ export function OpsSupportQueue() {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       await api.updateOpsSupportTicket({
         ticketId,
         status,
@@ -125,7 +124,7 @@ export function OpsSupportQueue() {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       await api.createOpsRefundOverride({
         ticketId,
         paymentId,
@@ -195,7 +194,7 @@ export function OpsSupportQueue() {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       await api.createOpsBookingIntervention({
         bookingId: ticket.booking.id,
         ticketId: ticket.ticket.id,
@@ -247,7 +246,7 @@ export function OpsSupportQueue() {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       await api.reviewBookingEvidenceForOps({
         bookingId: ticket.booking.id,
         ticketId: ticket.ticket.id,

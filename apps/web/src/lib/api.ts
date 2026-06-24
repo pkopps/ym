@@ -10,7 +10,7 @@ export type WebSessionChangeReason = "saved" | "cleared" | "expired" | "invalida
 
 export interface StoredWebSession {
   token: string;
-  role: "customer" | "provider" | "crew-member";
+  role: "customer" | "provider" | "crew-member" | "ops";
   email: string;
   userId: string;
   fullName: string;

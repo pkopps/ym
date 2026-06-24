@@ -1,13 +1,12 @@
 "use client";
 
 import {
-  MarketplaceApiClient,
   OpsReviewResponseItem,
   ProviderReviewResponseStatus
 } from "@yardmatch/contracts";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useState } from "react";
-import { getWebApiBaseUrl } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
 
 function formatPriority(priority: "urgent" | "watch" | "routine") {
   return priority === "urgent" ? "Reply today" : priority === "watch" ? "Reply soon" : "Healthy habit";
@@ -26,6 +25,8 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
         responseHandledBy: string;
         responseNotes: string;
         publicReplyBody: string;
+        escalatedBy: string;
+        escalationNotes: string;
       }
     >
   >({});
@@ -36,7 +37,9 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
         responseStatus: item.responseStatus,
         responseHandledBy: item.responseHandledBy ?? "",
         responseNotes: item.responseNotes ?? "",
-        publicReplyBody: item.publicReplyBody ?? item.publicReplyTemplate.body
+        publicReplyBody: item.publicReplyBody ?? item.publicReplyTemplate.body,
+        escalatedBy: item.escalatedBy ?? "",
+        escalationNotes: item.escalationNotes ?? ""
       }
     );
   }
@@ -48,7 +51,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       const updated = await api.updateReviewResponse({
         reviewId: item.reviewId,
         responseStatus: draft.responseStatus,
@@ -82,6 +85,43 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
       setStatusMessage("Review response status saved.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to save the review response state.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function escalate(item: OpsReviewResponseItem) {
+    const draft = getDraft(item);
+
+    try {
+      setIsWorking(true);
+      setStatusMessage(undefined);
+      setErrorMessage(undefined);
+      const api = createAuthenticatedWebApiClient();
+      const updated = await api.escalateReviewSupport({
+        reviewId: item.reviewId,
+        escalatedBy: draft.escalatedBy.trim() || undefined,
+        escalationNotes: draft.escalationNotes.trim() || undefined
+      });
+
+      setItems((current) =>
+        [...current]
+          .map((candidate) => (candidate.reviewId === item.reviewId ? updated : candidate))
+          .sort((left, right) => {
+            if (left.responseStatus !== right.responseStatus) {
+              return left.responseStatus === "pending" ? -1 : right.responseStatus === "pending" ? 1 : 0;
+            }
+
+            return right.createdAt.localeCompare(left.createdAt);
+          })
+      );
+      setStatusMessage(
+        updated.supportTicketStatus === "resolved"
+          ? "Review follow-up linked to a resolved support ticket."
+          : "Review follow-up moved into the support workflow."
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to escalate the review into support follow-up.");
     } finally {
       setIsWorking(false);
     }
@@ -143,6 +183,18 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                     {item.responseHandledBy ? ` • by ${item.responseHandledBy}` : ""}
                   </p>
                 ) : null}
+                {item.supportTicketId ? (
+                  <p>
+                    Linked support follow-up: {item.supportTicketSubject ?? "Service-quality follow-up"} •{" "}
+                    {item.supportTicketStatus?.replaceAll("-", " ") ?? "open"}
+                    {item.escalatedAt ? ` • escalated ${new Date(item.escalatedAt).toLocaleString()}` : ""}
+                    {item.escalatedBy ? ` by ${item.escalatedBy}` : ""}
+                  </p>
+                ) : item.supportFollowUpRecommended ? (
+                  <p>
+                    Support follow-up recommended before this review fades into a public-reply-only workflow.
+                  </p>
+                ) : null}
                 <div className="form-grid">
                   <label className="form-field">
                     <span>Status</span>
@@ -179,6 +231,41 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                     />
                   </label>
                 </div>
+                {item.supportFollowUpRecommended || item.supportTicketId ? (
+                  <div className="form-grid">
+                    <label className="form-field">
+                      <span>Escalated by</span>
+                      <input
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [item.reviewId]: {
+                              ...draft,
+                              escalatedBy: event.target.value
+                            }
+                          }))
+                        }
+                        value={draft.escalatedBy}
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Support follow-up note</span>
+                      <textarea
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [item.reviewId]: {
+                              ...draft,
+                              escalationNotes: event.target.value
+                            }
+                          }))
+                        }
+                        rows={3}
+                        value={draft.escalationNotes}
+                      />
+                    </label>
+                  </div>
+                ) : null}
                 <label className="form-field">
                   <span>{item.publicReplyTemplate.title}</span>
                   <textarea
@@ -212,9 +299,21 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                   />
                 </label>
                 <p>{item.publicReplyTemplate.reason}</p>
-                <button className="button secondary" disabled={isWorking} onClick={() => void save(item)} type="button">
-                  Save response state
-                </button>
+                <div className="cta-row">
+                  {item.supportFollowUpRecommended || item.supportTicketId ? (
+                    <button
+                      className="button secondary"
+                      disabled={isWorking}
+                      onClick={() => void escalate(item)}
+                      type="button"
+                    >
+                      {item.supportTicketId ? "Refresh support follow-up" : "Escalate to support"}
+                    </button>
+                  ) : null}
+                  <button className="button secondary" disabled={isWorking} onClick={() => void save(item)} type="button">
+                    Save response state
+                  </button>
+                </div>
               </article>
             );
           })}

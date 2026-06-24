@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  MarketplaceApiClient,
   OpsBookingExceptionSummaryItem,
   OpsFinancialExceptionSummaryResponse,
   OpsPayoutHoldSummaryItem,
@@ -9,7 +8,7 @@ import {
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { getBookingExceptionLabel } from "@yardmatch/contracts";
-import { getWebApiBaseUrl } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -99,7 +98,7 @@ export function OpsFinancialExceptionBoard() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   async function loadSummary() {
-    const api = new MarketplaceApiClient(getWebApiBaseUrl());
+    const api = createAuthenticatedWebApiClient();
     setSummary(await api.getOpsSupportSummary());
   }
 

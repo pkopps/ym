@@ -364,6 +364,9 @@ export class AuthController implements ApiController {
     }
 
     const payload = context.body as RegisterUserRequest;
+    if (payload.role === "ops") {
+      throw new HttpError(403, "Ops accounts cannot be created through the public signup flow.");
+    }
     validatePasswordStrength(payload.password);
     const existingIdentity = await this.platform.findAuthIdentityByEmail(payload.email.trim().toLowerCase());
     if (existingIdentity) {

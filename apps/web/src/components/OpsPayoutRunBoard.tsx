@@ -1,8 +1,8 @@
 "use client";
 
-import { MarketplaceApiClient, OpsPayoutRunPreviewResponse } from "@yardmatch/contracts";
+import { OpsPayoutRunPreviewResponse } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
-import { getWebApiBaseUrl } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -23,7 +23,7 @@ export function OpsPayoutRunBoard() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
 
   useEffect(() => {
-    const api = new MarketplaceApiClient(getWebApiBaseUrl());
+    const api = createAuthenticatedWebApiClient();
     void api.getOpsPayoutPreview().then(setPreview).catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load payout run preview.");
     });

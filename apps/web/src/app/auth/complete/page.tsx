@@ -8,6 +8,7 @@ import { createWebApiClient, saveStoredSession } from "../../../lib/api";
 const redirectByRole: Record<MarketplaceRole, string> = {
   customer: "/customer",
   provider: "/provider/management",
+  ops: "/ops",
   "crew-member": "/crew"
 };
 
@@ -156,7 +157,16 @@ export default function AuthCompletePage() {
           <form className="auth-form-stack" onSubmit={handleSubmit}>
             <div className="list-panel">
               <strong>{searchParams.get("email")}</strong>
-              <p>{role === "provider" ? "Business owner" : role === "crew-member" ? "Crew member" : "Property owner"} account</p>
+              <p>
+                {role === "provider"
+                  ? "Business owner"
+                  : role === "ops"
+                    ? "Operations"
+                    : role === "crew-member"
+                      ? "Crew member"
+                      : "Property owner"}{" "}
+                account
+              </p>
             </div>
 
             <div className="form-grid">
@@ -240,7 +250,18 @@ export default function AuthCompletePage() {
               <button className="button" disabled={isSubmitting} type="submit">
                 {isSubmitting ? "Creating account..." : "Finish account"}
               </button>
-              <a className="button-secondary" href={role === "provider" ? "/auth/provider" : role === "crew-member" ? "/auth/crew" : "/auth/customer"}>
+              <a
+                className="button-secondary"
+                href={
+                  role === "provider"
+                    ? "/auth/provider"
+                    : role === "ops"
+                      ? "/help"
+                      : role === "crew-member"
+                        ? "/auth/crew"
+                        : "/auth/customer"
+                }
+              >
                 Start over
               </a>
             </div>
@@ -260,10 +281,32 @@ export default function AuthCompletePage() {
 
       <section className="card">
         <div className="cta-row">
-          <a className="button" href={role === "provider" ? "/login/provider" : role === "crew-member" ? "/login/crew" : "/login/customer"}>
+          <a
+            className="button"
+            href={
+              role === "provider"
+                ? "/login/provider"
+                : role === "ops"
+                  ? "/login/ops"
+                  : role === "crew-member"
+                    ? "/login/crew"
+                    : "/login/customer"
+            }
+          >
             Back to login
           </a>
-          <a className="button-secondary" href={role === "provider" ? "/auth/provider" : role === "crew-member" ? "/auth/crew" : "/auth/customer"}>
+          <a
+            className="button-secondary"
+            href={
+              role === "provider"
+                ? "/auth/provider"
+                : role === "ops"
+                  ? "/help"
+                  : role === "crew-member"
+                    ? "/auth/crew"
+                    : "/auth/customer"
+            }
+          >
             Try sign up again
           </a>
         </div>

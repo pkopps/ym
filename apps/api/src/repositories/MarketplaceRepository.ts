@@ -13,6 +13,7 @@ import {
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
+  OpsProfile,
   NotificationDeliveryRecord,
   NotificationPreferences,
   PaymentRecord,
@@ -32,7 +33,7 @@ export interface AuthIdentityRecord {
   passwordHash?: string;
   googleSubject?: string;
   appleSubject?: string;
-  role: CustomerProfile["role"] | ProviderProfile["role"] | CrewMemberProfile["role"];
+  role: CustomerProfile["role"] | ProviderProfile["role"] | CrewMemberProfile["role"] | "ops";
   sessionVersion: number;
   resetPasswordCodeHash?: string;
   resetPasswordExpiresAt?: string;
@@ -43,16 +44,20 @@ export interface MarketplaceRepository {
   createCustomer(customer: CustomerProfile, passwordHash?: string): Promise<CustomerProfile>;
   createProvider(provider: ProviderProfile, passwordHash?: string): Promise<ProviderProfile>;
   createCrewMember(crewMember: CrewMemberProfile, passwordHash?: string): Promise<CrewMemberProfile>;
+  createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
   listCustomers(): Promise<CustomerProfile[]>;
   listCrewMembers(): Promise<CrewMemberProfile[]>;
+  listOpsUsers(): Promise<OpsProfile[]>;
   findCustomerById(customerId: string): Promise<CustomerProfile | undefined>;
   findCrewMemberById(crewMemberId: string): Promise<CrewMemberProfile | undefined>;
+  findOpsUserById(opsUserId: string): Promise<OpsProfile | undefined>;
   updateCrewMember(
     crewMemberId: string,
     updates: Partial<CrewMemberProfile>
   ): Promise<CrewMemberProfile | undefined>;
   updateCustomer(customerId: string, updates: Partial<CustomerProfile>): Promise<CustomerProfile | undefined>;
+  updateOpsUser(opsUserId: string, updates: Partial<OpsProfile>): Promise<OpsProfile | undefined>;
   listCustomerProperties(customerId: string): Promise<CustomerProperty[]>;
   listSlotsByProvider(providerId: string): Promise<AvailabilitySlot[]>;
   listAllSlots(): Promise<AvailabilitySlot[]>;

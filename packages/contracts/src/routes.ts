@@ -29,6 +29,7 @@ export class ApiRoutes {
   public static readonly providerAssistantCommand = "/api/providers/assistant";
   public static readonly providerReviews = "/api/providers/reviews";
   public static readonly updateReviewResponse = "/api/providers/reviews/response";
+  public static readonly escalateReviewSupport = "/api/providers/reviews/escalate";
   public static readonly notifications = "/api/notifications";
   public static readonly notificationsRead = "/api/notifications/read";
   public static readonly notificationPreferences = "/api/notifications/preferences";

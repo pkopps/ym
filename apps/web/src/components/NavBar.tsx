@@ -27,6 +27,7 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
     { href: "/provider/management", label: "Management" },
     { href: "/provider/payments", label: "Payments" }
   ],
+  ops: [{ href: "/ops", label: "Operations dashboard" }],
   "crew-member": [
     { href: "/crew", label: "Open work" },
     { href: "/crew/schedule", label: "Schedule" }

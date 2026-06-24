@@ -55,6 +55,7 @@ import {
   CustomerRetentionOpportunity,
   CustomerReviewOpportunity,
   CreateProviderReviewRequest,
+  EscalateReviewSupportRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
   CreateRecurringServicePlanRequest,
@@ -96,6 +97,7 @@ import {
   ObservabilityOverview,
   CustomerProfile,
   CurrentUserResponse,
+  OpsProfile,
   NotificationListResponse,
   NotificationPreferences,
   PaymentRecord,
@@ -299,7 +301,7 @@ export class MarketplacePlatformService {
   public async registerUser(
     payload: Omit<RegisterUserRequest, "password"> & Partial<Pick<RegisterUserRequest, "password">>,
     passwordHash?: string
-  ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
+  ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile | OpsProfile> {
     const now = new Date().toISOString();
     const validatedAddress = await this.normalizeAndValidateAddress(payload.address);
     const normalizedAddress = await this.resolveSavedPropertyAddress(validatedAddress.address, []);
@@ -371,6 +373,21 @@ export class MarketplacePlatformService {
         }
       );
       return this.repository.createCrewMember(crewMember, passwordHash);
+    }
+
+    if (payload.role === "ops") {
+      const opsUser: OpsProfile = {
+        id: crypto.randomUUID(),
+        fullName: payload.fullName,
+        email: payload.email,
+        phone: payload.phone,
+        role: "ops",
+        address: normalizedAddress,
+        createdAt: now,
+        internalScope: "operations"
+      };
+
+      return this.repository.createOpsUser(opsUser, passwordHash);
     }
 
     const provider: ProviderProfile = {
@@ -454,7 +471,7 @@ export class MarketplacePlatformService {
 
   public async confirmPasswordReset(
     payload: ConfirmPasswordResetRequest
-  ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile> {
+  ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile | OpsProfile> {
     const email = payload.email.trim().toLowerCase();
     const identity = await this.repository.findAuthIdentityByEmail(email);
 
@@ -2657,7 +2674,7 @@ export class MarketplacePlatformService {
   }
 
   public async createBookingDispute(
-    requester: AuthIdentityRecord,
+    requester: { userId: string; role: "customer" | "provider" },
     payload: CreateBookingDisputeRequest
   ): Promise<Booking> {
     const booking = await this.repository.findBookingById(payload.bookingId);
@@ -2679,10 +2696,6 @@ export class MarketplacePlatformService {
 
     if (booking.status === "requested") {
       throw new HttpError(400, "Requested bookings must be confirmed before they can be disputed");
-    }
-
-    if (requester.role === "crew-member") {
-      throw new HttpError(403, "Crew members cannot open booking disputes");
     }
 
     const reason = payload.reason.trim();
@@ -3549,6 +3562,10 @@ export class MarketplacePlatformService {
       attentionToDetailRating: payload.attentionToDetailRating,
       reviewText: normalizedReviewText,
       responseStatus: "pending",
+      supportTicketId: undefined,
+      escalatedAt: undefined,
+      escalatedBy: undefined,
+      escalationNotes: undefined,
       createdAt: new Date().toISOString()
     };
 
@@ -6733,6 +6750,90 @@ export class MarketplacePlatformService {
     return updatedReview;
   }
 
+  public async escalateReviewForSupport(
+    payload: EscalateReviewSupportRequest
+  ): Promise<OpsReviewResponseItem> {
+    const review = await this.repository.findProviderReviewById(payload.reviewId);
+    if (!review) {
+      throw new HttpError(404, "Review not found");
+    }
+
+    const booking = await this.repository.findBookingById(review.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+
+    const provider = await this.repository.findProviderById(review.providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+
+    const relatedTickets = (await this.repository.listSupportTickets()).filter(
+      (ticket) => ticket.bookingId === booking.id
+    );
+    const openServiceQualityTicket = relatedTickets.find(
+      (ticket) => ticket.issueType === "service-quality" && ticket.status !== "resolved"
+    );
+    const escalationNotes = payload.escalationNotes?.trim().replace(/\s+/g, " ") || undefined;
+    if (!escalationNotes || escalationNotes.length < 12) {
+      throw new HttpError(400, "Add a specific support follow-up note before escalating this review.");
+    }
+    const escalatedBy = payload.escalatedBy?.trim().replace(/\s+/g, " ") || undefined;
+    const escalatedAt = new Date().toISOString();
+
+    const supportTicket =
+      openServiceQualityTicket ??
+      (await this.createSupportTicket(
+        {
+          userId: review.customerId,
+          role: "customer"
+        },
+        {
+          bookingId: booking.id,
+          issueType: "service-quality",
+          subject: `Review escalation: ${this.titleCaseCategory(booking.category)}`,
+          description:
+            `Ops escalated a public review into service-quality follow-up. ` +
+            `Rating: ${review.overallRating}/5. Review: ${review.reviewText}. ` +
+            `Ops note: ${escalationNotes}`
+        }
+      ));
+
+    const nextSupportTicket =
+      openServiceQualityTicket && openServiceQualityTicket.status !== "resolved"
+        ? ((await this.repository.updateSupportTicket(openServiceQualityTicket.id, {
+            updatedAt: escalatedAt,
+            description:
+              `${openServiceQualityTicket.description}\n\nReview escalation note (${escalatedAt}): ${escalationNotes}`
+          })) ??
+          openServiceQualityTicket)
+        : supportTicket;
+
+    const updatedReview = await this.repository.updateProviderReview(review.id, {
+      supportTicketId: nextSupportTicket.id,
+      escalatedAt,
+      escalatedBy,
+      escalationNotes
+    });
+
+    if (!updatedReview) {
+      throw new HttpError(500, "Review escalation could not be saved");
+    }
+
+    const queueItem = this.buildOpsReviewResponseQueueItem(
+      updatedReview,
+      booking,
+      provider,
+      (await this.repository.listSupportTickets()).filter((ticket) => ticket.bookingId === booking.id)
+    );
+
+    if (!queueItem) {
+      throw new HttpError(500, "Review escalation could not be loaded back into the ops queue");
+    }
+
+    return queueItem;
+  }
+
   public async listCustomerReviewOpportunities(
     customerId: string
   ): Promise<ListCustomerReviewOpportunitiesResponse> {
@@ -7800,7 +7901,7 @@ export class MarketplacePlatformService {
   }
 
   public async createRefund(
-    requester: AuthIdentityRecord,
+    requester: { userId: string; role: "customer" | "provider" },
     payload: CreateRefundRequest
   ): Promise<PaymentRecord> {
     const payment = await this.repository.findPaymentById(payload.paymentId);
@@ -7819,10 +7920,6 @@ export class MarketplacePlatformService {
 
     if (requester.role === "provider" && booking.providerId !== requester.userId) {
       throw new HttpError(403, "Providers can only manage refunds for their own jobs");
-    }
-
-    if (requester.role === "crew-member") {
-      throw new HttpError(403, "Crew members cannot request refunds");
     }
 
     if (payment.status !== "captured") {
@@ -11207,6 +11304,10 @@ export class MarketplacePlatformService {
       return this.repository.findProviderById(identity.userId);
     }
 
+    if (identity.role === "ops") {
+      return this.repository.findOpsUserById(identity.userId);
+    }
+
     return this.repository.findCrewMemberById(identity.userId);
   }
 
@@ -13097,83 +13198,111 @@ export class MarketplacePlatformService {
         return right.createdAt.localeCompare(left.createdAt);
       })
       .slice(0, 8)
-      .map((review) => {
-        const booking = bookingsById.get(review.bookingId);
-        const provider = providersById.get(review.providerId);
-        if (!booking || !provider) {
-          return undefined;
-        }
-
-        const issueSignals = this.inferReviewIssueSignals(review);
-        const relatedTickets = supportTickets.filter((ticket) => ticket.bookingId === booking.id);
-        const hasOpenSupportTicket = relatedTickets.some((ticket) => ticket.status !== "resolved");
-        const hasRefundContext = relatedTickets.some((ticket) => ticket.issueType === "billing");
-        const sentiment: OpsReviewResponseItem["sentiment"] =
-          review.overallRating <= 2 ? "negative" : review.overallRating === 3 || issueSignals.length > 0 ? "mixed" : "positive";
-        const priority: OpsReviewResponseItem["priority"] =
-          review.overallRating <= 2 || hasOpenSupportTicket || hasRefundContext
-            ? "urgent"
-            : review.overallRating === 3 || issueSignals.length > 0
-              ? "watch"
-              : "routine";
-        const responseDueAt =
-          review.responseStatus === "pending"
-            ? this.getReviewResponseDueIso(review.createdAt, priority)
-            : undefined;
-        const isResponseOverdue =
-          responseDueAt !== undefined && new Date(responseDueAt).getTime() < Date.now();
-        const watchouts: string[] = [];
-        if (hasOpenSupportTicket) {
-          watchouts.push("An open support ticket already exists for this booking, so confirm internal follow-up before posting a public reply.");
-        }
-        if (hasRefundContext) {
-          watchouts.push("Billing or refund context is already on file. Do not promise a refund outcome publicly before checking the support record.");
-        }
-        if (issueSignals.includes("timing")) {
-          watchouts.push("The review mentions timing or lateness, so the response should acknowledge reliability concerns directly.");
-        }
-        if (issueSignals.includes("quality")) {
-          watchouts.push("The review points to service quality or missed-detail concerns, so avoid generic thanks-only replies.");
-        }
-        if (review.responseStatus === "posted") {
-          watchouts.push("A public reply is already recorded. Reopen only if the posted reply needs correction or follow-up.");
-        }
-        if (review.responseStatus === "skipped") {
-          watchouts.push("A skip decision is already recorded. Reopen only if new public-facing context changes that call.");
-        }
-
-        const item: OpsReviewResponseItem = {
-          reviewId: review.id,
-          bookingId: booking.id,
-          providerId: provider.id,
-          providerName: provider.companyName,
-          category: booking.category,
-          overallRating: review.overallRating,
-          reviewText: review.reviewText,
-          createdAt: review.createdAt,
-          responseStatus: review.responseStatus,
-          responseHandledAt: review.responseHandledAt,
-          responseHandledBy: review.responseHandledBy,
-          responseNotes: review.responseNotes,
-          publicReplyBody: review.publicReplyBody,
-          responseDueAt,
-          isResponseOverdue,
-          sentiment,
-          priority,
-          issueSignals,
-          watchouts,
-          recommendedAction: this.buildReviewResponseRecommendedAction(
-            review.responseStatus,
-            priority,
-            hasOpenSupportTicket,
-            issueSignals
-          ),
-          publicReplyTemplate: this.buildReviewResponseTemplate(review, booking, provider, priority, issueSignals)
-        };
-
-        return item;
-      })
+      .map((review) =>
+        this.buildOpsReviewResponseQueueItem(
+          review,
+          bookingsById.get(review.bookingId),
+          providersById.get(review.providerId),
+          supportTickets.filter((ticket) => ticket.bookingId === review.bookingId)
+        )
+      )
       .filter((item): item is OpsReviewResponseItem => Boolean(item));
+  }
+
+  private buildOpsReviewResponseQueueItem(
+    review: ProviderReview,
+    booking: Booking | undefined,
+    provider: ProviderProfile | undefined,
+    relatedTickets: SupportTicket[]
+  ): OpsReviewResponseItem | undefined {
+    if (!booking || !provider) {
+      return undefined;
+    }
+
+    const issueSignals = this.inferReviewIssueSignals(review);
+    const hasOpenSupportTicket = relatedTickets.some((ticket) => ticket.status !== "resolved");
+    const hasRefundContext = relatedTickets.some((ticket) => ticket.issueType === "billing");
+    const sentiment: OpsReviewResponseItem["sentiment"] =
+      review.overallRating <= 2 ? "negative" : review.overallRating === 3 || issueSignals.length > 0 ? "mixed" : "positive";
+    const priority: OpsReviewResponseItem["priority"] =
+      review.overallRating <= 2 || hasOpenSupportTicket || hasRefundContext
+        ? "urgent"
+        : review.overallRating === 3 || issueSignals.length > 0
+          ? "watch"
+          : "routine";
+    const responseDueAt =
+      review.responseStatus === "pending" ? this.getReviewResponseDueIso(review.createdAt, priority) : undefined;
+    const isResponseOverdue = responseDueAt !== undefined && new Date(responseDueAt).getTime() < Date.now();
+    const linkedSupportTicket = review.supportTicketId
+      ? relatedTickets.find((ticket) => ticket.id === review.supportTicketId)
+      : undefined;
+    const supportFollowUpRecommended =
+      review.responseStatus === "pending" && priority === "urgent" && !linkedSupportTicket;
+    const watchouts: string[] = [];
+    if (hasOpenSupportTicket) {
+      watchouts.push("An open support ticket already exists for this booking, so confirm internal follow-up before posting a public reply.");
+    }
+    if (hasRefundContext) {
+      watchouts.push("Billing or refund context is already on file. Do not promise a refund outcome publicly before checking the support record.");
+    }
+    if (issueSignals.includes("timing")) {
+      watchouts.push("The review mentions timing or lateness, so the response should acknowledge reliability concerns directly.");
+    }
+    if (issueSignals.includes("quality")) {
+      watchouts.push("The review points to service quality or missed-detail concerns, so avoid generic thanks-only replies.");
+    }
+    if (supportFollowUpRecommended) {
+      watchouts.push("This review should also move into a service-quality support follow-up so the team does more than post a public reply.");
+    }
+    if (linkedSupportTicket?.status && linkedSupportTicket.status !== "resolved") {
+      watchouts.push("A linked support follow-up is already open for this review, so keep the public reply aligned with the case notes.");
+    }
+    if (linkedSupportTicket?.status === "resolved") {
+      watchouts.push("A linked support follow-up has already been resolved. Reopen it only if the public review changes the recovery plan.");
+    }
+    if (review.responseStatus === "posted") {
+      watchouts.push("A public reply is already recorded. Reopen only if the posted reply needs correction or follow-up.");
+    }
+    if (review.responseStatus === "skipped") {
+      watchouts.push("A skip decision is already recorded. Reopen only if new public-facing context changes that call.");
+    }
+
+    return {
+      reviewId: review.id,
+      bookingId: booking.id,
+      providerId: provider.id,
+      providerName: provider.companyName,
+      category: booking.category,
+      overallRating: review.overallRating,
+      reviewText: review.reviewText,
+      createdAt: review.createdAt,
+      responseStatus: review.responseStatus,
+      responseHandledAt: review.responseHandledAt,
+      responseHandledBy: review.responseHandledBy,
+      responseNotes: review.responseNotes,
+      publicReplyBody: review.publicReplyBody,
+      supportTicketId: review.supportTicketId,
+      supportTicketStatus: linkedSupportTicket?.status,
+      supportTicketSubject: linkedSupportTicket?.subject,
+      escalatedAt: review.escalatedAt,
+      escalatedBy: review.escalatedBy,
+      escalationNotes: review.escalationNotes,
+      responseDueAt,
+      isResponseOverdue,
+      sentiment,
+      priority,
+      issueSignals,
+      watchouts,
+      supportFollowUpRecommended,
+      recommendedAction: this.buildReviewResponseRecommendedAction(
+        review.responseStatus,
+        priority,
+        hasOpenSupportTicket,
+        issueSignals,
+        linkedSupportTicket
+      ),
+      publicReplyTemplate: this.buildReviewResponseTemplate(review, booking, provider, priority, issueSignals)
+    };
   }
 
   private inferReviewIssueSignals(review: ProviderReview): string[] {
@@ -13203,7 +13332,8 @@ export class MarketplacePlatformService {
     responseStatus: ProviderReview["responseStatus"],
     priority: OpsReviewResponseItem["priority"],
     hasOpenSupportTicket: boolean,
-    issueSignals: string[]
+    issueSignals: string[],
+    linkedSupportTicket?: SupportTicket
   ): string {
     if (responseStatus === "posted") {
       return "A public reply is already recorded here. Only reopen this review if the posted response needs correction or a follow-up update.";
@@ -13214,9 +13344,17 @@ export class MarketplacePlatformService {
     }
 
     if (priority === "urgent") {
+      if (linkedSupportTicket?.status && linkedSupportTicket.status !== "resolved") {
+        return "Reply publicly today with a calm acknowledgment, then keep the linked support follow-up moving so the public reply and the real recovery path stay aligned.";
+      }
+
+      if (linkedSupportTicket?.status === "resolved") {
+        return "Reply publicly today with a calm acknowledgment, and keep the wording aligned with the resolved support outcome instead of re-opening the whole case in public.";
+      }
+
       return hasOpenSupportTicket
         ? "Reply publicly today with a calm acknowledgment, then make sure the internal support path is aligned before promising any concrete remedy."
-        : "Reply publicly today, acknowledge the specific concern without arguing, and route any deeper recovery through the support team instead of debating in public.";
+        : "Reply publicly today, acknowledge the specific concern without arguing, and escalate the review into a service-quality support follow-up instead of debating in public.";
     }
 
     if (priority === "watch") {

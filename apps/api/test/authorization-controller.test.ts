@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
+import { hashPassword } from "../src/auth";
 import { AuthController } from "../src/controllers/AuthController";
 import { MarketplaceController } from "../src/controllers/MarketplaceController";
+import { ObservabilityController } from "../src/controllers/ObservabilityController";
 import { SupportController } from "../src/controllers/SupportController";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
@@ -71,6 +73,55 @@ async function registerUser(
   );
 
   assert.equal(response.getStatusCode(), 201);
+  return response.readJson() as {
+    session: { token: string };
+    user: { id: string; role: string };
+  };
+}
+
+async function createOpsSession(
+  controller: AuthController,
+  platform: MarketplacePlatformService,
+  overrides?: Partial<{
+    fullName: string;
+    email: string;
+    password: string;
+    phone: string;
+  }>
+) {
+  const fullName = overrides?.fullName ?? "Casey Ops";
+  const email = overrides?.email ?? "casey-ops@example.com";
+  const password = overrides?.password ?? "Password123!";
+  const phone = overrides?.phone ?? "555-0310";
+
+  await platform.registerUser(
+    {
+      fullName,
+      email,
+      password,
+      phone,
+      role: "ops",
+      address: createAddress()
+    },
+    hashPassword(password)
+  );
+
+  const response = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email,
+        password
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    response as never
+  );
+
+  assert.equal(response.getStatusCode(), 200);
   return response.readJson() as {
     session: { token: string };
     user: { id: string; role: string };
@@ -251,6 +302,37 @@ test("provider payout setting changes require a fresh provider session", async (
   assert.equal(freshResponse.getStatusCode(), 200);
   const updatedProvider = freshResponse.readJson();
   assert.equal(updatedProvider.instantPayoutsEnabled, true);
+});
+
+test("public signup rejects ops accounts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  const response = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/register",
+      body: {
+        fullName: "Casey Ops",
+        email: "public-ops-signup@example.com",
+        password: "Password123!",
+        phone: "555-0311",
+        role: "ops",
+        address: createAddress()
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    response as never
+  ).catch((error: Error) => {
+    response.writeHead(403);
+    response.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(response.getStatusCode(), 403);
+  assert.match(response.readJson().message, /Ops accounts cannot be created through the public signup flow/i);
 });
 
 test("support tickets are attributed to the authenticated requester", async () => {
@@ -661,9 +743,17 @@ test("referral inbound endpoint can fall back to the referrer's contact details"
 test("ops review response endpoint records posted public replies", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
   const marketplaceController = new MarketplaceController(platform);
   const seededProvider = (await repository.listProviders())[0];
   assert.ok(seededProvider);
+  const opsProvider = await registerUser(authController, {
+    fullName: "Casey Ops",
+    email: "ops-review-handler@example.com",
+    password: "Password123!",
+    phone: "555-0332",
+    role: "provider"
+  });
 
   const customer = await platform.registerUser({
     fullName: "Jordan Reviewer",
@@ -728,7 +818,9 @@ test("ops review response endpoint records posted public replies", async () => {
           "Thank you for the feedback. We appreciate the note about the finish details and are using it to keep the next visit tighter."
       },
       query: new URLSearchParams(),
-      headers: {}
+      headers: {
+        authorization: `Bearer ${opsProvider.session.token}`
+      }
     },
     response as never
   );
@@ -738,6 +830,260 @@ test("ops review response endpoint records posted public replies", async () => {
   assert.equal(updatedReview.responseStatus, "posted");
   assert.equal(updatedReview.responseHandledBy, "Casey Ops");
   assert.match(updatedReview.publicReplyBody, /finish details/i);
+});
+
+test("ops review escalation endpoint opens a linked support follow-up", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const marketplaceController = new MarketplaceController(platform);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
+
+  const customer = await registerUser(authController, {
+    fullName: "Jordan Rivera",
+    email: "review-escalation-route@example.com",
+    password: "Password123!",
+    phone: "555-0302",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress("18 Cedar Lane", 39.7536, -74.2219)
+  });
+  const opsProvider = await registerUser(authController, {
+    fullName: "Casey Ops",
+    email: "ops-review-escalation-handler@example.com",
+    password: "Password123!",
+    phone: "555-03025",
+    role: "provider"
+  });
+
+  const nowIso = new Date().toISOString();
+  const booking = await repository.createBooking({
+    id: "booking-review-escalate-route",
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: "yard-cleanup",
+    status: "completed",
+    requestedAt: nowIso,
+    scheduledStartIso: nowIso,
+    scheduledEndIso: nowIso,
+    completedAt: nowIso,
+    notes: "Completed booking for review escalation route test",
+    totalCents: 8100
+  });
+
+  await repository.createReviewInvite({
+    id: "invite-review-escalate-route",
+    bookingId: booking.id,
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    email: customer.email,
+    status: "sent",
+    channels: ["email"],
+    scheduledSendIso: nowIso,
+    sentAt: nowIso,
+    expiresAtIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    deepLinkPath: `/bookings/${booking.id}/review`
+  });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: booking.id,
+    overallRating: 2,
+    timelinessRating: 3,
+    attentionToDetailRating: 2,
+    reviewText: "The cleanup missed debris by the gate and needs service-quality follow-up."
+  });
+
+  const response = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "POST",
+      path: "/api/providers/reviews/escalate",
+      body: {
+        reviewId: review.id,
+        escalatedBy: "Casey Ops",
+        escalationNotes: "Open a service-quality follow-up before we treat this like a public-reply-only issue."
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${opsProvider.session.token}`
+      }
+    },
+    response as never
+  );
+
+  assert.equal(response.getStatusCode(), 200);
+  const escalatedItem = response.readJson();
+  assert.ok(escalatedItem.supportTicketId);
+  assert.equal(escalatedItem.supportTicketStatus, "open");
+  assert.equal(escalatedItem.escalatedBy, "Casey Ops");
+  assert.equal(escalatedItem.supportFollowUpRecommended, false);
+});
+
+test("ops overview route requires an ops or provider session", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const observabilityController = new ObservabilityController(platform);
+
+  const customer = await registerUser(authController, {
+    fullName: "Jordan Rivera",
+    email: "ops-overview-customer@example.com",
+    password: "Password123!",
+    phone: "555-0303",
+    role: "customer"
+  });
+  const provider = await registerUser(authController, {
+    fullName: "Ariana Flores",
+    email: "ops-overview-provider@example.com",
+    password: "Password123!",
+    phone: "555-0304",
+    role: "provider"
+  });
+  const ops = await createOpsSession(authController, platform, {
+    email: "ops-overview-ops@example.com",
+    phone: "555-0307"
+  });
+
+  const unauthorizedResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/overview",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    unauthorizedResponse as never
+  ).catch((error: Error) => {
+    unauthorizedResponse.writeHead(401);
+    unauthorizedResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(unauthorizedResponse.getStatusCode(), 401);
+
+  const forbiddenResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/overview",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    forbiddenResponse as never
+  ).catch((error: Error) => {
+    forbiddenResponse.writeHead(403);
+    forbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(forbiddenResponse.getStatusCode(), 403);
+
+  const providerResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/overview",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${provider.session.token}`
+      }
+    },
+    providerResponse as never
+  );
+  assert.equal(providerResponse.getStatusCode(), 200);
+
+  const opsResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/overview",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    opsResponse as never
+  );
+  assert.equal(opsResponse.getStatusCode(), 200);
+});
+
+test("support ops routes require an ops or provider session", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const supportController = new SupportController(platform);
+
+  const customer = await registerUser(authController, {
+    fullName: "Jordan Rivera",
+    email: "support-ops-customer@example.com",
+    password: "Password123!",
+    phone: "555-0305",
+    role: "customer"
+  });
+  const provider = await registerUser(authController, {
+    fullName: "Ariana Flores",
+    email: "support-ops-provider@example.com",
+    password: "Password123!",
+    phone: "555-0306",
+    role: "provider"
+  });
+  const ops = await createOpsSession(authController, platform, {
+    email: "support-ops-ops@example.com",
+    phone: "555-0308"
+  });
+
+  const forbiddenResponse = createMockResponse();
+  await supportController.handle(
+    {
+      method: "GET",
+      path: "/api/support/ops/tickets",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    forbiddenResponse as never
+  ).catch((error: Error) => {
+    forbiddenResponse.writeHead(403);
+    forbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(forbiddenResponse.getStatusCode(), 403);
+
+  const providerResponse = createMockResponse();
+  await supportController.handle(
+    {
+      method: "GET",
+      path: "/api/support/ops/tickets",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${provider.session.token}`
+      }
+    },
+    providerResponse as never
+  );
+  assert.equal(providerResponse.getStatusCode(), 200);
+
+  const opsResponse = createMockResponse();
+  await supportController.handle(
+    {
+      method: "GET",
+      path: "/api/support/ops/tickets",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    opsResponse as never
+  );
+  assert.equal(opsResponse.getStatusCode(), 200);
 });
 
 test("support tickets list only the authenticated user's tickets and reject unrelated bookings", async () => {

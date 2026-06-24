@@ -12,6 +12,7 @@ import {
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
+  OpsProfile,
   NotificationDeliveryRecord,
   NotificationPreferences,
   PaymentRecord,
@@ -29,6 +30,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly customers: CustomerProfile[] = [];
   private readonly providers: ProviderProfile[] = [];
   private readonly crewMembers: CrewMemberProfile[] = [];
+  private readonly opsUsers: OpsProfile[] = [];
   private readonly slots: AvailabilitySlot[] = [];
   private readonly bookings: Booking[] = [];
   private readonly recurringServicePlans: RecurringServicePlan[] = [];
@@ -73,6 +75,12 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return crewMember;
   }
 
+  public async createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile> {
+    this.opsUsers.push(opsUser);
+    this.saveAuthIdentity(opsUser.id, opsUser.email, opsUser.role, passwordHash);
+    return opsUser;
+  }
+
   public async listProviders(): Promise<ProviderProfile[]> {
     return [...this.providers];
   }
@@ -85,12 +93,20 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return [...this.crewMembers];
   }
 
+  public async listOpsUsers(): Promise<OpsProfile[]> {
+    return [...this.opsUsers];
+  }
+
   public async findCustomerById(customerId: string): Promise<CustomerProfile | undefined> {
     return this.customers.find((customer) => customer.id === customerId);
   }
 
   public async findCrewMemberById(crewMemberId: string): Promise<CrewMemberProfile | undefined> {
     return this.crewMembers.find((crewMember) => crewMember.id === crewMemberId);
+  }
+
+  public async findOpsUserById(opsUserId: string): Promise<OpsProfile | undefined> {
+    return this.opsUsers.find((opsUser) => opsUser.id === opsUserId);
   }
 
   public async updateCrewMember(
@@ -119,6 +135,20 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
     Object.assign(customer, updates);
     return customer;
+  }
+
+  public async updateOpsUser(
+    opsUserId: string,
+    updates: Partial<OpsProfile>
+  ): Promise<OpsProfile | undefined> {
+    const opsUser = this.opsUsers.find((item) => item.id === opsUserId);
+
+    if (!opsUser) {
+      return undefined;
+    }
+
+    Object.assign(opsUser, updates);
+    return opsUser;
   }
 
   public async listCustomerProperties(customerId: string): Promise<CustomerProperty[]> {

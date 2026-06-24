@@ -1108,6 +1108,7 @@ test("observability overview includes a public review response queue with urgenc
   assert.equal(responseItem?.sentiment, "negative");
   assert.equal(responseItem?.isResponseOverdue, true);
   assert.ok(responseItem?.responseDueAt);
+  assert.equal(responseItem?.supportFollowUpRecommended, true);
   assert.equal(responseItem?.providerName, seededProvider.companyName);
   assert.equal(responseItem?.category, "lawn-mowing");
   assert.ok(responseItem?.issueSignals.includes("timing"));
@@ -1138,6 +1139,96 @@ test("observability overview includes a public review response queue with urgenc
   const updatedResponseItem = updatedOverview.recentReviewResponses.find((item) => item.reviewId === review.id);
   assert.equal(updatedResponseItem?.responseStatus, "posted");
   assert.match(updatedResponseItem?.recommendedAction ?? "", /already recorded/i);
+});
+
+test("review escalation opens a service-quality follow-up and links it back into the review queue", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
+
+  const customer = await platform.registerUser({
+    fullName: "Taylor Homeowner",
+    email: "review-escalation@example.com",
+    password: "Password123!",
+    phone: "555-0311",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress("18 Maple Court", 39.7542, -74.2231)
+  });
+
+  const nowIso = new Date().toISOString();
+  const booking = await repository.createBooking({
+    id: crypto.randomUUID(),
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: "yard-cleanup",
+    status: "completed",
+    requestedAt: nowIso,
+    scheduledStartIso: nowIso,
+    scheduledEndIso: futureIso(1),
+    completedAt: nowIso,
+    notes: "Completed booking for review escalation test",
+    totalCents: 8400
+  });
+
+  await repository.createReviewInvite({
+    id: crypto.randomUUID(),
+    bookingId: booking.id,
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    email: customer.email,
+    status: "sent",
+    channels: ["email"],
+    scheduledSendIso: nowIso,
+    sentAt: nowIso,
+    expiresAtIso: futureIso(72),
+    deepLinkPath: `/bookings/${booking.id}/review`
+  });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: booking.id,
+    overallRating: 2,
+    timelinessRating: 4,
+    attentionToDetailRating: 2,
+    reviewText: "Cleanup missed a lot of debris around the side yard and the finish felt rushed."
+  });
+
+  const initialOverview = await platform.getObservabilityOverview();
+  const initialItem = initialOverview.recentReviewResponses.find((item) => item.reviewId === review.id);
+  assert.equal(initialItem?.supportFollowUpRecommended, true);
+  assert.equal(initialItem?.supportTicketId, undefined);
+
+  const escalated = await platform.escalateReviewForSupport({
+    reviewId: review.id,
+    escalatedBy: "Casey Ops",
+    escalationNotes: "Customer needs direct recovery follow-up on missed cleanup details before we close the loop publicly."
+  });
+
+  assert.equal(escalated.supportFollowUpRecommended, false);
+  assert.ok(escalated.supportTicketId);
+  assert.equal(escalated.supportTicketStatus, "open");
+  assert.match(escalated.supportTicketSubject ?? "", /review escalation/i);
+  assert.equal(escalated.escalatedBy, "Casey Ops");
+  assert.match(escalated.escalationNotes ?? "", /recovery follow-up/i);
+
+  const supportTickets = await repository.listSupportTickets();
+  assert.equal(supportTickets.length, 1);
+  assert.equal(supportTickets[0]?.issueType, "service-quality");
+  assert.equal(supportTickets[0]?.bookingId, booking.id);
+  assert.match(supportTickets[0]?.description ?? "", /missed cleanup details/i);
+
+  const updatedOverview = await platform.getObservabilityOverview();
+  const updatedItem = updatedOverview.recentReviewResponses.find((item) => item.reviewId === review.id);
+  assert.equal(updatedItem?.supportTicketId, escalated.supportTicketId);
+  assert.equal(updatedItem?.supportTicketStatus, "open");
+  assert.ok(
+    updatedItem?.watchouts.some((watchout) => /linked support follow-up is already open/i.test(watchout))
+  );
+  assert.match(updatedItem?.recommendedAction ?? "", /linked support follow-up/i);
 });
 
 test("recommendation telemetry tracks views, alternatives, accepted recommendations, and swaps", async () => {

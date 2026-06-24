@@ -14,6 +14,7 @@ import {
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
+  OpsProfile,
   NotificationDeliveryRecord,
   NotificationPreferences,
   PaymentRecord,
@@ -212,6 +213,26 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return (await this.findCrewMemberById(crewMember.id))!;
   }
 
+  public async createOpsUser(
+    opsUser: OpsProfile,
+    passwordHash?: string
+  ): Promise<OpsProfile> {
+    await this.prisma.userAccount.create({
+      data: {
+        id: opsUser.id,
+        email: opsUser.email,
+        passwordHash,
+        fullName: opsUser.fullName,
+        phone: opsUser.phone,
+        role: opsUser.role,
+        address: asJson(opsUser.address),
+        createdAt: new Date(opsUser.createdAt)
+      }
+    });
+
+    return (await this.findOpsUserById(opsUser.id))!;
+  }
+
   public async listProviders(): Promise<ProviderProfile[]> {
     const providers = await this.prisma.providerBusinessProfile.findMany({
       include: {
@@ -243,6 +264,15 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return crewMembers.map((record: any) => this.mapCrewMemberProfile(record.user, record));
   }
 
+  public async listOpsUsers(): Promise<OpsProfile[]> {
+    const opsUsers = await this.prisma.userAccount.findMany({
+      where: { role: "ops" },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return opsUsers.map((record: any) => this.mapOpsProfile(record));
+  }
+
   public async findCustomerById(customerId: string): Promise<CustomerProfile | undefined> {
     const customer = await this.prisma.customerProfile.findUnique({
       where: {
@@ -270,6 +300,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     });
 
     return crewMember ? this.mapCrewMemberProfile(crewMember.user, crewMember) : undefined;
+  }
+
+  public async findOpsUserById(opsUserId: string): Promise<OpsProfile | undefined> {
+    const opsUser = await this.prisma.userAccount.findFirst({
+      where: {
+        id: opsUserId,
+        role: "ops"
+      }
+    });
+
+    return opsUser ? this.mapOpsProfile(opsUser) : undefined;
   }
 
   public async updateCrewMember(
@@ -367,6 +408,23 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     });
 
     return this.findCustomerById(customerId);
+  }
+
+  public async updateOpsUser(
+    opsUserId: string,
+    updates: Partial<OpsProfile>
+  ): Promise<OpsProfile | undefined> {
+    const current = await this.findOpsUserById(opsUserId);
+    if (!current) {
+      return undefined;
+    }
+
+    const opsUser = await this.prisma.userAccount.update({
+      where: { id: opsUserId },
+      data: this.buildUserAccountUpdate(updates)
+    });
+
+    return this.mapOpsProfile(opsUser);
   }
 
   public async listCustomerProperties(customerId: string): Promise<CustomerProperty[]> {
@@ -783,6 +841,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         responseHandledBy: review.responseHandledBy,
         responseNotes: review.responseNotes,
         publicReplyBody: review.publicReplyBody,
+        supportTicketId: review.supportTicketId,
+        escalatedAt: review.escalatedAt ? new Date(review.escalatedAt) : undefined,
+        escalatedBy: review.escalatedBy,
+        escalationNotes: review.escalationNotes,
         createdAt: new Date(review.createdAt)
       }
     });
@@ -835,6 +897,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         responseNotes: "responseNotes" in updates ? updates.responseNotes ?? null : undefined,
         publicReplyBody:
           "publicReplyBody" in updates ? updates.publicReplyBody ?? null : undefined,
+        supportTicketId: "supportTicketId" in updates ? updates.supportTicketId ?? null : undefined,
+        escalatedAt:
+          "escalatedAt" in updates ? (updates.escalatedAt ? new Date(updates.escalatedAt) : null) : undefined,
+        escalatedBy: "escalatedBy" in updates ? updates.escalatedBy ?? null : undefined,
+        escalationNotes: "escalationNotes" in updates ? updates.escalationNotes ?? null : undefined,
         createdAt: updates.createdAt ? new Date(updates.createdAt) : undefined
       }
     }).catch(() => undefined);
@@ -1795,7 +1862,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   }
 
   private buildUserAccountUpdate(
-    updates: Partial<CustomerProfile> | Partial<ProviderProfile> | Partial<CrewMemberProfile>
+    updates: Partial<CustomerProfile> | Partial<ProviderProfile> | Partial<CrewMemberProfile> | Partial<OpsProfile>
   ): any {
     return {
       email: updates.email?.toLowerCase(),
@@ -1971,6 +2038,27 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       lastCancellationAt: profile.lastCancellationAt?.toISOString(),
       status: profile.status as CrewMemberProfile["status"],
       assignedProviderId: profile.assignedProviderId ?? undefined
+    };
+  }
+
+  private mapOpsProfile(user: {
+    id: string;
+    fullName: string;
+    email: string;
+    phone: string;
+    role: string;
+    address: unknown;
+    createdAt: Date;
+  }): OpsProfile {
+    return {
+      id: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      role: "ops",
+      address: readJson<Address>(user.address),
+      createdAt: user.createdAt.toISOString(),
+      internalScope: "operations"
     };
   }
 
@@ -2249,6 +2337,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     responseHandledBy: string | null;
     responseNotes: string | null;
     publicReplyBody: string | null;
+    supportTicketId: string | null;
+    escalatedAt: Date | null;
+    escalatedBy: string | null;
+    escalationNotes: string | null;
     createdAt: Date;
   }): ProviderReview {
     return {
@@ -2266,6 +2358,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       responseHandledBy: record.responseHandledBy ?? undefined,
       responseNotes: record.responseNotes ?? undefined,
       publicReplyBody: record.publicReplyBody ?? undefined,
+      supportTicketId: record.supportTicketId ?? undefined,
+      escalatedAt: record.escalatedAt?.toISOString(),
+      escalatedBy: record.escalatedBy ?? undefined,
+      escalationNotes: record.escalationNotes ?? undefined,
       createdAt: record.createdAt.toISOString()
     };
   }

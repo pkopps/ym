@@ -11,6 +11,7 @@ import {
   CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
   CreateProviderReviewRequest,
+  EscalateReviewSupportRequest,
   UpdateReviewResponseRequest,
   ProviderAssistantCommandRequest,
   ReviewProviderVerificationRequest,
@@ -52,6 +53,7 @@ import {
   getOptionalAuthenticatedIdentity,
   requireAuthenticatedIdentity,
   requireFreshRole,
+  requireOpsAccess,
   requireRole
 } from "../controller-auth";
 import { ApiController, RequestContext, sendJson, sendText } from "../http";
@@ -250,11 +252,13 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "GET" && context.path === "/api/providers/verification/queue") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.listProviderVerificationQueue());
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/providers/verification/review") {
+      await requireOpsAccess(context, this.platform);
       sendJson(
         response,
         200,
@@ -358,10 +362,21 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/providers/reviews/response") {
+      await requireOpsAccess(context, this.platform);
       sendJson(
         response,
         200,
         await this.platform.updateReviewResponse(context.body as UpdateReviewResponseRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/reviews/escalate") {
+      await requireOpsAccess(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.escalateReviewForSupport(context.body as EscalateReviewSupportRequest)
       );
       return;
     }
@@ -420,16 +435,19 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "GET" && context.path === "/api/notifications/ops/health") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.getNotificationOpsHealth());
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/notifications/ops/retry-due") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.retryDueNotificationDeliveriesForOps());
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/notifications/ops/escalate") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.escalateNotificationOpsAlerts());
       return;
     }
@@ -614,7 +632,13 @@ export class MarketplaceController implements ApiController {
       sendJson(
         response,
         200,
-        await this.platform.createBookingDispute(identity, context.body as CreateBookingDisputeRequest)
+        await this.platform.createBookingDispute(
+          {
+            userId: identity.userId,
+            role: identity.role as "customer" | "provider"
+          },
+          context.body as CreateBookingDisputeRequest
+        )
       );
       return;
     }
@@ -668,6 +692,7 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "GET" && context.path === "/api/payouts/ops/preview") {
+      await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.getOpsPayoutPreview());
       return;
     }
@@ -719,8 +744,18 @@ export class MarketplaceController implements ApiController {
     }
 
     if (context.method === "POST" && context.path === "/api/payments/refund") {
-      const identity = await requireAuthenticatedIdentity(context, this.platform);
-      sendJson(response, 200, await this.platform.createRefund(identity, context.body as CreateRefundRequest));
+      const identity = await requireRole(context, this.platform, ["customer", "provider"]);
+      sendJson(
+        response,
+        200,
+        await this.platform.createRefund(
+          {
+            userId: identity.userId,
+            role: identity.role as "customer" | "provider"
+          },
+          context.body as CreateRefundRequest
+        )
+      );
       return;
     }
 

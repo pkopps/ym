@@ -286,7 +286,8 @@ Checklist:
 Important rule:
 
 - templates should save time without sounding robotic
-- the current ops lead queue now covers customer, provider, and referral-source drafts, the ops support queue covers delay, cancellation, refund, and issue-resolution customer updates, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, and persisted posted/skipped state; remaining work is the real posting habit and deeper exception-handling scripts plus the broader local ops playbook
+- the current ops lead queue now covers customer, provider, and referral-source drafts, the ops support queue covers delay, cancellation, refund, and issue-resolution customer updates, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, persisted posted/skipped state, and an explicit path to open or link service-quality follow-up from negative reviews; remaining work is the real posting habit and deeper exception-handling scripts plus the broader local ops playbook
+- the internal ops dashboard and its launch/support/review/payout/verification tools now require an authenticated internal session instead of loading anonymously in the browser; dedicated `ops` logins now exist, and the remaining work is removing the temporary provider/business-owner fallback and finishing the fuller ops/admin role lifecycle
 
 ## 11. Launch Dashboard
 

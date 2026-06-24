@@ -1,6 +1,9 @@
 import { getBearerToken, verifySessionToken } from "./auth";
 import { HttpError, RequestContext } from "./http";
+import { AuthIdentityRecord } from "./repositories/MarketplaceRepository";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
+
+type SessionRole = AuthIdentityRecord["role"];
 
 async function requireAuthenticatedSession(
   context: RequestContext,
@@ -62,7 +65,17 @@ export async function getOptionalAuthenticatedIdentity(
 export async function requireRole(
   context: RequestContext,
   platform: MarketplacePlatformService,
-  role: "customer" | "provider" | "crew-member" | Array<"customer" | "provider" | "crew-member">
+  role: SessionRole | SessionRole[]
+): Promise<AuthIdentityRecord>;
+export async function requireRole<const TRole extends SessionRole>(
+  context: RequestContext,
+  platform: MarketplacePlatformService,
+  role: TRole | readonly TRole[]
+): Promise<AuthIdentityRecord & { role: TRole }>;
+export async function requireRole(
+  context: RequestContext,
+  platform: MarketplacePlatformService,
+  role: SessionRole | readonly SessionRole[]
 ) {
   const { identity } = await requireAuthenticatedSession(context, platform);
   const allowedRoles = Array.isArray(role) ? role : [role];
@@ -70,13 +83,34 @@ export async function requireRole(
     throw new HttpError(403, `This route requires a ${allowedRoles.join(" or ")} account`);
   }
 
-  return identity;
+  return identity as AuthIdentityRecord & { role: (typeof allowedRoles)[number] };
+}
+
+export async function requireOpsAccess(
+  context: RequestContext,
+  platform: MarketplacePlatformService
+) {
+  return requireRole(context, platform, ["ops", "provider"]);
 }
 
 export async function requireFreshRole(
   context: RequestContext,
   platform: MarketplacePlatformService,
-  role: "customer" | "provider" | "crew-member" | Array<"customer" | "provider" | "crew-member">,
+  role: SessionRole | SessionRole[],
+  maxAgeSeconds: number,
+  errorMessage: string
+): Promise<AuthIdentityRecord>;
+export async function requireFreshRole<const TRole extends SessionRole>(
+  context: RequestContext,
+  platform: MarketplacePlatformService,
+  role: TRole | readonly TRole[],
+  maxAgeSeconds: number,
+  errorMessage: string
+): Promise<AuthIdentityRecord & { role: TRole }>;
+export async function requireFreshRole(
+  context: RequestContext,
+  platform: MarketplacePlatformService,
+  role: SessionRole | readonly SessionRole[],
   maxAgeSeconds: number,
   errorMessage: string
 ) {
@@ -90,5 +124,5 @@ export async function requireFreshRole(
     throw new HttpError(401, errorMessage);
   }
 
-  return identity;
+  return identity as AuthIdentityRecord & { role: (typeof allowedRoles)[number] };
 }

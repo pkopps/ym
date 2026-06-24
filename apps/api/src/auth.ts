@@ -8,7 +8,7 @@ export const PASSWORD_RESET_TTL_MINUTES = 20;
 export interface SessionActor {
   userId: string;
   email: string;
-  role: "customer" | "provider" | "crew-member";
+  role: "customer" | "provider" | "crew-member" | "ops";
   sessionVersion: number;
   issuedAt?: number;
 }

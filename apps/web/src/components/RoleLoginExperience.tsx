@@ -70,6 +70,30 @@ const roleExperienceCopy: Record<
     formTitle: "Open the management board",
     formCopy: "Run bookings, crews, payouts, calendar sync, and route operations."
   },
+  ops: {
+    eyebrow: "Internal operations access",
+    title: "Work launch operations, support, and marketplace quality from one workspace.",
+    description:
+      "Open the internal dashboard for support queues, lead follow-up, provider verification, review response, and marketplace health.",
+    illustrationId: "hedge-trimmer",
+    metrics: [
+      { value: "Ops", label: "overview and alerts" },
+      { value: "Support", label: "queue management" },
+      { value: "Launch", label: "lead follow-up ready" }
+    ],
+    highlights: [
+      "Review support, refunds, verification, and launch leads in one place.",
+      "Track live marketplace health without anonymous internal endpoints.",
+      "Use the internal login path instead of provider-facing account creation."
+    ],
+    primaryHref: "/help",
+    primaryLabel: "Need access?",
+    secondaryHref: "/login",
+    secondaryLabel: "Back to login choices",
+    formEyebrow: "Ops login",
+    formTitle: "Open the internal operations workspace",
+    formCopy: "For authorized YardMatch staff handling launch operations, support, and marketplace quality."
+  },
   "crew-member": {
     eyebrow: "Crew member access",
     title: "Keep assignments and route details in one schedule.",

@@ -1,11 +1,10 @@
 "use client";
 
 import {
-  MarketplaceApiClient,
   ProviderVerificationQueueItem
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
-import { getWebApiBaseUrl } from "../lib/api";
+import { createAuthenticatedWebApiClient } from "../lib/api";
 
 function formatDateTime(iso?: string) {
   if (!iso) {
@@ -38,7 +37,7 @@ export function OpsProviderVerificationQueue() {
   const [isWorking, setIsWorking] = useState(false);
 
   async function loadQueue() {
-    const api = new MarketplaceApiClient(getWebApiBaseUrl());
+    const api = createAuthenticatedWebApiClient();
     setItems(await api.getProviderVerificationQueue());
   }
 
@@ -53,7 +52,7 @@ export function OpsProviderVerificationQueue() {
       setIsWorking(true);
       setStatusMessage(undefined);
       setErrorMessage(undefined);
-      const api = new MarketplaceApiClient(getWebApiBaseUrl());
+      const api = createAuthenticatedWebApiClient();
       const overrideNote = approvalOverrideNotes[item.provider.id]?.trim();
       await api.reviewProviderVerification({
         providerId: item.provider.id,

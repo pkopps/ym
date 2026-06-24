@@ -58,6 +58,8 @@ import {
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
   CreateProviderReviewRequest,
+  EscalateReviewSupportRequest,
+  OpsReviewResponseItem,
   UpdateReviewResponseRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
@@ -636,6 +638,10 @@ export class MarketplaceApiClient {
     payload: CreateInboundReferralLaunchLeadRequest
   ): Promise<LaunchLead> {
     return this.postJson(ApiRoutes.inboundLaunchReferral, payload);
+  }
+
+  public escalateReviewSupport(payload: EscalateReviewSupportRequest): Promise<OpsReviewResponseItem> {
+    return this.postJson(ApiRoutes.escalateReviewSupport, payload);
   }
 
   public getSupportTickets(): Promise<SupportTicket[]> {
