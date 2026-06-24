@@ -9,6 +9,7 @@ interface ParsedArgs {
   fullName: string;
   password: string;
   phone: string;
+  internalScope: "operations" | "admin";
 }
 
 function readArg(flag: string): string | undefined {
@@ -26,6 +27,7 @@ function parseArgs(): ParsedArgs {
   const fullName = readArg("--name") ?? readArg("--full-name");
   const password = readArg("--password");
   const phone = readArg("--phone");
+  const internalScopeArg = readArg("--scope") ?? "admin";
 
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required to create or update an ops user.");
@@ -33,15 +35,19 @@ function parseArgs(): ParsedArgs {
 
   if (!email || !fullName || !password || !phone) {
     throw new Error(
-      "Usage: npm --workspace @yardmatch/api run ops:create-user -- --email ops@example.com --name \"Casey Ops\" --password \"StrongPass123\" --phone \"555-0990\""
+      "Usage: npm --workspace @yardmatch/api run ops:create-user -- --email ops@example.com --name \"Casey Ops\" --password \"StrongPass123\" --phone \"555-0990\" [--scope admin|operations]"
     );
+  }
+  if (internalScopeArg !== "admin" && internalScopeArg !== "operations") {
+    throw new Error("`--scope` must be either `admin` or `operations`.");
   }
 
   return {
     email: email.toLowerCase(),
     fullName,
     password,
-    phone
+    phone,
+    internalScope: internalScopeArg
   };
 }
 
@@ -67,6 +73,7 @@ async function main() {
           password: args.password,
           phone: args.phone,
           role: "ops",
+          internalScope: args.internalScope,
           address: {
             line1: "18 Bay Ave",
             city: "Barnegat",
@@ -93,7 +100,8 @@ async function main() {
 
     await repository.updateOpsUser(existingOpsUser.id, {
       fullName: args.fullName,
-      phone: args.phone
+      phone: args.phone,
+      internalScope: args.internalScope
     });
     await platform.updateAuthIdentity(existingOpsUser.id, {
       passwordHash: hashPassword(args.password),

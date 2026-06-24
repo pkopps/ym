@@ -24,6 +24,9 @@ async function requireAuthenticatedSession(
   if (!identity) {
     throw new HttpError(401, "Unknown session");
   }
+  if (identity.accessDisabledAt) {
+    throw new HttpError(403, "Account access has been disabled");
+  }
   if (identity.sessionVersion !== session.sessionVersion) {
     throw new HttpError(401, "Session has been replaced");
   }
@@ -53,7 +56,7 @@ export async function getOptionalAuthenticatedIdentity(
   try {
     const session = verifySessionToken(token);
     const identity = await platform.findAuthIdentityByUserId(session.userId);
-    if (!identity || identity.sessionVersion !== session.sessionVersion) {
+    if (!identity || identity.accessDisabledAt || identity.sessionVersion !== session.sessionVersion) {
       return undefined;
     }
     return identity;
@@ -91,6 +94,19 @@ export async function requireOpsAccess(
   platform: MarketplacePlatformService
 ) {
   return requireRole(context, platform, "ops");
+}
+
+export async function requireOpsAdminAccess(
+  context: RequestContext,
+  platform: MarketplacePlatformService
+) {
+  const identity = await requireRole(context, platform, "ops");
+  const opsUser = await platform.findOpsUserById(identity.userId);
+  if (!opsUser || opsUser.internalScope !== "admin") {
+    throw new HttpError(403, "This route requires an admin ops account");
+  }
+
+  return identity;
 }
 
 export async function requireFreshRole(

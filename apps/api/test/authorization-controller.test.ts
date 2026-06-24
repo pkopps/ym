@@ -87,12 +87,14 @@ async function createOpsSession(
     email: string;
     password: string;
     phone: string;
+    internalScope: "operations" | "admin";
   }>
 ) {
   const fullName = overrides?.fullName ?? "Casey Ops";
   const email = overrides?.email ?? "casey-ops@example.com";
   const password = overrides?.password ?? "Password123!";
   const phone = overrides?.phone ?? "555-0310";
+  const internalScope = overrides?.internalScope ?? "operations";
 
   await platform.registerUser(
     {
@@ -101,7 +103,8 @@ async function createOpsSession(
       password,
       phone,
       role: "ops",
-      address: createAddress()
+      address: createAddress(),
+      internalScope
     },
     hashPassword(password)
   );
@@ -359,6 +362,836 @@ test("seeded in-memory ops account can log in", async () => {
   const envelope = response.readJson();
   assert.equal(envelope.user.role, "ops");
   assert.equal(envelope.user.email, "ops@example.com");
+  assert.equal(envelope.user.internalScope, "admin");
+});
+
+test("repeated failed ops logins trigger a temporary lock until password recovery succeeds", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  await platform.registerUser(
+    {
+      fullName: "Locked Ops",
+      email: "locked-ops@example.com",
+      password: "StrongPass123!",
+      phone: "555-0318",
+      role: "ops",
+      address: createAddress(),
+      internalScope: "operations"
+    },
+    hashPassword("StrongPass123!")
+  );
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const failedResponse = createMockResponse();
+    await withMockedNow(Date.parse(`2026-06-24T09:${String(10 + attempt).padStart(2, "0")}:00.000Z`), async () => {
+      await authController.handle(
+        {
+          method: "POST",
+          path: "/api/auth/login",
+          body: {
+            email: "locked-ops@example.com",
+            password: "WrongPass123!"
+          },
+          query: new URLSearchParams(),
+          headers: {}
+        },
+        failedResponse as never
+      ).catch((error: Error) => {
+        failedResponse.writeHead(401);
+        failedResponse.end(JSON.stringify({ message: error.message }));
+      });
+    });
+
+    assert.equal(failedResponse.getStatusCode(), 401);
+  }
+
+  const lockedIdentity = await platform.findAuthIdentityByEmail("locked-ops@example.com");
+  assert.equal(lockedIdentity?.failedAuthenticationCount, 5);
+  assert.equal(lockedIdentity?.authenticationLockExpiresAt, "2026-06-24T09:44:00.000Z");
+
+  const lockedLoginResponse = createMockResponse();
+  await withMockedNow(Date.parse("2026-06-24T09:20:00.000Z"), async () => {
+    await authController.handle(
+      {
+        method: "POST",
+        path: "/api/auth/login",
+        body: {
+          email: "locked-ops@example.com",
+          password: "StrongPass123!"
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      lockedLoginResponse as never
+    ).catch((error: Error) => {
+      lockedLoginResponse.writeHead(423);
+      lockedLoginResponse.end(JSON.stringify({ message: error.message }));
+    });
+  });
+
+  assert.equal(lockedLoginResponse.getStatusCode(), 423);
+  assert.match(lockedLoginResponse.readJson().message, /temporarily locked/i);
+
+  const resetRequestResponse = createMockResponse();
+  await withMockedNow(Date.parse("2026-06-24T09:21:00.000Z"), async () => {
+    await authController.handle(
+      {
+        method: "POST",
+        path: "/api/auth/password-reset/request",
+        body: {
+          email: "locked-ops@example.com"
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      resetRequestResponse as never
+    );
+  });
+
+  const resetRequest = resetRequestResponse.readJson() as { resetCodePreview?: string };
+  assert.ok(resetRequest.resetCodePreview);
+
+  const resetConfirmResponse = createMockResponse();
+  await withMockedNow(Date.parse("2026-06-24T09:22:00.000Z"), async () => {
+    await authController.handle(
+      {
+        method: "POST",
+        path: "/api/auth/password-reset/confirm",
+        body: {
+          email: "locked-ops@example.com",
+          resetCode: resetRequest.resetCodePreview,
+          newPassword: "RecoveredPass123!"
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      resetConfirmResponse as never
+    );
+  });
+
+  assert.equal(resetConfirmResponse.getStatusCode(), 200);
+  const recoveredIdentity = await platform.findAuthIdentityByEmail("locked-ops@example.com");
+  assert.equal(recoveredIdentity?.failedAuthenticationCount, 0);
+  assert.equal(recoveredIdentity?.authenticationLockExpiresAt, undefined);
+});
+
+test("admin ops users can clear an auth lock with an audit note", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  const admin = await createOpsSession(authController, platform, {
+    email: "lock-admin@example.com",
+    fullName: "Lock Admin",
+    password: "Password123!",
+    phone: "555-0319",
+    internalScope: "admin"
+  });
+
+  await platform.registerUser(
+    {
+      fullName: "Casey Locked",
+      email: "casey.locked@example.com",
+      password: "StrongPass123!",
+      phone: "555-0320",
+      role: "ops",
+      address: createAddress(),
+      internalScope: "operations"
+    },
+    hashPassword("StrongPass123!")
+  );
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const failedResponse = createMockResponse();
+    await withMockedNow(Date.parse(`2026-06-24T10:${String(10 + attempt).padStart(2, "0")}:00.000Z`), async () => {
+      await authController.handle(
+        {
+          method: "POST",
+          path: "/api/auth/login",
+          body: {
+            email: "casey.locked@example.com",
+            password: "WrongPass123!"
+          },
+          query: new URLSearchParams(),
+          headers: {}
+        },
+        failedResponse as never
+      ).catch((error: Error) => {
+        failedResponse.writeHead(401);
+        failedResponse.end(JSON.stringify({ message: error.message }));
+      });
+    });
+  }
+
+  const lockedBeforeClear = await platform.findAuthIdentityByEmail("casey.locked@example.com");
+  assert.ok(lockedBeforeClear?.authenticationLockExpiresAt);
+
+  const missingNoteResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/access",
+      body: {
+        opsUserId: lockedBeforeClear?.userId,
+        action: "clear-auth-lock"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    missingNoteResponse as never
+  ).catch((error: Error) => {
+    missingNoteResponse.writeHead(400);
+    missingNoteResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(missingNoteResponse.getStatusCode(), 400);
+  assert.match(missingNoteResponse.readJson().message, /notes are required/i);
+
+  const clearResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/access",
+      body: {
+        opsUserId: lockedBeforeClear?.userId,
+        action: "clear-auth-lock",
+        notes: "Verified the staff member and cleared the temporary lock."
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    clearResponse as never
+  );
+
+  assert.equal(clearResponse.getStatusCode(), 200);
+  const cleared = clearResponse.readJson();
+  assert.equal(cleared.failedAuthenticationCount, 0);
+  assert.equal(cleared.isAuthenticationLocked, false);
+  assert.equal(cleared.accessHistory.at(-1)?.kind, "auth-lock-cleared");
+  assert.match(cleared.accessHistory.at(-1)?.notes ?? "", /verified the staff member/i);
+  assert.equal(cleared.authHistory.at(-1)?.kind, "auth-lock-cleared");
+  assert.match(cleared.authHistory.at(-1)?.notes ?? "", /verified the staff member/i);
+
+  const successfulLoginResponse = createMockResponse();
+  await withMockedNow(Date.parse("2026-06-24T10:20:00.000Z"), async () => {
+    await authController.handle(
+      {
+        method: "POST",
+        path: "/api/auth/login",
+        body: {
+          email: "casey.locked@example.com",
+          password: "StrongPass123!"
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      successfulLoginResponse as never
+    );
+  });
+
+  assert.equal(successfulLoginResponse.getStatusCode(), 200);
+});
+
+test("ops account management routes require an admin ops session", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  const provider = await registerUser(authController, {
+    fullName: "Avery Green",
+    email: "provider-no-ops-access@example.com",
+    password: "Password123!",
+    phone: "555-0208",
+    role: "provider"
+  });
+
+  const response = createMockResponse();
+  await authController.handle(
+    {
+      method: "GET",
+      path: "/api/ops/accounts",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${provider.session.token}`
+      }
+    },
+    response as never
+  ).catch((error: Error) => {
+    response.writeHead(403);
+    response.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(response.getStatusCode(), 403);
+  assert.match(response.readJson().message, /requires a ops account/i);
+
+  const staffOps = await createOpsSession(authController, platform, {
+    email: "staff-ops@example.com",
+    fullName: "Staff Ops",
+    internalScope: "operations"
+  });
+
+  const staffResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "GET",
+      path: "/api/ops/accounts",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${staffOps.session.token}`
+      }
+    },
+    staffResponse as never
+  ).catch((error: Error) => {
+    staffResponse.writeHead(403);
+    staffResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(staffResponse.getStatusCode(), 403);
+  assert.match(staffResponse.readJson().message, /admin ops account/i);
+});
+
+test("ops users can create, update, and rotate other ops accounts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  const admin = await createOpsSession(authController, platform, {
+    email: "ops-admin@example.com",
+    fullName: "Ops Admin",
+    password: "Password123!",
+    phone: "555-0312",
+    internalScope: "admin"
+  });
+
+  const createResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts",
+      body: {
+        fullName: "Jamie Dispatcher",
+        email: "jamie.dispatcher@example.com",
+        phone: "555-0313",
+        password: "Dispatcher123!"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    createResponse as never
+  );
+
+  assert.equal(createResponse.getStatusCode(), 201);
+  const created = createResponse.readJson();
+  assert.equal(created.account.profile.role, "ops");
+  assert.equal(created.account.profile.email, "jamie.dispatcher@example.com");
+  assert.equal(created.account.profile.internalScope, "operations");
+  assert.equal(created.account.hasPassword, true);
+  assert.deepEqual(created.account.accessHistory.map((entry: { kind: string }) => entry.kind), ["created"]);
+  assert.equal(created.account.accessHistory[0]?.changedBy, admin.user.id);
+
+  const failedLoginResponse = createMockResponse();
+  await withMockedNow(Date.parse("2026-06-24T09:20:00.000Z"), async () => {
+    await authController.handle(
+      {
+        method: "POST",
+        path: "/api/auth/login",
+        body: {
+          email: "jamie.dispatcher@example.com",
+          password: "WrongDispatcher123!"
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      failedLoginResponse as never
+    ).catch((error: Error) => {
+      failedLoginResponse.writeHead(401);
+      failedLoginResponse.end(JSON.stringify({ message: error.message }));
+    });
+  });
+
+  assert.equal(failedLoginResponse.getStatusCode(), 401);
+  const postFailureAccount = (await platform.listOpsAccounts()).find(
+    (account) => account.profile.id === created.account.profile.id
+  );
+  assert.equal(postFailureAccount?.failedAuthenticationCount, 1);
+  assert.equal(postFailureAccount?.lastFailedAuthenticationReason, "invalid-password");
+  assert.equal(postFailureAccount?.lastFailedAuthenticationAt, "2026-06-24T09:20:00.000Z");
+
+  const createdLoginResponse = createMockResponse();
+  await withMockedNow(Date.parse("2026-06-24T09:30:00.000Z"), async () => {
+    await authController.handle(
+      {
+        method: "POST",
+        path: "/api/auth/login",
+        body: {
+          email: "jamie.dispatcher@example.com",
+          password: "Dispatcher123!"
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      createdLoginResponse as never
+    );
+  });
+
+  assert.equal(createdLoginResponse.getStatusCode(), 200);
+  const createdLogin = createdLoginResponse.readJson() as {
+    session: { token: string };
+    user: { id: string; role: string; fullName: string };
+  };
+  assert.equal(createdLogin.user.role, "ops");
+  const postLoginAccount = (await platform.listOpsAccounts()).find(
+    (account) => account.profile.id === created.account.profile.id
+  );
+  assert.equal(postLoginAccount?.lastAuthenticatedMethod, "password");
+  assert.equal(postLoginAccount?.lastAuthenticatedAt, "2026-06-24T09:30:00.000Z");
+  assert.equal(postLoginAccount?.failedAuthenticationCount, 0);
+  assert.equal(postLoginAccount?.lastFailedAuthenticationAt, undefined);
+
+  const updateResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/update",
+      body: {
+        opsUserId: created.account.profile.id,
+        fullName: "Jamie Dispatch Lead",
+        phone: "555-0413",
+        internalScope: "admin"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    updateResponse as never
+  );
+
+  assert.equal(updateResponse.getStatusCode(), 200);
+  const updated = updateResponse.readJson();
+  assert.equal(updated.profile.fullName, "Jamie Dispatch Lead");
+  assert.equal(updated.profile.phone, "555-0413");
+  assert.equal(updated.profile.internalScope, "admin");
+  assert.deepEqual(updated.accessHistory.map((entry: { kind: string }) => entry.kind), [
+    "created",
+    "profile-updated"
+  ]);
+
+  const rotateResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/rotate-sessions",
+      body: {
+        opsUserId: created.account.profile.id,
+        newPassword: "NewDispatcher123!"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    rotateResponse as never
+  );
+
+  assert.equal(rotateResponse.getStatusCode(), 200);
+  const rotated = rotateResponse.readJson();
+  assert.equal(rotated.profile.id, created.account.profile.id);
+  assert.ok(rotated.sessionVersion > created.account.sessionVersion);
+  assert.deepEqual(rotated.accessHistory.map((entry: { kind: string }) => entry.kind), [
+    "created",
+    "profile-updated",
+    "sessions-rotated"
+  ]);
+  assert.equal(rotated.authHistory.at(-1)?.kind, "sessions-rotated");
+  assert.match(rotated.authHistory.at(-1)?.notes ?? "", /password replaced/i);
+
+  const staleSessionResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "GET",
+      path: "/api/ops/accounts",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${createdLogin.session.token}`
+      }
+    },
+    staleSessionResponse as never
+  ).catch((error: Error) => {
+    staleSessionResponse.writeHead(401);
+    staleSessionResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(staleSessionResponse.getStatusCode(), 401);
+  assert.match(staleSessionResponse.readJson().message, /Session has been replaced/i);
+
+  const oldPasswordLoginResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "jamie.dispatcher@example.com",
+        password: "Dispatcher123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    oldPasswordLoginResponse as never
+  ).catch((error: Error) => {
+    oldPasswordLoginResponse.writeHead(401);
+    oldPasswordLoginResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(oldPasswordLoginResponse.getStatusCode(), 401);
+
+  const newPasswordLoginResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "jamie.dispatcher@example.com",
+        password: "NewDispatcher123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    newPasswordLoginResponse as never
+  );
+
+  assert.equal(newPasswordLoginResponse.getStatusCode(), 200);
+
+  const selfRotateResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/rotate-sessions",
+      body: {
+        opsUserId: admin.user.id
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    selfRotateResponse as never
+  ).catch((error: Error) => {
+    selfRotateResponse.writeHead(400);
+    selfRotateResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(selfRotateResponse.getStatusCode(), 400);
+  assert.match(selfRotateResponse.readJson().message, /your own active ops session/i);
+});
+
+test("ops users can prepare invite-style password resets for new and existing ops accounts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  const admin = await createOpsSession(authController, platform, {
+    email: "ops-admin-invite@example.com",
+    fullName: "Ops Invite Admin",
+    password: "Password123!",
+    phone: "555-0314",
+    internalScope: "admin"
+  });
+
+  const createResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts",
+      body: {
+        fullName: "Taylor Coordinator",
+        email: "taylor.coordinator@example.com",
+        phone: "555-0315",
+        sendPasswordResetInvite: true
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    createResponse as never
+  );
+
+  assert.equal(createResponse.getStatusCode(), 201);
+  const created = createResponse.readJson();
+  assert.equal(created.account.profile.email, "taylor.coordinator@example.com");
+  assert.equal(created.account.hasPassword, true);
+  assert.equal(created.passwordReset.success, true);
+  assert.ok(created.passwordReset.expiresAtIso);
+  assert.ok(created.passwordReset.resetCodePreview);
+  assert.ok(created.passwordReset.resetUrlPreview);
+  assert.deepEqual(created.account.accessHistory.map((entry: { kind: string }) => entry.kind), [
+    "created",
+    "password-reset-invited"
+  ]);
+
+  const identityAfterCreate = await platform.findAuthIdentityByEmail("taylor.coordinator@example.com");
+  assert.ok(identityAfterCreate?.resetPasswordRequestedAt);
+
+  const loginBeforeReset = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "taylor.coordinator@example.com",
+        password: "Password123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    loginBeforeReset as never
+  ).catch((error: Error) => {
+    loginBeforeReset.writeHead(401);
+    loginBeforeReset.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(loginBeforeReset.getStatusCode(), 401);
+
+  const resetExistingResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/password-reset/request",
+      body: {
+        opsUserId: created.account.profile.id
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    resetExistingResponse as never
+  );
+
+  assert.equal(resetExistingResponse.getStatusCode(), 200);
+  const resetExisting = resetExistingResponse.readJson();
+  assert.equal(resetExisting.account.profile.id, created.account.profile.id);
+  assert.equal(resetExisting.passwordReset.success, true);
+  assert.ok(resetExisting.passwordReset.resetCodePreview);
+  assert.ok(resetExisting.passwordReset.resetUrlPreview);
+  assert.deepEqual(resetExisting.account.accessHistory.map((entry: { kind: string }) => entry.kind), [
+    "created",
+    "password-reset-invited",
+    "password-reset-invited"
+  ]);
+  assert.equal(resetExisting.account.authHistory.at(-1)?.kind, "password-reset-requested");
+});
+
+test("ops users can deactivate and reactivate other ops accounts with audited access changes", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+
+  const admin = await createOpsSession(authController, platform, {
+    email: "ops-admin-access@example.com",
+    fullName: "Ops Access Admin",
+    password: "Password123!",
+    phone: "555-0316",
+    internalScope: "admin"
+  });
+
+  const createdResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts",
+      body: {
+        fullName: "Morgan Queue",
+        email: "morgan.queue@example.com",
+        phone: "555-0317",
+        password: "QueueStrong123!"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    createdResponse as never
+  );
+
+  assert.equal(createdResponse.getStatusCode(), 201);
+  const created = createdResponse.readJson();
+
+  const loginResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "morgan.queue@example.com",
+        password: "QueueStrong123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    loginResponse as never
+  );
+
+  assert.equal(loginResponse.getStatusCode(), 200);
+  const activeSession = loginResponse.readJson() as {
+    session: { token: string };
+    user: { id: string };
+  };
+
+  const deactivateResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/access",
+      body: {
+        opsUserId: created.account.profile.id,
+        action: "deactivate",
+        notes: "Staff member is no longer covering launch ops."
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    deactivateResponse as never
+  );
+
+  assert.equal(deactivateResponse.getStatusCode(), 200);
+  const deactivated = deactivateResponse.readJson();
+  assert.equal(deactivated.isActive, false);
+  assert.equal(deactivated.lastAccessChangeKind, "deactivated");
+  assert.equal(deactivated.accessDisabledBy, admin.user.id);
+  assert.match(deactivated.accessChangeNotes ?? "", /no longer covering launch ops/i);
+  assert.deepEqual(deactivated.accessHistory.map((entry: { kind: string }) => entry.kind), [
+    "created",
+    "deactivated"
+  ]);
+  assert.match(
+    deactivated.accessHistory[1]?.notes ?? "",
+    /no longer covering launch ops/i
+  );
+
+  const staleSessionResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "GET",
+      path: "/api/ops/accounts",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${activeSession.session.token}`
+      }
+    },
+    staleSessionResponse as never
+  ).catch((error: Error) => {
+    staleSessionResponse.writeHead(403);
+    staleSessionResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(staleSessionResponse.getStatusCode(), 403);
+  assert.match(staleSessionResponse.readJson().message, /access has been disabled/i);
+
+  const blockedLoginResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "morgan.queue@example.com",
+        password: "QueueStrong123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    blockedLoginResponse as never
+  ).catch((error: Error) => {
+    blockedLoginResponse.writeHead(403);
+    blockedLoginResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(blockedLoginResponse.getStatusCode(), 403);
+  assert.match(blockedLoginResponse.readJson().message, /access has been disabled/i);
+
+  const reactivateResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/access",
+      body: {
+        opsUserId: created.account.profile.id,
+        action: "reactivate",
+        notes: "Restored for weekday launch coverage."
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    reactivateResponse as never
+  );
+
+  assert.equal(reactivateResponse.getStatusCode(), 200);
+  const reactivated = reactivateResponse.readJson();
+  assert.equal(reactivated.isActive, true);
+  assert.equal(reactivated.lastAccessChangeKind, "reactivated");
+  assert.match(reactivated.accessChangeNotes ?? "", /weekday launch coverage/i);
+  assert.deepEqual(reactivated.accessHistory.map((entry: { kind: string }) => entry.kind), [
+    "created",
+    "deactivated",
+    "reactivated"
+  ]);
+
+  const restoredLoginResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "morgan.queue@example.com",
+        password: "QueueStrong123!"
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    restoredLoginResponse as never
+  );
+
+  assert.equal(restoredLoginResponse.getStatusCode(), 200);
+
+  const selfDeactivateResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "POST",
+      path: "/api/ops/accounts/access",
+      body: {
+        opsUserId: admin.user.id,
+        action: "deactivate"
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${admin.session.token}`
+      }
+    },
+    selfDeactivateResponse as never
+  ).catch((error: Error) => {
+    selfDeactivateResponse.writeHead(400);
+    selfDeactivateResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(selfDeactivateResponse.getStatusCode(), 400);
+  assert.match(selfDeactivateResponse.readJson().message, /your own active ops login/i);
 });
 
 test("support tickets are attributed to the authenticated requester", async () => {
@@ -744,6 +1577,57 @@ test("direct email inbound endpoint can derive idempotency from message id and h
   }
 });
 
+test("direct email inbound endpoint accepts relay-style alias fields and html-only bodies", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const supportController = new SupportController(platform);
+  const originalSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "launch-webhook-secret";
+
+  try {
+    const response = createMockResponse();
+    await supportController.handle(
+      {
+        method: "POST",
+        path: "/api/launch/inbound/email",
+        body: {
+          from: "\"Pat Homeowner\" <forwarder@example.com>",
+          reply_to: "Pat Homeowner <pat.homeowner@example.com>",
+          "message-id": "<relay_msg_123@example.com>",
+          "in-reply-to": "<thread_parent_555@example.com>",
+          subject: "Need cleanup help",
+          html: "<p>Hello GreenRain,</p><p>Can you text me at <strong>(609) 555-0199</strong> about a yard cleanup in Barnegat?</p>"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-inbound-secret": "launch-webhook-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const lead = response.readJson();
+    assert.equal(lead.sourceReferenceId, "relay_msg_123@example.com");
+    assert.equal(lead.email, "pat.homeowner@example.com");
+    assert.equal(lead.contactName, "Pat Homeowner");
+    assert.equal(lead.phone, "6095550199");
+    assert.equal(lead.preferredContactMethod, "text");
+    assert.equal(lead.areaLabel, "Barnegat, NJ");
+    assert.equal(lead.serviceCategory, "seasonal-cleanup");
+    assert.equal(lead.channelMetadata?.emailThreadId, "thread_parent_555@example.com");
+    assert.ok(
+      lead.channelMetadata?.intakeNotes?.some((note: string) =>
+        /normalized from HTML/i.test(note)
+      )
+    );
+    assert.match(lead.message, /yard cleanup in Barnegat/i);
+  } finally {
+    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+  }
+});
+
 test("google business profile inbound endpoint supports platform-message leads without direct contact details", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -901,6 +1785,32 @@ test("ops review response endpoint records posted public replies", async () => {
     reviewText: "Solid overall, but we wanted a slightly cleaner finish."
   });
 
+  const invalidResponse = createMockResponse();
+  await marketplaceController.handle(
+    {
+      method: "POST",
+      path: "/api/providers/reviews/response",
+      body: {
+        reviewId: review.id,
+        responseStatus: "posted",
+        responseHandledBy: "Casey Ops",
+        publicReplyBody:
+          "Thank you for the feedback. We appreciate the note about the finish details and are using it to keep the next visit tighter."
+      },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${opsUser.session.token}`
+      }
+    },
+    invalidResponse as never
+  ).catch((error: Error) => {
+    invalidResponse.writeHead(400);
+    invalidResponse.end(JSON.stringify({ message: error.message }));
+  });
+
+  assert.equal(invalidResponse.getStatusCode(), 400);
+  assert.match(invalidResponse.readJson().message, /choose where the public reply was posted/i);
+
   const response = createMockResponse();
   await marketplaceController.handle(
     {
@@ -911,6 +1821,9 @@ test("ops review response endpoint records posted public replies", async () => {
         responseStatus: "posted",
         responseHandledBy: "Casey Ops",
         responseNotes: "Posted after checking the support context.",
+        responseChannel: "google-business-profile",
+        externalResponseId: "gbp_reply_123",
+        publicResponseUrl: "https://business.google.com/reviews/reply/gbp_reply_123",
         publicReplyBody:
           "Thank you for the feedback. We appreciate the note about the finish details and are using it to keep the next visit tighter."
       },
@@ -926,7 +1839,277 @@ test("ops review response endpoint records posted public replies", async () => {
   const updatedReview = response.readJson();
   assert.equal(updatedReview.responseStatus, "posted");
   assert.equal(updatedReview.responseHandledBy, "Casey Ops");
+  assert.equal(updatedReview.responseChannel, "google-business-profile");
+  assert.equal(updatedReview.externalResponseId, "gbp_reply_123");
+  assert.equal(
+    updatedReview.publicResponseUrl,
+    "https://business.google.com/reviews/reply/gbp_reply_123"
+  );
   assert.match(updatedReview.publicReplyBody, /finish details/i);
+});
+
+test("shared inbox inbound review response endpoint is secret-protected, normalizes relay fields, and is idempotent", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const marketplaceController = new MarketplaceController(platform);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
+
+  const customer = await platform.registerUser({
+    fullName: "Inbound Reply Reviewer",
+    email: "inbound-review-route@example.com",
+    password: "Password123!",
+    phone: "555-0334",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress()
+  });
+
+  const nowIso = new Date().toISOString();
+  const booking = await repository.createBooking({
+    id: "booking-inbound-review-route",
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    status: "completed",
+    requestedAt: nowIso,
+    scheduledStartIso: nowIso,
+    scheduledEndIso: nowIso,
+    completedAt: nowIso,
+    notes: "Completed booking for inbound review response route test",
+    totalCents: 6200
+  });
+
+  await repository.createReviewInvite({
+    id: "invite-inbound-review-route",
+    bookingId: booking.id,
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    email: customer.email,
+    status: "sent",
+    channels: ["email"],
+    scheduledSendIso: nowIso,
+    sentAt: nowIso,
+    expiresAtIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    deepLinkPath: `/bookings/${booking.id}/review`
+  });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: booking.id,
+    overallRating: 4,
+    timelinessRating: 4,
+    attentionToDetailRating: 4,
+    reviewText: "Solid visit overall."
+  });
+
+  const previousSecret = process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET;
+  process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET = "review-secret";
+
+  try {
+    const unauthorizedResponse = createMockResponse();
+    await marketplaceController.handle(
+      {
+        method: "POST",
+        path: "/api/providers/reviews/response/inbound/shared-inbox",
+        body: {
+          reviewId: review.id,
+          "message-id": "<reply_msg_123>",
+          text: "Thank you for the feedback. We appreciate the note and are following up directly."
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      unauthorizedResponse as never
+    ).catch((error: Error) => {
+      unauthorizedResponse.writeHead(401);
+      unauthorizedResponse.end(JSON.stringify({ message: error.message }));
+    });
+
+    assert.equal(unauthorizedResponse.getStatusCode(), 401);
+
+    const response = createMockResponse();
+    await marketplaceController.handle(
+      {
+        method: "POST",
+        path: "/api/providers/reviews/response/inbound/shared-inbox",
+        body: {
+          "review-id": review.id,
+          handled_by: "Shared inbox automation",
+          notes: "Posted from the shared inbox relay.",
+          "message-id": "<reply_msg_123>",
+          "thread-id": "<thread_123>",
+          "thread-url": "https://inbox.example.com/threads/thread_123",
+          mailbox: "GreenRain Reviews",
+          from: "reviews@greenrain.example",
+          reply_url: "https://reviews.example.com/replies/reply_msg_123",
+          text: "Thank you for the feedback. We appreciate the note and are following up directly."
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-review-response-secret": "review-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const postedReview = response.readJson();
+    assert.equal(postedReview.responseStatus, "posted");
+    assert.equal(postedReview.responseChannel, "shared-inbox");
+    assert.equal(postedReview.externalResponseId, "reply_msg_123");
+    assert.equal(postedReview.responseChannelMetadata?.emailMessageId, "reply_msg_123");
+    assert.equal(postedReview.responseChannelMetadata?.emailThreadId, "thread_123");
+    assert.equal(
+      postedReview.responseChannelMetadata?.threadUrl,
+      "https://inbox.example.com/threads/thread_123"
+    );
+    assert.equal(postedReview.responseChannelMetadata?.mailboxName, "GreenRain Reviews");
+    assert.equal(postedReview.responseChannelMetadata?.senderEmail, "reviews@greenrain.example");
+    assert.ok(
+      postedReview.responseChannelMetadata?.intakeNotes?.some((note: string) =>
+        /derived from the shared inbox message id/i.test(note)
+      )
+    );
+
+    const retryResponse = createMockResponse();
+    await marketplaceController.handle(
+      {
+        method: "POST",
+        path: "/api/providers/reviews/response/inbound/shared-inbox",
+        body: {
+          reviewId: review.id,
+          responseHandledBy: "Shared inbox automation",
+          responseNotes: "Posted from the shared inbox relay.",
+          messageId: "<reply_msg_123>",
+          threadId: "<thread_123>",
+          publicResponseUrl: "https://reviews.example.com/replies/reply_msg_123",
+          publicReplyBody: "Thank you for the feedback. We appreciate the note and are following up directly."
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-review-response-secret": "review-secret"
+        }
+      },
+      retryResponse as never
+    );
+
+    assert.equal(retryResponse.getStatusCode(), 201);
+    const retriedReview = retryResponse.readJson();
+    assert.equal(retriedReview.responseStatus, "posted");
+    assert.equal(retriedReview.externalResponseId, "reply_msg_123");
+    assert.equal(retriedReview.responseChannelMetadata?.emailThreadId, "thread_123");
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET;
+    } else {
+      process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET = previousSecret;
+    }
+  }
+});
+
+test("google business profile inbound review response endpoint records reply metadata", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const marketplaceController = new MarketplaceController(platform);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
+
+  const customer = await platform.registerUser({
+    fullName: "GBP Reply Reviewer",
+    email: "inbound-gbp-review-route@example.com",
+    password: "Password123!",
+    phone: "555-0335",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress()
+  });
+
+  const nowIso = new Date().toISOString();
+  const booking = await repository.createBooking({
+    id: "booking-inbound-gbp-review-route",
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: "yard-cleanup",
+    status: "completed",
+    requestedAt: nowIso,
+    scheduledStartIso: nowIso,
+    scheduledEndIso: nowIso,
+    completedAt: nowIso,
+    notes: "Completed booking for GBP inbound review response route test",
+    totalCents: 7400
+  });
+
+  await repository.createReviewInvite({
+    id: "invite-inbound-gbp-review-route",
+    bookingId: booking.id,
+    customerId: customer.id,
+    providerId: seededProvider.id,
+    email: customer.email,
+    status: "sent",
+    channels: ["email"],
+    scheduledSendIso: nowIso,
+    sentAt: nowIso,
+    expiresAtIso: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+    deepLinkPath: `/bookings/${booking.id}/review`
+  });
+
+  const review = await platform.createProviderReview(customer.id, {
+    bookingId: booking.id,
+    overallRating: 5,
+    timelinessRating: 5,
+    attentionToDetailRating: 5,
+    reviewText: "Great cleanup and easy follow-up."
+  });
+
+  const previousSecret = process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET;
+  process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET = "review-secret";
+
+  try {
+    const response = createMockResponse();
+    await marketplaceController.handle(
+      {
+        method: "POST",
+        path: "/api/providers/reviews/response/inbound/google-business-profile",
+        body: {
+          "review-id": review.id,
+          "reply-id": "gbp_reply_777",
+          "thread-url": "https://business.google.com/reviews/reply/gbp_reply_777",
+          "location-name": "GreenRain Barnegat",
+          text: "Thank you for the kind words. We appreciate you trusting GreenRain with the cleanup.",
+          reply_url: "https://business.google.com/reviews/reply/gbp_reply_777"
+        },
+        query: new URLSearchParams(),
+        headers: {
+          "x-yardmatch-review-response-secret": "review-secret"
+        }
+      },
+      response as never
+    );
+
+    assert.equal(response.getStatusCode(), 201);
+    const postedReview = response.readJson();
+    assert.equal(postedReview.responseStatus, "posted");
+    assert.equal(postedReview.responseChannel, "google-business-profile");
+    assert.equal(postedReview.externalResponseId, "gbp_reply_777");
+    assert.equal(
+      postedReview.responseChannelMetadata?.threadUrl,
+      "https://business.google.com/reviews/reply/gbp_reply_777"
+    );
+    assert.equal(
+      postedReview.responseChannelMetadata?.profileLocationName,
+      "GreenRain Barnegat"
+    );
+  } finally {
+    if (previousSecret === undefined) {
+      delete process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET;
+    } else {
+      process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET = previousSecret;
+    }
+  }
 });
 
 test("ops review escalation endpoint opens a linked support follow-up", async () => {
@@ -1107,6 +2290,39 @@ test("ops overview route requires an ops session", async () => {
     opsResponse as never
   );
   assert.equal(opsResponse.getStatusCode(), 200);
+
+  const escalateForbiddenResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/inbound-automation/escalate",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    escalateForbiddenResponse as never
+  ).catch((error: Error) => {
+    escalateForbiddenResponse.writeHead(403);
+    escalateForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(escalateForbiddenResponse.getStatusCode(), 403);
+
+  const escalateOpsResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/inbound-automation/escalate",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    escalateOpsResponse as never
+  );
+  assert.equal(escalateOpsResponse.getStatusCode(), 200);
 });
 
 test("support ops routes require an ops session", async () => {

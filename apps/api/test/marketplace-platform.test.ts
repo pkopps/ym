@@ -1025,6 +1025,188 @@ test("observability overview includes launch lead backlog and source metrics", a
   assert.equal(retentionProviderMetric?.recurringPlanStarts, 1);
 });
 
+test("observability overview includes internal ops access health, recent access changes, and sign-in reporting", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const adminIdentity = await platform.findAuthIdentityByEmail("ops@example.com");
+  assert.ok(adminIdentity);
+
+  const staffCreate = await withMockedNow("2026-06-24T09:00:00.000Z", () =>
+    platform.createOpsAccount(adminIdentity, {
+      fullName: "Jamie Staff",
+      email: "jamie.staff@example.com",
+      phone: "555-0413",
+      password: "StaffPass123!",
+      internalScope: "operations"
+    })
+  );
+  const backupAdminCreate = await withMockedNow("2026-06-24T09:05:00.000Z", () =>
+    platform.createOpsAccount(adminIdentity, {
+      fullName: "Taylor Admin",
+      email: "taylor.admin@example.com",
+      phone: "555-0414",
+      password: "BackupAdmin123!",
+      internalScope: "admin"
+    })
+  );
+  const lockedCreate = await withMockedNow("2026-06-24T09:07:00.000Z", () =>
+    platform.createOpsAccount(adminIdentity, {
+      fullName: "Morgan Locked",
+      email: "morgan.locked@example.com",
+      phone: "555-0415",
+      password: "LockedPass123!",
+      internalScope: "operations"
+    })
+  );
+  const watchCreate = await withMockedNow("2026-06-24T09:08:00.000Z", () =>
+    platform.createOpsAccount(adminIdentity, {
+      fullName: "Riley Watch",
+      email: "riley.watch@example.com",
+      phone: "555-0416",
+      password: "WatchPass123!",
+      internalScope: "operations"
+    })
+  );
+  await withMockedNow("2026-06-24T09:10:00.000Z", () =>
+    platform.requestOpsAccountPasswordReset(adminIdentity, {
+      opsUserId: staffCreate.account.profile.id
+    })
+  );
+  await withMockedNow("2026-06-24T09:15:00.000Z", () =>
+    platform.updateOpsAccount(adminIdentity, {
+      opsUserId: staffCreate.account.profile.id,
+      internalScope: "admin"
+    })
+  );
+  await withMockedNow("2026-06-24T09:20:00.000Z", () =>
+    platform.updateOpsAccountAccess(adminIdentity, {
+      opsUserId: backupAdminCreate.account.profile.id,
+      action: "deactivate",
+      notes: "Seasonal coverage ended."
+    })
+  );
+  const backupAdminIdentity = await platform.findAuthIdentityByEmail("taylor.admin@example.com");
+  assert.ok(backupAdminIdentity);
+  await withMockedNow("2026-06-24T09:22:00.000Z", () =>
+    platform.recordFailedOpsAuthentication(backupAdminIdentity, "disabled-account")
+  );
+  const lockedIdentity = await platform.findAuthIdentityByEmail("morgan.locked@example.com");
+  assert.ok(lockedIdentity);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await withMockedNow(`2026-06-24T09:${String(23 + attempt).padStart(2, "0")}:00.000Z`, () =>
+      platform.recordFailedOpsAuthentication(lockedIdentity, "invalid-password")
+    );
+  }
+  const watchIdentity = await platform.findAuthIdentityByEmail("riley.watch@example.com");
+  assert.ok(watchIdentity);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await withMockedNow(`2026-06-24T09:${String(28 + attempt).padStart(2, "0")}:30.000Z`, () =>
+      platform.recordFailedOpsAuthentication(watchIdentity, "invalid-password")
+    );
+  }
+  await withMockedNow("2026-05-01T09:00:00.000Z", () =>
+    platform.recordSuccessfulAuthentication(adminIdentity.userId, "password")
+  );
+  await withMockedNow("2026-06-24T09:25:00.000Z", () =>
+    platform.recordSuccessfulAuthentication(staffCreate.account.profile.id, "password")
+  );
+
+  const overview = await withMockedNow("2026-06-24T09:31:00.000Z", () => platform.getObservabilityOverview());
+  assert.equal(overview.totalOpsAccounts, 5);
+  assert.equal(overview.activeOpsAdminAccounts, 2);
+  assert.equal(overview.activeOpsStaffAccounts, 2);
+  assert.equal(overview.disabledOpsAccounts, 1);
+  assert.equal(overview.lockedOpsAccounts, 1);
+  assert.equal(overview.dormantOpsAccounts, 1);
+  assert.equal(overview.neverSignedInOpsAccounts, 2);
+  assert.equal(overview.opsAccountsWithRecentFailures, 3);
+  assert.equal(overview.pendingOpsPasswordResetInvites, 0);
+  assert.equal(overview.accessAlerts.length, 3);
+  assert.ok(overview.recentOpsAuthenticationEvents.length >= 6);
+  const lockEvent = overview.recentOpsAuthenticationEvents.find(
+    (event) =>
+      event.opsUserEmail === "morgan.locked@example.com" && event.kind === "temporary-lock-triggered"
+  );
+  assert.equal(lockEvent?.failedCount, 5);
+  assert.equal(lockEvent?.lockExpiresAt, "2026-06-24T09:57:00.000Z");
+  const watchFailureEvent = overview.recentOpsAuthenticationEvents.find(
+    (event) =>
+      event.opsUserEmail === "riley.watch@example.com" && event.kind === "sign-in-failed"
+  );
+  assert.equal(watchFailureEvent?.failedCount, 3);
+  assert.equal(watchFailureEvent?.reason, "invalid-password");
+  const resetRequestedEvent = overview.recentOpsAuthenticationEvents.find(
+    (event) =>
+      event.opsUserEmail === "jamie.staff@example.com" && event.kind === "password-reset-requested"
+  );
+  assert.equal(resetRequestedEvent?.recordedByName, "Casey Ops");
+  const successfulSignInEvent = overview.recentOpsAuthenticationEvents.find(
+    (event) =>
+      event.opsUserEmail === "jamie.staff@example.com" && event.kind === "sign-in-succeeded"
+  );
+  assert.equal(successfulSignInEvent?.method, "password");
+  assert.deepEqual(
+    overview.accessAlerts.map((alert) => ({
+      opsUserEmail: alert.opsUserEmail,
+      severity: alert.severity,
+      title: alert.title
+    })),
+    [
+      {
+        opsUserEmail: "morgan.locked@example.com",
+        severity: "critical",
+        title: "Internal staff login is temporarily locked"
+      },
+      {
+        opsUserEmail: "riley.watch@example.com",
+        severity: "warning",
+        title: "Internal staff login is approaching lockout"
+      },
+      {
+        opsUserEmail: "taylor.admin@example.com",
+        severity: "warning",
+        title: "Disabled internal account is still receiving login attempts"
+      }
+    ]
+  );
+  const deactivatedItem = overview.recentOpsAccessChanges.find(
+    (item) => item.kind === "deactivated" && item.opsUserEmail === "taylor.admin@example.com"
+  );
+  assert.ok(deactivatedItem);
+  assert.match(deactivatedItem.notes ?? "", /seasonal coverage ended/i);
+
+  const promotedItem = overview.recentOpsAccessChanges.find(
+    (item) => item.kind === "profile-updated" && item.opsUserEmail === "jamie.staff@example.com"
+  );
+  assert.equal(promotedItem?.internalScope, "admin");
+  assert.equal(promotedItem?.changedByName, "Casey Ops");
+
+  const resetItem = overview.recentOpsAccessChanges.find(
+    (item) => item.kind === "password-reset-invited" && item.opsUserEmail === "jamie.staff@example.com"
+  );
+  assert.ok(resetItem);
+  const latestSignIn = overview.recentOpsSignIns[0];
+  assert.equal(latestSignIn?.opsUserEmail, "jamie.staff@example.com");
+  assert.equal(latestSignIn?.method, "password");
+  assert.equal(latestSignIn?.signedInAt, "2026-06-24T09:25:00.000Z");
+  const latestFailedSignIn = overview.recentFailedOpsSignIns[0];
+  assert.equal(latestFailedSignIn?.opsUserEmail, "riley.watch@example.com");
+  assert.equal(latestFailedSignIn?.reason, "invalid-password");
+  assert.equal(latestFailedSignIn?.failedCount, 3);
+  assert.equal(latestFailedSignIn?.failedAt, "2026-06-24T09:30:30.000Z");
+  const lockedFailedSignIn = overview.recentFailedOpsSignIns.find(
+    (item) => item.opsUserEmail === "morgan.locked@example.com"
+  );
+  assert.equal(lockedFailedSignIn?.reason, "invalid-password");
+  assert.equal(lockedFailedSignIn?.failedCount, 5);
+  assert.equal(lockedFailedSignIn?.failedAt, "2026-06-24T09:27:00.000Z");
+  const disabledFailedSignIn = overview.recentFailedOpsSignIns.find(
+    (item) => item.opsUserEmail === "taylor.admin@example.com"
+  );
+  assert.equal(disabledFailedSignIn?.reason, "disabled-account");
+});
+
 test("observability overview includes a public review response queue with urgency and drafts", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const analytics = new DataEngineeringLogger();
@@ -1125,11 +1307,26 @@ test("observability overview includes a public review response queue with urgenc
     responseStatus: "posted",
     responseHandledBy: "Casey Ops",
     responseNotes: "Posted publicly after checking the open support thread.",
+    responseChannel: "shared-inbox",
+    responseChannelMetadata: {
+      mailboxName: "GreenRain Reviews",
+      emailMessageId: "review_reply_msg_42",
+      emailThreadId: "review_thread_42",
+      threadUrl: "https://inbox.example.com/threads/review_thread_42",
+      intakeNotes: ["Posted through the shared inbox workflow after the support queue was reviewed."]
+    },
+    externalResponseId: "review_reply_msg_42",
+    publicResponseUrl: "https://reviews.example.com/replies/review_reply_msg_42",
     publicReplyBody:
       "Thank you for the candid feedback. We are sorry this lawn mowing visit missed the mark, and we are reviewing the details internally so the follow-up stays specific."
   });
   assert.equal(updatedReview.responseStatus, "posted");
   assert.equal(updatedReview.responseHandledBy, "Casey Ops");
+  assert.equal(updatedReview.responseChannel, "shared-inbox");
+  assert.equal(updatedReview.responseChannelMetadata?.mailboxName, "GreenRain Reviews");
+  assert.equal(updatedReview.responseChannelMetadata?.emailThreadId, "review_thread_42");
+  assert.equal(updatedReview.externalResponseId, "review_reply_msg_42");
+  assert.equal(updatedReview.publicResponseUrl, "https://reviews.example.com/replies/review_reply_msg_42");
   assert.ok(updatedReview.responseHandledAt);
 
   const updatedOverview = await platform.getObservabilityOverview();
@@ -1138,7 +1335,209 @@ test("observability overview includes a public review response queue with urgenc
   assert.equal(updatedOverview.overdueReviewResponses, 0);
   const updatedResponseItem = updatedOverview.recentReviewResponses.find((item) => item.reviewId === review.id);
   assert.equal(updatedResponseItem?.responseStatus, "posted");
+  assert.equal(updatedResponseItem?.responseChannel, "shared-inbox");
+  assert.equal(updatedResponseItem?.responseChannelMetadata?.mailboxName, "GreenRain Reviews");
+  assert.equal(
+    updatedResponseItem?.responseChannelMetadata?.threadUrl,
+    "https://inbox.example.com/threads/review_thread_42"
+  );
+  assert.equal(updatedResponseItem?.externalResponseId, "review_reply_msg_42");
+  assert.equal(
+    updatedResponseItem?.publicResponseUrl,
+    "https://reviews.example.com/replies/review_reply_msg_42"
+  );
   assert.match(updatedResponseItem?.recommendedAction ?? "", /already recorded/i);
+});
+
+test("observability overview includes inbound automation health for leads and review replies", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const seededProvider = (await repository.listProviders())[0];
+  assert.ok(seededProvider);
+
+  const previousLeadSecret = process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+  const previousReviewSecret = process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET;
+  process.env.INBOUND_LEAD_WEBHOOK_SECRET = "lead-secret";
+  process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET = "review-secret";
+
+  try {
+    const launchLead = await platform.createInboundEmailLaunchLead(
+      {
+        senderEmail: "alex@example.com",
+        messageId: "<lead-msg-1>",
+        threadId: "<lead-thread-1>",
+        subject: "Need mowing in Barnegat",
+        textBody: "Can someone help with mowing near Barnegat this week?"
+      },
+      "lead-secret"
+    );
+
+    await platform.createInboundGoogleBusinessProfileLead(
+      {
+        sourceReferenceId: "gbp-lead-1",
+        customerName: "Jordan Neighbor",
+        messageText: "Do you handle yard cleanup in Barnegat?",
+        profileLocationName: "GreenRain Barnegat"
+      },
+      "lead-secret"
+    );
+
+    const customer = await platform.registerUser({
+      fullName: "Review Automation Customer",
+      email: "review-automation@example.com",
+      password: "Password123!",
+      phone: "555-0308",
+      role: "customer",
+      propertyLabel: "Home",
+      address: createAddress("28 Cedar Lane", 39.7542, -74.2225)
+    });
+
+    const nowIso = new Date().toISOString();
+    const booking = await repository.createBooking({
+      id: crypto.randomUUID(),
+      customerId: customer.id,
+      providerId: seededProvider.id,
+      serviceAddress: customer.address,
+      servicePropertyId: customer.defaultPropertyId,
+      category: "lawn-mowing",
+      status: "completed",
+      requestedAt: nowIso,
+      scheduledStartIso: nowIso,
+      scheduledEndIso: futureIso(1),
+      completedAt: nowIso,
+      notes: "Completed booking for inbound automation overview test",
+      totalCents: 6400
+    });
+
+    await repository.createReviewInvite({
+      id: crypto.randomUUID(),
+      bookingId: booking.id,
+      customerId: customer.id,
+      providerId: seededProvider.id,
+      email: customer.email,
+      status: "sent",
+      channels: ["email"],
+      scheduledSendIso: nowIso,
+      sentAt: nowIso,
+      expiresAtIso: futureIso(72),
+      deepLinkPath: `/bookings/${booking.id}/review`
+    });
+
+    const review = await platform.createProviderReview(customer.id, {
+      bookingId: booking.id,
+      overallRating: 4,
+      timelinessRating: 4,
+      attentionToDetailRating: 4,
+      reviewText: "Good visit overall."
+    });
+
+    await platform.createInboundSharedInboxReviewResponse(
+      {
+        reviewId: review.id,
+        messageId: "<review-reply-1>",
+        threadId: "<review-thread-1>",
+        mailboxName: "GreenRain Reviews",
+        senderEmail: "reviews@greenrain.example",
+        publicResponseUrl: "https://reviews.example.com/replies/review-reply-1",
+        publicReplyBody: "Thank you for the feedback. We appreciate the note and are following up directly."
+      },
+      "review-secret"
+    );
+
+    const overview = await platform.getObservabilityOverview();
+    assert.ok(overview.inboundAutomationSourceMetrics.length >= 3);
+    const directEmailMetric = overview.inboundAutomationSourceMetrics.find(
+      (item) => item.sourceKey === "direct-email-lead"
+    );
+    assert.ok(directEmailMetric);
+    assert.equal(directEmailMetric?.recentCount, 1);
+    assert.equal(directEmailMetric?.openLeadCount, 1);
+    assert.equal(directEmailMetric?.status, "healthy");
+
+    const gbpLeadMetric = overview.inboundAutomationSourceMetrics.find(
+      (item) => item.sourceKey === "google-business-profile-lead"
+    );
+    assert.ok(gbpLeadMetric);
+    assert.equal(gbpLeadMetric?.recentCount, 1);
+
+    const reviewMetric = overview.inboundAutomationSourceMetrics.find(
+      (item) => item.sourceKey === "shared-inbox-review-response"
+    );
+    assert.ok(reviewMetric);
+    assert.equal(reviewMetric?.recentCount, 1);
+
+    assert.equal(overview.inboundAutomationAlerts.length, 0);
+    assert.ok(
+      overview.recentInboundAutomationActivity.some(
+        (item) => item.kind === "launch-lead" && item.reference === launchLead.sourceReferenceId
+      )
+    );
+    assert.ok(
+      overview.recentInboundAutomationActivity.some(
+        (item) => item.kind === "review-response" && item.reference === "review-reply-1"
+      )
+    );
+  } finally {
+    if (previousLeadSecret === undefined) {
+      delete process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+    } else {
+      process.env.INBOUND_LEAD_WEBHOOK_SECRET = previousLeadSecret;
+    }
+
+    if (previousReviewSecret === undefined) {
+      delete process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET;
+    } else {
+      process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET = previousReviewSecret;
+    }
+  }
+});
+
+test("observability overview includes expected inbound automation sources before first traffic", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const previousExpectedSources = process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES;
+  process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES =
+    "direct-email-lead,shared-inbox-review-response";
+
+  try {
+    const overview = await platform.getObservabilityOverview();
+    const directEmailMetric = overview.inboundAutomationSourceMetrics.find(
+      (item) => item.sourceKey === "direct-email-lead"
+    );
+    const sharedInboxMetric = overview.inboundAutomationSourceMetrics.find(
+      (item) => item.sourceKey === "shared-inbox-review-response"
+    );
+
+    assert.ok(directEmailMetric);
+    assert.equal(directEmailMetric?.recentCount, 0);
+    assert.equal(directEmailMetric?.status, "stale");
+    assert.equal(directEmailMetric?.lastOccurredAt, undefined);
+
+    assert.ok(sharedInboxMetric);
+    assert.equal(sharedInboxMetric?.recentCount, 0);
+    assert.equal(sharedInboxMetric?.status, "stale");
+
+    assert.ok(
+      overview.inboundAutomationAlerts.some(
+        (item) =>
+          item.sourceKey === "direct-email-lead" &&
+          /No inbound activity has been recorded yet/i.test(item.detail)
+      )
+    );
+    assert.ok(
+      overview.inboundAutomationAlerts.some(
+        (item) => item.sourceKey === "shared-inbox-review-response"
+      )
+    );
+  } finally {
+    if (previousExpectedSources === undefined) {
+      delete process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES;
+    } else {
+      process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES = previousExpectedSources;
+    }
+  }
 });
 
 test("review escalation opens a service-quality follow-up and links it back into the review queue", async () => {
@@ -8198,6 +8597,53 @@ test("ops notification health can escalate external alerts to configured contact
     process.env.RESEND_API_KEY = originalResendApiKey;
     process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
     process.env.NOTIFICATION_ALERT_EMAILS = originalNotificationAlertEmails;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("inbound automation health can escalate external alerts to configured contacts", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalResendApiKey = process.env.RESEND_API_KEY;
+  const originalNotificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM;
+  const originalNotificationAlertEmails = process.env.NOTIFICATION_ALERT_EMAILS;
+  const originalExpectedSources = process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES;
+
+  process.env.RESEND_API_KEY = "resend_test_key";
+  process.env.NOTIFICATION_EMAIL_FROM = "ops@yardmatch.test";
+  process.env.NOTIFICATION_ALERT_EMAILS = "alerts@yardmatch.test";
+  process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES = "direct-email-lead";
+
+  try {
+    globalThis.fetch = (async () =>
+      ({
+        ok: true,
+        json: async () => ({ id: "email_alert_456" })
+      }) as Response) as typeof fetch;
+
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const escalation = await platform.escalateInboundAutomationAlerts();
+    assert.equal(escalation.escalated, true);
+    assert.equal(escalation.targetCount, 1);
+    assert.equal(escalation.sentCount, 1);
+    assert.equal(escalation.failedCount, 0);
+
+    const deliveries = await repository.listAllNotificationDeliveries();
+    assert.ok(
+      deliveries.some(
+        (delivery) =>
+          delivery.destination === "alerts@yardmatch.test" &&
+          delivery.provider === "resend" &&
+          delivery.status === "sent" &&
+          /inbound automation/i.test(delivery.title)
+      )
+    );
+  } finally {
+    process.env.RESEND_API_KEY = originalResendApiKey;
+    process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
+    process.env.NOTIFICATION_ALERT_EMAILS = originalNotificationAlertEmails;
+    process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES = originalExpectedSources;
     globalThis.fetch = originalFetch;
   }
 });

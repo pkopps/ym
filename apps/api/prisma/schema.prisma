@@ -14,6 +14,21 @@ model UserAccount {
   googleSubject         String?                @unique
   appleSubject          String?                @unique
   sessionVersion        Int                    @default(1)
+  internalScope         String?
+  accessDisabledAt      DateTime?
+  accessDisabledBy      String?
+  accessChangeNotes     String?
+  lastAccessChangeAt    DateTime?
+  lastAccessChangeBy    String?
+  lastAccessChangeKind  String?
+  accessChangeHistory   Json?
+  authenticationEventHistory Json?
+  lastAuthenticatedAt   DateTime?
+  lastAuthenticatedMethod String?
+  failedAuthenticationCount Int                  @default(0)
+  lastFailedAuthenticationAt DateTime?
+  lastFailedAuthenticationReason String?
+  authenticationLockExpiresAt DateTime?
   resetPasswordCodeHash String?
   resetPasswordExpiresAt DateTime?
   resetPasswordRequestedAt DateTime?
@@ -282,6 +297,10 @@ model ProviderReview {
   responseHandledBy      String?
   responseNotes          String?
   publicReplyBody        String?
+  responseChannel        String?
+  responseChannelMetadata Json?
+  externalResponseId     String?
+  publicResponseUrl      String?
   supportTicketId        String?
   escalatedAt           DateTime?
   escalatedBy           String?

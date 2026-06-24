@@ -207,7 +207,7 @@ async function main() {
         role: "ops",
         address: createAddress("18 Bay Ave", "Barnegat", "NJ", "08005", 39.7532, -74.2229),
         createdAt: now,
-        internalScope: "operations"
+        internalScope: "admin"
       },
       seededPassword
     );
@@ -217,6 +217,7 @@ async function main() {
       data: {
         fullName: "Casey Ops",
         phone: "555-0990",
+        internalScope: "admin",
         address: createAddress("18 Bay Ave", "Barnegat", "NJ", "08005", 39.7532, -74.2229),
         passwordHash: seededPassword
       }

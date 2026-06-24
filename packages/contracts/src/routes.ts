@@ -4,6 +4,11 @@ export class ApiRoutes {
   public static readonly currentUser = "/api/auth/me";
   public static readonly requestPasswordReset = "/api/auth/password-reset/request";
   public static readonly confirmPasswordReset = "/api/auth/password-reset/confirm";
+  public static readonly opsAccounts = "/api/ops/accounts";
+  public static readonly opsAccountsUpdate = "/api/ops/accounts/update";
+  public static readonly opsAccountsRotateSessions = "/api/ops/accounts/rotate-sessions";
+  public static readonly opsAccountsPasswordResetRequest = "/api/ops/accounts/password-reset/request";
+  public static readonly opsAccountsAccess = "/api/ops/accounts/access";
   public static readonly completeSocialSignup = "/api/auth/social/complete";
   public static readonly googleAuthStart = "/api/auth/google/start";
   public static readonly appleAuthStart = "/api/auth/apple/start";
@@ -29,6 +34,11 @@ export class ApiRoutes {
   public static readonly providerAssistantCommand = "/api/providers/assistant";
   public static readonly providerReviews = "/api/providers/reviews";
   public static readonly updateReviewResponse = "/api/providers/reviews/response";
+  public static readonly inboundReviewResponse = "/api/providers/reviews/response/inbound";
+  public static readonly inboundSharedInboxReviewResponse =
+    "/api/providers/reviews/response/inbound/shared-inbox";
+  public static readonly inboundGoogleBusinessProfileReviewResponse =
+    "/api/providers/reviews/response/inbound/google-business-profile";
   public static readonly escalateReviewSupport = "/api/providers/reviews/escalate";
   public static readonly notifications = "/api/notifications";
   public static readonly notificationsRead = "/api/notifications/read";
@@ -89,6 +99,8 @@ export class ApiRoutes {
   public static readonly createAnalyticsEvent = "/api/analytics/events";
   public static readonly createSessionHeartbeat = "/api/observability/session-heartbeat";
   public static readonly getObservabilityOverview = "/api/observability/overview";
+  public static readonly observabilityInboundAutomationEscalate =
+    "/api/observability/inbound-automation/escalate";
   public static readonly providerCalendar = "/api/calendar/feed";
   public static readonly providerCalendarSubscription = "/api/calendar/subscription";
   public static readonly providerCalendarOverview = "/api/calendar/overview";

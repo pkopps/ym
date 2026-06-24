@@ -149,6 +149,156 @@ export const apiSpec = {
         }
       }
     },
+    "/api/ops/accounts": {
+      get: {
+        tags: ["Auth"],
+        summary: "List internal ops accounts",
+        description:
+          "Admin-only account management for staff logins. Returns ops profiles plus admin-vs-staff scope, session-version, password/reset metadata, persisted access-change history, persisted authentication-event history, last successful sign-in activity, failed-sign-in state, and any active temporary login lock so the authenticated ops dashboard can manage and audit its own internal access without dropping to the CLI.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Current internal ops accounts" },
+          "401": { description: "Missing or invalid bearer token" },
+          "403": { description: "Requires an authenticated admin ops account" }
+        }
+      },
+      post: {
+        tags: ["Auth"],
+        summary: "Create an internal ops account",
+        description:
+          "Admin-only creation path for new staff logins. This route is protected by the authenticated admin ops guard and exists so the team no longer relies only on seed data or the CLI for routine staff-account provisioning. It can either store a supplied password directly or prepare the normal password-reset flow immediately so staff onboarding does not depend on manually sharing a password.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                fullName: "Jamie Dispatcher",
+                email: "jamie.dispatcher@example.com",
+                phone: "555-0413",
+                internalScope: "operations",
+                sendPasswordResetInvite: true
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Ops account created" },
+          "401": { description: "Missing or invalid bearer token" },
+          "403": { description: "Requires an authenticated admin ops account" },
+          "409": { description: "That email already belongs to another account" }
+        }
+      }
+    },
+    "/api/ops/accounts/update": {
+      post: {
+        tags: ["Auth"],
+        summary: "Update an internal ops account profile",
+        description:
+          "Admin-only edit path for staff name, phone, and admin-vs-staff scope details. This keeps the internal ops dashboard aligned with the current staff roster without requiring database or CLI edits.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                opsUserId: "ops_123",
+                fullName: "Jamie Dispatch Lead",
+                phone: "555-0414",
+                internalScope: "admin"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Ops account updated" },
+          "401": { description: "Missing or invalid bearer token" },
+          "403": { description: "Requires an authenticated admin ops account" },
+          "404": { description: "Ops account not found" }
+        }
+      }
+    },
+    "/api/ops/accounts/rotate-sessions": {
+      post: {
+        tags: ["Auth"],
+        summary: "Revoke an ops account's active sessions",
+        description:
+          "Admin-only security control for forcing another ops user to sign in again everywhere. It can also replace the stored password at the same time. The dashboard blocks self-rotation here so an operator does not accidentally revoke their own active session from inside the internal workspace.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                opsUserId: "ops_123",
+                newPassword: "NewDispatcher123!"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Ops sessions rotated and password optionally replaced" },
+          "400": { description: "Invalid self-rotation or password input" },
+          "401": { description: "Missing or invalid bearer token" },
+          "403": { description: "Requires an authenticated admin ops account" },
+          "404": { description: "Ops account not found" }
+        }
+      }
+    },
+    "/api/ops/accounts/password-reset/request": {
+      post: {
+        tags: ["Auth"],
+        summary: "Prepare a password reset invite for an ops account",
+        description:
+          "Admin-only helper for onboarding or recovery when the team should not manually share a password. It triggers the normal password reset flow for another ops account and returns the usual reset-preview details in local development.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                opsUserId: "ops_123"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Password reset invite prepared for the target ops account" },
+          "401": { description: "Missing or invalid bearer token" },
+          "403": { description: "Requires an authenticated admin ops account" },
+          "404": { description: "Ops account not found" }
+        }
+      }
+    },
+    "/api/ops/accounts/access": {
+      post: {
+        tags: ["Auth"],
+        summary: "Deactivate or reactivate an ops account",
+        description:
+          "Admin-only access control for staff lifecycle changes. Deactivation blocks future logins, invalidates active sessions through the session-version check, records who made the change, and appends an optional note into the persisted access-history timeline. Reactivation restores login eligibility without silently hiding prior access-change records. The same route can also explicitly clear a temporary auth lock and failed-attempt state when an admin verifies the staff member and provides an audit note.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                opsUserId: "ops_123",
+                action: "deactivate",
+                notes: "Seasonal launch support ended."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Ops account access updated" },
+          "400": { description: "Invalid self-deactivation or invalid access change" },
+          "401": { description: "Missing or invalid bearer token" },
+          "403": { description: "Requires an authenticated admin ops account" },
+          "404": { description: "Ops account not found" },
+          "409": { description: "Ops account is already in that access state" }
+        }
+      }
+    },
     "/api/auth/google/start": {
       get: {
         tags: ["Auth"],
@@ -986,7 +1136,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Record public review-response handling for ops",
         description:
-          "Stores whether a submitted review still needs a public reply, was replied to publicly, or was intentionally skipped, along with the reply body or ops note used to justify that state. This internal review workflow now requires an authenticated ops session instead of loading anonymously.",
+          "Stores whether a submitted review still needs a public reply, was replied to publicly, or was intentionally skipped, along with the reply body, posting channel, and traceable external reply reference or link used to justify that state. This internal review workflow now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -997,6 +1147,9 @@ export const apiSpec = {
                 responseStatus: "posted",
                 responseHandledBy: "Casey Ops",
                 responseNotes: "Posted after checking the related support case.",
+                responseChannel: "google-business-profile",
+                externalResponseId: "gbp_reply_123",
+                publicResponseUrl: "https://business.google.com/reviews/reply/gbp_reply_123",
                 publicReplyBody:
                   "Thank you for the feedback. We are sorry this visit missed the mark and are reviewing the details internally so the follow-up stays specific."
               }
@@ -1005,6 +1158,102 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated provider review response state" }
+        }
+      }
+    },
+    "/api/providers/reviews/response/inbound": {
+      post: {
+        tags: ["Providers"],
+        summary: "Record an externally posted public review reply",
+        description:
+          "Generic server-to-server intake for externally posted public review replies. Requires the shared `x-yardmatch-review-response-secret` header and records a posted public reply through the same review-response audit workflow used by the internal ops dashboard, including posting channel, optional structured channel metadata, and an external reply id or public reply link.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                reviewId: "review_123",
+                responseHandledBy: "Shared inbox automation",
+                responseNotes: "Reply posted after the draft was approved in the shared inbox.",
+                responseChannel: "shared-inbox",
+                responseChannelMetadata: {
+                  mailboxName: "GreenRain Reviews",
+                  emailMessageId: "reply_msg_123",
+                  emailThreadId: "thread_123",
+                  threadUrl: "https://inbox.example.com/threads/thread_123"
+                },
+                externalResponseId: "reply_msg_123",
+                publicResponseUrl: "https://reviews.example.com/replies/reply_msg_123",
+                publicReplyBody:
+                  "Thank you for the feedback. We are sorry this visit missed the mark and are following up directly."
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Inbound public review reply recorded or deduplicated" },
+          "401": { description: "Missing or invalid inbound review-response secret" },
+          "503": { description: "Inbound review-response webhook secret is not configured yet" }
+        }
+      }
+    },
+    "/api/providers/reviews/response/inbound/shared-inbox": {
+      post: {
+        tags: ["Providers"],
+        summary: "Record a shared inbox public review reply",
+        description:
+          "Specialized server-to-server intake for shared inbox or mailbox-driven review reply automation. Requires the shared `x-yardmatch-review-response-secret` header. Accepts common inbox relay fields like `messageId`, `threadId`, `threadUrl`, `mailboxName`, and `senderEmail`, and can derive the external response id from the inbound message id for retry-safe deduplication when no explicit reply id is supplied.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                reviewId: "review_123",
+                messageId: "<reply_msg_123>",
+                threadId: "<thread_123>",
+                threadUrl: "https://inbox.example.com/threads/thread_123",
+                mailboxName: "GreenRain Reviews",
+                senderEmail: "reviews@greenrain.example",
+                publicResponseUrl: "https://reviews.example.com/replies/reply_msg_123",
+                publicReplyBody:
+                  "Thank you for the feedback. We are sorry this visit missed the mark and are following up directly."
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Inbound shared inbox reply recorded or deduplicated" },
+          "401": { description: "Missing or invalid inbound review-response secret" },
+          "503": { description: "Inbound review-response webhook secret is not configured yet" }
+        }
+      }
+    },
+    "/api/providers/reviews/response/inbound/google-business-profile": {
+      post: {
+        tags: ["Providers"],
+        summary: "Record a Google Business Profile public review reply",
+        description:
+          "Specialized server-to-server intake for Google Business Profile review reply automation. Requires the shared `x-yardmatch-review-response-secret` header and accepts GBP-oriented metadata like a reply id, profile location name, and thread URL so the internal review queue keeps a traceable record of where the public reply actually lives.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                reviewId: "review_123",
+                replyId: "gbp_reply_123",
+                profileLocationName: "GreenRain Barnegat",
+                threadUrl: "https://business.google.com/reviews/reply/gbp_reply_123",
+                publicResponseUrl: "https://business.google.com/reviews/reply/gbp_reply_123",
+                publicReplyBody:
+                  "Thank you for the feedback. We appreciate the chance to follow up and make the next visit stronger."
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Inbound Google Business Profile reply recorded or deduplicated" },
+          "401": { description: "Missing or invalid inbound review-response secret" },
+          "503": { description: "Inbound review-response webhook secret is not configured yet" }
         }
       }
     },
@@ -1826,7 +2075,7 @@ export const apiSpec = {
         tags: ["Launch"],
         summary: "Capture a direct email inbound launch lead",
         description:
-          "Specialized server-to-server intake for direct email forwarders. Accepts sender and message fields instead of the full lead schema, then maps them into the launch lead queue using the shared `x-yardmatch-inbound-secret` header and either an explicit `sourceReferenceId` or a normalized inbound `messageId` for retry deduplication. The current intake path can also honor reply-to metadata, preserve email thread/message metadata for ops, and infer likely service, launch area, callback number, and text-vs-call preference from the relayed message while preserving those inference notes for ops confirmation.",
+          "Specialized server-to-server intake for direct email forwarders. Accepts sender and message fields instead of the full lead schema, then maps them into the launch lead queue using the shared `x-yardmatch-inbound-secret` header and either an explicit `sourceReferenceId` or a normalized inbound `messageId` for retry deduplication. The current intake path can also honor reply-to metadata, preserve email thread/message metadata for ops, infer likely service, launch area, callback number, and text-vs-call preference from the relayed message while preserving those inference notes for ops confirmation, and now accepts both typed JSON bodies and common `application/x-www-form-urlencoded` relay aliases such as `from`, `reply_to`, `message-id`, `in-reply-to`, `text`, and `html` so lightweight inbox forwarders do not need a separate normalization layer first.",
         requestBody: {
           required: true,
           content: {
@@ -1839,6 +2088,16 @@ export const apiSpec = {
                 subject: "Need mowing help in Barnegat",
                 textBody: "Can GreenRain handle weekly mowing starting next Tuesday?",
                 areaLabel: "Barnegat, NJ"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              example: {
+                from: "\"GreenRain contact\" <forwarder@example.com>",
+                reply_to: "Sam Homeowner <sam.homeowner@example.com>",
+                "message-id": "<email_msg_456@example.com>",
+                "in-reply-to": "<thread_456@example.com>",
+                subject: "Need mowing help in Barnegat",
+                html: "<p>Can GreenRain handle weekly mowing starting next Tuesday?</p>"
               }
             }
           }
@@ -2040,10 +2299,22 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "Fetch the live operational telemetry summary",
         description:
-          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, a backend-authored public review-response queue with persisted response state and linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint now requires an authenticated ops session instead of loading anonymously.",
+          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, inbound automation health for lead and review forwarders with source-level activity plus stale-channel alerts, internal ops access-health reporting with temporary lock counts, dormant-or-never-used account counts, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, recent internal auth-event history, recent internal sign-ins, and failed-sign-in reporting, a backend-authored public review-response queue with persisted response state, channel-aware posting audit fields, linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Operations overview" }
+        }
+      }
+    },
+    "/api/observability/inbound-automation/escalate": {
+      post: {
+        tags: ["Observability"],
+        summary: "Escalate stale inbound automation alerts to configured ops contacts",
+        description:
+          "Uses the same configured `NOTIFICATION_ALERT_EMAILS` / `NOTIFICATION_ALERT_SMS_NUMBERS` contact list as notification-delivery escalation, but sends a dedicated external alert when expected launch-lead or review-reply forwarders look stale or have never been seen. Requires an authenticated ops session.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Inbound automation escalation result" }
         }
       }
     },

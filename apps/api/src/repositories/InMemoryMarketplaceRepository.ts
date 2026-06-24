@@ -835,7 +835,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         role: "ops",
         address: this.createAddress("18 Bay Ave", "Barnegat", "NJ", "08005", 39.7532, -74.2229),
         createdAt: now,
-        internalScope: "operations"
+        internalScope: "admin"
       }
     ];
 
@@ -891,7 +891,13 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       passwordHash,
       googleSubject: undefined,
       appleSubject: undefined,
-      sessionVersion: 1
+      sessionVersion: 1,
+      accessHistory: [],
+      authHistory: [],
+      failedAuthenticationCount: 0,
+      authenticationLockExpiresAt: undefined,
+      lastAccessChangeKind: "created",
+      lastAccessChangeAt: new Date().toISOString()
     });
   }
 }

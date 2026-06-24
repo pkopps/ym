@@ -74,6 +74,7 @@ export function RoleLoginCard({
       saveStoredSession({
         token: envelope.session.token,
         role: envelope.user.role,
+        internalScope: envelope.user.role === "ops" ? envelope.user.internalScope : undefined,
         email: envelope.user.email,
         userId: envelope.user.id,
         fullName: envelope.user.fullName,
@@ -126,6 +127,7 @@ export function RoleLoginCard({
       saveStoredSession({
         token: envelope.session.token,
         role: envelope.user.role,
+        internalScope: envelope.user.role === "ops" ? envelope.user.internalScope : undefined,
         email: envelope.user.email,
         userId: envelope.user.id,
         fullName: envelope.user.fullName,

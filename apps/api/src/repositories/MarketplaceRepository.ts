@@ -11,6 +11,9 @@ import {
   ProviderCrewConversation,
   ProviderCrewMessage,
   CrewMemberProfile,
+  OpsAuthenticationMethod,
+  OpsAuthenticationHistoryEntry,
+  OpsFailedAuthenticationReason,
   CustomerProperty,
   CustomerProfile,
   OpsProfile,
@@ -22,6 +25,7 @@ import {
   ProviderProfile,
   ProviderReview,
   LaunchLead,
+  OpsAccessHistoryEntry,
   SupportOpsTicket,
   ReviewInvite,
   SupportTicket
@@ -35,6 +39,27 @@ export interface AuthIdentityRecord {
   appleSubject?: string;
   role: CustomerProfile["role"] | ProviderProfile["role"] | CrewMemberProfile["role"] | "ops";
   sessionVersion: number;
+  accessDisabledAt?: string;
+  accessDisabledBy?: string;
+  accessChangeNotes?: string;
+  lastAccessChangeAt?: string;
+  lastAccessChangeBy?: string;
+  lastAccessChangeKind?:
+    | "created"
+    | "profile-updated"
+    | "sessions-rotated"
+    | "password-reset-invited"
+    | "deactivated"
+    | "reactivated"
+    | "auth-lock-cleared";
+  accessHistory?: OpsAccessHistoryEntry[];
+  authHistory?: OpsAuthenticationHistoryEntry[];
+  lastAuthenticatedAt?: string;
+  lastAuthenticatedMethod?: OpsAuthenticationMethod;
+  failedAuthenticationCount?: number;
+  lastFailedAuthenticationAt?: string;
+  lastFailedAuthenticationReason?: OpsFailedAuthenticationReason;
+  authenticationLockExpiresAt?: string;
   resetPasswordCodeHash?: string;
   resetPasswordExpiresAt?: string;
   resetPasswordRequestedAt?: string;

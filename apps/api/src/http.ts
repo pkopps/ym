@@ -29,6 +29,28 @@ export function applyCorsHeaders(response: ServerResponse): void {
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 }
 
+function parseFormEncodedBody(rawBody: string): Record<string, string | string[]> {
+  const parsed = new URLSearchParams(rawBody);
+  const body: Record<string, string | string[]> = {};
+
+  for (const [key, value] of parsed.entries()) {
+    const existing = body[key];
+    if (existing === undefined) {
+      body[key] = value;
+      continue;
+    }
+
+    if (Array.isArray(existing)) {
+      existing.push(value);
+      continue;
+    }
+
+    body[key] = [existing, value];
+  }
+
+  return body;
+}
+
 // The JSON parser is intentionally small so the API can run as a single-process monolith.
 export async function parseRequest(request: IncomingMessage): Promise<RequestContext> {
   const url = new URL(request.url ?? "/", "http://localhost");
@@ -39,7 +61,22 @@ export async function parseRequest(request: IncomingMessage): Promise<RequestCon
   }
 
   const rawBody = Buffer.concat(bodyChunks).toString("utf8");
-  const parsedBody = rawBody.length > 0 ? JSON.parse(rawBody) : undefined;
+  const contentType = request.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
+  let parsedBody: unknown;
+
+  if (rawBody.length > 0) {
+    if (contentType === "application/x-www-form-urlencoded") {
+      parsedBody = parseFormEncodedBody(rawBody);
+    } else if (contentType === undefined || contentType === "application/json" || contentType.endsWith("+json")) {
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        throw new HttpError(400, "Malformed JSON request body.");
+      }
+    } else {
+      parsedBody = rawBody;
+    }
+  }
 
   return {
     method: request.method ?? "GET",

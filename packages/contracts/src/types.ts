@@ -1,6 +1,9 @@
 export type MarketplaceRole = "customer" | "provider" | "crew-member" | "ops";
 export type AuthFlowMode = "signup" | "login";
 export type AuthProvider = "google" | "apple";
+export type OpsInternalScope = "operations" | "admin";
+export type OpsAuthenticationMethod = "password" | "password-reset" | AuthProvider;
+export type OpsFailedAuthenticationReason = "invalid-password" | "disabled-account";
 export type TelemetryPlatformSurface =
   | "api"
   | "web-mobile"
@@ -361,7 +364,128 @@ export interface CrewMemberProfile extends BaseUser {
 
 export interface OpsProfile extends BaseUser {
   role: "ops";
-  internalScope: "operations";
+  internalScope: OpsInternalScope;
+}
+
+export type OpsAccessChangeKind =
+  | "created"
+  | "profile-updated"
+  | "sessions-rotated"
+  | "password-reset-invited"
+  | "deactivated"
+  | "reactivated"
+  | "auth-lock-cleared";
+
+export interface OpsAccessHistoryEntry {
+  changedAt: string;
+  changedBy?: string;
+  kind: OpsAccessChangeKind;
+  notes?: string;
+}
+
+export interface OpsAccessAuditItem {
+  opsUserId: string;
+  opsUserName: string;
+  opsUserEmail: string;
+  internalScope: OpsInternalScope;
+  isActive: boolean;
+  changedAt: string;
+  changedBy?: string;
+  changedByName?: string;
+  kind: OpsAccessChangeKind;
+  notes?: string;
+}
+
+export interface OpsSignInAuditItem {
+  opsUserId: string;
+  opsUserName: string;
+  opsUserEmail: string;
+  internalScope: OpsInternalScope;
+  isActive: boolean;
+  signedInAt: string;
+  method: OpsAuthenticationMethod;
+}
+
+export interface OpsFailedSignInAuditItem {
+  opsUserId: string;
+  opsUserName: string;
+  opsUserEmail: string;
+  internalScope: OpsInternalScope;
+  isActive: boolean;
+  failedAt: string;
+  failedCount: number;
+  reason: OpsFailedAuthenticationReason;
+}
+
+export type OpsAuthenticationEventKind =
+  | "sign-in-succeeded"
+  | "sign-in-failed"
+  | "temporary-lock-triggered"
+  | "password-reset-requested"
+  | "password-reset-completed"
+  | "sessions-rotated"
+  | "auth-lock-cleared";
+
+export interface OpsAuthenticationHistoryEntry {
+  occurredAt: string;
+  kind: OpsAuthenticationEventKind;
+  recordedBy?: string;
+  method?: OpsAuthenticationMethod;
+  reason?: OpsFailedAuthenticationReason;
+  failedCount?: number;
+  lockExpiresAt?: string;
+  notes?: string;
+}
+
+export interface OpsAuthenticationAuditItem {
+  opsUserId: string;
+  opsUserName: string;
+  opsUserEmail: string;
+  internalScope: OpsInternalScope;
+  isActive: boolean;
+  occurredAt: string;
+  kind: OpsAuthenticationEventKind;
+  recordedBy?: string;
+  recordedByName?: string;
+  method?: OpsAuthenticationMethod;
+  reason?: OpsFailedAuthenticationReason;
+  failedCount?: number;
+  lockExpiresAt?: string;
+  notes?: string;
+}
+
+export interface OpsAccessAlertItem {
+  opsUserId: string;
+  opsUserName: string;
+  opsUserEmail: string;
+  severity: "info" | "warning" | "critical";
+  title: string;
+  detail: string;
+  recommendedAction: string;
+}
+
+export interface OpsAccountSummary {
+  profile: OpsProfile;
+  sessionVersion: number;
+  hasPassword: boolean;
+  isActive: boolean;
+  isAuthenticationLocked: boolean;
+  authenticationLockExpiresAt?: string;
+  accessDisabledAt?: string;
+  accessDisabledBy?: string;
+  accessChangeNotes?: string;
+  lastAccessChangeAt?: string;
+  lastAccessChangeBy?: string;
+  lastAccessChangeKind?: OpsAccessChangeKind;
+  accessHistory: OpsAccessHistoryEntry[];
+  authHistory: OpsAuthenticationHistoryEntry[];
+  lastAuthenticatedAt?: string;
+  lastAuthenticatedMethod?: OpsAuthenticationMethod;
+  failedAuthenticationCount: number;
+  lastFailedAuthenticationAt?: string;
+  lastFailedAuthenticationReason?: OpsFailedAuthenticationReason;
+  passwordResetRequestedAt?: string;
+  passwordResetExpiresAt?: string;
 }
 
 export interface CrewOpportunity {
@@ -713,6 +837,10 @@ export interface ProviderReview {
   responseHandledBy?: string;
   responseNotes?: string;
   publicReplyBody?: string;
+  responseChannel?: ReviewResponseChannel;
+  responseChannelMetadata?: ReviewResponseChannelMetadata;
+  externalResponseId?: string;
+  publicResponseUrl?: string;
   supportTicketId?: string;
   escalatedAt?: string;
   escalatedBy?: string;
@@ -721,6 +849,7 @@ export interface ProviderReview {
 }
 
 export type ProviderReviewResponseStatus = "pending" | "posted" | "skipped";
+export type ReviewResponseChannel = "google-business-profile" | "shared-inbox" | "manual-other";
 export type ReviewResponsePriority = "urgent" | "watch" | "routine";
 export type ReviewResponseSentiment = "positive" | "mixed" | "negative";
 export type ReviewResponseTemplateKey =
@@ -734,6 +863,16 @@ export interface ReviewResponseTemplate {
   channel: "public-review-reply";
   reason: string;
   body: string;
+}
+
+export interface ReviewResponseChannelMetadata {
+  threadUrl?: string;
+  profileLocationName?: string;
+  emailMessageId?: string;
+  emailThreadId?: string;
+  mailboxName?: string;
+  senderEmail?: string;
+  intakeNotes?: string[];
 }
 
 export interface OpsReviewResponseItem {
@@ -750,6 +889,10 @@ export interface OpsReviewResponseItem {
   responseHandledBy?: string;
   responseNotes?: string;
   publicReplyBody?: string;
+  responseChannel?: ReviewResponseChannel;
+  responseChannelMetadata?: ReviewResponseChannelMetadata;
+  externalResponseId?: string;
+  publicResponseUrl?: string;
   supportTicketId?: string;
   supportTicketStatus?: SupportTicketStatus;
   supportTicketSubject?: string;
@@ -1392,6 +1535,15 @@ export interface NotificationOpsEscalationResponse {
   failedCount: number;
 }
 
+export interface InboundAutomationEscalationResponse {
+  generatedAt: string;
+  escalated: boolean;
+  reason: string;
+  targetCount: number;
+  sentCount: number;
+  failedCount: number;
+}
+
 export interface ProviderCalendarSubscriptionAction {
   platform: "apple-calendar" | "google-calendar" | "ical";
   label: string;
@@ -1522,6 +1674,7 @@ export interface RegisterUserRequest {
   phone: string;
   role: MarketplaceRole;
   address: Address;
+  internalScope?: OpsInternalScope;
   companyName?: string;
   bio?: string;
   yearsExperience?: number;
@@ -1573,6 +1726,48 @@ export interface AuthenticatedUserEnvelope {
 
 export interface CurrentUserResponse {
   user: CustomerProfile | ProviderProfile | CrewMemberProfile | OpsProfile;
+}
+
+export interface CreateOpsAccountRequest {
+  fullName: string;
+  email: string;
+  password?: string;
+  phone: string;
+  address?: Address;
+  internalScope?: OpsInternalScope;
+  sendPasswordResetInvite?: boolean;
+}
+
+export interface UpdateOpsAccountRequest {
+  opsUserId: string;
+  fullName?: string;
+  phone?: string;
+  internalScope?: OpsInternalScope;
+}
+
+export interface RotateOpsAccountSessionsRequest {
+  opsUserId: string;
+  newPassword?: string;
+}
+
+export interface UpdateOpsAccountAccessRequest {
+  opsUserId: string;
+  action: "deactivate" | "reactivate" | "clear-auth-lock";
+  notes?: string;
+}
+
+export interface CreateOpsAccountResponse {
+  account: OpsAccountSummary;
+  passwordReset?: RequestPasswordResetResponse;
+}
+
+export interface RequestOpsAccountPasswordResetRequest {
+  opsUserId: string;
+}
+
+export interface RequestOpsAccountPasswordResetResponse {
+  account: OpsAccountSummary;
+  passwordReset: RequestPasswordResetResponse;
 }
 
 export interface GoogleAuthStartRequest {
@@ -2322,6 +2517,7 @@ export interface CreateInboundEmailLaunchLeadRequest {
   replyToName?: string;
   subject?: string;
   textBody?: string;
+  htmlBody?: string;
   areaLabel?: string;
   serviceCategory?: ServiceCategory;
   assignedOwner?: string;
@@ -2495,6 +2691,46 @@ export interface UpdateReviewResponseRequest {
   responseHandledBy?: string;
   responseNotes?: string;
   publicReplyBody?: string;
+  responseChannel?: ReviewResponseChannel;
+  responseChannelMetadata?: ReviewResponseChannelMetadata;
+  externalResponseId?: string;
+  publicResponseUrl?: string;
+}
+
+export interface CreateInboundReviewResponseRequest {
+  reviewId: string;
+  responseHandledBy?: string;
+  responseNotes?: string;
+  publicReplyBody: string;
+  responseChannel: ReviewResponseChannel;
+  responseChannelMetadata?: ReviewResponseChannelMetadata;
+  externalResponseId?: string;
+  publicResponseUrl?: string;
+}
+
+export interface CreateInboundSharedInboxReviewResponseRequest {
+  reviewId: string;
+  externalResponseId?: string;
+  messageId?: string;
+  threadId?: string;
+  threadUrl?: string;
+  mailboxName?: string;
+  senderEmail?: string;
+  responseHandledBy?: string;
+  responseNotes?: string;
+  publicReplyBody: string;
+  publicResponseUrl?: string;
+}
+
+export interface CreateInboundGoogleBusinessProfileReviewResponseRequest {
+  reviewId: string;
+  replyId?: string;
+  threadUrl?: string;
+  profileLocationName?: string;
+  responseHandledBy?: string;
+  responseNotes?: string;
+  publicReplyBody: string;
+  publicResponseUrl?: string;
 }
 
 export interface EscalateReviewSupportRequest {
@@ -2617,6 +2853,45 @@ export interface LaunchLeadSourceMetrics {
   convertedCount: number;
 }
 
+export type InboundAutomationSourceKey =
+  | "direct-email-lead"
+  | "google-business-profile-lead"
+  | "referral-lead"
+  | "shared-inbox-review-response"
+  | "google-business-profile-review-response";
+
+export interface InboundAutomationSourceMetric {
+  sourceKey: InboundAutomationSourceKey;
+  label: string;
+  kind: "launch-lead" | "review-response";
+  recentCount: number;
+  lastOccurredAt?: string;
+  status: "healthy" | "watch" | "stale";
+  staleThresholdHours: number;
+  openLeadCount?: number;
+}
+
+export interface InboundAutomationAlertItem {
+  sourceKey: InboundAutomationSourceKey;
+  label: string;
+  kind: "launch-lead" | "review-response";
+  severity: "watch" | "urgent";
+  detail: string;
+  recommendedAction: string;
+  recentCount: number;
+  lastOccurredAt?: string;
+}
+
+export interface InboundAutomationActivityItem {
+  id: string;
+  sourceKey: InboundAutomationSourceKey;
+  label: string;
+  kind: "launch-lead" | "review-response";
+  occurredAt: string;
+  summary: string;
+  reference?: string;
+}
+
 export interface ObservabilityOverview {
   generatedAt: string;
   totalBookings: number;
@@ -2673,11 +2948,28 @@ export interface ObservabilityOverview {
   convertedLaunchLeads: number;
   closedLostLaunchLeads: number;
   launchLeadSourceMetrics: LaunchLeadSourceMetrics[];
+  inboundAutomationSourceMetrics: InboundAutomationSourceMetric[];
+  inboundAutomationAlerts: InboundAutomationAlertItem[];
+  recentInboundAutomationActivity: InboundAutomationActivityItem[];
   recommendationMetricsBySource: RecommendationSurfaceMetrics[];
   activeUsers5m: number;
   activeCustomers5m: number;
   activeProviders5m: number;
   activeCrewMembers5m: number;
+  totalOpsAccounts: number;
+  activeOpsAdminAccounts: number;
+  activeOpsStaffAccounts: number;
+  disabledOpsAccounts: number;
+  lockedOpsAccounts: number;
+  dormantOpsAccounts: number;
+  neverSignedInOpsAccounts: number;
+  opsAccountsWithRecentFailures: number;
+  pendingOpsPasswordResetInvites: number;
+  accessAlerts: OpsAccessAlertItem[];
+  recentOpsAccessChanges: OpsAccessAuditItem[];
+  recentOpsAuthenticationEvents: OpsAuthenticationAuditItem[];
+  recentOpsSignIns: OpsSignInAuditItem[];
+  recentFailedOpsSignIns: OpsFailedSignInAuditItem[];
   activeUsersByPlatform: Partial<Record<TelemetryPlatformSurface, number>>;
   recentEvents: AnalyticsEvent[];
 }

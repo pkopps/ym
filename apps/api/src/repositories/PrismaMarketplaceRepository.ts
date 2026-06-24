@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import {
   AppNotification,
   Address,
@@ -15,6 +15,8 @@ import {
   CustomerProperty,
   CustomerProfile,
   OpsProfile,
+  OpsAccessHistoryEntry,
+  OpsAuthenticationHistoryEntry,
   NotificationDeliveryRecord,
   NotificationPreferences,
   PaymentRecord,
@@ -225,6 +227,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         fullName: opsUser.fullName,
         phone: opsUser.phone,
         role: opsUser.role,
+        internalScope: opsUser.internalScope,
         address: asJson(opsUser.address),
         createdAt: new Date(opsUser.createdAt)
       }
@@ -841,6 +844,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         responseHandledBy: review.responseHandledBy,
         responseNotes: review.responseNotes,
         publicReplyBody: review.publicReplyBody,
+        responseChannel: review.responseChannel,
+        responseChannelMetadata:
+          review.responseChannelMetadata as Prisma.InputJsonValue | undefined,
+        externalResponseId: review.externalResponseId,
+        publicResponseUrl: review.publicResponseUrl,
         supportTicketId: review.supportTicketId,
         escalatedAt: review.escalatedAt ? new Date(review.escalatedAt) : undefined,
         escalatedBy: review.escalatedBy,
@@ -897,6 +905,20 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         responseNotes: "responseNotes" in updates ? updates.responseNotes ?? null : undefined,
         publicReplyBody:
           "publicReplyBody" in updates ? updates.publicReplyBody ?? null : undefined,
+        responseChannel:
+          "responseChannel" in updates ? updates.responseChannel ?? null : undefined,
+        responseChannelMetadata:
+          "responseChannelMetadata" in updates
+            ? updates.responseChannelMetadata === undefined
+              ? undefined
+              : updates.responseChannelMetadata === null
+                ? Prisma.JsonNull
+                : (updates.responseChannelMetadata as Prisma.InputJsonValue)
+            : undefined,
+        externalResponseId:
+          "externalResponseId" in updates ? updates.externalResponseId ?? null : undefined,
+        publicResponseUrl:
+          "publicResponseUrl" in updates ? updates.publicResponseUrl ?? null : undefined,
         supportTicketId: "supportTicketId" in updates ? updates.supportTicketId ?? null : undefined,
         escalatedAt:
           "escalatedAt" in updates ? (updates.escalatedAt ? new Date(updates.escalatedAt) : null) : undefined,
@@ -1752,20 +1774,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     const identity = await this.prisma.userAccount.findUnique({
       where: { email: email.toLowerCase() }
     });
-    return identity
-      ? {
-          userId: identity.id,
-          email: identity.email,
-          passwordHash: identity.passwordHash ?? undefined,
-          googleSubject: identity.googleSubject ?? undefined,
-          appleSubject: identity.appleSubject ?? undefined,
-          role: identity.role as AuthIdentityRecord["role"],
-          sessionVersion: identity.sessionVersion,
-          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
-          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
-          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
-        }
-      : undefined;
+    return identity ? this.mapAuthIdentity(identity) : undefined;
   }
 
   public async findAuthIdentityByProvider(
@@ -1775,40 +1784,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     const identity = await this.prisma.userAccount.findFirst({
       where: provider === "google" ? { googleSubject: subject } : { appleSubject: subject }
     });
-    return identity
-      ? {
-          userId: identity.id,
-          email: identity.email,
-          passwordHash: identity.passwordHash ?? undefined,
-          googleSubject: identity.googleSubject ?? undefined,
-          appleSubject: identity.appleSubject ?? undefined,
-          role: identity.role as AuthIdentityRecord["role"],
-          sessionVersion: identity.sessionVersion,
-          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
-          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
-          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
-        }
-      : undefined;
+    return identity ? this.mapAuthIdentity(identity) : undefined;
   }
 
   public async findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined> {
     const identity = await this.prisma.userAccount.findUnique({
       where: { id: userId }
     });
-    return identity
-      ? {
-          userId: identity.id,
-          email: identity.email,
-          passwordHash: identity.passwordHash ?? undefined,
-          googleSubject: identity.googleSubject ?? undefined,
-          appleSubject: identity.appleSubject ?? undefined,
-          role: identity.role as AuthIdentityRecord["role"],
-          sessionVersion: identity.sessionVersion,
-          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
-          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
-          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
-        }
-      : undefined;
+    return identity ? this.mapAuthIdentity(identity) : undefined;
   }
 
   public async updateAuthIdentity(
@@ -1823,6 +1806,56 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         googleSubject: "googleSubject" in updates ? updates.googleSubject ?? null : undefined,
         appleSubject: "appleSubject" in updates ? updates.appleSubject ?? null : undefined,
         sessionVersion: updates.sessionVersion,
+        accessDisabledAt:
+          "accessDisabledAt" in updates
+            ? updates.accessDisabledAt
+              ? new Date(updates.accessDisabledAt)
+              : null
+            : undefined,
+        accessDisabledBy:
+          "accessDisabledBy" in updates ? updates.accessDisabledBy ?? null : undefined,
+        accessChangeNotes:
+          "accessChangeNotes" in updates ? updates.accessChangeNotes ?? null : undefined,
+        lastAccessChangeAt:
+          "lastAccessChangeAt" in updates
+            ? updates.lastAccessChangeAt
+              ? new Date(updates.lastAccessChangeAt)
+              : null
+            : undefined,
+        lastAccessChangeBy:
+          "lastAccessChangeBy" in updates ? updates.lastAccessChangeBy ?? null : undefined,
+        lastAccessChangeKind:
+          "lastAccessChangeKind" in updates ? updates.lastAccessChangeKind ?? null : undefined,
+        accessChangeHistory:
+          "accessHistory" in updates ? asJson(updates.accessHistory ?? null) : undefined,
+        authenticationEventHistory:
+          "authHistory" in updates ? asJson(updates.authHistory ?? null) : undefined,
+        lastAuthenticatedAt:
+          "lastAuthenticatedAt" in updates
+            ? updates.lastAuthenticatedAt
+              ? new Date(updates.lastAuthenticatedAt)
+              : null
+            : undefined,
+        lastAuthenticatedMethod:
+          "lastAuthenticatedMethod" in updates ? updates.lastAuthenticatedMethod ?? null : undefined,
+        failedAuthenticationCount:
+          "failedAuthenticationCount" in updates ? updates.failedAuthenticationCount ?? 0 : undefined,
+        lastFailedAuthenticationAt:
+          "lastFailedAuthenticationAt" in updates
+            ? updates.lastFailedAuthenticationAt
+              ? new Date(updates.lastFailedAuthenticationAt)
+              : null
+            : undefined,
+        lastFailedAuthenticationReason:
+          "lastFailedAuthenticationReason" in updates
+            ? updates.lastFailedAuthenticationReason ?? null
+            : undefined,
+        authenticationLockExpiresAt:
+          "authenticationLockExpiresAt" in updates
+            ? updates.authenticationLockExpiresAt
+              ? new Date(updates.authenticationLockExpiresAt)
+              : null
+            : undefined,
         resetPasswordCodeHash:
           "resetPasswordCodeHash" in updates ? updates.resetPasswordCodeHash ?? null : undefined,
         resetPasswordExpiresAt:
@@ -1845,20 +1878,66 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       throw error;
     });
 
-    return identity
-      ? {
-          userId: identity.id,
-          email: identity.email,
-          passwordHash: identity.passwordHash ?? undefined,
-          googleSubject: identity.googleSubject ?? undefined,
-          appleSubject: identity.appleSubject ?? undefined,
-          role: identity.role as AuthIdentityRecord["role"],
-          sessionVersion: identity.sessionVersion,
-          resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
-          resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
-          resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
-        }
-      : undefined;
+    return identity ? this.mapAuthIdentity(identity) : undefined;
+  }
+
+  private mapAuthIdentity(identity: {
+    id: string;
+    email: string;
+    passwordHash: string | null;
+    googleSubject: string | null;
+    appleSubject: string | null;
+    role: string;
+    sessionVersion: number;
+    accessDisabledAt: Date | null;
+    accessDisabledBy: string | null;
+    accessChangeNotes: string | null;
+    lastAccessChangeAt: Date | null;
+    lastAccessChangeBy: string | null;
+    lastAccessChangeKind: string | null;
+    accessChangeHistory: unknown;
+    authenticationEventHistory: unknown;
+    lastAuthenticatedAt: Date | null;
+    lastAuthenticatedMethod: string | null;
+    failedAuthenticationCount: number;
+    lastFailedAuthenticationAt: Date | null;
+    lastFailedAuthenticationReason: string | null;
+    authenticationLockExpiresAt: Date | null;
+    resetPasswordCodeHash: string | null;
+    resetPasswordExpiresAt: Date | null;
+    resetPasswordRequestedAt: Date | null;
+  }): AuthIdentityRecord {
+    return {
+      userId: identity.id,
+      email: identity.email,
+      passwordHash: identity.passwordHash ?? undefined,
+      googleSubject: identity.googleSubject ?? undefined,
+      appleSubject: identity.appleSubject ?? undefined,
+      role: identity.role as AuthIdentityRecord["role"],
+      sessionVersion: identity.sessionVersion,
+      accessDisabledAt: identity.accessDisabledAt?.toISOString(),
+      accessDisabledBy: identity.accessDisabledBy ?? undefined,
+      accessChangeNotes: identity.accessChangeNotes ?? undefined,
+      lastAccessChangeAt: identity.lastAccessChangeAt?.toISOString(),
+      lastAccessChangeBy: identity.lastAccessChangeBy ?? undefined,
+      lastAccessChangeKind: identity.lastAccessChangeKind as AuthIdentityRecord["lastAccessChangeKind"] | undefined,
+      accessHistory: identity.accessChangeHistory
+        ? readJson<OpsAccessHistoryEntry[]>(identity.accessChangeHistory)
+        : undefined,
+      authHistory: identity.authenticationEventHistory
+        ? readJson<OpsAuthenticationHistoryEntry[]>(identity.authenticationEventHistory)
+        : undefined,
+      lastAuthenticatedAt: identity.lastAuthenticatedAt?.toISOString(),
+      lastAuthenticatedMethod: identity.lastAuthenticatedMethod as AuthIdentityRecord["lastAuthenticatedMethod"] | undefined,
+      failedAuthenticationCount: identity.failedAuthenticationCount ?? 0,
+      lastFailedAuthenticationAt: identity.lastFailedAuthenticationAt?.toISOString(),
+      lastFailedAuthenticationReason:
+        identity.lastFailedAuthenticationReason as AuthIdentityRecord["lastFailedAuthenticationReason"] | undefined,
+      authenticationLockExpiresAt: identity.authenticationLockExpiresAt?.toISOString(),
+      resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
+      resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
+      resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
+    };
   }
 
   private buildUserAccountUpdate(
@@ -1868,6 +1947,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       email: updates.email?.toLowerCase(),
       fullName: updates.fullName,
       phone: updates.phone,
+      internalScope: "internalScope" in updates ? updates.internalScope ?? null : undefined,
       address: updates.address ? asJson(updates.address) : undefined
     };
   }
@@ -2047,6 +2127,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     email: string;
     phone: string;
     role: string;
+    internalScope: string | null;
     address: unknown;
     createdAt: Date;
   }): OpsProfile {
@@ -2058,7 +2139,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       role: "ops",
       address: readJson<Address>(user.address),
       createdAt: user.createdAt.toISOString(),
-      internalScope: "operations"
+      internalScope: user.internalScope === "admin" ? "admin" : "operations"
     };
   }
 
@@ -2337,6 +2418,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     responseHandledBy: string | null;
     responseNotes: string | null;
     publicReplyBody: string | null;
+    responseChannel: string | null;
+    responseChannelMetadata: unknown;
+    externalResponseId: string | null;
+    publicResponseUrl: string | null;
     supportTicketId: string | null;
     escalatedAt: Date | null;
     escalatedBy: string | null;
@@ -2358,6 +2443,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       responseHandledBy: record.responseHandledBy ?? undefined,
       responseNotes: record.responseNotes ?? undefined,
       publicReplyBody: record.publicReplyBody ?? undefined,
+      responseChannel: record.responseChannel as ProviderReview["responseChannel"],
+      responseChannelMetadata: (record.responseChannelMetadata as ProviderReview["responseChannelMetadata"]) ?? undefined,
+      externalResponseId: record.externalResponseId ?? undefined,
+      publicResponseUrl: record.publicResponseUrl ?? undefined,
       supportTicketId: record.supportTicketId ?? undefined,
       escalatedAt: record.escalatedAt?.toISOString(),
       escalatedBy: record.escalatedBy ?? undefined,

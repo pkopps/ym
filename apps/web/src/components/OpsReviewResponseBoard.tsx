@@ -2,7 +2,8 @@
 
 import {
   OpsReviewResponseItem,
-  ProviderReviewResponseStatus
+  ProviderReviewResponseStatus,
+  ReviewResponseChannel
 } from "@yardmatch/contracts";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useState } from "react";
@@ -10,6 +11,41 @@ import { createAuthenticatedWebApiClient } from "../lib/api";
 
 function formatPriority(priority: "urgent" | "watch" | "routine") {
   return priority === "urgent" ? "Reply today" : priority === "watch" ? "Reply soon" : "Healthy habit";
+}
+
+const reviewResponseChannels: ReviewResponseChannel[] = [
+  "google-business-profile",
+  "shared-inbox",
+  "manual-other"
+];
+
+function formatResponseChannel(channel?: ReviewResponseChannel) {
+  return channel ? channel.replaceAll("-", " ") : "Not set";
+}
+
+function formatChannelMetadata(item: OpsReviewResponseItem) {
+  const parts = [
+    item.responseChannelMetadata?.profileLocationName
+      ? `Location ${item.responseChannelMetadata.profileLocationName}`
+      : undefined,
+    item.responseChannelMetadata?.mailboxName
+      ? `Mailbox ${item.responseChannelMetadata.mailboxName}`
+      : undefined,
+    item.responseChannelMetadata?.emailMessageId
+      ? `message ${item.responseChannelMetadata.emailMessageId}`
+      : undefined,
+    item.responseChannelMetadata?.emailThreadId
+      ? `thread ${item.responseChannelMetadata.emailThreadId}`
+      : undefined,
+    item.responseChannelMetadata?.senderEmail
+      ? `sender ${item.responseChannelMetadata.senderEmail}`
+      : undefined,
+    item.responseChannelMetadata?.threadUrl
+      ? item.responseChannelMetadata.threadUrl
+      : undefined
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? parts.join(" • ") : undefined;
 }
 
 export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsReviewResponseItem[] }) {
@@ -25,6 +61,9 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
         responseHandledBy: string;
         responseNotes: string;
         publicReplyBody: string;
+        responseChannel: ReviewResponseChannel;
+        externalResponseId: string;
+        publicResponseUrl: string;
         escalatedBy: string;
         escalationNotes: string;
       }
@@ -38,6 +77,9 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
         responseHandledBy: item.responseHandledBy ?? "",
         responseNotes: item.responseNotes ?? "",
         publicReplyBody: item.publicReplyBody ?? item.publicReplyTemplate.body,
+        responseChannel: item.responseChannel ?? "google-business-profile",
+        externalResponseId: item.externalResponseId ?? "",
+        publicResponseUrl: item.publicResponseUrl ?? "",
         escalatedBy: item.escalatedBy ?? "",
         escalationNotes: item.escalationNotes ?? ""
       }
@@ -57,7 +99,10 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
         responseStatus: draft.responseStatus,
         responseHandledBy: draft.responseHandledBy.trim() || undefined,
         responseNotes: draft.responseNotes.trim() || undefined,
-        publicReplyBody: draft.publicReplyBody.trim() || undefined
+        publicReplyBody: draft.publicReplyBody.trim() || undefined,
+        responseChannel: draft.responseChannel,
+        externalResponseId: draft.externalResponseId.trim() || undefined,
+        publicResponseUrl: draft.publicResponseUrl.trim() || undefined
       });
 
       setItems((current) =>
@@ -70,7 +115,11 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                   responseHandledAt: updated.responseHandledAt,
                   responseHandledBy: updated.responseHandledBy,
                   responseNotes: updated.responseNotes,
-                  publicReplyBody: updated.publicReplyBody
+                  publicReplyBody: updated.publicReplyBody,
+                  responseChannel: updated.responseChannel,
+                  responseChannelMetadata: updated.responseChannelMetadata,
+                  externalResponseId: updated.externalResponseId,
+                  publicResponseUrl: updated.publicResponseUrl
                 }
               : candidate
           )
@@ -183,6 +232,26 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                     {item.responseHandledBy ? ` • by ${item.responseHandledBy}` : ""}
                   </p>
                 ) : null}
+                {item.responseStatus === "posted" ? (
+                  <>
+                    <p>
+                      Posted via {formatResponseChannel(item.responseChannel)}
+                      {item.externalResponseId ? ` • ref ${item.externalResponseId}` : ""}
+                      {item.publicResponseUrl ? ` • ${item.publicResponseUrl}` : ""}
+                    </p>
+                    {formatChannelMetadata(item) ? <p>{formatChannelMetadata(item)}</p> : null}
+                    {item.responseChannelMetadata?.intakeNotes?.length ? (
+                      <ul className="timeline">
+                        {item.responseChannelMetadata.intakeNotes.map((note) => (
+                          <li key={`${item.reviewId}-${note}`}>
+                            <strong>i</strong>
+                            <span>{note}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </>
+                ) : null}
                 {item.supportTicketId ? (
                   <p>
                     Linked support follow-up: {item.supportTicketSubject ?? "Service-quality follow-up"} •{" "}
@@ -282,6 +351,61 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                     value={draft.publicReplyBody}
                   />
                 </label>
+                {draft.responseStatus === "posted" ? (
+                  <div className="form-grid">
+                    <label className="form-field">
+                      <span>Posted via</span>
+                      <select
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [item.reviewId]: {
+                              ...draft,
+                              responseChannel: event.target.value as ReviewResponseChannel
+                            }
+                          }))
+                        }
+                        value={draft.responseChannel}
+                      >
+                        {reviewResponseChannels.map((channel) => (
+                          <option key={channel} value={channel}>
+                            {formatResponseChannel(channel)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="form-field">
+                      <span>External response id</span>
+                      <input
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [item.reviewId]: {
+                              ...draft,
+                              externalResponseId: event.target.value
+                            }
+                          }))
+                        }
+                        value={draft.externalResponseId}
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Public reply link</span>
+                      <input
+                        onChange={(event) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [item.reviewId]: {
+                              ...draft,
+                              publicResponseUrl: event.target.value
+                            }
+                          }))
+                        }
+                        value={draft.publicResponseUrl}
+                      />
+                    </label>
+                  </div>
+                ) : null}
                 <label className="form-field">
                   <span>Ops notes</span>
                   <textarea

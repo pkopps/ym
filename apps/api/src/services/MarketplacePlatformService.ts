@@ -14,6 +14,8 @@ import {
   BookingArrivalTracking,
   CompleteBookingRequest,
   ConfirmBookingRequest,
+  CreateOpsAccountResponse,
+  CreateOpsAccountRequest,
   CreateOpsBookingInterventionRequest,
   CrewAvailabilityDay,
   CrewMatchCandidate,
@@ -37,10 +39,22 @@ import {
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse,
   OpsBookingExceptionSummaryItem,
+  OpsAccountSummary,
+  OpsAccessAuditItem,
+  OpsAccessAlertItem,
+  OpsAccessChangeKind,
+  OpsAccessHistoryEntry,
+  OpsAuthenticationAuditItem,
+  OpsAuthenticationHistoryEntry,
+  OpsAuthenticationMethod,
+  OpsFailedAuthenticationReason,
+  OpsFailedSignInAuditItem,
+  OpsInternalScope,
   OpsFinancialExceptionSummaryResponse,
   OpsPayoutHoldSummaryItem,
   OpsPayoutRunPreviewResponse,
   OpsRefundSummaryItem,
+  OpsSignInAuditItem,
   ProviderCrewConversation,
   ProviderCrewConversationThread,
   ProviderCrewMessage,
@@ -66,6 +80,11 @@ import {
   CreateCheckoutSessionResponse,
   InstantQuoteRequest,
   InstantQuoteResponse,
+  InboundAutomationActivityItem,
+  InboundAutomationEscalationResponse,
+  InboundAutomationAlertItem,
+  InboundAutomationSourceKey,
+  InboundAutomationSourceMetric,
   ListCustomerRetentionOpportunitiesResponse,
   ListCustomerReviewOpportunitiesResponse,
   ListRecurringServicePlansResponse,
@@ -79,8 +98,11 @@ import {
   CreateRefundRequest,
   CreateInboundEmailLaunchLeadRequest,
   CreateInboundGoogleBusinessProfileLeadRequest,
+  CreateInboundGoogleBusinessProfileReviewResponseRequest,
   CreateInboundLaunchLeadRequest,
+  CreateInboundReviewResponseRequest,
   CreateInboundReferralLaunchLeadRequest,
+  CreateInboundSharedInboxReviewResponseRequest,
   CreateLaunchLeadRequest,
   CreateSupportTicketRequest,
   LaunchLeadReplyTemplate,
@@ -127,13 +149,16 @@ import {
   ProviderDispatchRangeSummary,
   ProviderDispatchRouteStatus,
   PlaceSearchResponse,
+  RequestOpsAccountPasswordResetResponse,
   RegisterUserRequest,
+  RotateOpsAccountSessionsRequest,
   ReviewProviderVerificationRequest,
   ReviewCrewMatchRequest,
   RemoveExternalCalendarImportRequest,
   RescheduleBookingRequest,
   ReviewInvite,
   ReviewInviteDispatch,
+  ReviewResponseChannelMetadata,
   LaunchLead,
   LaunchLeadBookingMatch,
   LaunchLeadChannelMetadata,
@@ -170,6 +195,8 @@ import {
   UpdateReviewResponseRequest,
   SyncExternalCalendarImportRequest,
   UpdateBookingAddressRequest,
+  UpdateOpsAccountAccessRequest,
+  UpdateOpsAccountRequest,
   UpdateBookingAddressResponse
 } from "@yardmatch/contracts";
 import {
@@ -199,6 +226,9 @@ import {
   StripeCheckoutService,
   StripeWebhookEvent
 } from "./StripeCheckoutService";
+
+const OPS_AUTH_FAILURE_LOCK_THRESHOLD = 5;
+const OPS_AUTH_LOCK_WINDOW_MINUTES = 30;
 
 type ParsedProviderAssistantAction = {
   command: string;
@@ -384,7 +414,7 @@ export class MarketplacePlatformService {
         role: "ops",
         address: normalizedAddress,
         createdAt: now,
-        internalScope: "operations"
+        internalScope: payload.internalScope === "admin" ? "admin" : "operations"
       };
 
       return this.repository.createOpsUser(opsUser, passwordHash);
@@ -469,6 +499,306 @@ export class MarketplacePlatformService {
     };
   }
 
+  public async listOpsAccounts(): Promise<OpsAccountSummary[]> {
+    const opsUsers = await this.repository.listOpsUsers();
+    const identities = await Promise.all(
+      opsUsers.map((opsUser) => this.repository.findAuthIdentityByUserId(opsUser.id))
+    );
+
+    return opsUsers.map((profile, index) => this.buildOpsAccountSummary(profile, identities[index]));
+  }
+
+  public async createOpsAccount(
+    actor: AuthIdentityRecord,
+    payload: CreateOpsAccountRequest
+  ): Promise<CreateOpsAccountResponse> {
+    const email = payload.email.trim().toLowerCase();
+    const fullName = payload.fullName.trim();
+    const phone = payload.phone.trim();
+    if (!fullName) {
+      throw new HttpError(400, "Full name is required.");
+    }
+    if (!phone) {
+      throw new HttpError(400, "Phone number is required.");
+    }
+
+    const shouldPrepareResetInvite = payload.sendPasswordResetInvite ?? false;
+    const internalScope: OpsInternalScope = payload.internalScope === "admin" ? "admin" : "operations";
+    const suppliedPassword = payload.password?.trim();
+    const passwordToStore = suppliedPassword || (shouldPrepareResetInvite ? this.generateTemporaryStrongPassword() : undefined);
+    if (!passwordToStore) {
+      throw new HttpError(400, "A password is required unless you prepare a password reset invite.");
+    }
+    validatePasswordStrength(passwordToStore);
+    const existingIdentity = await this.repository.findAuthIdentityByEmail(email);
+    if (existingIdentity) {
+      if (existingIdentity.role !== "ops") {
+        throw new HttpError(409, "That email already belongs to a different YardMatch role.");
+      }
+      throw new HttpError(409, "An ops account with that email already exists.");
+    }
+
+    const created = await this.registerUser(
+      {
+        fullName,
+        email,
+        phone,
+        role: "ops",
+        address: payload.address ?? this.getDefaultOpsAccountAddress(),
+        internalScope
+      },
+      hashPassword(passwordToStore)
+    );
+
+    const identity = await this.repository.findAuthIdentityByUserId(created.id);
+    if (!identity || created.role !== "ops") {
+      throw new HttpError(500, "Unable to create the ops account.");
+    }
+
+    await this.applyAccessAudit(identity.userId, {
+      changedBy: actor.userId,
+      kind: "created"
+    });
+    const passwordReset = shouldPrepareResetInvite
+      ? await this.requestPasswordReset({ email })
+      : undefined;
+    if (shouldPrepareResetInvite) {
+      await this.applyAccessAudit(identity.userId, {
+        changedBy: actor.userId,
+        kind: "password-reset-invited"
+      });
+    }
+    const refreshedIdentity =
+      shouldPrepareResetInvite
+      ? await this.repository.findAuthIdentityByUserId(created.id)
+      : identity;
+
+    return {
+      account: this.buildOpsAccountSummary(created, refreshedIdentity ?? identity),
+      passwordReset
+    };
+  }
+
+  public async updateOpsAccount(
+    actor: AuthIdentityRecord,
+    payload: UpdateOpsAccountRequest
+  ): Promise<OpsAccountSummary> {
+    const current = await this.repository.findOpsUserById(payload.opsUserId);
+    if (!current) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+
+    const fullName = payload.fullName?.trim();
+    const phone = payload.phone?.trim();
+    if ((payload.fullName !== undefined && !fullName) || (payload.phone !== undefined && !phone)) {
+      throw new HttpError(400, "Ops account updates cannot blank out the name or phone number.");
+    }
+    if (
+      actor.userId === payload.opsUserId &&
+      payload.internalScope !== undefined &&
+      payload.internalScope !== current.internalScope
+    ) {
+      throw new HttpError(400, "Use another admin account to change your own admin scope.");
+    }
+    if (current.internalScope === "admin" && payload.internalScope === "operations") {
+      await this.assertAnotherActiveAdminExists(current.id);
+    }
+
+    const updated = await this.repository.updateOpsUser(payload.opsUserId, {
+      fullName: fullName ?? undefined,
+      phone: phone ?? undefined,
+      internalScope: payload.internalScope ?? undefined
+    });
+    if (!updated) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+    await this.applyAccessAudit(updated.id, {
+      changedBy: actor.userId,
+      kind: "profile-updated"
+    });
+
+    const identity = await this.repository.findAuthIdentityByUserId(updated.id);
+    if (!identity) {
+      throw new HttpError(500, "Unable to load the updated ops account.");
+    }
+
+    return this.buildOpsAccountSummary(updated, identity);
+  }
+
+  public async rotateOpsAccountSessions(
+    actor: AuthIdentityRecord,
+    payload: RotateOpsAccountSessionsRequest
+  ): Promise<OpsAccountSummary> {
+    if (actor.userId === payload.opsUserId) {
+      throw new HttpError(400, "Use the account settings flow to rotate your own active ops session.");
+    }
+
+    const current = await this.repository.findOpsUserById(payload.opsUserId);
+    if (!current) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+
+    const identity = await this.repository.findAuthIdentityByUserId(payload.opsUserId);
+    if (!identity || identity.role !== "ops") {
+      throw new HttpError(404, "Ops account not found.");
+    }
+
+    const nextUpdates: Partial<AuthIdentityRecord> = {
+      sessionVersion: (identity.sessionVersion ?? 1) + 1,
+      failedAuthenticationCount: 0,
+      lastFailedAuthenticationAt: undefined,
+      lastFailedAuthenticationReason: undefined,
+      authenticationLockExpiresAt: undefined
+    };
+    const newPassword = payload.newPassword?.trim();
+    if (newPassword) {
+      validatePasswordStrength(newPassword);
+      nextUpdates.passwordHash = hashPassword(newPassword);
+      nextUpdates.resetPasswordCodeHash = undefined;
+      nextUpdates.resetPasswordExpiresAt = undefined;
+      nextUpdates.resetPasswordRequestedAt = undefined;
+    }
+
+    const updatedIdentity = await this.repository.updateAuthIdentity(payload.opsUserId, nextUpdates);
+    if (!updatedIdentity) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+    await this.applyAccessAudit(payload.opsUserId, {
+      changedBy: actor.userId,
+      kind: "sessions-rotated"
+    });
+    await this.appendOpsAuthenticationHistory(payload.opsUserId, {
+      kind: "sessions-rotated",
+      recordedBy: actor.userId,
+      notes: newPassword ? "Password replaced while rotating sessions." : "Existing sessions were revoked."
+    });
+
+    return this.buildOpsAccountSummary(
+      current,
+      (await this.repository.findAuthIdentityByUserId(payload.opsUserId)) ?? updatedIdentity
+    );
+  }
+
+  public async requestOpsAccountPasswordReset(
+    actor: AuthIdentityRecord,
+    payload: { opsUserId: string }
+  ): Promise<RequestOpsAccountPasswordResetResponse> {
+    const current = await this.repository.findOpsUserById(payload.opsUserId);
+    if (!current) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+    const identityBeforeReset = await this.repository.findAuthIdentityByUserId(current.id);
+    if (identityBeforeReset?.accessDisabledAt) {
+      throw new HttpError(409, "Reactivate the ops account before preparing a password reset invite.");
+    }
+
+    const passwordReset = await this.requestPasswordReset({
+      email: current.email
+    });
+    await this.applyAccessAudit(current.id, {
+      changedBy: actor.userId,
+      kind: "password-reset-invited"
+    });
+    await this.appendOpsAuthenticationHistory(current.id, {
+      kind: "password-reset-requested",
+      recordedBy: actor.userId,
+      notes: "Reset invite prepared from the internal ops dashboard."
+    });
+    const identity = await this.repository.findAuthIdentityByUserId(current.id);
+    if (!identity) {
+      throw new HttpError(500, "Unable to reload the ops account after preparing the reset.");
+    }
+
+    return {
+      account: this.buildOpsAccountSummary(current, identity),
+      passwordReset
+    };
+  }
+
+  public async updateOpsAccountAccess(
+    actor: AuthIdentityRecord,
+    payload: UpdateOpsAccountAccessRequest
+  ): Promise<OpsAccountSummary> {
+    if (actor.userId === payload.opsUserId) {
+      throw new HttpError(400, "Use a separate account to change access for your own active ops login.");
+    }
+
+    const current = await this.repository.findOpsUserById(payload.opsUserId);
+    if (!current) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+
+    const identity = await this.repository.findAuthIdentityByUserId(payload.opsUserId);
+    if (!identity || identity.role !== "ops") {
+      throw new HttpError(404, "Ops account not found.");
+    }
+
+    const notes = payload.notes?.trim() || undefined;
+    if (payload.action === "clear-auth-lock" && !notes) {
+      throw new HttpError(400, "Notes are required when clearing an auth lock or failed-attempt state.");
+    }
+    const now = new Date().toISOString();
+    const isDeactivate = payload.action === "deactivate";
+    const isClearAuthLock = payload.action === "clear-auth-lock";
+    if (isDeactivate && identity.accessDisabledAt) {
+      throw new HttpError(409, "That ops account is already deactivated.");
+    }
+    if (payload.action === "reactivate" && !identity.accessDisabledAt) {
+      throw new HttpError(409, "That ops account is already active.");
+    }
+    if (
+      isClearAuthLock &&
+      !identity.authenticationLockExpiresAt &&
+      !identity.lastFailedAuthenticationAt &&
+      (identity.failedAuthenticationCount ?? 0) === 0
+    ) {
+      throw new HttpError(409, "That ops account has no auth lock or failed-attempt state to clear.");
+    }
+    if (isDeactivate && current.internalScope === "admin") {
+      await this.assertAnotherActiveAdminExists(current.id);
+    }
+
+    const updated = await this.repository.updateAuthIdentity(payload.opsUserId, {
+      sessionVersion: (identity.sessionVersion ?? 1) + 1,
+      accessDisabledAt: isDeactivate ? now : payload.action === "reactivate" ? undefined : identity.accessDisabledAt,
+      accessDisabledBy:
+        isDeactivate ? actor.userId : payload.action === "reactivate" ? undefined : identity.accessDisabledBy,
+      failedAuthenticationCount:
+        isClearAuthLock ? 0 : identity.failedAuthenticationCount,
+      lastFailedAuthenticationAt:
+        isClearAuthLock ? undefined : identity.lastFailedAuthenticationAt,
+      lastFailedAuthenticationReason:
+        isClearAuthLock ? undefined : identity.lastFailedAuthenticationReason,
+      authenticationLockExpiresAt:
+        isClearAuthLock ? undefined : identity.authenticationLockExpiresAt,
+      resetPasswordCodeHash: undefined,
+      resetPasswordExpiresAt: undefined,
+      resetPasswordRequestedAt: undefined
+    });
+    if (!updated) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+
+    await this.applyAccessAudit(payload.opsUserId, {
+      changedBy: actor.userId,
+      kind: isDeactivate ? "deactivated" : isClearAuthLock ? "auth-lock-cleared" : "reactivated",
+      notes
+    });
+    if (isClearAuthLock) {
+      await this.appendOpsAuthenticationHistory(payload.opsUserId, {
+        kind: "auth-lock-cleared",
+        recordedBy: actor.userId,
+        notes,
+        failedCount: 0
+      });
+    }
+
+    return this.buildOpsAccountSummary(
+      current,
+      (await this.repository.findAuthIdentityByUserId(payload.opsUserId)) ?? updated
+    );
+  }
+
   public async confirmPasswordReset(
     payload: ConfirmPasswordResetRequest
   ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile | OpsProfile> {
@@ -497,10 +827,19 @@ export class MarketplacePlatformService {
     await this.repository.updateAuthIdentity(identity.userId, {
       passwordHash: hashPassword(payload.newPassword),
       sessionVersion: nextSessionVersion,
+      failedAuthenticationCount: 0,
+      lastFailedAuthenticationAt: undefined,
+      lastFailedAuthenticationReason: undefined,
+      authenticationLockExpiresAt: undefined,
       resetPasswordCodeHash: undefined,
       resetPasswordExpiresAt: undefined,
       resetPasswordRequestedAt: undefined
     });
+    if (identity.role === "ops") {
+      await this.appendOpsAuthenticationHistory(identity.userId, {
+        kind: "password-reset-completed"
+      });
+    }
 
     await this.createNotification({
       recipientId: identity.userId,
@@ -782,6 +1121,112 @@ export class MarketplacePlatformService {
       generatedAt: new Date().toISOString(),
       escalated: sentCount > 0,
       reason: sentCount > 0 ? "Notification delivery health was escalated to configured ops contacts." : "All configured ops alert attempts failed.",
+      targetCount: targets.length,
+      sentCount,
+      failedCount
+    };
+  }
+
+  public async escalateInboundAutomationAlerts(): Promise<InboundAutomationEscalationResponse> {
+    const overview = await this.getObservabilityOverview();
+    const actionableAlerts = overview.inboundAutomationAlerts.filter(
+      (alert) => alert.severity === "watch" || alert.severity === "urgent"
+    );
+
+    if (actionableAlerts.length === 0) {
+      return {
+        generatedAt: new Date().toISOString(),
+        escalated: false,
+        reason: "Inbound automation health is currently stable, so no external ops escalation was sent.",
+        targetCount: 0,
+        sentCount: 0,
+        failedCount: 0
+      };
+    }
+
+    const targets = this.notificationDelivery.getOpsAlertTargets();
+    if (targets.length === 0) {
+      return {
+        generatedAt: new Date().toISOString(),
+        escalated: false,
+        reason: "No NOTIFICATION_ALERT_EMAILS or NOTIFICATION_ALERT_SMS_NUMBERS contacts are configured.",
+        targetCount: 0,
+        sentCount: 0,
+        failedCount: 0
+      };
+    }
+
+    const title = actionableAlerts.some((alert) => alert.severity === "urgent")
+      ? "YardMatch inbound automation alert"
+      : "YardMatch inbound automation warning";
+    const body = actionableAlerts
+      .slice(0, 4)
+      .map((alert) => `${alert.severity.toUpperCase()}: ${alert.label} — ${alert.detail}`)
+      .join("\n");
+
+    let sentCount = 0;
+    let failedCount = 0;
+    const notificationId = `inbound-automation-alert-${overview.generatedAt}`;
+
+    await Promise.all(
+      targets.map(async (target) => {
+        try {
+          const dispatch = await this.notificationDelivery.dispatch({
+            channel: target.channel,
+            destination: target.destination,
+            title,
+            body
+          });
+
+          await this.repository.createNotificationDelivery({
+            id: crypto.randomUUID(),
+            notificationId,
+            recipientId: "ops-alert-target",
+            recipientRole: "provider",
+            category: "support",
+            channel: target.channel,
+            destination: target.destination,
+            provider: dispatch.provider,
+            status: "sent",
+            title,
+            bodyPreview: body.slice(0, 160),
+            attemptCount: 1,
+            createdAt: new Date().toISOString(),
+            lastAttemptAt: dispatch.sentAt,
+            sentAt: dispatch.sentAt
+          });
+          sentCount += 1;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Inbound automation escalation failed.";
+          await this.repository.createNotificationDelivery({
+            id: crypto.randomUUID(),
+            notificationId,
+            recipientId: "ops-alert-target",
+            recipientRole: "provider",
+            category: "support",
+            channel: target.channel,
+            destination: target.destination,
+            provider: this.notificationDelivery.getProviderName(target.channel, target.destination),
+            status: "failed",
+            title,
+            bodyPreview: body.slice(0, 160),
+            errorMessage: message,
+            attemptCount: 1,
+            createdAt: new Date().toISOString(),
+            lastAttemptAt: new Date().toISOString()
+          });
+          failedCount += 1;
+        }
+      })
+    );
+
+    return {
+      generatedAt: new Date().toISOString(),
+      escalated: sentCount > 0,
+      reason:
+        sentCount > 0
+          ? "Inbound automation health was escalated to configured ops contacts."
+          : "All configured inbound automation alert attempts failed.",
       targetCount: targets.length,
       sentCount,
       failedCount
@@ -6726,9 +7171,26 @@ export class MarketplacePlatformService {
     const responseHandledBy = payload.responseHandledBy?.trim().replace(/\s+/g, " ") || undefined;
     const responseNotes = payload.responseNotes?.trim().replace(/\s+/g, " ") || undefined;
     const publicReplyBody = payload.publicReplyBody?.trim().replace(/\s+/g, " ") || undefined;
+    const responseChannel = payload.responseChannel;
+    const responseChannelMetadata = this.normalizeReviewResponseChannelMetadata(
+      payload.responseChannelMetadata
+    );
+    const externalResponseId = payload.externalResponseId?.trim().replace(/\s+/g, " ") || undefined;
+    const publicResponseUrl = payload.publicResponseUrl?.trim() || undefined;
 
     if (payload.responseStatus === "posted" && (!publicReplyBody || publicReplyBody.length < 20)) {
       throw new HttpError(400, "Add the public reply you posted so ops can audit the response.");
+    }
+
+    if (payload.responseStatus === "posted" && !responseChannel) {
+      throw new HttpError(400, "Choose where the public reply was posted so ops can trace the live channel.");
+    }
+
+    if (payload.responseStatus === "posted" && !externalResponseId && !publicResponseUrl) {
+      throw new HttpError(
+        400,
+        "Add a public reply link or external response id so ops can trace the posted reply."
+      );
     }
 
     if (payload.responseStatus === "skipped" && (!responseNotes || responseNotes.length < 12)) {
@@ -6740,7 +7202,12 @@ export class MarketplacePlatformService {
       responseHandledAt: payload.responseStatus === "pending" ? undefined : new Date().toISOString(),
       responseHandledBy: payload.responseStatus === "pending" ? undefined : responseHandledBy,
       responseNotes: payload.responseStatus === "pending" ? undefined : responseNotes,
-      publicReplyBody: payload.responseStatus === "posted" ? publicReplyBody : undefined
+      publicReplyBody: payload.responseStatus === "posted" ? publicReplyBody : undefined,
+      responseChannel: payload.responseStatus === "posted" ? responseChannel : undefined,
+      responseChannelMetadata:
+        payload.responseStatus === "posted" ? responseChannelMetadata : undefined,
+      externalResponseId: payload.responseStatus === "posted" ? externalResponseId : undefined,
+      publicResponseUrl: payload.responseStatus === "posted" ? publicResponseUrl : undefined
     });
 
     if (!updatedReview) {
@@ -6748,6 +7215,123 @@ export class MarketplacePlatformService {
     }
 
     return updatedReview;
+  }
+
+  public async createInboundReviewResponse(
+    payload: CreateInboundReviewResponseRequest,
+    secretHeader: string | undefined
+  ): Promise<ProviderReview> {
+    const configuredSecret = process.env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET?.trim();
+    if (!configuredSecret) {
+      throw new HttpError(503, "Inbound review response webhook secret is not configured yet.");
+    }
+    if (!secretHeader || secretHeader.trim() !== configuredSecret) {
+      throw new HttpError(401, "Invalid inbound review response secret.");
+    }
+
+    const review = await this.repository.findProviderReviewById(payload.reviewId);
+    if (!review) {
+      throw new HttpError(404, "Review not found");
+    }
+
+    const normalizedExternalResponseId = payload.externalResponseId?.trim().replace(/\s+/g, " ") || undefined;
+    const normalizedPublicResponseUrl = payload.publicResponseUrl?.trim() || undefined;
+    const normalizedPublicReplyBody = payload.publicReplyBody?.trim().replace(/\s+/g, " ") || "";
+    const normalizedChannelMetadata = this.normalizeReviewResponseChannelMetadata(
+      payload.responseChannelMetadata
+    );
+    const normalizedHandledBy = payload.responseHandledBy?.trim().replace(/\s+/g, " ") || "Inbound automation";
+    const normalizedNotes =
+      payload.responseNotes?.trim().replace(/\s+/g, " ") ||
+      `Posted via inbound ${payload.responseChannel.replaceAll("-", " ")} automation.`;
+
+    if (
+      review.responseStatus === "posted" &&
+      review.responseChannel === payload.responseChannel &&
+      ((normalizedExternalResponseId && review.externalResponseId === normalizedExternalResponseId) ||
+        (normalizedPublicResponseUrl && review.publicResponseUrl === normalizedPublicResponseUrl))
+    ) {
+      return review;
+    }
+
+    return this.updateReviewResponse({
+      reviewId: payload.reviewId,
+      responseStatus: "posted",
+      responseHandledBy: normalizedHandledBy,
+      responseNotes: normalizedNotes,
+      publicReplyBody: normalizedPublicReplyBody,
+      responseChannel: payload.responseChannel,
+      responseChannelMetadata: normalizedChannelMetadata,
+      externalResponseId: normalizedExternalResponseId,
+      publicResponseUrl: normalizedPublicResponseUrl
+    });
+  }
+
+  public async createInboundSharedInboxReviewResponse(
+    payload: CreateInboundSharedInboxReviewResponseRequest,
+    secretHeader: string | undefined
+  ): Promise<ProviderReview> {
+    const normalizedExternalResponseId =
+      payload.externalResponseId?.trim().replace(/\s+/g, " ") ||
+      this.normalizeInboundMessageReference(payload.messageId);
+    const normalizedThreadId =
+      this.normalizeInboundMessageReference(payload.threadId) ?? payload.threadId?.trim() ?? undefined;
+    const normalizedSenderEmail = payload.senderEmail?.trim().toLowerCase() || undefined;
+    const normalizedMailboxName = payload.mailboxName?.trim().replace(/\s+/g, " ") || undefined;
+    const intakeNotes: string[] = [];
+
+    if (!payload.externalResponseId?.trim() && normalizedExternalResponseId) {
+      intakeNotes.push("externalResponseId was derived from the shared inbox message id for retry-safe deduplication.");
+    }
+    intakeNotes.push("Recorded via the inbound shared inbox review-response automation route.");
+
+    return this.createInboundReviewResponse(
+      {
+        reviewId: payload.reviewId,
+        responseHandledBy: payload.responseHandledBy,
+        responseNotes: payload.responseNotes,
+        publicReplyBody: payload.publicReplyBody,
+        responseChannel: "shared-inbox",
+        responseChannelMetadata: {
+          emailMessageId: this.normalizeInboundMessageReference(payload.messageId),
+          emailThreadId: normalizedThreadId,
+          threadUrl: payload.threadUrl?.trim() || undefined,
+          mailboxName: normalizedMailboxName,
+          senderEmail: normalizedSenderEmail,
+          intakeNotes
+        },
+        externalResponseId: normalizedExternalResponseId,
+        publicResponseUrl: payload.publicResponseUrl
+      },
+      secretHeader
+    );
+  }
+
+  public async createInboundGoogleBusinessProfileReviewResponse(
+    payload: CreateInboundGoogleBusinessProfileReviewResponseRequest,
+    secretHeader: string | undefined
+  ): Promise<ProviderReview> {
+    const normalizedReplyId = payload.replyId?.trim().replace(/\s+/g, " ") || undefined;
+    const normalizedLocationName =
+      payload.profileLocationName?.trim().replace(/\s+/g, " ") || undefined;
+
+    return this.createInboundReviewResponse(
+      {
+        reviewId: payload.reviewId,
+        responseHandledBy: payload.responseHandledBy,
+        responseNotes: payload.responseNotes,
+        publicReplyBody: payload.publicReplyBody,
+        responseChannel: "google-business-profile",
+        responseChannelMetadata: {
+          threadUrl: payload.threadUrl?.trim() || undefined,
+          profileLocationName: normalizedLocationName,
+          intakeNotes: ["Recorded via the inbound Google Business Profile review-response automation route."]
+        },
+        externalResponseId: normalizedReplyId,
+        publicResponseUrl: payload.publicResponseUrl
+      },
+      secretHeader
+    );
   }
 
   public async escalateReviewForSupport(
@@ -8553,6 +9137,8 @@ export class MarketplacePlatformService {
 
     const subject = payload.subject?.trim().replace(/\s+/g, " ") || undefined;
     const textBody = payload.textBody?.trim().replace(/\s+/g, " ") || undefined;
+    const htmlBody = payload.htmlBody?.trim();
+    const normalizedHtmlBody = !textBody && htmlBody ? this.normalizeInboundEmailHtmlBody(htmlBody) : undefined;
     const replyToName = replyToIdentity.name;
     const replyToEmail = replyToIdentity.email;
     const inferredNotes: string[] = [];
@@ -8562,6 +9148,9 @@ export class MarketplacePlatformService {
     if (replyToEmail && replyToEmail !== senderEmail) {
       inferredNotes.push("Follow up on the reply-to address from the inbound email metadata before assuming the original sender mailbox is monitored.");
     }
+    if (!textBody && normalizedHtmlBody) {
+      inferredNotes.push("Inbound email body was normalized from HTML because no plain-text body was supplied.");
+    }
 
     return this.createInboundLaunchLead(
       {
@@ -8570,7 +9159,10 @@ export class MarketplacePlatformService {
         sourceReferenceId,
         channelMetadata: {
           emailMessageId: this.normalizeInboundMessageReference(payload.messageId),
-          emailThreadId: payload.threadId?.trim() || undefined,
+          emailThreadId:
+            this.normalizeInboundMessageReference(payload.threadId) ??
+            payload.threadId?.trim() ??
+            undefined,
           replyToEmail,
           replyToName,
           intakeNotes: inferredNotes.length > 0 ? inferredNotes : undefined
@@ -8583,7 +9175,7 @@ export class MarketplacePlatformService {
         areaLabel: payload.areaLabel?.trim().replace(/\s+/g, " ") || undefined,
         serviceCategory: payload.serviceCategory,
         subject,
-        message: textBody ?? subject ?? "Inbound email lead captured for ops follow-up.",
+        message: textBody ?? normalizedHtmlBody ?? subject ?? "Inbound email lead captured for ops follow-up.",
         assignedOwner: payload.assignedOwner?.trim() || undefined
       },
       secretHeader
@@ -9679,13 +10271,18 @@ export class MarketplacePlatformService {
   }
 
   public async getObservabilityOverview(): Promise<ObservabilityOverview> {
-    const [bookings, launchLeads, reviewInvites, supportTickets, providers] = await Promise.all([
+    const [bookings, launchLeads, reviewInvites, supportTickets, providers, opsUsers] = await Promise.all([
       this.repository.listBookings(),
       this.repository.listLaunchLeads(),
       this.repository.listReviewInvites(),
       this.repository.listSupportTickets(),
-      this.repository.listProviders()
+      this.repository.listProviders(),
+      this.repository.listOpsUsers()
     ]);
+    const opsIdentities = await Promise.all(
+      opsUsers.map((opsUser) => this.repository.findAuthIdentityByUserId(opsUser.id))
+    );
+    const opsAccounts = opsUsers.map((profile, index) => this.buildOpsAccountSummary(profile, opsIdentities[index]));
 
     const overview = this.analytics.getOverview({
       bookings,
@@ -9702,6 +10299,11 @@ export class MarketplacePlatformService {
       providers,
       supportTickets
     );
+    const inboundAutomationOverview = this.buildInboundAutomationOverview(
+      launchLeads,
+      providerReviews
+    );
+    const opsAccessAudit = this.buildOpsAccessAuditOverview(opsAccounts);
     const providersById = new Map(providers.map((provider) => [provider.id, provider.companyName]));
 
     return {
@@ -9717,6 +10319,23 @@ export class MarketplacePlatformService {
         (item) => item.responseStatus === "pending" && item.isResponseOverdue
       ).length,
       recentReviewResponses,
+      inboundAutomationSourceMetrics: inboundAutomationOverview.sourceMetrics,
+      inboundAutomationAlerts: inboundAutomationOverview.alerts,
+      recentInboundAutomationActivity: inboundAutomationOverview.recentActivity,
+      totalOpsAccounts: opsAccessAudit.totalOpsAccounts,
+      activeOpsAdminAccounts: opsAccessAudit.activeOpsAdminAccounts,
+      activeOpsStaffAccounts: opsAccessAudit.activeOpsStaffAccounts,
+      disabledOpsAccounts: opsAccessAudit.disabledOpsAccounts,
+      lockedOpsAccounts: opsAccessAudit.lockedOpsAccounts,
+      dormantOpsAccounts: opsAccessAudit.dormantOpsAccounts,
+      neverSignedInOpsAccounts: opsAccessAudit.neverSignedInOpsAccounts,
+      opsAccountsWithRecentFailures: opsAccessAudit.opsAccountsWithRecentFailures,
+      pendingOpsPasswordResetInvites: opsAccessAudit.pendingOpsPasswordResetInvites,
+      accessAlerts: opsAccessAudit.accessAlerts,
+      recentOpsAccessChanges: opsAccessAudit.recentOpsAccessChanges,
+      recentOpsAuthenticationEvents: opsAccessAudit.recentOpsAuthenticationEvents,
+      recentOpsSignIns: opsAccessAudit.recentOpsSignIns,
+      recentFailedOpsSignIns: opsAccessAudit.recentFailedOpsSignIns,
       retentionMetricsByProvider: overview.retentionMetricsByProvider.map((metric) => ({
         ...metric,
         providerName: providersById.get(metric.providerId) ?? metric.providerName
@@ -11339,6 +11958,10 @@ export class MarketplacePlatformService {
     return this.repository.findCrewMemberById(identity.userId);
   }
 
+  public async findOpsUserById(opsUserId: string): Promise<OpsProfile | undefined> {
+    return this.repository.findOpsUserById(opsUserId);
+  }
+
   public async findAuthIdentityByEmail(email: string): Promise<AuthIdentityRecord | undefined> {
     return this.repository.findAuthIdentityByEmail(email);
   }
@@ -11359,6 +11982,429 @@ export class MarketplacePlatformService {
     updates: Partial<AuthIdentityRecord>
   ): Promise<AuthIdentityRecord | undefined> {
     return this.repository.updateAuthIdentity(userId, updates);
+  }
+
+  private buildOpsAccountSummary(
+    profile: OpsProfile,
+    identity: AuthIdentityRecord | undefined
+  ): OpsAccountSummary {
+    const isAuthenticationLocked = this.isOpsAuthenticationLocked(identity);
+    return {
+      profile,
+      sessionVersion: identity?.sessionVersion ?? 1,
+      hasPassword: Boolean(identity?.passwordHash),
+      isActive: !identity?.accessDisabledAt,
+      isAuthenticationLocked,
+      authenticationLockExpiresAt: isAuthenticationLocked ? identity?.authenticationLockExpiresAt : undefined,
+      accessDisabledAt: identity?.accessDisabledAt,
+      accessDisabledBy: identity?.accessDisabledBy,
+      accessChangeNotes: identity?.accessChangeNotes,
+      lastAccessChangeAt: identity?.lastAccessChangeAt,
+      lastAccessChangeBy: identity?.lastAccessChangeBy,
+      lastAccessChangeKind: identity?.lastAccessChangeKind,
+      accessHistory: identity?.accessHistory ?? [],
+      authHistory: identity?.authHistory ?? [],
+      lastAuthenticatedAt: identity?.lastAuthenticatedAt,
+      lastAuthenticatedMethod: identity?.lastAuthenticatedMethod,
+      failedAuthenticationCount: identity?.failedAuthenticationCount ?? 0,
+      lastFailedAuthenticationAt: identity?.lastFailedAuthenticationAt,
+      lastFailedAuthenticationReason: identity?.lastFailedAuthenticationReason,
+      passwordResetRequestedAt: identity?.resetPasswordRequestedAt,
+      passwordResetExpiresAt: identity?.resetPasswordExpiresAt
+    };
+  }
+
+  private buildOpsAccessAuditOverview(opsAccounts: OpsAccountSummary[]): {
+    totalOpsAccounts: number;
+    activeOpsAdminAccounts: number;
+    activeOpsStaffAccounts: number;
+    disabledOpsAccounts: number;
+    lockedOpsAccounts: number;
+    dormantOpsAccounts: number;
+    neverSignedInOpsAccounts: number;
+    opsAccountsWithRecentFailures: number;
+    pendingOpsPasswordResetInvites: number;
+    accessAlerts: OpsAccessAlertItem[];
+    recentOpsAccessChanges: OpsAccessAuditItem[];
+    recentOpsAuthenticationEvents: OpsAuthenticationAuditItem[];
+    recentOpsSignIns: OpsSignInAuditItem[];
+    recentFailedOpsSignIns: OpsFailedSignInAuditItem[];
+  } {
+    const actorNames = new Map(
+      opsAccounts.map((account) => [account.profile.id, account.profile.fullName])
+    );
+    const now = Date.now();
+    const staleThresholdMs = now - 30 * 24 * 60 * 60 * 1000;
+    const failureThresholdMs = now - 7 * 24 * 60 * 60 * 1000;
+    const recentOpsAccessChanges = opsAccounts
+      .flatMap((account) =>
+        account.accessHistory.map((entry) => ({
+          opsUserId: account.profile.id,
+          opsUserName: account.profile.fullName,
+          opsUserEmail: account.profile.email,
+          internalScope: account.profile.internalScope,
+          isActive: account.isActive,
+          changedAt: entry.changedAt,
+          changedBy: entry.changedBy,
+          changedByName: entry.changedBy ? actorNames.get(entry.changedBy) : undefined,
+          kind: entry.kind,
+          notes: entry.notes
+        }))
+      )
+      .sort((left, right) => right.changedAt.localeCompare(left.changedAt))
+      .slice(0, 12);
+    const recentOpsSignIns = opsAccounts
+      .flatMap((account) => {
+        if (!account.lastAuthenticatedAt || !account.lastAuthenticatedMethod) {
+          return [];
+        }
+
+        return [
+          {
+            opsUserId: account.profile.id,
+            opsUserName: account.profile.fullName,
+            opsUserEmail: account.profile.email,
+            internalScope: account.profile.internalScope,
+            isActive: account.isActive,
+            signedInAt: account.lastAuthenticatedAt,
+            method: account.lastAuthenticatedMethod
+          }
+        ];
+      })
+      .sort((left, right) => right.signedInAt.localeCompare(left.signedInAt))
+      .slice(0, 12);
+    const recentOpsAuthenticationEvents = opsAccounts
+      .flatMap((account) =>
+        account.authHistory.map((entry) => ({
+          opsUserId: account.profile.id,
+          opsUserName: account.profile.fullName,
+          opsUserEmail: account.profile.email,
+          internalScope: account.profile.internalScope,
+          isActive: account.isActive,
+          occurredAt: entry.occurredAt,
+          kind: entry.kind,
+          recordedBy: entry.recordedBy,
+          recordedByName: entry.recordedBy ? actorNames.get(entry.recordedBy) : undefined,
+          method: entry.method,
+          reason: entry.reason,
+          failedCount: entry.failedCount,
+          lockExpiresAt: entry.lockExpiresAt,
+          notes: entry.notes
+        }))
+      )
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+      .slice(0, 16);
+    const recentFailedOpsSignIns = opsAccounts
+      .flatMap((account) => {
+        if (!account.lastFailedAuthenticationAt || !account.lastFailedAuthenticationReason) {
+          return [];
+        }
+
+        return [
+          {
+            opsUserId: account.profile.id,
+            opsUserName: account.profile.fullName,
+            opsUserEmail: account.profile.email,
+            internalScope: account.profile.internalScope,
+            isActive: account.isActive,
+            failedAt: account.lastFailedAuthenticationAt,
+            failedCount: account.failedAuthenticationCount,
+            reason: account.lastFailedAuthenticationReason
+          }
+        ];
+      })
+      .sort((left, right) => right.failedAt.localeCompare(left.failedAt))
+      .slice(0, 12);
+    const accessAlerts = this.buildOpsAccessAlerts(opsAccounts);
+
+    return {
+      totalOpsAccounts: opsAccounts.length,
+      activeOpsAdminAccounts: opsAccounts.filter(
+        (account) => account.isActive && account.profile.internalScope === "admin"
+      ).length,
+      activeOpsStaffAccounts: opsAccounts.filter(
+        (account) => account.isActive && account.profile.internalScope === "operations"
+      ).length,
+      disabledOpsAccounts: opsAccounts.filter((account) => !account.isActive).length,
+      lockedOpsAccounts: opsAccounts.filter((account) => account.isAuthenticationLocked).length,
+      dormantOpsAccounts: opsAccounts.filter((account) => {
+        if (!account.isActive || !account.lastAuthenticatedAt) {
+          return false;
+        }
+
+        const lastAuthenticatedAt = Date.parse(account.lastAuthenticatedAt);
+        return !Number.isNaN(lastAuthenticatedAt) && lastAuthenticatedAt < staleThresholdMs;
+      }).length,
+      neverSignedInOpsAccounts: opsAccounts.filter(
+        (account) => account.isActive && !account.lastAuthenticatedAt
+      ).length,
+      opsAccountsWithRecentFailures: opsAccounts.filter((account) => {
+        if (!account.lastFailedAuthenticationAt || account.failedAuthenticationCount <= 0) {
+          return false;
+        }
+
+        const failedAt = Date.parse(account.lastFailedAuthenticationAt);
+        return !Number.isNaN(failedAt) && failedAt >= failureThresholdMs;
+      }).length,
+      pendingOpsPasswordResetInvites: opsAccounts.filter((account) => {
+        if (!account.passwordResetExpiresAt) {
+          return false;
+        }
+
+        const expiresAt = Date.parse(account.passwordResetExpiresAt);
+        return !Number.isNaN(expiresAt) && expiresAt > now;
+      }).length,
+      accessAlerts,
+      recentOpsAccessChanges,
+      recentOpsAuthenticationEvents,
+      recentOpsSignIns,
+      recentFailedOpsSignIns
+    };
+  }
+
+  private buildOpsAccessAlerts(opsAccounts: OpsAccountSummary[]): OpsAccessAlertItem[] {
+    const now = Date.now();
+    const recentFailureThresholdMs = now - 7 * 24 * 60 * 60 * 1000;
+    const severityRank: Record<OpsAccessAlertItem["severity"], number> = {
+      critical: 3,
+      warning: 2,
+      info: 1
+    };
+    const alerts: OpsAccessAlertItem[] = [];
+
+    for (const account of opsAccounts) {
+      if (account.isAuthenticationLocked && account.authenticationLockExpiresAt) {
+        alerts.push({
+          opsUserId: account.profile.id,
+          opsUserName: account.profile.fullName,
+          opsUserEmail: account.profile.email,
+          severity: "critical",
+          title: "Internal staff login is temporarily locked",
+          detail: `${account.profile.fullName} hit the failed-login threshold and is locked until ${account.authenticationLockExpiresAt}.`,
+          recommendedAction:
+            "Verify the staff member, then clear the auth lock with an audit note or route them through password recovery."
+        });
+        continue;
+      }
+
+      if (
+        !account.isActive &&
+        account.lastFailedAuthenticationAt &&
+        !Number.isNaN(Date.parse(account.lastFailedAuthenticationAt)) &&
+        Date.parse(account.lastFailedAuthenticationAt) >= recentFailureThresholdMs
+      ) {
+        alerts.push({
+          opsUserId: account.profile.id,
+          opsUserName: account.profile.fullName,
+          opsUserEmail: account.profile.email,
+          severity: "warning",
+          title: "Disabled internal account is still receiving login attempts",
+          detail: `${account.profile.fullName} is disabled, but the account still had a recent failed login attempt marked ${account.lastFailedAuthenticationReason?.replaceAll("-", " ") ?? "unknown reason"}.`,
+          recommendedAction:
+            "Confirm whether the staff member still expects access and review whether credentials or old bookmarks need cleanup."
+        });
+        continue;
+      }
+
+      if (
+        account.isActive &&
+        !account.isAuthenticationLocked &&
+        account.failedAuthenticationCount >= 3 &&
+        account.lastFailedAuthenticationAt &&
+        !Number.isNaN(Date.parse(account.lastFailedAuthenticationAt)) &&
+        Date.parse(account.lastFailedAuthenticationAt) >= recentFailureThresholdMs
+      ) {
+        alerts.push({
+          opsUserId: account.profile.id,
+          opsUserName: account.profile.fullName,
+          opsUserEmail: account.profile.email,
+          severity: "warning",
+          title: "Internal staff login is approaching lockout",
+          detail: `${account.profile.fullName} has ${account.failedAuthenticationCount} recent failed login attempt${account.failedAuthenticationCount === 1 ? "" : "s"}.`,
+          recommendedAction:
+            "Check whether the staff member needs a reset link or whether the attempts look suspicious before the account locks."
+        });
+      }
+    }
+
+    return alerts
+      .sort((left, right) => {
+        const severityDelta = severityRank[right.severity] - severityRank[left.severity];
+        if (severityDelta !== 0) {
+          return severityDelta;
+        }
+
+        return left.opsUserName.localeCompare(right.opsUserName);
+      })
+      .slice(0, 10);
+  }
+
+  private isOpsAuthenticationLocked(identity: AuthIdentityRecord | undefined): boolean {
+    if (!identity?.authenticationLockExpiresAt) {
+      return false;
+    }
+
+    const lockExpiresAtMs = Date.parse(identity.authenticationLockExpiresAt);
+    return !Number.isNaN(lockExpiresAtMs) && lockExpiresAtMs > Date.now();
+  }
+
+  public isAuthIdentityTemporarilyLocked(identity: AuthIdentityRecord | undefined): boolean {
+    return identity?.role === "ops" ? this.isOpsAuthenticationLocked(identity) : false;
+  }
+
+  public getAuthIdentityLockExpiryIso(identity: AuthIdentityRecord | undefined): string | undefined {
+    return this.isAuthIdentityTemporarilyLocked(identity) ? identity?.authenticationLockExpiresAt : undefined;
+  }
+
+  public async recordSuccessfulAuthentication(
+    userId: string,
+    method: OpsAuthenticationMethod
+  ): Promise<AuthIdentityRecord | undefined> {
+    const updatedIdentity = await this.repository.updateAuthIdentity(userId, {
+      lastAuthenticatedAt: new Date(Date.now()).toISOString(),
+      lastAuthenticatedMethod: method,
+      failedAuthenticationCount: 0,
+      lastFailedAuthenticationAt: undefined,
+      lastFailedAuthenticationReason: undefined,
+      authenticationLockExpiresAt: undefined
+    });
+    if (updatedIdentity?.role === "ops") {
+      await this.appendOpsAuthenticationHistory(userId, {
+        kind: "sign-in-succeeded",
+        method
+      });
+      return (await this.repository.findAuthIdentityByUserId(userId)) ?? updatedIdentity;
+    }
+
+    return updatedIdentity;
+  }
+
+  public async recordFailedOpsAuthentication(
+    identity: AuthIdentityRecord,
+    reason: OpsFailedAuthenticationReason
+  ): Promise<AuthIdentityRecord | undefined> {
+    if (identity.role !== "ops") {
+      return identity;
+    }
+
+    const currentIdentity = (await this.repository.findAuthIdentityByUserId(identity.userId)) ?? identity;
+    const previousLockExpiresAt = currentIdentity.authenticationLockExpiresAt;
+    const nextFailureCount = (currentIdentity.failedAuthenticationCount ?? 0) + 1;
+    const nextLockExpiresAt =
+      reason === "invalid-password" && nextFailureCount >= OPS_AUTH_FAILURE_LOCK_THRESHOLD
+        ? new Date(Date.now() + OPS_AUTH_LOCK_WINDOW_MINUTES * 60 * 1000).toISOString()
+        : currentIdentity.authenticationLockExpiresAt;
+    const updatedIdentity = await this.repository.updateAuthIdentity(identity.userId, {
+      failedAuthenticationCount: nextFailureCount,
+      lastFailedAuthenticationAt: new Date(Date.now()).toISOString(),
+      lastFailedAuthenticationReason: reason,
+      authenticationLockExpiresAt: nextLockExpiresAt
+    });
+    await this.appendOpsAuthenticationHistory(identity.userId, {
+      kind: "sign-in-failed",
+      reason,
+      failedCount: nextFailureCount,
+      lockExpiresAt: nextLockExpiresAt
+    });
+    if (nextLockExpiresAt && nextLockExpiresAt !== previousLockExpiresAt) {
+      await this.appendOpsAuthenticationHistory(identity.userId, {
+        kind: "temporary-lock-triggered",
+        reason,
+        failedCount: nextFailureCount,
+        lockExpiresAt: nextLockExpiresAt
+      });
+    }
+
+    return (await this.repository.findAuthIdentityByUserId(identity.userId)) ?? updatedIdentity;
+  }
+
+  private async appendOpsAuthenticationHistory(
+    userId: string,
+    entry: Omit<OpsAuthenticationHistoryEntry, "occurredAt"> & { occurredAt?: string }
+  ): Promise<void> {
+    const current = await this.repository.findAuthIdentityByUserId(userId);
+    if (!current || current.role !== "ops") {
+      return;
+    }
+
+    const nextEntry: OpsAuthenticationHistoryEntry = {
+      occurredAt: entry.occurredAt ?? new Date(Date.now()).toISOString(),
+      kind: entry.kind,
+      recordedBy: entry.recordedBy,
+      method: entry.method,
+      reason: entry.reason,
+      failedCount: entry.failedCount,
+      lockExpiresAt: entry.lockExpiresAt,
+      notes: entry.notes
+    };
+    await this.repository.updateAuthIdentity(userId, {
+      authHistory: [...(current.authHistory ?? []), nextEntry]
+    });
+  }
+
+  private async applyAccessAudit(
+    userId: string,
+    input: {
+      changedBy?: string;
+      kind: OpsAccessChangeKind;
+      notes?: string;
+    }
+  ): Promise<void> {
+    const current = await this.repository.findAuthIdentityByUserId(userId);
+    if (!current) {
+      throw new HttpError(404, "Ops account not found.");
+    }
+
+    const changedAt = new Date(Date.now()).toISOString();
+    const nextEntry: OpsAccessHistoryEntry = {
+      changedAt,
+      changedBy: input.changedBy,
+      kind: input.kind,
+      notes: input.notes
+    };
+    await this.repository.updateAuthIdentity(userId, {
+      lastAccessChangeAt: changedAt,
+      lastAccessChangeBy: input.changedBy,
+      lastAccessChangeKind: input.kind,
+      accessChangeNotes: input.notes,
+      accessHistory: [...(current.accessHistory ?? []), nextEntry]
+    });
+  }
+
+  private getDefaultOpsAccountAddress(): Address {
+    return {
+      line1: "18 Bay Ave",
+      city: "Barnegat",
+      state: "NJ",
+      postalCode: "08005",
+      country: "US",
+      point: {
+        latitude: 39.7532,
+        longitude: -74.2229
+      }
+    };
+  }
+
+  private generateTemporaryStrongPassword(): string {
+    return `YmOps${crypto.randomUUID().replaceAll("-", "").slice(0, 10)}1aA`;
+  }
+
+  private async assertAnotherActiveAdminExists(excludedOpsUserId: string): Promise<void> {
+    const opsUsers = await this.repository.listOpsUsers();
+    const otherAdmins = await Promise.all(
+      opsUsers
+        .filter((opsUser) => opsUser.id !== excludedOpsUserId && opsUser.internalScope === "admin")
+        .map(async (opsUser) => {
+          const identity = await this.repository.findAuthIdentityByUserId(opsUser.id);
+          return identity && !identity.accessDisabledAt ? opsUser : undefined;
+        })
+    );
+    if (!otherAdmins.some(Boolean)) {
+      throw new HttpError(
+        409,
+        "Add or reactivate another admin ops account before removing admin access from this account."
+      );
+    }
   }
 
   public getAppBaseUrl(): string {
@@ -13237,6 +14283,283 @@ export class MarketplacePlatformService {
       .filter((item): item is OpsReviewResponseItem => Boolean(item));
   }
 
+  private buildInboundAutomationOverview(
+    launchLeads: LaunchLead[],
+    reviews: ProviderReview[]
+  ): {
+    sourceMetrics: InboundAutomationSourceMetric[];
+    alerts: InboundAutomationAlertItem[];
+    recentActivity: InboundAutomationActivityItem[];
+  } {
+    const now = Date.now();
+    const recentWindowMs = 7 * 24 * 60 * 60 * 1000;
+    const sourceMap = new Map<InboundAutomationSourceKey, {
+      metric: InboundAutomationSourceMetric;
+      recentActivity: InboundAutomationActivityItem[];
+    }>();
+
+    for (const source of this.getExpectedInboundAutomationSources()) {
+      this.getOrCreateInboundAutomationSourceEntry(sourceMap, source);
+    }
+
+    for (const lead of launchLeads) {
+      const source = this.getInboundAutomationSourceForLead(lead);
+      if (!source) {
+        continue;
+      }
+
+      const entry = this.getOrCreateInboundAutomationSourceEntry(sourceMap, source);
+      const occurredAt = lead.createdAt;
+      if (!entry.metric.lastOccurredAt || occurredAt > entry.metric.lastOccurredAt) {
+        entry.metric.lastOccurredAt = occurredAt;
+      }
+      if (new Date(occurredAt).getTime() >= now - recentWindowMs) {
+        entry.metric.recentCount += 1;
+      }
+      if (lead.status !== "converted" && lead.status !== "closed-lost") {
+        entry.metric.openLeadCount = (entry.metric.openLeadCount ?? 0) + 1;
+      }
+      entry.recentActivity.push({
+        id: `lead:${lead.id}`,
+        sourceKey: source.sourceKey,
+        label: source.label,
+        kind: "launch-lead",
+        occurredAt,
+        summary: `${lead.contactName} • ${lead.areaLabel}${lead.serviceCategory ? ` • ${lead.serviceCategory.replaceAll("-", " ")}` : ""}`,
+        reference: lead.sourceReferenceId
+      });
+    }
+
+    for (const review of reviews) {
+      const source = this.getInboundAutomationSourceForReview(review);
+      if (!source) {
+        continue;
+      }
+
+      const entry = this.getOrCreateInboundAutomationSourceEntry(sourceMap, source);
+      const occurredAt = review.responseHandledAt ?? review.createdAt;
+      if (!entry.metric.lastOccurredAt || occurredAt > entry.metric.lastOccurredAt) {
+        entry.metric.lastOccurredAt = occurredAt;
+      }
+      if (new Date(occurredAt).getTime() >= now - recentWindowMs) {
+        entry.metric.recentCount += 1;
+      }
+      entry.recentActivity.push({
+        id: `review:${review.id}`,
+        sourceKey: source.sourceKey,
+        label: source.label,
+        kind: "review-response",
+        occurredAt,
+        summary: `${review.responseStatus} public reply • rating ${review.overallRating}/5`,
+        reference: review.externalResponseId ?? review.publicResponseUrl
+      });
+    }
+
+    const sourceMetrics = [...sourceMap.values()]
+      .map((entry) => {
+        entry.metric.status = this.getInboundAutomationStatus(entry.metric, now);
+        return entry.metric;
+      })
+      .sort((left, right) => {
+        if (left.status !== right.status) {
+          return left.status === "stale" ? -1 : right.status === "stale" ? 1 : left.status === "watch" ? -1 : 1;
+        }
+        return left.label.localeCompare(right.label);
+      });
+
+    const alerts = sourceMetrics
+      .filter((metric) => metric.status !== "healthy")
+      .map((metric) => this.buildInboundAutomationAlert(metric));
+
+    const recentActivity = [...sourceMap.values()]
+      .flatMap((entry) => entry.recentActivity)
+      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+      .slice(0, 10);
+
+    return {
+      sourceMetrics,
+      alerts,
+      recentActivity
+    };
+  }
+
+  private getOrCreateInboundAutomationSourceEntry(
+    sourceMap: Map<InboundAutomationSourceKey, { metric: InboundAutomationSourceMetric; recentActivity: InboundAutomationActivityItem[] }>,
+    source: {
+      sourceKey: InboundAutomationSourceKey;
+      label: string;
+      kind: "launch-lead" | "review-response";
+      staleThresholdHours: number;
+    }
+  ) {
+    const existing = sourceMap.get(source.sourceKey);
+    if (existing) {
+      return existing;
+    }
+
+    const created = {
+      metric: {
+        sourceKey: source.sourceKey,
+        label: source.label,
+        kind: source.kind,
+        recentCount: 0,
+        lastOccurredAt: undefined,
+        status: "stale",
+        staleThresholdHours: source.staleThresholdHours,
+        openLeadCount: source.kind === "launch-lead" ? 0 : undefined
+      } as InboundAutomationSourceMetric,
+      recentActivity: [] as InboundAutomationActivityItem[]
+    };
+    sourceMap.set(source.sourceKey, created);
+    return created;
+  }
+
+  private getExpectedInboundAutomationSources(): Array<{
+    sourceKey: InboundAutomationSourceKey;
+    label: string;
+    kind: "launch-lead" | "review-response";
+    staleThresholdHours: number;
+  }> {
+    const configured = process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter((item): item is InboundAutomationSourceKey => this.isInboundAutomationSourceKey(item));
+
+    return [...new Set(configured ?? [])]
+      .map((sourceKey) => this.getInboundAutomationSourceDefinition(sourceKey))
+      .filter((source): source is NonNullable<typeof source> => Boolean(source));
+  }
+
+  private isInboundAutomationSourceKey(value: string): value is InboundAutomationSourceKey {
+    return this.getInboundAutomationSourceDefinition(value as InboundAutomationSourceKey) !== undefined;
+  }
+
+  private getInboundAutomationSourceDefinition(
+    sourceKey: InboundAutomationSourceKey
+  ): {
+    sourceKey: InboundAutomationSourceKey;
+    label: string;
+    kind: "launch-lead" | "review-response";
+    staleThresholdHours: number;
+  } | undefined {
+    switch (sourceKey) {
+      case "direct-email-lead":
+        return { sourceKey, label: "Direct inbox leads", kind: "launch-lead", staleThresholdHours: 72 };
+      case "google-business-profile-lead":
+        return { sourceKey, label: "GBP message leads", kind: "launch-lead", staleThresholdHours: 96 };
+      case "referral-lead":
+        return { sourceKey, label: "Referral forwarders", kind: "launch-lead", staleThresholdHours: 168 };
+      case "shared-inbox-review-response":
+        return { sourceKey, label: "Shared inbox review replies", kind: "review-response", staleThresholdHours: 72 };
+      case "google-business-profile-review-response":
+        return { sourceKey, label: "GBP review replies", kind: "review-response", staleThresholdHours: 96 };
+      default:
+        return undefined;
+    }
+  }
+
+  private getInboundAutomationSourceForLead(
+    lead: LaunchLead
+  ): {
+    sourceKey: InboundAutomationSourceKey;
+    label: string;
+    kind: "launch-lead" | "review-response";
+    staleThresholdHours: number;
+  } | undefined {
+    switch (lead.requestSource) {
+      case "direct-email-forward":
+        return this.getInboundAutomationSourceDefinition("direct-email-lead");
+      case "google-business-profile-message":
+        return this.getInboundAutomationSourceDefinition("google-business-profile-lead");
+      case "referral-forwarder":
+        return this.getInboundAutomationSourceDefinition("referral-lead");
+      default:
+        return undefined;
+    }
+  }
+
+  private getInboundAutomationSourceForReview(
+    review: ProviderReview
+  ): {
+    sourceKey: InboundAutomationSourceKey;
+    label: string;
+    kind: "launch-lead" | "review-response";
+    staleThresholdHours: number;
+  } | undefined {
+    if (review.responseStatus !== "posted" || !review.responseChannel) {
+      return undefined;
+    }
+
+    const metadata = review.responseChannelMetadata;
+    const looksInbound =
+      Boolean(metadata?.emailMessageId) ||
+      Boolean(metadata?.mailboxName) ||
+      Boolean(metadata?.profileLocationName) ||
+      Boolean(metadata?.threadUrl) ||
+      review.responseNotes?.toLowerCase().includes("inbound") ||
+      metadata?.intakeNotes?.some((note) => /inbound .*automation route/i.test(note));
+
+    if (!looksInbound) {
+      return undefined;
+    }
+
+    if (review.responseChannel === "shared-inbox") {
+      return this.getInboundAutomationSourceDefinition("shared-inbox-review-response");
+    }
+
+    if (review.responseChannel === "google-business-profile") {
+      return this.getInboundAutomationSourceDefinition("google-business-profile-review-response");
+    }
+
+    return undefined;
+  }
+
+  private getInboundAutomationStatus(
+    metric: InboundAutomationSourceMetric,
+    now: number
+  ): InboundAutomationSourceMetric["status"] {
+    if (!metric.lastOccurredAt) {
+      return "stale";
+    }
+
+    const ageMs = now - new Date(metric.lastOccurredAt).getTime();
+    if (ageMs > metric.staleThresholdHours * 60 * 60 * 1000) {
+      return "stale";
+    }
+
+    if (ageMs > (metric.staleThresholdHours / 2) * 60 * 60 * 1000) {
+      return "watch";
+    }
+
+    return "healthy";
+  }
+
+  private buildInboundAutomationAlert(
+    metric: InboundAutomationSourceMetric
+  ): InboundAutomationAlertItem {
+    const lastSeen = metric.lastOccurredAt
+      ? `Last activity ${this.formatShortDate(metric.lastOccurredAt)}.`
+      : "No inbound activity has been recorded yet.";
+    const volumeDetail =
+      metric.recentCount > 0
+        ? `${metric.recentCount} item${metric.recentCount === 1 ? "" : "s"} arrived in the last 7 days.`
+        : "Nothing has arrived in the last 7 days.";
+
+    return {
+      sourceKey: metric.sourceKey,
+      label: metric.label,
+      kind: metric.kind,
+      severity: metric.status === "stale" ? "urgent" : "watch",
+      detail: `${lastSeen} ${volumeDetail}`,
+      recommendedAction:
+        metric.kind === "launch-lead"
+          ? "Check the external forwarder, webhook secret, and source mailbox or relay before launch demand silently falls back to manual entry."
+          : "Check the review-reply relay, webhook secret, and posting automation before public responses drift back to manual-only handling.",
+      recentCount: metric.recentCount,
+      lastOccurredAt: metric.lastOccurredAt
+    };
+  }
+
   private buildOpsReviewResponseQueueItem(
     review: ProviderReview,
     booking: Booking | undefined,
@@ -13290,6 +14613,9 @@ export class MarketplacePlatformService {
     }
     if (review.responseStatus === "posted") {
       watchouts.push("A public reply is already recorded. Reopen only if the posted reply needs correction or follow-up.");
+      if (!review.externalResponseId && !review.publicResponseUrl) {
+        watchouts.push("This posted reply is missing a traceable channel reference, so update the audit record before treating the workflow as complete.");
+      }
     }
     if (review.responseStatus === "skipped") {
       watchouts.push("A skip decision is already recorded. Reopen only if new public-facing context changes that call.");
@@ -13309,6 +14635,10 @@ export class MarketplacePlatformService {
       responseHandledBy: review.responseHandledBy,
       responseNotes: review.responseNotes,
       publicReplyBody: review.publicReplyBody,
+      responseChannel: review.responseChannel,
+      responseChannelMetadata: review.responseChannelMetadata,
+      externalResponseId: review.externalResponseId,
+      publicResponseUrl: review.publicResponseUrl,
       supportTicketId: review.supportTicketId,
       supportTicketStatus: linkedSupportTicket?.status,
       supportTicketSubject: linkedSupportTicket?.subject,
@@ -13710,6 +15040,66 @@ export class MarketplacePlatformService {
     }
 
     return trimmed.replace(/^<+/, "").replace(/>+$/, "") || undefined;
+  }
+
+  private normalizeReviewResponseChannelMetadata(
+    metadata: ReviewResponseChannelMetadata | undefined
+  ): ReviewResponseChannelMetadata | undefined {
+    if (!metadata) {
+      return undefined;
+    }
+
+    const normalized: ReviewResponseChannelMetadata = {
+      threadUrl: metadata.threadUrl?.trim() || undefined,
+      profileLocationName: metadata.profileLocationName?.trim().replace(/\s+/g, " ") || undefined,
+      emailMessageId: this.normalizeInboundMessageReference(metadata.emailMessageId),
+      emailThreadId:
+        this.normalizeInboundMessageReference(metadata.emailThreadId) ??
+        metadata.emailThreadId?.trim() ??
+        undefined,
+      mailboxName: metadata.mailboxName?.trim().replace(/\s+/g, " ") || undefined,
+      senderEmail: metadata.senderEmail?.trim().toLowerCase() || undefined,
+      intakeNotes:
+        metadata.intakeNotes
+          ?.map((note) => note.trim().replace(/\s+/g, " "))
+          .filter((note) => note.length > 0) || undefined
+    };
+
+    return Object.values(normalized).some((value) => {
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      return Boolean(value);
+    })
+      ? normalized
+      : undefined;
+  }
+
+  private normalizeInboundEmailHtmlBody(html: string): string | undefined {
+    const withoutScripts = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ");
+    const withLineBreaks = withoutScripts
+      .replace(/<\s*br\s*\/?>/gi, "\n")
+      .replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, "\n");
+    const withoutTags = withLineBreaks.replace(/<[^>]+>/g, " ");
+    const decoded = withoutTags
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/gi, '"');
+    const collapsed = decoded
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    return collapsed || undefined;
   }
 
   private getFirstName(name: string | undefined, fallback = "there"): string {

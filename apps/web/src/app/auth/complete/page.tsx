@@ -61,6 +61,7 @@ export default function AuthCompletePage() {
     saveStoredSession({
       token,
       role,
+      internalScope: undefined,
       email,
       userId,
       fullName: storedFullName,
@@ -117,6 +118,7 @@ export default function AuthCompletePage() {
       saveStoredSession({
         token: envelope.session.token,
         role: envelope.user.role,
+        internalScope: envelope.user.role === "ops" ? envelope.user.internalScope : undefined,
         email: envelope.user.email,
         userId: envelope.user.id,
         fullName: envelope.user.fullName,

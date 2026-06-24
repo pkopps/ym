@@ -2,11 +2,17 @@ import {
   AuthenticatedUserEnvelope,
   CompleteSocialSignupRequest,
   ConfirmPasswordResetRequest,
+  CreateOpsAccountRequest,
+  RequestOpsAccountPasswordResetRequest,
   CurrentUserResponse,
   GoogleAuthStartResponse,
   LoginRequest,
+  OpsAuthenticationMethod,
+  RotateOpsAccountSessionsRequest,
   RequestPasswordResetRequest,
-  RegisterUserRequest
+  RegisterUserRequest,
+  UpdateOpsAccountAccessRequest,
+  UpdateOpsAccountRequest
 } from "@yardmatch/contracts";
 import {
   TOKEN_TTL_SECONDS,
@@ -20,6 +26,7 @@ import {
   verifyPassword,
   verifySessionToken
 } from "../auth";
+import { requireOpsAdminAccess } from "../controller-auth";
 import { ApiController, HttpError, RequestContext, sendJson, sendRedirect } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 import { SocialAuthProvider, SocialAuthService, SocialIdentity } from "../services/SocialAuthService";
@@ -58,6 +65,12 @@ export class AuthController implements ApiController {
       (context.method === "POST" && context.path === "/api/auth/login") ||
       (context.method === "POST" && context.path === "/api/auth/password-reset/request") ||
       (context.method === "POST" && context.path === "/api/auth/password-reset/confirm") ||
+      (context.method === "GET" && context.path === "/api/ops/accounts") ||
+      (context.method === "POST" && context.path === "/api/ops/accounts") ||
+      (context.method === "POST" && context.path === "/api/ops/accounts/update") ||
+      (context.method === "POST" && context.path === "/api/ops/accounts/rotate-sessions") ||
+      (context.method === "POST" && context.path === "/api/ops/accounts/password-reset/request") ||
+      (context.method === "POST" && context.path === "/api/ops/accounts/access") ||
       (context.method === "POST" && context.path === "/api/auth/social/complete") ||
       (context.method === "GET" && context.path === "/api/auth/me") ||
       (context.method === "GET" &&
@@ -185,8 +198,27 @@ export class AuthController implements ApiController {
       const payload = context.body as LoginRequest;
       const identity = await this.platform.findAuthIdentityByEmail(payload.email.trim().toLowerCase());
 
+      if (this.platform.isAuthIdentityTemporarilyLocked(identity)) {
+        const lockExpiresAt = this.platform.getAuthIdentityLockExpiryIso(identity);
+        throw new HttpError(
+          423,
+          lockExpiresAt
+            ? `Account temporarily locked after repeated failed sign-ins until ${lockExpiresAt}.`
+            : "Account temporarily locked after repeated failed sign-ins."
+        );
+      }
+
       if (!identity?.passwordHash || !verifyPassword(payload.password, identity.passwordHash)) {
+        if (identity?.role === "ops") {
+          await this.platform.recordFailedOpsAuthentication(identity, "invalid-password");
+        }
         throw new HttpError(401, "Invalid email or password");
+      }
+      if (identity.accessDisabledAt) {
+        if (identity.role === "ops") {
+          await this.platform.recordFailedOpsAuthentication(identity, "disabled-account");
+        }
+        throw new HttpError(403, "Account access has been disabled");
       }
 
       const user = await this.platform.getUserByIdentity(identity);
@@ -194,21 +226,7 @@ export class AuthController implements ApiController {
         throw new HttpError(404, "User profile not found");
       }
 
-      const result: AuthenticatedUserEnvelope = {
-        session: {
-          token: signSessionToken({
-            userId: identity.userId,
-            email: identity.email,
-            role: identity.role,
-            sessionVersion: identity.sessionVersion
-          }),
-          expiresInSeconds: TOKEN_TTL_SECONDS,
-          expiresAtIso: getSessionExpiryIso(TOKEN_TTL_SECONDS)
-        },
-        user
-      };
-
-      sendJson(response, 200, result);
+      sendJson(response, 200, await this.createAuthenticatedEnvelope(identity, user, "password"));
       return;
     }
 
@@ -226,22 +244,57 @@ export class AuthController implements ApiController {
       if (!identity) {
         throw new HttpError(404, "User profile not found");
       }
+      if (identity.accessDisabledAt) {
+        throw new HttpError(403, "Account access has been disabled");
+      }
 
-      const result: AuthenticatedUserEnvelope = {
-        session: {
-          token: signSessionToken({
-            userId: identity.userId,
-            email: identity.email,
-            role: identity.role,
-            sessionVersion: identity.sessionVersion
-          }),
-          expiresInSeconds: TOKEN_TTL_SECONDS,
-          expiresAtIso: getSessionExpiryIso(TOKEN_TTL_SECONDS)
-        },
-        user
-      };
+      sendJson(response, 200, await this.createAuthenticatedEnvelope(identity, user, "password-reset"));
+      return;
+    }
 
-      sendJson(response, 200, result);
+    if (context.path === "/api/ops/accounts") {
+      const actor = await requireOpsAdminAccess(context, this.platform);
+      if (context.method === "GET") {
+        sendJson(response, 200, await this.platform.listOpsAccounts());
+        return;
+      }
+      sendJson(response, 201, await this.platform.createOpsAccount(actor, context.body as CreateOpsAccountRequest));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/ops/accounts/update") {
+      const actor = await requireOpsAdminAccess(context, this.platform);
+      sendJson(response, 200, await this.platform.updateOpsAccount(actor, context.body as UpdateOpsAccountRequest));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/ops/accounts/rotate-sessions") {
+      const actor = await requireOpsAdminAccess(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.rotateOpsAccountSessions(actor, context.body as RotateOpsAccountSessionsRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/ops/accounts/password-reset/request") {
+      const actor = await requireOpsAdminAccess(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.requestOpsAccountPasswordReset(actor, context.body as RequestOpsAccountPasswordResetRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/ops/accounts/access") {
+      const actor = await requireOpsAdminAccess(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.updateOpsAccountAccess(actor, context.body as UpdateOpsAccountAccessRequest)
+      );
       return;
     }
 
@@ -296,7 +349,7 @@ export class AuthController implements ApiController {
         if (!user) {
           throw new HttpError(404, "User profile not found");
         }
-        sendJson(response, 200, this.createAuthenticatedEnvelope(updatedIdentity, user));
+        sendJson(response, 200, await this.createAuthenticatedEnvelope(updatedIdentity, user, pending.provider));
         return;
       }
 
@@ -327,7 +380,7 @@ export class AuthController implements ApiController {
         throw new HttpError(500, "Unable to finish the social signup.");
       }
 
-      sendJson(response, 201, this.createAuthenticatedEnvelope(updatedIdentity, user));
+      sendJson(response, 201, await this.createAuthenticatedEnvelope(updatedIdentity, user, pending.provider));
       return;
     }
 
@@ -381,21 +434,20 @@ export class AuthController implements ApiController {
       hashPassword(payload.password)
     );
 
-    const result: AuthenticatedUserEnvelope = {
-      session: {
-        token: signSessionToken({
-          userId: user.id,
-          email: user.email,
-          role: user.role,
-          sessionVersion: 1
-        }),
-        expiresInSeconds: TOKEN_TTL_SECONDS,
-        expiresAtIso: getSessionExpiryIso(TOKEN_TTL_SECONDS)
-      },
-      user
-    };
-
-    sendJson(response, 201, result);
+      sendJson(
+        response,
+        201,
+        await this.createAuthenticatedEnvelope(
+          {
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+            sessionVersion: 1
+          },
+          user,
+          "password"
+        )
+      );
   }
 
   private parseRole(value: string | null): GoogleAuthStartResponse["role"] {
@@ -452,7 +504,7 @@ export class AuthController implements ApiController {
         throw new HttpError(404, "User profile not found");
       }
 
-      return this.createAuthenticatedEnvelope(linkedIdentity, user);
+      return this.createAuthenticatedEnvelope(linkedIdentity, user, socialIdentity.provider);
     }
 
     const existingIdentity = await this.platform.findAuthIdentityByEmail(socialIdentity.email);
@@ -473,7 +525,7 @@ export class AuthController implements ApiController {
       if (!user) {
         throw new HttpError(404, "User profile not found");
       }
-      return this.createAuthenticatedEnvelope(updatedIdentity, user);
+      return this.createAuthenticatedEnvelope(updatedIdentity, user, socialIdentity.provider);
     }
 
     if (state.mode === "login") {
@@ -500,17 +552,22 @@ export class AuthController implements ApiController {
     };
   }
 
-  private createAuthenticatedEnvelope(
+  private async createAuthenticatedEnvelope(
     identity: NonNullable<Awaited<ReturnType<MarketplacePlatformService["findAuthIdentityByUserId"]>>>,
-    user: NonNullable<Awaited<ReturnType<MarketplacePlatformService["getUserByIdentity"]>>>
-  ): AuthenticatedUserEnvelope {
+    user: NonNullable<Awaited<ReturnType<MarketplacePlatformService["getUserByIdentity"]>>>,
+    method: OpsAuthenticationMethod
+  ): Promise<AuthenticatedUserEnvelope> {
+    const refreshedIdentity =
+      identity.role === "ops"
+        ? (await this.platform.recordSuccessfulAuthentication(identity.userId, method)) ?? identity
+        : identity;
     return {
       session: {
         token: signSessionToken({
-          userId: identity.userId,
-          email: identity.email,
-          role: identity.role,
-          sessionVersion: identity.sessionVersion
+          userId: refreshedIdentity.userId,
+          email: refreshedIdentity.email,
+          role: refreshedIdentity.role,
+          sessionVersion: refreshedIdentity.sessionVersion
         }),
         expiresInSeconds: TOKEN_TTL_SECONDS,
         expiresAtIso: getSessionExpiryIso(TOKEN_TTL_SECONDS)

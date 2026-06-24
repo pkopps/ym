@@ -10,6 +10,8 @@ import {
   CancelCrewMatchRequest,
   CancelRecurringServicePlanRequest,
   ConfirmPasswordResetRequest,
+  CreateOpsAccountResponse,
+  CreateOpsAccountRequest,
   CreateRecurringServicePlanRequest,
   CreateRecurringServicePlanResponse,
   CompleteSocialSignupRequest,
@@ -24,6 +26,9 @@ import {
   CreateBookingDisputeRequest,
   CreateExternalCalendarImportRequest,
   CreateInboundEmailLaunchLeadRequest,
+  CreateInboundGoogleBusinessProfileReviewResponseRequest,
+  CreateInboundReviewResponseRequest,
+  CreateInboundSharedInboxReviewResponseRequest,
   CreateInboundGoogleBusinessProfileLeadRequest,
   CreateInboundLaunchLeadRequest,
   CreateInboundReferralLaunchLeadRequest,
@@ -36,7 +41,10 @@ import {
   LoginRequest,
   RequestPasswordResetRequest,
   RequestPasswordResetResponse,
+  RequestOpsAccountPasswordResetRequest,
+  RequestOpsAccountPasswordResetResponse,
   MarkNotificationsReadRequest,
+  InboundAutomationEscalationResponse,
   ListCustomerRetentionOpportunitiesResponse,
   ListCustomerReviewOpportunitiesResponse,
   NotificationDeliveriesResponse,
@@ -46,6 +54,7 @@ import {
   NotificationOpsRetrySweepResponse,
   NotificationPreferences,
   OpsFinancialExceptionSummaryResponse,
+  OpsAccountSummary,
   OpsPayoutRunPreviewResponse,
   PushDevice,
   PaymentRecord,
@@ -85,6 +94,8 @@ import {
   ProviderStaffingOverview,
   ProviderReview,
   RegisterUserRequest,
+  RotateOpsAccountSessionsRequest,
+  UpdateOpsAccountAccessRequest,
   SetBookingRouteStopRequest,
   RegisterPushDeviceRequest,
   RecurringServicePlanSummary,
@@ -120,6 +131,7 @@ import {
   UpdateLaunchLeadRequest,
   UpdateSupportTicketRequest,
   UpdateBookingAddressRequest,
+  UpdateOpsAccountRequest,
   StartBookingRequest
 } from "./types";
 import { ApiRoutes } from "./routes";
@@ -208,6 +220,32 @@ export class MarketplaceApiClient {
 
   public confirmPasswordReset(payload: ConfirmPasswordResetRequest): Promise<AuthenticatedUserEnvelope> {
     return this.postJson(ApiRoutes.confirmPasswordReset, payload);
+  }
+
+  public getOpsAccounts(): Promise<OpsAccountSummary[]> {
+    return this.getJson(ApiRoutes.opsAccounts);
+  }
+
+  public createOpsAccount(payload: CreateOpsAccountRequest): Promise<CreateOpsAccountResponse> {
+    return this.postJson(ApiRoutes.opsAccounts, payload);
+  }
+
+  public updateOpsAccount(payload: UpdateOpsAccountRequest): Promise<OpsAccountSummary> {
+    return this.postJson(ApiRoutes.opsAccountsUpdate, payload);
+  }
+
+  public rotateOpsAccountSessions(payload: RotateOpsAccountSessionsRequest): Promise<OpsAccountSummary> {
+    return this.postJson(ApiRoutes.opsAccountsRotateSessions, payload);
+  }
+
+  public requestOpsAccountPasswordReset(
+    payload: RequestOpsAccountPasswordResetRequest
+  ): Promise<RequestOpsAccountPasswordResetResponse> {
+    return this.postJson(ApiRoutes.opsAccountsPasswordResetRequest, payload);
+  }
+
+  public updateOpsAccountAccess(payload: UpdateOpsAccountAccessRequest): Promise<OpsAccountSummary> {
+    return this.postJson(ApiRoutes.opsAccountsAccess, payload);
   }
 
   public getCurrentUser(): Promise<CurrentUserResponse> {
@@ -418,6 +456,10 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.notificationOpsEscalate, {});
   }
 
+  public escalateInboundAutomationAlerts(): Promise<InboundAutomationEscalationResponse> {
+    return this.postJson(ApiRoutes.observabilityInboundAutomationEscalate, {});
+  }
+
   public registerPushDevice(payload: RegisterPushDeviceRequest): Promise<PushDevice> {
     return this.postJson(ApiRoutes.notificationPushDevices, payload);
   }
@@ -488,6 +530,22 @@ export class MarketplaceApiClient {
 
   public updateReviewResponse(payload: UpdateReviewResponseRequest): Promise<ProviderReview> {
     return this.postJson(ApiRoutes.updateReviewResponse, payload);
+  }
+
+  public createInboundReviewResponse(payload: CreateInboundReviewResponseRequest): Promise<ProviderReview> {
+    return this.postJson(ApiRoutes.inboundReviewResponse, payload);
+  }
+
+  public createInboundSharedInboxReviewResponse(
+    payload: CreateInboundSharedInboxReviewResponseRequest
+  ): Promise<ProviderReview> {
+    return this.postJson(ApiRoutes.inboundSharedInboxReviewResponse, payload);
+  }
+
+  public createInboundGoogleBusinessProfileReviewResponse(
+    payload: CreateInboundGoogleBusinessProfileReviewResponseRequest
+  ): Promise<ProviderReview> {
+    return this.postJson(ApiRoutes.inboundGoogleBusinessProfileReviewResponse, payload);
   }
 
   public getProviderReviews(providerId: string): Promise<ProviderReview[]> {

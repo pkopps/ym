@@ -75,7 +75,7 @@ export class SupportController implements ApiController {
         response,
         201,
         await this.platform.createInboundEmailLaunchLead(
-          context.body as CreateInboundEmailLaunchLeadRequest,
+          this.normalizeInboundEmailLaunchLeadRequest(context.body),
           context.headers["x-yardmatch-inbound-secret"]
         )
       );
@@ -186,5 +186,72 @@ export class SupportController implements ApiController {
     }
 
     sendJson(response, 201, this.platform.createAnalyticsEvent(context.body as AnalyticsEvent));
+  }
+
+  private normalizeInboundEmailLaunchLeadRequest(body: unknown): CreateInboundEmailLaunchLeadRequest {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return body as CreateInboundEmailLaunchLeadRequest;
+    }
+
+    const record = body as Record<string, unknown>;
+    const readString = (...keys: string[]) => this.readStringField(record, keys);
+    const serviceCategory = readString("serviceCategory", "service_category");
+
+    return {
+      sourceReferenceId: readString("sourceReferenceId", "source_reference_id"),
+      messageId: readString("messageId", "message_id", "message-id", "MessageID"),
+      threadId: readString("threadId", "thread_id", "thread-id", "inReplyTo", "in-reply-to", "references"),
+      senderEmail: readString("senderEmail", "sender_email", "from", "fromEmail", "from_email", "sender") ?? "",
+      senderName: readString("senderName", "sender_name", "fromName", "from_name"),
+      replyToEmail: readString("replyToEmail", "reply_to", "replyTo", "reply-to"),
+      replyToName: readString("replyToName", "reply_to_name", "replyToName", "reply-to-name"),
+      subject: readString("subject", "Subject"),
+      textBody: readString(
+        "textBody",
+        "text_body",
+        "text",
+        "bodyText",
+        "body_text",
+        "body_plain",
+        "body-plain",
+        "strippedText",
+        "stripped-text",
+        "body"
+      ),
+      htmlBody: readString("htmlBody", "html_body", "html", "body_html", "body-html", "strippedHtml", "stripped-html"),
+      areaLabel: readString("areaLabel", "area_label"),
+      serviceCategory: serviceCategory as CreateInboundEmailLaunchLeadRequest["serviceCategory"] | undefined,
+      assignedOwner: readString("assignedOwner", "assigned_owner")
+    };
+  }
+
+  private readStringField(
+    record: Record<string, unknown>,
+    keys: string[]
+  ): string | undefined {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (typeof item !== "string") {
+            continue;
+          }
+          const trimmed = item.trim();
+          if (trimmed.length > 0) {
+            return trimmed;
+          }
+        }
+      }
+    }
+
+    return undefined;
   }
 }

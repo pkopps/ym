@@ -10,6 +10,9 @@ import {
   CompleteBookingRequest,
   CreateExternalCalendarImportRequest,
   CreateCheckoutSessionRequest,
+  CreateInboundGoogleBusinessProfileReviewResponseRequest,
+  CreateInboundReviewResponseRequest,
+  CreateInboundSharedInboxReviewResponseRequest,
   CreateProviderReviewRequest,
   EscalateReviewSupportRequest,
   UpdateReviewResponseRequest,
@@ -91,6 +94,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/providers/reviews") ||
       (context.method === "POST" && context.path === "/api/providers/reviews") ||
       (context.method === "POST" && context.path === "/api/providers/reviews/response") ||
+      (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound") ||
+      (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound/shared-inbox") ||
+      (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound/google-business-profile") ||
       (context.method === "GET" && context.path === "/api/notifications") ||
       (context.method === "POST" && context.path === "/api/notifications/read") ||
       (context.method === "GET" && context.path === "/api/notifications/preferences") ||
@@ -367,6 +373,45 @@ export class MarketplaceController implements ApiController {
         response,
         200,
         await this.platform.updateReviewResponse(context.body as UpdateReviewResponseRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound") {
+      sendJson(
+        response,
+        201,
+        await this.platform.createInboundReviewResponse(
+          context.body as CreateInboundReviewResponseRequest,
+          context.headers["x-yardmatch-review-response-secret"]
+        )
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound/shared-inbox") {
+      sendJson(
+        response,
+        201,
+        await this.platform.createInboundSharedInboxReviewResponse(
+          this.normalizeInboundSharedInboxReviewResponseRequest(context.body),
+          context.headers["x-yardmatch-review-response-secret"]
+        )
+      );
+      return;
+    }
+
+    if (
+      context.method === "POST" &&
+      context.path === "/api/providers/reviews/response/inbound/google-business-profile"
+    ) {
+      sendJson(
+        response,
+        201,
+        await this.platform.createInboundGoogleBusinessProfileReviewResponse(
+          this.normalizeInboundGoogleBusinessProfileReviewResponseRequest(context.body),
+          context.headers["x-yardmatch-review-response-secret"]
+        )
       );
       return;
     }
@@ -923,6 +968,120 @@ export class MarketplaceController implements ApiController {
 
     const identity = await requireRole(context, this.platform, "provider");
     sendText(response, 200, await this.platform.buildCalendarFeed(identity.userId));
+  }
+
+  private normalizeInboundSharedInboxReviewResponseRequest(
+    body: unknown
+  ): CreateInboundSharedInboxReviewResponseRequest {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return body as CreateInboundSharedInboxReviewResponseRequest;
+    }
+
+    const record = body as Record<string, unknown>;
+    const readString = (...keys: string[]) => this.readStringField(record, keys);
+
+    return {
+      reviewId: readString("reviewId", "review_id", "review-id") ?? "",
+      externalResponseId: readString(
+        "externalResponseId",
+        "external_response_id",
+        "replyId",
+        "reply_id",
+        "reply-id"
+      ),
+      messageId: readString("messageId", "message_id", "message-id", "MessageID"),
+      threadId: readString("threadId", "thread_id", "thread-id", "inReplyTo", "in-reply-to", "references"),
+      threadUrl: readString("threadUrl", "thread_url", "thread-url"),
+      mailboxName: readString("mailboxName", "mailbox_name", "mailbox"),
+      senderEmail: readString("senderEmail", "sender_email", "from", "fromEmail", "from_email", "sender"),
+      responseHandledBy: readString("responseHandledBy", "response_handled_by", "handledBy", "handled_by"),
+      responseNotes: readString("responseNotes", "response_notes", "notes"),
+      publicReplyBody: readString(
+        "publicReplyBody",
+        "public_reply_body",
+        "replyText",
+        "reply_text",
+        "text",
+        "body"
+      ) ?? "",
+      publicResponseUrl: readString(
+        "publicResponseUrl",
+        "public_response_url",
+        "public-url",
+        "public_url",
+        "replyUrl",
+        "reply_url"
+      )
+    };
+  }
+
+  private normalizeInboundGoogleBusinessProfileReviewResponseRequest(
+    body: unknown
+  ): CreateInboundGoogleBusinessProfileReviewResponseRequest {
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return body as CreateInboundGoogleBusinessProfileReviewResponseRequest;
+    }
+
+    const record = body as Record<string, unknown>;
+    const readString = (...keys: string[]) => this.readStringField(record, keys);
+
+    return {
+      reviewId: readString("reviewId", "review_id", "review-id") ?? "",
+      replyId: readString("replyId", "reply_id", "reply-id", "externalResponseId", "external_response_id"),
+      threadUrl: readString("threadUrl", "thread_url", "thread-url"),
+      profileLocationName: readString(
+        "profileLocationName",
+        "profile_location_name",
+        "locationName",
+        "location_name",
+        "location-name"
+      ),
+      responseHandledBy: readString("responseHandledBy", "response_handled_by", "handledBy", "handled_by"),
+      responseNotes: readString("responseNotes", "response_notes", "notes"),
+      publicReplyBody: readString(
+        "publicReplyBody",
+        "public_reply_body",
+        "replyText",
+        "reply_text",
+        "text",
+        "body"
+      ) ?? "",
+      publicResponseUrl: readString(
+        "publicResponseUrl",
+        "public_response_url",
+        "public-url",
+        "public_url",
+        "replyUrl",
+        "reply_url"
+      )
+    };
+  }
+
+  private readStringField(record: Record<string, unknown>, keys: string[]): string | undefined {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (typeof item !== "string") {
+            continue;
+          }
+          const trimmed = item.trim();
+          if (trimmed.length > 0) {
+            return trimmed;
+          }
+        }
+      }
+    }
+
+    return undefined;
   }
 
   private static requiresFreshProviderPayoutReauth(payload: UpdateProviderSettingsRequest): boolean {

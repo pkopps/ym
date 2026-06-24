@@ -1,3 +1,4 @@
+import type { OpsInternalScope } from "@yardmatch/contracts";
 import { MarketplaceApiClient } from "@yardmatch/contracts";
 
 const authStorageKey = "yardmatch-web-session";
@@ -11,6 +12,7 @@ export type WebSessionChangeReason = "saved" | "cleared" | "expired" | "invalida
 export interface StoredWebSession {
   token: string;
   role: "customer" | "provider" | "crew-member" | "ops";
+  internalScope?: OpsInternalScope;
   email: string;
   userId: string;
   fullName: string;
