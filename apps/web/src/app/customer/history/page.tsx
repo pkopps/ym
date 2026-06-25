@@ -1,21 +1,21 @@
-import type { Metadata } from "next";
-import { CustomerHistoryBoard } from "../../../components/CustomerHistoryBoard";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Service history",
-  description: "Review past YardMatch services, providers, crew notes, and billing outcomes."
-};
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function CustomerHistoryPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/customer/dashboard?view=history");
+  }, [router]);
+
   return (
     <main className="container stack-lg">
-      <section className="page-hero">
-        <span className="eyebrow">Service history</span>
-        <h1>Past services in one place.</h1>
-        <p>See what was done and who did it.</p>
+      <section className="card">
+        <h2>Redirecting…</h2>
+        <p>Taking you to past visits.</p>
       </section>
-
-      <CustomerHistoryBoard />
     </main>
   );
 }

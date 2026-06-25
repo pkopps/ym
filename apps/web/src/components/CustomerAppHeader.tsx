@@ -6,17 +6,15 @@ import { useStoredWebSession } from "../lib/session";
 import { NotificationMenu } from "./NotificationMenu";
 
 const profileLinks = [
-  { href: "/customer/dashboard", label: "Dashboard" },
-  { href: "/customer/history", label: "Service history" },
+  { href: "/customer/dashboard", label: "Account" },
+  { href: "/customer/dashboard?view=history", label: "Past visits" },
   { href: "/help", label: "Help" }
 ] as const;
 
 export function CustomerAppHeader() {
-  const pathname = usePathname();
   const { session } = useStoredWebSession();
-  const currentSectionLabel = pathname.startsWith("/customer/history")
-    ? "Service history"
-    : "Property dashboard";
+  usePathname();
+  const currentSectionLabel = "Customer account";
 
   function handleSignOut() {
     clearStoredSession();

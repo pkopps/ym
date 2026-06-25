@@ -20,8 +20,8 @@ const loginLinks = [
 const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label: string }>> = {
   customer: [
     { href: "/customer", label: "Search services" },
-    { href: "/customer/dashboard", label: "Dashboard" },
-    { href: "/customer/history", label: "Service history" }
+    { href: "/customer/dashboard", label: "Account" },
+    { href: "/customer/dashboard?view=history", label: "Past visits" }
   ],
   provider: [
     { href: "/provider/management", label: "Management" },

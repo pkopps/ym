@@ -200,6 +200,16 @@ export function ProviderLiveManagementBoard() {
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
     [jobs]
   );
+  const nextRouteJobNeedsSetup = Boolean(
+    nextRouteJob &&
+      (nextRouteJob.crewGap > 0 ||
+        nextRouteJob.requiresRouteLeaderAssignment ||
+        nextRouteJob.matches.some((match) => match.status === "pending-provider-review"))
+  );
+  const visibleJobs =
+    nextRouteJob && !nextRouteJobNeedsSetup
+      ? jobs.filter((job) => job.bookingId !== nextRouteJob.bookingId)
+      : jobs;
 
   useEffect(() => {
     if (!provider) {
@@ -1664,30 +1674,44 @@ export function ProviderLiveManagementBoard() {
 
       {nextRouteJob ? (
         <section className="card">
-          <span className="eyebrow">Leave soon</span>
+          <span className="eyebrow">{nextRouteJobNeedsSetup ? "Ready this route" : "Leave soon"}</span>
           <h2>{nextRouteJob.customerName}</h2>
           <p>
             {formatBookingWindowSummary(nextRouteJob.scheduledStartIso)} • {nextRouteJob.serviceAddress.line1}
           </p>
           <p>
-            In v1 the business owner starts the route for the job. Once you head out, customer
-            tracking goes live automatically.
+            {nextRouteJobNeedsSetup
+              ? "Finish staffing or route-leader setup before heading out."
+              : "Once you head out, customer tracking goes live automatically."}
           </p>
           <div className="cta-row">
-            <button
-              className="button"
-              disabled={isWorking}
-              onClick={() => void handleStartRoute(nextRouteJob.bookingId)}
-              type="button"
-            >
-              Start route
-            </button>
+            {nextRouteJobNeedsSetup ? (
+              <a className="button" href="#provider-jobs">
+                Review job
+              </a>
+            ) : (
+              <button
+                className="button"
+                disabled={isWorking}
+                onClick={() => void handleStartRoute(nextRouteJob.bookingId)}
+                type="button"
+              >
+                Start route
+              </button>
+            )}
           </div>
         </section>
       ) : null}
 
-      <section className="stack-lg">
-        {jobs.map((job) => (
+      {visibleJobs.length ? (
+        <section className="stack-lg" id="provider-jobs">
+          {nextRouteJob && !nextRouteJobNeedsSetup ? (
+            <div>
+              <span className="eyebrow">Queue</span>
+              <h2>Other jobs</h2>
+            </div>
+          ) : null}
+        {visibleJobs.map((job) => (
           <article className="history-card" key={job.bookingId}>
             <div className="history-card__header">
               <div>
@@ -1735,14 +1759,6 @@ export function ProviderLiveManagementBoard() {
                   >
                     Confirm booking
                   </button>
-                  <button
-                    className="button-secondary"
-                    disabled={isWorking}
-                    onClick={() => void handleDeclineBooking(job.bookingId)}
-                    type="button"
-                  >
-                    Decline request
-                  </button>
                 </>
               ) : null}
               {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
@@ -1755,39 +1771,11 @@ export function ProviderLiveManagementBoard() {
                   >
                     Start route
                   </button>
-                  <button
-                    className="button-secondary"
-                    disabled={isWorking}
-                    onClick={() =>
-                      void handleMarkLate(
-                        job.bookingId,
-                        buildLateEta(job.scheduledStartIso, 15),
-                        "Running about 15 minutes behind the route."
-                      )
-                    }
-                    type="button"
-                  >
-                    Running 15 min late
-                  </button>
-                  <button
-                    className="button-secondary"
-                    disabled={isWorking}
-                    onClick={() =>
-                      void handleMarkLate(
-                        job.bookingId,
-                        buildLateEta(job.scheduledStartIso, 30),
-                        "Running about 30 minutes behind the route."
-                      )
-                    }
-                    type="button"
-                  >
-                    Running 30 min late
-                  </button>
                 </>
               ) : null}
               {job.status === "confirmed" && job.onRouteConfirmedAt ? (
                 <button
-                  className="button-secondary"
+                  className="button"
                   disabled={isWorking}
                   onClick={() => void handleStartWork(job.bookingId)}
                   type="button"
@@ -1795,25 +1783,9 @@ export function ProviderLiveManagementBoard() {
                   Start work
                 </button>
               ) : null}
-              {(job.status === "confirmed" || job.status === "in-progress") ? (
+              {job.status === "in-progress" ? (
                 <button
-                  className="button-secondary"
-                  disabled={isWorking}
-                  onClick={() =>
-                    void handleReportIssue(
-                      job.bookingId,
-                      "customer-no-show",
-                      "The customer did not appear for the scheduled service window."
-                    )
-                  }
-                  type="button"
-                >
-                  Customer no-show
-                </button>
-              ) : null}
-              {(job.status === "confirmed" || job.status === "in-progress") ? (
-                <button
-                  className="button-secondary"
+                  className="button"
                   disabled={isWorking}
                   onClick={() => void completeJob(job.bookingId)}
                   type="button"
@@ -1821,55 +1793,171 @@ export function ProviderLiveManagementBoard() {
                   Complete job
                 </button>
               ) : null}
-              {(job.status === "confirmed" || job.status === "in-progress") ? (
-                <button
-                  className="button-secondary"
-                  disabled={isWorking}
-                  onClick={() =>
-                    void handleReportIssue(
-                      job.bookingId,
-                      "customer-not-ready",
-                      "The property owner is not ready for the scheduled service."
-                    )
-                  }
-                  type="button"
-                >
-                  Customer not ready
-                </button>
-              ) : null}
-              {(job.status === "confirmed" || job.status === "in-progress") ? (
-                <button
-                  className="button-secondary"
-                  disabled={isWorking}
-                  onClick={() =>
-                    void handleReportIssue(
-                      job.bookingId,
-                      "unable-to-access-property",
-                      "The crew could not safely access the property as scheduled."
-                    )
-                  }
-                  type="button"
-                >
-                  No access
-                </button>
-              ) : null}
-              {job.status === "in-progress" ? (
-                <button
-                  className="button-secondary"
-                  disabled={isWorking}
-                  onClick={() =>
-                    void handleReportIssue(
-                      job.bookingId,
-                      "service-could-not-be-completed",
-                      "The service could not be completed during this visit."
-                    )
-                  }
-                  type="button"
-                >
-                  Could not complete
-                </button>
-              ) : null}
             </div>
+
+            {job.status === "requested" ? (
+              <details className="service-card-disclosure">
+                <summary className="service-card-disclosure__summary">More options</summary>
+                <div className="service-card-disclosure__body">
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() => void handleDeclineBooking(job.bookingId)}
+                      type="button"
+                    >
+                      Decline request
+                    </button>
+                  </div>
+                </div>
+              </details>
+            ) : null}
+
+            {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+              <details className="service-card-disclosure">
+                <summary className="service-card-disclosure__summary">Report issue</summary>
+                <div className="service-card-disclosure__body">
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleMarkLate(
+                          job.bookingId,
+                          buildLateEta(job.scheduledStartIso, 15),
+                          "Running about 15 minutes behind the route."
+                        )
+                      }
+                      type="button"
+                    >
+                      Running 15 min late
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleMarkLate(
+                          job.bookingId,
+                          buildLateEta(job.scheduledStartIso, 30),
+                          "Running about 30 minutes behind the route."
+                        )
+                      }
+                      type="button"
+                    >
+                      Running 30 min late
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-no-show",
+                          "The customer did not appear for the scheduled service window."
+                        )
+                      }
+                      type="button"
+                    >
+                      Customer no-show
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-not-ready",
+                          "The property owner is not ready for the scheduled service."
+                        )
+                      }
+                      type="button"
+                    >
+                      Customer not ready
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "unable-to-access-property",
+                          "The crew could not safely access the property as scheduled."
+                        )
+                      }
+                      type="button"
+                    >
+                      No access
+                    </button>
+                  </div>
+                </div>
+              </details>
+            ) : null}
+
+            {job.status === "in-progress" ? (
+              <details className="service-card-disclosure">
+                <summary className="service-card-disclosure__summary">Report issue</summary>
+                <div className="service-card-disclosure__body">
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-no-show",
+                          "The customer did not appear for the scheduled service window."
+                        )
+                      }
+                      type="button"
+                    >
+                      Customer no-show
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-not-ready",
+                          "The property owner is not ready for the scheduled service."
+                        )
+                      }
+                      type="button"
+                    >
+                      Customer not ready
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "unable-to-access-property",
+                          "The crew could not safely access the property as scheduled."
+                        )
+                      }
+                      type="button"
+                    >
+                      No access
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "service-could-not-be-completed",
+                          "The service could not be completed during this visit."
+                        )
+                      }
+                      type="button"
+                    >
+                      Could not complete
+                    </button>
+                  </div>
+                </div>
+              </details>
+            ) : null}
 
             {job.lateEtaIso && !job.onRouteConfirmedAt ? (
               <div className="list-panel">
@@ -1917,119 +2005,135 @@ export function ProviderLiveManagementBoard() {
               </div>
             ) : null}
 
-            <div className="stack-md">
-              {job.requiresRouteLeaderAssignment ? (
-                <div className="list-panel">
-                  <strong>Route leader still needs assignment</strong>
-                  <p>More than one accepted crew member is on this job. Pick who should start and share the route, or keep the route under provider control.</p>
-                </div>
-              ) : null}
-              {job.matches.length === 0 ? (
-                <div className="list-panel">
-                  <strong>No matched crew yet</strong>
-                  <p>As more crew availability comes in, matched candidates will appear here.</p>
-                </div>
-              ) : (
-                job.matches.map((match) => {
-                  return (
-                    <div className="list-panel" key={match.id}>
-                      <div className="search-result-title">
-                        <div>
-                          <h3>{match.crewMemberName}</h3>
-                          <p>
-                            {match.categories.map((category) => category.replaceAll("-", " ")).join(" • ")}
-                          </p>
-                        </div>
-                        <span className="result-badge">{match.status.replaceAll("-", " ")}</span>
-                      </div>
-                      <p>
-                        {match.distanceMiles} miles away • {match.preferredSchedule} •{" "}
-                        {match.availableWeekdays.join(", ")}
-                      </p>
-                      {match.recommendationLabel ? (
-                        <p>
-                          {formatCrewRecommendationLabel(match.recommendationLabel)}
-                          {typeof match.recommendationScore === "number"
-                            ? ` • score ${match.recommendationScore}`
-                            : ""}
-                        </p>
-                      ) : null}
-                      {match.recommendationReasons?.length ? (
-                        <p>{match.recommendationReasons.join(" • ")}</p>
-                      ) : null}
-                      {match.status === "cancelled-by-crew" && match.cancellationReason ? (
-                        <p className="warning-copy">Crew note: {match.cancellationReason}</p>
-                      ) : null}
-                      {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
-                        <p>Assigned route leader for this job.</p>
-                      ) : null}
-                      <p>{formatCurrency(match.hourlyRateCents)}/hr</p>
-                      <div className="cta-row">
-                        {match.status === "pending-provider-review" ? (
-                          <>
-                            <button
-                              className="button"
-                              disabled={isWorking}
-                              onClick={() => void handleReviewMatch(match.id, "accept")}
-                              type="button"
-                            >
-                              Accept
-                            </button>
-                            <button
-                              className="button-secondary"
-                              disabled={isWorking}
-                              onClick={() => void handleReviewMatch(match.id, "deny")}
-                              type="button"
-                            >
-                              Deny
-                            </button>
-                          </>
-                        ) : null}
-                        {provider?.routeLeaderMode === "accepted-crew-fallback" &&
-                        match.status === "accepted" &&
-                        !job.onRouteConfirmedAt ? (
-                          <button
-                            className={
-                              job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? "button" : "button-secondary"
-                            }
-                            disabled={isWorking}
-                            onClick={() => void handleAssignRouteLeader(job.bookingId, match.crewMemberId)}
-                            type="button"
-                          >
-                            {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
-                              ? "Assigned route leader"
-                              : "Lead this route"}
-                          </button>
-                        ) : null}
-                        <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
-                          Call crew
-                        </a>
-                        <a
-                          className="button-secondary"
-                          href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=general&subject=${encodeURIComponent("Crew staffing support")}`}
-                        >
-                          Get help
-                        </a>
-                      </div>
+            {job.requiresRouteLeaderAssignment ? (
+              <div className="list-panel">
+                <strong>Route leader still needs assignment</strong>
+                <p>More than one accepted crew member is on this job. Pick who should start and share the route, or keep the route under provider control.</p>
+              </div>
+            ) : null}
+            {job.crewGap > 0 ? (
+              <div className="list-panel">
+                <strong>{job.crewGap} crew slot{job.crewGap === 1 ? "" : "s"} still open</strong>
+                <p>Review staffing options before this route falls behind.</p>
+              </div>
+            ) : null}
+            <details className="service-card-disclosure">
+              <summary className="service-card-disclosure__summary">
+                Staffing
+                {job.matches.length
+                  ? ` • ${job.matches.length} match${job.matches.length === 1 ? "" : "es"}`
+                  : ""}
+              </summary>
+              <div className="service-card-disclosure__body">
+                <div className="stack-md">
+                  {job.matches.length === 0 ? (
+                    <div className="list-panel">
+                      <strong>No matched crew yet</strong>
+                      <p>As more crew availability comes in, matched candidates will appear here.</p>
                     </div>
-                  );
-                })
-              )}
-              {provider?.routeLeaderMode === "accepted-crew-fallback" &&
-              job.assignedRouteLeaderCrewMemberId &&
-              !job.onRouteConfirmedAt ? (
-                <div className="cta-row">
-                  <button
-                    className="button-secondary"
-                    disabled={isWorking}
-                    onClick={() => void handleAssignRouteLeader(job.bookingId)}
-                    type="button"
-                  >
-                    Clear explicit route leader
-                  </button>
+                  ) : (
+                    job.matches.map((match) => {
+                      return (
+                        <div className="list-panel" key={match.id}>
+                          <div className="search-result-title">
+                            <div>
+                              <h3>{match.crewMemberName}</h3>
+                              <p>
+                                {match.categories.map((category) => category.replaceAll("-", " ")).join(" • ")}
+                              </p>
+                            </div>
+                            <span className="result-badge">{match.status.replaceAll("-", " ")}</span>
+                          </div>
+                          <p>
+                            {match.distanceMiles} miles away • {match.preferredSchedule} •{" "}
+                            {match.availableWeekdays.join(", ")}
+                          </p>
+                          {match.recommendationLabel ? (
+                            <p>
+                              {formatCrewRecommendationLabel(match.recommendationLabel)}
+                              {typeof match.recommendationScore === "number"
+                                ? ` • score ${match.recommendationScore}`
+                                : ""}
+                            </p>
+                          ) : null}
+                          {match.recommendationReasons?.length ? (
+                            <p>{match.recommendationReasons.join(" • ")}</p>
+                          ) : null}
+                          {match.status === "cancelled-by-crew" && match.cancellationReason ? (
+                            <p className="warning-copy">Crew note: {match.cancellationReason}</p>
+                          ) : null}
+                          {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
+                            <p>Assigned route leader for this job.</p>
+                          ) : null}
+                          <p>{formatCurrency(match.hourlyRateCents)}/hr</p>
+                          <div className="cta-row">
+                            {match.status === "pending-provider-review" ? (
+                              <>
+                                <button
+                                  className="button"
+                                  disabled={isWorking}
+                                  onClick={() => void handleReviewMatch(match.id, "accept")}
+                                  type="button"
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  className="button-secondary"
+                                  disabled={isWorking}
+                                  onClick={() => void handleReviewMatch(match.id, "deny")}
+                                  type="button"
+                                >
+                                  Deny
+                                </button>
+                              </>
+                            ) : null}
+                            {provider?.routeLeaderMode === "accepted-crew-fallback" &&
+                            match.status === "accepted" &&
+                            !job.onRouteConfirmedAt ? (
+                              <button
+                                className={
+                                  job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? "button" : "button-secondary"
+                                }
+                                disabled={isWorking}
+                                onClick={() => void handleAssignRouteLeader(job.bookingId, match.crewMemberId)}
+                                type="button"
+                              >
+                                {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
+                                  ? "Assigned route leader"
+                                  : "Lead this route"}
+                              </button>
+                            ) : null}
+                            <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
+                              Call crew
+                            </a>
+                            <a
+                              className="button-secondary"
+                              href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=general&subject=${encodeURIComponent("Crew staffing support")}`}
+                            >
+                              Get help
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  {provider?.routeLeaderMode === "accepted-crew-fallback" &&
+                  job.assignedRouteLeaderCrewMemberId &&
+                  !job.onRouteConfirmedAt ? (
+                    <div className="cta-row">
+                      <button
+                        className="button-secondary"
+                        disabled={isWorking}
+                        onClick={() => void handleAssignRouteLeader(job.bookingId)}
+                        type="button"
+                      >
+                        Clear explicit route leader
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            </details>
 
             {job.onRouteConfirmedAt ? (
               <div className="list-panel">
@@ -2072,8 +2176,9 @@ export function ProviderLiveManagementBoard() {
               </div>
             ) : null}
           </article>
-        ))}
-      </section>
+          ))}
+        </section>
+      ) : null}
       {activeBookingId && activeCustomerThread ? (
         <FloatingChatWindow
           busy={isWorking}

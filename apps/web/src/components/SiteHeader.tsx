@@ -8,10 +8,7 @@ import { ProviderSiteHeader } from "./ProviderSiteHeader";
 export function SiteHeader() {
   const pathname = usePathname();
 
-  if (
-    pathname.startsWith("/customer/dashboard") ||
-    pathname.startsWith("/customer/history")
-  ) {
+  if (pathname.startsWith("/customer/dashboard") || pathname.startsWith("/customer/history")) {
     return <CustomerAppHeader />;
   }
 

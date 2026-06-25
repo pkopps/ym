@@ -99,11 +99,11 @@ function formatAreaDescription(
   customWindow?: CustomerCustomTimingWindow
 ) {
   const resolvedArea = areaLabel?.trim() || "your area";
-  return `See the strongest ${serviceLabel.toLowerCase()} matches for ${getCustomerTimingLabel(
+  return `Top ${serviceLabel.toLowerCase()} matches for ${getCustomerTimingLabel(
     timing,
     customDate,
     customWindow
-  ).toLowerCase()} in ${resolvedArea}, led by one highlighted recommendation and a nearby provider map.`;
+  ).toLowerCase()} in ${resolvedArea}.`;
 }
 
 function formatCompletedJobLabel(completedJobCount: number) {
@@ -444,12 +444,10 @@ export function PublicCustomerListingsExperience({
       <section className="card live-listings-card">
         <div className="results-summary">
           <div className="results-summary__copy">
-            <strong>Recommended for {timingLabel.toLowerCase()}</strong>
-            <span>
-              {serviceLabel} near {resolvedAreaLabel}
-            </span>
+            <strong>{serviceLabel} in {resolvedAreaLabel}</strong>
+            <span>{timingLabel}</span>
             <small>
-              Top verified recommendations first, with the lead match highlighted.
+              One recommendation first. Backup options only if you want them.
             </small>
           </div>
           <div className="results-summary__actions">
@@ -465,11 +463,11 @@ export function PublicCustomerListingsExperience({
         {searchState === "loading" ? (
           <div className="live-listings-card__grid">
             <article className="list-panel live-listings-card__message">
-              <h3>Checking verified providers</h3>
-              <p>Checking route openings, service fit, and reliability for {timingLabel.toLowerCase()}.</p>
+              <h3>Checking providers</h3>
+              <p>Looking at route openings, service fit, and reliability for {timingLabel.toLowerCase()}.</p>
             </article>
             <article className="list-panel live-listings-card__message">
-              <h3>Sorting the best next fit</h3>
+              <h3>Sorting the best fit</h3>
               <p>Only providers with real local coverage make the shortlist.</p>
             </article>
           </div>
@@ -477,7 +475,7 @@ export function PublicCustomerListingsExperience({
 
         {searchState === "error" ? (
           <article className="list-panel live-listings-card__message">
-            <h3>We could not load live providers right now.</h3>
+            <h3>Providers are unavailable right now.</h3>
             <p>{errorMessage ?? "Try the search again in a moment."}</p>
           </article>
         ) : null}
@@ -494,10 +492,8 @@ export function PublicCustomerListingsExperience({
 
         {searchState === "loaded" && selectedSuggestion && rankedProviders.length === 0 ? (
           <article className="list-panel live-listings-card__message">
-            <h3>No verified providers are live in this area yet.</h3>
-            <p>
-              We do not have a verified provider serving this exact area yet. Try a nearby market or flag the area for expansion.
-            </p>
+            <h3>No providers are live here yet.</h3>
+            <p>Try a nearby market or ask YardMatch to flag this area for expansion.</p>
             <div className="cta-row">
               <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
                 Request service in this area
@@ -510,10 +506,8 @@ export function PublicCustomerListingsExperience({
           <div className="live-listings-card__grid">
             {providersWithOpenWindows.length === 0 ? (
               <article className="list-panel live-listings-card__banner">
-                <h3>Providers cover this area, but the requested window is full.</h3>
-                <p>
-                  You can still review the best local businesses below and be ready when the next route window opens.
-                </p>
+                <h3>This window is full.</h3>
+                <p>You can still review the best local businesses below and be ready when the next route opens.</p>
               </article>
             ) : null}
             <div className="live-listings-card__featured-grid">
@@ -603,20 +597,23 @@ function LiveProviderCard({
           : "This business serves the area, but the next route window is currently full."}
       </p>
 
-      <div className="stack-sm" style={{ paddingBottom: 0 }}>
-        <p className="live-provider-card__address">
-          <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
-        </p>
-        <p className="live-provider-card__address">
-          <strong>{result.neighborhoodFamiliarityLabel}.</strong> {result.neighborhoodFamiliarityDetail}
-        </p>
-        <p className="live-provider-card__address">
-          <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
-          {result.hasOpenSlot
-            ? `GreenRain found a real route opening for this property and service request.`
-            : `This provider still serves the area, but there is no open route window to hold right now.`}
-        </p>
-      </div>
+      <details className="service-card-disclosure">
+        <summary className="service-card-disclosure__summary">Why this pick</summary>
+        <div className="service-card-disclosure__body">
+          <p className="live-provider-card__address">
+            <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
+          </p>
+          <p className="live-provider-card__address">
+            <strong>{result.neighborhoodFamiliarityLabel}.</strong> {result.neighborhoodFamiliarityDetail}
+          </p>
+          <p className="live-provider-card__address">
+            <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
+            {result.hasOpenSlot
+              ? `GreenRain found a real route opening for this property and service request.`
+              : `This provider still serves the area, but there is no open route window to hold right now.`}
+          </p>
+        </div>
+      </details>
 
       <div className="chip-row">
         {displayedCategories.map((category) => (
@@ -673,9 +670,7 @@ function LiveProviderMap({
         <strong>
           {providerResults.length} verified providers within {radiusMiles} miles of {areaLabel}
         </strong>
-        <p>
-          These are the nearby businesses GreenRain considered for this {serviceLabel.toLowerCase()} request.
-        </p>
+        <p>These are the nearby businesses GreenRain considered for this {serviceLabel.toLowerCase()} request.</p>
       </div>
 
       <div className="map-viewport" aria-label="Map of nearby provider recommendations">

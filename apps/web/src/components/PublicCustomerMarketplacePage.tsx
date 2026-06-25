@@ -29,6 +29,7 @@ import { trustPolicyPages } from "../lib/trustPolicyContent";
 import { StructuredData } from "./StructuredData";
 
 const rotatingServices = ["lawn mowing", "cleanup", "hedge trimming", "mulch refresh"] as const;
+const showCoveragePockets = false;
 
 function getProviderInitials(provider: PublicMarketplaceFeaturedProvider) {
   return provider.companyName
@@ -282,7 +283,7 @@ export function PublicCustomerMarketplacePage() {
           <h1 className="home-hero__headline">
             <span>Tell us what needs care.</span>
             <span className="home-hero__headline-accent">
-              We’ll match the best local fit for <HomeServiceScroller services={rotatingServices} />.
+              We’ll match the best local fit for <HomeServiceScroller services={rotatingServices} />
             </span>
           </h1>
           <PublicMarketplaceSearchShell
@@ -438,7 +439,7 @@ export function PublicCustomerMarketplacePage() {
             </div>
           </article>
         ) : null}
-        {highlightedCoverageAreas.length > 0 ? (
+        {showCoveragePockets && highlightedCoverageAreas.length > 0 ? (
           <article className="card">
             <h3>Current coverage pockets</h3>
             <p>

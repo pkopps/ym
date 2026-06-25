@@ -27,6 +27,7 @@ import { getLaunchAttributionContext, getStoredLaunchLeadId } from "../lib/launc
 import { useStoredWebSession } from "../lib/session";
 import { trackWebEvent } from "../lib/tracking";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
+import { CustomerHistoryBoard } from "./CustomerHistoryBoard";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 import {
   buildDateIsoForCustomerTiming,
@@ -43,6 +44,13 @@ const serviceOptions: Array<{ label: string; value: ServiceCategory }> = [
   { label: "Weed control", value: "weed-control" },
   { label: "Leaf blowing", value: "leaf-blowing" }
 ];
+
+const historicalBookingStatuses = new Set<Booking["status"]>([
+  "completed",
+  "cancelled",
+  "refunded",
+  "disputed"
+]);
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -107,8 +115,79 @@ function formatCompletedJobTrustLine(completedJobCount: number) {
     : "New on GreenRain, but already ranked well for service fit, timing, and trust signals.";
 }
 
+function formatBookingStatusTitle(booking: Booking) {
+  if (booking.onRouteConfirmedAt) {
+    return "Crew on the way";
+  }
+
+  if (booking.activeExceptionType) {
+    return getBookingExceptionLabel(booking.activeExceptionType);
+  }
+
+  if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
+    return "Running behind";
+  }
+
+  switch (booking.status) {
+    case "requested":
+      return "Waiting on confirmation";
+    case "confirmed":
+      return "Visit confirmed";
+    case "in-progress":
+      return "Visit in progress";
+    case "completed":
+      return "Visit completed";
+    default:
+      return booking.status.replaceAll("-", " ");
+  }
+}
+
+function getBookingStateMessage(booking: Booking, providerName: string, payment?: PaymentRecord) {
+  if (booking.onRouteConfirmedAt) {
+    return `${providerName} is on the way. You can message the business or track the crew live.`;
+  }
+
+  if (booking.activeExceptionType) {
+    return `${providerName} flagged an issue with this visit. Review the update, then decide if you need support.`;
+  }
+
+  if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
+    return `${providerName} is running behind. Check the updated arrival time before changing the visit.`;
+  }
+
+  switch (booking.status) {
+    case "requested":
+      return `GreenRain is holding this request with ${providerName}. Confirm the details or ask for help if plans changed.`;
+    case "confirmed":
+      return payment?.status === "pending"
+        ? `Your visit is set with ${providerName}. Finish checkout when you are ready.`
+        : `Your visit is set with ${providerName}. Everything is lined up for the scheduled window.`;
+    case "in-progress":
+      return `${providerName} is working this visit now. Keep support close if anything changes in the field.`;
+    default:
+      return `${providerName} is attached to this visit.`;
+  }
+}
+
+function getPriorityBookingCardTitle(booking: Booking, payment?: PaymentRecord) {
+  if ((booking.status === "requested" || booking.status === "confirmed") && payment?.status !== "captured") {
+    return "Finish booking";
+  }
+
+  if (booking.status === "confirmed" && !booking.onRouteConfirmedAt && !booking.activeExceptionType && !booking.lateEtaIso) {
+    return "You're set";
+  }
+
+  return formatBookingStatusTitle(booking);
+}
+
 export function CustomerLiveDashboard() {
   const searchParams = useSearchParams();
+  const requestedView = searchParams.get("view");
+  const requestedFlow = searchParams.get("flow");
+  const dashboardView = requestedView === "history" ? "history" : "account";
+  const historyOnlyView = dashboardView === "history";
+  const requestFlow = requestedFlow === "request";
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [customer, setCustomer] = useState<CustomerProfile | undefined>();
@@ -133,6 +212,7 @@ export function CustomerLiveDashboard() {
   const [bookingMessage, setBookingMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
+  const [reviewComposerBookingId, setReviewComposerBookingId] = useState<string | undefined>();
   const [disputeDrafts, setDisputeDrafts] = useState<Record<string, string>>({});
   const [refundDrafts, setRefundDrafts] = useState<Record<string, string>>({});
   const [rescheduleDrafts, setRescheduleDrafts] = useState<
@@ -148,6 +228,10 @@ export function CustomerLiveDashboard() {
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
   const timingLabel = getCustomerTimingLabel(selectedTiming);
+  const selectedServiceLabel =
+    serviceOptions.find((option) => option.value === selectedCategory)?.label ?? "Selected service";
+  const selectedCadenceLabel =
+    selectedCadence === "one-time" ? "One-time visit" : formatRecurringFrequency(selectedCadence);
   const providerCards =
     providerResults?.rankedProviders.map((result) => ({
       provider: result.provider,
@@ -168,14 +252,114 @@ export function CustomerLiveDashboard() {
   const recommendedProviderCard = providerCards[0];
   const alternativeProviderCards = providerCards.slice(1, 4);
   const providersWithWindows = providerCards.filter((item) => item.slot);
-  const nextBooking = bookings
-    .filter(
-      (booking) =>
-        booking.status !== "completed" &&
-        booking.status !== "refunded" &&
-        booking.status !== "cancelled"
-    )
-    .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0];
+  const activeRecurringPlans = recurringPlans.filter((summary) => summary.plan.status === "active");
+  const pastRecurringPlans = recurringPlans.filter((summary) => summary.plan.status !== "active");
+  const activeBookings = bookings.filter((booking) => !historicalBookingStatuses.has(booking.status));
+  const actionableReviewOpportunities = reviewOpportunities.filter(
+    (opportunity) => opportunity.canReviewNow && !opportunity.reviewAlreadySubmitted
+  );
+  const requestFlowActive =
+    requestFlow ||
+    Boolean(activeRetentionOpportunity) ||
+    Boolean(quote) ||
+    Boolean(providerResults) ||
+    providerSearchState === "loading";
+  const providerStepActive = providerSearchState !== "idle" || Boolean(providerResults);
+  const hasAccountHistory = recurringPlans.length > 0 || bookings.length > 0 || reviewOpportunities.length > 0;
+  const nextBooking = [...activeBookings].sort((left, right) =>
+    left.scheduledStartIso.localeCompare(right.scheduledStartIso)
+  )[0];
+  const nextBookingProviderName = nextBooking
+    ? providerNamesById[nextBooking.providerId] ?? "your landscaper"
+    : undefined;
+  const nextBookingPayment = nextBooking ? paymentsByBookingId[nextBooking.id] : undefined;
+  const nextBookingNeedsCheckout =
+    Boolean(nextBooking) &&
+    (nextBooking.status === "requested" || nextBooking.status === "confirmed") &&
+    nextBookingPayment?.status !== "captured";
+  const nextBookingHasTracking = Boolean(nextBooking?.onRouteConfirmedAt);
+  const nextBookingNeedsPrimarySupport = Boolean(
+    nextBooking?.activeExceptionType || (nextBooking?.lateEtaIso && !nextBooking?.onRouteConfirmedAt)
+  );
+  const spotlightBooking = nextBooking ?? activeBookings[0];
+  const additionalActiveBookings = spotlightBooking
+    ? activeBookings.filter((booking) => booking.id !== spotlightBooking.id)
+    : [];
+  const primaryReviewOpportunity = actionableReviewOpportunities[0];
+  const additionalReviewOpportunities = primaryReviewOpportunity
+    ? actionableReviewOpportunities.filter(
+        (opportunity) => opportunity.bookingId !== primaryReviewOpportunity.bookingId
+      )
+    : [];
+  const primaryRecurringPlan = activeRecurringPlans[0];
+  const primaryRetentionOpportunity = retentionOpportunities[0];
+  const priorityCardKind = nextBooking
+    ? "booking"
+    : primaryReviewOpportunity
+      ? "review"
+      : primaryRetentionOpportunity
+        ? "retention"
+        : primaryRecurringPlan
+          ? "plan"
+          : "request";
+  const additionalRecurringPlans = primaryRecurringPlan
+    ? activeRecurringPlans.filter((summary) => summary.plan.id !== primaryRecurringPlan.plan.id)
+    : activeRecurringPlans;
+  const additionalRetentionOpportunities = primaryRecurringPlan
+    ? retentionOpportunities
+    : primaryRetentionOpportunity
+      ? retentionOpportunities.filter((opportunity) => opportunity.id !== primaryRetentionOpportunity.id)
+      : retentionOpportunities;
+  const visibleActiveBookings = priorityCardKind === "booking" ? additionalActiveBookings : activeBookings;
+  const sectionSpotlightBooking = visibleActiveBookings[0];
+  const sectionAdditionalActiveBookings = sectionSpotlightBooking
+    ? visibleActiveBookings.filter((booking) => booking.id !== sectionSpotlightBooking.id)
+    : [];
+  const visibleReviewOpportunities =
+    priorityCardKind === "review" ? additionalReviewOpportunities : actionableReviewOpportunities;
+  const sectionSpotlightReviewOpportunity = visibleReviewOpportunities[0];
+  const sectionAdditionalReviewOpportunities = sectionSpotlightReviewOpportunity
+    ? visibleReviewOpportunities.filter(
+        (opportunity) => opportunity.bookingId !== sectionSpotlightReviewOpportunity.bookingId
+      )
+    : [];
+  const visibleRecurringPlans = priorityCardKind === "plan" ? additionalRecurringPlans : activeRecurringPlans;
+  const visibleRetentionOpportunities =
+    priorityCardKind === "retention" ? additionalRetentionOpportunities : retentionOpportunities;
+  const sectionSpotlightBookAgainOption = visibleRecurringPlans[0]
+    ? { kind: "plan" as const, summary: visibleRecurringPlans[0] }
+    : visibleRetentionOpportunities[0]
+      ? { kind: "retention" as const, opportunity: visibleRetentionOpportunities[0] }
+      : undefined;
+  const sectionAdditionalRecurringPlans =
+    sectionSpotlightBookAgainOption?.kind === "plan"
+      ? visibleRecurringPlans.filter((summary) => summary.plan.id !== sectionSpotlightBookAgainOption.summary.plan.id)
+      : visibleRecurringPlans;
+  const sectionAdditionalRetentionOpportunities =
+    sectionSpotlightBookAgainOption?.kind === "retention"
+      ? visibleRetentionOpportunities.filter(
+          (opportunity) => opportunity.id !== sectionSpotlightBookAgainOption.opportunity.id
+        )
+      : visibleRetentionOpportunities;
+  const sectionAdditionalBookAgainOptionCount =
+    sectionAdditionalRecurringPlans.length + sectionAdditionalRetentionOpportunities.length;
+  const hasCurrentBookAgainOptions = Boolean(sectionSpotlightBookAgainOption) || sectionAdditionalBookAgainOptionCount > 0;
+
+  function replaceDashboardSearchParams(nextValues: Record<string, string | undefined>) {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const nextUrl = new URL(window.location.href);
+    for (const [key, value] of Object.entries(nextValues)) {
+      if (value) {
+        nextUrl.searchParams.set(key, value);
+      } else {
+        nextUrl.searchParams.delete(key);
+      }
+    }
+    window.history.replaceState({}, "", nextUrl.toString());
+  }
 
   async function loadDashboard() {
     if (!session || session.role !== "customer") {
@@ -260,6 +444,10 @@ export function CustomerLiveDashboard() {
       return;
     }
 
+    if (historyOnlyView) {
+      return;
+    }
+
     if (!session || session.role !== "customer") {
       setAccessDenied(true);
       return;
@@ -268,7 +456,7 @@ export function CustomerLiveDashboard() {
     void loadDashboard().catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load your customer account.");
     });
-  }, [sessionReady, session?.token, session?.role]);
+  }, [historyOnlyView, sessionReady, session?.token, session?.role]);
 
   useEffect(() => {
     if (retentionOpportunities.length === 0) {
@@ -431,6 +619,7 @@ export function CustomerLiveDashboard() {
     setSelectedCadence(opportunity.recommendedCadence);
     setSelectedTiming("tomorrow-morning");
     setShowAlternativeProviders(false);
+    replaceDashboardSearchParams({ flow: "request" });
     setLoadingState("loading");
     setProviderSearchState("loading");
     setErrorMessage(undefined);
@@ -582,9 +771,11 @@ export function CustomerLiveDashboard() {
       }
       await loadDashboard();
       setActiveRetentionOpportunity(undefined);
+      setQuote(undefined);
       setProviderResults(undefined);
       setShowAlternativeProviders(false);
       setProviderSearchState("idle");
+      replaceDashboardSearchParams({ flow: undefined });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
     } finally {
@@ -629,6 +820,7 @@ export function CustomerLiveDashboard() {
         reviewText,
         attribution: getLaunchAttributionContext()
       });
+      setReviewComposerBookingId(undefined);
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to submit your review right now.");
@@ -852,6 +1044,526 @@ export function CustomerLiveDashboard() {
     return paymentsByBookingId[bookingId];
   }
 
+  function renderRequestDetailsEditor(buttonLabel: string) {
+    return (
+      <>
+        <p>Pick the service, timing, and repeat schedule.</p>
+        <div className="form-grid">
+          <label className="form-field">
+            <span>Property</span>
+            <select onChange={(event) => setSelectedPropertyId(event.target.value)} value={selectedPropertyId}>
+              {properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Service</span>
+            <select
+              onChange={(event) => setSelectedCategory(event.target.value as ServiceCategory)}
+              value={selectedCategory}
+            >
+              {serviceOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>When</span>
+            <select
+              onChange={(event) => setSelectedTiming(event.target.value as CustomerTimingPreference)}
+              value={selectedTiming}
+            >
+              {customerTimingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Cadence</span>
+            <select
+              onChange={(event) => setSelectedCadence(event.target.value as "one-time" | RecurringServiceFrequency)}
+              value={selectedCadence}
+            >
+              <option value="one-time">One-time visit</option>
+              <option value="weekly">Every week</option>
+              <option value="biweekly">Every 2 weeks</option>
+            </select>
+          </label>
+        </div>
+        <div className="cta-row" style={{ marginTop: "1rem" }}>
+          <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} type="button">
+            {loadingState === "loading" ? "Working..." : buttonLabel}
+          </button>
+        </div>
+        {activeProperty ? (
+          <p>
+            {activeProperty.address.line1}, {activeProperty.address.city}, {activeProperty.address.state} •{" "}
+            {timingLabel}
+          </p>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderActiveBookingCard(booking: Booking) {
+    const providerName = providerNamesById[booking.providerId] ?? "Landscaping business";
+    const paymentRecord = getPaymentRecord(booking.id);
+    const canEditVisit = booking.status === "requested" || booking.status === "confirmed";
+    const canOpenDispute = booking.status !== "requested";
+    const canReviewRefund =
+      canRequestRefundReview(booking, paymentRecord) ||
+      paymentRecord?.refundReviewStatus === "requested" ||
+      paymentRecord?.refundReviewStatus === "denied";
+
+    return (
+      <article className="history-card">
+        <div className="history-card__header">
+          <div>
+            <span className="eyebrow">{booking.category.replaceAll("-", " ")}</span>
+            <h2>{formatBookingStatusTitle(booking)}</h2>
+            <p>{providerName}</p>
+          </div>
+          <strong>{formatCurrency(booking.totalCents)}</strong>
+        </div>
+        <p className="history-card__summary">{getBookingStateMessage(booking, providerName, paymentRecord)}</p>
+        <div className="chip-row">
+          <span className="result-badge result-badge--neutral">
+            {formatBookingWindowSummary(booking.scheduledStartIso)}
+          </span>
+          <span className="result-badge result-badge--neutral">{getPaymentLabel(paymentRecord)}</span>
+        </div>
+        <div className="cta-row">
+          {canEditVisit && paymentRecord?.status !== "captured" ? (
+            <button
+              className="button"
+              disabled={loadingState === "loading"}
+              onClick={() => void handleStartCheckout(booking)}
+              type="button"
+            >
+              {paymentRecord?.status === "pending" ? "Continue Stripe checkout" : "Pay with Stripe"}
+            </button>
+          ) : null}
+          {booking.onRouteConfirmedAt ? (
+            <>
+              <button
+                className="button-secondary"
+                disabled={loadingState === "loading"}
+                onClick={() => void openCustomerChat(booking.id)}
+                type="button"
+              >
+                Message business
+              </button>
+              <button
+                className="button-secondary"
+                disabled={loadingState === "loading"}
+                onClick={() => void openArrivalTracking(booking.id)}
+                type="button"
+              >
+                Track crew
+              </button>
+            </>
+          ) : null}
+          <a
+            className="button-secondary"
+            href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=${encodeURIComponent(
+              booking.onRouteConfirmedAt || booking.activeExceptionType ? "service-quality" : "general"
+            )}&subject=${encodeURIComponent(
+              booking.onRouteConfirmedAt
+                ? "On-route support"
+                : booking.activeExceptionType
+                  ? getBookingExceptionLabel(booking.activeExceptionType)
+                  : "Booking support"
+            )}`}
+          >
+            Get help
+          </a>
+        </div>
+        {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
+          <div className="list-panel" style={{ marginTop: "1rem" }}>
+            <h3>Delay update</h3>
+            <p>{providerName} is running behind.</p>
+            <p>
+              New target: {formatEta(booking.lateEtaIso)}.
+              {booking.lateReason ? ` ${booking.lateReason}` : ""}
+            </p>
+          </div>
+        ) : null}
+        {booking.activeExceptionType ? (
+          <div className="list-panel" style={{ marginTop: "1rem" }}>
+            <h3>{getBookingExceptionLabel(booking.activeExceptionType)}</h3>
+            <p>{providerName} flagged an issue with this visit.</p>
+            <p>
+              {booking.activeExceptionNotes ??
+                "Check in with the business or support to work out the next step."}
+            </p>
+          </div>
+        ) : null}
+        {activeTrackingBookingId === booking.id && activeTracking ? (
+          <ArrivalTrackingPanel subtitle={providerName} title="Crew on the way" tracking={activeTracking} />
+        ) : null}
+        <details className="service-card-disclosure">
+          <summary className="service-card-disclosure__summary">Visit details</summary>
+          <div className="service-card-disclosure__body">
+            <div className="history-card__grid">
+              <div>
+                <h3>Address</h3>
+                <p>{booking.serviceAddress.line1}</p>
+                <p>
+                  {booking.serviceAddress.city}, {booking.serviceAddress.state}{" "}
+                  {booking.serviceAddress.postalCode}
+                </p>
+              </div>
+              <div>
+                <h3>Schedule</h3>
+                <p>{formatBookingWindowSummary(booking.scheduledStartIso)}</p>
+                <p>{formatDateTime(booking.scheduledStartIso)}</p>
+              </div>
+              <div>
+                <h3>Notes</h3>
+                <p>{booking.notes || "No extra notes."}</p>
+              </div>
+              <div>
+                <h3>Payment</h3>
+                <p>{getPaymentLabel(paymentRecord)}</p>
+                {paymentRecord?.paidAt ? <p>{formatDateTime(paymentRecord.paidAt)}</p> : null}
+              </div>
+            </div>
+            {canEditVisit ? (
+              <>
+                <p className="history-card__detail-copy">
+                  Need a different time or want to cancel this visit? Make the change here.
+                </p>
+                <div className="form-grid">
+                  <label className="form-field">
+                    <span>New start</span>
+                    <input
+                      onChange={(event) =>
+                        setRescheduleDrafts((current) => ({
+                          ...current,
+                          [booking.id]: {
+                            start: event.target.value,
+                            end: current[booking.id]?.end ?? toDateTimeLocalValue(booking.scheduledEndIso)
+                          }
+                        }))
+                      }
+                      type="datetime-local"
+                      value={
+                        rescheduleDrafts[booking.id]?.start ??
+                        toDateTimeLocalValue(booking.scheduledStartIso)
+                      }
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>New end</span>
+                    <input
+                      onChange={(event) =>
+                        setRescheduleDrafts((current) => ({
+                          ...current,
+                          [booking.id]: {
+                            start:
+                              current[booking.id]?.start ??
+                              toDateTimeLocalValue(booking.scheduledStartIso),
+                            end: event.target.value
+                          }
+                        }))
+                      }
+                      type="datetime-local"
+                      value={
+                        rescheduleDrafts[booking.id]?.end ?? toDateTimeLocalValue(booking.scheduledEndIso)
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="cta-row">
+                  <button
+                    className="button-secondary"
+                    disabled={loadingState === "loading"}
+                    onClick={() => void handleRescheduleBooking(booking.id)}
+                    type="button"
+                  >
+                    Reschedule
+                  </button>
+                  <button
+                    className="button-secondary"
+                    disabled={loadingState === "loading"}
+                    onClick={() => void handleCancelBooking(booking.id)}
+                    type="button"
+                  >
+                    Cancel booking
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </details>
+        {canOpenDispute || canReviewRefund ? (
+          <details className="service-card-disclosure">
+            <summary className="service-card-disclosure__summary">Billing and support</summary>
+            <div className="service-card-disclosure__body">
+              {canOpenDispute ? (
+                <div className="list-panel">
+                  <h3>Need to dispute this service?</h3>
+                  <p>
+                    Open a formal dispute so YardMatch support can step in with the booking context attached.
+                  </p>
+                  <div className="form-grid" style={{ marginTop: "1rem" }}>
+                    <label className="form-field form-field--full">
+                      <span>Dispute reason</span>
+                      <textarea
+                        rows={3}
+                        value={disputeDrafts[booking.id] ?? ""}
+                        onChange={(event) =>
+                          setDisputeDrafts((current) => ({
+                            ...current,
+                            [booking.id]: event.target.value
+                          }))
+                        }
+                        placeholder="What went wrong with this service?"
+                      />
+                    </label>
+                  </div>
+                  <div className="cta-row" style={{ marginTop: "1rem" }}>
+                    <button
+                      className="button-secondary"
+                      disabled={loadingState === "loading"}
+                      onClick={() => void handleOpenDispute(booking.id)}
+                      type="button"
+                    >
+                      Open dispute
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {canReviewRefund ? (
+                <div className="list-panel">
+                  <h3>Refund review</h3>
+                  <p>
+                    {paymentRecord?.refundReviewStatus === "requested"
+                      ? "YardMatch support is reviewing this refund request. Payouts stay on hold until the review is resolved."
+                      : paymentRecord?.refundReviewStatus === "denied"
+                        ? `The last refund review was denied.${paymentRecord?.refundDecisionNotes ? ` ${paymentRecord.refundDecisionNotes}` : ""}`
+                        : "If this completed service needs a billing review, send a refund request with the reason below."}
+                  </p>
+                  {paymentRecord?.refundReviewStatus !== "requested" ? (
+                    <>
+                      <div className="form-grid" style={{ marginTop: "1rem" }}>
+                        <label className="form-field form-field--full">
+                          <span>Refund reason</span>
+                          <textarea
+                            rows={3}
+                            value={refundDrafts[booking.id] ?? ""}
+                            onChange={(event) =>
+                              setRefundDrafts((current) => ({
+                                ...current,
+                                [booking.id]: event.target.value
+                              }))
+                            }
+                            placeholder="Why should YardMatch review this payment?"
+                          />
+                        </label>
+                      </div>
+                      <div className="cta-row" style={{ marginTop: "1rem" }}>
+                        <button
+                          className="button-secondary"
+                          disabled={loadingState === "loading" || !canRequestRefundReview(booking, paymentRecord)}
+                          onClick={() => void handleRequestRefundReview(booking.id)}
+                          type="button"
+                        >
+                          Request refund review
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
+      </article>
+    );
+  }
+
+  function renderReviewOpportunityCard(opportunity: CustomerReviewOpportunity) {
+    return (
+      <article className="list-panel">
+        <div className="search-result-title">
+          <div>
+            <h3>{opportunity.providerName}</h3>
+            <p>{opportunity.reason}</p>
+          </div>
+          <div className="chip-row">
+            <span className="result-badge result-badge--neutral">
+              {opportunity.category.replaceAll("-", " ")}
+            </span>
+            {opportunity.completedAt ? (
+              <span className="result-badge result-badge--neutral">
+                {formatDateTime(opportunity.completedAt)}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        {reviewComposerBookingId === opportunity.bookingId ? (
+          <textarea
+            onChange={(event) =>
+              setReviewDrafts((current) => ({
+                ...current,
+                [opportunity.bookingId]: event.target.value
+              }))
+            }
+            placeholder="Share what went well."
+            rows={3}
+            value={reviewDrafts[opportunity.bookingId] ?? ""}
+          />
+        ) : null}
+        <div className="cta-row">
+          {reviewComposerBookingId === opportunity.bookingId ? (
+            <>
+              <button className="button" onClick={() => void handleSubmitReview(opportunity)} type="button">
+                Send 5-star review
+              </button>
+              <button
+                className="button-secondary"
+                onClick={() => setReviewComposerBookingId(undefined)}
+                type="button"
+              >
+                Not now
+              </button>
+            </>
+          ) : (
+            <button
+              className="button"
+              onClick={() => setReviewComposerBookingId(opportunity.bookingId)}
+              type="button"
+            >
+              Leave review
+            </button>
+          )}
+        </div>
+      </article>
+    );
+  }
+
+  function renderRecurringPlanCard(summary: RecurringServicePlanSummary) {
+    return (
+      <article className="list-panel">
+        <div className="search-result-title">
+          <div>
+            <h3>{summary.providerName}</h3>
+            <p>{summary.plan.category.replaceAll("-", " ")} plan</p>
+          </div>
+          <div className="chip-row">
+            <span className="result-badge result-badge--neutral">Active plan</span>
+            <span className="result-badge">{formatRecurringFrequency(summary.plan.frequency)}</span>
+          </div>
+        </div>
+        {summary.upcomingBooking ? (
+          <p>
+            Next visit: {formatBookingWindowSummary(summary.upcomingBooking.scheduledStartIso)} •{" "}
+            {formatDateTime(summary.upcomingBooking.scheduledStartIso)}
+          </p>
+        ) : (
+          <p>No visit is queued yet.</p>
+        )}
+        <p>
+          {summary.completedOccurrenceCount} completed visit
+          {summary.completedOccurrenceCount === 1 ? "" : "s"}
+          {summary.activeOccurrenceCount > 0 ? ` • ${summary.activeOccurrenceCount} active` : ""}
+        </p>
+        {summary.plan.lastSchedulingError ? <p>{summary.plan.lastSchedulingError}</p> : null}
+        {summary.plan.status === "active" ? (
+          <div className="cta-row">
+            <button
+              className="button-secondary"
+              disabled={loadingState === "loading"}
+              onClick={() => void handleCancelRecurringPlan(summary.plan.id)}
+              type="button"
+            >
+              Cancel plan
+            </button>
+          </div>
+        ) : null}
+      </article>
+    );
+  }
+
+  function renderRetentionOpportunityCard(opportunity: CustomerRetentionOpportunity) {
+    return (
+      <article className="list-panel">
+        <div className="search-result-title">
+          <div>
+            <h3>{opportunity.title}</h3>
+            <p>
+              {opportunity.providerName} • {opportunity.category.replaceAll("-", " ")}
+            </p>
+          </div>
+          <span className="result-badge">
+            {opportunity.recommendedCadence === "one-time"
+              ? "One-time rebook"
+              : formatRecurringFrequency(opportunity.recommendedCadence)}
+          </span>
+          <span className="result-badge">{formatRetentionTrigger(opportunity.trigger)}</span>
+          <span className="result-badge">{formatRetentionLoyaltyLabel(opportunity.loyaltySegment)}</span>
+        </div>
+        <p>{opportunity.message}</p>
+        <p>
+          Last completed: {formatDateTime(opportunity.completedAt)} • {opportunity.daysSinceCompleted} day
+          {opportunity.daysSinceCompleted === 1 ? "" : "s"} ago
+        </p>
+        <p>
+          {opportunity.completedCategoryCount} completed {opportunity.category.replaceAll("-", " ")} visit
+          {opportunity.completedCategoryCount === 1 ? "" : "s"} at this property
+          {opportunity.sameProviderCompletedCount > 1
+            ? ` • ${opportunity.sameProviderCompletedCount} with ${opportunity.providerName}`
+            : ""}
+          {opportunity.lastServiceGapDays
+            ? ` • last gap ${opportunity.lastServiceGapDays} day${
+                opportunity.lastServiceGapDays === 1 ? "" : "s"
+              }`
+            : ""}
+        </p>
+        <div className="cta-row">
+          <button
+            className="button-secondary"
+            disabled={loadingState === "loading"}
+            onClick={() => void handleApplyRetentionOpportunity(opportunity)}
+            type="button"
+          >
+            {opportunity.actionLabel}
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  function renderPastRecurringPlanCard(summary: RecurringServicePlanSummary) {
+    return (
+      <article className="list-panel">
+        <div className="search-result-title">
+          <div>
+            <h3>{summary.providerName}</h3>
+            <p>{summary.plan.category.replaceAll("-", " ")} plan</p>
+          </div>
+          <div className="chip-row">
+            <span className="result-badge result-badge--neutral">Cancelled</span>
+            <span className="result-badge">{formatRecurringFrequency(summary.plan.frequency)}</span>
+          </div>
+        </div>
+        <p>This plan is no longer running.</p>
+        <p>
+          {summary.completedOccurrenceCount} completed visit
+          {summary.completedOccurrenceCount === 1 ? "" : "s"}
+        </p>
+      </article>
+    );
+  }
+
   function getPaymentLabel(payment?: PaymentRecord) {
     if (!payment) {
       return "Not paid";
@@ -888,28 +1600,70 @@ export function CustomerLiveDashboard() {
     return booking.status === "completed" && payment?.status === "captured" && payment.refundable;
   }
 
+  const accountViews = [
+    { href: "/customer/dashboard", label: "Account", view: "account" },
+    { href: "/customer/dashboard?view=history", label: "Past visits", view: "history" }
+  ] as const;
+
+  if (historyOnlyView) {
+    return (
+      <main className="container stack-lg">
+        <section className="page-hero">
+          <h1>Past visits</h1>
+          <p>Completed, cancelled, refunded, and disputed visits.</p>
+        </section>
+
+        <nav aria-label="Customer account sections" className="dashboard-switcher">
+          {accountViews.map((item) => (
+            <a
+              className={`dashboard-switcher__link${dashboardView === item.view ? " dashboard-switcher__link--active" : ""}`}
+              href={item.href}
+              key={item.view}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+
+        <CustomerHistoryBoard />
+      </main>
+    );
+  }
+
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <h1>Welcome back, {customer?.fullName?.split(" ")[0] ?? "there"}.</h1>
-        <p>
-          {nextBooking
-            ? `Next service ${formatBookingWindowSummary(nextBooking.scheduledStartIso)} with ${providerNamesById[nextBooking.providerId] ?? "your landscaper"}`
-            : "You do not have an upcoming service yet."}
-        </p>
-        {nextBooking?.lateEtaIso && !nextBooking.onRouteConfirmedAt ? (
-          <p>
-            Running behind. New target: {formatEta(nextBooking.lateEtaIso)}.
-            {nextBooking.lateReason ? ` ${nextBooking.lateReason}` : ""}
-          </p>
-        ) : null}
-        {nextBooking?.activeExceptionType ? (
-          <p>
-            Update: {getBookingExceptionLabel(nextBooking.activeExceptionType)}.
-            {nextBooking.activeExceptionNotes ? ` ${nextBooking.activeExceptionNotes}` : ""}
-          </p>
-        ) : null}
+        {requestFlowActive ? (
+          <div className="search-result-title">
+            <div>
+              <h1>Request service</h1>
+              <p>Choose the job, check the price, then book.</p>
+            </div>
+            <a className="button-secondary" href="/customer/dashboard">
+              Back to account
+            </a>
+          </div>
+        ) : (
+          <>
+            <h1>Welcome back, {customer?.fullName?.split(" ")[0] ?? "there"}.</h1>
+            <p>Manage visits, repeat service, and reviews in one place.</p>
+          </>
+        )}
       </section>
+
+      {!requestFlowActive ? (
+        <nav aria-label="Customer account sections" className="dashboard-switcher">
+          {accountViews.map((item) => (
+            <a
+              className={`dashboard-switcher__link${dashboardView === item.view ? " dashboard-switcher__link--active" : ""}`}
+              href={item.href}
+              key={item.view}
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
 
       {bookingMessage ? (
         <section className="card">
@@ -925,795 +1679,599 @@ export function CustomerLiveDashboard() {
         </section>
       ) : null}
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{properties.length}</h2>
-          <p>Saved properties</p>
-        </article>
-        <article className="card">
-          <h2>
-            {
-              bookings.filter(
-                (booking) =>
-                  booking.status !== "completed" &&
-                  booking.status !== "cancelled" &&
-                  booking.status !== "refunded"
-              ).length
-            }
-          </h2>
-          <p>Open bookings</p>
-        </article>
-        <article className="card">
-          <h2>{reviewOpportunities.filter((opportunity) => opportunity.canReviewNow).length}</h2>
-          <p>Reviews ready now</p>
-        </article>
-      </section>
-
-      <section className="grid-two">
-        <article className="card">
-          <h2>1. Pick the job</h2>
-          <p>Choose the service, when you want it, and whether this should repeat.</p>
-          <div className="form-grid">
-            <label className="form-field">
-              <span>Property</span>
-              <select
-                onChange={(event) => setSelectedPropertyId(event.target.value)}
-                value={selectedPropertyId}
-              >
-                {properties.map((property) => (
-                  <option key={property.id} value={property.id}>
-                    {property.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-field">
-              <span>Service</span>
-              <select
-                onChange={(event) => setSelectedCategory(event.target.value as ServiceCategory)}
-                value={selectedCategory}
-              >
-                {serviceOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-field">
-              <span>When</span>
-              <select
-                onChange={(event) => setSelectedTiming(event.target.value as CustomerTimingPreference)}
-                value={selectedTiming}
-              >
-                {customerTimingOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="form-field">
-              <span>Cadence</span>
-              <select
-                onChange={(event) =>
-                  setSelectedCadence(event.target.value as "one-time" | RecurringServiceFrequency)
-                }
-                value={selectedCadence}
-              >
-                <option value="one-time">One-time visit</option>
-                <option value="weekly">Every week</option>
-                <option value="biweekly">Every 2 weeks</option>
-              </select>
-            </label>
-          </div>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
-            <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} type="button">
-              {loadingState === "loading" ? "Working..." : "See my price"}
-            </button>
-            <button
-              className="button-secondary"
-              disabled={!quote || loadingState === "loading"}
-              onClick={handleSearchProviders}
-              type="button"
-            >
-              Get recommendation
-            </button>
-          </div>
-          {activeProperty ? (
-            <p>
-              {activeProperty.address.line1}, {activeProperty.address.city}, {activeProperty.address.state} •{" "}
-              {timingLabel}
-            </p>
-          ) : null}
-        </article>
-
-        <article className="card">
-          <h2>2. Price preview</h2>
-          {quote ? (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
-              <article className="list-panel">
-                <h3>{formatCurrency(quote.estimatedPriceCents)}</h3>
-                <p>
-                  {quote.estimatedDurationMinutes} minutes • {quote.confidenceTier} confidence
-                </p>
-              </article>
-              <article className="list-panel">
-                <h3>Property estimate</h3>
-                <p>
-                  Turf {quote.measurements.turfSqFt} sq ft • Shrubs {quote.measurements.shrubBedSqFt} sq ft
-                </p>
-                <p>
-                  Turf source {quote.measurementSources.turfSqFt} • Shrubs source {quote.measurementSources.shrubBedSqFt}
-                </p>
-              </article>
-              <article className="list-panel">
-                <h3>Confidence notes</h3>
-                <p>{quote.normalizedAddress.displayLabel}</p>
-                {quote.normalizedAddress.wasNormalized ? (
-                  <p>We cleaned up the address format before matching and quoting.</p>
-                ) : null}
-                {quote.normalizedAddress.validationMessage ? (
-                  <p>{quote.normalizedAddress.validationMessage}</p>
-                ) : null}
-                <div className="stack-sm" style={{ paddingBottom: 0 }}>
-                  {quote.confidenceReasons.map((reason) => (
-                    <p key={`${reason.impact}-${reason.label}`}>
-                      <strong>{reason.label}</strong> {reason.detail}
+      {requestFlowActive ? (
+        <>
+          <section className="stack-lg">
+            <article className="card">
+              <div className="search-result-title">
+                <div>
+                  <h2>Choose the job</h2>
+                  {quote ? (
+                    <p>
+                      {selectedServiceLabel} • {timingLabel} • {selectedCadenceLabel}
                     </p>
-                  ))}
+                  ) : null}
                 </div>
-              </article>
-              <article className="list-panel">
-                <h3>Summary</h3>
-                <p>{quote.estimateSummary}</p>
-              </article>
-            </div>
-          ) : (
-            <p>Pick the job details first, then we will price it before recommending a provider.</p>
-          )}
-        </article>
-      </section>
-
-      <section className="card">
-        <h2>3. Recommended provider</h2>
-        <p>We start with the best local fit for {timingLabel.toLowerCase()}, then keep backup options behind one click.</p>
-        {providerSearchState === "loading" ? (
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
-            <article className="list-panel">
-              <h3>Checking nearby coverage</h3>
-              <p>Looking at route openings, service radius, and live availability for this property.</p>
+                {quote && activeProperty ? (
+                  <span className="result-badge result-badge--neutral">{activeProperty.label}</span>
+                ) : null}
+              </div>
+              {quote ? (
+                <>
+                  {activeProperty ? (
+                    <p>
+                      {activeProperty.address.line1}, {activeProperty.address.city}, {activeProperty.address.state}
+                    </p>
+                  ) : null}
+                  <details className="service-card-disclosure">
+                    <summary className="service-card-disclosure__summary">Change details</summary>
+                    <div className="service-card-disclosure__body">{renderRequestDetailsEditor("Refresh price")}</div>
+                  </details>
+                </>
+              ) : (
+                renderRequestDetailsEditor("Get price")
+              )}
             </article>
-            <article className="list-panel">
-              <h3>Sorting the best match</h3>
-              <p>If a lot of businesses serve your area, YardMatch sorts the strongest fit first.</p>
-            </article>
-          </div>
-        ) : providerResults ? (
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
-            {providerResults.providers.length === 0 ? (
-              <article className="list-panel">
-                <h3>No landscaping businesses are live in this area yet.</h3>
-                <p>We do not have a provider serving this property right now. Try a nearby city or contact support so we can flag the area for expansion.</p>
-                <div className="cta-row">
-                  <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
-                    Request service in this area
-                  </a>
-                </div>
-              </article>
-            ) : null}
-            {providerResults.providers.length > 0 && providersWithWindows.length === 0 ? (
-              <article className="list-panel">
-                <h3>Businesses cover this area, but nothing is open in that window.</h3>
-                <p>Try another timing choice, another property, or check back later as route openings change throughout the day.</p>
-              </article>
-            ) : null}
-            {recommendedProviderCard ? (
-              <article className="list-panel">
-                <div className="search-result-title">
-                  <h3>{recommendedProviderCard.provider.companyName}</h3>
-                  <span className="result-badge">
-                    {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
-                  </span>
-                </div>
-                <p>
-                  Recommended for <strong>{timingLabel.toLowerCase()}</strong>.
-                </p>
-                <p>
-                  {recommendedProviderCard.provider.rating.toFixed(1)} overall •{" "}
-                  {recommendedProviderCard.provider.timelinessRating.toFixed(1)} punctuality
-                </p>
-                {providerChoicePresentations[0] ? (
-                  <p>
-                    <strong>{providerChoicePresentations[0].heading}.</strong>{" "}
-                    {providerChoicePresentations[0].detail}
-                  </p>
-                ) : null}
-                {recommendedProviderCard.ranking ? (
+
+            {quote ? (
+              <article className="card">
+                <h2>Price</h2>
+                {providerStepActive ? (
                   <>
                     <p>
-                      <strong>{recommendedProviderCard.ranking.selectionSummaryLabel}.</strong>{" "}
-                      {recommendedProviderCard.ranking.selectionSummaryDetail}
+                      {formatCurrency(quote.estimatedPriceCents)} • {quote.estimatedDurationMinutes} minutes •{" "}
+                      {quote.confidenceTier} confidence
                     </p>
                     <p>
-                      <strong>{recommendedProviderCard.ranking.reliabilityLabel}.</strong>{" "}
-                      {recommendedProviderCard.ranking.reliabilityDetail}
+                      Turf {quote.measurements.turfSqFt} sq ft • Shrubs {quote.measurements.shrubBedSqFt} sq ft
                     </p>
-                    <p>
-                      {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} miles away •{" "}
-                      {recommendedProviderCard.ranking.reasons.join(" • ")}
-                    </p>
-                    <p>
-                      <strong>{recommendedProviderCard.ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
-                      {recommendedProviderCard.ranking.neighborhoodFamiliarityDetail}
-                    </p>
-                    <p>
-                      <strong>{recommendedProviderCard.ranking.availabilityConfidenceLabel}.</strong>{" "}
-                      {formatCompletedJobTrustLine(recommendedProviderCard.ranking.completedJobCount)}
-                    </p>
-                  </>
-                ) : null}
-                <p>
-                  Radius {recommendedProviderCard.provider.serviceRadiusMiles} miles •{" "}
-                  {recommendedProviderCard.slot
-                    ? `${formatBookingWindowSummary(recommendedProviderCard.slot.startIso)} window`
-                    : "No open slot"}
-                </p>
-                <div className="cta-row">
-                  <button
-                    className="button"
-                    disabled={!recommendedProviderCard.slot || loadingState === "loading"}
-                    onClick={() => void handleCreateBooking(recommendedProviderCard, 1)}
-                    type="button"
-                  >
-                    {selectedCadence === "one-time" ? "Book now" : "Start recurring plan"}
-                  </button>
-                  {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
-                    <button
-                      className="button-secondary"
-                      onClick={() => {
-                        setShowAlternativeProviders(true);
-                        void trackWebEvent(
-                          MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
-                          {
-                            recommendationSessionId: providerResults.recommendationSessionId,
-                            recommendedProviderId: providerResults.recommendedProviderId ?? "none",
-                            providerCount: providerCards.length,
-                            requestSource: "customer-web-dashboard"
-                          }
-                        );
-                      }}
-                      type="button"
-                    >
-                      Show backup options
-                    </button>
-                  ) : null}
-                </div>
-                {!recommendedProviderCard.slot ? (
-                  <p style={{ marginTop: "0.75rem" }}>
-                    This business serves the area, but it does not have an open route window right now.
-                  </p>
-                ) : null}
-              </article>
-            ) : null}
-            {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
-              <article className="list-panel">
-                <h3>The recommendation is the fastest path.</h3>
-                <p>
-                  If you still want a confidence check, you can reveal a short curated set of other qualified providers without turning this into a directory.
-                </p>
-              </article>
-            ) : null}
-            {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => {
-              return (
-                <article className="list-panel" key={provider.id}>
-                  <div className="search-result-title">
-                    <h3>{provider.companyName}</h3>
-                    {providerChoicePresentations[index + 1] ? (
-                      <span className="result-badge">{providerChoicePresentations[index + 1].badge}</span>
-                    ) : null}
-                    {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
-                  </div>
-                  <p>
-                    {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality
-                  </p>
-                  {providerChoicePresentations[index + 1] ? (
-                    <p>
-                      <strong>{providerChoicePresentations[index + 1].heading}.</strong>{" "}
-                      {providerChoicePresentations[index + 1].detail}
-                    </p>
-                  ) : null}
-                  {ranking ? (
-                    <>
-                      <p>
-                        <strong>{ranking.selectionSummaryLabel}.</strong> {ranking.selectionSummaryDetail}
-                      </p>
-                      <p>
-                        <strong>{ranking.reliabilityLabel}.</strong> {ranking.reliabilityDetail}
-                      </p>
-                      <p>
-                        {ranking.distanceMiles.toFixed(1)} miles away • {ranking.reasons.join(" • ")}
-                      </p>
-                      <p>
-                        <strong>{ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
-                        {ranking.neighborhoodFamiliarityDetail}
-                      </p>
-                      <p>
-                        <strong>{ranking.availabilityConfidenceLabel}.</strong>{" "}
-                        {formatCompletedJobTrustLine(ranking.completedJobCount)}
-                      </p>
-                    </>
-                  ) : null}
-                    <p>
-                      Radius {provider.serviceRadiusMiles} miles •{" "}
-                      {slot ? `${formatBookingWindowSummary(slot.startIso)} window` : "No open slot"}
-                    </p>
-                  <div className="cta-row">
-                    <button
-                      className="button"
-                      disabled={!slot || loadingState === "loading"}
-                      onClick={() =>
-                        void handleCreateBooking(
-                          { provider, ranking, slot },
-                          index + 2
-                        )
-                      }
-                      type="button"
-                    >
-                      {selectedCadence === "one-time" ? "Book this provider" : "Start recurring plan"}
-                    </button>
-                  </div>
-                  {!slot ? (
-                    <p style={{ marginTop: "0.75rem" }}>
-                      This business serves the area, but it does not have an open route window right now.
-                    </p>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <p>Price the job first, then get one recommended provider with optional backup options.</p>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>Recurring plans</h2>
-        {recurringPlans.length ? (
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
-            {recurringPlans.map((summary) => (
-              <article className="list-panel" key={summary.plan.id}>
-                <div className="search-result-title">
-                  <h3>{summary.providerName}</h3>
-                  <span className="result-badge">
-                    {summary.plan.status === "active"
-                      ? formatRecurringFrequency(summary.plan.frequency)
-                      : "Cancelled"}
-                  </span>
-                </div>
-                <p>
-                  {summary.plan.category.replaceAll("-", " ")} • {summary.activeOccurrenceCount} active visit
-                  {summary.activeOccurrenceCount === 1 ? "" : "s"} • {summary.completedOccurrenceCount} completed
-                </p>
-                {summary.upcomingBooking ? (
-                  <p>
-                    Next visit: {formatBookingWindowSummary(summary.upcomingBooking.scheduledStartIso)} •{" "}
-                    {formatDateTime(summary.upcomingBooking.scheduledStartIso)}
-                  </p>
-                ) : summary.plan.status === "active" ? (
-                  <p>No upcoming visit is queued yet.</p>
-                ) : null}
-                {summary.plan.lastSchedulingError ? <p>{summary.plan.lastSchedulingError}</p> : null}
-                {summary.plan.status === "active" ? (
-                  <div className="cta-row">
-                    <button
-                      className="button-secondary"
-                      disabled={loadingState === "loading"}
-                      onClick={() => void handleCancelRecurringPlan(summary.plan.id)}
-                      type="button"
-                    >
-                      Cancel recurring plan
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p>Start a weekly or every-2-weeks service plan after choosing a provider and route window.</p>
-        )}
-      </section>
-
-      {retentionOpportunities.length ? (
-        <section className="card">
-          <h2>Suggested next services</h2>
-          <p>
-            Keep completed jobs moving without rebuilding the request from scratch. GreenRain will
-            still price the work again and recommend the best route before you book.
-          </p>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
-            {retentionOpportunities.map((opportunity) => (
-              <article className="list-panel" key={opportunity.id}>
-                <div className="search-result-title">
-                  <div>
-                    <h3>{opportunity.title}</h3>
-                    <p>
-                      {opportunity.providerName} • {opportunity.category.replaceAll("-", " ")}
-                    </p>
-                  </div>
-                  <span className="result-badge">
-                    {opportunity.recommendedCadence === "one-time"
-                      ? "One-time rebook"
-                      : formatRecurringFrequency(opportunity.recommendedCadence)}
-                  </span>
-                  <span className="result-badge">{formatRetentionTrigger(opportunity.trigger)}</span>
-                  <span className="result-badge">
-                    {formatRetentionLoyaltyLabel(opportunity.loyaltySegment)}
-                  </span>
-                </div>
-                <p>{opportunity.message}</p>
-                <p>
-                  Last completed: {formatDateTime(opportunity.completedAt)} • {opportunity.daysSinceCompleted} day
-                  {opportunity.daysSinceCompleted === 1 ? "" : "s"} ago
-                </p>
-                <p>
-                  {opportunity.completedCategoryCount} completed {opportunity.category.replaceAll("-", " ")} visit
-                  {opportunity.completedCategoryCount === 1 ? "" : "s"} at this property
-                  {opportunity.sameProviderCompletedCount > 1
-                    ? ` • ${opportunity.sameProviderCompletedCount} with ${opportunity.providerName}`
-                    : ""}
-                  {opportunity.lastServiceGapDays
-                    ? ` • last gap ${opportunity.lastServiceGapDays} day${
-                        opportunity.lastServiceGapDays === 1 ? "" : "s"
-                      }`
-                    : ""}
-                </p>
-                <div className="cta-row">
-                  <button
-                    className="button-secondary"
-                    disabled={loadingState === "loading"}
-                    onClick={() => void handleApplyRetentionOpportunity(opportunity)}
-                    type="button"
-                  >
-                    {opportunity.actionLabel}
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="grid-two">
-        <article className="card">
-          <h2>Your bookings</h2>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
-            {bookings.map((booking) => (
-              <article className="history-card" key={booking.id}>
-                <div className="history-card__header">
-                  <div>
-                    <span className="eyebrow">{booking.category.replaceAll("-", " ")}</span>
-                    <h2>{booking.status}</h2>
-                    <p>{providerNamesById[booking.providerId] ?? "Landscaping business"}</p>
-                  </div>
-                  <strong>{formatCurrency(booking.totalCents)}</strong>
-                </div>
-                <div className="history-card__grid">
-                  <div>
-                    <h3>Address</h3>
-                    <p>{booking.serviceAddress.line1}</p>
-                    <p>
-                      {booking.serviceAddress.city}, {booking.serviceAddress.state} {booking.serviceAddress.postalCode}
-                    </p>
-                  </div>
-                  <div>
-                    <h3>Schedule</h3>
-                    <p>{formatBookingWindowSummary(booking.scheduledStartIso)}</p>
-                    <p>{formatDateTime(booking.scheduledStartIso)}</p>
-                  </div>
-                  <div>
-                    <h3>Notes</h3>
-                    <p>{booking.notes || "No extra notes."}</p>
-                  </div>
-                  <div>
-                    <h3>Payment</h3>
-                    <p>{getPaymentLabel(getPaymentRecord(booking.id))}</p>
-                    {getPaymentRecord(booking.id)?.paidAt ? (
-                      <p>{formatDateTime(getPaymentRecord(booking.id)?.paidAt as string)}</p>
-                    ) : null}
-                  </div>
-                </div>
-                {booking.status === "requested" || booking.status === "confirmed" ? (
-                  <>
-                    <div className="form-grid" style={{ marginTop: "1rem" }}>
-                      <label className="form-field">
-                        <span>New start</span>
-                        <input
-                          onChange={(event) =>
-                            setRescheduleDrafts((current) => ({
-                              ...current,
-                              [booking.id]: {
-                                start: event.target.value,
-                                end: current[booking.id]?.end ?? toDateTimeLocalValue(booking.scheduledEndIso)
-                              }
-                            }))
-                          }
-                          type="datetime-local"
-                          value={rescheduleDrafts[booking.id]?.start ?? toDateTimeLocalValue(booking.scheduledStartIso)}
-                        />
-                      </label>
-                      <label className="form-field">
-                        <span>New end</span>
-                        <input
-                          onChange={(event) =>
-                            setRescheduleDrafts((current) => ({
-                              ...current,
-                              [booking.id]: {
-                                start:
-                                  current[booking.id]?.start ?? toDateTimeLocalValue(booking.scheduledStartIso),
-                                end: event.target.value
-                              }
-                            }))
-                          }
-                          type="datetime-local"
-                          value={rescheduleDrafts[booking.id]?.end ?? toDateTimeLocalValue(booking.scheduledEndIso)}
-                        />
-                      </label>
-                    </div>
-                    <div className="cta-row" style={{ marginTop: "1rem" }}>
-                      <button
-                        className="button"
-                        disabled={
-                          loadingState === "loading" || getPaymentRecord(booking.id)?.status === "captured"
-                        }
-                        onClick={() => void handleStartCheckout(booking)}
-                        type="button"
-                      >
-                        {getPaymentRecord(booking.id)?.status === "pending"
-                          ? "Continue Stripe checkout"
-                          : "Pay with Stripe"}
-                      </button>
-                      <button
-                        className="button-secondary"
-                        disabled={loadingState === "loading"}
-                        onClick={() => void handleRescheduleBooking(booking.id)}
-                        type="button"
-                      >
-                        Reschedule
-                      </button>
-                      <button
-                        className="button-secondary"
-                        disabled={loadingState === "loading"}
-                        onClick={() => void handleCancelBooking(booking.id)}
-                        type="button"
-                      >
-                        Cancel booking
-                      </button>
-                      <a
-                        className="button-secondary"
-                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=general&subject=${encodeURIComponent("Booking support")}`}
-                      >
-                        Get help
-                      </a>
-                    </div>
-                  </>
-                ) : null}
-                {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
-                  <div className="list-panel" style={{ marginTop: "1rem" }}>
-                    <h3>Delay update</h3>
-                    <p>
-                      {providerNamesById[booking.providerId] ?? "The landscaping business"} is running behind.
-                    </p>
-                    <p>
-                      New target: {formatEta(booking.lateEtaIso)}.
-                      {booking.lateReason ? ` ${booking.lateReason}` : ""}
-                    </p>
-                  </div>
-                ) : null}
-                {booking.activeExceptionType ? (
-                  <div className="list-panel" style={{ marginTop: "1rem" }}>
-                    <h3>{getBookingExceptionLabel(booking.activeExceptionType)}</h3>
-                    <p>
-                      {providerNamesById[booking.providerId] ?? "The landscaping business"} flagged an issue with this
-                      visit.
-                    </p>
-                    <p>
-                      {booking.activeExceptionNotes ?? "Check in with the business or support to work out the next step."}
-                    </p>
-                    <div className="cta-row">
-                      <a
-                        className="button-secondary"
-                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=service-quality&subject=${encodeURIComponent(
-                          getBookingExceptionLabel(booking.activeExceptionType)
-                        )}`}
-                      >
-                        Get help
-                      </a>
-                    </div>
-                  </div>
-                ) : null}
-                {booking.status === "disputed" ? (
-                  <div className="list-panel" style={{ marginTop: "1rem" }}>
-                    <h3>Booking disputed</h3>
-                    <p>
-                      {booking.disputeReason ?? "A dispute was opened for this booking."}
-                    </p>
-                    <p>
-                      YardMatch support can now step in with the full booking context.
-                    </p>
-                    <div className="cta-row">
-                      <a
-                        className="button-secondary"
-                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=service-quality&subject=${encodeURIComponent("Disputed booking support")}`}
-                      >
-                        Open support
-                      </a>
-                    </div>
-                  </div>
-                ) : null}
-                {booking.onRouteConfirmedAt ? (
-                  <div className="list-panel" style={{ marginTop: "1rem" }}>
-                    <h3>Business chat</h3>
-                    <p>
-                      Crew is on the way. You can now message{" "}
-                      {providerNamesById[booking.providerId] ?? "the landscaping business"}.
-                    </p>
-                    <div className="cta-row">
-                      <button
-                        className="button-secondary"
-                        disabled={loadingState === "loading"}
-                        onClick={() => void openCustomerChat(booking.id)}
-                        type="button"
-                      >
-                        Message business
-                      </button>
-                      <button
-                        className="button-secondary"
-                        disabled={loadingState === "loading"}
-                        onClick={() => void openArrivalTracking(booking.id)}
-                        type="button"
-                      >
-                        Track crew
-                      </button>
-                      <a
-                        className="button-secondary"
-                        href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=service-quality&subject=${encodeURIComponent("On-route support")}`}
-                      >
-                        Get help
-                      </a>
-                    </div>
-                  </div>
-                ) : null}
-                {activeTrackingBookingId === booking.id && activeTracking ? (
-                  <ArrivalTrackingPanel
-                    subtitle={providerNamesById[booking.providerId] ?? "Landscaping business"}
-                    title="Crew on the way"
-                    tracking={activeTracking}
-                  />
-                ) : null}
-                {booking.status !== "cancelled" &&
-                booking.status !== "refunded" &&
-                booking.status !== "requested" &&
-                booking.status !== "disputed" ? (
-                  <div className="list-panel" style={{ marginTop: "1rem" }}>
-                    <h3>Need to dispute this service?</h3>
-                    <p>Open a formal dispute so YardMatch support can step in with the booking context attached.</p>
-                    <div className="form-grid" style={{ marginTop: "1rem" }}>
-                      <label className="form-field form-field--full">
-                        <span>Dispute reason</span>
-                        <textarea
-                          rows={3}
-                          value={disputeDrafts[booking.id] ?? ""}
-                          onChange={(event) =>
-                            setDisputeDrafts((current) => ({
-                              ...current,
-                              [booking.id]: event.target.value
-                            }))
-                          }
-                          placeholder="What went wrong with this service?"
-                        />
-                      </label>
-                    </div>
-                    <div className="cta-row" style={{ marginTop: "1rem" }}>
-                      <button
-                        className="button-secondary"
-                        disabled={loadingState === "loading"}
-                        onClick={() => void handleOpenDispute(booking.id)}
-                        type="button"
-                      >
-                        Open dispute
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-                {(canRequestRefundReview(booking, getPaymentRecord(booking.id)) ||
-                  getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
-                  getPaymentRecord(booking.id)?.refundReviewStatus === "denied") ? (
-                  <div className="list-panel" style={{ marginTop: "1rem" }}>
-                    <h3>Refund review</h3>
-                    <p>
-                      {getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
-                        ? "YardMatch support is reviewing this refund request. Payouts stay on hold until the review is resolved."
-                        : getPaymentRecord(booking.id)?.refundReviewStatus === "denied"
-                          ? `The last refund review was denied.${getPaymentRecord(booking.id)?.refundDecisionNotes ? ` ${getPaymentRecord(booking.id)?.refundDecisionNotes}` : ""}`
-                          : "If this completed service needs a billing review, send a refund request with the reason below."}
-                    </p>
-                    {getPaymentRecord(booking.id)?.refundReviewStatus !== "requested" ? (
-                      <>
-                        <div className="form-grid" style={{ marginTop: "1rem" }}>
-                          <label className="form-field form-field--full">
-                            <span>Refund reason</span>
-                            <textarea
-                              rows={3}
-                              value={refundDrafts[booking.id] ?? ""}
-                              onChange={(event) =>
-                                setRefundDrafts((current) => ({
-                                  ...current,
-                                  [booking.id]: event.target.value
-                                }))
-                              }
-                              placeholder="Why should YardMatch review this payment?"
-                            />
-                          </label>
-                        </div>
-                        <div className="cta-row" style={{ marginTop: "1rem" }}>
-                          <button
-                            className="button-secondary"
-                            disabled={loadingState === "loading" || !canRequestRefundReview(booking, getPaymentRecord(booking.id))}
-                            onClick={() => void handleRequestRefundReview(booking.id)}
-                            type="button"
-                          >
-                            Request refund review
-                          </button>
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        </article>
-
-        <article className="card">
-          <h2>Reviews</h2>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
-            {reviewOpportunities.length === 0 ? <p>No review invites yet.</p> : null}
-            {reviewOpportunities.map((opportunity) => (
-              <article className="list-panel" key={opportunity.bookingId}>
-                <h3>{opportunity.providerName}</h3>
-                <p>{opportunity.reason}</p>
-                {opportunity.canReviewNow && !opportunity.reviewAlreadySubmitted ? (
-                  <>
-                    <textarea
-                      onChange={(event) =>
-                        setReviewDrafts((current) => ({
-                          ...current,
-                          [opportunity.bookingId]: event.target.value
-                        }))
-                      }
-                      placeholder="Share what went well."
-                      rows={3}
-                      value={reviewDrafts[opportunity.bookingId] ?? ""}
-                    />
-                    <div className="cta-row">
-                      <button
-                        className="button"
-                        onClick={() => void handleSubmitReview(opportunity)}
-                        type="button"
-                      >
-                        Submit 5-star review
-                      </button>
-                    </div>
                   </>
                 ) : (
-                  <p>{opportunity.reviewAlreadySubmitted ? "Review submitted." : "Review not ready yet."}</p>
+                  <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                    <article className="list-panel">
+                      <h3>{formatCurrency(quote.estimatedPriceCents)}</h3>
+                      <p>
+                        {quote.estimatedDurationMinutes} minutes • {quote.confidenceTier} confidence
+                      </p>
+                    </article>
+                    <article className="list-panel">
+                      <h3>Property estimate</h3>
+                      <p>
+                        Turf {quote.measurements.turfSqFt} sq ft • Shrubs {quote.measurements.shrubBedSqFt} sq ft
+                      </p>
+                    </article>
+                  </div>
                 )}
+                <details className="service-card-disclosure">
+                  <summary className="service-card-disclosure__summary">Estimate details</summary>
+                  <div className="service-card-disclosure__body">
+                    <article className="list-panel">
+                      <h3>Summary</h3>
+                      <p>{quote.estimateSummary}</p>
+                    </article>
+                    <article className="list-panel">
+                      <h3>Confidence notes</h3>
+                      <p>{quote.normalizedAddress.displayLabel}</p>
+                      {quote.normalizedAddress.wasNormalized ? (
+                        <p>We cleaned up the address before matching and quoting.</p>
+                      ) : null}
+                      {quote.normalizedAddress.validationMessage ? (
+                        <p>{quote.normalizedAddress.validationMessage}</p>
+                      ) : null}
+                      <div className="stack-sm" style={{ paddingBottom: 0 }}>
+                        {quote.confidenceReasons.map((reason) => (
+                          <p key={`${reason.impact}-${reason.label}`}>
+                            <strong>{reason.label}</strong> {reason.detail}
+                          </p>
+                        ))}
+                      </div>
+                      <p>
+                        Turf source {quote.measurementSources.turfSqFt} • Shrubs source{" "}
+                        {quote.measurementSources.shrubBedSqFt}
+                      </p>
+                    </article>
+                  </div>
+                </details>
+                {!providerStepActive ? (
+                  <div className="cta-row" style={{ marginTop: "1rem" }}>
+                    <button
+                      className="button"
+                      disabled={loadingState === "loading"}
+                      onClick={handleSearchProviders}
+                      type="button"
+                    >
+                      See provider
+                    </button>
+                  </div>
+                ) : null}
               </article>
-            ))}
-          </div>
-        </article>
-      </section>
+            ) : null}
+          </section>
+
+          {providerStepActive ? (
+            <section className="card">
+              <h2>Best fit</h2>
+              {providerSearchState === "loading" ? (
+                <article className="list-panel">
+                  <h3>Checking the best fit</h3>
+                  <p>Looking at live route openings, coverage, and trust signals for this property.</p>
+                </article>
+              ) : providerResults ? (
+                <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                  {providerResults.providers.length === 0 ? (
+                    <article className="list-panel">
+                      <h3>No landscaping businesses are live here yet.</h3>
+                      <p>Try a nearby city or contact support so we can flag the area for expansion.</p>
+                      <div className="cta-row">
+                        <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
+                          Request service in this area
+                        </a>
+                      </div>
+                    </article>
+                  ) : null}
+                  {providerResults.providers.length > 0 && providersWithWindows.length === 0 ? (
+                    <article className="list-panel">
+                      <h3>Businesses cover this area, but nothing is open in that window.</h3>
+                      <p>Try another timing choice, another property, or check back later as route openings change.</p>
+                    </article>
+                  ) : null}
+                  {recommendedProviderCard ? (
+                    <article className="list-panel">
+                      <div className="search-result-title">
+                        <h3>{recommendedProviderCard.provider.companyName}</h3>
+                        <span className="result-badge">
+                          {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
+                        </span>
+                      </div>
+                      <p>
+                        Recommended for <strong>{timingLabel.toLowerCase()}</strong>.
+                      </p>
+                      <p>
+                        {recommendedProviderCard.provider.rating.toFixed(1)} overall •{" "}
+                        {recommendedProviderCard.provider.timelinessRating.toFixed(1)} punctuality
+                      </p>
+                      {providerChoicePresentations[0] ? <p>{providerChoicePresentations[0].detail}</p> : null}
+                      <p>
+                        Radius {recommendedProviderCard.provider.serviceRadiusMiles} miles •{" "}
+                        {recommendedProviderCard.slot
+                          ? `${formatBookingWindowSummary(recommendedProviderCard.slot.startIso)} window`
+                          : "No open slot"}
+                      </p>
+                      {recommendedProviderCard.ranking || providerChoicePresentations[0] ? (
+                        <details className="service-card-disclosure">
+                          <summary className="service-card-disclosure__summary">Why this pick</summary>
+                          <div className="service-card-disclosure__body">
+                            {providerChoicePresentations[0] ? (
+                              <article className="list-panel">
+                                <h3>{providerChoicePresentations[0].heading}</h3>
+                                <p>{providerChoicePresentations[0].detail}</p>
+                              </article>
+                            ) : null}
+                            {recommendedProviderCard.ranking ? (
+                              <article className="list-panel">
+                                <p>
+                                  <strong>{recommendedProviderCard.ranking.selectionSummaryLabel}.</strong>{" "}
+                                  {recommendedProviderCard.ranking.selectionSummaryDetail}
+                                </p>
+                                <p>
+                                  <strong>{recommendedProviderCard.ranking.reliabilityLabel}.</strong>{" "}
+                                  {recommendedProviderCard.ranking.reliabilityDetail}
+                                </p>
+                                <p>
+                                  {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} miles away •{" "}
+                                  {recommendedProviderCard.ranking.reasons.join(" • ")}
+                                </p>
+                                <p>
+                                  <strong>{recommendedProviderCard.ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
+                                  {recommendedProviderCard.ranking.neighborhoodFamiliarityDetail}
+                                </p>
+                                <p>
+                                  <strong>{recommendedProviderCard.ranking.availabilityConfidenceLabel}.</strong>{" "}
+                                  {formatCompletedJobTrustLine(recommendedProviderCard.ranking.completedJobCount)}
+                                </p>
+                              </article>
+                            ) : null}
+                          </div>
+                        </details>
+                      ) : null}
+                      <div className="cta-row">
+                        <button
+                          className="button"
+                          disabled={!recommendedProviderCard.slot || loadingState === "loading"}
+                          onClick={() => void handleCreateBooking(recommendedProviderCard, 1)}
+                          type="button"
+                        >
+                          {selectedCadence === "one-time" ? "Book this visit" : "Start repeat plan"}
+                        </button>
+                        {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
+                          <button
+                            className="button-secondary"
+                            onClick={() => {
+                              setShowAlternativeProviders(true);
+                              void trackWebEvent(
+                                MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+                                {
+                                  recommendationSessionId: providerResults.recommendationSessionId,
+                                  recommendedProviderId: providerResults.recommendedProviderId ?? "none",
+                                  providerCount: providerCards.length,
+                                  requestSource: "customer-web-dashboard"
+                                }
+                              );
+                            }}
+                            type="button"
+                          >
+                            See backup options
+                          </button>
+                        ) : null}
+                      </div>
+                      {!recommendedProviderCard.slot ? (
+                        <p style={{ marginTop: "0.75rem" }}>
+                          This business serves the area, but it does not have an open route window right now.
+                        </p>
+                      ) : null}
+                    </article>
+                  ) : null}
+                  {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => {
+                    return (
+                      <article className="list-panel" key={provider.id}>
+                        <div className="search-result-title">
+                          <h3>{provider.companyName}</h3>
+                          {providerChoicePresentations[index + 1] ? (
+                            <span className="result-badge">{providerChoicePresentations[index + 1].badge}</span>
+                          ) : null}
+                          {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
+                        </div>
+                        <p>
+                          {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality
+                        </p>
+                        {providerChoicePresentations[index + 1] ? <p>{providerChoicePresentations[index + 1].detail}</p> : null}
+                        <p>
+                          Radius {provider.serviceRadiusMiles} miles •{" "}
+                          {slot ? `${formatBookingWindowSummary(slot.startIso)} window` : "No open slot"}
+                        </p>
+                        {ranking || providerChoicePresentations[index + 1] ? (
+                          <details className="service-card-disclosure">
+                            <summary className="service-card-disclosure__summary">Why this backup</summary>
+                            <div className="service-card-disclosure__body">
+                              {providerChoicePresentations[index + 1] ? (
+                                <article className="list-panel">
+                                  <h3>{providerChoicePresentations[index + 1].heading}</h3>
+                                  <p>{providerChoicePresentations[index + 1].detail}</p>
+                                </article>
+                              ) : null}
+                              {ranking ? (
+                                <article className="list-panel">
+                                  <p>
+                                    <strong>{ranking.selectionSummaryLabel}.</strong> {ranking.selectionSummaryDetail}
+                                  </p>
+                                  <p>
+                                    <strong>{ranking.reliabilityLabel}.</strong> {ranking.reliabilityDetail}
+                                  </p>
+                                  <p>
+                                    {ranking.distanceMiles.toFixed(1)} miles away • {ranking.reasons.join(" • ")}
+                                  </p>
+                                  <p>
+                                    <strong>{ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
+                                    {ranking.neighborhoodFamiliarityDetail}
+                                  </p>
+                                  <p>
+                                    <strong>{ranking.availabilityConfidenceLabel}.</strong>{" "}
+                                    {formatCompletedJobTrustLine(ranking.completedJobCount)}
+                                  </p>
+                                </article>
+                              ) : null}
+                            </div>
+                          </details>
+                        ) : null}
+                        <div className="cta-row">
+                          <button
+                            className="button"
+                            disabled={!slot || loadingState === "loading"}
+                            onClick={() =>
+                              void handleCreateBooking(
+                                { provider, ranking, slot },
+                                index + 2
+                              )
+                            }
+                            type="button"
+                          >
+                            {selectedCadence === "one-time" ? "Book this visit" : "Start repeat plan"}
+                          </button>
+                        </div>
+                        {!slot ? (
+                          <p style={{ marginTop: "0.75rem" }}>
+                            This business serves the area, but it does not have an open route window right now.
+                          </p>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {nextBooking && nextBookingProviderName ? (
+            <section className="card">
+              <div className="search-result-title">
+                <div>
+                  <h2>{getPriorityBookingCardTitle(nextBooking, nextBookingPayment)}</h2>
+                  <p>{getBookingStateMessage(nextBooking, nextBookingProviderName, nextBookingPayment)}</p>
+                </div>
+                <span className="result-badge result-badge--neutral">
+                  {formatBookingWindowSummary(nextBooking.scheduledStartIso)}
+                </span>
+              </div>
+              <div className="cta-row">
+                {nextBookingNeedsCheckout ? (
+                  <button
+                    className="button"
+                    disabled={loadingState === "loading"}
+                    onClick={() => void handleStartCheckout(nextBooking)}
+                    type="button"
+                  >
+                    {nextBookingPayment?.status === "pending" ? "Continue Stripe checkout" : "Pay with Stripe"}
+                  </button>
+                ) : null}
+                {nextBookingHasTracking ? (
+                  <button
+                    className="button"
+                    disabled={loadingState === "loading"}
+                    onClick={() => void openArrivalTracking(nextBooking.id)}
+                    type="button"
+                    >
+                      Track crew
+                    </button>
+                ) : null}
+                {nextBookingNeedsPrimarySupport ? (
+                  <a
+                    className="button"
+                    href={`/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
+                      nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
+                    )}&subject=${encodeURIComponent(
+                      nextBooking.onRouteConfirmedAt
+                        ? "On-route support"
+                        : nextBooking.activeExceptionType
+                          ? getBookingExceptionLabel(nextBooking.activeExceptionType)
+                          : "Booking support"
+                    )}`}
+                  >
+                    Get help
+                  </a>
+                ) : null}
+              </div>
+              {(nextBookingNeedsCheckout || nextBookingHasTracking || !nextBookingNeedsPrimarySupport) ? (
+                <details className="service-card-disclosure">
+                  <summary className="service-card-disclosure__summary">More options</summary>
+                  <div className="service-card-disclosure__body">
+                    <div className="cta-row">
+                      {nextBookingHasTracking ? (
+                        <button
+                          className="button-secondary"
+                          disabled={loadingState === "loading"}
+                          onClick={() => void openCustomerChat(nextBooking.id)}
+                          type="button"
+                        >
+                          Message business
+                        </button>
+                      ) : null}
+                      {!nextBookingNeedsPrimarySupport ? (
+                        <a
+                          className="button-secondary"
+                          href={`/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
+                            nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
+                          )}&subject=${encodeURIComponent(
+                            nextBooking.onRouteConfirmedAt
+                              ? "On-route support"
+                              : nextBooking.activeExceptionType
+                                ? getBookingExceptionLabel(nextBooking.activeExceptionType)
+                                : "Booking support"
+                          )}`}
+                        >
+                          Get help
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                </details>
+              ) : null}
+            </section>
+          ) : primaryReviewOpportunity ? (
+            <section className="card">
+              <div className="search-result-title">
+                <div>
+                  <h2>Leave a review</h2>
+                  <p>{primaryReviewOpportunity.reason}</p>
+                </div>
+                <span className="result-badge result-badge--neutral">
+                  {primaryReviewOpportunity.category.replaceAll("-", " ")}
+                </span>
+              </div>
+              <div className="cta-row">
+                <button
+                  className="button"
+                  onClick={() => setReviewComposerBookingId(primaryReviewOpportunity.bookingId)}
+                  type="button"
+                >
+                  Leave review
+                </button>
+              </div>
+            </section>
+          ) : primaryRetentionOpportunity ? (
+            <section className="card">
+              <div className="search-result-title">
+                <div>
+                  <h2>Book again</h2>
+                  <p>{primaryRetentionOpportunity.message}</p>
+                </div>
+                <span className="result-badge">
+                  {primaryRetentionOpportunity.recommendedCadence === "one-time"
+                    ? "One-time rebook"
+                    : formatRecurringFrequency(primaryRetentionOpportunity.recommendedCadence)}
+                </span>
+              </div>
+              <div className="cta-row">
+                <button
+                  className="button"
+                  disabled={loadingState === "loading"}
+                  onClick={() => void handleApplyRetentionOpportunity(primaryRetentionOpportunity)}
+                  type="button"
+                >
+                  {primaryRetentionOpportunity.actionLabel}
+                </button>
+              </div>
+            </section>
+          ) : primaryRecurringPlan ? (
+            <section className="card">
+              <div className="search-result-title">
+                <div>
+                  <h2>Repeat service is set</h2>
+                  <p>
+                    {primaryRecurringPlan.upcomingBooking
+                      ? `Next visit ${formatBookingWindowSummary(primaryRecurringPlan.upcomingBooking.scheduledStartIso)} with ${primaryRecurringPlan.providerName}.`
+                      : `${primaryRecurringPlan.providerName} is still set for repeat service.`}
+                  </p>
+                </div>
+                <span className="result-badge">{formatRecurringFrequency(primaryRecurringPlan.plan.frequency)}</span>
+              </div>
+              <div className="cta-row">
+                <a className="button" href="/customer/dashboard?flow=request">
+                  Start request
+                </a>
+              </div>
+            </section>
+          ) : (
+            <section className="card">
+              <div className="search-result-title">
+                <div>
+                  <h2>{hasAccountHistory ? "Need another service?" : "Need a service?"}</h2>
+                  <p>
+                    {hasAccountHistory
+                      ? "Start one request when you are ready. We will price it first, then recommend one provider."
+                      : "Start with one request. Booking, reviews, and repeat service will show up here after that."}
+                  </p>
+                </div>
+                <a className="button" href="/customer/dashboard?flow=request">
+                  {hasAccountHistory ? "Start request" : "Book first service"}
+                </a>
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      {!requestFlowActive ? (
+        <>
+          {sectionSpotlightBookAgainOption || pastRecurringPlans.length ? (
+            <section className="card">
+              <h2>
+                {hasCurrentBookAgainOptions
+                  ? priorityCardKind === "retention" || priorityCardKind === "plan"
+                    ? "Other repeat options"
+                    : "Book again"
+                  : "Past repeat plans"}
+              </h2>
+              <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                {sectionSpotlightBookAgainOption?.kind === "plan"
+                  ? renderRecurringPlanCard(sectionSpotlightBookAgainOption.summary)
+                  : sectionSpotlightBookAgainOption?.kind === "retention"
+                    ? renderRetentionOpportunityCard(sectionSpotlightBookAgainOption.opportunity)
+                    : null}
+                {sectionAdditionalBookAgainOptionCount ? (
+                  <details className="service-card-disclosure">
+                    <summary className="service-card-disclosure__summary">
+                      {sectionAdditionalBookAgainOptionCount === 1
+                        ? "1 other repeat option"
+                        : `${sectionAdditionalBookAgainOptionCount} other repeat options`}
+                    </summary>
+                    <div className="service-card-disclosure__body">
+                      <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                        {sectionAdditionalRecurringPlans.map((summary) => (
+                          <div key={summary.plan.id}>{renderRecurringPlanCard(summary)}</div>
+                        ))}
+                        {sectionAdditionalRetentionOpportunities.map((opportunity) => (
+                          <div key={opportunity.id}>{renderRetentionOpportunityCard(opportunity)}</div>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                ) : null}
+                {pastRecurringPlans.length && hasCurrentBookAgainOptions ? (
+                  <details className="service-card-disclosure">
+                    <summary className="service-card-disclosure__summary">Past repeat plans</summary>
+                    <div className="service-card-disclosure__body">
+                      {pastRecurringPlans.map((summary) => (
+                        <div key={summary.plan.id}>{renderPastRecurringPlanCard(summary)}</div>
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
+                {pastRecurringPlans.length && !hasCurrentBookAgainOptions
+                  ? pastRecurringPlans.map((summary) => (
+                      <div key={summary.plan.id}>{renderPastRecurringPlanCard(summary)}</div>
+                    ))
+                  : null}
+              </div>
+            </section>
+          ) : null}
+
+          {sectionSpotlightBooking || sectionSpotlightReviewOpportunity ? (
+            <section className={sectionSpotlightBooking && sectionSpotlightReviewOpportunity ? "grid-two" : "stack-lg"}>
+              {sectionSpotlightBooking ? (
+                <article className="card">
+                  <h2>{priorityCardKind === "booking" ? "Other visits" : "Happening now"}</h2>
+                  <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                    {renderActiveBookingCard(sectionSpotlightBooking)}
+                    {sectionAdditionalActiveBookings.length ? (
+                      <details className="service-card-disclosure">
+                        <summary className="service-card-disclosure__summary">
+                          {sectionAdditionalActiveBookings.length === 1
+                            ? "1 other visit"
+                            : `${sectionAdditionalActiveBookings.length} other visits`}
+                        </summary>
+                        <div className="service-card-disclosure__body">
+                          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                            {sectionAdditionalActiveBookings.map((booking) => (
+                              <div key={booking.id}>{renderActiveBookingCard(booking)}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                </article>
+              ) : null}
+
+              {sectionSpotlightReviewOpportunity ? (
+                <article className="card">
+                  <h2>{priorityCardKind === "review" ? "Other reviews" : "Ready to review"}</h2>
+                  <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                    {renderReviewOpportunityCard(sectionSpotlightReviewOpportunity)}
+                    {sectionAdditionalReviewOpportunities.length ? (
+                      <details className="service-card-disclosure">
+                        <summary className="service-card-disclosure__summary">
+                          {sectionAdditionalReviewOpportunities.length === 1
+                            ? "1 other review"
+                            : `${sectionAdditionalReviewOpportunities.length} other reviews`}
+                        </summary>
+                        <div className="service-card-disclosure__body">
+                          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                            {sectionAdditionalReviewOpportunities.map((opportunity) => (
+                              <div key={opportunity.bookingId}>{renderReviewOpportunityCard(opportunity)}</div>
+                            ))}
+                          </div>
+                        </div>
+                      </details>
+                    ) : null}
+                  </div>
+                </article>
+              ) : null}
+            </section>
+          ) : null}
+        </>
+      ) : null}
       {activeChatBookingId && chatThread ? (
         <FloatingChatWindow
           busy={loadingState === "loading"}
