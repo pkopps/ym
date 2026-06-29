@@ -2,13 +2,29 @@
 
 import { FormEvent, useState } from "react";
 import { Address, ServiceCategory } from "@yardmatch/contracts";
-import { useRouter } from "next/navigation";
+import { serviceCategoryLabels } from "@yardmatch/ui";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../lib/api";
 import { SignupIdentityOptions } from "./SignupIdentityOptions";
+import {
+  CustomerCustomTimingWindow,
+  CustomerTimingPreference,
+  customerCustomTimingWindowOptions,
+  customerTimingOptions,
+  getCustomerTimingLabel
+} from "./PublicMarketplaceSearchShell";
 
 type AccountSignupRole = "customer" | "provider";
 
 const defaultProviderCategories: ServiceCategory[] = ["lawn-mowing", "seasonal-cleanup"];
+const customerTimingValues = new Set<CustomerTimingPreference>([
+  ...customerTimingOptions.map((option) => option.value),
+  "custom-date",
+  "custom-range"
+]);
+const customerCustomTimingWindowValues = new Set<CustomerCustomTimingWindow>(
+  customerCustomTimingWindowOptions.map((option) => option.value)
+);
 
 function buildEstimatedPoint(state: string, postalCode: string) {
   const normalizedState = state.trim().toUpperCase();
@@ -22,8 +38,43 @@ function buildEstimatedPoint(state: string, postalCode: string) {
   };
 }
 
+function getSearchParamValue(searchParams: ReturnType<typeof useSearchParams>, key: string) {
+  return searchParams.get(key)?.trim() ?? "";
+}
+
+function parseServiceCategory(value: string | null): ServiceCategory | undefined {
+  if (!value || !Object.prototype.hasOwnProperty.call(serviceCategoryLabels, value)) {
+    return undefined;
+  }
+
+  return value as ServiceCategory;
+}
+
+function parseCustomerTiming(value: string | null): CustomerTimingPreference | undefined {
+  if (!value || !customerTimingValues.has(value as CustomerTimingPreference)) {
+    return undefined;
+  }
+
+  return value as CustomerTimingPreference;
+}
+
+function parseCustomTimingWindow(value: string | null): CustomerCustomTimingWindow {
+  if (!value || !customerCustomTimingWindowValues.has(value as CustomerCustomTimingWindow)) {
+    return "morning";
+  }
+
+  return value as CustomerCustomTimingWindow;
+}
+
 export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const carriedService = role === "customer" ? parseServiceCategory(searchParams.get("service")) : undefined;
+  const carriedTiming = role === "customer" ? parseCustomerTiming(searchParams.get("when")) : undefined;
+  const carriedCustomDate = role === "customer" ? getSearchParamValue(searchParams, "date") || getSearchParamValue(searchParams, "start") : "";
+  const carriedCustomWindow = role === "customer" ? parseCustomTimingWindow(searchParams.get("window")) : "morning";
+  const carriedArea = role === "customer" ? getSearchParamValue(searchParams, "area") : "";
+  const carriedProviderName = role === "customer" ? getSearchParamValue(searchParams, "providerName") : "";
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,11 +84,39 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const [serviceRadiusMiles, setServiceRadiusMiles] = useState(15);
   const [line1, setLine1] = useState("");
   const [line2, setLine2] = useState("");
-  const [city, setCity] = useState("");
-  const [state, setState] = useState("");
-  const [postalCode, setPostalCode] = useState("");
+  const [city, setCity] = useState(() => (role === "customer" ? getSearchParamValue(searchParams, "city") : ""));
+  const [state, setState] = useState(() => (role === "customer" ? getSearchParamValue(searchParams, "state") : ""));
+  const [postalCode, setPostalCode] = useState(() =>
+    role === "customer" ? getSearchParamValue(searchParams, "postalCode") : ""
+  );
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const shouldShowCustomerIntent = role === "customer" && (carriedService || carriedTiming || carriedArea || carriedProviderName);
+  const postSignupRedirectPath = buildPostSignupRedirectPath();
+  const socialRedirectUri =
+    typeof window === "undefined"
+      ? undefined
+      : `${window.location.origin}/auth/complete?role=${encodeURIComponent(role)}&returnTo=${encodeURIComponent(postSignupRedirectPath)}`;
+
+  function buildPostSignupRedirectPath() {
+    if (role === "provider") {
+      return "/provider/management";
+    }
+
+    const redirectParams = new URLSearchParams({ flow: "request" });
+    if (carriedService) {
+      redirectParams.set("service", carriedService);
+    }
+    if (carriedTiming) {
+      redirectParams.set("when", carriedTiming);
+    }
+    if ((carriedTiming === "custom-date" || carriedTiming === "custom-range") && carriedCustomDate) {
+      redirectParams.set("date", carriedCustomDate);
+      redirectParams.set("window", carriedCustomWindow);
+    }
+
+    return `/customer/dashboard?${redirectParams.toString()}`;
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -105,7 +184,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
         expiresAtIso: envelope.session.expiresAtIso
       });
 
-      router.push(role === "provider" ? "/provider/management" : "/customer/dashboard?flow=request");
+      router.push(postSignupRedirectPath);
       router.refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create this account right now.");
@@ -117,6 +196,34 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   return (
     <section className="card">
       <form className="auth-form-stack" onSubmit={handleSubmit}>
+        {shouldShowCustomerIntent ? (
+          <div className="auth-intent-panel">
+            <div>
+              <span className="eyebrow">Ready to book</span>
+              <h2>{carriedProviderName || "Your YardMatch request"}</h2>
+            </div>
+            <div className="auth-intent-panel__grid" aria-label="Signup request summary">
+              {carriedService ? (
+                <div>
+                  <span>Service</span>
+                  <strong>{serviceCategoryLabels[carriedService]}</strong>
+                </div>
+              ) : null}
+              {carriedTiming ? (
+                <div>
+                  <span>When</span>
+                  <strong>{getCustomerTimingLabel(carriedTiming, carriedCustomDate, carriedCustomWindow)}</strong>
+                </div>
+              ) : null}
+              {carriedArea ? (
+                <div>
+                  <span>Area</span>
+                  <strong>{carriedArea}</strong>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <div className="form-grid">
           <label className="form-field form-field--full">
             <span>Full name</span>
@@ -212,7 +319,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
           </a>
         </div>
 
-        <SignupIdentityOptions role={role} />
+        <SignupIdentityOptions redirectUri={socialRedirectUri} role={role} />
       </form>
     </section>
   );

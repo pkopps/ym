@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { AccountSignupForm } from "../../../components/AccountSignupForm";
+import { LoadingScreen } from "../../../components/LoadingScreen";
 
 export const metadata: Metadata = {
   title: "Customer sign up"
@@ -14,7 +16,9 @@ export default function CustomerSignupPage() {
         <p>Add your contact and service address so you can request or manage yard care.</p>
       </section>
 
-      <AccountSignupForm role="customer" />
+      <Suspense fallback={<LoadingScreen label="Loading signup..." />}>
+        <AccountSignupForm role="customer" />
+      </Suspense>
     </main>
   );
 }

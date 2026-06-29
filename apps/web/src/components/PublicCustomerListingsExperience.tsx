@@ -121,6 +121,83 @@ function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreferenc
   return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
 }
 
+function buildCustomerSignupHref({
+  areaQuery,
+  rank,
+  result,
+  selectedCustomDate,
+  selectedCustomEndDate,
+  selectedCustomWindow,
+  selectedCustomWindows,
+  selectedService,
+  selectedSuggestion,
+  selectedTiming
+}: {
+  areaQuery: string;
+  rank?: number;
+  result?: SearchProviderResult;
+  selectedCustomDate: string;
+  selectedCustomEndDate: string;
+  selectedCustomWindow: CustomerCustomTimingWindow;
+  selectedCustomWindows: CustomerCustomTimingWindow[];
+  selectedService: ServiceCategory;
+  selectedSuggestion?: PlaceSuggestion;
+  selectedTiming: CustomerTimingPreference;
+}) {
+  const params = buildCustomerListingsSearchParams({
+    areaQuery,
+    selectedCustomDate,
+    selectedCustomEndDate,
+    selectedCustomWindow,
+    selectedCustomWindows,
+    selectedService,
+    selectedSuggestion,
+    selectedTiming
+  });
+
+  params.set("source", "listings");
+
+  if (result) {
+    params.set("providerId", result.provider.id);
+    params.set("providerName", result.provider.companyName);
+    params.set("rank", String(rank ?? 1));
+    if (result.suggestedSlot) {
+      params.set("slot", result.suggestedSlot.startIso);
+    }
+  }
+
+  return `/auth/customer?${params.toString()}`;
+}
+
+function buildCustomerDashboardRequestHref({
+  selectedCustomDate,
+  selectedCustomWindow,
+  selectedService,
+  selectedTiming
+}: {
+  selectedCustomDate: string;
+  selectedCustomWindow: CustomerCustomTimingWindow;
+  selectedService: ServiceCategory;
+  selectedTiming: CustomerTimingPreference;
+}) {
+  const params = new URLSearchParams({
+    flow: "request",
+    service: selectedService,
+    when: selectedTiming
+  });
+
+  if ((selectedTiming === "custom-date" || selectedTiming === "custom-range") && selectedCustomDate) {
+    params.set("date", selectedCustomDate);
+    params.set("window", selectedCustomWindow);
+  }
+
+  return `/customer/dashboard?${params.toString()}`;
+}
+
+function buildCustomerLoginHref(returnTo: string) {
+  return `/login/customer?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
 function buildBoundingBox(origin: GeoPoint, results: SearchProviderResult[]) {
   const points = [origin, ...results.map((result) => result.provider.address.point)];
   const latitudes = points.map((point) => point.latitude);
@@ -252,6 +329,23 @@ export function PublicCustomerListingsExperience({
   const liveMetrics = formatSearchMetrics(providerResults);
   const providersWithOpenWindows = rankedProviders.filter((provider) => provider.hasOpenSlot);
   const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
+  const customerSignupHref = buildCustomerSignupHref({
+    areaQuery,
+    selectedCustomDate,
+    selectedCustomEndDate,
+    selectedCustomWindow,
+    selectedCustomWindows,
+    selectedService,
+    selectedSuggestion,
+    selectedTiming
+  });
+  const customerDashboardRequestHref = buildCustomerDashboardRequestHref({
+    selectedCustomDate,
+    selectedCustomWindow,
+    selectedService,
+    selectedTiming
+  });
+  const customerLoginHref = buildCustomerLoginHref(customerDashboardRequestHref);
   const listingsMapRadiusMiles = rankedProviders.length
     ? Math.max(
         12,
@@ -478,10 +572,10 @@ export function PublicCustomerListingsExperience({
             </small>
           </div>
           <div className="results-summary__actions">
-            <a className="button-secondary" href="/auth">
-              Create account to book
+            <a className="button-secondary" href={customerSignupHref}>
+              Continue
             </a>
-            <a className="button-secondary" href="/login/customer">
+            <a className="button-secondary" href={customerLoginHref}>
               Customer login
             </a>
           </div>
@@ -636,8 +730,21 @@ export function PublicCustomerListingsExperience({
                   choicePresentation={providerChoicePresentations[index]}
                   isPrimaryRecommendation={index === 0}
                   key={result.provider.id}
+                  loginHref={customerLoginHref}
                   result={result}
                   rank={index + 1}
+                  signupHref={buildCustomerSignupHref({
+                    areaQuery,
+                    rank: index + 1,
+                    result,
+                    selectedCustomDate,
+                    selectedCustomEndDate,
+                    selectedCustomWindow,
+                    selectedCustomWindows,
+                    selectedService,
+                    selectedSuggestion,
+                    selectedTiming
+                  })}
                 />
               ))}
             </div>
@@ -661,13 +768,17 @@ export function PublicCustomerListingsExperience({
 function LiveProviderCard({
   choicePresentation,
   isPrimaryRecommendation = false,
+  loginHref,
   rank,
-  result
+  result,
+  signupHref
 }: {
   choicePresentation?: { badge: string; heading: string; detail: string };
   isPrimaryRecommendation?: boolean;
+  loginHref: string;
   rank: number;
   result: SearchProviderResult;
+  signupHref: string;
 }) {
   const provider = result.provider;
   const displayedCategories = provider.categories
@@ -681,7 +792,10 @@ function LiveProviderCard({
     <article className={`list-panel live-provider-card${isPrimaryRecommendation ? " live-provider-card--recommended" : ""}`}>
       <div className="live-provider-card__header">
         <div className="search-result-title">
-          <h3>{provider.companyName}</h3>
+          <div>
+            {isPrimaryRecommendation ? <span className="eyebrow">Recommended first</span> : null}
+            <h3>{provider.companyName}</h3>
+          </div>
           <div className="live-provider-card__badges">
             {choicePresentation ? <span className="result-badge">{choicePresentation.badge}</span> : rank === 1 ? <span className="result-badge">Best fit</span> : null}
             {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
@@ -690,10 +804,6 @@ function LiveProviderCard({
             </span>
           </div>
         </div>
-        <p>
-          {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality •{" "}
-          {provider.reviewCount} reviews
-        </p>
       </div>
 
       {choicePresentation ? (
@@ -723,14 +833,8 @@ function LiveProviderCard({
         </div>
       </div>
 
-      <p className="live-provider-card__window">
-        {result.suggestedSlot
-          ? `Next open window: ${formatBookingWindowSummary(result.suggestedSlot.startIso)}`
-          : "This business serves the area, but the next route window is currently full."}
-      </p>
-
       <details className="service-card-disclosure">
-        <summary className="service-card-disclosure__summary">Why this pick</summary>
+        <summary className="service-card-disclosure__summary">Trust details</summary>
         <div className="service-card-disclosure__body">
           <p className="live-provider-card__address">
             <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
@@ -766,10 +870,10 @@ function LiveProviderCard({
       </p>
 
       <div className="cta-row">
-        <a className="button" href="/auth">
-          {rank === 1 ? "Create account to hold this match" : "Create account to book"}
+        <a className="button" href={signupHref}>
+          {rank === 1 ? "Continue with this match" : "Continue"}
         </a>
-        <a className="button-secondary" href="/login/customer">
+        <a className="button-secondary" href={loginHref}>
           Log in
         </a>
       </div>

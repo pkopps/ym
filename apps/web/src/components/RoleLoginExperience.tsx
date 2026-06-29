@@ -1,7 +1,9 @@
 "use client";
 
 import { MarketplaceRole } from "@yardmatch/contracts";
+import { Suspense } from "react";
 import { landscapingToolIllustrations } from "../lib/landscapingToolIllustrations";
+import { LoadingScreen } from "./LoadingScreen";
 import { RoleLoginCard } from "./RoleLoginCard";
 
 const roleExperienceCopy: Record<
@@ -170,7 +172,9 @@ export function RoleLoginExperience({ role }: { role: MarketplaceRole }) {
             <h2>{content.formTitle}</h2>
             <p>{content.formCopy}</p>
           </div>
-          <RoleLoginCard role={role} />
+          <Suspense fallback={<LoadingScreen label="Loading login..." />}>
+            <RoleLoginCard role={role} />
+          </Suspense>
         </div>
       </section>
     </main>

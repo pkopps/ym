@@ -37,9 +37,11 @@ function AppleLogo() {
 
 export function AuthIdentityOptions({
   mode,
+  redirectUri,
   role
 }: {
   mode: AuthFlowMode;
+  redirectUri?: string;
   role: MarketplaceRole;
 }) {
   const api = new MarketplaceApiClient(getWebApiBaseUrl());
@@ -50,7 +52,8 @@ export function AuthIdentityOptions({
         className="auth-provider-button"
         href={api.getGoogleAuthStartUrl({
           role,
-          mode
+          mode,
+          redirectUri
         })}
       >
         <GoogleLogo />
@@ -60,7 +63,8 @@ export function AuthIdentityOptions({
         className="auth-provider-button"
         href={api.getAppleAuthStartUrl({
           role,
-          mode
+          mode,
+          redirectUri
         })}
       >
         <AppleLogo />
@@ -70,6 +74,6 @@ export function AuthIdentityOptions({
   );
 }
 
-export function SignupIdentityOptions({ role }: { role: MarketplaceRole }) {
-  return <AuthIdentityOptions mode="signup" role={role} />;
+export function SignupIdentityOptions({ redirectUri, role }: { redirectUri?: string; role: MarketplaceRole }) {
+  return <AuthIdentityOptions mode="signup" redirectUri={redirectUri} role={role} />;
 }

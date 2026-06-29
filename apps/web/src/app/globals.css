@@ -3710,6 +3710,48 @@ body {
   font-weight: 600;
 }
 
+.auth-intent-panel {
+  display: grid;
+  gap: var(--ym-space-4);
+  padding: var(--ym-space-4);
+  border: 1px solid rgba(47, 125, 76, 0.12);
+  border-radius: 16px;
+  background: rgba(47, 125, 76, 0.08);
+}
+
+.auth-intent-panel h2,
+.auth-intent-panel p {
+  margin: 0;
+}
+
+.auth-intent-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.auth-intent-panel__grid div {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.25rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.auth-intent-panel__grid span {
+  color: var(--ym-color-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.auth-intent-panel__grid strong {
+  color: var(--ym-color-ink);
+  line-height: 1.2;
+}
+
 .auth-provider-button {
   display: inline-flex;
   align-items: center;
@@ -4112,6 +4154,8 @@ body {
   .grid-three,
   .service-tile-grid,
   .live-listings-card__featured-grid,
+  .live-provider-card__booking-strip,
+  .auth-intent-panel__grid,
   .provider-hero,
   .provider-filters__group,
   .provider-story__grid,
@@ -4226,7 +4270,6 @@ body {
   .results-summary,
   .calendar-card__header,
   .calendar-card__identity,
-  .live-provider-card__booking-strip,
   .provider-capacity-alert,
   .provider-job-card__heading,
   .radius-settings__header,

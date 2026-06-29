@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { AccountSignupForm } from "../../../../components/AccountSignupForm";
+import { LoadingScreen } from "../../../../components/LoadingScreen";
 
 export const metadata: Metadata = {
   title: "Create your business account"
@@ -14,7 +16,9 @@ export default function ProviderSignupCreatePage() {
         <p>Add your company, address, and service radius so YardMatch can create your provider profile.</p>
       </section>
 
-      <AccountSignupForm role="provider" />
+      <Suspense fallback={<LoadingScreen label="Loading signup..." />}>
+        <AccountSignupForm role="provider" />
+      </Suspense>
     </main>
   );
 }

@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Address, MarketplaceRole, PlaceSuggestion } from "@yardmatch/contracts";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../../../lib/api";
+import { getRoleRedirectPath } from "../../../lib/redirects";
 
 const redirectByRole: Record<MarketplaceRole, string> = {
   customer: "/customer/dashboard",
@@ -31,6 +32,7 @@ export default function AuthCompletePage() {
   const searchParams = useSearchParams();
   const status = searchParams.get("authStatus");
   const role = (searchParams.get("role") as MarketplaceRole | null) ?? "customer";
+  const returnTo = searchParams.get("returnTo");
   const [fullName, setFullName] = useState(searchParams.get("fullName") ?? "");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -68,9 +70,9 @@ export default function AuthCompletePage() {
       expiresAtIso
     });
 
-    router.replace(redirectByRole[role] ?? "/");
+    router.replace(getRoleRedirectPath(role, returnTo, redirectByRole[role] ?? "/"));
     router.refresh();
-  }, [role, router, searchParams, status]);
+  }, [returnTo, role, router, searchParams, status]);
 
   async function handleSearchAddress() {
     if (addressQuery.trim().length < 3) {
@@ -125,7 +127,7 @@ export default function AuthCompletePage() {
         expiresAtIso: envelope.session.expiresAtIso
       });
 
-      router.replace(redirectByRole[envelope.user.role]);
+      router.replace(getRoleRedirectPath(envelope.user.role, returnTo, redirectByRole[envelope.user.role]));
       router.refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to finish the social signup right now.");

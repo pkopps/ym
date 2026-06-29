@@ -31,9 +31,13 @@ import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { CustomerHistoryBoard } from "./CustomerHistoryBoard";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 import {
+  CustomerCustomTimingWindow,
   buildDateIsoForCustomerTiming,
+  customerCustomTimingWindowOptions,
   CustomerTimingPreference,
   customerTimingOptions,
+  getDefaultCustomerCustomDateString,
+  getMinimumCustomerCustomDateString,
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
 
@@ -45,6 +49,14 @@ const serviceOptions: Array<{ label: string; value: ServiceCategory }> = [
   { label: "Weed control", value: "weed-control" },
   { label: "Leaf blowing", value: "leaf-blowing" }
 ];
+const dashboardTimingOptions: Array<{ label: string; value: CustomerTimingPreference }> = [
+  ...customerTimingOptions,
+  { label: "Choose date", value: "custom-date" }
+];
+const dashboardTimingValues = new Set<CustomerTimingPreference>(dashboardTimingOptions.map((option) => option.value));
+const dashboardCustomWindowValues = new Set<CustomerCustomTimingWindow>(
+  customerCustomTimingWindowOptions.map((option) => option.value)
+);
 
 const historicalBookingStatuses = new Set<Booking["status"]>([
   "completed",
@@ -104,6 +116,34 @@ function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreferenc
   }
 
   return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
+}
+
+function parseDashboardServiceParam(value: string | null): ServiceCategory {
+  return serviceOptions.some((option) => option.value === value) ? (value as ServiceCategory) : "lawn-mowing";
+}
+
+function parseDashboardTimingParam(value: string | null): CustomerTimingPreference {
+  if (value === "custom-range") {
+    return "custom-date";
+  }
+
+  return dashboardTimingValues.has(value as CustomerTimingPreference)
+    ? (value as CustomerTimingPreference)
+    : "tomorrow-morning";
+}
+
+function parseDashboardCustomWindowParam(value: string | null): CustomerCustomTimingWindow {
+  return dashboardCustomWindowValues.has(value as CustomerCustomTimingWindow)
+    ? (value as CustomerCustomTimingWindow)
+    : "morning";
+}
+
+function parseDashboardDateParam(value: string | null): string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return getDefaultCustomerCustomDateString();
+  }
+
+  return value;
 }
 
 function formatRetentionTrigger(trigger: CustomerRetentionOpportunity["trigger"]) {
@@ -209,6 +249,10 @@ export function CustomerLiveDashboard() {
   const searchParams = useSearchParams();
   const requestedView = searchParams.get("view");
   const requestedFlow = searchParams.get("flow");
+  const requestedService = parseDashboardServiceParam(searchParams.get("service"));
+  const requestedTiming = parseDashboardTimingParam(searchParams.get("when"));
+  const requestedCustomDate = parseDashboardDateParam(searchParams.get("date"));
+  const requestedCustomWindow = parseDashboardCustomWindowParam(searchParams.get("window"));
   const dashboardView = requestedView === "history" ? "history" : "account";
   const historyOnlyView = dashboardView === "history";
   const requestFlow = requestedFlow === "request";
@@ -225,8 +269,11 @@ export function CustomerLiveDashboard() {
   const [activeRetentionOpportunity, setActiveRetentionOpportunity] =
     useState<CustomerRetentionOpportunity | undefined>();
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<ServiceCategory>("lawn-mowing");
-  const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>("tomorrow-morning");
+  const [selectedCategory, setSelectedCategory] = useState<ServiceCategory>(requestedService);
+  const [selectedTiming, setSelectedTiming] = useState<CustomerTimingPreference>(requestedTiming);
+  const [selectedCustomDate, setSelectedCustomDate] = useState(requestedCustomDate);
+  const [selectedCustomWindow, setSelectedCustomWindow] =
+    useState<CustomerCustomTimingWindow>(requestedCustomWindow);
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
   const [loadingState, setLoadingState] = useState<"idle" | "loading">("idle");
@@ -254,7 +301,7 @@ export function CustomerLiveDashboard() {
   const trackedRetentionPromptIds = useRef(new Set<string>());
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
-  const timingLabel = getCustomerTimingLabel(selectedTiming);
+  const timingLabel = getCustomerTimingLabel(selectedTiming, selectedCustomDate, selectedCustomWindow);
   const selectedServiceLabel =
     serviceOptions.find((option) => option.value === selectedCategory)?.label ?? "Selected service";
   const selectedCadenceLabel =
@@ -660,7 +707,7 @@ export function CustomerLiveDashboard() {
       const results = await api.searchProviders({
         address: activeProperty.address,
         categories: [selectedCategory],
-        dateIso: buildDateIsoForCustomerTiming(timingPreference),
+        dateIso: buildDateIsoForCustomerTiming(timingPreference, selectedCustomDate, selectedCustomWindow),
         estimatedDurationMinutes: quote?.estimatedDurationMinutes,
         requestSource: activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard",
         retentionPreference: getActiveRetentionPreference(),
@@ -1236,13 +1283,39 @@ export function CustomerLiveDashboard() {
               onChange={(event) => setSelectedTiming(event.target.value as CustomerTimingPreference)}
               value={selectedTiming}
             >
-              {customerTimingOptions.map((option) => (
+              {dashboardTimingOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
           </label>
+          {selectedTiming === "custom-date" ? (
+            <>
+              <label className="form-field">
+                <span>Date</span>
+                <input
+                  min={getMinimumCustomerCustomDateString()}
+                  onChange={(event) => setSelectedCustomDate(event.target.value)}
+                  type="date"
+                  value={selectedCustomDate}
+                />
+              </label>
+              <label className="form-field">
+                <span>Window</span>
+                <select
+                  onChange={(event) => setSelectedCustomWindow(event.target.value as CustomerCustomTimingWindow)}
+                  value={selectedCustomWindow}
+                >
+                  {customerCustomTimingWindowOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
           <label className="form-field">
             <span>Cadence</span>
             <select
