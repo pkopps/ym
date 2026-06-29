@@ -67,6 +67,9 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
       country: "US",
       point: buildEstimatedPoint(state, postalCode)
     };
+    const resolvedServiceRadiusMiles = Number.isFinite(serviceRadiusMiles)
+      ? Math.min(60, Math.max(5, serviceRadiusMiles))
+      : 15;
 
     try {
       setIsSubmitting(true);
@@ -81,7 +84,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
         ...(role === "provider"
           ? {
               companyName: companyName.trim(),
-              serviceRadiusMiles,
+              serviceRadiusMiles: resolvedServiceRadiusMiles,
               categories: defaultProviderCategories
             }
           : {
