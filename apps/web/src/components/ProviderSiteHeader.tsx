@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { clearStoredSession } from "../lib/api";
+import { clearStoredSession, getWebApiBaseUrl } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { NotificationMenu } from "./NotificationMenu";
 
@@ -10,7 +10,7 @@ const productColumns = [
     title: "Marketplace",
     items: [
       {
-        href: "/auth/provider",
+        href: "/auth/provider/create",
         title: "List your business",
         body: "Reach new property owners looking for recurring service."
       },
@@ -70,7 +70,7 @@ const productColumns = [
 
 const marketplaceLinks = [
   {
-    href: "/auth/provider",
+    href: "/auth/provider/create",
     title: "Find new clients",
     body: "Show up where property owners are already looking for lawn care."
   },
@@ -98,7 +98,7 @@ const marketplaceLinks = [
 
 const learnLinks = [
   { href: "/help", label: "Help center" },
-  { href: "/api/docs", label: "Developer docs" },
+  { href: `${getWebApiBaseUrl()}/api/docs`, label: "Developer docs" },
   { href: "/provider", label: "Business resources" }
 ] as const;
 
@@ -145,7 +145,7 @@ export function ProviderSiteHeader() {
   return (
     <header className="site-header provider-site-header">
       <div className="container site-header__inner provider-site-header__inner">
-        <a href="/auth/provider" className="brand-lockup">
+        <a href="/provider" className="brand-lockup">
           <span className="brand-lockup__mark">YM</span>
           <span>
             <strong>YardMatch for Businesses</strong>

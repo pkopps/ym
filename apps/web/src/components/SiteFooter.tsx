@@ -24,7 +24,7 @@ const footerColumns = [
     title: "Grow with YardMatch",
     links: [
       { href: "/provider", label: "Are you a top landscaper or outdoor service?" },
-      { href: "/auth/provider", label: "List your business on YardMatch" },
+      { href: "/auth/provider/create", label: "List your business on YardMatch" },
       { href: "/crew", label: "Find crew members for growing demand" },
       { href: "/provider", label: "Provider growth tools" },
       { href: "/about", label: "How the marketplace works" },

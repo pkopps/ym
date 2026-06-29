@@ -52,7 +52,7 @@ export default function AboutPage() {
               <a className="button" href="/customer">
                 Book a service
               </a>
-              <a className="button-secondary" href="/auth/provider">
+              <a className="button-secondary" href="/provider">
                 List your business
               </a>
               <a className="button-secondary" href="/auth/crew">

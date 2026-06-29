@@ -119,8 +119,7 @@ export const internalRobotsDisallowPaths = [
   "/provider/payments",
   "/provider/partnerships",
   "/crew/schedule",
-  "/ops/",
-  "/loading-icon"
+  "/ops/"
 ] as const;
 
 export function buildSiteUrl(path = "/") {

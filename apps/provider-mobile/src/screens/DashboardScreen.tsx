@@ -9,6 +9,25 @@ import { createProviderMobileApiClient } from "../lib/api";
 import { getProviderMobileTracker } from "../lib/tracking";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100);
+}
+
+function formatJobWindow(iso: string) {
+  const date = new Date(iso);
+  const day = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${day} • ${time}`;
+}
+
+function formatJobStatus(status: string) {
+  return status.replaceAll("-", " ");
+}
+
 export function DashboardScreen({
   onOpenCrew,
   onOpenSchedule
@@ -114,6 +133,7 @@ export function DashboardScreen({
           <Text style={styles.alertText}>
             Start the route from Schedule when you are ready to head to the property.
           </Text>
+          <ProviderJobSnapshot job={departureReminderJob} />
           <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
             <Text style={styles.primaryButtonLabel}>Open schedule</Text>
           </Pressable>
@@ -126,6 +146,7 @@ export function DashboardScreen({
             {nextJob.assignedCrewMembers}/{nextJob.requiredCrewMembers} crew
             {nextJob.crewGap > 0 ? ` • ${nextJob.crewGap} still open` : " • fully staffed"}
           </Text>
+          <ProviderJobSnapshot job={nextJob} />
           <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
             <Text style={styles.primaryButtonLabel}>Open schedule</Text>
           </Pressable>
@@ -163,12 +184,8 @@ export function DashboardScreen({
             <View key={job.bookingId} style={styles.jobRow}>
               <View style={styles.jobCopy}>
                 <Text style={styles.jobTitle}>{job.customerName}</Text>
-                <Text style={styles.jobMeta}>
-                  {new Date(job.scheduledStartIso).toLocaleDateString()} • {job.category.replaceAll("-", " ")}
-                </Text>
-                <Text style={styles.jobMeta}>
-                  {job.assignedCrewMembers}/{job.requiredCrewMembers} crew • {job.crewGap} open
-                </Text>
+                <Text style={styles.jobMeta}>{job.category.replaceAll("-", " ")}</Text>
+                <ProviderJobSnapshot job={job} compact />
               </View>
               <Text style={job.crewGap > 0 ? styles.warningBadge : styles.successBadge}>
                 {job.crewGap > 0 ? "Needs review" : "Covered"}
@@ -189,6 +206,38 @@ export function DashboardScreen({
 
 function buildDepartureSummary(job: ProviderStaffingJobSummary) {
   return `${job.customerName} • ${new Date(job.scheduledStartIso).toLocaleDateString()} • ${new Date(job.scheduledStartIso).toLocaleTimeString([], { timeStyle: "short" })}`;
+}
+
+function ProviderJobSnapshot({
+  compact = false,
+  job
+}: {
+  compact?: boolean;
+  job: ProviderStaffingJobSummary;
+}) {
+  return (
+    <View style={[styles.jobSummaryGrid, compact && styles.jobSummaryGridCompact]}>
+      <View style={styles.jobSummaryItem}>
+        <Text style={styles.jobSummaryLabel}>Window</Text>
+        <Text style={styles.jobSummaryValue}>{formatJobWindow(job.scheduledStartIso)}</Text>
+      </View>
+      <View style={styles.jobSummaryItem}>
+        <Text style={styles.jobSummaryLabel}>Crew</Text>
+        <Text style={styles.jobSummaryValue}>
+          {job.assignedCrewMembers}/{job.requiredCrewMembers}
+          {job.crewGap ? ` • gap ${job.crewGap}` : ""}
+        </Text>
+      </View>
+      <View style={styles.jobSummaryItem}>
+        <Text style={styles.jobSummaryLabel}>Total</Text>
+        <Text style={styles.jobSummaryValue}>{formatCurrency(job.totalCents)}</Text>
+      </View>
+      <View style={styles.jobSummaryItem}>
+        <Text style={styles.jobSummaryLabel}>Status</Text>
+        <Text style={styles.jobSummaryValue}>{formatJobStatus(job.status)}</Text>
+      </View>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -231,6 +280,35 @@ const styles = StyleSheet.create({
   jobCopy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
+  },
+  jobSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  jobSummaryGridCompact: {
+    marginTop: BrandTokens.spacing.xs
+  },
+  jobSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  jobSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  jobSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   jobTitle: {
     color: BrandTokens.colors.ink,

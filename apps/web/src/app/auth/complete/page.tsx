@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../../../lib/api";
 
 const redirectByRole: Record<MarketplaceRole, string> = {
-  customer: "/customer",
+  customer: "/customer/dashboard",
   provider: "/provider/management",
   ops: "/ops",
   "crew-member": "/crew"
@@ -256,7 +256,7 @@ export default function AuthCompletePage() {
                 className="button-secondary"
                 href={
                   role === "provider"
-                    ? "/auth/provider"
+                    ? "/auth/provider/create"
                     : role === "ops"
                       ? "/help"
                       : role === "crew-member"
@@ -301,7 +301,7 @@ export default function AuthCompletePage() {
             className="button-secondary"
             href={
               role === "provider"
-                ? "/auth/provider"
+                ? "/auth/provider/create"
                 : role === "ops"
                   ? "/help"
                   : role === "crew-member"

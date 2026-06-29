@@ -62,7 +62,7 @@ const roleExperienceCopy: Record<
       "See staffing gaps, payout holds, and calendar conflicts together.",
       "Use the assistant for fast reschedules and field updates."
     ],
-    primaryHref: "/auth/provider",
+    primaryHref: "/auth/provider/create",
     primaryLabel: "Create provider account",
     secondaryHref: "/help",
     secondaryLabel: "Talk to support",

@@ -18,7 +18,7 @@ const roleCopy: Record<
   customer: {
     title: "Sign in",
     helper: "Jump back into bookings, recurring care, route tracking, and support updates.",
-    redirectPath: "/customer"
+    redirectPath: "/customer/dashboard"
   },
   provider: {
     title: "Sign in",

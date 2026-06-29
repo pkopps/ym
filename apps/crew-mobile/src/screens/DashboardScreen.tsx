@@ -8,6 +8,48 @@ import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
+type CrewAssignment = CrewMatchesResponse["matches"][number];
+type CrewPrimaryAction = "start-work" | "proof";
+
+function formatShiftWindow(iso: string) {
+  const date = new Date(iso);
+  const day = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${day} • ${time}`;
+}
+
+function formatHourlyPay(cents: number) {
+  return `${new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100)}/hr`;
+}
+
+function getCrewRoleLabel(assignment: CrewAssignment) {
+  if (assignment.isAssignedRouteLeader) {
+    return "Route lead";
+  }
+
+  if (assignment.requiresRouteLeaderAssignment) {
+    return "Lead pending";
+  }
+
+  return "Crew";
+}
+
+function getCrewPrimaryAction(assignment: CrewAssignment): CrewPrimaryAction | undefined {
+  if (assignment.bookingStatus === "confirmed" && assignment.onRouteConfirmedAt) {
+    return "start-work";
+  }
+
+  if (assignment.bookingStatus === "in-progress") {
+    return "proof";
+  }
+
+  return undefined;
+}
+
 export function DashboardScreen({
   onOpenAvailability,
   onOpenSchedule
@@ -28,6 +70,7 @@ export function DashboardScreen({
     () => matchesResponse?.matches.find((match) => match.status === "accepted"),
     [matchesResponse]
   );
+  const acceptedPrimaryAction = acceptedMatch ? getCrewPrimaryAction(acceptedMatch) : undefined;
   const pendingCount = matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0;
   const acceptedCount = matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0;
 
@@ -236,26 +279,45 @@ export function DashboardScreen({
       {acceptedMatch ? (
         <InfoCard
           title={acceptedMatch.providerCompanyName}
-          description={`${new Date(acceptedMatch.scheduledStartIso).toLocaleDateString()} • ${new Date(acceptedMatch.scheduledStartIso).toLocaleTimeString()}`}
+          description="Accepted shift"
         >
           <Text style={styles.title}>{acceptedMatch.category.replaceAll("-", " ")}</Text>
           <Text style={styles.meta}>{acceptedMatch.serviceAddress.line1}</Text>
           <Text style={styles.meta}>
             {acceptedMatch.serviceAddress.city}, {acceptedMatch.serviceAddress.state}
           </Text>
-          <Text style={styles.meta}>Status: {acceptedMatch.bookingStatus.replaceAll("-", " ")}</Text>
+          <View style={styles.shiftSummaryGrid}>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Window</Text>
+              <Text style={styles.shiftSummaryValue}>{formatShiftWindow(acceptedMatch.scheduledStartIso)}</Text>
+            </View>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Pay</Text>
+              <Text style={styles.shiftSummaryValue}>{formatHourlyPay(acceptedMatch.hourlyRateCents)}</Text>
+            </View>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Role</Text>
+              <Text style={styles.shiftSummaryValue}>{getCrewRoleLabel(acceptedMatch)}</Text>
+            </View>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Proof</Text>
+              <Text style={styles.shiftSummaryValue}>
+                {acceptedMatch.beforeEvidenceCount} before • {acceptedMatch.afterEvidenceCount} after
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.statusLine}>{acceptedMatch.bookingStatus.replaceAll("-", " ")}</Text>
           {acceptedMatch.isAssignedRouteLeader ? (
             <Text style={styles.meta}>You are the assigned route leader for this job.</Text>
           ) : acceptedMatch.requiresRouteLeaderAssignment ? (
             <Text style={styles.meta}>The business owner still needs to choose which accepted crew member leads the route.</Text>
           ) : null}
-          <Text style={styles.meta}>Evidence • before {acceptedMatch.beforeEvidenceCount} • after {acceptedMatch.afterEvidenceCount}</Text>
-          {acceptedMatch.bookingStatus === "requested" ? (
+          {acceptedPrimaryAction === undefined && acceptedMatch.bookingStatus === "requested" ? (
             <View style={styles.waitingBadge}>
             <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation.</Text>
             </View>
           ) : null}
-          {acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
+          {acceptedPrimaryAction === undefined && acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
             <View style={styles.waitingBadge}>
               <Text style={styles.waitingBadgeLabel}>
                 {acceptedMatch.isAssignedRouteLeader
@@ -264,7 +326,7 @@ export function DashboardScreen({
               </Text>
             </View>
           ) : null}
-          {acceptedMatch.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt ? (
+          {acceptedPrimaryAction === "start-work" ? (
             <Pressable
               disabled={isWorking}
               onPress={() => void startWork()}
@@ -273,13 +335,20 @@ export function DashboardScreen({
               <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
             </Pressable>
           ) : null}
-          {acceptedMatch.bookingStatus === "in-progress" ? (
-            <View style={styles.waitingBadge}>
-              <Text style={styles.waitingBadgeLabel}>Job in progress</Text>
-            </View>
+          {acceptedPrimaryAction === "proof" ? (
+            <Pressable
+              disabled={isWorking}
+              onPress={() => setShowEvidenceTools((current) => !current)}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>
+                {showEvidenceTools ? "Hide proof" : "Add proof"}
+              </Text>
+            </Pressable>
           ) : null}
           <View style={styles.buttonRow}>
-            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") &&
+            acceptedPrimaryAction !== "proof" ? (
               <Pressable onPress={() => setShowEvidenceTools((current) => !current)} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonLabel}>
                   {showEvidenceTools ? "Hide proof of work" : "Proof of work"}
@@ -417,6 +486,37 @@ const styles = StyleSheet.create({
   meta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  statusLine: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700",
+    textTransform: "capitalize"
+  },
+  shiftSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  shiftSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  shiftSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  shiftSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   input: {
     borderRadius: BrandTokens.radius.md,

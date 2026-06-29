@@ -18,11 +18,30 @@ import { useCrewSession } from "../session/CrewSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
+type CrewPayoutEntry = CrewPayoutLedgerResponse["entries"][number];
+
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD"
   }).format(cents / 100);
+}
+
+function formatPayoutStatus(status: CrewPayoutEntry["status"]) {
+  switch (status) {
+    case "awaiting-customer-payment":
+      return "Awaiting payment";
+    case "on-hold":
+      return "On hold";
+    case "scheduled":
+      return "Scheduled";
+    case "ready":
+      return "Ready";
+    case "paid":
+      return "Paid";
+    case "reversed":
+      return "Reversed";
+  }
 }
 
 export function SupportScreen() {
@@ -45,6 +64,16 @@ export function SupportScreen() {
   const [showAlertPreferences, setShowAlertPreferences] = useState(false);
   const [showSupportComposer, setShowSupportComposer] = useState(false);
   const [showSupportHistory, setShowSupportHistory] = useState(false);
+  const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
+  const blockedPayoutCents =
+    (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
+    heldPayoutEntries.reduce((sum, entry) => sum + entry.amountCents, 0);
+  const payoutStateLabel =
+    blockedPayoutCents > 0
+      ? "Needs attention"
+      : (payoutLedger?.totalReadyCents ?? 0) > 0
+        ? "Ready now"
+        : "On track";
 
   async function loadMatches() {
     if (!envelope?.session.token) {
@@ -177,19 +206,34 @@ export function SupportScreen() {
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard title="Payouts" description="Live earnings ledger">
+      <InfoCard title="Payouts" description={payoutStateLabel}>
+        <View style={styles.payoutSummaryGrid}>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Ready</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalReadyCents ?? 0)}</Text>
+          </View>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Next</Text>
+            <Text style={styles.payoutSummaryValue}>
+              {payoutLedger?.nextWeeklyPayoutDateIso
+                ? new Date(payoutLedger.nextWeeklyPayoutDateIso).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric"
+                  })
+                : "Pending"}
+            </Text>
+          </View>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Blocked</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(blockedPayoutCents)}</Text>
+          </View>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Paid</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalPaidCents ?? 0)}</Text>
+          </View>
+        </View>
         <Text style={styles.meta}>
-          Ready now: {formatCurrency(payoutLedger?.totalReadyCents ?? 0)} • Scheduled:{" "}
-          {formatCurrency(payoutLedger?.totalScheduledCents ?? 0)}
-        </Text>
-        <Text style={styles.meta}>
-          Waiting on customer payment: {formatCurrency(payoutLedger?.pendingCustomerPaymentCents ?? 0)}
-        </Text>
-        <Text style={styles.meta}>
-          Next weekly crew payout:{" "}
-          {payoutLedger?.nextWeeklyPayoutDateIso
-            ? new Date(payoutLedger.nextWeeklyPayoutDateIso).toLocaleString()
-            : "Not available"}
+          {payoutLedger?.holdPeriodHours ?? 0}h hold • {formatCurrency(payoutLedger?.totalScheduledCents ?? 0)} scheduled
         </Text>
         {(payoutLedger?.entries ?? []).length > 0 ? (
           <View style={styles.ticketStack}>
@@ -202,7 +246,18 @@ export function SupportScreen() {
                   </Text>
                   <Text style={styles.meta}>{entry.note}</Text>
                 </View>
-                <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
+                <Text
+                  style={[
+                    styles.payoutStatusBadge,
+                    (entry.status === "ready" || entry.status === "paid") && styles.payoutStatusBadgeHealthy,
+                    (entry.status === "on-hold" ||
+                      entry.status === "reversed" ||
+                      entry.status === "awaiting-customer-payment") &&
+                      styles.payoutStatusBadgeWarning
+                  ]}
+                >
+                  {formatPayoutStatus(entry.status)}
+                </Text>
               </View>
             ))}
           </View>
@@ -512,6 +567,51 @@ const styles = StyleSheet.create({
   ticketCopy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
+  },
+  payoutSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  payoutSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  payoutSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  payoutSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
+  },
+  payoutStatusBadge: {
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    overflow: "hidden",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs,
+    textTransform: "capitalize"
+  },
+  payoutStatusBadgeHealthy: {
+    backgroundColor: "rgba(47, 125, 76, 0.12)",
+    color: BrandTokens.colors.success
+  },
+  payoutStatusBadgeWarning: {
+    backgroundColor: "rgba(226, 154, 69, 0.16)",
+    color: "#8a581b"
   },
   switchRow: {
     flexDirection: "row",

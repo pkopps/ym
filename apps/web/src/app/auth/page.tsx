@@ -28,7 +28,7 @@ export default function AuthPage() {
           <h2>Business owner</h2>
           <p>Bring in more local jobs and run your operation in one place.</p>
           <div className="cta-row">
-            <a className="button" href="/auth/provider">
+            <a className="button" href="/auth/provider/create">
               Continue
             </a>
           </div>

@@ -60,6 +60,53 @@ function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup
   }
 }
 
+type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
+type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
+
+function getProviderJobStatusLabel(job: ProviderJobSummary) {
+  if (job.status === "requested") {
+    return "Requested";
+  }
+
+  if (job.status === "confirmed" && job.onRouteConfirmedAt) {
+    return "On route";
+  }
+
+  if (job.status === "confirmed") {
+    return "Confirmed";
+  }
+
+  if (job.status === "in-progress") {
+    return "In progress";
+  }
+
+  if (job.status === "disputed") {
+    return "Disputed";
+  }
+
+  return job.status.replaceAll("-", " ");
+}
+
+function getProviderJobPrimaryAction(job: ProviderJobSummary): ProviderJobPrimaryAction | undefined {
+  if (job.status === "requested") {
+    return "confirm";
+  }
+
+  if (job.status === "confirmed" && !job.onRouteConfirmedAt) {
+    return "start-route";
+  }
+
+  if (job.status === "confirmed" && job.onRouteConfirmedAt) {
+    return "start-work";
+  }
+
+  if (job.status === "in-progress") {
+    return "complete";
+  }
+
+  return undefined;
+}
+
 export function ScheduleScreen() {
   const { envelope } = useProviderSession();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
@@ -842,29 +889,45 @@ export function ScheduleScreen() {
           <View style={styles.list}>
             {jobs.map((job) => {
               const isManageOpen = expandedManageSections[job.bookingId];
+              const primaryAction = getProviderJobPrimaryAction(job);
+              const statusLabel = getProviderJobStatusLabel(job);
 
               return (
                 <View key={job.bookingId} style={styles.jobRow}>
                 <View style={styles.jobCopy}>
                   <Text style={styles.clientLabel}>{job.customerName}</Text>
-                  <Text style={styles.metaLine}>
-                    {formatBookingWindowSummary(job.scheduledStartIso)}
-                  </Text>
-                  <Text style={styles.metaLine}>{new Date(job.scheduledStartIso).toLocaleString()}</Text>
                   <Text style={styles.metaLine}>{job.serviceAddress.line1}</Text>
-                  <Text style={styles.metaLine}>
-                    {job.category.replaceAll("-", " ")} • {job.assignedCrewMembers}/{job.requiredCrewMembers} crew
-                  </Text>
+                  <Text style={styles.statusLine}>{statusLabel}</Text>
+                  <View style={styles.jobSummaryGrid}>
+                    <View style={styles.jobSummaryItem}>
+                      <Text style={styles.jobSummaryLabel}>Window</Text>
+                      <Text style={styles.jobSummaryValue}>{formatBookingWindowSummary(job.scheduledStartIso)}</Text>
+                    </View>
+                    <View style={styles.jobSummaryItem}>
+                      <Text style={styles.jobSummaryLabel}>Crew</Text>
+                      <Text style={styles.jobSummaryValue}>
+                        {job.assignedCrewMembers}/{job.requiredCrewMembers}
+                        {job.crewGap ? ` • gap ${job.crewGap}` : ""}
+                      </Text>
+                    </View>
+                    <View style={styles.jobSummaryItem}>
+                      <Text style={styles.jobSummaryLabel}>Proof</Text>
+                      <Text style={styles.jobSummaryValue}>
+                        {job.beforeEvidenceCount} before • {job.afterEvidenceCount} after
+                      </Text>
+                    </View>
+                    <View style={styles.jobSummaryItem}>
+                      <Text style={styles.jobSummaryLabel}>Total</Text>
+                      <Text style={styles.jobSummaryValue}>{formatCurrency(job.totalCents)}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.metaLine}>{job.category.replaceAll("-", " ")}</Text>
                   {overview?.provider.routeLeaderMode === "accepted-crew-fallback" ? (
                     <Text style={styles.metaLine}>
                       Route leader: {job.assignedRouteLeaderCrewMemberName ?? "Provider"}
                       {job.requiresRouteLeaderAssignment ? " • pick one accepted crew member before delegating" : ""}
                     </Text>
                   ) : null}
-                  <Text style={styles.metaLine}>
-                    Evidence • before {job.beforeEvidenceCount} • after {job.afterEvidenceCount}
-                  </Text>
-                  <Text style={styles.statusLine}>{job.status.replaceAll("-", " ")}</Text>
                   {job.onRouteConfirmedAt ? (
                     <Text style={styles.metaLine}>Route is live. Customer chat is open.</Text>
                   ) : null}
@@ -886,7 +949,7 @@ export function ScheduleScreen() {
                     </Text>
                   ) : null}
                   <View style={styles.actionRow}>
-                    {job.status === "requested" ? (
+                    {primaryAction === "confirm" ? (
                       <Pressable
                         disabled={isWorking}
                         onPress={() => void confirmJob(job.bookingId)}
@@ -895,16 +958,7 @@ export function ScheduleScreen() {
                         <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Confirm booking"}</Text>
                       </Pressable>
                     ) : null}
-                    {job.status === "requested" ? (
-                      <Pressable
-                        disabled={isWorking}
-                        onPress={() => void declineJob(job.bookingId)}
-                        style={styles.chatButton}
-                      >
-                        <Text style={styles.chatButtonLabel}>{isWorking ? "Working..." : "Decline request"}</Text>
-                      </Pressable>
-                    ) : null}
-                    {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+                    {primaryAction === "start-route" ? (
                       <Pressable
                         disabled={isWorking}
                         onPress={() => void startRoute(job.bookingId)}
@@ -913,7 +967,7 @@ export function ScheduleScreen() {
                         <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
                       </Pressable>
                     ) : null}
-                    {job.status === "confirmed" && job.onRouteConfirmedAt ? (
+                    {primaryAction === "start-work" ? (
                       <Pressable
                         disabled={isWorking}
                         onPress={() => void startWork(job.bookingId)}
@@ -922,7 +976,7 @@ export function ScheduleScreen() {
                         <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
                       </Pressable>
                     ) : null}
-                    {job.status === "in-progress" ? (
+                    {primaryAction === "complete" ? (
                       <Pressable
                         disabled={isWorking}
                         onPress={() => void completeJob(job.bookingId)}
@@ -946,6 +1000,15 @@ export function ScheduleScreen() {
                   {isManageOpen ? (
                     <View style={styles.managePanel}>
                       <View style={styles.actionRow}>
+                        {job.status === "requested" ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() => void declineJob(job.bookingId)}
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>{isWorking ? "Working..." : "Decline request"}</Text>
+                          </Pressable>
+                        ) : null}
                         <Pressable
                           onPress={() =>
                             setExpandedStaffingSections((current) => ({
@@ -1502,6 +1565,33 @@ const styles = StyleSheet.create({
   },
   jobCopy: {
     gap: BrandTokens.spacing.xs
+  },
+  jobSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.xs
+  },
+  jobSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  jobSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  jobSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   matchList: {
     gap: BrandTokens.spacing.sm,

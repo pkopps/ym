@@ -30,6 +30,14 @@ function formatDateTime(iso: string) {
   });
 }
 
+function formatPrice(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100);
+}
+
 function addOneDay(iso: string) {
   return new Date(new Date(iso).getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
@@ -421,6 +429,22 @@ export function BookingsScreen({
     return booking.status === "completed" && payment?.status === "captured" && payment.refundable;
   }
 
+  function getBookingStatusLabel(booking: Booking) {
+    if (booking.status === "confirmed") {
+      return "Confirmed";
+    }
+
+    if (booking.status === "in-progress") {
+      return "In progress";
+    }
+
+    if (booking.status === "disputed") {
+      return "Disputed";
+    }
+
+    return "Requested";
+  }
+
   function getBookingStatusSummary(booking: Booking) {
     if (booking.onRouteConfirmedAt) {
       if (activeTrackingBookingId === booking.id && tracking) {
@@ -513,6 +537,13 @@ export function BookingsScreen({
                   (booking.status === "requested" || booking.status === "confirmed") &&
                   payment?.status !== "captured";
                 const isManageOpen = showManageByBookingId[booking.id];
+                const primaryActionKind = booking.activeExceptionType
+                  ? "support"
+                  : booking.onRouteConfirmedAt
+                    ? "track"
+                    : isCheckoutReady
+                      ? "checkout"
+                      : undefined;
 
                 return (
                   <View key={booking.id} style={styles.liveCard}>
@@ -524,25 +555,35 @@ export function BookingsScreen({
                         </Text>
                       </View>
                       <StatusBadge
-                        label={
-                          booking.status === "confirmed"
-                            ? "Confirmed"
-                            : booking.status === "in-progress"
-                              ? "In progress"
-                              : booking.status === "disputed"
-                                ? "Disputed"
-                                : "Requested"
-                        }
+                        label={getBookingStatusLabel(booking)}
                         tone={booking.status === "disputed" ? "warning" : "success"}
                       />
                     </View>
-                    <View style={styles.visitFacts}>
-                      <Text style={styles.visitFact}>{formatBookingWindowSummary(booking.scheduledStartIso)}</Text>
-                      <Text style={styles.visitFact}>{getPaymentLabel(payment)}</Text>
+
+                    <View style={styles.visitSummaryGrid}>
+                      <View style={styles.visitSummaryItem}>
+                        <Text style={styles.visitSummaryLabel}>When</Text>
+                        <Text style={styles.visitSummaryValue}>
+                          {formatBookingWindowSummary(booking.scheduledStartIso)}
+                        </Text>
+                      </View>
+                      <View style={styles.visitSummaryItem}>
+                        <Text style={styles.visitSummaryLabel}>Payment</Text>
+                        <Text style={styles.visitSummaryValue}>{getPaymentLabel(payment)}</Text>
+                      </View>
+                      <View style={styles.visitSummaryItem}>
+                        <Text style={styles.visitSummaryLabel}>Property</Text>
+                        <Text style={styles.visitSummaryValue}>{booking.serviceAddress.line1}</Text>
+                      </View>
+                      <View style={styles.visitSummaryItem}>
+                        <Text style={styles.visitSummaryLabel}>Price</Text>
+                        <Text style={styles.visitSummaryValue}>{formatPrice(booking.totalCents)}</Text>
+                      </View>
                     </View>
+
                     <Text style={styles.bookingNote}>{getBookingStatusSummary(booking)}</Text>
                     <View style={styles.actionPanel}>
-                      {booking.onRouteConfirmedAt ? (
+                      {primaryActionKind === "track" ? (
                         <Pressable
                           disabled={isWorking}
                           onPress={() => void openArrivalTracking(booking)}
@@ -551,7 +592,7 @@ export function BookingsScreen({
                           <Text style={styles.primaryActionLabel}>Track crew</Text>
                         </Pressable>
                       ) : null}
-                      {isCheckoutReady ? (
+                      {primaryActionKind === "checkout" ? (
                         <Pressable
                           disabled={isWorking}
                           onPress={() => void payWithStripe(booking)}
@@ -562,7 +603,7 @@ export function BookingsScreen({
                           </Text>
                         </Pressable>
                       ) : null}
-                      {booking.activeExceptionType ? (
+                      {primaryActionKind === "support" ? (
                         <Pressable onPress={() => onOpenAccount?.()} style={styles.primaryAction}>
                           <Text style={styles.primaryActionLabel}>Open support</Text>
                         </Pressable>
@@ -920,20 +961,31 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: BrandTokens.spacing.md
   },
-  visitFacts: {
+  visitSummaryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: BrandTokens.spacing.sm
   },
-  visitFact: {
-    borderRadius: 999,
-    backgroundColor: "rgba(20, 40, 29, 0.06)",
-    color: BrandTokens.colors.ink,
-    fontSize: 12,
-    fontWeight: "700",
-    overflow: "hidden",
+  visitSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
     paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.xs
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  visitSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  visitSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   bookingCopy: {
     flex: 1,

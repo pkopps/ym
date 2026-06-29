@@ -8,6 +8,7 @@ import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
 type ViewMode = "upcoming" | "history";
+type CrewAssignment = CrewMatchesResponse["matches"][number];
 
 function formatAssignmentStatus(status: string) {
   return status.replaceAll("-", " ");
@@ -29,7 +30,19 @@ function formatHourlyPay(cents: number) {
   }).format(cents / 100)}/hr`;
 }
 
-function getAssignmentSummary(assignment: CrewMatchesResponse["matches"][number]) {
+function getAssignmentRoleLabel(assignment: CrewAssignment) {
+  if (assignment.isAssignedRouteLeader) {
+    return "Route lead";
+  }
+
+  if (assignment.requiresRouteLeaderAssignment) {
+    return "Lead pending";
+  }
+
+  return "Crew";
+}
+
+function getAssignmentSummary(assignment: CrewAssignment) {
   if (assignment.onRouteConfirmedAt) {
     return assignment.isAssignedRouteLeader ? "Route is live. You lead this crew." : "Route is live.";
   }
@@ -47,6 +60,29 @@ function getAssignmentSummary(assignment: CrewMatchesResponse["matches"][number]
   }
 
   return formatAssignmentStatus(assignment.bookingStatus);
+}
+
+function AssignmentSummaryGrid({ assignment }: { assignment: CrewAssignment }) {
+  return (
+    <View style={styles.assignmentSummaryGrid}>
+      <View style={styles.assignmentSummaryItem}>
+        <Text style={styles.assignmentSummaryLabel}>Day</Text>
+        <Text style={styles.assignmentSummaryValue}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
+      </View>
+      <View style={styles.assignmentSummaryItem}>
+        <Text style={styles.assignmentSummaryLabel}>Time</Text>
+        <Text style={styles.assignmentSummaryValue}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
+      </View>
+      <View style={styles.assignmentSummaryItem}>
+        <Text style={styles.assignmentSummaryLabel}>Pay</Text>
+        <Text style={styles.assignmentSummaryValue}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
+      </View>
+      <View style={styles.assignmentSummaryItem}>
+        <Text style={styles.assignmentSummaryLabel}>Role</Text>
+        <Text style={styles.assignmentSummaryValue}>{getAssignmentRoleLabel(assignment)}</Text>
+      </View>
+    </View>
+  );
 }
 
 export function AssignmentsScreen() {
@@ -126,7 +162,7 @@ export function AssignmentsScreen() {
   );
 
   return (
-    <ScreenShell eyebrow="Schedule" title="Assignments" description="See upcoming work and past decisions.">
+    <ScreenShell eyebrow="Schedule" title="Assignments" description="Upcoming work and history.">
       <View style={styles.modeRow}>
         <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
         <ModeButton active={viewMode === "history"} label="History" onPress={() => setViewMode("history")} />
@@ -149,11 +185,7 @@ export function AssignmentsScreen() {
                       </View>
                       <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.bookingStatus)}</Text>
                     </View>
-                    <View style={styles.factRow}>
-                      <Text style={styles.factPill}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
-                      <Text style={styles.factPill}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
-                      <Text style={styles.factPill}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
-                    </View>
+                    <AssignmentSummaryGrid assignment={assignment} />
                     <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
                     <Text style={styles.summary}>{getAssignmentSummary(assignment)}</Text>
                     <View style={styles.copy}>
@@ -179,7 +211,7 @@ export function AssignmentsScreen() {
           ) : null}
 
           {pendingAssignments.length > 0 ? (
-            <InfoCard title="Waiting on providers" description={`${pendingAssignments.length} pending`}>
+            <InfoCard title="Awaiting review" description={`${pendingAssignments.length} pending`}>
               <View style={styles.list}>
                 {pendingAssignments.map((assignment) => (
                   <View key={assignment.id} style={styles.assignmentCard}>
@@ -190,13 +222,9 @@ export function AssignmentsScreen() {
                       </View>
                       <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.status)}</Text>
                     </View>
-                    <View style={styles.factRow}>
-                      <Text style={styles.factPill}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
-                      <Text style={styles.factPill}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
-                      <Text style={styles.factPill}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
-                    </View>
+                    <AssignmentSummaryGrid assignment={assignment} />
                     <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
-                    <Text style={styles.summary}>We’ll notify you when the business owner decides.</Text>
+                    <Text style={styles.summary}>We will notify you when the business decides.</Text>
                   </View>
                 ))}
               </View>
@@ -221,11 +249,7 @@ export function AssignmentsScreen() {
                   </View>
                   <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.status)}</Text>
                 </View>
-                <View style={styles.factRow}>
-                  <Text style={styles.factPill}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
-                  <Text style={styles.factPill}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
-                  <Text style={styles.factPill}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
-                </View>
+                <AssignmentSummaryGrid assignment={assignment} />
                 <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
                 {assignment.status === "cancelled-by-crew" && assignment.cancellationReason ? (
                   <Text style={styles.warning}>You cancelled this job: {assignment.cancellationReason}</Text>
@@ -297,20 +321,31 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: BrandTokens.spacing.md
   },
-  factRow: {
+  assignmentSummaryGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: BrandTokens.spacing.sm
   },
-  factPill: {
-    borderRadius: 999,
-    backgroundColor: "rgba(20, 40, 29, 0.06)",
-    color: BrandTokens.colors.ink,
-    fontSize: 12,
-    fontWeight: "700",
+  assignmentSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
     paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.xs,
-    overflow: "hidden"
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  assignmentSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  assignmentSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   copy: {
     flex: 1,

@@ -16,6 +16,7 @@ import {
   ProviderProfile,
   RecurringServiceFrequency,
   RecurringServicePlanSummary,
+  ReviewScore,
   SearchProvidersResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
@@ -57,6 +58,14 @@ function formatCurrency(cents: number) {
     style: "currency",
     currency: "USD"
   }).format(cents / 100);
+}
+
+function formatOpenWindow(slot?: SearchProvidersResponse["suggestedSlots"][number]) {
+  return slot ? formatBookingWindowSummary(slot.startIso) : "No open slot";
+}
+
+function formatProviderTrust(provider: ProviderProfile) {
+  return `${provider.rating.toFixed(1)} overall • ${provider.reviewCount} reviews`;
 }
 
 function formatDateTime(iso: string) {
@@ -152,6 +161,11 @@ function formatBookingStatusTitle(booking: Booking) {
   }
 }
 
+function formatSentenceTail(value: string) {
+  const trimmed = value.trim();
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 function getBookingStateMessage(booking: Booking, providerName: string, payment?: PaymentRecord) {
   if (booking.onRouteConfirmedAt) {
     return `${providerName} is on the way. You can message the business or track the crew live.`;
@@ -167,11 +181,11 @@ function getBookingStateMessage(booking: Booking, providerName: string, payment?
 
   switch (booking.status) {
     case "requested":
-      return `GreenRain is holding this request with ${providerName}. Confirm the details or ask for help if plans changed.`;
+      return `GreenRain is holding this request with ${formatSentenceTail(providerName)} Confirm the details or ask for help if plans changed.`;
     case "confirmed":
       return payment?.status === "pending"
-        ? `Your visit is set with ${providerName}. Finish checkout when you are ready.`
-        : `Your visit is set with ${providerName}. Everything is lined up for the scheduled window.`;
+        ? `Your visit is set with ${formatSentenceTail(providerName)} Finish checkout when you are ready.`
+        : `Your visit is set with ${formatSentenceTail(providerName)} Everything is lined up for the scheduled window.`;
     case "in-progress":
       return `${providerName} is working this visit now. Keep support close if anything changes in the field.`;
     default:
@@ -224,6 +238,7 @@ export function CustomerLiveDashboard() {
   const [dashboardLoadError, setDashboardLoadError] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
+  const [reviewRatings, setReviewRatings] = useState<Record<string, ReviewScore>>({});
   const [reviewComposerBookingId, setReviewComposerBookingId] = useState<string | undefined>();
   const [disputeDrafts, setDisputeDrafts] = useState<Record<string, string>>({});
   const [refundDrafts, setRefundDrafts] = useState<Record<string, string>>({});
@@ -294,6 +309,8 @@ export function CustomerLiveDashboard() {
   const nextBookingNeedsPrimarySupport = Boolean(
     nextBooking?.activeExceptionType || (nextBooking?.lateEtaIso && !nextBooking?.onRouteConfirmedAt)
   );
+  const nextBookingHasPrimaryAction =
+    nextBookingNeedsCheckout || nextBookingHasTracking || nextBookingNeedsPrimarySupport;
   const spotlightBooking = nextBooking ?? activeBookings[0];
   const additionalActiveBookings = spotlightBooking
     ? activeBookings.filter((booking) => booking.id !== spotlightBooking.id)
@@ -922,7 +939,13 @@ export function CustomerLiveDashboard() {
   }
 
   async function handleSubmitReview(opportunity: CustomerReviewOpportunity) {
-    const reviewText = (reviewDrafts[opportunity.bookingId] ?? "Great job, arrived on time and left the property clean.").trim();
+    const reviewText = (reviewDrafts[opportunity.bookingId] ?? "").trim();
+    const rating = getReviewRating(opportunity.bookingId);
+
+    if (!reviewText) {
+      setErrorMessage("Add a short review note before sending.");
+      return;
+    }
 
     setLoadingState("loading");
     setErrorMessage(undefined);
@@ -931,13 +954,18 @@ export function CustomerLiveDashboard() {
       const api = createAuthenticatedWebApiClient();
       await api.createProviderReview({
         bookingId: opportunity.bookingId,
-        overallRating: 5,
-        timelinessRating: 5,
-        attentionToDetailRating: 5,
+        overallRating: rating,
+        timelinessRating: rating,
+        attentionToDetailRating: rating,
         reviewText,
         attribution: getLaunchAttributionContext()
       });
       setReviewComposerBookingId(undefined);
+      setReviewDrafts((current) => {
+        const next = { ...current };
+        delete next[opportunity.bookingId];
+        return next;
+      });
       await loadDashboard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to submit your review right now.");
@@ -1170,6 +1198,10 @@ export function CustomerLiveDashboard() {
     return paymentsByBookingId[bookingId];
   }
 
+  function getReviewRating(bookingId: string): ReviewScore {
+    return reviewRatings[bookingId] ?? 5;
+  }
+
   function renderRequestDetailsEditor(buttonLabel: string) {
     return (
       <>
@@ -1273,7 +1305,7 @@ export function CustomerLiveDashboard() {
               onClick={() => void handleStartCheckout(booking)}
               type="button"
             >
-              {paymentRecord?.status === "pending" ? "Continue Stripe checkout" : "Pay with Stripe"}
+              {paymentRecord?.status === "pending" ? "Continue checkout" : "Pay now"}
             </button>
           ) : null}
           {booking.onRouteConfirmedAt ? (
@@ -1516,12 +1548,19 @@ export function CustomerLiveDashboard() {
     );
   }
 
-  function renderReviewOpportunityCard(opportunity: CustomerReviewOpportunity) {
+  function renderReviewOpportunityCard(
+    opportunity: CustomerReviewOpportunity,
+    variant: "card" | "panel" = "panel"
+  ) {
+    const composerOpen = reviewComposerBookingId === opportunity.bookingId;
+    const selectedRating = getReviewRating(opportunity.bookingId);
+
     return (
-      <article className="list-panel">
+      <article className={`${variant === "card" ? "card" : "list-panel"} customer-review-card`}>
         <div className="search-result-title">
           <div>
-            <h3>{opportunity.providerName}</h3>
+            <span className="eyebrow">Ready to review</span>
+            <h2>{opportunity.providerName}</h2>
             <p>{opportunity.reason}</p>
           </div>
           <div className="chip-row">
@@ -1535,24 +1574,73 @@ export function CustomerLiveDashboard() {
             ) : null}
           </div>
         </div>
-        {reviewComposerBookingId === opportunity.bookingId ? (
-          <textarea
-            onChange={(event) =>
-              setReviewDrafts((current) => ({
-                ...current,
-                [opportunity.bookingId]: event.target.value
-              }))
-            }
-            placeholder="Share what went well."
-            rows={3}
-            value={reviewDrafts[opportunity.bookingId] ?? ""}
-          />
+        <div className="customer-review-card__grid" aria-label="Review summary">
+          <div>
+            <span>Service</span>
+            <strong>{opportunity.category.replaceAll("-", " ")}</strong>
+          </div>
+          <div>
+            <span>Completed</span>
+            <strong>{opportunity.completedAt ? formatDateTime(opportunity.completedAt) : "Recently"}</strong>
+          </div>
+          <div>
+            <span>Rating</span>
+            <strong>{selectedRating}/5</strong>
+          </div>
+        </div>
+        {composerOpen ? (
+          <div className="customer-review-card__composer">
+            <div>
+              <span className="eyebrow">Rating</span>
+              <div className="chip-row" role="group" aria-label="Choose rating">
+                {([5, 4, 3, 2, 1] as ReviewScore[]).map((rating) => {
+                  const active = rating === selectedRating;
+                  return (
+                    <button
+                      aria-pressed={active}
+                      className={
+                        active
+                          ? "button customer-review-card__rating"
+                          : "button-secondary customer-review-card__rating"
+                      }
+                      key={`${opportunity.bookingId}-${rating}`}
+                      onClick={() =>
+                        setReviewRatings((current) => ({
+                          ...current,
+                          [opportunity.bookingId]: rating
+                        }))
+                      }
+                      type="button"
+                    >
+                      {rating}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <textarea
+              onChange={(event) =>
+                setReviewDrafts((current) => ({
+                  ...current,
+                  [opportunity.bookingId]: event.target.value
+                }))
+              }
+              placeholder="What should the provider know?"
+              rows={3}
+              value={reviewDrafts[opportunity.bookingId] ?? ""}
+            />
+          </div>
         ) : null}
         <div className="cta-row">
-          {reviewComposerBookingId === opportunity.bookingId ? (
+          {composerOpen ? (
             <>
-              <button className="button" onClick={() => void handleSubmitReview(opportunity)} type="button">
-                Send 5-star review
+              <button
+                className="button"
+                disabled={loadingState === "loading"}
+                onClick={() => void handleSubmitReview(opportunity)}
+                type="button"
+              >
+                Send review
               </button>
               <button
                 className="button-secondary"
@@ -1952,7 +2040,7 @@ export function CustomerLiveDashboard() {
 
           {providerStepActive ? (
             <section className="card">
-              <h2>Best fit</h2>
+              <h2>{recommendedProviderCard ? "Ready to book" : "Best fit"}</h2>
               {providerSearchState === "loading" ? (
                 <article className="list-panel">
                   <h3>Checking the best fit</h3>
@@ -1995,27 +2083,46 @@ export function CustomerLiveDashboard() {
                     </article>
                   ) : null}
                   {recommendedProviderCard ? (
-                    <article className="list-panel">
+                    <article className="list-panel customer-booking-review">
                       <div className="search-result-title">
                         <h3>{recommendedProviderCard.provider.companyName}</h3>
                         <span className="result-badge">
                           {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
                         </span>
                       </div>
-                      <p>
-                        Recommended for <strong>{timingLabel.toLowerCase()}</strong>.
-                      </p>
-                      <p>
-                        {recommendedProviderCard.provider.rating.toFixed(1)} overall •{" "}
-                        {recommendedProviderCard.provider.timelinessRating.toFixed(1)} punctuality
-                      </p>
+
+                      <div className="customer-booking-review__grid" aria-label="Booking summary">
+                        <div>
+                          <span>Price</span>
+                          <strong>{quote ? formatCurrency(quote.estimatedPriceCents) : "Quote pending"}</strong>
+                        </div>
+                        <div>
+                          <span>Opening</span>
+                          <strong>{formatOpenWindow(recommendedProviderCard.slot)}</strong>
+                        </div>
+                        <div>
+                          <span>Plan</span>
+                          <strong>{selectedCadenceLabel}</strong>
+                        </div>
+                        <div>
+                          <span>Property</span>
+                          <strong>{activeProperty?.label ?? "Selected property"}</strong>
+                        </div>
+                        <div>
+                          <span>Trust</span>
+                          <strong>{formatProviderTrust(recommendedProviderCard.provider)}</strong>
+                        </div>
+                        <div>
+                          <span>Distance</span>
+                          <strong>
+                            {recommendedProviderCard.ranking
+                              ? `${recommendedProviderCard.ranking.distanceMiles.toFixed(1)} mi`
+                              : `${recommendedProviderCard.provider.serviceRadiusMiles} mi radius`}
+                          </strong>
+                        </div>
+                      </div>
+
                       {providerChoicePresentations[0] ? <p>{providerChoicePresentations[0].detail}</p> : null}
-                      <p>
-                        Radius {recommendedProviderCard.provider.serviceRadiusMiles} miles •{" "}
-                        {recommendedProviderCard.slot
-                          ? `${formatBookingWindowSummary(recommendedProviderCard.slot.startIso)} window`
-                          : "No open slot"}
-                      </p>
                       {recommendedProviderCard.ranking || providerChoicePresentations[0] ? (
                         <details className="service-card-disclosure">
                           <summary className="service-card-disclosure__summary">Why this pick</summary>
@@ -2060,7 +2167,13 @@ export function CustomerLiveDashboard() {
                           onClick={() => void handleCreateBooking(recommendedProviderCard, 1)}
                           type="button"
                         >
-                          {selectedCadence === "one-time" ? "Book this visit" : "Start repeat plan"}
+                          {quote
+                            ? `${selectedCadence === "one-time" ? "Book for" : "Start for"} ${formatCurrency(
+                                quote.estimatedPriceCents
+                              )}`
+                            : selectedCadence === "one-time"
+                              ? "Book this visit"
+                              : "Start repeat plan"}
                         </button>
                         {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
                           <button
@@ -2079,7 +2192,7 @@ export function CustomerLiveDashboard() {
                             }}
                             type="button"
                           >
-                            See backup options
+                            Compare options
                           </button>
                         ) : null}
                       </div>
@@ -2106,11 +2219,11 @@ export function CustomerLiveDashboard() {
                         {providerChoicePresentations[index + 1] ? <p>{providerChoicePresentations[index + 1].detail}</p> : null}
                         <p>
                           Radius {provider.serviceRadiusMiles} miles •{" "}
-                          {slot ? `${formatBookingWindowSummary(slot.startIso)} window` : "No open slot"}
+                          {formatOpenWindow(slot)}
                         </p>
                         {ranking || providerChoicePresentations[index + 1] ? (
                           <details className="service-card-disclosure">
-                            <summary className="service-card-disclosure__summary">Why this backup</summary>
+                            <summary className="service-card-disclosure__summary">Why this option</summary>
                             <div className="service-card-disclosure__body">
                               {providerChoicePresentations[index + 1] ? (
                                 <article className="list-panel">
@@ -2154,7 +2267,13 @@ export function CustomerLiveDashboard() {
                             }
                             type="button"
                           >
-                            {selectedCadence === "one-time" ? "Book this visit" : "Start repeat plan"}
+                            {quote
+                              ? `${selectedCadence === "one-time" ? "Book for" : "Start for"} ${formatCurrency(
+                                  quote.estimatedPriceCents
+                                )}`
+                              : selectedCadence === "one-time"
+                                ? "Book this visit"
+                                : "Start repeat plan"}
                           </button>
                         </div>
                         {!slot ? (
@@ -2179,49 +2298,78 @@ export function CustomerLiveDashboard() {
                   <h2>{getPriorityBookingCardTitle(nextBooking, nextBookingPayment)}</h2>
                   <p>{getBookingStateMessage(nextBooking, nextBookingProviderName, nextBookingPayment)}</p>
                 </div>
-                <span className="result-badge result-badge--neutral">
-                  {formatBookingWindowSummary(nextBooking.scheduledStartIso)}
-                </span>
+                <strong>{formatCurrency(nextBooking.totalCents)}</strong>
               </div>
-              <div className="cta-row">
-                {nextBookingNeedsCheckout ? (
-                  <button
-                    className="button"
-                    disabled={loadingState === "loading"}
-                    onClick={() => void handleStartCheckout(nextBooking)}
-                    type="button"
-                  >
-                    {nextBookingPayment?.status === "pending" ? "Continue Stripe checkout" : "Pay with Stripe"}
-                  </button>
-                ) : null}
-                {nextBookingHasTracking ? (
-                  <button
-                    className="button"
-                    disabled={loadingState === "loading"}
-                    onClick={() => void openArrivalTracking(nextBooking.id)}
-                    type="button"
+
+              <div className="customer-booking-review__grid" aria-label="Next visit summary">
+                <div>
+                  <span>Status</span>
+                  <strong>{getPriorityBookingCardTitle(nextBooking, nextBookingPayment)}</strong>
+                </div>
+                <div>
+                  <span>When</span>
+                  <strong>{formatBookingWindowSummary(nextBooking.scheduledStartIso)}</strong>
+                </div>
+                <div>
+                  <span>Provider</span>
+                  <strong>{nextBookingProviderName}</strong>
+                </div>
+                <div>
+                  <span>Payment</span>
+                  <strong>{getPaymentLabel(nextBookingPayment)}</strong>
+                </div>
+                <div>
+                  <span>Property</span>
+                  <strong>{nextBooking.serviceAddress.line1}</strong>
+                </div>
+                <div>
+                  <span>Price</span>
+                  <strong>{formatCurrency(nextBooking.totalCents)}</strong>
+                </div>
+              </div>
+
+              {nextBookingHasPrimaryAction ? (
+                <div className="cta-row">
+                  {nextBookingNeedsCheckout ? (
+                    <button
+                      className="button"
+                      disabled={loadingState === "loading"}
+                      onClick={() => void handleStartCheckout(nextBooking)}
+                      type="button"
+                    >
+                      {nextBookingPayment?.status === "pending" ? "Continue checkout" : "Pay now"}
+                    </button>
+                  ) : null}
+                  {nextBookingHasTracking ? (
+                    <button
+                      className="button"
+                      disabled={loadingState === "loading"}
+                      onClick={() => void openArrivalTracking(nextBooking.id)}
+                      type="button"
                     >
                       Track crew
                     </button>
-                ) : null}
-                {nextBookingNeedsPrimarySupport ? (
-                  <a
-                    className="button"
-                    href={`/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
-                      nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
-                    )}&subject=${encodeURIComponent(
-                      nextBooking.onRouteConfirmedAt
-                        ? "On-route support"
-                        : nextBooking.activeExceptionType
-                          ? getBookingExceptionLabel(nextBooking.activeExceptionType)
-                          : "Booking support"
-                    )}`}
-                  >
-                    Get help
-                  </a>
-                ) : null}
-              </div>
-              {(nextBookingNeedsCheckout || nextBookingHasTracking || !nextBookingNeedsPrimarySupport) ? (
+                  ) : null}
+                  {nextBookingNeedsPrimarySupport ? (
+                    <a
+                      className="button"
+                      href={`/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
+                        nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
+                      )}&subject=${encodeURIComponent(
+                        nextBooking.onRouteConfirmedAt
+                          ? "On-route support"
+                          : nextBooking.activeExceptionType
+                            ? getBookingExceptionLabel(nextBooking.activeExceptionType)
+                            : "Booking support"
+                      )}`}
+                    >
+                      Get help
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {nextBookingHasPrimaryAction || !nextBookingNeedsPrimarySupport ? (
                 <details className="service-card-disclosure">
                   <summary className="service-card-disclosure__summary">More options</summary>
                   <div className="service-card-disclosure__body">
@@ -2258,26 +2406,7 @@ export function CustomerLiveDashboard() {
               ) : null}
             </section>
           ) : primaryReviewOpportunity ? (
-            <section className="card">
-              <div className="search-result-title">
-                <div>
-                  <h2>Leave a review</h2>
-                  <p>{primaryReviewOpportunity.reason}</p>
-                </div>
-                <span className="result-badge result-badge--neutral">
-                  {primaryReviewOpportunity.category.replaceAll("-", " ")}
-                </span>
-              </div>
-              <div className="cta-row">
-                <button
-                  className="button"
-                  onClick={() => setReviewComposerBookingId(primaryReviewOpportunity.bookingId)}
-                  type="button"
-                >
-                  Leave review
-                </button>
-              </div>
-            </section>
+            renderReviewOpportunityCard(primaryReviewOpportunity, "card")
           ) : primaryRetentionOpportunity ? (
             <section className="card">
               <div className="search-result-title">

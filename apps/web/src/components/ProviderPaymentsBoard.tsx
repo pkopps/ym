@@ -19,6 +19,37 @@ function formatDateTime(iso: string) {
   });
 }
 
+type ProviderPayoutEntry = ProviderPayoutLedgerResponse["entries"][number];
+
+function formatPayoutStatus(status: ProviderPayoutEntry["status"]) {
+  switch (status) {
+    case "awaiting-customer-payment":
+      return "Awaiting payment";
+    case "on-hold":
+      return "On hold";
+    case "scheduled":
+      return "Scheduled";
+    case "ready":
+      return "Ready";
+    case "paid":
+      return "Paid";
+    case "reversed":
+      return "Reversed";
+  }
+}
+
+function getPayoutStatusClass(status: ProviderPayoutEntry["status"]) {
+  if (status === "ready" || status === "paid") {
+    return "provider-staffing-badge provider-staffing-badge--healthy";
+  }
+
+  if (status === "on-hold" || status === "reversed" || status === "awaiting-customer-payment") {
+    return "provider-staffing-badge provider-staffing-badge--warning";
+  }
+
+  return "provider-staffing-badge";
+}
+
 export function ProviderPaymentsBoard() {
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
@@ -46,18 +77,23 @@ export function ProviderPaymentsBoard() {
       });
   }, [sessionReady, session?.token, session?.role]);
 
-  const readyEntries = useMemo(
-    () => ledger?.entries.filter((entry) => entry.status === "ready") ?? [],
-    [ledger?.entries]
-  );
-  const scheduledEntries = useMemo(
-    () => ledger?.entries.filter((entry) => entry.status === "scheduled") ?? [],
-    [ledger?.entries]
-  );
   const heldEntries = useMemo(
     () => ledger?.entries.filter((entry) => entry.status === "on-hold") ?? [],
     [ledger?.entries]
   );
+  const crewQueueEntries = useMemo(
+    () =>
+      ledger?.entries.filter((entry) => entry.status === "ready" || entry.status === "scheduled" || entry.status === "on-hold") ??
+      [],
+    [ledger?.entries]
+  );
+  const heldProviderNetCents = useMemo(
+    () => heldEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0),
+    [heldEntries]
+  );
+  const blockedAmountCents = (ledger?.pendingCustomerPaymentCents ?? 0) + heldProviderNetCents;
+  const payoutStateLabel =
+    blockedAmountCents > 0 ? "Needs attention" : (ledger?.totalNetReadyCents ?? 0) > 0 ? "Ready now" : "On track";
 
   if (!sessionReady) {
     return (
@@ -91,68 +127,85 @@ export function ProviderPaymentsBoard() {
         </section>
       ) : null}
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{formatCurrency(ledger?.totalNetReadyCents ?? 0)}</h2>
-          <p>Provider net ready</p>
-        </article>
-        <article className="card">
-          <h2>{formatCurrency(ledger?.totalNetScheduledCents ?? 0)}</h2>
-          <p>Provider net scheduled</p>
-        </article>
-        <article className="card">
-          <h2>{formatCurrency(ledger?.pendingCustomerPaymentCents ?? 0)}</h2>
-          <p>Waiting on customer payment</p>
-        </article>
-        <article className="card">
-          <h2>{formatCurrency(ledger?.totalCrewOwedCents ?? 0)}</h2>
-          <p>Crew share reserved</p>
-        </article>
-        <article className="card">
-          <h2>{formatCurrency(ledger?.totalGrossCapturedCents ?? 0)}</h2>
-          <p>Captured customer revenue</p>
-        </article>
-        <article className="card">
-          <h2>{ledger?.entries.length ?? 0}</h2>
-          <p>Ledger entries</p>
-        </article>
-      </section>
-
-      <section className="grid-three">
-        <article className="card">
-          <h2>{ledger?.payoutSchedule ? formatDateTime(ledger.payoutSchedule.nextWeeklyPayoutDateIso) : "—"}</h2>
-          <p>Next weekly provider payout run</p>
-        </article>
-        <article className="card">
-          <h2>{formatCurrency(ledger?.payoutSchedule.instantPayoutEligibleCents ?? 0)}</h2>
-          <p>Instant payout eligible now</p>
-        </article>
-        <article className="card">
-          <h2>{ledger?.payoutSchedule.instantPayoutsEnabled ? "On" : "Off"}</h2>
-          <p>
-            Instant payouts {ledger?.payoutSchedule ? `over ${formatCurrency(ledger.payoutSchedule.instantPayoutMinimumCents)}` : ""}
-          </p>
-        </article>
-      </section>
-
-      <section className="provider-capacity-alert provider-capacity-alert--healthy">
-        <div>
-          <span className="eyebrow">Payout status</span>
-          <h2>Completed work now feeds a real payout ledger, even before bank-transfer rails are fully live.</h2>
-          <p>
-            Provider net and crew share now come from actual completed bookings, accepted crew matches,
-            captured customer payments, and refund state. Your weekly payout day and instant-cash-out eligibility
-            are now tracked directly in the ledger.
-          </p>
+      <section className="card provider-payment-overview">
+        <div className="search-result-title">
+          <div>
+            <span className="eyebrow">Payouts</span>
+            <h2>{payoutStateLabel}</h2>
+            <p>Completed jobs, crew share, holds, and weekly payout timing in one place.</p>
+          </div>
+          <span className={blockedAmountCents > 0 ? "result-badge result-badge--neutral" : "result-badge"}>
+            {ledger?.entries.length ?? 0} entries
+          </span>
         </div>
+
+        <div className="provider-payment-summary-grid" aria-label="Payout summary">
+          <div>
+            <span>Ready now</span>
+            <strong>{formatCurrency(ledger?.totalNetReadyCents ?? 0)}</strong>
+            <p>
+              {ledger?.payoutSchedule.instantPayoutsEnabled
+                ? `${formatCurrency(ledger.payoutSchedule.instantPayoutEligibleCents)} instant eligible`
+                : "Queued for weekly payout"}
+            </p>
+          </div>
+          <div>
+            <span>Next payout</span>
+            <strong>{ledger?.payoutSchedule ? formatDateTime(ledger.payoutSchedule.nextWeeklyPayoutDateIso) : "—"}</strong>
+            <p>{ledger?.payoutSchedule ? `${ledger.payoutSchedule.holdPeriodHours}h standard hold` : "Schedule pending"}</p>
+          </div>
+          <div>
+            <span>Blocked</span>
+            <strong>{formatCurrency(blockedAmountCents)}</strong>
+            <p>
+              {blockedAmountCents > 0
+                ? `${formatCurrency(ledger?.pendingCustomerPaymentCents ?? 0)} awaiting customer payment`
+                : "No payout blockers"}
+            </p>
+          </div>
+          <div>
+            <span>Crew reserve</span>
+            <strong>{formatCurrency(ledger?.totalCrewOwedCents ?? 0)}</strong>
+            <p>{crewQueueEntries.length} crew payout item{crewQueueEntries.length === 1 ? "" : "s"}</p>
+          </div>
+        </div>
+
         <div className="cta-row">
           <a className="button" href="/provider/management">
-            Open management portal
+            Open management
           </a>
           <a className="button-secondary" href="/help">
-            Read payout policy
+            Payout help
           </a>
         </div>
+
+        <details className="service-card-disclosure">
+          <summary className="service-card-disclosure__summary">Ledger totals</summary>
+          <div className="service-card-disclosure__body">
+            <div className="provider-payment-summary-grid">
+              <div>
+                <span>Scheduled</span>
+                <strong>{formatCurrency(ledger?.totalNetScheduledCents ?? 0)}</strong>
+                <p>Provider net already assigned to a future run.</p>
+              </div>
+              <div>
+                <span>Captured</span>
+                <strong>{formatCurrency(ledger?.totalGrossCapturedCents ?? 0)}</strong>
+                <p>Customer revenue captured before provider and crew split.</p>
+              </div>
+              <div>
+                <span>Instant minimum</span>
+                <strong>{ledger?.payoutSchedule ? formatCurrency(ledger.payoutSchedule.instantPayoutMinimumCents) : "—"}</strong>
+                <p>{ledger?.payoutSchedule.instantPayoutsEnabled ? "Instant payouts are on." : "Weekly payouts only."}</p>
+              </div>
+              <div>
+                <span>Holds</span>
+                <strong>{heldEntries.length}</strong>
+                <p>Refund or dispute review keeps these out of payout.</p>
+              </div>
+            </div>
+          </div>
+        </details>
       </section>
 
       <section className="grid-two">
@@ -180,17 +233,7 @@ export function ProviderPaymentsBoard() {
                 </div>
                 <div className="provider-payout-row__meta">
                   <strong>{formatCurrency(entry.providerNetAmountCents)}</strong>
-                  <span
-                    className={`provider-staffing-badge ${
-                      entry.status === "ready"
-                        ? "provider-staffing-badge--healthy"
-                        : entry.status === "reversed" || entry.status === "on-hold"
-                          ? "provider-staffing-badge--warning"
-                          : ""
-                    }`}
-                  >
-                    {entry.status.replaceAll("-", " ")}
-                  </span>
+                  <span className={getPayoutStatusClass(entry.status)}>{formatPayoutStatus(entry.status)}</span>
                 </div>
               </div>
             ))
@@ -207,8 +250,8 @@ export function ProviderPaymentsBoard() {
             </div>
           </div>
 
-          {readyEntries.length + scheduledEntries.length + heldEntries.length > 0 ? (
-            [...readyEntries, ...scheduledEntries, ...heldEntries].map((entry) => (
+          {crewQueueEntries.length > 0 ? (
+            crewQueueEntries.map((entry) => (
               <div className="provider-payout-row" key={`${entry.id}-crew`}>
                 <div>
                   <strong>{entry.crewMembersAssigned} assigned crew member{entry.crewMembersAssigned === 1 ? "" : "s"}</strong>
@@ -219,17 +262,7 @@ export function ProviderPaymentsBoard() {
                 </div>
                 <div className="provider-payout-row__meta">
                   <strong>{formatCurrency(entry.crewShareCents)}</strong>
-                  <span
-                    className={`provider-staffing-badge ${
-                      entry.status === "ready"
-                        ? "provider-staffing-badge--healthy"
-                        : entry.status === "on-hold"
-                          ? "provider-staffing-badge--warning"
-                          : ""
-                    }`}
-                  >
-                    {entry.status.replaceAll("-", " ")}
-                  </span>
+                  <span className={getPayoutStatusClass(entry.status)}>{formatPayoutStatus(entry.status)}</span>
                 </div>
               </div>
             ))
@@ -238,11 +271,10 @@ export function ProviderPaymentsBoard() {
           )}
 
           <div className="provider-wallet-note">
-            <strong>Next step</strong>
+            <strong>Still ahead</strong>
             <p>
-              Bank accounts, weekly disbursement runs, and instant cash-out remain separate roadmap work.
-              This ledger shows what is actually earned and what is still blocked by payment, refund-review,
-              or dispute state.
+              Bank-transfer rails and instant cash-out controls remain separate roadmap work. This view shows what
+              is earned, reserved for crew, and blocked by payment or review state.
             </p>
           </div>
         </article>

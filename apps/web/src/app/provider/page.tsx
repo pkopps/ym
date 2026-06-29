@@ -83,7 +83,7 @@ export default function ProviderPage() {
           <h1>Grow your book of business without losing control of your calendar, crews, or margins.</h1>
           <p>Win local jobs, fill your calendar, and add crew when demand picks up.</p>
           <div className="cta-row">
-            <a className="button" href="/auth/provider">
+            <a className="button" href="/auth/provider/create">
               Get started
             </a>
             <a className="button-secondary" href="/login/provider">
@@ -215,7 +215,7 @@ export default function ProviderPage() {
             <p>Start with your business account.</p>
           </div>
           <div className="cta-row">
-            <a className="button" href="/auth/provider">
+            <a className="button" href="/auth/provider/create">
               Sign up as a business owner
             </a>
             <a className="button-secondary" href="/login/provider">

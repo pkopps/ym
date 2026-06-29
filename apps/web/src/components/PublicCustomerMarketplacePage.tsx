@@ -308,7 +308,7 @@ export function PublicCustomerMarketplacePage() {
             selectedTiming={selectedTiming}
           />
           <div className="cta-row">
-            <a className="button-secondary" href="/auth/provider">
+            <a className="button-secondary" href="/provider">
               I run a landscaping business
             </a>
             <a className="button-secondary" href="/auth/crew">

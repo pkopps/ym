@@ -52,7 +52,7 @@ export default function ProviderPartnershipsPage() {
           <a className="button" href="/auth/provider/create">
             Get Started
           </a>
-          <a className="button-secondary" href="/auth/provider">
+          <a className="button-secondary" href="/provider">
             Back to business overview
           </a>
         </div>

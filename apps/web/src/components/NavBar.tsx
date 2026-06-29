@@ -6,7 +6,7 @@ import { NotificationMenu } from "./NotificationMenu";
 
 const links = [
   { href: "/customer", label: "Book a service" },
-  { href: "/auth/provider", label: "For providers" },
+  { href: "/provider", label: "For providers" },
   { href: "/crew", label: "For crews" },
   { href: "/help", label: "Help center" }
 ];

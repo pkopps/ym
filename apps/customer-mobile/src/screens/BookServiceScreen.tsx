@@ -64,6 +64,14 @@ function formatPrice(cents: number) {
   );
 }
 
+function formatOpenWindow(slot?: AvailabilitySlot) {
+  return slot ? formatBookingWindowSummary(slot.startIso) : "No open slot";
+}
+
+function formatProviderTrust(provider: SearchProviderResult["provider"]) {
+  return `${provider.rating.toFixed(1)} stars • ${provider.reviewCount} reviews`;
+}
+
 function getCompanyInitials(companyName: string) {
   return companyName
     .split(/\s+/)
@@ -427,8 +435,8 @@ export function BookServiceScreen() {
       {quote ? (
         <>
           <InfoCard
-            title="Price ready"
-            description="Estimated total before you book."
+            title="Quote"
+            description="Review only if needed."
           >
             <View style={styles.priceSummary}>
               <Text style={styles.priceAmount}>{formatPrice(quote.estimatedPriceCents)}</Text>
@@ -461,8 +469,8 @@ export function BookServiceScreen() {
           </InfoCard>
 
           <InfoCard
-            title="Best fit"
-            description={`First checked: ${selectedTimingLabel.toLowerCase()}`}
+            title={recommendedProviderCard ? "Ready to book" : "Best fit"}
+            description={recommendedProviderCard ? "One clear recommendation." : `First checked: ${selectedTimingLabel.toLowerCase()}`}
           >
             {searchState === "loading" ? (
               <View style={styles.providerStack}>
@@ -530,22 +538,41 @@ export function BookServiceScreen() {
                         </Text>
                         <Text style={styles.providerName}>{recommendedProviderCard.provider.companyName}</Text>
                         <Text style={styles.providerMeta}>
-                          {recommendedProviderCard.slot
-                            ? formatBookingWindowSummary(recommendedProviderCard.slot.startIso)
-                            : "No open slot right now"}
+                          {formatProviderTrust(recommendedProviderCard.provider)}
                         </Text>
                       </View>
                     </View>
-                    <View style={styles.factRow}>
-                      <Text style={styles.factPill}>{recommendedProviderCard.provider.rating.toFixed(1)} stars</Text>
-                      <Text style={styles.factPill}>{recommendedProviderCard.provider.reviewCount} reviews</Text>
-                      <Text style={styles.factPill}>
-                        {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} mi
-                      </Text>
+
+                    <View style={styles.bookingFactGrid}>
+                      <View style={styles.bookingFactItem}>
+                        <Text style={styles.bookingFactLabel}>Price</Text>
+                        <Text style={styles.bookingFactValue}>{formatPrice(quote.estimatedPriceCents)}</Text>
+                      </View>
+                      <View style={styles.bookingFactItem}>
+                        <Text style={styles.bookingFactLabel}>Opening</Text>
+                        <Text style={styles.bookingFactValue}>{formatOpenWindow(recommendedProviderCard.slot)}</Text>
+                      </View>
+                      <View style={styles.bookingFactItem}>
+                        <Text style={styles.bookingFactLabel}>Crew</Text>
+                        <Text style={styles.bookingFactValue}>
+                          {quote.estimatedCrewSize} crew • {quote.estimatedDurationMinutes} min
+                        </Text>
+                      </View>
+                      <View style={styles.bookingFactItem}>
+                        <Text style={styles.bookingFactLabel}>Property</Text>
+                        <Text style={styles.bookingFactValue}>{activeProperty?.label ?? "Selected property"}</Text>
+                      </View>
                     </View>
                     <Text style={styles.providerChoiceDetail}>
                       {recommendedProviderCard.ranking.selectionSummaryDetail}
                     </Text>
+                    <Pressable
+                      disabled={isWorking || !recommendedProviderCard.slot}
+                      onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1)}
+                      style={styles.primaryButton}
+                    >
+                      <Text style={styles.primaryButtonLabel}>Book for {formatPrice(quote.estimatedPriceCents)}</Text>
+                    </Pressable>
                     <View style={styles.providerStack}>
                       <Pressable
                         onPress={() => setShowRecommendedWhy((current) => !current)}
@@ -587,13 +614,6 @@ export function BookServiceScreen() {
                         </View>
                       ) : null}
                     </View>
-                    <Pressable
-                      disabled={isWorking || !recommendedProviderCard.slot}
-                      onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1)}
-                      style={styles.primaryButton}
-                    >
-                      <Text style={styles.primaryButtonLabel}>Book this visit</Text>
-                    </Pressable>
                   </View>
                 ) : null}
                 {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
@@ -614,7 +634,7 @@ export function BookServiceScreen() {
                       }}
                       style={styles.secondaryButtonInline}
                     >
-                      <Text style={styles.secondaryButtonInlineLabel}>Compare backups</Text>
+                      <Text style={styles.secondaryButtonInlineLabel}>Compare options</Text>
                     </Pressable>
                   </View>
                 ) : null}
@@ -627,10 +647,10 @@ export function BookServiceScreen() {
                       <Text style={styles.providerName}>{provider.companyName}</Text>
                       <Text style={styles.providerChoiceDetail}>{ranking.selectionSummaryDetail}</Text>
                       <Text style={styles.providerMeta}>
-                        {slot ? formatBookingWindowSummary(slot.startIso) : "No open slot"}
+                        {formatOpenWindow(slot)}
                       </Text>
                       <Text style={styles.providerMeta}>
-                        {provider.rating} stars • {ranking.distanceMiles.toFixed(1)} mi away
+                        {formatProviderTrust(provider)} • {ranking.distanceMiles.toFixed(1)} mi away
                       </Text>
                       <Pressable
                         onPress={() =>
@@ -675,7 +695,7 @@ export function BookServiceScreen() {
                       onPress={() => void handleCreateBooking(ranking, index + 2)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Book backup</Text>
+                      <Text style={styles.secondaryButtonLabel}>Book for {formatPrice(quote.estimatedPriceCents)}</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -837,6 +857,32 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: BrandTokens.spacing.md,
     paddingVertical: BrandTokens.spacing.xs
+  },
+  bookingFactGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  bookingFactItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  bookingFactLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  bookingFactValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 20
   },
   providerStack: {
     gap: BrandTokens.spacing.md

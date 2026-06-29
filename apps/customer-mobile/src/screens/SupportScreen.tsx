@@ -23,6 +23,19 @@ import { useCustomerSession } from "../session/CustomerSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
+function getEnabledAlertCount(preferences?: NotificationPreferences) {
+  if (!preferences) {
+    return undefined;
+  }
+
+  return [
+    preferences.pushEnabled,
+    preferences.emailEnabled,
+    preferences.smsEnabled,
+    preferences.reviewRemindersEnabled
+  ].filter(Boolean).length;
+}
+
 export function SupportScreen() {
   const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
@@ -46,6 +59,8 @@ export function SupportScreen() {
   const [errorMessage, setErrorMessage] = useState("");
   const { biometricAvailable, biometricEnabled, biometricLabel, envelope, setBiometricEnabled, signOut } =
     useCustomerSession();
+  const defaultProperty = properties.find((property) => property.isDefault) ?? properties[0];
+  const enabledAlertCount = getEnabledAlertCount(preferences);
 
   async function loadAccount() {
     if (!envelope?.session.token) {
@@ -251,12 +266,42 @@ export function SupportScreen() {
     <ScreenShell
       eyebrow="Account"
       title="Account"
-      description="Properties, security, and support."
+      description="Settings and help."
     >
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard title="Saved properties" description={`${properties.length} saved`}>
+      <InfoCard title="Essentials" description="At a glance.">
+        <View style={styles.accountSummaryGrid}>
+          <View style={styles.accountSummaryItem}>
+            <Text style={styles.accountSummaryLabel}>Property</Text>
+            <Text style={styles.accountSummaryValue}>
+              {defaultProperty?.label ?? "Add one"}
+            </Text>
+          </View>
+          <View style={styles.accountSummaryItem}>
+            <Text style={styles.accountSummaryLabel}>Alerts</Text>
+            <Text style={styles.accountSummaryValue}>
+              {enabledAlertCount === undefined ? "Loading" : `${enabledAlertCount}/4 on`}
+            </Text>
+          </View>
+          <View style={styles.accountSummaryItem}>
+            <Text style={styles.accountSummaryLabel}>Security</Text>
+            <Text style={styles.accountSummaryValue}>
+              {!biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`}
+            </Text>
+          </View>
+          <View style={styles.accountSummaryItem}>
+            <Text style={styles.accountSummaryLabel}>Updates</Text>
+            <Text style={styles.accountSummaryValue}>{unreadCount} unread</Text>
+          </View>
+        </View>
+      </InfoCard>
+
+      <InfoCard
+        title="Saved properties"
+        description={defaultProperty ? `${defaultProperty.label} default` : `${properties.length} saved`}
+      >
         {properties.length > 0 ? (
           <View style={styles.list}>
             {properties.map((property) => (
@@ -296,14 +341,14 @@ export function SupportScreen() {
         ) : null}
       </InfoCard>
 
-      <InfoCard title="Security" description="Protect this device without slowing down daily use.">
+      <InfoCard title="Security" description={biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`}>
         <View style={styles.switchRow}>
           <View style={styles.copy}>
             <Text style={styles.title}>Use {biometricLabel}</Text>
             <Text style={styles.meta}>
               {biometricAvailable
-                ? "Ask for biometric unlock after the app has been away for about a minute."
-                : "Face ID or another enrolled biometric method is not available on this device yet."}
+                ? "Use device unlock after a short pause."
+                : "Not available on this device."}
             </Text>
           </View>
           <Switch
@@ -319,7 +364,7 @@ export function SupportScreen() {
         </Pressable>
       </InfoCard>
 
-      <InfoCard title="Updates" description={`${unreadCount} unread`}>
+      <InfoCard title="Notifications" description={`${unreadCount} unread`}>
         {notifications.length > 0 ? (
           <View style={styles.list}>
             {notifications.slice(0, 4).map((notification) => (
@@ -349,7 +394,7 @@ export function SupportScreen() {
             onPress={() => void handleMarkNotificationsRead()}
             style={styles.linkButton}
           >
-            <Text style={styles.linkButtonLabel}>Mark updates read</Text>
+            <Text style={styles.linkButtonLabel}>Mark read</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -358,23 +403,23 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAlertPreferences ? "Hide alert preferences" : "Alert preferences"}
+            {showAlertPreferences ? "Hide preferences" : "Preferences"}
           </Text>
         </Pressable>
         {showAlertPreferences ? (
           <View style={styles.list}>
             <PreferenceRow
-              label="Push for upcoming services"
+              label="Push"
               value={preferences?.pushEnabled ?? true}
               onValueChange={(value) => void handleUpdatePreferences({ pushEnabled: value })}
             />
             <PreferenceRow
-              label="Email updates"
+              label="Email"
               value={preferences?.emailEnabled ?? true}
               onValueChange={(value) => void handleUpdatePreferences({ emailEnabled: value })}
             />
             <PreferenceRow
-              label="SMS updates"
+              label="SMS"
               value={preferences?.smsEnabled ?? true}
               onValueChange={(value) => void handleUpdatePreferences({ smsEnabled: value })}
             />
@@ -387,7 +432,7 @@ export function SupportScreen() {
         ) : null}
       </InfoCard>
 
-      <InfoCard title="Delivery activity" description="What YardMatch already sent.">
+      <InfoCard title="Sent alerts" description="Recent delivery receipts.">
         {deliveries.length > 0 ? (
           <View style={styles.list}>
             {deliveries.slice(0, 4).map((delivery) => (
@@ -408,13 +453,16 @@ export function SupportScreen() {
         )}
       </InfoCard>
 
-      <InfoCard title="Help" description="Get help quickly.">
+      <InfoCard
+        title="Help"
+        description={supportTickets.length > 0 ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}` : "Start a ticket."}
+      >
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
           style={showSupportComposer ? styles.linkButton : styles.primaryButton}
         >
           <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
-            {showSupportComposer ? "Hide ticket form" : "Open support ticket"}
+            {showSupportComposer ? "Hide form" : "Open ticket"}
           </Text>
         </Pressable>
         {showSupportComposer ? (
@@ -551,6 +599,32 @@ function PreferenceRow({
 const styles = StyleSheet.create({
   list: {
     gap: BrandTokens.spacing.md
+  },
+  accountSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  accountSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  accountSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  accountSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   row: {
     flexDirection: "row",
