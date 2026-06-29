@@ -29,6 +29,13 @@ export function DashboardScreen({
     () => overview?.jobs.reduce((sum, job) => sum + job.crewGap, 0) ?? 0,
     [overview]
   );
+  const nextJob = useMemo(
+    () =>
+      (overview?.jobs ?? [])
+        .slice()
+        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
+    [overview]
+  );
   const departureReminderJob = useMemo(
     () =>
       (overview?.jobs ?? [])
@@ -36,6 +43,25 @@ export function DashboardScreen({
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
     [overview]
   );
+  const primaryCardKind =
+    totalCrewGap > 0
+      ? "staffing"
+      : departureReminderJob
+        ? "departure"
+        : nextJob
+          ? "job"
+          : "empty";
+  const remainingJobs = (overview?.jobs ?? []).filter((job) => {
+    if (primaryCardKind === "departure" && departureReminderJob) {
+      return job.bookingId !== departureReminderJob.bookingId;
+    }
+
+    if (primaryCardKind === "job" && nextJob) {
+      return job.bookingId !== nextJob.bookingId;
+    }
+
+    return true;
+  });
 
   async function loadOverview() {
     if (!envelope?.session.token) {
@@ -56,13 +82,13 @@ export function DashboardScreen({
   }, [envelope?.session.token]);
 
   return (
-    <ScreenShell eyebrow="Home" title="Today at a glance">
+    <ScreenShell eyebrow="Home" title="Home" description="See what matters now.">
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      {totalCrewGap > 0 ? (
-        <InfoCard title="Crew gap detected" description={`${totalCrewGap} open crew slots across upcoming jobs`}>
+      {primaryCardKind === "staffing" ? (
+        <InfoCard title="Crew gap" description={`${totalCrewGap} open crew slots across upcoming jobs`}>
           <Text style={styles.alertText}>
-            Matching is live. Review candidates now or switch the business to auto-accept.
+            Matching is live. Review candidates before the route falls behind.
           </Text>
           <Pressable
             onPress={() => {
@@ -75,19 +101,18 @@ export function DashboardScreen({
             }}
             style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonLabel}>Review crew below</Text>
+            <Text style={styles.primaryButtonLabel}>Review staffing</Text>
           </Pressable>
         </InfoCard>
       ) : null}
 
-      {departureReminderJob ? (
+      {primaryCardKind === "departure" && departureReminderJob ? (
         <InfoCard
-          title="Time to head out soon"
+          title="Leave soon"
           description={buildDepartureSummary(departureReminderJob)}
         >
           <Text style={styles.alertText}>
-            In v1 the business owner starts the route for the crew. Tap into Schedule when you are
-            ready to head to the property.
+            Start the route from Schedule when you are ready to head to the property.
           </Text>
           <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
             <Text style={styles.primaryButtonLabel}>Open schedule</Text>
@@ -95,16 +120,46 @@ export function DashboardScreen({
         </InfoCard>
       ) : null}
 
-      <View style={styles.statGrid}>
-        <StatCard label="Jobs" value={`${overview?.jobs.length ?? 0}`} />
-        <StatCard label="Crew assigned" value={`${totalAssignedCrew}`} />
-        <StatCard label="Crew gap" value={`${totalCrewGap}`} />
-        <StatCard label="Staffing mode" value={overview?.provider.staffingMode === "auto-accept" ? "Auto" : "Review"} />
-      </View>
+      {primaryCardKind === "job" && nextJob ? (
+        <InfoCard title="Next job" description={buildDepartureSummary(nextJob)}>
+          <Text style={styles.alertText}>
+            {nextJob.assignedCrewMembers}/{nextJob.requiredCrewMembers} crew
+            {nextJob.crewGap > 0 ? ` • ${nextJob.crewGap} still open` : " • fully staffed"}
+          </Text>
+          <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonLabel}>Open schedule</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
 
-      <InfoCard title="Next jobs" description={`${overview?.jobs.length ?? 0} upcoming`}>
+      {primaryCardKind === "empty" ? (
+        <InfoCard title="You’re caught up" description="No upcoming jobs need review right now.">
+          <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonLabel}>Open schedule</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
+
+      {departureReminderJob && primaryCardKind === "staffing" ? (
+        <InfoCard title="Leave soon" description={buildDepartureSummary(departureReminderJob)}>
+          <Text style={styles.alertText}>Route is ready once staffing is covered.</Text>
+          <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Open schedule</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
+
+      <InfoCard
+        title={remainingJobs.length > 0 ? "Later jobs" : "Schedule health"}
+        description={
+          remainingJobs.length > 0
+            ? `${remainingJobs.length} more upcoming`
+            : `${overview?.jobs.length ?? 0} total jobs • ${totalAssignedCrew} crew assigned`
+        }
+      >
+        {remainingJobs.length > 0 ? (
         <View style={styles.list}>
-          {(overview?.jobs ?? []).slice(0, 3).map((job) => (
+          {remainingJobs.slice(0, 3).map((job) => (
             <View key={job.bookingId} style={styles.jobRow}>
               <View style={styles.jobCopy}>
                 <Text style={styles.jobTitle}>{job.customerName}</Text>
@@ -121,6 +176,12 @@ export function DashboardScreen({
             </View>
           ))}
         </View>
+        ) : (
+          <Text style={styles.alertText}>
+            Staffing is set to {overview?.provider.staffingMode === "auto-accept" ? "auto-accept" : "review first"} and there
+            are no other upcoming jobs behind the current priority.
+          </Text>
+        )}
       </InfoCard>
     </ScreenShell>
   );
@@ -128,15 +189,6 @@ export function DashboardScreen({
 
 function buildDepartureSummary(job: ProviderStaffingJobSummary) {
   return `${job.customerName} • ${new Date(job.scheduledStartIso).toLocaleDateString()} • ${new Date(job.scheduledStartIso).toLocaleTimeString([], { timeStyle: "short" })}`;
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
 }
 
 const styles = StyleSheet.create({
@@ -155,27 +207,17 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontWeight: "700"
   },
-  statGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: BrandTokens.spacing.md
+  linkButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderColor: BrandTokens.colors.primary,
+    borderWidth: 1,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
   },
-  statCard: {
-    width: "47%",
-    borderRadius: BrandTokens.radius.md,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    padding: BrandTokens.spacing.lg,
-    gap: BrandTokens.spacing.xs
-  },
-  statValue: {
-    color: BrandTokens.colors.ink,
-    fontSize: 24,
+  linkButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
-  },
-  statLabel: {
-    color: BrandTokens.colors.inkSoft,
-    fontSize: 13,
-    fontWeight: "600"
   },
   list: {
     gap: BrandTokens.spacing.md

@@ -44,8 +44,33 @@ const customerTimingOptions: Array<{ value: CustomerTimingPreference; label: str
   { value: "day-after-afternoon", label: "Day after afternoon" }
 ];
 
+function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreference) {
+  const selectedIndex = customerTimingOptions.findIndex((option) => option.value === selectedTiming);
+
+  if (selectedIndex === -1) {
+    return customerTimingOptions.slice(0, 2);
+  }
+
+  return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
+}
+
 function formatServiceLabel(service: ServiceCategory) {
   return serviceCategoryLabels[service];
+}
+
+function formatPrice(cents: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(
+    cents / 100
+  );
+}
+
+function getCompanyInitials(companyName: string) {
+  return companyName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase())
+    .join("");
 }
 
 function buildDateIsoForCustomerTiming(timing: CustomerTimingPreference) {
@@ -89,11 +114,82 @@ export function BookServiceScreen() {
   const [searchState, setSearchState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [isPropertyModalVisible, setIsPropertyModalVisible] = useState(false);
   const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
+  const [showQuoteDetails, setShowQuoteDetails] = useState(false);
+  const [showRecommendedWhy, setShowRecommendedWhy] = useState(false);
+  const [showAlternativeWhy, setShowAlternativeWhy] = useState<Record<string, boolean>>({});
 
   const activeProperty = useMemo(
     () => properties.find((property) => property.id === selectedPropertyId) ?? properties[0],
     [properties, selectedPropertyId]
   );
+  const selectedTimingLabel =
+    customerTimingOptions.find((option) => option.value === selectedTiming)?.label ?? "Tomorrow morning";
+  const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
+  const selectedServiceLabel = formatServiceLabel(selectedService);
+
+  function resetMatchState() {
+    setQuote(undefined);
+    setProviders([]);
+    setSlots([]);
+    setRecommendationContext(undefined);
+    setSearchState("idle");
+    setShowAlternativeProviders(false);
+    setShowQuoteDetails(false);
+    setShowRecommendedWhy(false);
+    setShowAlternativeWhy({});
+  }
+
+  function handleChangeDetails() {
+    resetMatchState();
+    setMessage("");
+    setErrorMessage("");
+  }
+
+  async function runProviderSearch(nextQuote: InstantQuoteResponse, timingPreference: CustomerTimingPreference) {
+    if (!activeProperty || !envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      setMessage("");
+      setSearchState("loading");
+      if (timingPreference !== selectedTiming) {
+        setSelectedTiming(timingPreference);
+      }
+      if (recommendationContext?.recommendationSessionId) {
+        await tracker.track(MarketplaceTelemetryEventCatalog.recommendationDismissed, {
+          recommendationSessionId: recommendationContext.recommendationSessionId,
+          recommendedProviderId: recommendationContext.recommendedProviderId ?? "none",
+          requestSource: "customer-mobile-book",
+          service: selectedService
+        });
+      }
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const providerSearch = await api.searchProviders({
+        address: activeProperty.address,
+        categories: [selectedService],
+        dateIso: buildDateIsoForCustomerTiming(timingPreference),
+        estimatedDurationMinutes: nextQuote.estimatedDurationMinutes,
+        requestSource: "customer-mobile-book"
+      });
+      setProviders(providerSearch.rankedProviders);
+      setSlots(providerSearch.suggestedSlots);
+      setRecommendationContext({
+        recommendationSessionId: providerSearch.recommendationSessionId,
+        recommendedProviderId: providerSearch.recommendedProviderId
+      });
+      setShowAlternativeProviders(false);
+      setSearchState("loaded");
+    } catch (error) {
+      setSearchState("error");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to check providers right now.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
 
   async function loadProperties() {
     if (!envelope?.session.token) {
@@ -124,14 +220,6 @@ export function BookServiceScreen() {
       setIsWorking(true);
       setErrorMessage("");
       setMessage("");
-      if (recommendationContext?.recommendationSessionId) {
-        await tracker.track(MarketplaceTelemetryEventCatalog.recommendationDismissed, {
-          recommendationSessionId: recommendationContext.recommendationSessionId,
-          recommendedProviderId: recommendationContext.recommendedProviderId ?? "none",
-          requestSource: "customer-mobile-book",
-          service: selectedService
-        });
-      }
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
       const nextQuote = await api.createInstantQuote({
@@ -143,22 +231,10 @@ export function BookServiceScreen() {
       setProviders([]);
       setSlots([]);
       setRecommendationContext(undefined);
-      setSearchState("loading");
-      const providerSearch = await api.searchProviders({
-        address: activeProperty.address,
-        categories: [selectedService],
-        dateIso: buildDateIsoForCustomerTiming(selectedTiming),
-        estimatedDurationMinutes: nextQuote.estimatedDurationMinutes,
-        requestSource: "customer-mobile-book"
-      });
-      setProviders(providerSearch.rankedProviders);
-      setSlots(providerSearch.suggestedSlots);
-      setRecommendationContext({
-        recommendationSessionId: providerSearch.recommendationSessionId,
-        recommendedProviderId: providerSearch.recommendedProviderId
-      });
-      setShowAlternativeProviders(false);
-      setSearchState("loaded");
+      setShowQuoteDetails(false);
+      setShowRecommendedWhy(false);
+      setShowAlternativeWhy({});
+      await runProviderSearch(nextQuote, selectedTiming);
     } catch (error) {
       setSearchState("error");
       setErrorMessage(error instanceof Error ? error.message : "Unable to build quote right now.");
@@ -182,6 +258,7 @@ export function BookServiceScreen() {
       await loadProperties();
       setSelectedPropertyId(property.id);
       setIsPropertyModalVisible(false);
+      resetMatchState();
       setMessage(`${property.label} is ready for booking.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to save that property.");
@@ -227,10 +304,7 @@ export function BookServiceScreen() {
         `Booked ${provider.provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
       );
       setRecommendationContext(undefined);
-      setProviders([]);
-      setSlots([]);
-      setShowAlternativeProviders(false);
-      setSearchState("idle");
+      resetMatchState();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
     } finally {
@@ -252,20 +326,23 @@ export function BookServiceScreen() {
   return (
     <ScreenShell
       eyebrow="Book"
-      title="Plan the visit"
-      description="Pick the service, pick when, and review the best match."
+      title="Book"
+      description="Price, crew, time."
     >
       {message ? <InfoCard title="Booking confirmed" description={message} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard title="1. Service" description="What needs care?">
+      <InfoCard title="Service" description={selectedServiceLabel}>
         <View style={styles.chipWrap}>
           {serviceOptions.map((option) => {
             const isActive = option === selectedService;
             return (
               <Pressable
                 key={option}
-                onPress={() => setSelectedService(option)}
+                onPress={() => {
+                  setSelectedService(option);
+                  resetMatchState();
+                }}
                 style={[styles.chip, isActive && styles.chipActive]}
               >
                 <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
@@ -277,27 +354,30 @@ export function BookServiceScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="2. When" description="Choose the visit window first.">
-        <View style={styles.propertyStack}>
+      <InfoCard title="When" description="Best opening first.">
+        <View style={styles.chipWrap}>
           {customerTimingOptions.map((option) => {
             const isActive = option.value === selectedTiming;
             return (
               <Pressable
                 key={option.value}
-                onPress={() => setSelectedTiming(option.value)}
-                style={[styles.propertyRow, isActive && styles.propertyRowActive]}
+                onPress={() => {
+                  setSelectedTiming(option.value);
+                  resetMatchState();
+                }}
+                style={[styles.chip, isActive && styles.chipActive]}
               >
-                <View style={styles.propertyCopy}>
-                  <Text style={styles.propertyLabel}>{option.label}</Text>
-                  <Text style={styles.propertyAddress}>We will search openings around this timing first.</Text>
-                </View>
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
               </Pressable>
             );
           })}
         </View>
       </InfoCard>
 
-      <InfoCard title="3. Property" description="Where should we send the crew?">
+      <InfoCard
+        title="Property"
+        description={activeProperty ? activeProperty.address.line1 : "Where should we send the crew?"}
+      >
         {properties.length === 0 ? (
           <View style={styles.propertyStack}>
             <Text style={styles.emptyState}>Add a property before we price the job.</Text>
@@ -317,7 +397,10 @@ export function BookServiceScreen() {
                 return (
                   <Pressable
                     key={property.id}
-                    onPress={() => setSelectedPropertyId(property.id)}
+                    onPress={() => {
+                      setSelectedPropertyId(property.id);
+                      resetMatchState();
+                    }}
                     style={[styles.propertyRow, isActive && styles.propertyRowActive]}
                   >
                     <View style={styles.propertyCopy}>
@@ -330,11 +413,11 @@ export function BookServiceScreen() {
               })}
             </View>
             <Pressable onPress={() => setIsPropertyModalVisible(true)} style={styles.secondaryButtonInline}>
-              <Text style={styles.secondaryButtonInlineLabel}>Add another property</Text>
+              <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
             </Pressable>
             <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
               <Text style={styles.primaryButtonLabel}>
-                {isWorking ? "Working..." : "See price and match"}
+                {isWorking ? "Checking..." : "See price and crews"}
               </Text>
             </Pressable>
           </>
@@ -344,123 +427,177 @@ export function BookServiceScreen() {
       {quote ? (
         <>
           <InfoCard
-            title={`4. Price • ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
-              quote.estimatedPriceCents / 100
-            )}`}
-            description={`${quote.estimatedDurationMinutes} min • ${quote.estimatedCrewSize} crew`}
+            title="Price ready"
+            description="Estimated total before you book."
           >
+            <View style={styles.priceSummary}>
+              <Text style={styles.priceAmount}>{formatPrice(quote.estimatedPriceCents)}</Text>
+              <Text style={styles.priceCaption}>Includes route, crew, and service estimate.</Text>
+            </View>
+            <View style={styles.factRow}>
+              <Text style={styles.factPill}>{quote.estimatedDurationMinutes} min</Text>
+              <Text style={styles.factPill}>{quote.estimatedCrewSize} crew</Text>
+              <Text style={styles.factPill}>{selectedServiceLabel}</Text>
+            </View>
             <Text style={styles.quoteSummary}>{quote.estimateSummary}</Text>
-            <Text style={styles.providerMeta}>
-              {quote.normalizedAddress.displayLabel}
-            </Text>
-            {quote.normalizedAddress.validationMessage ? (
-              <Text style={styles.providerMeta}>{quote.normalizedAddress.validationMessage}</Text>
-            ) : null}
-            {quote.confidenceReasons.slice(0, 2).map((reason) => (
-              <Text key={`${reason.impact}-${reason.label}`} style={styles.providerMeta}>
-                {reason.label}: {reason.detail}
+            <Text style={styles.providerMeta}>{quote.normalizedAddress.displayLabel}</Text>
+            <Pressable onPress={() => setShowQuoteDetails((current) => !current)} style={styles.secondaryButtonInline}>
+              <Text style={styles.secondaryButtonInlineLabel}>
+                {showQuoteDetails ? "Hide details" : "How price works"}
               </Text>
-            ))}
+            </Pressable>
+            {showQuoteDetails ? (
+              <View style={styles.providerStack}>
+                {quote.normalizedAddress.validationMessage ? (
+                  <Text style={styles.providerMeta}>{quote.normalizedAddress.validationMessage}</Text>
+                ) : null}
+                {quote.confidenceReasons.slice(0, 2).map((reason) => (
+                  <Text key={`${reason.impact}-${reason.label}`} style={styles.providerMeta}>
+                    {reason.label}: {reason.detail}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
           </InfoCard>
 
           <InfoCard
-            title="5. Recommended provider"
-            description={`Best next opening for ${customerTimingOptions.find((option) => option.value === selectedTiming)?.label.toLowerCase() ?? "tomorrow morning"}`}
+            title="Best fit"
+            description={`First checked: ${selectedTimingLabel.toLowerCase()}`}
           >
             {searchState === "loading" ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>Checking nearby coverage and route openings...</Text>
+                <Text style={styles.emptyState}>Checking nearby openings…</Text>
               </View>
             ) : searchState === "error" ? (
               <View style={styles.providerStack}>
                 <Text style={styles.emptyState}>We could not finish the match check.</Text>
-                <Text style={styles.providerMeta}>Try again. Your price is still here.</Text>
+                <Text style={styles.providerMeta}>Try again. Your price is still ready.</Text>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => {
+                    if (quote) {
+                      void runProviderSearch(quote, selectedTiming);
+                    }
+                  }}
+                  style={styles.secondaryButtonInline}
+                >
+                  <Text style={styles.secondaryButtonInlineLabel}>Try again</Text>
+                </Pressable>
               </View>
             ) : providers.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>No verified providers are live in this area yet.</Text>
-                <Text style={styles.providerMeta}>Try another nearby area or check back later.</Text>
+                <Text style={styles.emptyState}>Nothing is live here yet.</Text>
+                <Text style={styles.providerMeta}>We do not have a verified business covering this request yet.</Text>
+                <Pressable onPress={handleChangeDetails} style={styles.secondaryButtonInline}>
+                  <Text style={styles.secondaryButtonInlineLabel}>Change details</Text>
+                </Pressable>
               </View>
             ) : providersWithWindows.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>Providers serve this area, but their near-term windows are full.</Text>
-                <Text style={styles.providerMeta}>You can still review the shortlist below.</Text>
-                {shortlist.map(({ provider, ranking }) => (
-                  <View key={provider.id} style={styles.providerRow}>
-                    <View style={styles.providerCopy}>
-                      <Text style={styles.providerName}>{provider.companyName}</Text>
-                      <Text style={styles.providerMeta}>
-                        {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {ranking.distanceMiles.toFixed(1)} mi away • {ranking.reasons.join(" • ")}
-                      </Text>
-                      <Text style={styles.providerMeta}>No open route window right now</Text>
-                    </View>
-                  </View>
-                ))}
+                <Text style={styles.emptyState}>Nothing is open {selectedTimingLabel.toLowerCase()}.</Text>
+                <Text style={styles.providerMeta}>This area is covered, but the current route windows are full.</Text>
+                <View style={styles.providerStack}>
+                  {alternativeTimingSuggestions.map((option) => (
+                    <Pressable
+                      key={option.value}
+                      disabled={isWorking || !quote}
+                      onPress={() => {
+                        if (quote) {
+                          void runProviderSearch(quote, option.value);
+                        }
+                      }}
+                      style={styles.secondaryButtonInline}
+                    >
+                      <Text style={styles.secondaryButtonInlineLabel}>{option.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.providerMeta}>Need a different property or service? Change the details above.</Text>
               </View>
             ) : (
               <View style={styles.providerStack}>
                 {recommendedProviderCard ? (
-                  <View style={styles.providerRow}>
-                    <View style={styles.providerCopy}>
-                      <Text style={styles.providerBadge}>
-                        {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
+                  <View style={styles.recommendedCard}>
+                    <View style={styles.providerTopRow}>
+                      <View style={styles.providerAvatar}>
+                        <Text style={styles.providerAvatarLabel}>
+                          {getCompanyInitials(recommendedProviderCard.provider.companyName)}
+                        </Text>
+                      </View>
+                      <View style={styles.providerCopy}>
+                        <Text style={styles.providerBadge}>
+                          {providerChoicePresentations[0]?.badge ?? "Recommended"}
+                        </Text>
+                        <Text style={styles.providerName}>{recommendedProviderCard.provider.companyName}</Text>
+                        <Text style={styles.providerMeta}>
+                          {recommendedProviderCard.slot
+                            ? formatBookingWindowSummary(recommendedProviderCard.slot.startIso)
+                            : "No open slot right now"}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.factRow}>
+                      <Text style={styles.factPill}>{recommendedProviderCard.provider.rating.toFixed(1)} stars</Text>
+                      <Text style={styles.factPill}>{recommendedProviderCard.provider.reviewCount} reviews</Text>
+                      <Text style={styles.factPill}>
+                        {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} mi
                       </Text>
-                      <Text style={styles.providerName}>{recommendedProviderCard.provider.companyName}</Text>
-                      {providerChoicePresentations[0] ? (
-                        <Text style={styles.providerChoiceDetail}>
-                          <Text style={styles.providerChoiceHeading}>
-                            {providerChoicePresentations[0].heading}.{" "}
+                    </View>
+                    <Text style={styles.providerChoiceDetail}>
+                      {recommendedProviderCard.ranking.selectionSummaryDetail}
+                    </Text>
+                    <View style={styles.providerStack}>
+                      <Pressable
+                        onPress={() => setShowRecommendedWhy((current) => !current)}
+                        style={styles.secondaryButtonInline}
+                      >
+                        <Text style={styles.secondaryButtonInlineLabel}>
+                          {showRecommendedWhy ? "Hide why" : "Why this pick"}
+                        </Text>
+                      </Pressable>
+                      {showRecommendedWhy ? (
+                        <View style={styles.providerStack}>
+                          {providerChoicePresentations[0] ? (
+                            <Text style={styles.providerMeta}>
+                              <Text style={styles.providerChoiceHeading}>
+                                {providerChoicePresentations[0].heading}.{" "}
+                              </Text>
+                              {providerChoicePresentations[0].detail}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.providerMeta}>
+                            <Text style={styles.providerChoiceHeading}>
+                              {recommendedProviderCard.ranking.selectionSummaryLabel}.{" "}
+                            </Text>
+                            {recommendedProviderCard.ranking.selectionSummaryDetail}
                           </Text>
-                          {providerChoicePresentations[0].detail}
-                        </Text>
+                          <Text style={styles.providerMeta}>
+                            <Text style={styles.providerChoiceHeading}>
+                              {recommendedProviderCard.ranking.reliabilityLabel}.{" "}
+                            </Text>
+                            {recommendedProviderCard.ranking.reliabilityDetail}
+                          </Text>
+                          <Text style={styles.providerMeta}>
+                            {recommendedProviderCard.ranking.neighborhoodFamiliarityLabel}.{" "}
+                            {recommendedProviderCard.ranking.neighborhoodFamiliarityDetail}
+                          </Text>
+                          <Text style={styles.providerMeta}>
+                            {recommendedProviderCard.ranking.reasons.join(" • ")}
+                          </Text>
+                        </View>
                       ) : null}
-                      <Text style={styles.providerChoiceDetail}>
-                        <Text style={styles.providerChoiceHeading}>
-                          {recommendedProviderCard.ranking.selectionSummaryLabel}.{" "}
-                        </Text>
-                        {recommendedProviderCard.ranking.selectionSummaryDetail}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {recommendedProviderCard.provider.rating} stars •{" "}
-                        {recommendedProviderCard.provider.serviceRadiusMiles} mi radius
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        <Text style={styles.providerChoiceHeading}>
-                          {recommendedProviderCard.ranking.reliabilityLabel}.{" "}
-                        </Text>
-                        {recommendedProviderCard.ranking.reliabilityDetail}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} mi away •{" "}
-                        {recommendedProviderCard.ranking.reasons.join(" • ")}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {recommendedProviderCard.ranking.neighborhoodFamiliarityLabel}.{" "}
-                        {recommendedProviderCard.ranking.neighborhoodFamiliarityDetail}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {recommendedProviderCard.slot
-                          ? `Next opening: ${formatBookingWindowSummary(recommendedProviderCard.slot.startIso)}`
-                          : "No open slot right now"}
-                      </Text>
                     </View>
                     <Pressable
                       disabled={isWorking || !recommendedProviderCard.slot}
                       onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1)}
-                      style={styles.secondaryButton}
+                      style={styles.primaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Book recommended</Text>
+                      <Text style={styles.primaryButtonLabel}>Book this visit</Text>
                     </Pressable>
                   </View>
                 ) : null}
                 {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
                   <View style={styles.providerStack}>
-                    <Text style={styles.providerMeta}>
-                      Want a backup first? Open a short curated list.
-                    </Text>
                     <Pressable
                       onPress={() => {
                         setShowAlternativeProviders(true);
@@ -477,52 +614,68 @@ export function BookServiceScreen() {
                       }}
                       style={styles.secondaryButtonInline}
                     >
-                      <Text style={styles.secondaryButtonInlineLabel}>Show backup options</Text>
+                      <Text style={styles.secondaryButtonInlineLabel}>Compare backups</Text>
                     </Pressable>
                   </View>
                 ) : null}
                 {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => (
-                  <View key={provider.id} style={styles.providerRow}>
+                  <View key={provider.id} style={styles.providerRowCompact}>
                     <View style={styles.providerCopy}>
                       {providerChoicePresentations[index + 1] ? (
                         <Text style={styles.providerBadge}>{providerChoicePresentations[index + 1].badge}</Text>
                       ) : null}
                       <Text style={styles.providerName}>{provider.companyName}</Text>
-                      {providerChoicePresentations[index + 1] ? (
-                        <Text style={styles.providerChoiceDetail}>
-                          <Text style={styles.providerChoiceHeading}>
-                            {providerChoicePresentations[index + 1].heading}.{" "}
-                          </Text>
-                          {providerChoicePresentations[index + 1].detail}
-                        </Text>
-                      ) : null}
-                      <Text style={styles.providerChoiceDetail}>
-                        <Text style={styles.providerChoiceHeading}>{ranking.selectionSummaryLabel}. </Text>
-                        {ranking.selectionSummaryDetail}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {provider.rating} stars • {provider.serviceRadiusMiles} mi radius
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        <Text style={styles.providerChoiceHeading}>{ranking.reliabilityLabel}. </Text>
-                        {ranking.reliabilityDetail}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {ranking.distanceMiles.toFixed(1)} mi away • {ranking.reasons.join(" • ")}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {ranking.neighborhoodFamiliarityLabel}. {ranking.neighborhoodFamiliarityDetail}
-                      </Text>
+                      <Text style={styles.providerChoiceDetail}>{ranking.selectionSummaryDetail}</Text>
                       <Text style={styles.providerMeta}>
                         {slot ? formatBookingWindowSummary(slot.startIso) : "No open slot"}
                       </Text>
+                      <Text style={styles.providerMeta}>
+                        {provider.rating} stars • {ranking.distanceMiles.toFixed(1)} mi away
+                      </Text>
+                      <Pressable
+                        onPress={() =>
+                          setShowAlternativeWhy((current) => ({
+                            ...current,
+                            [provider.id]: !current[provider.id]
+                          }))
+                        }
+                        style={styles.secondaryButtonInline}
+                      >
+                        <Text style={styles.secondaryButtonInlineLabel}>
+                          {showAlternativeWhy[provider.id] ? "Hide why" : "Why this option"}
+                        </Text>
+                      </Pressable>
+                      {showAlternativeWhy[provider.id] ? (
+                        <View style={styles.providerStack}>
+                          {providerChoicePresentations[index + 1] ? (
+                            <Text style={styles.providerMeta}>
+                              <Text style={styles.providerChoiceHeading}>
+                                {providerChoicePresentations[index + 1].heading}.{" "}
+                              </Text>
+                              {providerChoicePresentations[index + 1].detail}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.providerMeta}>
+                            <Text style={styles.providerChoiceHeading}>{ranking.selectionSummaryLabel}. </Text>
+                            {ranking.selectionSummaryDetail}
+                          </Text>
+                          <Text style={styles.providerMeta}>
+                            <Text style={styles.providerChoiceHeading}>{ranking.reliabilityLabel}. </Text>
+                            {ranking.reliabilityDetail}
+                          </Text>
+                          <Text style={styles.providerMeta}>
+                            {ranking.neighborhoodFamiliarityLabel}. {ranking.neighborhoodFamiliarityDetail}
+                          </Text>
+                          <Text style={styles.providerMeta}>{ranking.reasons.join(" • ")}</Text>
+                        </View>
+                      ) : null}
                     </View>
                     <Pressable
                       disabled={isWorking || !slot}
                       onPress={() => void handleCreateBooking(ranking, index + 2)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Book this option</Text>
+                      <Text style={styles.secondaryButtonLabel}>Book backup</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -654,6 +807,37 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 21
   },
+  priceSummary: {
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    padding: BrandTokens.spacing.lg,
+    gap: BrandTokens.spacing.xs
+  },
+  priceAmount: {
+    color: BrandTokens.colors.ink,
+    fontSize: 34,
+    fontWeight: "800",
+    lineHeight: 38
+  },
+  priceCaption: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  factRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  factPill: {
+    borderRadius: 999,
+    backgroundColor: "rgba(20, 40, 29, 0.06)",
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+    overflow: "hidden",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs
+  },
   providerStack: {
     gap: BrandTokens.spacing.md
   },
@@ -662,6 +846,34 @@ const styles = StyleSheet.create({
     gap: BrandTokens.spacing.md,
     alignItems: "center",
     justifyContent: "space-between"
+  },
+  providerRowCompact: {
+    gap: BrandTokens.spacing.md
+  },
+  recommendedCard: {
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(20, 40, 29, 0.08)",
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    padding: BrandTokens.spacing.lg,
+    gap: BrandTokens.spacing.md
+  },
+  providerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: BrandTokens.spacing.md
+  },
+  providerAvatar: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: BrandTokens.colors.primary
+  },
+  providerAvatarLabel: {
+    color: "#ffffff",
+    fontWeight: "800"
   },
   providerCopy: {
     flex: 1,

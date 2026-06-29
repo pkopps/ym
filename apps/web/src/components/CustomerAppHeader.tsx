@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { clearStoredSession } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { NotificationMenu } from "./NotificationMenu";
@@ -13,12 +13,35 @@ const profileLinks = [
 
 export function CustomerAppHeader() {
   const { session } = useStoredWebSession();
-  usePathname();
-  const currentSectionLabel = "Customer account";
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentView = searchParams.get("view");
+  const currentFlow = searchParams.get("flow");
+
+  const currentSectionLabel =
+    pathname === "/help"
+      ? "Help"
+      : currentFlow === "request"
+        ? "Request service"
+        : currentView === "history"
+          ? "Past visits"
+          : "Customer account";
 
   function handleSignOut() {
     clearStoredSession();
     window.location.href = "/customer";
+  }
+
+  function isActiveLink(href: (typeof profileLinks)[number]["href"]) {
+    if (href === "/help") {
+      return pathname === "/help";
+    }
+
+    if (href === "/customer/dashboard?view=history") {
+      return pathname === "/customer/dashboard" && currentView === "history";
+    }
+
+    return pathname === "/customer/dashboard" && currentView !== "history";
   }
 
   return (
@@ -39,7 +62,7 @@ export function CustomerAppHeader() {
             <summary className="profile-menu__summary">{session?.fullName ?? "Customer"}</summary>
             <div className="profile-menu__panel">
               {profileLinks.map((link) => (
-                <a href={link.href} key={link.href}>
+                <a aria-current={isActiveLink(link.href) ? "page" : undefined} href={link.href} key={link.href}>
                   {link.label}
                 </a>
               ))}

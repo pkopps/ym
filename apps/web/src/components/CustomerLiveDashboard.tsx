@@ -87,6 +87,16 @@ function formatRecurringFrequency(frequency: RecurringServiceFrequency) {
   return frequency === "biweekly" ? "Every 2 weeks" : "Every week";
 }
 
+function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreference) {
+  const selectedIndex = customerTimingOptions.findIndex((option) => option.value === selectedTiming);
+
+  if (selectedIndex === -1) {
+    return customerTimingOptions.slice(0, 2);
+  }
+
+  return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
+}
+
 function formatRetentionTrigger(trigger: CustomerRetentionOpportunity["trigger"]) {
   return trigger === "recent-completion"
     ? "Recent completion"
@@ -190,6 +200,7 @@ export function CustomerLiveDashboard() {
   const requestFlow = requestedFlow === "request";
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [customer, setCustomer] = useState<CustomerProfile | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -210,6 +221,7 @@ export function CustomerLiveDashboard() {
   const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
   const [recurringPlans, setRecurringPlans] = useState<RecurringServicePlanSummary[]>([]);
   const [bookingMessage, setBookingMessage] = useState<string | undefined>();
+  const [dashboardLoadError, setDashboardLoadError] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const [reviewComposerBookingId, setReviewComposerBookingId] = useState<string | undefined>();
@@ -252,6 +264,7 @@ export function CustomerLiveDashboard() {
   const recommendedProviderCard = providerCards[0];
   const alternativeProviderCards = providerCards.slice(1, 4);
   const providersWithWindows = providerCards.filter((item) => item.slot);
+  const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
   const activeRecurringPlans = recurringPlans.filter((summary) => summary.plan.status === "active");
   const pastRecurringPlans = recurringPlans.filter((summary) => summary.plan.status !== "active");
   const activeBookings = bookings.filter((booking) => !historicalBookingStatuses.has(booking.status));
@@ -361,81 +374,115 @@ export function CustomerLiveDashboard() {
     window.history.replaceState({}, "", nextUrl.toString());
   }
 
+  function getActiveRetentionPreference() {
+    if (!activeRetentionOpportunity) {
+      return undefined;
+    }
+
+    return {
+      priorProviderId: activeRetentionOpportunity.providerId,
+      sourceBookingId: activeRetentionOpportunity.sourceBookingId,
+      strategyKey: activeRetentionOpportunity.strategyKey,
+      trigger: activeRetentionOpportunity.trigger,
+      loyaltySegment: activeRetentionOpportunity.loyaltySegment,
+      completedCategoryCount: activeRetentionOpportunity.completedCategoryCount,
+      sameProviderCompletedCount: activeRetentionOpportunity.sameProviderCompletedCount
+    };
+  }
+
+  function resetProviderStep() {
+    setProviderResults(undefined);
+    setProviderSearchState("idle");
+    setShowAlternativeProviders(false);
+  }
+
+  function handleEditRequestDetails() {
+    resetProviderStep();
+    setBookingMessage(undefined);
+    setErrorMessage(undefined);
+  }
+
   async function loadDashboard() {
     if (!session || session.role !== "customer") {
       setAccessDenied(true);
       return;
     }
 
+    setIsLoadingDashboard(true);
     setAccessDenied(false);
+    setDashboardLoadError(undefined);
     const api = createAuthenticatedWebApiClient();
-    const [
-      meResponse,
-      propertyList,
-      bookingList,
-      reviewResponse,
-      retentionResponse,
-      payments,
-      recurringPlanResponse
-    ] = await Promise.all([
-      api.getCurrentUser(),
-      api.getCustomerProperties(),
-      api.getBookings(),
-      api.getCustomerReviewOpportunities(),
-      api.getCustomerRetentionOpportunities(),
-      api.getPayments(),
-      api.getRecurringServicePlans()
-    ]);
+    try {
+      const [
+        meResponse,
+        propertyList,
+        bookingList,
+        reviewResponse,
+        retentionResponse,
+        payments,
+        recurringPlanResponse
+      ] = await Promise.all([
+        api.getCurrentUser(),
+        api.getCustomerProperties(),
+        api.getBookings(),
+        api.getCustomerReviewOpportunities(),
+        api.getCustomerRetentionOpportunities(),
+        api.getPayments(),
+        api.getRecurringServicePlans()
+      ]);
 
-    const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
-    const providerProfiles = await Promise.all(
-      uniqueProviderIds.map(async (providerId) => {
-        try {
-          return await api.getProviderProfile(providerId);
-        } catch {
-          return undefined;
-        }
-      })
-    );
+      const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
+      const providerProfiles = await Promise.all(
+        uniqueProviderIds.map(async (providerId) => {
+          try {
+            return await api.getProviderProfile(providerId);
+          } catch {
+            return undefined;
+          }
+        })
+      );
 
-    setProviderNamesById(
-      providerProfiles.reduce<Record<string, string>>((accumulator: Record<string, string>, profile) => {
-        if (profile) {
-          accumulator[profile.id] = profile.companyName;
-        }
-        return accumulator;
-      }, {})
-    );
+      setProviderNamesById(
+        providerProfiles.reduce<Record<string, string>>((accumulator: Record<string, string>, profile) => {
+          if (profile) {
+            accumulator[profile.id] = profile.companyName;
+          }
+          return accumulator;
+        }, {})
+      );
 
-    setCustomer(meResponse.user as CustomerProfile);
-    setProperties(propertyList);
-    setBookings(
-      bookingList.sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso))
-    );
-    setRescheduleDrafts(
-      bookingList.reduce<Record<string, { start: string; end: string }>>((accumulator, booking) => {
-        accumulator[booking.id] = {
-          start: toDateTimeLocalValue(booking.scheduledStartIso),
-          end: toDateTimeLocalValue(booking.scheduledEndIso)
-        };
-        return accumulator;
-      }, {})
-    );
-    setPaymentsByBookingId(
-      payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
-        const current = accumulator[payment.bookingId];
-        if (!current || current.updatedAt < payment.updatedAt) {
-          accumulator[payment.bookingId] = payment;
-        }
-        return accumulator;
-      }, {})
-    );
-    setReviewOpportunities(reviewResponse.opportunities);
-    setRetentionOpportunities(retentionResponse.opportunities);
-    setRecurringPlans(recurringPlanResponse.plans);
+      setCustomer(meResponse.user as CustomerProfile);
+      setProperties(propertyList);
+      setBookings(
+        bookingList.sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso))
+      );
+      setRescheduleDrafts(
+        bookingList.reduce<Record<string, { start: string; end: string }>>((accumulator, booking) => {
+          accumulator[booking.id] = {
+            start: toDateTimeLocalValue(booking.scheduledStartIso),
+            end: toDateTimeLocalValue(booking.scheduledEndIso)
+          };
+          return accumulator;
+        }, {})
+      );
+      setPaymentsByBookingId(
+        payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
+          const current = accumulator[payment.bookingId];
+          if (!current || current.updatedAt < payment.updatedAt) {
+            accumulator[payment.bookingId] = payment;
+          }
+          return accumulator;
+        }, {})
+      );
+      setReviewOpportunities(reviewResponse.opportunities);
+      setRetentionOpportunities(retentionResponse.opportunities);
+      setRecurringPlans(recurringPlanResponse.plans);
 
-    if (!selectedPropertyId && propertyList[0]) {
-      setSelectedPropertyId(propertyList[0].id);
+      if (!selectedPropertyId && propertyList[0]) {
+        setSelectedPropertyId(propertyList[0].id);
+      }
+    } finally {
+      setIsLoadingDashboard(false);
     }
   }
 
@@ -454,7 +501,7 @@ export function CustomerLiveDashboard() {
     }
 
     void loadDashboard().catch((error) => {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load your customer account.");
+      setDashboardLoadError(error instanceof Error ? error.message : "We couldn't load your account right now.");
     });
   }, [historyOnlyView, sessionReady, session?.token, session?.role]);
 
@@ -568,14 +615,19 @@ export function CustomerLiveDashboard() {
     }
   }
 
-  async function handleSearchProviders() {
+  async function runProviderSearch(timingPreference: CustomerTimingPreference) {
     if (!activeProperty) {
       setErrorMessage("Choose a property first.");
       return;
     }
 
+    if (timingPreference !== selectedTiming) {
+      setSelectedTiming(timingPreference);
+    }
+
     setLoadingState("loading");
     setErrorMessage(undefined);
+    setBookingMessage(undefined);
     setProviderSearchState("loading");
 
     try {
@@ -583,7 +635,7 @@ export function CustomerLiveDashboard() {
         await trackWebEvent(MarketplaceTelemetryEventCatalog.recommendationDismissed, {
           recommendationSessionId: providerResults.recommendationSessionId,
           recommendedProviderId: providerResults.recommendedProviderId ?? "none",
-          requestSource: "customer-web-dashboard"
+          requestSource: activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard"
         });
       }
 
@@ -591,9 +643,10 @@ export function CustomerLiveDashboard() {
       const results = await api.searchProviders({
         address: activeProperty.address,
         categories: [selectedCategory],
-        dateIso: buildDateIsoForCustomerTiming(selectedTiming),
+        dateIso: buildDateIsoForCustomerTiming(timingPreference),
         estimatedDurationMinutes: quote?.estimatedDurationMinutes,
-        requestSource: "customer-web-dashboard",
+        requestSource: activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard",
+        retentionPreference: getActiveRetentionPreference(),
         attribution: getLaunchAttributionContext()
       });
       setProviderResults(results);
@@ -605,6 +658,14 @@ export function CustomerLiveDashboard() {
     } finally {
       setLoadingState("idle");
     }
+  }
+
+  async function handleSearchProviders() {
+    await runProviderSearch(selectedTiming);
+  }
+
+  async function handleTryAnotherTiming(timingPreference: CustomerTimingPreference) {
+    await runProviderSearch(timingPreference);
   }
 
   async function handleApplyRetentionOpportunity(opportunity: CustomerRetentionOpportunity) {
@@ -683,6 +744,62 @@ export function CustomerLiveDashboard() {
       setProviderSearchState("idle");
       setErrorMessage(
         error instanceof Error ? error.message : "Unable to prepare that follow-up service right now."
+      );
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
+  async function handleQueueNextRecurringPlan(summary: RecurringServicePlanSummary) {
+    const property =
+      properties.find((candidate) => candidate.id === summary.plan.servicePropertyId) ??
+      properties.find(
+        (candidate) =>
+          candidate.address.line1 === summary.plan.serviceAddress.line1 &&
+          candidate.address.postalCode === summary.plan.serviceAddress.postalCode
+      );
+
+    if (!property) {
+      setErrorMessage("That saved property is no longer available.");
+      return;
+    }
+
+    setSelectedPropertyId(property.id);
+    setSelectedCategory(summary.plan.category);
+    setSelectedCadence(summary.plan.frequency);
+    setSelectedTiming("tomorrow-morning");
+    setShowAlternativeProviders(false);
+    setActiveRetentionOpportunity(undefined);
+    replaceDashboardSearchParams({ flow: "request" });
+    setLoadingState("loading");
+    setProviderSearchState("loading");
+    setErrorMessage(undefined);
+    setBookingMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      const nextQuote = await api.createInstantQuote({
+        address: property.address,
+        category: summary.plan.category,
+        propertyId: property.id
+      });
+      setQuote(nextQuote);
+
+      const results = await api.searchProviders({
+        address: property.address,
+        categories: [summary.plan.category],
+        dateIso: buildDateIsoForCustomerTiming("tomorrow-morning"),
+        estimatedDurationMinutes: nextQuote.estimatedDurationMinutes,
+        requestSource: "customer-recurring-plan"
+      });
+
+      setProviderResults(results);
+      setProviderSearchState("loaded");
+      setBookingMessage("Your next repeat visit is ready. Review the recommendation and route window to queue it.");
+    } catch (error) {
+      setProviderSearchState("idle");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to prepare the next repeat visit right now."
       );
     } finally {
       setLoadingState("idle");
@@ -1011,7 +1128,16 @@ export function CustomerLiveDashboard() {
     }
   }
 
-  if (!sessionReady) {
+  if (
+    !sessionReady ||
+    (!historyOnlyView &&
+      !accessDenied &&
+      isLoadingDashboard &&
+      !dashboardLoadError &&
+      !customer &&
+      properties.length === 0 &&
+      bookings.length === 0)
+  ) {
     return (
       <section className="container stack-lg">
         <section className="card">
@@ -1025,11 +1151,11 @@ export function CustomerLiveDashboard() {
     return (
       <main className="container stack-lg">
         <section className="card">
-          <h2>Customer login required</h2>
-          <p>Start by searching for service, or log in to manage existing bookings.</p>
+          <h2>Log in to manage your account</h2>
+          <p>Search for service, or log in to see bookings, repeat visits, and reviews.</p>
           <div className="cta-row">
             <a className="button-secondary" href="/customer">
-              Search services
+              Request service
             </a>
             <a className="button" href="/login/customer">
               Log in
@@ -1469,7 +1595,7 @@ export function CustomerLiveDashboard() {
             {formatDateTime(summary.upcomingBooking.scheduledStartIso)}
           </p>
         ) : (
-          <p>No visit is queued yet.</p>
+          <p>No visit is queued yet. Queue the next one when you are ready.</p>
         )}
         <p>
           {summary.completedOccurrenceCount} completed visit
@@ -1479,6 +1605,16 @@ export function CustomerLiveDashboard() {
         {summary.plan.lastSchedulingError ? <p>{summary.plan.lastSchedulingError}</p> : null}
         {summary.plan.status === "active" ? (
           <div className="cta-row">
+            {!summary.upcomingBooking ? (
+              <button
+                className="button"
+                disabled={loadingState === "loading"}
+                onClick={() => void handleQueueNextRecurringPlan(summary)}
+                type="button"
+              >
+                Queue next visit
+              </button>
+            ) : null}
             <button
               className="button-secondary"
               disabled={loadingState === "loading"}
@@ -1667,15 +1803,41 @@ export function CustomerLiveDashboard() {
 
       {bookingMessage ? (
         <section className="card">
-          <h2>Update</h2>
-          <p>{bookingMessage}</p>
+          <div className="search-result-title">
+            <div>
+              <h2>Done</h2>
+              <p>{bookingMessage}</p>
+            </div>
+            <button className="button-secondary" onClick={() => setBookingMessage(undefined)} type="button">
+              Dismiss
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {dashboardLoadError ? (
+        <section className="card">
+          <h2>We couldn't load your account</h2>
+          <p>{dashboardLoadError}</p>
+          <div className="cta-row">
+            <button className="button" disabled={isLoadingDashboard} onClick={() => void loadDashboard()} type="button">
+              {isLoadingDashboard ? "Trying again..." : "Try again"}
+            </button>
+          </div>
         </section>
       ) : null}
 
       {errorMessage ? (
         <section className="card">
-          <h2>Something needs attention</h2>
-          <p>{errorMessage}</p>
+          <div className="search-result-title">
+            <div>
+              <h2>We couldn't finish that</h2>
+              <p>{errorMessage}</p>
+            </div>
+            <button className="button-secondary" onClick={() => setErrorMessage(undefined)} type="button">
+              Dismiss
+            </button>
+          </div>
         </section>
       ) : null}
 
@@ -1800,9 +1962,12 @@ export function CustomerLiveDashboard() {
                 <div className="stack-lg" style={{ paddingBottom: 0 }}>
                   {providerResults.providers.length === 0 ? (
                     <article className="list-panel">
-                      <h3>No landscaping businesses are live here yet.</h3>
-                      <p>Try a nearby city or contact support so we can flag the area for expansion.</p>
+                      <h3>Nothing is live here yet.</h3>
+                      <p>We do not have a verified business covering this request yet.</p>
                       <div className="cta-row">
+                        <button className="button" onClick={handleEditRequestDetails} type="button">
+                          Change details
+                        </button>
                         <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
                           Request service in this area
                         </a>
@@ -1811,8 +1976,22 @@ export function CustomerLiveDashboard() {
                   ) : null}
                   {providerResults.providers.length > 0 && providersWithWindows.length === 0 ? (
                     <article className="list-panel">
-                      <h3>Businesses cover this area, but nothing is open in that window.</h3>
-                      <p>Try another timing choice, another property, or check back later as route openings change.</p>
+                      <h3>Nothing is open {timingLabel.toLowerCase()}.</h3>
+                      <p>This area is covered, but the current route windows are full.</p>
+                      <div className="cta-row">
+                        {alternativeTimingSuggestions.map((option, index) => (
+                          <button
+                            key={option.value}
+                            className={index === 0 ? "button" : "button-secondary"}
+                            disabled={loadingState === "loading"}
+                            onClick={() => void handleTryAnotherTiming(option.value)}
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p>Need a different property or service? Change the request above.</p>
                     </article>
                   ) : null}
                   {recommendedProviderCard ? (
@@ -2146,15 +2325,15 @@ export function CustomerLiveDashboard() {
             <section className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>{hasAccountHistory ? "Need another service?" : "Need a service?"}</h2>
+                  <h2>{hasAccountHistory ? "Ready for another visit?" : "Need service?"}</h2>
                   <p>
                     {hasAccountHistory
-                      ? "Start one request when you are ready. We will price it first, then recommend one provider."
-                      : "Start with one request. Booking, reviews, and repeat service will show up here after that."}
+                      ? "Start one request. We will price it first, then show the best fit."
+                      : "Start one request. Visits, reviews, and repeat service will show up here after that."}
                   </p>
                 </div>
                 <a className="button" href="/customer/dashboard?flow=request">
-                  {hasAccountHistory ? "Start request" : "Book first service"}
+                  Request service
                 </a>
               </div>
             </section>

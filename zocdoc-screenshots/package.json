@@ -1,0 +1,17 @@
+{
+  "name": "zocdoc-screenshots",
+  "version": "1.0.0",
+  "description": "Local Playwright crawler for public Zocdoc UX research screenshots.",
+  "main": "index.js",
+  "scripts": {
+    "crawl": "node crawl-zocdoc.js",
+    "crawl:mobile-app": "node crawl-zocdoc-mobile-app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

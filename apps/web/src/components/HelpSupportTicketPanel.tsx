@@ -26,15 +26,23 @@ function formatDate(iso: string) {
 
 export function HelpSupportTicketPanel() {
   const { session, sessionReady } = useStoredWebSession();
+  const [isLoadingSupport, setIsLoadingSupport] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [supportLoadError, setSupportLoadError] = useState<string | undefined>();
+  const [submitError, setSubmitError] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
+  const [showComposer, setShowComposer] = useState(false);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [bookingOptions, setBookingOptions] = useState<BookingOption[]>([]);
   const [issueType, setIssueType] = useState<SupportIssueType>("general");
   const [selectedBookingId, setSelectedBookingId] = useState("");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [showRecentTickets, setShowRecentTickets] = useState(false);
+  const bookingLabelById = bookingOptions.reduce<Record<string, string>>((accumulator, option) => {
+    accumulator[option.id] = option.label;
+    return accumulator;
+  }, {});
 
   async function loadSupportView() {
     if (!session) {
@@ -42,6 +50,8 @@ export function HelpSupportTicketPanel() {
     }
 
     try {
+      setIsLoadingSupport(true);
+      setSupportLoadError(undefined);
       const api = createAuthenticatedWebApiClient();
       const [nextTickets, options] = await Promise.all([
         api.getSupportTickets(),
@@ -65,7 +75,9 @@ export function HelpSupportTicketPanel() {
       setTickets(nextTickets);
       setBookingOptions(options);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load support.");
+      setSupportLoadError(error instanceof Error ? error.message : "We couldn't load support right now.");
+    } finally {
+      setIsLoadingSupport(false);
     }
   }
 
@@ -77,15 +89,18 @@ export function HelpSupportTicketPanel() {
       const subjectParam = query.get("subject");
       if (bookingId) {
         setSelectedBookingId(bookingId);
+        setShowComposer(true);
       }
       if (
         issueTypeParam &&
         issueOptions.includes(issueTypeParam as SupportIssueType)
       ) {
         setIssueType(issueTypeParam as SupportIssueType);
+        setShowComposer(true);
       }
       if (subjectParam) {
         setSubject(subjectParam);
+        setShowComposer(true);
       }
     }
     if (!sessionReady) {
@@ -102,7 +117,7 @@ export function HelpSupportTicketPanel() {
 
     try {
       setIsWorking(true);
-      setErrorMessage(undefined);
+      setSubmitError(undefined);
       const api = createAuthenticatedWebApiClient();
       const ticket = await api.createSupportTicket({
         bookingId: selectedBookingId || undefined,
@@ -110,23 +125,20 @@ export function HelpSupportTicketPanel() {
         subject: subject.trim(),
         description: description.trim()
       } satisfies CreateSupportTicketRequest);
-      setStatusMessage(
-        ticket.launchLeadId
-          ? "Support ticket submitted and added to the follow-up queue."
-          : "Support ticket submitted."
-      );
+      setStatusMessage("Support ticket submitted.");
+      setShowComposer(false);
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
       await loadSupportView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
+      setSubmitError(error instanceof Error ? error.message : "We couldn't open your support ticket.");
     } finally {
       setIsWorking(false);
     }
   }
 
-  if (!sessionReady) {
+  if (!sessionReady || (session && isLoadingSupport && tickets.length === 0 && bookingOptions.length === 0 && !supportLoadError)) {
     return (
       <article className="card">
         <h2>Open a support ticket</h2>
@@ -139,10 +151,13 @@ export function HelpSupportTicketPanel() {
     return (
       <article className="card">
         <h2>Open a support ticket</h2>
-        <p>Log in first if you need help with an existing booking, billing issue, or account problem. For pre-booking questions, use the Contact us form above so ops can respond by email first.</p>
+        <p>Log in for booking, billing, or account help.</p>
         <div className="cta-row" style={{ marginTop: "1rem" }}>
           <a className="button" href="/login">
             Log in
+          </a>
+          <a className="button-secondary" href="#contact-us">
+            Pre-booking help
           </a>
         </div>
       </article>
@@ -152,71 +167,113 @@ export function HelpSupportTicketPanel() {
   return (
     <article className="card">
       <h2>Open a support ticket</h2>
-      <div className="form-grid">
-        <label className="form-field">
-          <span>Issue type</span>
-          <select onChange={(event) => setIssueType(event.target.value as SupportIssueType)} value={issueType}>
-            {issueOptions.map((option) => (
-              <option key={option} value={option}>
-                {option.replaceAll("-", " ")}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="form-field">
-          <span>Booking</span>
-          <select onChange={(event) => setSelectedBookingId(event.target.value)} value={selectedBookingId}>
-            <option value="">No booking</option>
-            {bookingOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="form-field form-field--full">
-          <span>Subject</span>
-          <input onChange={(event) => setSubject(event.target.value)} placeholder="Short subject" value={subject} />
-        </label>
-        <label className="form-field form-field--full">
-          <span>Describe the issue</span>
-          <textarea
-            onChange={(event) => setDescription(event.target.value)}
-            rows={5}
-            placeholder="Tell us what went wrong and what outcome you need."
-            value={description}
-          />
-        </label>
-      </div>
+      <p>Use this for booking, billing, or account help.</p>
       <div className="cta-row" style={{ marginTop: "1rem" }}>
-        <button className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
-          {isWorking ? "Submitting..." : "Submit ticket"}
+        <button
+          className={showComposer ? "button-secondary" : "button"}
+          onClick={() => setShowComposer((current) => !current)}
+          type="button"
+        >
+          {showComposer ? "Hide ticket form" : "Open support ticket"}
         </button>
       </div>
+      {showComposer ? (
+        <>
+          <div className="form-grid" style={{ marginTop: "1rem" }}>
+            <label className="form-field">
+              <span>Issue type</span>
+              <select onChange={(event) => setIssueType(event.target.value as SupportIssueType)} value={issueType}>
+                {issueOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option.replaceAll("-", " ")}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Booking</span>
+              <select onChange={(event) => setSelectedBookingId(event.target.value)} value={selectedBookingId}>
+                <option value="">No booking</option>
+                {bookingOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="form-field form-field--full">
+              <span>Subject</span>
+              <input onChange={(event) => setSubject(event.target.value)} placeholder="Short subject" value={subject} />
+            </label>
+            <label className="form-field form-field--full">
+              <span>Describe the issue</span>
+              <textarea
+                onChange={(event) => setDescription(event.target.value)}
+                rows={5}
+                placeholder="Tell us what went wrong and what outcome you need."
+                value={description}
+              />
+            </label>
+          </div>
+          <div className="cta-row" style={{ marginTop: "1rem" }}>
+            <button className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
+              {isWorking ? "Submitting..." : "Submit ticket"}
+            </button>
+          </div>
+        </>
+      ) : null}
       {statusMessage ? <p style={{ marginTop: "1rem" }}>{statusMessage}</p> : null}
-      {errorMessage ? <p style={{ marginTop: "1rem" }}>{errorMessage}</p> : null}
-      <div className="stack-lg" style={{ marginTop: "1.5rem", paddingBottom: 0 }}>
-        {tickets.slice(0, 4).map((ticket) => (
-          <article className="list-panel" key={ticket.id}>
-            <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <h3>{ticket.subject}</h3>
-              <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
-            </div>
-            <p>
-              {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
-              {ticket.bookingId ? ` • ${ticket.bookingId}` : ""}
-              {ticket.launchLeadId ? ` • follow-up queue ${ticket.launchLeadId}` : ""}
-            </p>
-            <p>{ticket.description}</p>
-            {ticket.resolutionNotes ? (
-              <p>
-                Resolution: {ticket.resolutionNotes}
-                {ticket.resolutionAction ? ` • ${ticket.resolutionAction.replaceAll("-", " ")}` : ""}
-              </p>
-            ) : null}
-          </article>
-        ))}
-      </div>
+      {submitError ? <p style={{ marginTop: "1rem" }}>{submitError}</p> : null}
+      {supportLoadError ? (
+        <div className="stack-lg" style={{ marginTop: "1rem", paddingBottom: 0 }}>
+          <p>{supportLoadError}</p>
+          <div className="cta-row">
+            <button
+              className="button-secondary"
+              disabled={isLoadingSupport}
+              onClick={() => void loadSupportView()}
+              type="button"
+            >
+              {isLoadingSupport ? "Trying again..." : "Try again"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {tickets.length > 0 ? (
+        <div className="stack-lg" style={{ marginTop: "1.5rem", paddingBottom: 0 }}>
+          <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+            <h3>Recent tickets</h3>
+            <button
+              className="button-secondary"
+              onClick={() => setShowRecentTickets((current) => !current)}
+              type="button"
+            >
+              {showRecentTickets ? "Hide recent tickets" : "Recent tickets"}
+            </button>
+          </div>
+          {showRecentTickets ? (
+            tickets.slice(0, 4).map((ticket) => (
+              <article className="list-panel" key={ticket.id}>
+                <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <h3>{ticket.subject}</h3>
+                  <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                </div>
+                <p>
+                  {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                  {ticket.bookingId ? ` • ${bookingLabelById[ticket.bookingId] ?? "Related booking"}` : ""}
+                </p>
+                <p>{ticket.description}</p>
+                {ticket.resolutionNotes ? (
+                  <p>
+                    Resolution: {ticket.resolutionNotes}
+                    {ticket.resolutionAction ? ` • ${ticket.resolutionAction.replaceAll("-", " ")}` : ""}
+                  </p>
+                ) : null}
+              </article>
+            ))
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

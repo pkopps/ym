@@ -1,0 +1,6 @@
+node_modules/
+screenshots/zocdoc/*.png
+screenshots/zocdoc/manifest.json
+!screenshots/
+!screenshots/zocdoc/
+!screenshots/zocdoc/.gitkeep

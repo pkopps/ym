@@ -532,6 +532,11 @@ body {
   color: var(--ym-color-ink-soft);
 }
 
+.profile-menu__panel a[aria-current="page"] {
+  background: var(--ym-color-surface-strong);
+  color: var(--ym-color-primary-strong);
+}
+
 .profile-menu__button {
   appearance: none;
   border: 0;
@@ -3194,6 +3199,34 @@ body {
   font-size: 0.9rem;
 }
 
+.live-provider-card__booking-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.live-provider-card__booking-strip div {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.6rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.live-provider-card__booking-strip span {
+  color: var(--ym-color-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.live-provider-card__booking-strip strong {
+  color: var(--ym-color-ink);
+  line-height: 1.2;
+}
+
 .live-provider-card__window,
 .live-provider-card__address {
   margin: 0;
@@ -3990,6 +4023,7 @@ body {
   .results-summary,
   .calendar-card__header,
   .calendar-card__identity,
+  .live-provider-card__booking-strip,
   .provider-capacity-alert,
   .provider-job-card__heading,
   .radius-settings__header,

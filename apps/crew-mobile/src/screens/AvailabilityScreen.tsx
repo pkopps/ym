@@ -68,10 +68,10 @@ export function AvailabilityScreen() {
   };
 
   return (
-    <ScreenShell eyebrow="Availability" title="Set your work preferences">
+    <ScreenShell eyebrow="Availability" title="Availability" description="Choose when and where you want work.">
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard title="Days you can work" description="Keep this current">
+      <InfoCard title="Work days" description="Keep this current.">
         <View style={styles.chipWrap}>
           {dayOptions.map((day) => {
             const currentDays = crewMember?.availableWeekdays ?? [];
@@ -93,7 +93,7 @@ export function AvailabilityScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="Travel radius" description="How far can you realistically go?">
+      <InfoCard title="Travel radius" description="How far can you go?">
         <View style={styles.radiusRow}>
           <Pressable
             onPress={() =>
@@ -115,7 +115,7 @@ export function AvailabilityScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="Skills" description="Pick the work you can help with">
+      <InfoCard title="Skills" description="Pick the work you can do.">
         <View style={styles.chipWrap}>
           {skillOptions.map((skill) => {
             const currentSkills = crewMember?.categories ?? [];
@@ -139,7 +139,7 @@ export function AvailabilityScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="Winter work" description="Stay visible for snow jobs">
+      <InfoCard title="Winter work" description="Stay visible for snow jobs.">
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Snow shifts and salting</Text>
           <Switch

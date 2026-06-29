@@ -42,10 +42,63 @@ function formatPaymentLabel(payment?: PaymentRecord) {
 export function CustomerHistoryBoard() {
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [paymentsByBookingId, setPaymentsByBookingId] = useState<Record<string, PaymentRecord>>({});
   const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+
+  async function loadHistory() {
+    if (!session || session.role !== "customer") {
+      return;
+    }
+
+    try {
+      setIsLoadingHistory(true);
+      setErrorMessage(undefined);
+      const api = createAuthenticatedWebApiClient();
+      const [bookingList, payments] = await Promise.all([api.getBookings(), api.getPayments()]);
+      const historicalBookings = bookingList
+        .filter((booking) =>
+          ["completed", "cancelled", "refunded", "disputed"].includes(booking.status)
+        )
+        .sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso));
+
+      const providerIds = [...new Set(historicalBookings.map((booking) => booking.providerId))];
+      const providerProfiles = await Promise.all(
+        providerIds.map(async (providerId) => {
+          try {
+            return await api.getProviderProfile(providerId);
+          } catch {
+            return undefined;
+          }
+        })
+      );
+
+      setProviderNamesById(
+        providerProfiles.reduce<Record<string, string>>((accumulator, provider) => {
+          if (provider) {
+            accumulator[provider.id] = provider.companyName;
+          }
+          return accumulator;
+        }, {})
+      );
+      setBookings(historicalBookings);
+      setPaymentsByBookingId(
+        payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
+          const current = accumulator[payment.bookingId];
+          if (!current || current.updatedAt < payment.updatedAt) {
+            accumulator[payment.bookingId] = payment;
+          }
+          return accumulator;
+        }, {})
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load service history right now.");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }
 
   useEffect(() => {
     if (!sessionReady) {
@@ -58,56 +111,13 @@ export function CustomerHistoryBoard() {
     }
 
     setAccessDenied(false);
-
-    void (async () => {
-      try {
-        const api = createAuthenticatedWebApiClient();
-        const [bookingList, payments] = await Promise.all([api.getBookings(), api.getPayments()]);
-        const historicalBookings = bookingList
-          .filter((booking) =>
-            ["completed", "cancelled", "refunded", "disputed"].includes(booking.status)
-          )
-          .sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso));
-
-        const providerIds = [...new Set(historicalBookings.map((booking) => booking.providerId))];
-        const providerProfiles = await Promise.all(
-          providerIds.map(async (providerId) => {
-            try {
-              return await api.getProviderProfile(providerId);
-            } catch {
-              return undefined;
-            }
-          })
-        );
-
-        setProviderNamesById(
-          providerProfiles.reduce<Record<string, string>>((accumulator, provider) => {
-            if (provider) {
-              accumulator[provider.id] = provider.companyName;
-            }
-            return accumulator;
-          }, {})
-        );
-        setBookings(historicalBookings);
-        setPaymentsByBookingId(
-          payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
-            const current = accumulator[payment.bookingId];
-            if (!current || current.updatedAt < payment.updatedAt) {
-              accumulator[payment.bookingId] = payment;
-            }
-            return accumulator;
-          }, {})
-        );
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to load service history right now.");
-      }
-    })();
+    void loadHistory();
   }, [sessionReady, session?.role, session?.token]);
 
-  if (!sessionReady) {
+  if (!sessionReady || (!accessDenied && isLoadingHistory && bookings.length === 0 && !errorMessage)) {
     return (
       <section className="card">
-        <h2>Loading service history...</h2>
+        <h2>Loading past visits...</h2>
       </section>
     );
   }
@@ -115,51 +125,43 @@ export function CustomerHistoryBoard() {
   if (accessDenied) {
     return (
       <section className="card">
-        <h2>Customer login required</h2>
-        <p>Log in to see completed visits, cancellations, refunds, and billing history.</p>
+        <h2>Log in to see past visits</h2>
+        <p>See completed visits, cancellations, refunds, and billing history.</p>
         <div className="cta-row">
           <a className="button" href="/login/customer">
-            Go to customer login
+            Log in
           </a>
         </div>
       </section>
     );
   }
 
-  const paidBookings = bookings.filter((booking) => paymentsByBookingId[booking.id]?.status === "captured");
-  const refundedBookings = bookings.filter((booking) => paymentsByBookingId[booking.id]?.status === "refunded");
-
   return (
     <div className="stack-lg">
       {errorMessage ? (
         <section className="card">
-          <h2>Something needs attention</h2>
+          <h2>We couldn't load past visits</h2>
           <p>{errorMessage}</p>
+          <div className="cta-row">
+            <button className="button" disabled={isLoadingHistory} onClick={() => void loadHistory()} type="button">
+              {isLoadingHistory ? "Trying again..." : "Try again"}
+            </button>
+          </div>
         </section>
       ) : null}
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{bookings.length}</h2>
-          <p>Past booking records</p>
-        </article>
-        <article className="card">
-          <h2>{paidBookings.length}</h2>
-          <p>Paid completed visits</p>
-        </article>
-        <article className="card">
-          <h2>{refundedBookings.length}</h2>
-          <p>Refunded bookings</p>
-        </article>
-      </section>
-
       {bookings.length === 0 ? (
         <section className="card">
-          <h2>No booking history yet</h2>
-          <p>Completed, cancelled, refunded, and disputed visits will show up here once you have them.</p>
+          <h2>No past visits yet</h2>
+          <p>Completed, cancelled, refunded, and disputed visits will show up here.</p>
+          <div className="cta-row">
+            <a className="button" href="/customer/dashboard?flow=request">
+              Request service
+            </a>
+          </div>
         </section>
       ) : (
-        <section className="stack-lg">
+        <section aria-label="Past visits" className="stack-lg">
           {bookings.map((booking) => {
             const payment = paymentsByBookingId[booking.id];
             return (
@@ -175,7 +177,6 @@ export function CustomerHistoryBoard() {
                   <div>
                     <h3>Schedule</h3>
                     <p>{formatDateTime(booking.scheduledStartIso)}</p>
-                    <p>{booking.id}</p>
                   </div>
                   <div>
                     <h3>Address</h3>

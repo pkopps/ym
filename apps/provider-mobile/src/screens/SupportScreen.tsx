@@ -116,6 +116,11 @@ export function SupportScreen() {
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [showStaffingSettings, setShowStaffingSettings] = useState(false);
+  const [showCalendarTools, setShowCalendarTools] = useState(false);
+  const [showAlertPreferences, setShowAlertPreferences] = useState(false);
+  const [showSupportComposer, setShowSupportComposer] = useState(false);
+  const [showSupportHistory, setShowSupportHistory] = useState(false);
   const calendarHealth = calendarImports?.syncHealth;
 
   async function loadProvider() {
@@ -411,6 +416,7 @@ export function SupportScreen() {
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
+      setShowSupportComposer(false);
       await loadProvider();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
@@ -482,8 +488,8 @@ export function SupportScreen() {
   return (
     <ScreenShell
       eyebrow="Business"
-      title="Settings and payouts"
-      description="Payouts, calendar sync, alerts, and support."
+      title="Business"
+      description="Payouts, staffing, calendar, and support."
     >
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
@@ -535,7 +541,7 @@ export function SupportScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="App lock" description="Keep the operations app fast, but harder to peek into">
+      <InfoCard title="Security" description="Protect this device without slowing down daily work">
         <View style={styles.switchRow}>
           <View style={styles.ticketCopy}>
             <Text style={styles.title}>Use {biometricLabel}</Text>
@@ -553,143 +559,159 @@ export function SupportScreen() {
             value={biometricEnabled}
           />
         </View>
+        <Pressable onPress={signOut} style={styles.logoutButton}>
+          <Text style={styles.logoutButtonLabel}>Log out</Text>
+        </Pressable>
       </InfoCard>
 
-      <InfoCard title="Staffing mode" description="Choose how matched crew is added">
-        <View style={styles.stepRow}>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() => void saveSettings({ staffingMode: "review-first" })}
-            style={[styles.secondaryButton, provider?.staffingMode === "review-first" && styles.secondaryButtonActive]}
-          >
-            <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "review-first" && styles.secondaryButtonLabelActive]}>
-              Review first
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() => void saveSettings({ staffingMode: "auto-accept" })}
-            style={[styles.secondaryButton, provider?.staffingMode === "auto-accept" && styles.secondaryButtonActive]}
-          >
-            <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "auto-accept" && styles.secondaryButtonLabelActive]}>
-              Auto accept
-            </Text>
-          </Pressable>
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Staffing review timing" description="When to nudge you before unfilled jobs start">
-        <View style={styles.stepRow}>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() => void saveSettings({ crewReviewLeadHours: Math.max(1, (provider?.crewReviewLeadHours ?? 24) - 1) })}
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
-          </Pressable>
-          <Text style={styles.valueText}>{provider?.crewReviewLeadHours ?? 0} hours</Text>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() => void saveSettings({ crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) })}
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
-          </Pressable>
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Acceptance window" description="How much lead time new bookings need">
-        <View style={styles.stepRow}>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() =>
-              void saveSettings({ minimumBookingLeadHours: Math.max(0, (provider?.minimumBookingLeadHours ?? 0) - 1) })
-            }
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
-          </Pressable>
-          <Text style={styles.valueText}>{formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)}</Text>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() =>
-              void saveSettings({ minimumBookingLeadHours: Math.min(72, (provider?.minimumBookingLeadHours ?? 0) + 1) })
-            }
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
-          </Pressable>
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Departure reminder" description="When YardMatch tells you it is time to head out">
-        <View style={styles.stepRow}>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() =>
-              void saveSettings({
-                departureReminderLeadMinutes: Math.max(
-                  10,
-                  (provider?.departureReminderLeadMinutes ?? 60) - 10
-                )
-              })
-            }
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>-10 min</Text>
-          </Pressable>
-          <Text style={styles.valueText}>{provider?.departureReminderLeadMinutes ?? 0} minutes</Text>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() =>
-              void saveSettings({
-                departureReminderLeadMinutes: Math.min(
-                  180,
-                  (provider?.departureReminderLeadMinutes ?? 60) + 10
-                )
-              })
-            }
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>+10 min</Text>
-          </Pressable>
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Route leader" description="Choose who can unlock customer tracking">
-        <View style={styles.stepRow}>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() => void saveSettings({ routeLeaderMode: "provider-only" })}
-            style={[styles.secondaryButton, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonActive]}
-          >
-            <Text style={[styles.secondaryButtonLabel, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonLabelActive]}>
-              Provider only
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={isWorking || !provider}
-            onPress={() => void saveSettings({ routeLeaderMode: "accepted-crew-fallback" })}
-            style={[
-              styles.secondaryButton,
-              provider?.routeLeaderMode === "accepted-crew-fallback" && styles.secondaryButtonActive
-            ]}
-          >
-            <Text
-              style={[
-                styles.secondaryButtonLabel,
-                provider?.routeLeaderMode === "accepted-crew-fallback" && styles.secondaryButtonLabelActive
-              ]}
-            >
-              Crew fallback
-            </Text>
-          </Pressable>
-        </View>
+      <InfoCard title="Staffing and routing" description="Crew assignment, lead time, reminders, and route access">
         <Text style={styles.meta}>
-          {provider?.routeLeaderMode === "accepted-crew-fallback"
-            ? "Accepted crew can start the route and share live tracking when needed."
-            : "Only the business owner can start the route and share live tracking."}
+          {provider?.staffingMode === "auto-accept" ? "Auto accept" : "Review first"} • Review{" "}
+          {provider?.crewReviewLeadHours ?? 0} hours before start • Minimum lead time{" "}
+          {formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)}
         </Text>
+        <Text style={styles.meta}>
+          Leave reminder {provider?.departureReminderLeadMinutes ?? 0} minutes before route •{" "}
+          {provider?.routeLeaderMode === "accepted-crew-fallback" ? "Crew fallback can share tracking" : "Provider starts tracking"}
+        </Text>
+        <Pressable
+          onPress={() => setShowStaffingSettings((current) => !current)}
+          style={styles.secondaryButton}
+        >
+          <Text style={styles.secondaryButtonLabel}>
+            {showStaffingSettings ? "Hide staffing details" : "Staffing details"}
+          </Text>
+        </Pressable>
+        {showStaffingSettings ? (
+          <View style={styles.ticketStack}>
+            <View style={styles.stepRow}>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() => void saveSettings({ staffingMode: "review-first" })}
+                style={[styles.secondaryButton, provider?.staffingMode === "review-first" && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "review-first" && styles.secondaryButtonLabelActive]}>
+                  Review first
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() => void saveSettings({ staffingMode: "auto-accept" })}
+                style={[styles.secondaryButton, provider?.staffingMode === "auto-accept" && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "auto-accept" && styles.secondaryButtonLabelActive]}>
+                  Auto accept
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={styles.fieldLabel}>Staffing review timing</Text>
+            <View style={styles.stepRow}>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() => void saveSettings({ crewReviewLeadHours: Math.max(1, (provider?.crewReviewLeadHours ?? 24) - 1) })}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
+              </Pressable>
+              <Text style={styles.valueText}>{provider?.crewReviewLeadHours ?? 0} hours</Text>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() => void saveSettings({ crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) })}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.fieldLabel}>Acceptance window</Text>
+            <View style={styles.stepRow}>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() =>
+                  void saveSettings({ minimumBookingLeadHours: Math.max(0, (provider?.minimumBookingLeadHours ?? 0) - 1) })
+                }
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
+              </Pressable>
+              <Text style={styles.valueText}>{formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)}</Text>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() =>
+                  void saveSettings({ minimumBookingLeadHours: Math.min(72, (provider?.minimumBookingLeadHours ?? 0) + 1) })
+                }
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.fieldLabel}>Departure reminder</Text>
+            <View style={styles.stepRow}>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() =>
+                  void saveSettings({
+                    departureReminderLeadMinutes: Math.max(
+                      10,
+                      (provider?.departureReminderLeadMinutes ?? 60) - 10
+                    )
+                  })
+                }
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>-10 min</Text>
+              </Pressable>
+              <Text style={styles.valueText}>{provider?.departureReminderLeadMinutes ?? 0} minutes</Text>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() =>
+                  void saveSettings({
+                    departureReminderLeadMinutes: Math.min(
+                      180,
+                      (provider?.departureReminderLeadMinutes ?? 60) + 10
+                    )
+                  })
+                }
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>+10 min</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.fieldLabel}>Route leader</Text>
+            <View style={styles.stepRow}>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() => void saveSettings({ routeLeaderMode: "provider-only" })}
+                style={[styles.secondaryButton, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonLabelActive]}>
+                  Provider only
+                </Text>
+              </Pressable>
+              <Pressable
+                disabled={isWorking || !provider}
+                onPress={() => void saveSettings({ routeLeaderMode: "accepted-crew-fallback" })}
+                style={[
+                  styles.secondaryButton,
+                  provider?.routeLeaderMode === "accepted-crew-fallback" && styles.secondaryButtonActive
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.secondaryButtonLabel,
+                    provider?.routeLeaderMode === "accepted-crew-fallback" && styles.secondaryButtonLabelActive
+                  ]}
+                >
+                  Crew fallback
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={styles.meta}>
+              {provider?.routeLeaderMode === "accepted-crew-fallback"
+                ? "Accepted crew can start the route and share live tracking when needed."
+                : "Only the business owner can start the route and share live tracking."}
+            </Text>
+          </View>
+        ) : null}
       </InfoCard>
 
       <InfoCard title="Payouts" description="Live earnings and crew-share ledger">
@@ -711,20 +733,24 @@ export function SupportScreen() {
           Instant eligible: {formatCurrency(payoutLedger?.payoutSchedule.instantPayoutEligibleCents ?? 0)} •{" "}
           {provider?.instantPayoutsEnabled ? "Instant payouts on" : "Weekly only"}
         </Text>
-        <View style={styles.ticketStack}>
-          {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
-            <View key={entry.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.title}>{entry.customerName}</Text>
-                <Text style={styles.meta}>
-                  {entry.serviceLabel} • {formatCurrency(entry.providerNetAmountCents)}
-                </Text>
-                <Text style={styles.meta}>{entry.note}</Text>
+        {(payoutLedger?.entries ?? []).length > 0 ? (
+          <View style={styles.ticketStack}>
+            {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
+              <View key={entry.id} style={styles.ticketRow}>
+                <View style={styles.ticketCopy}>
+                  <Text style={styles.title}>{entry.customerName}</Text>
+                  <Text style={styles.meta}>
+                    {entry.serviceLabel} • {formatCurrency(entry.providerNetAmountCents)}
+                  </Text>
+                  <Text style={styles.meta}>{entry.note}</Text>
+                </View>
+                <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
               </View>
-              <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>Completed jobs will show payout entries here.</Text>
+        )}
         <View style={styles.stepRow}>
           {(["Tue", "Thu", "Fri"] as const).map((weekday) => (
             <Pressable
@@ -812,381 +838,433 @@ export function SupportScreen() {
             </View>
           </View>
         ) : null}
-        <View style={styles.ticketStack}>
-          {calendarSubscription?.instructions.map((instruction) => (
-            <Text key={instruction} style={styles.meta}>
-              • {instruction}
-            </Text>
-          ))}
-          {calendarSubscription?.actions.map((action) => (
-            <Text key={`${action.platform}-helper`} style={styles.meta}>
-              • {action.label}: {action.helperText}
-            </Text>
-          ))}
-        </View>
-        <View style={styles.stepRow}>
-          {calendarSubscription?.actions.map((action) => (
-            <Pressable
-              disabled={!calendarSubscription}
-              key={action.platform}
-              onPress={() => void Linking.openURL(action.href)}
-              style={styles.secondaryButton}
-            >
-              <Text style={styles.secondaryButtonLabel}>{action.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <View style={styles.ticketStack}>
-          {(calendarHealth?.staleSubscriptionCount ?? 0) > 0 || (calendarHealth?.erroredSubscriptionCount ?? 0) > 0 ? (
-            <Pressable disabled={isWorking} onPress={() => void handleSyncStaleCalendarImports()} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Sync stale feeds</Text>
-            </Pressable>
-          ) : null}
-          <Text style={styles.valueText}>Import an outside calendar feed</Text>
-          <Text style={styles.meta}>
-            Paste a Google, Apple, or generic iCal feed URL and YardMatch will pull those events in as blocking time.
+        <Pressable
+          onPress={() => setShowCalendarTools((current) => !current)}
+          style={styles.secondaryButton}
+        >
+          <Text style={styles.secondaryButtonLabel}>
+            {showCalendarTools ? "Hide calendar tools" : "Calendar tools"}
           </Text>
-          <TextInput
-            value={importTitle}
-            onChangeText={setImportTitle}
-            placeholder="Imported calendar title"
-            placeholderTextColor={BrandTokens.colors.inkSoft}
-            style={styles.input}
-          />
-          <View style={styles.issueRow}>
-            {externalCalendarImportProviders.map((option) => (
-              <Pressable
-                key={option}
-                disabled={isWorking}
-                onPress={() => setImportProvider(option)}
-                style={[styles.secondaryButton, importProvider === option && styles.secondaryButtonActive]}
-              >
-                <Text
-                  style={[
-                    styles.secondaryButtonLabel,
-                    importProvider === option && styles.secondaryButtonLabelActive
-                  ]}
-                >
-                  {option === "ical" ? "iCal" : option.charAt(0).toUpperCase() + option.slice(1)}
+        </Pressable>
+        {showCalendarTools ? (
+          <View style={styles.ticketStack}>
+            <View style={styles.ticketStack}>
+              {calendarSubscription?.instructions.map((instruction) => (
+                <Text key={instruction} style={styles.meta}>
+                  • {instruction}
                 </Text>
-              </Pressable>
-            ))}
-          </View>
-          <TextInput
-            value={importFeedUrl}
-            onChangeText={setImportFeedUrl}
-            placeholder="Paste an external feed URL"
-            placeholderTextColor={BrandTokens.colors.inkSoft}
-            style={styles.input}
-            autoCapitalize="none"
-          />
-          <Pressable disabled={isWorking} onPress={() => void handleCreateCalendarImport()} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonLabel}>Import outside calendar</Text>
-          </Pressable>
-          {(calendarImports?.subscriptions ?? []).map((subscription) => (
-            <View key={subscription.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.valueText}>{subscription.title}</Text>
-                <Text style={styles.meta}>
-                  {subscription.provider === "ical"
-                    ? "Generic iCal feed"
-                    : `${subscription.provider.charAt(0).toUpperCase()}${subscription.provider.slice(1)} Calendar`}{" "}
-                  • {subscription.importedEventCount} imported events
+              ))}
+              {calendarSubscription?.actions.map((action) => (
+                <Text key={`${action.platform}-helper`} style={styles.meta}>
+                  • {action.label}: {action.helperText}
                 </Text>
-                <Text style={styles.meta}>
-                  Status: {subscription.syncStatus === "active" ? "Active" : "Sync issue"}
-                </Text>
-                {subscription.lastSyncedAt ? (
-                  <Text style={styles.meta}>Synced {new Date(subscription.lastSyncedAt).toLocaleString()}</Text>
-                ) : null}
-                {subscription.lastError ? <Text style={styles.meta}>{subscription.lastError}</Text> : null}
-              </View>
-              <View style={styles.ticketStack}>
+              ))}
+            </View>
+            <View style={styles.stepRow}>
+              {calendarSubscription?.actions.map((action) => (
                 <Pressable
-                  disabled={isWorking}
-                  onPress={() => void handleSyncCalendarImport(subscription.id)}
+                  disabled={!calendarSubscription}
+                  key={action.platform}
+                  onPress={() => void Linking.openURL(action.href)}
                   style={styles.secondaryButton}
                 >
-                  <Text style={styles.secondaryButtonLabel}>Sync</Text>
+                  <Text style={styles.secondaryButtonLabel}>{action.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.ticketStack}>
+              {(calendarHealth?.staleSubscriptionCount ?? 0) > 0 || (calendarHealth?.erroredSubscriptionCount ?? 0) > 0 ? (
+                <Pressable disabled={isWorking} onPress={() => void handleSyncStaleCalendarImports()} style={styles.secondaryButton}>
+                  <Text style={styles.secondaryButtonLabel}>Sync stale feeds</Text>
+                </Pressable>
+              ) : null}
+              <Text style={styles.valueText}>Import an outside calendar feed</Text>
+              <Text style={styles.meta}>
+                Paste a Google, Apple, or generic iCal feed URL and YardMatch will pull those events in as blocking time.
+              </Text>
+              <TextInput
+                value={importTitle}
+                onChangeText={setImportTitle}
+                placeholder="Imported calendar title"
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={styles.input}
+              />
+              <View style={styles.issueRow}>
+                {externalCalendarImportProviders.map((option) => (
+                  <Pressable
+                    key={option}
+                    disabled={isWorking}
+                    onPress={() => setImportProvider(option)}
+                    style={[styles.secondaryButton, importProvider === option && styles.secondaryButtonActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryButtonLabel,
+                        importProvider === option && styles.secondaryButtonLabelActive
+                      ]}
+                    >
+                      {option === "ical" ? "iCal" : option.charAt(0).toUpperCase() + option.slice(1)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                value={importFeedUrl}
+                onChangeText={setImportFeedUrl}
+                placeholder="Paste an external feed URL"
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={styles.input}
+                autoCapitalize="none"
+              />
+              <Pressable disabled={isWorking} onPress={() => void handleCreateCalendarImport()} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonLabel}>Import outside calendar</Text>
+              </Pressable>
+              {(calendarImports?.subscriptions ?? []).map((subscription) => (
+                <View key={subscription.id} style={styles.ticketRow}>
+                  <View style={styles.ticketCopy}>
+                    <Text style={styles.valueText}>{subscription.title}</Text>
+                    <Text style={styles.meta}>
+                      {subscription.provider === "ical"
+                        ? "Generic iCal feed"
+                        : `${subscription.provider.charAt(0).toUpperCase()}${subscription.provider.slice(1)} Calendar`}{" "}
+                      • {subscription.importedEventCount} imported events
+                    </Text>
+                    <Text style={styles.meta}>
+                      Status: {subscription.syncStatus === "active" ? "Active" : "Sync issue"}
+                    </Text>
+                    {subscription.lastSyncedAt ? (
+                      <Text style={styles.meta}>Synced {new Date(subscription.lastSyncedAt).toLocaleString()}</Text>
+                    ) : null}
+                    {subscription.lastError ? <Text style={styles.meta}>{subscription.lastError}</Text> : null}
+                  </View>
+                  <View style={styles.ticketStack}>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void handleSyncCalendarImport(subscription.id)}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Sync</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void handleRemoveCalendarImport(subscription.id)}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Remove</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+            <View style={styles.ticketStack}>
+              <Text style={styles.meta}>
+                {(provider?.calendarConnection.externalEventsBlockingEnabled ?? false)
+                  ? "Outside blocks are actively reducing YardMatch availability."
+                  : "Outside blocks are saved only until you switch blocking on."}
+              </Text>
+              <View style={styles.stepRow}>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void saveCalendarBlockingSettings({ enabled: true })}
+                  style={[
+                    styles.secondaryButton,
+                    (provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
+                      styles.secondaryButtonActive
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.secondaryButtonLabel,
+                      (provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
+                        styles.secondaryButtonLabelActive
+                    ]}
+                  >
+                    Blocking on
+                  </Text>
                 </Pressable>
                 <Pressable
                   disabled={isWorking}
-                  onPress={() => void handleRemoveCalendarImport(subscription.id)}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>Remove</Text>
-                </Pressable>
-              </View>
-            </View>
-          ))}
-        </View>
-        <View style={styles.ticketStack}>
-          <Text style={styles.meta}>
-            {(provider?.calendarConnection.externalEventsBlockingEnabled ?? false)
-              ? "Outside blocks are actively reducing YardMatch availability."
-              : "Outside blocks are saved only until you switch blocking on."}
-          </Text>
-          <View style={styles.stepRow}>
-            <Pressable
-              disabled={isWorking}
-              onPress={() => void saveCalendarBlockingSettings({ enabled: true })}
-              style={[
-                styles.secondaryButton,
-                (provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
-                  styles.secondaryButtonActive
-              ]}
-            >
-              <Text
-                style={[
-                  styles.secondaryButtonLabel,
-                  (provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
-                    styles.secondaryButtonLabelActive
-                ]}
-              >
-                Blocking on
-              </Text>
-            </Pressable>
-            <Pressable
-              disabled={isWorking}
-              onPress={() => void saveCalendarBlockingSettings({ enabled: false })}
-              style={[
-                styles.secondaryButton,
-                !(provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
-                  styles.secondaryButtonActive
-              ]}
-            >
-              <Text
-                style={[
-                  styles.secondaryButtonLabel,
-                  !(provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
-                    styles.secondaryButtonLabelActive
-                ]}
-              >
-                Save only
-              </Text>
-            </Pressable>
-          </View>
-          <TextInput
-            value={blockTitle}
-            onChangeText={setBlockTitle}
-            placeholder="Outside block title"
-            placeholderTextColor={BrandTokens.colors.inkSoft}
-            style={styles.input}
-          />
-          <View style={styles.issueRow}>
-            {externalCalendarBlockOptions.map((option) => (
-              <Pressable
-                key={option}
-                disabled={isWorking}
-                onPress={() => setBlockType(option)}
-                style={[styles.secondaryButton, blockType === option && styles.secondaryButtonActive]}
-              >
-                <Text
+                  onPress={() => void saveCalendarBlockingSettings({ enabled: false })}
                   style={[
-                    styles.secondaryButtonLabel,
-                    blockType === option && styles.secondaryButtonLabelActive
+                    styles.secondaryButton,
+                    !(provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
+                      styles.secondaryButtonActive
                   ]}
                 >
-                  {getExternalCalendarBlockLabel(option)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <TextInput
-            value={blockStartText}
-            onChangeText={setBlockStartText}
-            placeholder="Start like 2026-06-10T09:00"
-            placeholderTextColor={BrandTokens.colors.inkSoft}
-            style={styles.input}
-            autoCapitalize="none"
-          />
-          <TextInput
-            value={blockEndText}
-            onChangeText={setBlockEndText}
-            placeholder="End like 2026-06-10T11:00"
-            placeholderTextColor={BrandTokens.colors.inkSoft}
-            style={styles.input}
-            autoCapitalize="none"
-          />
-          <TextInput
-            value={blockNotes}
-            onChangeText={setBlockNotes}
-            placeholder="Optional note"
-            placeholderTextColor={BrandTokens.colors.inkSoft}
-            style={[styles.input, styles.multilineInput]}
-            multiline
-          />
-          <Pressable disabled={isWorking} onPress={() => void handleAddCalendarBlock()} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonLabel}>Add outside block</Text>
-          </Pressable>
-          {(provider?.calendarConnection.externalBlocks ?? []).map((block) => (
-            <View key={block.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.valueText}>{block.title}</Text>
-                <Text style={styles.meta}>
-                  {getExternalCalendarBlockLabel(block.blockType)} • {new Date(block.startIso).toLocaleString()} to{" "}
-                  {new Date(block.endIso).toLocaleString()}
-                </Text>
-                {block.notes ? <Text style={styles.meta}>{block.notes}</Text> : null}
+                  <Text
+                    style={[
+                      styles.secondaryButtonLabel,
+                      !(provider?.calendarConnection.externalEventsBlockingEnabled ?? false) &&
+                        styles.secondaryButtonLabelActive
+                    ]}
+                  >
+                    Save only
+                  </Text>
+                </Pressable>
               </View>
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void handleRemoveCalendarBlock(block.id)}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryButtonLabel}>Remove</Text>
+              <TextInput
+                value={blockTitle}
+                onChangeText={setBlockTitle}
+                placeholder="Outside block title"
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={styles.input}
+              />
+              <View style={styles.issueRow}>
+                {externalCalendarBlockOptions.map((option) => (
+                  <Pressable
+                    key={option}
+                    disabled={isWorking}
+                    onPress={() => setBlockType(option)}
+                    style={[styles.secondaryButton, blockType === option && styles.secondaryButtonActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.secondaryButtonLabel,
+                        blockType === option && styles.secondaryButtonLabelActive
+                      ]}
+                    >
+                      {getExternalCalendarBlockLabel(option)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput
+                value={blockStartText}
+                onChangeText={setBlockStartText}
+                placeholder="Start like 2026-06-10T09:00"
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={styles.input}
+                autoCapitalize="none"
+              />
+              <TextInput
+                value={blockEndText}
+                onChangeText={setBlockEndText}
+                placeholder="End like 2026-06-10T11:00"
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={styles.input}
+                autoCapitalize="none"
+              />
+              <TextInput
+                value={blockNotes}
+                onChangeText={setBlockNotes}
+                placeholder="Optional note"
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={[styles.input, styles.multilineInput]}
+                multiline
+              />
+              <Pressable disabled={isWorking} onPress={() => void handleAddCalendarBlock()} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonLabel}>Add outside block</Text>
               </Pressable>
+              {(provider?.calendarConnection.externalBlocks ?? []).map((block) => (
+                <View key={block.id} style={styles.ticketRow}>
+                  <View style={styles.ticketCopy}>
+                    <Text style={styles.valueText}>{block.title}</Text>
+                    <Text style={styles.meta}>
+                      {getExternalCalendarBlockLabel(block.blockType)} • {new Date(block.startIso).toLocaleString()} to{" "}
+                      {new Date(block.endIso).toLocaleString()}
+                    </Text>
+                    {block.notes ? <Text style={styles.meta}>{block.notes}</Text> : null}
+                  </View>
+                  <Pressable
+                    disabled={isWorking}
+                    onPress={() => void handleRemoveCalendarBlock(block.id)}
+                    style={styles.secondaryButton}
+                  >
+                    <Text style={styles.secondaryButtonLabel}>Remove</Text>
+                  </Pressable>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </View>
+        ) : null}
       </InfoCard>
 
       <InfoCard title="Updates" description={`${unreadCount} unread`}>
-        <View style={styles.ticketStack}>
-          {notifications.slice(0, 4).map((notification) => (
-            <View key={notification.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.valueText}>{notification.title}</Text>
-                <Text style={styles.meta}>{notification.body}</Text>
+        {notifications.length > 0 ? (
+          <View style={styles.ticketStack}>
+            {notifications.slice(0, 4).map((notification) => (
+              <View key={notification.id} style={styles.ticketRow}>
+                <View style={styles.ticketCopy}>
+                  <Text style={styles.valueText}>{notification.title}</Text>
+                  <Text style={styles.meta}>{notification.body}</Text>
+                </View>
+                <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
               </View>
-              <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>No updates yet.</Text>
+        )}
+        {unreadCount > 0 ? (
+          <Pressable
+            disabled={isWorking}
+            onPress={() => void handleMarkNotificationsRead()}
+            style={styles.linkButton}
+          >
+            <Text style={styles.linkButtonLabel}>Mark updates read</Text>
+          </Pressable>
+        ) : null}
         <Pressable
-          disabled={isWorking || unreadCount === 0}
-          onPress={() => void handleMarkNotificationsRead()}
-          style={styles.secondaryButton}
+          onPress={() => setShowAlertPreferences((current) => !current)}
+          style={styles.linkButton}
         >
-          <Text style={styles.secondaryButtonLabel}>Mark updates read</Text>
+          <Text style={styles.linkButtonLabel}>
+            {showAlertPreferences ? "Hide alert preferences" : "Alert preferences"}
+          </Text>
         </Pressable>
-        <View style={styles.stepRow}>
-          <Pressable
-            disabled={isWorking}
-            onPress={() => void updateNotificationPreferences({ pushEnabled: !(preferences?.pushEnabled ?? true) })}
-            style={[styles.secondaryButton, (preferences?.pushEnabled ?? true) && styles.secondaryButtonActive]}
-          >
-            <Text style={[styles.secondaryButtonLabel, (preferences?.pushEnabled ?? true) && styles.secondaryButtonLabelActive]}>
-              Push {(preferences?.pushEnabled ?? true) ? "on" : "off"}
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={isWorking}
-            onPress={() => void updateNotificationPreferences({ emailEnabled: !(preferences?.emailEnabled ?? true) })}
-            style={[styles.secondaryButton, (preferences?.emailEnabled ?? true) && styles.secondaryButtonActive]}
-          >
-            <Text style={[styles.secondaryButtonLabel, (preferences?.emailEnabled ?? true) && styles.secondaryButtonLabelActive]}>
-              Email {(preferences?.emailEnabled ?? true) ? "on" : "off"}
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={isWorking}
-            onPress={() => void updateNotificationPreferences({ smsEnabled: !(preferences?.smsEnabled ?? true) })}
-            style={[styles.secondaryButton, (preferences?.smsEnabled ?? true) && styles.secondaryButtonActive]}
-          >
-            <Text style={[styles.secondaryButtonLabel, (preferences?.smsEnabled ?? true) && styles.secondaryButtonLabelActive]}>
-              SMS {(preferences?.smsEnabled ?? true) ? "on" : "off"}
-            </Text>
-          </Pressable>
-        </View>
+        {showAlertPreferences ? (
+          <View style={styles.stepRow}>
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void updateNotificationPreferences({ pushEnabled: !(preferences?.pushEnabled ?? true) })}
+              style={[styles.secondaryButton, (preferences?.pushEnabled ?? true) && styles.secondaryButtonActive]}
+            >
+              <Text style={[styles.secondaryButtonLabel, (preferences?.pushEnabled ?? true) && styles.secondaryButtonLabelActive]}>
+                Push {(preferences?.pushEnabled ?? true) ? "on" : "off"}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void updateNotificationPreferences({ emailEnabled: !(preferences?.emailEnabled ?? true) })}
+              style={[styles.secondaryButton, (preferences?.emailEnabled ?? true) && styles.secondaryButtonActive]}
+            >
+              <Text style={[styles.secondaryButtonLabel, (preferences?.emailEnabled ?? true) && styles.secondaryButtonLabelActive]}>
+                Email {(preferences?.emailEnabled ?? true) ? "on" : "off"}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void updateNotificationPreferences({ smsEnabled: !(preferences?.smsEnabled ?? true) })}
+              style={[styles.secondaryButton, (preferences?.smsEnabled ?? true) && styles.secondaryButtonActive]}
+            >
+              <Text style={[styles.secondaryButtonLabel, (preferences?.smsEnabled ?? true) && styles.secondaryButtonLabelActive]}>
+                SMS {(preferences?.smsEnabled ?? true) ? "on" : "off"}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
       </InfoCard>
 
       <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
-        <View style={styles.ticketStack}>
-          {deliveries.slice(0, 4).map((delivery) => (
-            <View key={delivery.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.valueText}>{delivery.channel.toUpperCase()} • {delivery.title}</Text>
-                <Text style={styles.meta}>{delivery.destination}</Text>
+        {deliveries.length > 0 ? (
+          <View style={styles.ticketStack}>
+            {deliveries.slice(0, 4).map((delivery) => (
+              <View key={delivery.id} style={styles.ticketRow}>
+                <View style={styles.ticketCopy}>
+                  <Text style={styles.valueText}>{delivery.channel.toUpperCase()} • {delivery.title}</Text>
+                  <Text style={styles.meta}>{delivery.destination}</Text>
+                </View>
+                <Text style={styles.meta}>{delivery.status}</Text>
               </View>
-              <Text style={styles.meta}>{delivery.status}</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>Nothing sent yet.</Text>
+        )}
       </InfoCard>
 
-      <InfoCard title="Support" description="Open an ops or job issue ticket">
-        <View style={styles.issueRow}>
-          {supportIssueOptions.map((issueType) => {
-            const isActive = issueType === selectedIssueType;
-            return (
-              <Pressable
-                key={issueType}
-                onPress={() => setSelectedIssueType(issueType)}
-                style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
-              >
-                <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
-                  {issueType.replaceAll("-", " ")}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <View style={styles.issueRow}>
-          <Pressable
-            onPress={() => setSelectedBookingId("")}
-            style={[styles.secondaryButton, !selectedBookingId && styles.secondaryButtonActive]}
-          >
-            <Text style={[styles.secondaryButtonLabel, !selectedBookingId && styles.secondaryButtonLabelActive]}>
-              No booking
-            </Text>
-          </Pressable>
-          {(overview?.jobs ?? []).slice(0, 3).map((job) => {
-            const isActive = selectedBookingId === job.bookingId;
-            return (
-              <Pressable
-                key={job.bookingId}
-                onPress={() => setSelectedBookingId(job.bookingId)}
-                style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
-              >
-                <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
-                  {job.customerName}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <TextInput
-          onChangeText={setSubject}
-          placeholder="Short subject"
-          placeholderTextColor={BrandTokens.colors.muted}
-          style={styles.input}
-          value={subject}
-        />
-        <TextInput
-          multiline
-          onChangeText={setDescription}
-          placeholder="What happened, and what do you need help with?"
-          placeholderTextColor={BrandTokens.colors.muted}
-          style={[styles.input, styles.textarea]}
-          value={description}
-        />
+      <InfoCard title="Help" description="Get help quickly.">
         <Pressable
-          disabled={isWorking || subject.trim().length === 0 || description.trim().length === 0}
-          onPress={() => void handleCreateSupportTicket()}
-          style={styles.primaryButton}
+          onPress={() => setShowSupportComposer((current) => !current)}
+          style={showSupportComposer ? styles.linkButton : styles.primaryButton}
         >
-          <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Open support ticket"}</Text>
+          <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
+            {showSupportComposer ? "Hide ticket form" : "Open support ticket"}
+          </Text>
         </Pressable>
-        <View style={styles.ticketStack}>
-          {supportTickets.slice(0, 3).map((ticket) => (
-            <View key={ticket.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.valueText}>{ticket.subject}</Text>
-                <Text style={styles.meta}>
-                  {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
-                </Text>
-              </View>
-              <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+        {showSupportComposer ? (
+          <View style={styles.ticketStack}>
+            <View style={styles.issueRow}>
+              {supportIssueOptions.map((issueType) => {
+                const isActive = issueType === selectedIssueType;
+                return (
+                  <Pressable
+                    key={issueType}
+                    onPress={() => setSelectedIssueType(issueType)}
+                    style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
+                  >
+                    <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
+                      {issueType.replaceAll("-", " ")}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
-          ))}
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Session" description="Manage this device">
-        <Pressable onPress={signOut} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonLabel}>Log out</Text>
-        </Pressable>
+            <View style={styles.issueRow}>
+              <Pressable
+                onPress={() => setSelectedBookingId("")}
+                style={[styles.secondaryButton, !selectedBookingId && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, !selectedBookingId && styles.secondaryButtonLabelActive]}>
+                  No booking
+                </Text>
+              </Pressable>
+              {(overview?.jobs ?? []).slice(0, 3).map((job) => {
+                const isActive = selectedBookingId === job.bookingId;
+                return (
+                  <Pressable
+                    key={job.bookingId}
+                    onPress={() => setSelectedBookingId(job.bookingId)}
+                    style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
+                  >
+                    <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
+                      {job.customerName}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <TextInput
+              onChangeText={setSubject}
+              placeholder="Short subject"
+              placeholderTextColor={BrandTokens.colors.muted}
+              style={styles.input}
+              value={subject}
+            />
+            <TextInput
+              multiline
+              onChangeText={setDescription}
+              placeholder="What happened, and what do you need help with?"
+              placeholderTextColor={BrandTokens.colors.muted}
+              style={[styles.input, styles.textarea]}
+              value={description}
+            />
+            <Pressable
+              disabled={isWorking || subject.trim().length === 0 || description.trim().length === 0}
+              onPress={() => void handleCreateSupportTicket()}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send ticket"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {supportTickets.length > 0 ? (
+          <>
+            <Pressable
+              onPress={() => setShowSupportHistory((current) => !current)}
+              style={styles.linkButton}
+            >
+              <Text style={styles.linkButtonLabel}>
+                {showSupportHistory ? "Hide recent tickets" : "Recent tickets"}
+              </Text>
+            </Pressable>
+            {showSupportHistory ? (
+            <View style={styles.ticketStack}>
+              {supportTickets.slice(0, 3).map((ticket) => (
+                <View key={ticket.id} style={styles.ticketRow}>
+                  <View style={styles.ticketCopy}>
+                    <Text style={styles.valueText}>{ticket.subject}</Text>
+                    <Text style={styles.meta}>
+                      {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                    </Text>
+                  </View>
+                  <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+                </View>
+              ))}
+            </View>
+            ) : null}
+          </>
+        ) : null}
       </InfoCard>
     </ScreenShell>
   );
@@ -1214,6 +1292,19 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
   },
+  linkButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  linkButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "700"
+  },
   secondaryButtonLabelActive: {
     color: "#ffffff"
   },
@@ -1229,6 +1320,10 @@ const styles = StyleSheet.create({
   meta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  fieldLabel: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700"
   },
   issueRow: {
     flexDirection: "row",

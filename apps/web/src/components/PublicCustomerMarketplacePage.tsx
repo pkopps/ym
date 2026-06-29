@@ -519,7 +519,7 @@ export function PublicCustomerMarketplacePage() {
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>Built for every side of the work</h2>
+          <h2>Built to every side of the landscaping equation</h2>
           <p>One system for homeowners, businesses, and crews.</p>
         </div>
         <div className="grid-three">
@@ -541,7 +541,6 @@ export function PublicCustomerMarketplacePage() {
       <section className="container stack-lg">
         <div className="section-header">
           <h2>Frequently asked questions</h2>
-          <p>Short answers before you book.</p>
         </div>
         <div className="grid-three">
           {faqItems.map((item) => (

@@ -22,6 +22,26 @@ function formatDateTime(iso: string) {
   });
 }
 
+function formatBookingStatusLabel(booking: Booking) {
+  if (booking.status === "requested") {
+    return "Waiting for confirmation";
+  }
+
+  if (booking.status === "in-progress") {
+    return "Work in progress";
+  }
+
+  if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
+    return "Running behind";
+  }
+
+  if (booking.onRouteConfirmedAt) {
+    return "Crew on the way";
+  }
+
+  return "Upcoming visit";
+}
+
 export function DashboardScreen({
   onStartBooking,
   onOpenBookings
@@ -53,6 +73,18 @@ export function DashboardScreen({
   );
   const activeProperty = properties.find((property) => property.isDefault) ?? properties[0];
   const reviewReady = reviewOpportunities.find((opportunity) => opportunity.canReviewNow);
+  const activeTrackingBooking = activeTrackingBookingId
+    ? bookings.find((booking) => booking.id === activeTrackingBookingId)
+    : undefined;
+  const primaryCardKind = tracking && activeTrackingBookingId
+    ? "tracking"
+    : nextBooking
+      ? "booking"
+      : reviewReady
+        ? "review"
+        : activeProperty
+          ? "property"
+          : "empty";
 
   async function loadTracking(bookingId: string, token = envelope?.session.token) {
     if (!token) {
@@ -126,93 +158,138 @@ export function DashboardScreen({
   return (
     <ScreenShell
       eyebrow="Home"
-      title="Your next visit"
-      description="See the next booking, jump back into matching, or open tracking fast."
+      title="Home"
+      description="See what matters now."
     >
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <View style={styles.statRow}>
-        <StatCard
-          label="Upcoming"
-          value={`${
-            bookings.filter(
-              (booking) =>
-                booking.status === "requested" ||
-                booking.status === "confirmed" ||
-                booking.status === "in-progress"
-            ).length
-          }`}
-        />
-        <StatCard label="Reviews" value={`${reviewOpportunities.filter((opportunity) => opportunity.canReviewNow).length}`} />
-        <StatCard label="Properties" value={`${properties.length}`} />
-      </View>
-
-      <InfoCard title="Quick actions" description="Move faster from home">
-        <View style={styles.quickActions}>
-          <Pressable onPress={onStartBooking} style={styles.quickActionButton}>
-            <Text style={styles.quickActionLabel}>Get matched</Text>
-          </Pressable>
-          <Pressable onPress={onOpenBookings} style={styles.quickActionButtonSecondary}>
-            <Text style={styles.quickActionSecondaryLabel}>Open bookings</Text>
-          </Pressable>
-        </View>
-      </InfoCard>
-
-      {tracking && activeTrackingBookingId ? (
-        <Pressable onPress={() => setIsTrackingModalVisible(true)}>
-          <InfoCard
-            title={buildTrackingSummary(tracking)}
-            description={providerNamesById[bookings.find((booking) => booking.id === activeTrackingBookingId)?.providerId ?? ""] ?? "Crew on the way"}
-          >
-            <Text style={styles.primaryLine}>{tracking.message}</Text>
-            {buildTrackingDetail(tracking) ? (
-              <Text style={styles.secondaryLine}>{buildTrackingDetail(tracking)}</Text>
-            ) : null}
-            <Pressable onPress={() => setIsTrackingModalVisible(true)} style={styles.linkButton}>
-              <Text style={styles.linkButtonLabel}>Track arrival</Text>
+      {primaryCardKind === "tracking" && tracking && activeTrackingBookingId ? (
+        <InfoCard
+          title={buildTrackingSummary(tracking)}
+          description={
+            providerNamesById[activeTrackingBooking?.providerId ?? ""] ?? "Crew on the way"
+          }
+        >
+          <Text style={styles.primaryLine}>{tracking.message}</Text>
+          {buildTrackingDetail(tracking) ? (
+            <Text style={styles.secondaryLine}>{buildTrackingDetail(tracking)}</Text>
+          ) : null}
+          <View style={styles.actionStack}>
+            <Pressable onPress={() => setIsTrackingModalVisible(true)} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonLabel}>Track arrival</Text>
             </Pressable>
-          </InfoCard>
-        </Pressable>
+            <Pressable onPress={onOpenBookings} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>Open booking</Text>
+            </Pressable>
+          </View>
+        </InfoCard>
       ) : null}
 
-      {nextBooking ? (
+      {primaryCardKind === "booking" && nextBooking ? (
         <InfoCard
-          title={nextBooking.category.replaceAll("-", " ")}
+          title={formatBookingStatusLabel(nextBooking)}
           description={formatBookingWindowSummary(nextBooking.scheduledStartIso)}
         >
-          <Text style={styles.primaryLine}>{providerNamesById[nextBooking.providerId] ?? "Landscaping business"}</Text>
+          <Text style={styles.primaryLine}>
+            {providerNamesById[nextBooking.providerId] ?? "Landscaping business"}
+          </Text>
           <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
-          <Text style={styles.noteLine}>{nextBooking.status.replaceAll("-", " ")}</Text>
           {nextBooking.lateEtaIso && !nextBooking.onRouteConfirmedAt ? (
-            <Text style={styles.secondaryLine}>
-              Running behind • now around{" "}
+            <Text style={styles.noteLine}>
+              Now around{" "}
               {new Date(nextBooking.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
             </Text>
           ) : null}
+          <View style={styles.actionStack}>
+            <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonLabel}>
+                {nextBooking.status === "requested" ? "See booking" : "See visit"}
+              </Text>
+            </Pressable>
+            <Pressable onPress={onStartBooking} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>Book another visit</Text>
+            </Pressable>
+          </View>
+        </InfoCard>
+      ) : null}
+
+      {primaryCardKind === "review" && reviewReady ? (
+        <InfoCard title="Leave your review" description={reviewReady.providerName}>
+          <Text style={styles.secondaryLine}>{reviewReady.reason}</Text>
+          <View style={styles.actionStack}>
+            <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonLabel}>Leave review</Text>
+            </Pressable>
+            <Pressable onPress={onStartBooking} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>Book again</Text>
+            </Pressable>
+          </View>
+        </InfoCard>
+      ) : null}
+
+      {primaryCardKind === "property" && activeProperty ? (
+        <InfoCard title="Start your next visit" description={activeProperty.label}>
+          <Text style={styles.primaryLine}>{activeProperty.address.line1}</Text>
+          <Text style={styles.secondaryLine}>
+            {activeProperty.address.city}, {activeProperty.address.state} {activeProperty.address.postalCode}
+          </Text>
+          <View style={styles.actionStack}>
+            <Pressable onPress={onStartBooking} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonLabel}>Book this property</Text>
+            </Pressable>
+            <Pressable onPress={onOpenBookings} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>Open bookings</Text>
+            </Pressable>
+          </View>
+        </InfoCard>
+      ) : null}
+
+      {primaryCardKind === "empty" ? (
+        <InfoCard title="Start your first visit" description="Pick a service and we’ll match the best fit.">
+          <View style={styles.actionStack}>
+            <Pressable onPress={onStartBooking} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonLabel}>Get matched</Text>
+            </Pressable>
+          </View>
+        </InfoCard>
+      ) : null}
+
+      {tracking &&
+      activeTrackingBookingId &&
+      activeTrackingBooking &&
+      nextBooking &&
+      activeTrackingBooking.id !== nextBooking.id ? (
+        <InfoCard
+          title={formatBookingStatusLabel(nextBooking)}
+          description={formatBookingWindowSummary(nextBooking.scheduledStartIso)}
+        >
+          <Text style={styles.primaryLine}>
+            {providerNamesById[nextBooking.providerId] ?? "Landscaping business"}
+          </Text>
+          <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
           <Pressable onPress={onOpenBookings} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Open bookings</Text>
+            <Text style={styles.linkButtonLabel}>See visit</Text>
           </Pressable>
         </InfoCard>
       ) : null}
 
-      {activeProperty ? (
-        <InfoCard title={activeProperty.label} description="Active property">
+      {reviewReady && primaryCardKind !== "review" ? (
+        <InfoCard title="Ready to review" description={reviewReady.providerName}>
+          <Text style={styles.secondaryLine}>{reviewReady.reason}</Text>
+          <Pressable onPress={onOpenBookings} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Leave review</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
+
+      {activeProperty && primaryCardKind !== "property" ? (
+        <InfoCard title={activeProperty.label} description="Ready for your next visit">
           <Text style={styles.primaryLine}>{activeProperty.address.line1}</Text>
           <Text style={styles.secondaryLine}>
             {activeProperty.address.city}, {activeProperty.address.state} {activeProperty.address.postalCode}
           </Text>
           <Pressable onPress={onStartBooking} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>Book this property</Text>
-          </Pressable>
-        </InfoCard>
-      ) : null}
-
-      {reviewReady ? (
-        <InfoCard title="Review ready" description="Open Bookings to leave your review.">
-          <Text style={styles.primaryLine}>{reviewReady.providerName}</Text>
-          <Text style={styles.secondaryLine}>{reviewReady.reason}</Text>
-          <Pressable onPress={onOpenBookings} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Leave review</Text>
           </Pressable>
         </InfoCard>
       ) : null}
@@ -236,64 +313,7 @@ export function DashboardScreen({
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  statRow: {
-    flexDirection: "row",
-    gap: BrandTokens.spacing.md
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: BrandTokens.radius.md,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    padding: BrandTokens.spacing.lg,
-    gap: BrandTokens.spacing.xs
-  },
-  statValue: {
-    color: BrandTokens.colors.ink,
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  statLabel: {
-    color: BrandTokens.colors.inkSoft,
-    fontSize: 13,
-    fontWeight: "600"
-  },
-  quickActions: {
-    flexDirection: "row",
-    gap: BrandTokens.spacing.sm
-  },
-  quickActionButton: {
-    flex: 1,
-    alignItems: "center",
-    borderRadius: 999,
-    backgroundColor: BrandTokens.colors.primary,
-    paddingVertical: BrandTokens.spacing.md
-  },
-  quickActionLabel: {
-    color: "#ffffff",
-    fontWeight: "700"
-  },
-  quickActionButtonSecondary: {
-    flex: 1,
-    alignItems: "center",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: BrandTokens.colors.primary,
-    paddingVertical: BrandTokens.spacing.md
-  },
-  quickActionSecondaryLabel: {
-    color: BrandTokens.colors.primaryStrong,
-    fontWeight: "700"
-  },
   primaryLine: {
     color: BrandTokens.colors.ink,
     fontSize: 16,
@@ -306,6 +326,32 @@ const styles = StyleSheet.create({
   noteLine: {
     color: BrandTokens.colors.primaryStrong,
     lineHeight: 21
+  },
+  actionStack: {
+    gap: BrandTokens.spacing.sm
+  },
+  primaryButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  primaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
+  },
+  secondaryButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    borderColor: BrandTokens.colors.primary,
+    borderWidth: 1,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  secondaryButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
   },
   linkButton: {
     alignSelf: "flex-start",

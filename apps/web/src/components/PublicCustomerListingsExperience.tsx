@@ -23,6 +23,7 @@ import {
   buildDateIsoForCustomerTiming,
   CustomerCustomTimingWindow,
   CustomerTimingPreference,
+  customerTimingOptions,
   getDefaultCustomerCustomEndDateString,
   getDefaultCustomerCustomDateString,
   getCustomerTimingLabel
@@ -110,6 +111,16 @@ function formatCompletedJobLabel(completedJobCount: number) {
   return completedJobCount > 0 ? `${completedJobCount} completed jobs` : "New on GreenRain";
 }
 
+function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreference) {
+  const selectedIndex = customerTimingOptions.findIndex((option) => option.value === selectedTiming);
+
+  if (selectedIndex === -1) {
+    return customerTimingOptions.slice(0, 2);
+  }
+
+  return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
+}
+
 function buildBoundingBox(origin: GeoPoint, results: SearchProviderResult[]) {
   const points = [origin, ...results.map((result) => result.provider.address.point)];
   const latitudes = points.map((point) => point.latitude);
@@ -183,6 +194,18 @@ export function PublicCustomerListingsExperience({
 }) {
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
+  const launchAreaSuggestion = useMemo(
+    () =>
+      buildInitialSuggestion({
+        areaLabel: initialAreaLabel ?? launchAreaLabel,
+        city: initialCity,
+        state: initialState,
+        postalCode: initialPostalCode,
+        lat: initialLat,
+        lng: initialLng
+      }),
+    [initialAreaLabel, initialCity, initialState, initialPostalCode, initialLat, initialLng]
+  );
   const [areaQuery, setAreaQuery] = useState(initialAreaLabel ?? launchAreaLabel);
   const [selectedService, setSelectedService] = useState<ServiceCategory>(initialService ?? "lawn-mowing");
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>(
@@ -220,11 +243,15 @@ export function PublicCustomerListingsExperience({
 
   const serviceLabel = serviceCategoryLabels[selectedService];
   const timingLabel = getCustomerTimingLabel(selectedTiming, selectedCustomDate, selectedCustomWindow);
+  const normalizedLaunchAreaLabel = launchAreaLabel.trim().toLowerCase();
+  const canTryLaunchArea =
+    (selectedSuggestion?.label ?? areaQuery).trim().toLowerCase() !== normalizedLaunchAreaLabel;
   const rankedProviders = providerResults?.rankedProviders ?? [];
   const providerChoicePresentations = buildCustomerProviderChoicePresentations(rankedProviders);
   const featuredProviders = rankedProviders.slice(0, 3);
   const liveMetrics = formatSearchMetrics(providerResults);
   const providersWithOpenWindows = rankedProviders.filter((provider) => provider.hasOpenSlot);
+  const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
   const listingsMapRadiusMiles = rankedProviders.length
     ? Math.max(
         12,
@@ -367,7 +394,7 @@ export function PublicCustomerListingsExperience({
     } catch (error) {
       setSearchState("error");
       setProviderResults(undefined);
-      setErrorMessage(error instanceof Error ? error.message : "Unable to search providers right now.");
+      setErrorMessage(error instanceof Error ? error.message : "We couldn't check providers right now.");
     }
   }
 
@@ -477,6 +504,28 @@ export function PublicCustomerListingsExperience({
           <article className="list-panel live-listings-card__message">
             <h3>Providers are unavailable right now.</h3>
             <p>{errorMessage ?? "Try the search again in a moment."}</p>
+            <div className="cta-row">
+              <button
+                className="button-secondary"
+                onClick={() =>
+                  void runSearch({
+                    nextAreaQuery: areaQuery,
+                    nextService: selectedService,
+                    nextSuggestion: selectedSuggestion,
+                    nextTiming: selectedTiming,
+                    nextAdditionalTimings: selectedAdditionalTimings,
+                    nextCustomDate: selectedCustomDate,
+                    nextCustomEndDate: selectedCustomEndDate,
+                    nextCustomWindow: selectedCustomWindow,
+                    nextCustomWindows: selectedCustomWindows,
+                    shouldUpdateUrl: false
+                  })
+                }
+                type="button"
+              >
+                Try again
+              </button>
+            </div>
           </article>
         ) : null}
 
@@ -487,6 +536,30 @@ export function PublicCustomerListingsExperience({
               {errorMessage ??
                 "Try a nearby city, ZIP code, or fuller address so we can match the right market."}
             </p>
+            {canTryLaunchArea ? (
+              <div className="cta-row">
+                <button
+                  className="button-secondary"
+                  onClick={() =>
+                    void runSearch({
+                      nextAreaQuery: launchAreaLabel,
+                      nextService: selectedService,
+                      nextSuggestion: launchAreaSuggestion,
+                      nextTiming: selectedTiming,
+                      nextAdditionalTimings: selectedAdditionalTimings,
+                      nextCustomDate: selectedCustomDate,
+                      nextCustomEndDate: selectedCustomEndDate,
+                      nextCustomWindow: selectedCustomWindow,
+                      nextCustomWindows: selectedCustomWindows,
+                      shouldUpdateUrl: true
+                    })
+                  }
+                  type="button"
+                >
+                  Try {launchAreaLabel}
+                </button>
+              </div>
+            ) : null}
           </article>
         ) : null}
 
@@ -495,6 +568,28 @@ export function PublicCustomerListingsExperience({
             <h3>No providers are live here yet.</h3>
             <p>Try a nearby market or ask YardMatch to flag this area for expansion.</p>
             <div className="cta-row">
+              {canTryLaunchArea ? (
+                <button
+                  className="button-secondary"
+                  onClick={() =>
+                    void runSearch({
+                      nextAreaQuery: launchAreaLabel,
+                      nextService: selectedService,
+                      nextSuggestion: launchAreaSuggestion,
+                      nextTiming: selectedTiming,
+                      nextAdditionalTimings: selectedAdditionalTimings,
+                      nextCustomDate: selectedCustomDate,
+                      nextCustomEndDate: selectedCustomEndDate,
+                      nextCustomWindow: selectedCustomWindow,
+                      nextCustomWindows: selectedCustomWindows,
+                      shouldUpdateUrl: true
+                    })
+                  }
+                  type="button"
+                >
+                  Try {launchAreaLabel}
+                </button>
+              ) : null}
               <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
                 Request service in this area
               </a>
@@ -507,7 +602,32 @@ export function PublicCustomerListingsExperience({
             {providersWithOpenWindows.length === 0 ? (
               <article className="list-panel live-listings-card__banner">
                 <h3>This window is full.</h3>
-                <p>You can still review the best local businesses below and be ready when the next route opens.</p>
+                <p>Try another time, or review the best local businesses below.</p>
+                <div className="cta-row">
+                  {alternativeTimingSuggestions.map((option) => (
+                    <button
+                      className="button-secondary"
+                      key={option.value}
+                      onClick={() =>
+                        void runSearch({
+                          nextAreaQuery: selectedSuggestion?.label ?? areaQuery,
+                          nextService: selectedService,
+                          nextSuggestion: selectedSuggestion,
+                          nextTiming: option.value,
+                          nextAdditionalTimings: selectedAdditionalTimings,
+                          nextCustomDate: selectedCustomDate,
+                          nextCustomEndDate: selectedCustomEndDate,
+                          nextCustomWindow: selectedCustomWindow,
+                          nextCustomWindows: selectedCustomWindows,
+                          shouldUpdateUrl: true
+                        })
+                      }
+                      type="button"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               </article>
             ) : null}
             <div className="live-listings-card__featured-grid">
@@ -553,6 +673,9 @@ function LiveProviderCard({
   const displayedCategories = provider.categories
     .slice(0, 4)
     .map((category) => serviceCategoryLabels[category]);
+  const nextWindowLabel = result.suggestedSlot
+    ? formatBookingWindowSummary(result.suggestedSlot.startIso)
+    : "Window full";
 
   return (
     <article className={`list-panel live-provider-card${isPrimaryRecommendation ? " live-provider-card--recommended" : ""}`}>
@@ -585,10 +708,19 @@ function LiveProviderCard({
         <p>{result.selectionSummaryDetail}</p>
       </div>
 
-      <div className="calendar-card__metric-row">
-        <span>{result.distanceMiles.toFixed(1)} mi away</span>
-        <span>{provider.serviceRadiusMiles} mile radius</span>
-        <span>{formatCompletedJobLabel(result.completedJobCount)}</span>
+      <div className="live-provider-card__booking-strip" aria-label="Provider booking facts">
+        <div>
+          <span>Next opening</span>
+          <strong>{nextWindowLabel}</strong>
+        </div>
+        <div>
+          <span>Distance</span>
+          <strong>{result.distanceMiles.toFixed(1)} mi</strong>
+        </div>
+        <div>
+          <span>Trust</span>
+          <strong>{provider.rating.toFixed(1)} • {provider.reviewCount} reviews</strong>
+        </div>
       </div>
 
       <p className="live-provider-card__window">
@@ -635,7 +767,7 @@ function LiveProviderCard({
 
       <div className="cta-row">
         <a className="button" href="/auth">
-          {rank === 1 ? "Create account to book" : "Create account to book this provider"}
+          {rank === 1 ? "Create account to hold this match" : "Create account to book"}
         </a>
         <a className="button-secondary" href="/login/customer">
           Log in

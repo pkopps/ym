@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
@@ -42,6 +42,9 @@ export function SupportScreen() {
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [showAlertPreferences, setShowAlertPreferences] = useState(false);
+  const [showSupportComposer, setShowSupportComposer] = useState(false);
+  const [showSupportHistory, setShowSupportHistory] = useState(false);
 
   async function loadMatches() {
     if (!envelope?.session.token) {
@@ -75,15 +78,6 @@ export function SupportScreen() {
     void loadMatches();
   }, [envelope?.session.token]);
 
-  const totalAccepted = useMemo(
-    () => matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0,
-    [matchesResponse]
-  );
-  const totalPending = useMemo(
-    () => matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0,
-    [matchesResponse]
-  );
-
   async function handleCreateSupportTicket() {
     if (!envelope?.session.token || subject.trim().length === 0 || description.trim().length === 0) {
       return;
@@ -104,6 +98,7 @@ export function SupportScreen() {
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
+      setShowSupportComposer(false);
       await loadMatches();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
@@ -176,16 +171,11 @@ export function SupportScreen() {
   return (
     <ScreenShell
       eyebrow="Account"
-      title="Earnings and help"
-      description="Pay status, alerts, support, and app lock."
+      title="Account"
+      description="Payouts, alerts, security, and support."
     >
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
-
-      <View style={styles.statRow}>
-        <StatCard label="Accepted work" value={`${totalAccepted}`} />
-        <StatCard label="Pending" value={`${totalPending}`} />
-      </View>
 
       <InfoCard title="Payouts" description="Live earnings ledger">
         <Text style={styles.meta}>
@@ -201,20 +191,24 @@ export function SupportScreen() {
             ? new Date(payoutLedger.nextWeeklyPayoutDateIso).toLocaleString()
             : "Not available"}
         </Text>
-        <View style={styles.ticketStack}>
-          {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
-            <View key={entry.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.title}>{entry.providerCompanyName}</Text>
-                <Text style={styles.meta}>
-                  {entry.serviceLabel} • {formatCurrency(entry.amountCents)}
-                </Text>
-                <Text style={styles.meta}>{entry.note}</Text>
+        {(payoutLedger?.entries ?? []).length > 0 ? (
+          <View style={styles.ticketStack}>
+            {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
+              <View key={entry.id} style={styles.ticketRow}>
+                <View style={styles.ticketCopy}>
+                  <Text style={styles.title}>{entry.providerCompanyName}</Text>
+                  <Text style={styles.meta}>
+                    {entry.serviceLabel} • {formatCurrency(entry.amountCents)}
+                  </Text>
+                  <Text style={styles.meta}>{entry.note}</Text>
+                </View>
+                <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
               </View>
-              <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
-            </View>
-          ))}
-        </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>Completed shifts will show payout entries here.</Text>
+        )}
       </InfoCard>
 
       <InfoCard title="Account basics" description="Keep details up to date">
@@ -225,7 +219,7 @@ export function SupportScreen() {
         </Text>
       </InfoCard>
 
-      <InfoCard title="App lock" description="Keep your work app quick to open, but not wide open">
+      <InfoCard title="Security" description="Protect this device without slowing down daily work">
         <View style={styles.switchRow}>
           <View style={styles.ticketCopy}>
             <Text style={styles.title}>Use {biometricLabel}</Text>
@@ -243,188 +237,201 @@ export function SupportScreen() {
             value={biometricEnabled}
           />
         </View>
-      </InfoCard>
-
-      <InfoCard title="Updates" description={`${unreadCount} unread`}>
-        <View style={styles.ticketStack}>
-          {notifications.slice(0, 4).map((notification) => (
-            <View key={notification.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.title}>{notification.title}</Text>
-                <Text style={styles.meta}>{notification.body}</Text>
-              </View>
-              <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
-            </View>
-          ))}
-        </View>
-        <Pressable
-          disabled={isWorking || unreadCount === 0}
-          onPress={() => void handleMarkNotificationsRead()}
-          style={styles.chip}
-        >
-          <Text style={styles.chipLabel}>Mark updates read</Text>
-        </Pressable>
-        <View style={styles.issueRow}>
-          <Pressable
-            disabled={isWorking}
-            onPress={() => void updateNotificationPreferences({ pushEnabled: !(preferences?.pushEnabled ?? true) })}
-            style={[styles.chip, (preferences?.pushEnabled ?? true) && styles.chipActive]}
-          >
-            <Text style={[styles.chipLabel, (preferences?.pushEnabled ?? true) && styles.chipLabelActive]}>
-              Push {(preferences?.pushEnabled ?? true) ? "on" : "off"}
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={isWorking}
-            onPress={() => void updateNotificationPreferences({ emailEnabled: !(preferences?.emailEnabled ?? true) })}
-            style={[styles.chip, (preferences?.emailEnabled ?? true) && styles.chipActive]}
-          >
-            <Text style={[styles.chipLabel, (preferences?.emailEnabled ?? true) && styles.chipLabelActive]}>
-              Email {(preferences?.emailEnabled ?? true) ? "on" : "off"}
-            </Text>
-          </Pressable>
-          <Pressable
-            disabled={isWorking}
-            onPress={() => void updateNotificationPreferences({ smsEnabled: !(preferences?.smsEnabled ?? true) })}
-            style={[styles.chip, (preferences?.smsEnabled ?? true) && styles.chipActive]}
-          >
-            <Text style={[styles.chipLabel, (preferences?.smsEnabled ?? true) && styles.chipLabelActive]}>
-              SMS {(preferences?.smsEnabled ?? true) ? "on" : "off"}
-            </Text>
-          </Pressable>
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
-        <View style={styles.ticketStack}>
-          {deliveries.slice(0, 4).map((delivery) => (
-            <View key={delivery.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.title}>{delivery.channel.toUpperCase()} • {delivery.title}</Text>
-                <Text style={styles.meta}>{delivery.destination}</Text>
-              </View>
-              <Text style={styles.meta}>{delivery.status}</Text>
-            </View>
-          ))}
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Help" description="Fast support routes">
-        <View style={styles.issueRow}>
-          {supportIssueOptions.map((issueType) => {
-            const isActive = issueType === selectedIssueType;
-            return (
-              <Pressable
-                key={issueType}
-                onPress={() => setSelectedIssueType(issueType)}
-                style={[styles.chip, isActive && styles.chipActive]}
-              >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                  {issueType.replaceAll("-", " ")}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <View style={styles.issueRow}>
-          <Pressable
-            onPress={() => setSelectedBookingId("")}
-            style={[styles.chip, !selectedBookingId && styles.chipActive]}
-          >
-            <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No booking</Text>
-          </Pressable>
-          {(matchesResponse?.matches ?? []).slice(0, 4).map((match) => {
-            const isActive = selectedBookingId === match.bookingId;
-            return (
-              <Pressable
-                key={match.id}
-                onPress={() => setSelectedBookingId(match.bookingId)}
-                style={[styles.chip, isActive && styles.chipActive]}
-              >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                  {match.providerCompanyName}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <TextInput
-          onChangeText={setSubject}
-          placeholder="Short subject"
-          placeholderTextColor={BrandTokens.colors.muted}
-          style={styles.input}
-          value={subject}
-        />
-        <TextInput
-          multiline
-          onChangeText={setDescription}
-          placeholder="What happened, and what should support know?"
-          placeholderTextColor={BrandTokens.colors.muted}
-          style={[styles.input, styles.textarea]}
-          value={description}
-        />
-        <Pressable
-          disabled={isWorking || subject.trim().length === 0 || description.trim().length === 0}
-          onPress={() => void handleCreateSupportTicket()}
-          style={styles.primaryButton}
-        >
-          <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Open support ticket"}</Text>
-        </Pressable>
-        <View style={styles.ticketStack}>
-          {supportTickets.slice(0, 3).map((ticket) => (
-            <View key={ticket.id} style={styles.ticketRow}>
-              <View style={styles.ticketCopy}>
-                <Text style={styles.title}>{ticket.subject}</Text>
-                <Text style={styles.meta}>
-                  {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
-                </Text>
-              </View>
-              <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
-            </View>
-          ))}
-        </View>
-      </InfoCard>
-
-      <InfoCard title="Session" description="Manage this device">
         <Pressable onPress={signOut} style={styles.logoutButton}>
           <Text style={styles.logoutButtonLabel}>Log out</Text>
         </Pressable>
+      </InfoCard>
+
+      <InfoCard title="Updates" description={`${unreadCount} unread`}>
+        {notifications.length > 0 ? (
+          <View style={styles.ticketStack}>
+            {notifications.slice(0, 4).map((notification) => (
+              <View key={notification.id} style={styles.ticketRow}>
+                <View style={styles.ticketCopy}>
+                  <Text style={styles.title}>{notification.title}</Text>
+                  <Text style={styles.meta}>{notification.body}</Text>
+                </View>
+                <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>No updates yet.</Text>
+        )}
+        {unreadCount > 0 ? (
+          <Pressable
+            disabled={isWorking}
+            onPress={() => void handleMarkNotificationsRead()}
+            style={styles.linkButton}
+          >
+            <Text style={styles.linkButtonLabel}>Mark updates read</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={() => setShowAlertPreferences((current) => !current)}
+          style={styles.linkButton}
+        >
+          <Text style={styles.linkButtonLabel}>
+            {showAlertPreferences ? "Hide alert preferences" : "Alert preferences"}
+          </Text>
+        </Pressable>
+        {showAlertPreferences ? (
+          <View style={styles.issueRow}>
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void updateNotificationPreferences({ pushEnabled: !(preferences?.pushEnabled ?? true) })}
+              style={[styles.chip, (preferences?.pushEnabled ?? true) && styles.chipActive]}
+            >
+              <Text style={[styles.chipLabel, (preferences?.pushEnabled ?? true) && styles.chipLabelActive]}>
+                Push {(preferences?.pushEnabled ?? true) ? "on" : "off"}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void updateNotificationPreferences({ emailEnabled: !(preferences?.emailEnabled ?? true) })}
+              style={[styles.chip, (preferences?.emailEnabled ?? true) && styles.chipActive]}
+            >
+              <Text style={[styles.chipLabel, (preferences?.emailEnabled ?? true) && styles.chipLabelActive]}>
+                Email {(preferences?.emailEnabled ?? true) ? "on" : "off"}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void updateNotificationPreferences({ smsEnabled: !(preferences?.smsEnabled ?? true) })}
+              style={[styles.chip, (preferences?.smsEnabled ?? true) && styles.chipActive]}
+            >
+              <Text style={[styles.chipLabel, (preferences?.smsEnabled ?? true) && styles.chipLabelActive]}>
+                SMS {(preferences?.smsEnabled ?? true) ? "on" : "off"}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </InfoCard>
+
+      <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
+        {deliveries.length > 0 ? (
+          <View style={styles.ticketStack}>
+            {deliveries.slice(0, 4).map((delivery) => (
+              <View key={delivery.id} style={styles.ticketRow}>
+                <View style={styles.ticketCopy}>
+                  <Text style={styles.title}>{delivery.channel.toUpperCase()} • {delivery.title}</Text>
+                  <Text style={styles.meta}>{delivery.destination}</Text>
+                </View>
+                <Text style={styles.meta}>{delivery.status}</Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.meta}>Nothing sent yet.</Text>
+        )}
+      </InfoCard>
+
+      <InfoCard title="Help" description="Get help quickly.">
+        <Pressable
+          onPress={() => setShowSupportComposer((current) => !current)}
+          style={showSupportComposer ? styles.linkButton : styles.primaryButton}
+        >
+          <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
+            {showSupportComposer ? "Hide ticket form" : "Open support ticket"}
+          </Text>
+        </Pressable>
+        {showSupportComposer ? (
+          <View style={styles.ticketStack}>
+            <View style={styles.issueRow}>
+              {supportIssueOptions.map((issueType) => {
+                const isActive = issueType === selectedIssueType;
+                return (
+                  <Pressable
+                    key={issueType}
+                    onPress={() => setSelectedIssueType(issueType)}
+                    style={[styles.chip, isActive && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                      {issueType.replaceAll("-", " ")}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.issueRow}>
+              <Pressable
+                onPress={() => setSelectedBookingId("")}
+                style={[styles.chip, !selectedBookingId && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No booking</Text>
+              </Pressable>
+              {(matchesResponse?.matches ?? []).slice(0, 4).map((match) => {
+                const isActive = selectedBookingId === match.bookingId;
+                return (
+                  <Pressable
+                    key={match.id}
+                    onPress={() => setSelectedBookingId(match.bookingId)}
+                    style={[styles.chip, isActive && styles.chipActive]}
+                  >
+                    <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                      {match.providerCompanyName}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <TextInput
+              onChangeText={setSubject}
+              placeholder="Short subject"
+              placeholderTextColor={BrandTokens.colors.muted}
+              style={styles.input}
+              value={subject}
+            />
+            <TextInput
+              multiline
+              onChangeText={setDescription}
+              placeholder="What happened, and what should support know?"
+              placeholderTextColor={BrandTokens.colors.muted}
+              style={[styles.input, styles.textarea]}
+              value={description}
+            />
+            <Pressable
+              disabled={isWorking || subject.trim().length === 0 || description.trim().length === 0}
+              onPress={() => void handleCreateSupportTicket()}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send ticket"}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {supportTickets.length > 0 ? (
+          <>
+            <Pressable
+              onPress={() => setShowSupportHistory((current) => !current)}
+              style={styles.linkButton}
+            >
+              <Text style={styles.linkButtonLabel}>
+                {showSupportHistory ? "Hide recent tickets" : "Recent tickets"}
+              </Text>
+            </Pressable>
+            {showSupportHistory ? (
+            <View style={styles.ticketStack}>
+              {supportTickets.slice(0, 3).map((ticket) => (
+                <View key={ticket.id} style={styles.ticketRow}>
+                  <View style={styles.ticketCopy}>
+                    <Text style={styles.title}>{ticket.subject}</Text>
+                    <Text style={styles.meta}>
+                      {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                    </Text>
+                  </View>
+                  <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+                </View>
+              ))}
+            </View>
+            ) : null}
+          </>
+        ) : null}
       </InfoCard>
     </ScreenShell>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  statRow: {
-    flexDirection: "row",
-    gap: BrandTokens.spacing.md
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: BrandTokens.radius.md,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    padding: BrandTokens.spacing.lg,
-    gap: BrandTokens.spacing.xs
-  },
-  statValue: {
-    color: BrandTokens.colors.ink,
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  statLabel: {
-    color: BrandTokens.colors.inkSoft,
-    fontSize: 13,
-    fontWeight: "600"
-  },
   title: {
     color: BrandTokens.colors.ink,
     fontWeight: "700"
@@ -456,6 +463,19 @@ const styles = StyleSheet.create({
   },
   chipLabelActive: {
     color: "#ffffff"
+  },
+  linkButton: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  linkButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "700"
   },
   input: {
     borderRadius: BrandTokens.radius.sm,

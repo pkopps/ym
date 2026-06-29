@@ -62,6 +62,7 @@ export function BookingsScreen({
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [isTrackingModalVisible, setIsTrackingModalVisible] = useState(false);
+  const [showManageByBookingId, setShowManageByBookingId] = useState<Record<string, boolean>>({});
 
   const upcomingBookings = useMemo(
     () =>
@@ -377,6 +378,13 @@ export function BookingsScreen({
     return paymentsByBookingId[bookingId];
   }
 
+  function toggleManagePanel(bookingId: string) {
+    setShowManageByBookingId((current) => ({
+      ...current,
+      [bookingId]: !current[bookingId]
+    }));
+  }
+
   function getPaymentLabel(payment?: PaymentRecord) {
     if (!payment) {
       return "Not paid";
@@ -413,6 +421,49 @@ export function BookingsScreen({
     return booking.status === "completed" && payment?.status === "captured" && payment.refundable;
   }
 
+  function getBookingStatusSummary(booking: Booking) {
+    if (booking.onRouteConfirmedAt) {
+      if (activeTrackingBookingId === booking.id && tracking) {
+        return `${buildTrackingSummary(tracking)} • Business chat is open.`;
+      }
+
+      return "Crew is on the way. Business chat is open.";
+    }
+
+    if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
+      const delayedTime = new Date(booking.lateEtaIso).toLocaleTimeString(undefined, {
+        timeStyle: "short"
+      });
+      return booking.lateReason
+        ? `Running behind until around ${delayedTime} • ${booking.lateReason}`
+        : `Running behind until around ${delayedTime}`;
+    }
+
+    if (booking.activeExceptionType) {
+      return booking.activeExceptionNotes
+        ? `${getBookingExceptionLabel(booking.activeExceptionType)} • ${booking.activeExceptionNotes}`
+        : getBookingExceptionLabel(booking.activeExceptionType);
+    }
+
+    if (booking.status === "disputed") {
+      return booking.disputeReason ? `Disputed • ${booking.disputeReason}` : "Disputed";
+    }
+
+    if (booking.status === "confirmed") {
+      return "Confirmed and ready.";
+    }
+
+    if (booking.status === "requested") {
+      return "Requested and waiting on the provider.";
+    }
+
+    if (booking.status === "in-progress") {
+      return "Work is in progress.";
+    }
+
+    return booking.status;
+  }
+
   async function payWithStripe(booking: Booking) {
     if (!envelope?.session.token) {
       return;
@@ -439,7 +490,7 @@ export function BookingsScreen({
   }
 
   return (
-    <ScreenShell eyebrow="Bookings" title="Manage services" description="Upcoming and past jobs.">
+    <ScreenShell eyebrow="Bookings" title="Your visits" description="Upcoming and past visits.">
       <View style={styles.modeRow}>
         <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
         <ModeButton active={viewMode === "past"} label="Past" onPress={() => setViewMode("past")} />
@@ -452,269 +503,291 @@ export function BookingsScreen({
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       {viewMode === "upcoming" ? (
-        <InfoCard title="Upcoming jobs" description={`${upcomingBookings.length} scheduled`}>
-          <View style={styles.list}>
-            {upcomingBookings.map((booking) => (
-              <View key={booking.id} style={styles.liveCard}>
-                <View style={styles.bookingCopy}>
-                  <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
-                  <Text style={styles.bookingMeta}>{providerNamesById[booking.providerId] ?? "Landscaping business"}</Text>
-                  <Text style={styles.bookingMeta}>{formatBookingWindowSummary(booking.scheduledStartIso)}</Text>
-                  <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
-                  <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
-                  <Text style={styles.bookingNote}>{booking.status}</Text>
-                  <Text style={styles.bookingMeta}>{getPaymentLabel(getPaymentRecord(booking.id))}</Text>
-                  {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
-                    <Text style={styles.bookingMeta}>
-                      Running behind • now around{" "}
-                      {new Date(booking.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
-                      {booking.lateReason ? ` • ${booking.lateReason}` : ""}
-                    </Text>
-                  ) : null}
-                  {booking.activeExceptionType ? (
-                    <Text style={styles.bookingMeta}>
-                      {getBookingExceptionLabel(booking.activeExceptionType)}
-                      {booking.activeExceptionNotes ? ` • ${booking.activeExceptionNotes}` : ""}
-                    </Text>
-                  ) : null}
-                  {booking.status === "disputed" ? (
-                    <Text style={styles.bookingMeta}>
-                      Disputed{booking.disputeReason ? ` • ${booking.disputeReason}` : ""}
-                    </Text>
-                  ) : null}
-                  {booking.onRouteConfirmedAt ? (
-                    <Text style={styles.bookingMeta}>
-                      {activeTrackingBookingId === booking.id && tracking
-                        ? `${buildTrackingSummary(tracking)} • Business chat is open`
-                        : "Crew is on the way. Business chat is open."}
-                    </Text>
-                  ) : null}
-                </View>
-                <StatusBadge
-                  label={
-                    booking.status === "confirmed"
-                      ? "Confirmed"
-                      : booking.status === "in-progress"
-                        ? "In progress"
-                        : booking.status === "disputed"
-                          ? "Disputed"
-                        : "Requested"
-                  }
-                  tone={booking.status === "disputed" ? "warning" : "success"}
-                />
-                <View style={styles.inlineActions}>
-                  {booking.status === "requested" || booking.status === "confirmed" ? (
-                    <>
-                      <Pressable
-                        disabled={isWorking || getPaymentRecord(booking.id)?.status === "captured"}
-                        onPress={() => void payWithStripe(booking)}
-                        style={styles.primaryAction}
-                      >
-                        <Text style={styles.primaryActionLabel}>
-                          {getPaymentRecord(booking.id)?.status === "pending"
-                            ? "Continue checkout"
-                            : "Pay with Stripe"}
+        <InfoCard title="Coming up" description={`${upcomingBookings.length} scheduled`}>
+          {upcomingBookings.length > 0 ? (
+            <View style={styles.list}>
+              {upcomingBookings.map((booking) => {
+                const payment = getPaymentRecord(booking.id);
+                const isCheckoutReady =
+                  !booking.onRouteConfirmedAt &&
+                  (booking.status === "requested" || booking.status === "confirmed") &&
+                  payment?.status !== "captured";
+                const isManageOpen = showManageByBookingId[booking.id];
+
+                return (
+                  <View key={booking.id} style={styles.liveCard}>
+                    <View style={styles.visitHeader}>
+                      <View style={styles.bookingCopy}>
+                        <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
+                        <Text style={styles.bookingMeta}>
+                          {providerNamesById[booking.providerId] ?? "Landscaping business"}
                         </Text>
-                      </Pressable>
-                      <Pressable
-                        disabled={isWorking}
-                        onPress={() => void rescheduleBooking(booking)}
-                        style={styles.secondaryAction}
-                      >
-                        <Text style={styles.secondaryActionLabel}>Move to next day</Text>
-                      </Pressable>
-                      <Pressable
-                        disabled={isWorking}
-                        onPress={() => void cancelBooking(booking.id)}
-                        style={styles.secondaryAction}
-                      >
-                        <Text style={styles.secondaryActionLabel}>Cancel</Text>
-                      </Pressable>
-                    </>
-                  ) : null}
-                  {booking.onRouteConfirmedAt ? (
-                    <Pressable
-                      disabled={isWorking}
-                      onPress={() => void openCustomerChat(booking)}
-                      style={styles.secondaryAction}
-                    >
-                      <Text style={styles.secondaryActionLabel}>Message business</Text>
-                    </Pressable>
-                  ) : null}
-                  {booking.onRouteConfirmedAt ? (
-                    <Pressable
-                      disabled={isWorking}
-                      onPress={() => void openArrivalTracking(booking)}
-                      style={styles.secondaryAction}
-                    >
-                      <Text style={styles.secondaryActionLabel}>Track crew</Text>
-                    </Pressable>
-                  ) : null}
-                  {booking.activeExceptionType ? (
-                    <Pressable
-                      onPress={() => onOpenAccount?.()}
-                      style={styles.secondaryAction}
-                    >
-                      <Text style={styles.secondaryActionLabel}>Open account support</Text>
-                    </Pressable>
-                  ) : null}
-                  {booking.status !== "cancelled" &&
-                  booking.status !== "refunded" &&
-                  booking.status !== "requested" &&
-                  booking.status !== "disputed" ? (
-                    <>
-                      <TextInput
-                        onChangeText={(value) =>
-                          setDisputeDrafts((current) => ({
-                            ...current,
-                            [booking.id]: value
-                          }))
-                        }
-                        placeholder="Why are you disputing this service?"
-                        placeholderTextColor={BrandTokens.colors.muted}
-                        style={styles.input}
-                        value={disputeDrafts[booking.id] ?? ""}
-                      />
-                      <Pressable
-                        disabled={isWorking}
-                        onPress={() => void openDispute(booking.id)}
-                        style={styles.secondaryAction}
-                      >
-                        <Text style={styles.secondaryActionLabel}>Open dispute</Text>
-                      </Pressable>
-                    </>
-                  ) : null}
-                  {(canRequestRefundReview(booking, getPaymentRecord(booking.id)) ||
-                    getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
-                    getPaymentRecord(booking.id)?.refundReviewStatus === "denied") ? (
-                    <>
-                      <TextInput
-                        editable={getPaymentRecord(booking.id)?.refundReviewStatus !== "requested"}
-                        onChangeText={(value) =>
-                          setRefundDrafts((current) => ({
-                            ...current,
-                            [booking.id]: value
-                          }))
-                        }
-                        placeholder={
-                          getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
-                            ? "Refund review in progress"
-                            : "Why should YardMatch review this payment?"
-                        }
-                        placeholderTextColor={BrandTokens.colors.muted}
-                        style={styles.input}
-                        value={
-                          getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
-                            ? getPaymentRecord(booking.id)?.refundReason ?? ""
-                            : refundDrafts[booking.id] ?? ""
-                        }
-                      />
-                      <Pressable
-                        disabled={
-                          isWorking ||
-                          getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
-                          !canRequestRefundReview(booking, getPaymentRecord(booking.id))
-                        }
-                        onPress={() => void requestRefundReview(booking.id)}
-                        style={styles.secondaryAction}
-                      >
-                        <Text style={styles.secondaryActionLabel}>
-                          {getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
-                            ? "Refund review open"
-                            : "Request refund review"}
-                        </Text>
-                      </Pressable>
-                    </>
-                  ) : null}
-                </View>
-                {booking.onRouteConfirmedAt && activeChatBookingId === booking.id ? (
-                  <View style={styles.chatStack}>
-                    {(chatThread?.messages ?? []).map((message) => (
-                      <View key={message.id} style={styles.chatBubble}>
-                        <Text style={styles.bookingTitle}>
-                          {message.senderRole === "customer"
-                            ? "You"
-                            : providerNamesById[booking.providerId] ?? "Business"}
-                        </Text>
-                        <Text style={styles.bookingMeta}>{message.body}</Text>
                       </View>
-                    ))}
-                    <TextInput
-                      multiline
-                      onChangeText={setChatDraft}
-                      placeholder="Message the business owner."
-                      placeholderTextColor={BrandTokens.colors.muted}
-                      style={styles.input}
-                      value={chatDraft}
-                    />
-                    <Pressable
-                      disabled={isWorking}
-                      onPress={() => void sendCustomerChat(booking.id)}
-                      style={styles.submitButton}
-                    >
-                      <Text style={styles.submitButtonLabel}>{isWorking ? "Sending..." : "Send message"}</Text>
-                    </Pressable>
+                      <StatusBadge
+                        label={
+                          booking.status === "confirmed"
+                            ? "Confirmed"
+                            : booking.status === "in-progress"
+                              ? "In progress"
+                              : booking.status === "disputed"
+                                ? "Disputed"
+                                : "Requested"
+                        }
+                        tone={booking.status === "disputed" ? "warning" : "success"}
+                      />
+                    </View>
+                    <View style={styles.visitFacts}>
+                      <Text style={styles.visitFact}>{formatBookingWindowSummary(booking.scheduledStartIso)}</Text>
+                      <Text style={styles.visitFact}>{getPaymentLabel(payment)}</Text>
+                    </View>
+                    <Text style={styles.bookingNote}>{getBookingStatusSummary(booking)}</Text>
+                    <View style={styles.actionPanel}>
+                      {booking.onRouteConfirmedAt ? (
+                        <Pressable
+                          disabled={isWorking}
+                          onPress={() => void openArrivalTracking(booking)}
+                          style={styles.primaryAction}
+                        >
+                          <Text style={styles.primaryActionLabel}>Track crew</Text>
+                        </Pressable>
+                      ) : null}
+                      {isCheckoutReady ? (
+                        <Pressable
+                          disabled={isWorking}
+                          onPress={() => void payWithStripe(booking)}
+                          style={styles.primaryAction}
+                        >
+                          <Text style={styles.primaryActionLabel}>
+                            {payment?.status === "pending" ? "Continue checkout" : "Pay now"}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      {booking.activeExceptionType ? (
+                        <Pressable onPress={() => onOpenAccount?.()} style={styles.primaryAction}>
+                          <Text style={styles.primaryActionLabel}>Open support</Text>
+                        </Pressable>
+                      ) : null}
+                      {booking.onRouteConfirmedAt ? (
+                        <Pressable
+                          disabled={isWorking}
+                          onPress={() => void openCustomerChat(booking)}
+                          style={styles.secondaryAction}
+                        >
+                          <Text style={styles.secondaryActionLabel}>Message</Text>
+                        </Pressable>
+                      ) : null}
+                      {booking.status !== "cancelled" && booking.status !== "refunded" ? (
+                        <Pressable
+                          onPress={() => toggleManagePanel(booking.id)}
+                          style={styles.secondaryAction}
+                        >
+                          <Text style={styles.secondaryActionLabel}>{isManageOpen ? "Hide" : "Manage"}</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                    {isManageOpen ? (
+                      <View style={styles.managePanel}>
+                        <View style={styles.detailStack}>
+                          <Text style={styles.detailLabel}>Visit details</Text>
+                          <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
+                          <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
+                          <Text style={styles.bookingMeta}>{booking.status}</Text>
+                        </View>
+                        {booking.status === "requested" || booking.status === "confirmed" ? (
+                          <View style={styles.inlineActions}>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void rescheduleBooking(booking)}
+                              style={styles.secondaryAction}
+                            >
+                              <Text style={styles.secondaryActionLabel}>Move to next day</Text>
+                            </Pressable>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void cancelBooking(booking.id)}
+                              style={styles.secondaryAction}
+                            >
+                              <Text style={styles.secondaryActionLabel}>Cancel</Text>
+                            </Pressable>
+                          </View>
+                        ) : null}
+                        {booking.activeExceptionType ? (
+                          <Pressable onPress={() => onOpenAccount?.()} style={styles.secondaryAction}>
+                            <Text style={styles.secondaryActionLabel}>Open account support</Text>
+                          </Pressable>
+                        ) : null}
+                        {booking.status !== "cancelled" &&
+                        booking.status !== "refunded" &&
+                        booking.status !== "requested" &&
+                        booking.status !== "disputed" ? (
+                          <>
+                            <TextInput
+                              onChangeText={(value) =>
+                                setDisputeDrafts((current) => ({
+                                  ...current,
+                                  [booking.id]: value
+                                }))
+                              }
+                              placeholder="Why are you disputing this service?"
+                              placeholderTextColor={BrandTokens.colors.muted}
+                              style={[styles.input, styles.compactInput]}
+                              value={disputeDrafts[booking.id] ?? ""}
+                            />
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void openDispute(booking.id)}
+                              style={styles.secondaryAction}
+                            >
+                              <Text style={styles.secondaryActionLabel}>Open dispute</Text>
+                            </Pressable>
+                          </>
+                        ) : null}
+                        {canRequestRefundReview(booking, getPaymentRecord(booking.id)) ||
+                        getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
+                        getPaymentRecord(booking.id)?.refundReviewStatus === "denied" ? (
+                          <>
+                            <TextInput
+                              editable={getPaymentRecord(booking.id)?.refundReviewStatus !== "requested"}
+                              onChangeText={(value) =>
+                                setRefundDrafts((current) => ({
+                                  ...current,
+                                  [booking.id]: value
+                                }))
+                              }
+                              placeholder={
+                                getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
+                                  ? "Refund review in progress"
+                                  : "Why should YardMatch review this payment?"
+                              }
+                              placeholderTextColor={BrandTokens.colors.muted}
+                              style={[styles.input, styles.compactInput]}
+                              value={
+                                getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
+                                  ? getPaymentRecord(booking.id)?.refundReason ?? ""
+                                  : refundDrafts[booking.id] ?? ""
+                              }
+                            />
+                            <Pressable
+                              disabled={
+                                isWorking ||
+                                getPaymentRecord(booking.id)?.refundReviewStatus === "requested" ||
+                                !canRequestRefundReview(booking, getPaymentRecord(booking.id))
+                              }
+                              onPress={() => void requestRefundReview(booking.id)}
+                              style={styles.secondaryAction}
+                            >
+                              <Text style={styles.secondaryActionLabel}>
+                                {getPaymentRecord(booking.id)?.refundReviewStatus === "requested"
+                                  ? "Refund review open"
+                                  : "Request refund review"}
+                              </Text>
+                            </Pressable>
+                          </>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {booking.onRouteConfirmedAt && activeChatBookingId === booking.id ? (
+                      <View style={styles.chatStack}>
+                        {(chatThread?.messages ?? []).map((message) => (
+                          <View key={message.id} style={styles.chatBubble}>
+                            <Text style={styles.bookingTitle}>
+                              {message.senderRole === "customer"
+                                ? "You"
+                                : providerNamesById[booking.providerId] ?? "Business"}
+                            </Text>
+                            <Text style={styles.bookingMeta}>{message.body}</Text>
+                          </View>
+                        ))}
+                        <TextInput
+                          multiline
+                          onChangeText={setChatDraft}
+                          placeholder="Message the business owner."
+                          placeholderTextColor={BrandTokens.colors.muted}
+                          style={styles.input}
+                          value={chatDraft}
+                        />
+                        <Pressable
+                          disabled={isWorking}
+                          onPress={() => void sendCustomerChat(booking.id)}
+                          style={styles.submitButton}
+                        >
+                          <Text style={styles.submitButtonLabel}>{isWorking ? "Sending..." : "Send message"}</Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
                   </View>
-                ) : null}
-              </View>
-            ))}
-          </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={styles.emptyState}>
+              Your next visit will show up here.
+            </Text>
+          )}
         </InfoCard>
       ) : (
         <>
-          <InfoCard title="Past jobs" description={`${pastBookings.length} completed or closed`}>
-            <View style={styles.list}>
-              {pastBookings.map((booking) => (
-                <Pressable
-                  key={booking.id}
-                  onPress={() => setSelectedBookingId(booking.id)}
-                  style={styles.bookingRow}
-                >
-                  <View style={styles.bookingCopy}>
-                    <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
-                    <Text style={styles.bookingMeta}>{providerNamesById[booking.providerId] ?? "Landscaping business"}</Text>
-                    <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
-                    {booking.disputeReason ? (
-                      <Text style={styles.bookingMeta}>{booking.disputeReason}</Text>
-                    ) : null}
-                  </View>
-                  <StatusBadge
-                    label={
-                      booking.status === "completed"
-                        ? "Done"
-                        : booking.status === "disputed"
-                          ? "Disputed"
-                          : booking.status
-                    }
-                    tone={booking.status === "completed" ? "success" : "warning"}
-                  />
-                </Pressable>
-              ))}
-            </View>
+          <InfoCard title="Past visits" description={`${pastBookings.length} completed or closed`}>
+            {pastBookings.length > 0 ? (
+              <View style={styles.list}>
+                {pastBookings.map((booking) => (
+                  <Pressable
+                    key={booking.id}
+                    onPress={() => setSelectedBookingId(booking.id)}
+                    style={styles.bookingRow}
+                  >
+                    <View style={styles.bookingCopy}>
+                      <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
+                      <Text style={styles.bookingMeta}>{providerNamesById[booking.providerId] ?? "Landscaping business"}</Text>
+                      <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
+                      {booking.disputeReason ? (
+                        <Text style={styles.bookingMeta}>{booking.disputeReason}</Text>
+                      ) : null}
+                    </View>
+                    <StatusBadge
+                      label={
+                        booking.status === "completed"
+                          ? "Done"
+                          : booking.status === "disputed"
+                            ? "Disputed"
+                            : booking.status
+                      }
+                      tone={booking.status === "completed" ? "success" : "warning"}
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.emptyState}>
+                Completed visits will show up here.
+              </Text>
+            )}
           </InfoCard>
 
-          {readyOpportunity?.canReviewNow ? (
-            <InfoCard title={`Review ${readyOpportunity.providerName}`} description="Post-service only">
-              <RatingField label="Overall" rating={overallRating} onChange={setOverallRating} />
-              <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
-              <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
-              <TextInput
-                multiline
-                onChangeText={setReviewText}
-                placeholder="How did it go?"
-                placeholderTextColor={BrandTokens.colors.muted}
-                style={styles.input}
-                value={reviewText}
-              />
-              <Pressable disabled={isWorking} onPress={() => void submitReview()} style={styles.submitButton}>
-                <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
-              </Pressable>
-            </InfoCard>
-          ) : (
-            <InfoCard title="Review status" description={readyOpportunity?.providerName ?? "No review selected"}>
-              <Text style={styles.bookingMeta}>{readyOpportunity?.reason ?? "Nothing needs your attention right now."}</Text>
-            </InfoCard>
-          )}
+          {pastBookings.length > 0 || readyOpportunity ? (
+            readyOpportunity?.canReviewNow ? (
+              <InfoCard title={`Review ${readyOpportunity.providerName}`} description="Post-service only">
+                <RatingField label="Overall" rating={overallRating} onChange={setOverallRating} />
+                <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
+                <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
+                <TextInput
+                  multiline
+                  onChangeText={setReviewText}
+                  placeholder="How did it go?"
+                  placeholderTextColor={BrandTokens.colors.muted}
+                  style={styles.input}
+                  value={reviewText}
+                />
+                <Pressable disabled={isWorking} onPress={() => void submitReview()} style={styles.submitButton}>
+                  <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
+                </Pressable>
+              </InfoCard>
+            ) : (
+              <InfoCard title="Review status" description={readyOpportunity?.providerName ?? "No review selected"}>
+                <Text style={styles.bookingMeta}>{readyOpportunity?.reason ?? "Nothing needs your attention right now."}</Text>
+              </InfoCard>
+            )
+          ) : null}
         </>
       )}
       <ArrivalTrackingModal
@@ -834,10 +907,33 @@ const styles = StyleSheet.create({
     alignItems: "flex-start"
   },
   liveCard: {
-    gap: BrandTokens.spacing.sm,
-    paddingBottom: BrandTokens.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: BrandTokens.colors.border
+    gap: BrandTokens.spacing.md,
+    padding: BrandTokens.spacing.md,
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)"
+  },
+  visitHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
+  },
+  visitFacts: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  visitFact: {
+    borderRadius: 999,
+    backgroundColor: "rgba(20, 40, 29, 0.06)",
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
+    fontWeight: "700",
+    overflow: "hidden",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs
   },
   bookingCopy: {
     flex: 1,
@@ -855,6 +951,30 @@ const styles = StyleSheet.create({
   bookingNote: {
     color: BrandTokens.colors.primaryStrong,
     lineHeight: 20
+  },
+  emptyState: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  detailStack: {
+    gap: BrandTokens.spacing.sm
+  },
+  detailLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  actionPanel: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  managePanel: {
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: BrandTokens.spacing.md,
+    padding: BrandTokens.spacing.md
   },
   inlineActions: {
     flexDirection: "row",
@@ -931,6 +1051,9 @@ const styles = StyleSheet.create({
     padding: BrandTokens.spacing.md,
     color: BrandTokens.colors.ink,
     textAlignVertical: "top"
+  },
+  compactInput: {
+    minHeight: 72
   },
   submitButton: {
     alignItems: "center",

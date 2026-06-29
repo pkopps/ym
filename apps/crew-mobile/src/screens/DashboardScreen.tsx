@@ -20,12 +20,16 @@ export function DashboardScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [showEvidenceTools, setShowEvidenceTools] = useState(false);
+  const [showShiftOptions, setShowShiftOptions] = useState(false);
   const [beforeNoteDraft, setBeforeNoteDraft] = useState("");
   const [afterNoteDraft, setAfterNoteDraft] = useState("");
   const acceptedMatch = useMemo(
     () => matchesResponse?.matches.find((match) => match.status === "accepted"),
     [matchesResponse]
   );
+  const pendingCount = matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0;
+  const acceptedCount = matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0;
 
   async function loadMatches() {
     if (!envelope?.session.token) {
@@ -225,7 +229,7 @@ export function DashboardScreen({
   }
 
   return (
-    <ScreenShell eyebrow="Today" title="Your next shift">
+    <ScreenShell eyebrow="Today" title="Today" description="See what matters now.">
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
@@ -245,134 +249,144 @@ export function DashboardScreen({
           ) : acceptedMatch.requiresRouteLeaderAssignment ? (
             <Text style={styles.meta}>The business owner still needs to choose which accepted crew member leads the route.</Text>
           ) : null}
-          <Text style={styles.meta}>Reliability call-offs on record: {matchesResponse?.crewMember.cancellationCount ?? 0}</Text>
-          <Text style={styles.meta}>
-            Evidence • before {acceptedMatch.beforeEvidenceCount} • after {acceptedMatch.afterEvidenceCount}
-          </Text>
-          <TextInput
-            value={beforeNoteDraft}
-            onChangeText={setBeforeNoteDraft}
-            placeholder="Add a before-work note for ops and disputes."
-            placeholderTextColor={BrandTokens.colors.inkSoft}
-            style={styles.input}
-          />
+          <Text style={styles.meta}>Evidence • before {acceptedMatch.beforeEvidenceCount} • after {acceptedMatch.afterEvidenceCount}</Text>
+          {acceptedMatch.bookingStatus === "requested" ? (
+            <View style={styles.waitingBadge}>
+            <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation.</Text>
+            </View>
+          ) : null}
+          {acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
+            <View style={styles.waitingBadge}>
+              <Text style={styles.waitingBadgeLabel}>
+                {acceptedMatch.isAssignedRouteLeader
+                  ? "You can start the route from the accepted-crew flow"
+                  : "Business owner or assigned route leader will start the route"}
+              </Text>
+            </View>
+          ) : null}
+          {acceptedMatch.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt ? (
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void startWork()}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+            </Pressable>
+          ) : null}
+          {acceptedMatch.bookingStatus === "in-progress" ? (
+            <View style={styles.waitingBadge}>
+              <Text style={styles.waitingBadgeLabel}>Job in progress</Text>
+            </View>
+          ) : null}
           <View style={styles.buttonRow}>
             {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void captureEvidencePhoto("before")}
-                style={styles.secondaryButton}
-              >
+              <Pressable onPress={() => setShowEvidenceTools((current) => !current)} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonLabel}>
-                  {acceptedMatch.beforeEvidenceCount > 0 ? "Add before photo" : "Capture before photo"}
+                  {showEvidenceTools ? "Hide proof of work" : "Proof of work"}
                 </Text>
               </Pressable>
             ) : null}
-            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void saveEvidenceNote("before")}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryButtonLabel}>Save before note</Text>
-              </Pressable>
-            ) : null}
-            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void saveEvidenceChecklist("before")}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryButtonLabel}>Save arrival checklist</Text>
-              </Pressable>
-            ) : null}
-            <TextInput
-              value={afterNoteDraft}
-              onChangeText={setAfterNoteDraft}
-              placeholder="Add an after-work note for ops and disputes."
-              placeholderTextColor={BrandTokens.colors.inkSoft}
-              style={styles.input}
-            />
-            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void captureEvidencePhoto("after")}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryButtonLabel}>
-                  {acceptedMatch.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
-                </Text>
-              </Pressable>
-            ) : null}
-            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void saveEvidenceNote("after")}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryButtonLabel}>Save after note</Text>
-              </Pressable>
-            ) : null}
-            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void saveEvidenceChecklist("after")}
-                style={styles.secondaryButton}
-              >
-                <Text style={styles.secondaryButtonLabel}>Save completion checklist</Text>
-              </Pressable>
-            ) : null}
-            {acceptedMatch.bookingStatus === "requested" ? (
-              <View style={styles.waitingBadge}>
-                <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation</Text>
-              </View>
-            ) : null}
-            {acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
-              <View style={styles.waitingBadge}>
-                <Text style={styles.waitingBadgeLabel}>
-                  {acceptedMatch.isAssignedRouteLeader
-                    ? "You can start the route from the accepted-crew flow"
-                    : "Business owner or assigned route leader will start the route"}
-                </Text>
-              </View>
-            ) : null}
-            {acceptedMatch.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={() => void startWork()}
-                style={styles.primaryButton}
-              >
-                <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
-              </Pressable>
-            ) : null}
-            {acceptedMatch.bookingStatus === "in-progress" ? (
-              <View style={styles.waitingBadge}>
-                <Text style={styles.waitingBadgeLabel}>Job in progress</Text>
-              </View>
-            ) : null}
-            {(acceptedMatch.bookingStatus === "requested" ||
-              (acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt)) ? (
-              <Pressable
-                disabled={isWorking}
-                onPress={confirmCancelAcceptedAssignment}
-                style={styles.dangerButton}
-              >
-                <Text style={styles.dangerButtonLabel}>Cancel assignment</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              onPress={() => void Linking.openURL(`tel:${acceptedMatch.providerPhone}`)}
-              style={styles.secondaryButton}
-            >
-              <Text style={styles.secondaryButtonLabel}>Call business</Text>
+            <Pressable onPress={() => setShowShiftOptions((current) => !current)} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>
+                {showShiftOptions ? "Hide shift options" : "Shift options"}
+              </Text>
             </Pressable>
           </View>
+          {showEvidenceTools && (acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+            <View style={styles.toolStack}>
+              <TextInput
+                value={beforeNoteDraft}
+                onChangeText={setBeforeNoteDraft}
+                placeholder="Add a before-work note for ops and disputes."
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={styles.input}
+              />
+              <View style={styles.buttonRow}>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void captureEvidencePhoto("before")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>
+                    {acceptedMatch.beforeEvidenceCount > 0 ? "Add before photo" : "Capture before photo"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void saveEvidenceNote("before")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Save before note</Text>
+                </Pressable>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void saveEvidenceChecklist("before")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Save arrival checklist</Text>
+                </Pressable>
+              </View>
+              <TextInput
+                value={afterNoteDraft}
+                onChangeText={setAfterNoteDraft}
+                placeholder="Add an after-work note for ops and disputes."
+                placeholderTextColor={BrandTokens.colors.inkSoft}
+                style={styles.input}
+              />
+              <View style={styles.buttonRow}>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void captureEvidencePhoto("after")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>
+                    {acceptedMatch.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void saveEvidenceNote("after")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Save after note</Text>
+                </Pressable>
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void saveEvidenceChecklist("after")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonLabel}>Save completion checklist</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          {showShiftOptions ? (
+            <View style={styles.toolStack}>
+              <Text style={styles.meta}>Reliability call-offs on record: {matchesResponse?.crewMember.cancellationCount ?? 0}</Text>
+              {(acceptedMatch.bookingStatus === "requested" ||
+                (acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt)) ? (
+                <Pressable
+                  disabled={isWorking}
+                  onPress={confirmCancelAcceptedAssignment}
+                  style={styles.dangerButton}
+                >
+                  <Text style={styles.dangerButtonLabel}>Cancel assignment</Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={() => void Linking.openURL(`tel:${acceptedMatch.providerPhone}`)}
+                style={styles.secondaryButton}
+              >
+                <Text style={styles.secondaryButtonLabel}>Call business</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>Open schedule</Text>
           </Pressable>
         </InfoCard>
       ) : (
-        <InfoCard title="No accepted shift yet" description="Keep your availability and skills current.">
+        <InfoCard title="No accepted shift yet" description="Keep your profile ready.">
           <Text style={styles.meta}>Providers will see you automatically when the job fits your profile.</Text>
           <Pressable onPress={onOpenAvailability} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>Update availability</Text>
@@ -380,22 +394,18 @@ export function DashboardScreen({
         </InfoCard>
       )}
 
-      <View style={styles.statRow}>
-        <StatCard label="Accepted" value={`${matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0}`} />
-        <StatCard label="Pending" value={`${matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0}`} />
-        <StatCard label="Call-offs" value={`${matchesResponse?.crewMember.cancellationCount ?? 0}`} />
-      </View>
+      <InfoCard title="Assignments" description={`${acceptedCount} accepted • ${pendingCount} pending`}>
+        <Text style={styles.meta}>
+          {pendingCount > 0
+            ? "You still have pending matches waiting on the business owner."
+            : "No other pending decisions right now."}
+        </Text>
+        <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
+          <Text style={styles.linkButtonLabel}>Open schedule</Text>
+        </Pressable>
+      </InfoCard>
 
     </ScreenShell>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statCard}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
   );
 }
 
@@ -421,6 +431,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: BrandTokens.spacing.md,
+    marginTop: BrandTokens.spacing.sm
+  },
+  toolStack: {
+    gap: BrandTokens.spacing.sm,
     marginTop: BrandTokens.spacing.sm
   },
   primaryButton: {
@@ -484,27 +498,6 @@ const styles = StyleSheet.create({
   linkButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
-  },
-  statRow: {
-    flexDirection: "row",
-    gap: BrandTokens.spacing.md
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: BrandTokens.radius.md,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    padding: BrandTokens.spacing.lg,
-    gap: BrandTokens.spacing.xs
-  },
-  statValue: {
-    color: BrandTokens.colors.ink,
-    fontSize: 24,
-    fontWeight: "700"
-  },
-  statLabel: {
-    color: BrandTokens.colors.inkSoft,
-    fontSize: 13,
-    fontWeight: "600"
   },
   list: {
     gap: BrandTokens.spacing.md

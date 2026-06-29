@@ -135,14 +135,16 @@ export function NotificationMenu({ session }: { session?: StoredWebSession }) {
         <div className="notification-menu__panel">
           <div className="notification-menu__header">
             <strong>Updates</strong>
-            <button
-              className="notification-menu__mark-read"
-              disabled={isWorking || unreadCount === 0}
-              onClick={() => void markAllRead()}
-              type="button"
-            >
-              Mark all read
-            </button>
+            {unreadCount > 0 ? (
+              <button
+                className="notification-menu__mark-read"
+                disabled={isWorking}
+                onClick={() => void markAllRead()}
+                type="button"
+              >
+                Mark all read
+              </button>
+            ) : null}
           </div>
 
           {errorMessage ? <p className="notification-menu__state">{errorMessage}</p> : null}

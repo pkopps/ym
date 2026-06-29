@@ -6,6 +6,14 @@ Keep this file focused on decisions, priorities, and unfinished work. Completed 
 
 ## Product Direction
 
+### Product Design Standard
+
+YardMatch should feel like the simplest possible landscaping marketplace: calm, predictable, polished, and never AI-generated.
+
+Use the public UX reference screenshots in `zocdoc-screenshots/screenshots/zocdoc/` as pattern research only. Study the marketplace mechanics: search, filters, provider cards, profiles, booking steps, trust cues, progressive disclosure, mobile screenshots, and app-store onboarding. Do not copy Zocdoc branding, logos, exact text, or protected visual identity.
+
+Before changing customer, provider, or crew UI, check whether the change reduces cognitive load, removes unnecessary decisions, keeps one clear purpose per screen, makes the next action obvious, improves trust, and feels natural on iOS. If not, simplify before building.
+
 YardMatch / GreenRain is a managed marketplace, not a directory.
 
 The customer experience should stay recommendation-first:

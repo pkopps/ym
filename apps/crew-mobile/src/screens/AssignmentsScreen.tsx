@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { CrewMatchesResponse } from "@yardmatch/contracts";
@@ -8,6 +8,46 @@ import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
 type ViewMode = "upcoming" | "history";
+
+function formatAssignmentStatus(status: string) {
+  return status.replaceAll("-", " ");
+}
+
+function formatAssignmentDay(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
+function formatAssignmentTime(iso: string) {
+  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
+function formatHourlyPay(cents: number) {
+  return `${new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100)}/hr`;
+}
+
+function getAssignmentSummary(assignment: CrewMatchesResponse["matches"][number]) {
+  if (assignment.onRouteConfirmedAt) {
+    return assignment.isAssignedRouteLeader ? "Route is live. You lead this crew." : "Route is live.";
+  }
+
+  if (assignment.lateEtaIso) {
+    return `Delay sent for ${formatAssignmentTime(assignment.lateEtaIso)}.`;
+  }
+
+  if (assignment.bookingStatus === "requested") {
+    return "Waiting on the business to confirm.";
+  }
+
+  if (assignment.bookingStatus === "confirmed") {
+    return assignment.isAssignedRouteLeader ? "You are leading this route." : "Confirmed and ready.";
+  }
+
+  return formatAssignmentStatus(assignment.bookingStatus);
+}
 
 export function AssignmentsScreen() {
   const { envelope } = useCrewSession();
@@ -69,14 +109,24 @@ export function AssignmentsScreen() {
     );
   }
 
-  const items = (matchesResponse?.matches ?? []).filter((match) =>
-    viewMode === "upcoming"
-      ? match.status !== "denied" && match.status !== "cancelled-by-crew"
-      : match.status === "denied" || match.status === "cancelled-by-crew"
+  const acceptedAssignments = useMemo(
+    () => (matchesResponse?.matches ?? []).filter((match) => match.status === "accepted"),
+    [matchesResponse]
+  );
+  const pendingAssignments = useMemo(
+    () => (matchesResponse?.matches ?? []).filter((match) => match.status === "pending-provider-review"),
+    [matchesResponse]
+  );
+  const pastAssignments = useMemo(
+    () =>
+      (matchesResponse?.matches ?? []).filter(
+        (match) => match.status === "denied" || match.status === "cancelled-by-crew"
+      ),
+    [matchesResponse]
   );
 
   return (
-    <ScreenShell eyebrow="Schedule" title="Your work">
+    <ScreenShell eyebrow="Schedule" title="Assignments" description="See upcoming work and past decisions.">
       <View style={styles.modeRow}>
         <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
         <ModeButton active={viewMode === "history"} label="History" onPress={() => setViewMode("history")} />
@@ -85,45 +135,106 @@ export function AssignmentsScreen() {
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard
-        title={viewMode === "upcoming" ? "Matched and accepted work" : "Past decisions"}
-        description={`${items.length} items`}
-      >
-        <View style={styles.list}>
-          {items.map((assignment) => (
-            <View key={assignment.id} style={styles.assignmentRow}>
-              <Text style={styles.dayPill}>
-                {new Date(assignment.scheduledStartIso).toLocaleDateString(undefined, { weekday: "short" })}
-              </Text>
-              <View style={styles.copy}>
-                <Text style={styles.title}>{assignment.providerCompanyName}</Text>
-                <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
-                <Text style={styles.meta}>{new Date(assignment.scheduledStartIso).toLocaleString()}</Text>
+      {viewMode === "upcoming" ? (
+        <>
+          {acceptedAssignments.length > 0 ? (
+            <InfoCard title="Accepted shifts" description={`${acceptedAssignments.length} upcoming`}>
+              <View style={styles.list}>
+                {acceptedAssignments.map((assignment) => (
+                  <View key={assignment.id} style={styles.assignmentCard}>
+                    <View style={styles.assignmentHeader}>
+                      <View style={styles.copy}>
+                        <Text style={styles.title}>{assignment.providerCompanyName}</Text>
+                        <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                      </View>
+                      <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.bookingStatus)}</Text>
+                    </View>
+                    <View style={styles.factRow}>
+                      <Text style={styles.factPill}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
+                      <Text style={styles.factPill}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
+                      <Text style={styles.factPill}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
+                    </View>
+                    <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
+                    <Text style={styles.summary}>{getAssignmentSummary(assignment)}</Text>
+                    <View style={styles.copy}>
+                      {assignment.isAssignedRouteLeader ? (
+                        <Text style={styles.meta}>You are the assigned route leader.</Text>
+                      ) : assignment.requiresRouteLeaderAssignment ? (
+                        <Text style={styles.meta}>The business owner still needs to assign a route leader.</Text>
+                      ) : null}
+                      {(assignment.bookingStatus === "requested" ||
+                        (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
+                        <Pressable
+                          onPress={() => confirmCancelAssignment(assignment.id)}
+                          style={styles.cancelButton}
+                        >
+                          <Text style={styles.cancelButtonLabel}>Cancel assignment</Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </InfoCard>
+          ) : null}
+
+          {pendingAssignments.length > 0 ? (
+            <InfoCard title="Waiting on providers" description={`${pendingAssignments.length} pending`}>
+              <View style={styles.list}>
+                {pendingAssignments.map((assignment) => (
+                  <View key={assignment.id} style={styles.assignmentCard}>
+                    <View style={styles.assignmentHeader}>
+                      <View style={styles.copy}>
+                        <Text style={styles.title}>{assignment.providerCompanyName}</Text>
+                        <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                      </View>
+                      <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.status)}</Text>
+                    </View>
+                    <View style={styles.factRow}>
+                      <Text style={styles.factPill}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
+                      <Text style={styles.factPill}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
+                      <Text style={styles.factPill}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
+                    </View>
+                    <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
+                    <Text style={styles.summary}>We’ll notify you when the business owner decides.</Text>
+                  </View>
+                ))}
+              </View>
+            </InfoCard>
+          ) : null}
+
+          {acceptedAssignments.length === 0 && pendingAssignments.length === 0 ? (
+            <InfoCard title="No upcoming work" description="Nothing is scheduled right now.">
+              <Text style={styles.meta}>Keep your availability current so new work can find you.</Text>
+            </InfoCard>
+          ) : null}
+        </>
+      ) : (
+        <InfoCard title="Past decisions" description={`${pastAssignments.length} items`}>
+          <View style={styles.list}>
+            {pastAssignments.map((assignment) => (
+              <View key={assignment.id} style={styles.assignmentCard}>
+                <View style={styles.assignmentHeader}>
+                  <View style={styles.copy}>
+                    <Text style={styles.title}>{assignment.providerCompanyName}</Text>
+                    <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                  </View>
+                  <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.status)}</Text>
+                </View>
+                <View style={styles.factRow}>
+                  <Text style={styles.factPill}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
+                  <Text style={styles.factPill}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
+                  <Text style={styles.factPill}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
+                </View>
                 <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
-                {assignment.isAssignedRouteLeader ? (
-                  <Text style={styles.meta}>You are the assigned route leader for this job.</Text>
-                ) : assignment.requiresRouteLeaderAssignment ? (
-                  <Text style={styles.meta}>The business owner still needs to assign a route leader.</Text>
-                ) : null}
                 {assignment.status === "cancelled-by-crew" && assignment.cancellationReason ? (
                   <Text style={styles.warning}>You cancelled this job: {assignment.cancellationReason}</Text>
                 ) : null}
-                {assignment.status === "accepted" &&
-                (assignment.bookingStatus === "requested" ||
-                  (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
-                  <Pressable
-                    onPress={() => confirmCancelAssignment(assignment.id)}
-                    style={styles.cancelButton}
-                  >
-                    <Text style={styles.cancelButtonLabel}>Cancel assignment</Text>
-                  </Pressable>
-                ) : null}
               </View>
-              <Text style={styles.earnings}>{assignment.status.replaceAll("-", " ")}</Text>
-            </View>
-          ))}
-        </View>
-      </InfoCard>
+            ))}
+          </View>
+        </InfoCard>
+      )}
     </ScreenShell>
   );
 }
@@ -172,19 +283,33 @@ const styles = StyleSheet.create({
   list: {
     gap: BrandTokens.spacing.md
   },
-  assignmentRow: {
+  assignmentCard: {
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.94)",
+    gap: BrandTokens.spacing.md,
+    padding: BrandTokens.spacing.md
+  },
+  assignmentHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
+    justifyContent: "space-between",
     gap: BrandTokens.spacing.md
   },
-  dayPill: {
-    minWidth: 52,
-    textAlign: "center",
+  factRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  factPill: {
     borderRadius: 999,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    color: BrandTokens.colors.primaryStrong,
-    paddingVertical: BrandTokens.spacing.sm,
+    backgroundColor: "rgba(20, 40, 29, 0.06)",
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
     fontWeight: "700",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs,
     overflow: "hidden"
   },
   copy: {
@@ -199,8 +324,19 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
-  earnings: {
+  summary: {
     color: BrandTokens.colors.primaryStrong,
+    lineHeight: 20,
+    fontWeight: "700"
+  },
+  statusPill: {
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs,
+    overflow: "hidden",
     fontWeight: "700"
   },
   cancelButton: {
