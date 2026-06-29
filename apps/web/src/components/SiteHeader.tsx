@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { CustomerAppHeader } from "./CustomerAppHeader";
 import { NavBar } from "./NavBar";
@@ -9,7 +10,11 @@ export function SiteHeader() {
   const pathname = usePathname();
 
   if (pathname.startsWith("/customer/dashboard") || pathname.startsWith("/customer/history")) {
-    return <CustomerAppHeader />;
+    return (
+      <Suspense fallback={null}>
+        <CustomerAppHeader />
+      </Suspense>
+    );
   }
 
   if (

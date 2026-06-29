@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { CustomerLiveDashboard } from "../../../components/CustomerLiveDashboard";
+import { LoadingScreen } from "../../../components/LoadingScreen";
 
 export const metadata: Metadata = {
   title: "Customer dashboard",
@@ -7,5 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function CustomerDashboardPage() {
-  return <CustomerLiveDashboard />;
+  return (
+    <Suspense fallback={<LoadingScreen label="Loading customer dashboard..." />}>
+      <CustomerLiveDashboard />
+    </Suspense>
+  );
 }
