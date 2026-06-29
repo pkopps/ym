@@ -32,6 +32,8 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
 ];
 const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
 
+type ProviderPayoutEntry = ProviderPayoutLedgerResponse["entries"][number];
+
 function formatLocalDateTimeValue(date: Date) {
   const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return offsetDate.toISOString().slice(0, 16);
@@ -75,6 +77,23 @@ function formatMinimumLeadHoursLabel(hours: number) {
   }
 
   return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+
+function formatPayoutStatus(status: ProviderPayoutEntry["status"]) {
+  switch (status) {
+    case "awaiting-customer-payment":
+      return "Awaiting payment";
+    case "on-hold":
+      return "On hold";
+    case "scheduled":
+      return "Scheduled";
+    case "ready":
+      return "Ready";
+    case "paid":
+      return "Paid";
+    case "reversed":
+      return "Reversed";
+  }
 }
 
 export function SupportScreen() {
@@ -122,6 +141,16 @@ export function SupportScreen() {
   const [showSupportComposer, setShowSupportComposer] = useState(false);
   const [showSupportHistory, setShowSupportHistory] = useState(false);
   const calendarHealth = calendarImports?.syncHealth;
+  const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
+  const blockedPayoutCents =
+    (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
+    heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0);
+  const payoutStateLabel =
+    blockedPayoutCents > 0
+      ? "Needs attention"
+      : (payoutLedger?.totalNetReadyCents ?? 0) > 0
+        ? "Ready now"
+        : "On track";
 
   async function loadProvider() {
     if (!envelope?.session.token) {
@@ -714,24 +743,36 @@ export function SupportScreen() {
         ) : null}
       </InfoCard>
 
-      <InfoCard title="Payouts" description="Live earnings and crew-share ledger">
+      <InfoCard title="Payouts" description={payoutStateLabel}>
+        <View style={styles.payoutSummaryGrid}>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Ready</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalNetReadyCents ?? 0)}</Text>
+          </View>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Next</Text>
+            <Text style={styles.payoutSummaryValue}>
+              {payoutLedger?.payoutSchedule
+                ? new Date(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric"
+                  })
+                : "Not set"}
+            </Text>
+          </View>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Blocked</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(blockedPayoutCents)}</Text>
+          </View>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>Crew</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalCrewOwedCents ?? 0)}</Text>
+          </View>
+        </View>
         <Text style={styles.meta}>
-          Ready now: {formatCurrency(payoutLedger?.totalNetReadyCents ?? 0)} • Scheduled:{" "}
-          {formatCurrency(payoutLedger?.totalNetScheduledCents ?? 0)}
-        </Text>
-        <Text style={styles.meta}>
-          Waiting on customer payment: {formatCurrency(payoutLedger?.pendingCustomerPaymentCents ?? 0)} • Crew reserved:{" "}
-          {formatCurrency(payoutLedger?.totalCrewOwedCents ?? 0)}
-        </Text>
-        <Text style={styles.meta}>
-          Next weekly payout:{" "}
-          {payoutLedger?.payoutSchedule
-            ? new Date(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso).toLocaleString()
-            : "Not available"}
-        </Text>
-        <Text style={styles.meta}>
-          Instant eligible: {formatCurrency(payoutLedger?.payoutSchedule.instantPayoutEligibleCents ?? 0)} •{" "}
-          {provider?.instantPayoutsEnabled ? "Instant payouts on" : "Weekly only"}
+          {formatCurrency(payoutLedger?.payoutSchedule.instantPayoutEligibleCents ?? 0)} instant eligible •{" "}
+          {formatCurrency(payoutLedger?.totalNetScheduledCents ?? 0)} scheduled •{" "}
+          {provider?.instantPayoutsEnabled ? "Instant on" : "Weekly only"}
         </Text>
         {(payoutLedger?.entries ?? []).length > 0 ? (
           <View style={styles.ticketStack}>
@@ -744,7 +785,18 @@ export function SupportScreen() {
                   </Text>
                   <Text style={styles.meta}>{entry.note}</Text>
                 </View>
-                <Text style={styles.meta}>{entry.status.replaceAll("-", " ")}</Text>
+                <Text
+                  style={[
+                    styles.payoutStatusBadge,
+                    (entry.status === "ready" || entry.status === "paid") && styles.payoutStatusBadgeHealthy,
+                    (entry.status === "on-hold" ||
+                      entry.status === "reversed" ||
+                      entry.status === "awaiting-customer-payment") &&
+                      styles.payoutStatusBadgeWarning
+                  ]}
+                >
+                  {formatPayoutStatus(entry.status)}
+                </Text>
               </View>
             ))}
           </View>
@@ -1359,6 +1411,51 @@ const styles = StyleSheet.create({
   ticketCopy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
+  },
+  payoutSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  payoutSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  payoutSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  payoutSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
+  },
+  payoutStatusBadge: {
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    overflow: "hidden",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs,
+    textTransform: "capitalize"
+  },
+  payoutStatusBadgeHealthy: {
+    backgroundColor: "rgba(47, 125, 76, 0.12)",
+    color: BrandTokens.colors.success
+  },
+  payoutStatusBadgeWarning: {
+    backgroundColor: "rgba(226, 154, 69, 0.16)",
+    color: "#8a581b"
   },
   switchRow: {
     flexDirection: "row",
