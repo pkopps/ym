@@ -330,6 +330,23 @@ export function CrewLiveDashboard() {
     }
   }
 
+  async function startRoute(bookingId: string) {
+    setIsWorking(true);
+    setErrorMessage(undefined);
+    setStatusMessage(undefined);
+
+    try {
+      const api = createAuthenticatedWebApiClient();
+      await api.markBookingOnRoute({ bookingId });
+      setStatusMessage("Route started. The customer can now track the arrival.");
+      await loadCrewView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start this route.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function cancelCrewMatch(matchId: string) {
     setIsWorking(true);
     setErrorMessage(undefined);
@@ -841,7 +858,17 @@ export function CrewLiveDashboard() {
                   {match.bookingStatus === "requested" ? (
                     <span className="result-badge">Waiting on business confirmation</span>
                   ) : null}
-                  {match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt ? (
+                  {match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt && match.isAssignedRouteLeader ? (
+                    <button
+                      className="button"
+                      disabled={isWorking}
+                      onClick={() => void startRoute(match.bookingId)}
+                      type="button"
+                    >
+                      Start route
+                    </button>
+                  ) : null}
+                  {match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt && !match.isAssignedRouteLeader ? (
                     <span className="result-badge">Business owner starts the route</span>
                   ) : null}
                   {match.bookingStatus === "confirmed" && match.onRouteConfirmedAt ? (

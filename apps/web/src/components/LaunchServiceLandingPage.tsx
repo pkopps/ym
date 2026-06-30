@@ -26,7 +26,7 @@ export function LaunchServiceLandingPage({
   const summary =
     variant === "town-service"
       ? service.description
-      : `${service.name} through GreenRain by YardMatch keeps the launch booking flow recommendation-first while still giving homeowners a limited backup option if they want more trust before confirming.`;
+      : `${service.name} through YardMatch keeps the launch booking flow recommendation-first while still giving homeowners a limited backup option if they want more trust before confirming.`;
   const preferredCategory: ServiceCategory =
     serviceKey === "yard-cleanup" ? "seasonal-cleanup" : serviceKey;
   const ctaHref = `/customer?service=${service.key}&area=${encodeURIComponent(launchAreaLabel)}`;
@@ -101,7 +101,7 @@ export function LaunchServiceLandingPage({
           <ol className="timeline">
             <li>
               <strong>1.</strong>
-              <span>Tell GreenRain the service, timing, and area.</span>
+              <span>Tell YardMatch the service, timing, and area.</span>
             </li>
             <li>
               <strong>2.</strong>
@@ -130,7 +130,7 @@ export function LaunchServiceLandingPage({
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
           defaultServiceCategory={preferredCategory}
-          description={`If you want GreenRain to confirm launch coverage, timing, or fit for ${service.shortName.toLowerCase()}, request a follow-up instead of guessing from a generic form.`}
+          description={`If you want YardMatch to confirm launch coverage, timing, or fit for ${service.shortName.toLowerCase()}, request a follow-up instead of guessing from a generic form.`}
           requestSource={variant === "town-service" ? "launch-town-service-lead-form" : "launch-service-lead-form"}
           title={`Need help with ${service.shortName.toLowerCase()}?`}
         />
@@ -139,7 +139,7 @@ export function LaunchServiceLandingPage({
           <ol className="timeline">
             <li>
               <strong>1.</strong>
-              <span>GreenRain routes the request into the launch follow-up queue with its source and landing-page context attached.</span>
+              <span>YardMatch routes the request into the launch follow-up queue with its source and landing-page context attached.</span>
             </li>
             <li>
               <strong>2.</strong>

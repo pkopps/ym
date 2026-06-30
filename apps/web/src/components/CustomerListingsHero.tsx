@@ -150,7 +150,7 @@ export function CustomerListingsHero({
         </h1>
         <p>
           {description ??
-            `GreenRain leads with one strong match for ${timingLabel.toLowerCase()}, then keeps a short backup list ready if you want it.`}
+            `YardMatch leads with one strong match for ${timingLabel.toLowerCase()}, then keeps a short backup list ready if you want it.`}
         </p>
         {spotlightImage ? (
           <div className="listing-spotlight">

@@ -19,7 +19,7 @@ export function TrustPolicyPage({ page }: { page: TrustPolicyPageContent }) {
           <h2>Why this page exists</h2>
           <p>{page.description}</p>
           <p>
-            GreenRain is meant to be a managed marketplace, so the public promise about support,
+            YardMatch is meant to be a managed marketplace, so the public promise about support,
             legal basics, booking rules, and provider expectations should match how the product and
             ops flow actually behave.
           </p>
@@ -76,7 +76,7 @@ export function TrustPolicyPage({ page }: { page: TrustPolicyPageContent }) {
         <article className="card">
           <h2>Launch area focus</h2>
           <p>
-            Trust grows faster when coverage is dense and predictable. GreenRain is intentionally
+            Trust grows faster when coverage is dense and predictable. YardMatch is intentionally
             prioritizing the launch radius before broad expansion.
           </p>
           <div className="cta-row" style={{ marginTop: "1rem" }}>

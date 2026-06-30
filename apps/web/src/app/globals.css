@@ -2511,6 +2511,101 @@ body {
   background: linear-gradient(180deg, rgba(47, 125, 76, 0.1), rgba(255, 255, 255, 0.96));
 }
 
+.provider-route-focus {
+  display: grid;
+  gap: var(--ym-space-4);
+  padding: var(--ym-space-5);
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: var(--ym-radius-md);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(240, 234, 220, 0.84));
+  box-shadow: var(--ym-shadow-soft);
+}
+
+.provider-route-spine,
+.provider-route-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.provider-route-spine {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.provider-route-spine__step {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 4.4rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.provider-route-spine__step--current {
+  border-color: rgba(47, 125, 76, 0.32);
+  background: rgba(47, 125, 76, 0.08);
+}
+
+.provider-route-spine__index {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(20, 40, 29, 0.08);
+  color: var(--ym-color-ink);
+  font-weight: 800;
+}
+
+.provider-route-spine__step--complete .provider-route-spine__index {
+  background: rgba(47, 125, 76, 0.15);
+  color: var(--ym-color-primary-strong);
+}
+
+.provider-route-spine__step--current .provider-route-spine__index {
+  background: var(--ym-color-primary);
+  color: #ffffff;
+}
+
+.provider-route-spine__step strong,
+.provider-route-spine__step small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.provider-route-spine__step small {
+  color: var(--ym-color-muted);
+}
+
+.provider-route-summary div {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.2rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.provider-route-summary span {
+  color: var(--ym-color-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.provider-route-summary strong {
+  color: var(--ym-color-ink);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .provider-job-card__heading {
   display: flex;
   justify-content: space-between;
@@ -3309,6 +3404,123 @@ body {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.customer-listings-spine {
+  display: grid;
+  gap: var(--ym-space-3);
+  padding: var(--ym-space-4);
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 234, 220, 0.82));
+  box-shadow: var(--ym-shadow-soft);
+}
+
+.customer-listings-spine__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.customer-listings-spine__step {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 4.25rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.customer-listings-spine__step--current {
+  border-color: rgba(47, 125, 76, 0.32);
+  background: rgba(47, 125, 76, 0.08);
+}
+
+.customer-listings-spine__index {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(20, 40, 29, 0.08);
+  color: var(--ym-color-ink);
+  font-weight: 800;
+}
+
+.customer-listings-spine__step--complete .customer-listings-spine__index {
+  background: rgba(47, 125, 76, 0.15);
+  color: var(--ym-color-primary-strong);
+}
+
+.customer-listings-spine__step--current .customer-listings-spine__index {
+  background: var(--ym-color-primary);
+  color: #ffffff;
+}
+
+.customer-listings-spine__step strong,
+.customer-listings-spine__step small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.customer-listings-spine__step small {
+  color: var(--ym-color-muted);
+}
+
+.customer-listings-filterbar,
+.customer-listings-filterdrawer__body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.customer-listings-filterbar {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.customer-listings-filterbar__chip {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.2rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.customer-listings-filterbar__chip span {
+  color: var(--ym-color-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.customer-listings-filterbar__chip strong {
+  color: var(--ym-color-ink);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.customer-listings-filterdrawer {
+  border-top: 1px solid rgba(20, 40, 29, 0.08);
+  padding-top: var(--ym-space-3);
+}
+
+.customer-listings-filterdrawer summary {
+  color: var(--ym-color-primary-strong);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.customer-listings-filterdrawer__body {
+  grid-template-columns: repeat(2, minmax(0, max-content));
+  padding-top: var(--ym-space-3);
 }
 
 .live-listings-card,
@@ -4328,6 +4540,9 @@ body {
   .service-tile-grid,
   .live-listings-card__featured-grid,
   .live-provider-card__booking-strip,
+  .customer-listings-spine__steps,
+  .customer-listings-filterbar,
+  .customer-listings-filterdrawer__body,
   .auth-intent-panel__grid,
   .provider-hero,
   .provider-filters__group,
@@ -4340,6 +4555,8 @@ body {
   .customer-request-spine__steps,
   .customer-request-spine__summary,
   .customer-request-summary-grid,
+  .provider-route-spine,
+  .provider-route-summary,
   .arrival-tracking__details,
   .crew-opportunity-card__grid,
   .crew-signup-review__grid,
@@ -4485,6 +4702,8 @@ body {
 
   .customer-request-spine__summary div,
   .customer-request-summary-grid div,
+  .customer-listings-filterbar__chip,
+  .provider-route-summary div,
   .customer-booking-review__grid div {
     min-height: auto;
   }

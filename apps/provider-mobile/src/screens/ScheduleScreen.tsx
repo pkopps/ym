@@ -19,6 +19,7 @@ import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
 type ViewMode = "calendar" | "list";
+type RouteStepStatus = "complete" | "current" | "pending";
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -63,6 +64,18 @@ function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup
 type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
 type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
 
+function formatServiceCategoryLabel(category: string) {
+  return category.replaceAll("-", " ");
+}
+
+function getRouteStepStatus(stepIndex: number, activeStepIndex: number): RouteStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
+}
+
 function getProviderJobStatusLabel(job: ProviderJobSummary) {
   if (job.status === "requested") {
     return "Requested";
@@ -105,6 +118,56 @@ function getProviderJobPrimaryAction(job: ProviderJobSummary): ProviderJobPrimar
   }
 
   return undefined;
+}
+
+function hasCrewDecisionPending(job: ProviderJobSummary) {
+  return (
+    job.crewGap > 0 ||
+    job.requiresRouteLeaderAssignment ||
+    job.matches.some((match) => match.status === "pending-provider-review")
+  );
+}
+
+function getProviderJobActionLabel(job: ProviderJobSummary) {
+  const primaryAction = getProviderJobPrimaryAction(job);
+
+  if (primaryAction === "confirm") {
+    return "Confirm";
+  }
+
+  if (hasCrewDecisionPending(job)) {
+    return "Staff";
+  }
+
+  if (primaryAction === "start-route") {
+    return "Start route";
+  }
+
+  if (primaryAction === "start-work") {
+    return "Start work";
+  }
+
+  if (primaryAction === "complete") {
+    return "Complete";
+  }
+
+  return "Review";
+}
+
+function getProviderJobActiveStepIndex(job: ProviderJobSummary) {
+  if (job.status === "requested") {
+    return 0;
+  }
+
+  if (hasCrewDecisionPending(job)) {
+    return 1;
+  }
+
+  if (job.status === "confirmed" && !job.onRouteConfirmedAt) {
+    return 2;
+  }
+
+  return 3;
 }
 
 export function ScheduleScreen() {
@@ -168,6 +231,43 @@ export function ScheduleScreen() {
         .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
     [jobs]
   );
+  const priorityJob = useMemo(() => {
+    const sortedJobs = [...jobs].sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
+    return (
+      sortedJobs.find(
+        (job) => Boolean(getProviderJobPrimaryAction(job)) || hasCrewDecisionPending(job)
+      ) ?? sortedJobs[0]
+    );
+  }, [jobs]);
+  const priorityJobActiveStepIndex = priorityJob ? getProviderJobActiveStepIndex(priorityJob) : 0;
+  const priorityJobSteps = priorityJob
+    ? [
+        {
+          label: "Confirm",
+          value: priorityJob.status === "requested" ? "Needed" : "Done"
+        },
+        {
+          label: "Crew",
+          value:
+            priorityJob.crewGap > 0
+              ? `${priorityJob.crewGap} gap`
+              : priorityJob.requiresRouteLeaderAssignment
+                ? "Lead"
+                : "Ready"
+        },
+        {
+          label: "Route",
+          value: priorityJob.onRouteConfirmedAt ? "Live" : formatBookingWindowSummary(priorityJob.scheduledStartIso)
+        },
+        {
+          label: "Finish",
+          value: priorityJob.status === "in-progress" ? "Now" : `${priorityJob.afterEvidenceCount} proof`
+        }
+      ].map((step, index) => ({
+        ...step,
+        status: getRouteStepStatus(index, priorityJobActiveStepIndex)
+      }))
+    : [];
 
   useEffect(() => {
     activeTrackingBookingIdRef.current = activeTrackingBookingId;
@@ -696,6 +796,60 @@ export function ScheduleScreen() {
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
+      {priorityJob ? (
+        <InfoCard title="Today path" description={getProviderJobActionLabel(priorityJob)}>
+          <View style={styles.routeFocusHeader}>
+            <View style={styles.routeFocusCopy}>
+              <Text style={styles.clientLabel}>{priorityJob.customerName}</Text>
+              <Text style={styles.metaLine}>{priorityJob.serviceAddress.line1}</Text>
+            </View>
+            <Text style={styles.routeFocusPill}>{getProviderJobStatusLabel(priorityJob)}</Text>
+          </View>
+          <View style={styles.routePath} accessibilityLabel="Route progress">
+            {priorityJobSteps.map((step, index) => (
+              <View key={step.label} style={[styles.routePathStep, styles[`routePathStep_${step.status}`]]}>
+                <View style={[styles.routePathIndex, styles[`routePathIndex_${step.status}`]]}>
+                  <Text style={[styles.routePathIndexLabel, styles[`routePathIndexLabel_${step.status}`]]}>
+                    {index + 1}
+                  </Text>
+                </View>
+                <View style={styles.routePathCopy}>
+                  <Text style={styles.routePathLabel}>{step.label}</Text>
+                  <Text numberOfLines={2} style={styles.routePathValue}>
+                    {step.value}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+          <View style={styles.routeFocusGrid}>
+            <View style={styles.routeFocusItem}>
+              <Text style={styles.jobSummaryLabel}>Window</Text>
+              <Text style={styles.jobSummaryValue}>{formatBookingWindowSummary(priorityJob.scheduledStartIso)}</Text>
+            </View>
+            <View style={styles.routeFocusItem}>
+              <Text style={styles.jobSummaryLabel}>Crew</Text>
+              <Text style={styles.jobSummaryValue}>
+                {priorityJob.assignedCrewMembers}/{priorityJob.requiredCrewMembers}
+                {priorityJob.crewGap ? ` • gap ${priorityJob.crewGap}` : ""}
+              </Text>
+            </View>
+            <View style={styles.routeFocusItem}>
+              <Text style={styles.jobSummaryLabel}>Service</Text>
+              <Text style={styles.jobSummaryValue}>{formatServiceCategoryLabel(priorityJob.category)}</Text>
+            </View>
+            <View style={styles.routeFocusItem}>
+              <Text style={styles.jobSummaryLabel}>Next</Text>
+              <Text style={styles.jobSummaryValue}>{getProviderJobActionLabel(priorityJob)}</Text>
+            </View>
+          </View>
+        </InfoCard>
+      ) : (
+        <InfoCard title="Today path" description="No scheduled jobs">
+          <Text style={styles.metaLine}>Calendar and assistant tools are ready when work is booked.</Text>
+        </InfoCard>
+      )}
+
       <InfoCard title="Quick change" description="Make a route change in plain language.">
         <Text style={styles.metaLine}>
           Ask what needs attention, move a job, or update a customer in one step.
@@ -921,7 +1075,7 @@ export function ScheduleScreen() {
                       <Text style={styles.jobSummaryValue}>{formatCurrency(job.totalCents)}</Text>
                     </View>
                   </View>
-                  <Text style={styles.metaLine}>{job.category.replaceAll("-", " ")}</Text>
+                  <Text style={styles.metaLine}>{formatServiceCategoryLabel(job.category)}</Text>
                   {overview?.provider.routeLeaderMode === "accepted-crew-fallback" ? (
                     <Text style={styles.metaLine}>
                       Route leader: {job.assignedRouteLeaderCrewMemberName ?? "Provider"}
@@ -1489,6 +1643,116 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: BrandTokens.spacing.md
+  },
+  routeFocusHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: BrandTokens.spacing.sm
+  },
+  routeFocusCopy: {
+    flex: 1,
+    gap: 2
+  },
+  routeFocusPill: {
+    borderRadius: 999,
+    backgroundColor: "rgba(47, 125, 76, 0.12)",
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    overflow: "hidden",
+    paddingHorizontal: BrandTokens.spacing.sm,
+    paddingVertical: 6,
+    textTransform: "uppercase"
+  },
+  routePath: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.sm
+  },
+  routePathStep: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 74,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: BrandTokens.spacing.sm,
+    padding: BrandTokens.spacing.sm
+  },
+  routePathStep_complete: {
+    borderColor: "rgba(47, 125, 76, 0.16)"
+  },
+  routePathStep_current: {
+    borderColor: "rgba(47, 125, 76, 0.36)",
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  routePathStep_pending: {
+    opacity: 0.82
+  },
+  routePathIndex: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  routePathIndex_complete: {
+    backgroundColor: "rgba(47, 125, 76, 0.14)"
+  },
+  routePathIndex_current: {
+    backgroundColor: BrandTokens.colors.primary
+  },
+  routePathIndex_pending: {
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  routePathIndexLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  routePathIndexLabel_complete: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  routePathIndexLabel_current: {
+    color: "#ffffff"
+  },
+  routePathIndexLabel_pending: {
+    color: BrandTokens.colors.inkSoft
+  },
+  routePathCopy: {
+    flex: 1,
+    gap: 2
+  },
+  routePathLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  routePathValue: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    lineHeight: 16
+  },
+  routeFocusGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.sm
+  },
+  routeFocusItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
   },
   dispatchCard: {
     borderRadius: BrandTokens.radius.md,

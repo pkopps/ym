@@ -133,7 +133,7 @@ export function LaunchMarketplaceProofSection({
       </div>
       <div className="grid-two">
         <article className="card">
-          <h3>Why GreenRain keeps this tight</h3>
+          <h3>Why YardMatch keeps this tight</h3>
           <p>
             The launch marketplace is trying to prioritize verified local supply, route reality,
             and operational follow-through over broad but thin directory coverage.
@@ -233,7 +233,7 @@ export function LaunchMarketplaceProofSection({
             </div>
           ) : (
             <p>
-              Launch proof is still building. GreenRain is intentionally keeping the public supply
+              Launch proof is still building. YardMatch is intentionally keeping the public supply
               set tighter while verified providers, reviews, and punctuality history grow.
             </p>
           )}

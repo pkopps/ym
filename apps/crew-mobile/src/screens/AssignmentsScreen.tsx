@@ -91,6 +91,7 @@ export function AssignmentsScreen() {
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
   async function loadMatches() {
     if (!envelope?.session.token) {
@@ -118,6 +119,7 @@ export function AssignmentsScreen() {
     try {
       const api = createCrewMobileApiClient();
       api.setAuthToken(envelope.session.token);
+      setIsWorking(true);
       setErrorMessage("");
       await api.cancelCrewMatch({
         crewMatchId,
@@ -127,6 +129,28 @@ export function AssignmentsScreen() {
       await loadMatches();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to cancel assignment.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function startRoute(assignment: CrewAssignment) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setIsWorking(true);
+      setErrorMessage("");
+      await api.markBookingOnRoute({ bookingId: assignment.bookingId });
+      setStatusMessage("Route started. The customer can now track the arrival.");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
+    } finally {
+      setIsWorking(false);
     }
   }
 
@@ -197,10 +221,18 @@ export function AssignmentsScreen() {
                       {(assignment.bookingStatus === "requested" ||
                         (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
                         <Pressable
+                          disabled={isWorking}
                           onPress={() => confirmCancelAssignment(assignment.id)}
                           style={styles.cancelButton}
                         >
                           <Text style={styles.cancelButtonLabel}>Cancel assignment</Text>
+                        </Pressable>
+                      ) : null}
+                      {assignment.bookingStatus === "confirmed" &&
+                      !assignment.onRouteConfirmedAt &&
+                      assignment.isAssignedRouteLeader ? (
+                        <Pressable disabled={isWorking} onPress={() => void startRoute(assignment)} style={styles.primaryButton}>
+                          <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
                         </Pressable>
                       ) : null}
                     </View>
@@ -372,6 +404,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: BrandTokens.spacing.md,
     paddingVertical: BrandTokens.spacing.xs,
     overflow: "hidden",
+    fontWeight: "700"
+  },
+  primaryButton: {
+    alignSelf: "flex-start",
+    marginTop: BrandTokens.spacing.xs,
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  primaryButtonLabel: {
+    color: "#ffffff",
     fontWeight: "700"
   },
   cancelButton: {

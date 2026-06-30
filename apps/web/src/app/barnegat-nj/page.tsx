@@ -24,7 +24,7 @@ const trustPoints = [
 
 const localFaqs = [
   {
-    question: `What services is GreenRain prioritizing first in ${launchAreaShortLabel}?`,
+    question: `What services is YardMatch prioritizing first in ${launchAreaShortLabel}?`,
     answer:
       "The launch focus is the practical yard work homeowners buy most often and can understand quickly: routine mowing, yard cleanup, and closely related curb-appeal work."
   },
@@ -47,16 +47,15 @@ export default function BarnegatTownPage() {
         <span className="eyebrow">Local launch page</span>
         <h1>{launchAreaLabel} lawn care and landscaping</h1>
         <p>
-          GreenRain by YardMatch is launching with a recommendation-first booking flow for
-          homeowners who want reliable yard work without the usual directory browsing and callback
-          chase.
+          YardMatch is launching with a recommendation-first booking flow for homeowners who want
+          reliable yard work without the usual directory browsing and callback chase.
         </p>
         <div className="cta-row">
           <Link className="button" href={`/customer?area=${encodeURIComponent(launchAreaLabel)}`}>
             Find my provider
           </Link>
           <Link className="button-secondary" href="/about">
-            Why GreenRain works this way
+            Why YardMatch works this way
           </Link>
         </div>
       </section>
@@ -74,7 +73,7 @@ export default function BarnegatTownPage() {
           </ul>
         </article>
         <article className="card">
-          <h2>What GreenRain is optimizing for</h2>
+          <h2>What YardMatch is optimizing for</h2>
           <p>
             The goal is not to become another huge directory. The goal is to help homeowners in
             {` ${launchAreaShortLabel}`} book faster while preserving trust around who is arriving,
@@ -110,7 +109,7 @@ export default function BarnegatTownPage() {
       <section className="grid-two">
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
-          description="Use this if you want GreenRain to confirm local coverage, timing, or the right launch service before you start the booking flow."
+          description="Use this if you want YardMatch to confirm local coverage, timing, or the right launch service before you start the booking flow."
           requestSource="launch-town-page-lead-form"
           title={`Need follow-up for ${launchAreaShortLabel}?`}
         />
@@ -126,7 +125,7 @@ export default function BarnegatTownPage() {
 
       <section className="grid-two">
         <article className="card">
-          <h2>How GreenRain is trying to earn trust locally</h2>
+          <h2>How YardMatch is trying to earn trust locally</h2>
           <p>
             The goal is not to flood the launch with unreviewed supply. The public marketplace
             overview is intended to highlight verified providers first, then let real ratings,
@@ -141,7 +140,7 @@ export default function BarnegatTownPage() {
         <article className="card">
           <h2>What happens if something goes wrong</h2>
           <p>
-            GreenRain is trying to be a managed marketplace, so support, cancellation, refund, and
+            YardMatch is trying to be a managed marketplace, so support, cancellation, refund, and
             booking-expectation language should already be visible before you commit.
           </p>
           <div className="cta-row" style={{ marginTop: "1rem" }}>

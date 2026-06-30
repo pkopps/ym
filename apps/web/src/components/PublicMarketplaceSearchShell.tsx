@@ -329,7 +329,7 @@ export function PublicMarketplaceSearchShell({
       setIsSuggestionMenuOpen(response.suggestions.length > 0);
       setLocationGuidance(
         response.suggestions.length > 0
-          ? "Choose the closest suggested service area so GreenRain does not guess."
+          ? "Choose the closest suggested service area so YardMatch does not guess."
           : response.searchMessage ?? "We could not resolve this location. Try typing your city, ZIP, or address."
       );
     } catch (error) {
@@ -400,7 +400,7 @@ export function PublicMarketplaceSearchShell({
 
     if (!selectedSuggestion && suggestions.length > 0 && !suggestion) {
       setSubmitGuidance(
-        "Choose one of the suggested areas before searching so GreenRain does not guess the wrong location."
+        "Choose one of the suggested areas before searching so YardMatch does not guess the wrong location."
       );
       setIsSuggestionMenuOpen(true);
       return;

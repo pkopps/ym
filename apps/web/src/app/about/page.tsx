@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "About Us",
   description:
-    "Learn why GreenRain by YardMatch is building a recommendation-first marketplace for reliable lawn care and landscaping."
+    "Learn why YardMatch is building a recommendation-first marketplace for reliable lawn care and landscaping."
 };
 
 const principles = [
@@ -42,11 +42,10 @@ export default function AboutPage() {
       <section className="container page-hero about-hero">
         <div className="grid-two about-hero__layout">
           <div className="about-hero__story">
-            <span className="eyebrow">About GreenRain by YardMatch</span>
+            <span className="eyebrow">About YardMatch</span>
             <h1>Reliable yard care, without the comparison shopping.</h1>
             <p>
-              GreenRain is the customer experience built on YardMatch. Tell us the service, timing, and
-              property, and we recommend the best local fit first.
+              Tell us the service, timing, and property, and YardMatch recommends the best local fit first.
             </p>
             <div className="cta-row">
               <a className="button" href="/customer">
@@ -85,7 +84,7 @@ export default function AboutPage() {
           <article className="card">
             <span className="eyebrow">What we are not</span>
             <p>
-              GreenRain is not meant to be a scrolling directory, a bidding war, or a promoted-listings
+              YardMatch is not meant to be a scrolling directory, a bidding war, or a promoted-listings
               platform where customers compare twenty businesses before booking a simple mow.
             </p>
           </article>

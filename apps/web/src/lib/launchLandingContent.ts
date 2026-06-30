@@ -37,7 +37,7 @@ export const launchServiceContent: Record<LaunchLandingServiceKey, LaunchLanding
     description:
       `Book recurring or one-time lawn mowing in ${launchAreaLabel} with a recommendation-first booking flow and vetted local providers.`,
     intro:
-      "GreenRain by YardMatch helps homeowners book routine cuts without bouncing between directories, quote forms, and callback chains.",
+      "YardMatch helps homeowners book routine cuts without bouncing between directories, quote forms, and callback chains.",
     includes: [
       "routine mowing for weekly or biweekly upkeep",
       "basic edging and cleanup notes before the visit",
@@ -81,7 +81,7 @@ export const launchServiceContent: Record<LaunchLandingServiceKey, LaunchLanding
     description:
       `Book yard cleanup in ${launchAreaLabel} for leaves, debris, seasonal reset work, and curb-appeal prep through YardMatch.`,
     intro:
-      "Use GreenRain by YardMatch when the job is bigger than a quick mow and you want a cleaner handoff around scope, timing, and follow-through.",
+      "Use YardMatch when the job is bigger than a quick mow and you want a cleaner handoff around scope, timing, and follow-through.",
     includes: [
       "leaf, debris, and overgrowth cleanup support",
       "seasonal reset jobs before listing, hosting, or regular maintenance",

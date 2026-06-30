@@ -107,10 +107,6 @@ function formatAreaDescription(
   ).toLowerCase()} in ${resolvedArea}.`;
 }
 
-function formatCompletedJobLabel(completedJobCount: number) {
-  return completedJobCount > 0 ? `${completedJobCount} completed jobs` : "New on GreenRain";
-}
-
 function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreference) {
   const selectedIndex = customerTimingOptions.findIndex((option) => option.value === selectedTiming);
 
@@ -119,6 +115,16 @@ function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreferenc
   }
 
   return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
+}
+
+type ListingsStepStatus = "complete" | "current" | "pending";
+
+function getListingsStepStatus(stepIndex: number, activeStepIndex: number): ListingsStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
 function buildCustomerSignupHref({
@@ -329,6 +335,43 @@ export function PublicCustomerListingsExperience({
   const liveMetrics = formatSearchMetrics(providerResults);
   const providersWithOpenWindows = rankedProviders.filter((provider) => provider.hasOpenSlot);
   const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
+  const listingsActiveStepIndex =
+    searchState === "loading" ? 1 : searchState === "loaded" && rankedProviders.length > 0 ? 2 : 0;
+  const listingsSteps = [
+    {
+      label: "Search",
+      value: `${serviceLabel} • ${resolvedAreaLabel}`
+    },
+    {
+      label: "Match",
+      value:
+        searchState === "loading"
+          ? "Checking"
+          : rankedProviders.length > 0
+            ? `${rankedProviders.length} providers`
+            : "Needs area"
+    },
+    {
+      label: "Review",
+      value: rankedProviders[0]?.provider.companyName ?? "Best fit"
+    },
+    {
+      label: "Book",
+      value: rankedProviders[0]?.hasOpenSlot ? "Continue" : "After review"
+    }
+  ].map((step, index) => ({
+    ...step,
+    status: getListingsStepStatus(index, listingsActiveStepIndex)
+  }));
+  const listingsFilterChips = [
+    { label: "Service", value: serviceLabel },
+    { label: "When", value: timingLabel },
+    { label: "Area", value: resolvedAreaLabel },
+    {
+      label: "Open",
+      value: searchState === "loading" ? "Checking" : `${providersWithOpenWindows.length} window${providersWithOpenWindows.length === 1 ? "" : "s"}`
+    }
+  ];
   const customerSignupHref = buildCustomerSignupHref({
     areaQuery,
     selectedCustomDate,
@@ -410,7 +453,7 @@ export function PublicCustomerListingsExperience({
           setSearchState("loaded");
           setErrorMessage(
             placeResponse.searchMessage ??
-              "Choose one of the suggested areas so GreenRain does not guess the wrong location."
+              "Choose one of the suggested areas so YardMatch does not guess the wrong location."
           );
           if (shouldUpdateUrl) {
             const params = buildCustomerListingsSearchParams({
@@ -509,6 +552,21 @@ export function PublicCustomerListingsExperience({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function handleTimingSearch(nextTiming: CustomerTimingPreference) {
+    void runSearch({
+      nextAreaQuery: selectedSuggestion?.label ?? areaQuery,
+      nextService: selectedService,
+      nextSuggestion: selectedSuggestion,
+      nextTiming,
+      nextAdditionalTimings: selectedAdditionalTimings,
+      nextCustomDate: selectedCustomDate,
+      nextCustomEndDate: selectedCustomEndDate,
+      nextCustomWindow: selectedCustomWindow,
+      nextCustomWindows: selectedCustomWindows,
+      shouldUpdateUrl: true
+    });
+  }
+
   return (
     <>
       <CustomerListingsHero
@@ -563,6 +621,47 @@ export function PublicCustomerListingsExperience({
       />
 
       <section className="card live-listings-card">
+        <div className="customer-listings-spine" aria-label="Search progress">
+          <ol className="customer-listings-spine__steps">
+            {listingsSteps.map((step, index) => (
+              <li
+                aria-current={step.status === "current" ? "step" : undefined}
+                className={`customer-listings-spine__step customer-listings-spine__step--${step.status}`}
+                key={step.label}
+              >
+                <span className="customer-listings-spine__index">{index + 1}</span>
+                <div>
+                  <strong>{step.label}</strong>
+                  <small>{step.value}</small>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="customer-listings-filterbar" aria-label="Active search filters">
+            {listingsFilterChips.map((chip) => (
+              <div className="customer-listings-filterbar__chip" key={chip.label}>
+                <span>{chip.label}</span>
+                <strong>{chip.value}</strong>
+              </div>
+            ))}
+          </div>
+          <details className="customer-listings-filterdrawer">
+            <summary>Timing options</summary>
+            <div className="customer-listings-filterdrawer__body">
+              {alternativeTimingSuggestions.map((option) => (
+                <button
+                  className="button-secondary"
+                  key={option.value}
+                  onClick={() => handleTimingSearch(option.value)}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
+
         <div className="results-summary">
           <div className="results-summary__copy">
             <strong>{serviceLabel} in {resolvedAreaLabel}</strong>
@@ -702,20 +801,7 @@ export function PublicCustomerListingsExperience({
                     <button
                       className="button-secondary"
                       key={option.value}
-                      onClick={() =>
-                        void runSearch({
-                          nextAreaQuery: selectedSuggestion?.label ?? areaQuery,
-                          nextService: selectedService,
-                          nextSuggestion: selectedSuggestion,
-                          nextTiming: option.value,
-                          nextAdditionalTimings: selectedAdditionalTimings,
-                          nextCustomDate: selectedCustomDate,
-                          nextCustomEndDate: selectedCustomEndDate,
-                          nextCustomWindow: selectedCustomWindow,
-                          nextCustomWindows: selectedCustomWindows,
-                          shouldUpdateUrl: true
-                        })
-                      }
+                      onClick={() => handleTimingSearch(option.value)}
                       type="button"
                     >
                       {option.label}
@@ -845,7 +931,7 @@ function LiveProviderCard({
           <p className="live-provider-card__address">
             <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
             {result.hasOpenSlot
-              ? `GreenRain found a real route opening for this property and service request.`
+              ? `YardMatch found a real route opening for this property and service request.`
               : `This provider still serves the area, but there is no open route window to hold right now.`}
           </p>
         </div>
@@ -906,7 +992,7 @@ function LiveProviderMap({
         <strong>
           {providerResults.length} verified providers within {radiusMiles} miles of {areaLabel}
         </strong>
-        <p>These are the nearby businesses GreenRain considered for this {serviceLabel.toLowerCase()} request.</p>
+        <p>These are the nearby businesses YardMatch considered for this {serviceLabel.toLowerCase()} request.</p>
       </div>
 
       <div className="map-viewport" aria-label="Map of nearby provider recommendations">

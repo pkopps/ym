@@ -171,7 +171,7 @@ function formatRetentionLoyaltyLabel(segment: CustomerRetentionOpportunity["loya
 function formatCompletedJobTrustLine(completedJobCount: number) {
   return completedJobCount > 0
     ? `${completedJobCount} completed YardMatch jobs.`
-    : "New on GreenRain, but already ranked well for service fit, timing, and trust signals.";
+    : "New on YardMatch, but already ranked well for service fit, timing, and trust signals.";
 }
 
 type RequestStepStatus = "complete" | "current" | "pending";
@@ -231,7 +231,7 @@ function getBookingStateMessage(booking: Booking, providerName: string, payment?
 
   switch (booking.status) {
     case "requested":
-      return `GreenRain is holding this request with ${formatSentenceTail(providerName)} Confirm the details or ask for help if plans changed.`;
+      return `YardMatch is holding this request with ${formatSentenceTail(providerName)} Confirm the details or ask for help if plans changed.`;
     case "confirmed":
       return payment?.status === "pending"
         ? `Your visit is set with ${formatSentenceTail(providerName)} Finish checkout when you are ready.`

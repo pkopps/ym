@@ -9,7 +9,7 @@ import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
 type CrewAssignment = CrewMatchesResponse["matches"][number];
-type CrewPrimaryAction = "start-work" | "proof";
+type CrewPrimaryAction = "start-route" | "start-work" | "proof";
 type ShiftStepStatus = "complete" | "current" | "pending";
 
 function formatShiftWindow(iso: string) {
@@ -40,6 +40,14 @@ function getCrewRoleLabel(assignment: CrewAssignment) {
 }
 
 function getCrewPrimaryAction(assignment: CrewAssignment): CrewPrimaryAction | undefined {
+  if (
+    assignment.bookingStatus === "confirmed" &&
+    !assignment.onRouteConfirmedAt &&
+    assignment.isAssignedRouteLeader
+  ) {
+    return "start-route";
+  }
+
   if (assignment.bookingStatus === "confirmed" && assignment.onRouteConfirmedAt) {
     return "start-work";
   }
@@ -146,6 +154,26 @@ export function DashboardScreen({
       await loadMatches();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to start work.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function startRoute() {
+    if (!envelope?.session.token || !acceptedMatch) {
+      return;
+    }
+
+    try {
+      const api = createCrewMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setIsWorking(true);
+      setErrorMessage("");
+      await api.markBookingOnRoute({ bookingId: acceptedMatch.bookingId });
+      setStatusMessage("Route started. The customer can now track the arrival.");
+      await loadMatches();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
     } finally {
       setIsWorking(false);
     }
@@ -376,11 +404,18 @@ export function DashboardScreen({
           {acceptedPrimaryAction === undefined && acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
             <View style={styles.waitingBadge}>
               <Text style={styles.waitingBadgeLabel}>
-                {acceptedMatch.isAssignedRouteLeader
-                  ? "You can start the route from the accepted-crew flow"
-                  : "Business owner or assigned route leader will start the route"}
+                Business owner or assigned route leader will start the route.
               </Text>
             </View>
+          ) : null}
+          {acceptedPrimaryAction === "start-route" ? (
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void startRoute()}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+            </Pressable>
           ) : null}
           {acceptedPrimaryAction === "start-work" ? (
             <Pressable

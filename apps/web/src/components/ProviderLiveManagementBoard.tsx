@@ -124,6 +124,116 @@ function formatVerificationChecklistStatus(status: "ready" | "review" | "missing
   }
 }
 
+type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
+type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
+type ProviderRouteStepStatus = "complete" | "current" | "pending";
+
+function formatServiceCategoryLabel(category: string) {
+  return category.replaceAll("-", " ");
+}
+
+function getProviderJobStatusLabel(job: ProviderJobSummary) {
+  if (job.status === "requested") {
+    return "Requested";
+  }
+
+  if (job.status === "confirmed" && job.onRouteConfirmedAt) {
+    return "On route";
+  }
+
+  if (job.status === "confirmed") {
+    return "Confirmed";
+  }
+
+  if (job.status === "in-progress") {
+    return "In progress";
+  }
+
+  if (job.status === "disputed") {
+    return "Disputed";
+  }
+
+  return job.status.replaceAll("-", " ");
+}
+
+function getProviderJobPrimaryAction(job: ProviderJobSummary): ProviderJobPrimaryAction | undefined {
+  if (job.status === "requested") {
+    return "confirm";
+  }
+
+  if (job.status === "confirmed" && !job.onRouteConfirmedAt) {
+    return "start-route";
+  }
+
+  if (job.status === "confirmed" && job.onRouteConfirmedAt) {
+    return "start-work";
+  }
+
+  if (job.status === "in-progress") {
+    return "complete";
+  }
+
+  return undefined;
+}
+
+function hasCrewDecisionPending(job: ProviderJobSummary) {
+  return (
+    job.crewGap > 0 ||
+    job.requiresRouteLeaderAssignment ||
+    job.matches.some((match) => match.status === "pending-provider-review")
+  );
+}
+
+function getProviderJobActionLabel(job: ProviderJobSummary) {
+  const primaryAction = getProviderJobPrimaryAction(job);
+
+  if (primaryAction === "confirm") {
+    return "Confirm";
+  }
+
+  if (hasCrewDecisionPending(job)) {
+    return "Staff";
+  }
+
+  if (primaryAction === "start-route") {
+    return "Start route";
+  }
+
+  if (primaryAction === "start-work") {
+    return "Start work";
+  }
+
+  if (primaryAction === "complete") {
+    return "Complete";
+  }
+
+  return "Review";
+}
+
+function getProviderRouteStepStatus(stepIndex: number, activeStepIndex: number): ProviderRouteStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
+}
+
+function getProviderJobActiveStepIndex(job: ProviderJobSummary) {
+  if (job.status === "requested") {
+    return 0;
+  }
+
+  if (hasCrewDecisionPending(job)) {
+    return 1;
+  }
+
+  if (job.status === "confirmed" && !job.onRouteConfirmedAt) {
+    return 2;
+  }
+
+  return 3;
+}
+
 const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "off-platform-client",
   "personal-time",
@@ -193,23 +303,41 @@ export function ProviderLiveManagementBoard() {
     [jobs]
   );
   const totalCrewGap = useMemo(() => jobs.reduce((sum, job) => sum + job.crewGap, 0), [jobs]);
-  const nextRouteJob = useMemo(
-    () =>
-      jobs
-        .filter((job) => job.status === "confirmed" && !job.onRouteConfirmedAt)
-        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))[0],
-    [jobs]
-  );
-  const nextRouteJobNeedsSetup = Boolean(
-    nextRouteJob &&
-      (nextRouteJob.crewGap > 0 ||
-        nextRouteJob.requiresRouteLeaderAssignment ||
-        nextRouteJob.matches.some((match) => match.status === "pending-provider-review"))
-  );
-  const visibleJobs =
-    nextRouteJob && !nextRouteJobNeedsSetup
-      ? jobs.filter((job) => job.bookingId !== nextRouteJob.bookingId)
-      : jobs;
+  const visibleJobs = jobs;
+  const priorityJob = useMemo(() => {
+    const sortedJobs = [...jobs].sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
+    return sortedJobs.find((job) => Boolean(getProviderJobPrimaryAction(job)) || hasCrewDecisionPending(job)) ?? sortedJobs[0];
+  }, [jobs]);
+  const priorityJobActiveStepIndex = priorityJob ? getProviderJobActiveStepIndex(priorityJob) : 0;
+  const priorityJobSteps = priorityJob
+    ? [
+        {
+          label: "Confirm",
+          value: priorityJob.status === "requested" ? "Needed" : "Done"
+        },
+        {
+          label: "Crew",
+          value:
+            priorityJob.crewGap > 0
+              ? `${priorityJob.crewGap} gap`
+              : priorityJob.requiresRouteLeaderAssignment
+                ? "Lead"
+                : "Ready"
+        },
+        {
+          label: "Route",
+          value: priorityJob.onRouteConfirmedAt ? "Live" : formatBookingWindowSummary(priorityJob.scheduledStartIso)
+        },
+        {
+          label: "Finish",
+          value: priorityJob.status === "in-progress" ? "Now" : `${priorityJob.afterEvidenceCount} proof`
+        }
+      ].map((step, index) => ({
+        ...step,
+        status: getProviderRouteStepStatus(index, priorityJobActiveStepIndex)
+      }))
+    : [];
+  const priorityJobPrimaryAction = priorityJob ? getProviderJobPrimaryAction(priorityJob) : undefined;
 
   useEffect(() => {
     if (!provider) {
@@ -852,6 +980,113 @@ export function ProviderLiveManagementBoard() {
         </section>
       ) : null}
 
+      {priorityJob ? (
+        <section className="provider-route-focus" aria-label="Today path">
+          <div className="search-result-title">
+            <div>
+              <span className="eyebrow">Today path</span>
+              <h2>{getProviderJobActionLabel(priorityJob)}</h2>
+              <p>
+                {priorityJob.customerName} • {priorityJob.serviceAddress.line1}
+              </p>
+            </div>
+            <span className="result-badge result-badge--neutral">{getProviderJobStatusLabel(priorityJob)}</span>
+          </div>
+          <ol className="provider-route-spine">
+            {priorityJobSteps.map((step, index) => (
+              <li
+                aria-current={step.status === "current" ? "step" : undefined}
+                className={`provider-route-spine__step provider-route-spine__step--${step.status}`}
+                key={step.label}
+              >
+                <span className="provider-route-spine__index">{index + 1}</span>
+                <div>
+                  <strong>{step.label}</strong>
+                  <small>{step.value}</small>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="provider-route-summary" aria-label="Priority job summary">
+            <div>
+              <span>Window</span>
+              <strong>{formatBookingWindowSummary(priorityJob.scheduledStartIso)}</strong>
+            </div>
+            <div>
+              <span>Crew</span>
+              <strong>
+                {priorityJob.assignedCrewMembers}/{priorityJob.requiredCrewMembers}
+                {priorityJob.crewGap ? ` • gap ${priorityJob.crewGap}` : ""}
+              </strong>
+            </div>
+            <div>
+              <span>Service</span>
+              <strong>{formatServiceCategoryLabel(priorityJob.category)}</strong>
+            </div>
+            <div>
+              <span>Total</span>
+              <strong>{formatCurrency(priorityJob.totalCents)}</strong>
+            </div>
+          </div>
+          <div className="cta-row">
+            {hasCrewDecisionPending(priorityJob) && priorityJobPrimaryAction !== "confirm" ? (
+              <a className="button" href="#provider-jobs">
+                Review staffing
+              </a>
+            ) : null}
+            {priorityJobPrimaryAction === "confirm" ? (
+              <button
+                className="button"
+                disabled={isWorking}
+                onClick={() => void handleConfirmBooking(priorityJob.bookingId)}
+                type="button"
+              >
+                Confirm booking
+              </button>
+            ) : null}
+            {priorityJobPrimaryAction === "start-route" && !hasCrewDecisionPending(priorityJob) ? (
+              <button
+                className="button"
+                disabled={isWorking}
+                onClick={() => void handleStartRoute(priorityJob.bookingId)}
+                type="button"
+              >
+                Start route
+              </button>
+            ) : null}
+            {priorityJobPrimaryAction === "start-work" ? (
+              <button
+                className="button"
+                disabled={isWorking}
+                onClick={() => void handleStartWork(priorityJob.bookingId)}
+                type="button"
+              >
+                Start work
+              </button>
+            ) : null}
+            {priorityJobPrimaryAction === "complete" ? (
+              <button
+                className="button"
+                disabled={isWorking}
+                onClick={() => void completeJob(priorityJob.bookingId)}
+                type="button"
+              >
+                Complete job
+              </button>
+            ) : null}
+            <a className="button-secondary" href="#provider-jobs">
+              Job details
+            </a>
+          </div>
+        </section>
+      ) : (
+        <section className="provider-route-focus" aria-label="Today path">
+          <span className="eyebrow">Today path</span>
+          <h2>No scheduled jobs.</h2>
+          <p>Calendar, staffing, and assistant tools are ready when work is booked.</p>
+        </section>
+      )}
+
       {provider ? (
         <section className="card">
           <span className="eyebrow">Business verification</span>
@@ -975,21 +1210,34 @@ export function ProviderLiveManagementBoard() {
       <section className="card">
         <span className="eyebrow">Assistant</span>
         <h2>Change bookings in plain language.</h2>
-        <p>
-          Try “What needs attention tomorrow?”, “What needs attention this week?”, “How does this
-          week look?”, “How does tomorrow look?”, “What should I move tomorrow?”, “Do I need more crew tomorrow?”, “Set equipment pickup as the next stop for my
-          afternoon appointment”, “Clear the route stop for my afternoon appointment”, “Accept the best crew for my afternoon
-          appointment”, “Accept Morgan Crew for my afternoon appointment”, “Confirm my afternoon
-          appointment”, “Change my afternoon appointment to evening and notify the customer”,
-          “Confirm my afternoon appointment and start route”, “Start route for my afternoon
-          appointment and start work”, “Accept Morgan Crew for my afternoon appointment and make
-          Morgan Crew the route leader and tell Morgan Crew to head to the equipment pickup first”,
-          “Make Taylor Crew the route leader for my afternoon appointment”, “Tell Morgan Crew to
-          head to the equipment pickup first for my afternoon appointment”, “Clear the route leader
-          for my afternoon appointment”, “Tell my afternoon customer I am 30 minutes late”,
-          “Complete my afternoon appointment”, or “Mark my afternoon appointment no access because
-          the gate is locked.”
-        </p>
+        <p>Ask for a schedule summary, move a job, staff a route, or notify a customer.</p>
+        <details className="service-card-disclosure">
+          <summary className="service-card-disclosure__summary">Examples</summary>
+          <div className="service-card-disclosure__body">
+            <ul className="timeline">
+              <li>
+                <strong>Review</strong>
+                <span>What needs attention tomorrow?</span>
+              </li>
+              <li>
+                <strong>Move</strong>
+                <span>Change my afternoon appointment to evening and notify the customer.</span>
+              </li>
+              <li>
+                <strong>Staff</strong>
+                <span>Accept the best crew for my afternoon appointment.</span>
+              </li>
+              <li>
+                <strong>Route</strong>
+                <span>Start route for my afternoon appointment.</span>
+              </li>
+              <li>
+                <strong>Issue</strong>
+                <span>Mark my afternoon appointment no access because the gate is locked.</span>
+              </li>
+            </ul>
+          </div>
+        </details>
         <label className="form-field form-field--full">
           <span>Provider assistant command</span>
           <textarea
@@ -1672,50 +1920,13 @@ export function ProviderLiveManagementBoard() {
         </div>
       </section>
 
-      {nextRouteJob ? (
-        <section className="card">
-          <span className="eyebrow">{nextRouteJobNeedsSetup ? "Ready this route" : "Leave soon"}</span>
-          <h2>{nextRouteJob.customerName}</h2>
-          <p>
-            {formatBookingWindowSummary(nextRouteJob.scheduledStartIso)} • {nextRouteJob.serviceAddress.line1}
-          </p>
-          <p>
-            {nextRouteJobNeedsSetup
-              ? "Finish staffing or route-leader setup before heading out."
-              : "Once you head out, customer tracking goes live automatically."}
-          </p>
-          <div className="cta-row">
-            {nextRouteJobNeedsSetup ? (
-              <a className="button" href="#provider-jobs">
-                Review job
-              </a>
-            ) : (
-              <button
-                className="button"
-                disabled={isWorking}
-                onClick={() => void handleStartRoute(nextRouteJob.bookingId)}
-                type="button"
-              >
-                Start route
-              </button>
-            )}
-          </div>
-        </section>
-      ) : null}
-
       {visibleJobs.length ? (
         <section className="stack-lg" id="provider-jobs">
-          {nextRouteJob && !nextRouteJobNeedsSetup ? (
-            <div>
-              <span className="eyebrow">Queue</span>
-              <h2>Other jobs</h2>
-            </div>
-          ) : null}
         {visibleJobs.map((job) => (
           <article className="history-card" key={job.bookingId}>
             <div className="history-card__header">
               <div>
-                <span className="eyebrow">{job.category.replaceAll("-", " ")}</span>
+                <span className="eyebrow">{formatServiceCategoryLabel(job.category)}</span>
                 <h2>{job.customerName}</h2>
               </div>
               <strong>{formatCurrency(job.totalCents)}</strong>
@@ -1738,7 +1949,7 @@ export function ProviderLiveManagementBoard() {
                 <p>{job.requiredCrewMembers} needed</p>
                 <p>{job.assignedCrewMembers} assigned</p>
                 <p>{job.crewGap} open</p>
-                <p>Status: {job.status.replaceAll("-", " ")}</p>
+                <p>Status: {getProviderJobStatusLabel(job)}</p>
                 {provider?.routeLeaderMode === "accepted-crew-fallback" ? (
                   <p>
                     Route leader: {job.assignedRouteLeaderCrewMemberName ?? "Provider"}
