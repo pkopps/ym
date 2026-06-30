@@ -74,6 +74,10 @@ function formatProviderTrust(provider: SearchProviderResult["provider"]) {
   return `${provider.rating.toFixed(1)} stars • ${provider.reviewCount} reviews`;
 }
 
+function formatProviderDistance(distanceMiles: number) {
+  return distanceMiles < 1 ? "Nearby" : `${distanceMiles.toFixed(1)} mi`;
+}
+
 function getRequestStepStatus(stepIndex: number, activeStepIndex: number): RequestStepStatus {
   if (stepIndex < activeStepIndex) {
     return "complete";
@@ -398,108 +402,115 @@ export function BookServiceScreen({
             </View>
           ))}
         </View>
-        <View style={styles.intentSummary}>
-          <View style={styles.intentSummaryItem}>
-            <Text style={styles.intentSummaryLabel}>Service</Text>
-            <Text style={styles.intentSummaryValue}>{selectedServiceLabel}</Text>
-          </View>
-          <View style={styles.intentSummaryItem}>
-            <Text style={styles.intentSummaryLabel}>When</Text>
-            <Text style={styles.intentSummaryValue}>{selectedTimingLabel}</Text>
-          </View>
-        </View>
       </View>
 
-      <InfoCard title="Service" description={selectedServiceLabel}>
-        <View style={styles.chipWrap}>
-          {serviceOptions.map((option) => {
-            const isActive = option === selectedService;
-            return (
+      <InfoCard
+        title="Details"
+        description={activeProperty ? `${selectedServiceLabel} • ${selectedTimingLabel}` : "Add a property to start."}
+      >
+        <View style={styles.detailSection}>
+          <View style={styles.detailHeader}>
+            <Text style={styles.detailLabel}>Service</Text>
+            <Text style={styles.detailValue}>{selectedServiceLabel}</Text>
+          </View>
+          <View style={styles.chipWrap}>
+            {serviceOptions.map((option) => {
+              const isActive = option === selectedService;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    setSelectedService(option);
+                    resetMatchState();
+                  }}
+                  style={[styles.chip, isActive && styles.chipActive]}
+                >
+                  <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                    {formatServiceLabel(option)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.detailSection}>
+          <View style={styles.detailHeader}>
+            <Text style={styles.detailLabel}>When</Text>
+            <Text style={styles.detailValue}>{selectedTimingLabel}</Text>
+          </View>
+          <View style={styles.chipWrap}>
+            {customerTimingOptions.map((option) => {
+              const isActive = option.value === selectedTiming;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    setSelectedTiming(option.value);
+                    resetMatchState();
+                  }}
+                  style={[styles.chip, isActive && styles.chipActive]}
+                >
+                  <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.detailSection}>
+          <View style={styles.detailHeader}>
+            <Text style={styles.detailLabel}>Property</Text>
+            <Text numberOfLines={1} style={styles.detailValue}>
+              {activeProperty ? activeProperty.label : "Needed"}
+            </Text>
+          </View>
+
+          {properties.length === 0 ? (
+            <View style={styles.propertyStack}>
+              <Text style={styles.emptyState}>Add a property before we price the job.</Text>
               <Pressable
-                key={option}
-                onPress={() => {
-                  setSelectedService(option);
-                  resetMatchState();
-                }}
-                style={[styles.chip, isActive && styles.chipActive]}
+                disabled={isWorking}
+                onPress={() => setIsPropertyModalVisible(true)}
+                style={styles.secondaryButtonInline}
               >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                  {formatServiceLabel(option)}
+                <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <View style={styles.propertyStack}>
+                {properties.map((property) => {
+                  const isActive = property.id === selectedPropertyId;
+                  return (
+                    <Pressable
+                      key={property.id}
+                      onPress={() => {
+                        setSelectedPropertyId(property.id);
+                        resetMatchState();
+                      }}
+                      style={[styles.propertyRow, isActive && styles.propertyRowActive]}
+                    >
+                      <View style={styles.propertyCopy}>
+                        <Text style={styles.propertyLabel}>{property.label}</Text>
+                        <Text style={styles.propertyAddress}>{property.address.line1}</Text>
+                      </View>
+                      {property.isDefault ? <Text style={styles.defaultBadge}>Default</Text> : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Pressable onPress={() => setIsPropertyModalVisible(true)} style={styles.secondaryButtonInline}>
+                <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
+              </Pressable>
+              <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonLabel}>
+                  {isWorking ? "Checking..." : "See price and crews"}
                 </Text>
               </Pressable>
-            );
-          })}
+            </>
+          )}
         </View>
-      </InfoCard>
-
-      <InfoCard title="When" description="Best opening first.">
-        <View style={styles.chipWrap}>
-          {customerTimingOptions.map((option) => {
-            const isActive = option.value === selectedTiming;
-            return (
-              <Pressable
-                key={option.value}
-                onPress={() => {
-                  setSelectedTiming(option.value);
-                  resetMatchState();
-                }}
-                style={[styles.chip, isActive && styles.chipActive]}
-              >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </InfoCard>
-
-      <InfoCard
-        title="Property"
-        description={activeProperty ? activeProperty.address.line1 : "Where should we send the crew?"}
-      >
-        {properties.length === 0 ? (
-          <View style={styles.propertyStack}>
-            <Text style={styles.emptyState}>Add a property before we price the job.</Text>
-            <Pressable
-              disabled={isWorking}
-              onPress={() => setIsPropertyModalVisible(true)}
-              style={styles.secondaryButtonInline}
-            >
-              <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <>
-            <View style={styles.propertyStack}>
-              {properties.map((property) => {
-                const isActive = property.id === selectedPropertyId;
-                return (
-                  <Pressable
-                    key={property.id}
-                    onPress={() => {
-                      setSelectedPropertyId(property.id);
-                      resetMatchState();
-                    }}
-                    style={[styles.propertyRow, isActive && styles.propertyRowActive]}
-                  >
-                    <View style={styles.propertyCopy}>
-                      <Text style={styles.propertyLabel}>{property.label}</Text>
-                      <Text style={styles.propertyAddress}>{property.address.line1}</Text>
-                    </View>
-                    {property.isDefault ? <Text style={styles.defaultBadge}>Default</Text> : null}
-                  </Pressable>
-                );
-              })}
-            </View>
-            <Pressable onPress={() => setIsPropertyModalVisible(true)} style={styles.secondaryButtonInline}>
-              <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
-            </Pressable>
-            <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>
-                {isWorking ? "Checking..." : "See price and crews"}
-              </Text>
-            </Pressable>
-          </>
-        )}
       </InfoCard>
 
       {quote ? (
@@ -608,9 +619,21 @@ export function BookServiceScreen({
                         </Text>
                         <Text style={styles.providerName}>{recommendedProviderCard.provider.companyName}</Text>
                         <Text style={styles.providerMeta}>
-                          {formatProviderTrust(recommendedProviderCard.provider)}
+                          {formatOpenWindow(recommendedProviderCard.slot)} opening
                         </Text>
                       </View>
+                    </View>
+
+                    <View style={styles.marketSignalRow}>
+                      <Text style={styles.marketSignalPill}>
+                        {recommendedProviderCard.provider.rating.toFixed(1)} stars
+                      </Text>
+                      <Text style={styles.marketSignalPill}>
+                        {recommendedProviderCard.provider.reviewCount} reviews
+                      </Text>
+                      <Text style={styles.marketSignalPill}>
+                        {formatProviderDistance(recommendedProviderCard.ranking.distanceMiles)}
+                      </Text>
                     </View>
 
                     <View style={styles.bookingFactGrid}>
@@ -633,8 +656,9 @@ export function BookServiceScreen({
                         <Text style={styles.bookingFactValue}>{activeProperty?.label ?? "Selected property"}</Text>
                       </View>
                     </View>
-                    <Text style={styles.providerChoiceDetail}>
-                      {recommendedProviderCard.ranking.selectionSummaryDetail}
+
+                    <Text style={styles.providerDecisionLine}>
+                      {providerChoicePresentations[0]?.heading ?? recommendedProviderCard.ranking.selectionSummaryLabel}
                     </Text>
                     <View style={styles.nextStepGrid}>
                       <View style={styles.nextStepItem}>
@@ -734,13 +758,12 @@ export function BookServiceScreen({
                         <Text style={styles.providerBadge}>{providerChoicePresentations[index + 1].badge}</Text>
                       ) : null}
                       <Text style={styles.providerName}>{provider.companyName}</Text>
-                      <Text style={styles.providerChoiceDetail}>{ranking.selectionSummaryDetail}</Text>
-                      <Text style={styles.providerMeta}>
-                        {formatOpenWindow(slot)}
-                      </Text>
-                      <Text style={styles.providerMeta}>
-                        {formatProviderTrust(provider)} • {ranking.distanceMiles.toFixed(1)} mi away
-                      </Text>
+                      <Text style={styles.providerChoiceDetail}>{ranking.selectionSummaryLabel}</Text>
+                      <View style={styles.marketSignalRow}>
+                        <Text style={styles.marketSignalPill}>{formatOpenWindow(slot)}</Text>
+                        <Text style={styles.marketSignalPill}>{formatProviderTrust(provider)}</Text>
+                        <Text style={styles.marketSignalPill}>{formatProviderDistance(ranking.distanceMiles)}</Text>
+                      </View>
                       <Pressable
                         onPress={() =>
                           setShowAlternativeWhy((current) => ({
@@ -908,31 +931,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16
   },
-  intentSummary: {
+  detailSection: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(20, 40, 29, 0.08)",
+    gap: BrandTokens.spacing.sm,
+    paddingTop: BrandTokens.spacing.md
+  },
+  detailHeader: {
+    alignItems: "flex-start",
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: BrandTokens.spacing.sm
+    gap: BrandTokens.spacing.md,
+    justifyContent: "space-between"
   },
-  intentSummaryItem: {
-    flexBasis: "47%",
-    flexGrow: 1,
-    borderRadius: BrandTokens.radius.sm,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.sm,
-    gap: 2
-  },
-  intentSummaryLabel: {
+  detailLabel: {
     color: BrandTokens.colors.inkSoft,
-    fontSize: 11,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 0.4,
     textTransform: "uppercase"
   },
-  intentSummaryValue: {
+  detailValue: {
     color: BrandTokens.colors.ink,
+    flex: 1,
     fontSize: 14,
     fontWeight: "800",
-    lineHeight: 18
+    lineHeight: 18,
+    textAlign: "right"
   },
   chipWrap: {
     flexDirection: "row",
@@ -1054,6 +1078,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: BrandTokens.spacing.md,
     paddingVertical: BrandTokens.spacing.xs
   },
+  marketSignalRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  marketSignalPill: {
+    borderRadius: 999,
+    backgroundColor: "rgba(47, 125, 76, 0.1)",
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    overflow: "hidden",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs
+  },
   bookingFactGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1162,6 +1201,12 @@ const styles = StyleSheet.create({
   providerMeta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  providerDecisionLine: {
+    color: BrandTokens.colors.ink,
+    fontSize: 15,
+    fontWeight: "800",
+    lineHeight: 21
   },
   providerChoiceDetail: {
     color: BrandTokens.colors.inkSoft,

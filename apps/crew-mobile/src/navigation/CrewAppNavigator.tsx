@@ -26,7 +26,7 @@ export function CrewAppNavigator() {
         onOpenSchedule={() => setActiveTab("schedule")}
       />
     ),
-    schedule: <AssignmentsScreen />,
+    schedule: <AssignmentsScreen onOpenToday={() => setActiveTab("today")} />,
     availability: <AvailabilityScreen />,
     account: <SupportScreen />
   }[activeTab];

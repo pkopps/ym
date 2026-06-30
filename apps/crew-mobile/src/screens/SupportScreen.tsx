@@ -18,6 +18,16 @@ import { useCrewSession } from "../session/CrewSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
+type CrewAccountSection = "payouts" | "profile" | "alerts" | "security" | "help";
+
+const crewAccountSectionOptions: Array<{ value: CrewAccountSection; label: string }> = [
+  { value: "payouts", label: "Payouts" },
+  { value: "profile", label: "Profile" },
+  { value: "alerts", label: "Alerts" },
+  { value: "security", label: "Security" },
+  { value: "help", label: "Help" }
+];
+
 type CrewPayoutEntry = CrewPayoutLedgerResponse["entries"][number];
 
 function formatCurrency(cents: number) {
@@ -64,6 +74,7 @@ export function SupportScreen() {
   const [showAlertPreferences, setShowAlertPreferences] = useState(false);
   const [showSupportComposer, setShowSupportComposer] = useState(false);
   const [showSupportHistory, setShowSupportHistory] = useState(false);
+  const [activeSection, setActiveSection] = useState<CrewAccountSection>("payouts");
   const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
   const blockedPayoutCents =
     (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
@@ -74,6 +85,21 @@ export function SupportScreen() {
       : (payoutLedger?.totalReadyCents ?? 0) > 0
         ? "Ready now"
         : "On track";
+  const enabledAlertCount = [
+    preferences?.pushEnabled ?? true,
+    preferences?.emailEnabled ?? true,
+    preferences?.smsEnabled ?? true
+  ].filter(Boolean).length;
+  const sectionSummaries: Record<CrewAccountSection, string> = {
+    payouts: payoutStateLabel,
+    profile: `${matchesResponse?.crewMember.willingToTravelMiles ?? 0} mi radius`,
+    alerts: `${unreadCount} unread • ${enabledAlertCount}/3 on`,
+    security: !biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`,
+    help:
+      supportTickets.length > 0
+        ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}`
+        : "Open a ticket"
+  };
 
   async function loadMatches() {
     if (!envelope?.session.token) {
@@ -206,6 +232,24 @@ export function SupportScreen() {
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
+      <InfoCard title="Manage" description={sectionSummaries[activeSection]}>
+        <View style={styles.issueRow}>
+          {crewAccountSectionOptions.map((option) => {
+            const isActive = option.value === activeSection;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => setActiveSection(option.value)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </InfoCard>
+
+      {activeSection === "payouts" ? (
       <InfoCard title="Payouts" description={payoutStateLabel}>
         <View style={styles.payoutSummaryGrid}>
           <View style={styles.payoutSummaryItem}>
@@ -265,7 +309,9 @@ export function SupportScreen() {
           <Text style={styles.meta}>Completed shifts will show payout entries here.</Text>
         )}
       </InfoCard>
+      ) : null}
 
+      {activeSection === "profile" ? (
       <InfoCard title="Account basics" description="Keep details up to date">
         <Text style={styles.title}>{matchesResponse?.crewMember.fullName ?? "Crew member profile"}</Text>
         <Text style={styles.meta}>
@@ -273,7 +319,9 @@ export function SupportScreen() {
           {matchesResponse?.crewMember.willingToTravelMiles ?? 0} mile travel radius
         </Text>
       </InfoCard>
+      ) : null}
 
+      {activeSection === "security" ? (
       <InfoCard title="Security" description="Protect this device without slowing down daily work">
         <View style={styles.switchRow}>
           <View style={styles.ticketCopy}>
@@ -296,7 +344,9 @@ export function SupportScreen() {
           <Text style={styles.logoutButtonLabel}>Log out</Text>
         </Pressable>
       </InfoCard>
+      ) : null}
 
+      {activeSection === "alerts" ? (
       <InfoCard title="Updates" description={`${unreadCount} unread`}>
         {notifications.length > 0 ? (
           <View style={styles.ticketStack}>
@@ -362,7 +412,9 @@ export function SupportScreen() {
           </View>
         ) : null}
       </InfoCard>
+      ) : null}
 
+      {activeSection === "alerts" ? (
       <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
         {deliveries.length > 0 ? (
           <View style={styles.ticketStack}>
@@ -380,7 +432,9 @@ export function SupportScreen() {
           <Text style={styles.meta}>Nothing sent yet.</Text>
         )}
       </InfoCard>
+      ) : null}
 
+      {activeSection === "help" ? (
       <InfoCard title="Help" description="Get help quickly.">
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
@@ -482,6 +536,7 @@ export function SupportScreen() {
           </>
         ) : null}
       </InfoCard>
+      ) : null}
     </ScreenShell>
   );
 }

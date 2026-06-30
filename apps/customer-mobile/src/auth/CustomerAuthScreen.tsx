@@ -18,13 +18,13 @@ function getModeCopy(mode: AuthFlowMode) {
     ? {
         eyebrow: "Customer login",
         title: "Welcome back.",
-        description: "Log in to manage bookings, saved properties, and reviews.",
+        description: "Manage visits, properties, and reviews.",
         submitLabel: "Log in"
       }
     : {
         eyebrow: "Customer sign up",
-        title: "Book local lawn care faster.",
-        description: "Start with email and password. Property details come after account creation.",
+        title: "Start with your home.",
+        description: "Create an account, then add the property we'll service.",
         submitLabel: "Create account"
       };
 }
@@ -63,6 +63,7 @@ export function CustomerAuthScreen({
   onAuthenticated: (envelope: AuthenticatedUserEnvelope) => void;
 }) {
   const [mode, setMode] = useState<AuthFlowMode>("login");
+  const [signupStep, setSignupStep] = useState<"account" | "property">("account");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
@@ -87,6 +88,11 @@ export function CustomerAuthScreen({
   const authCopy = getModeCopy(mode);
   const tracker = getCustomerMobileTracker();
   const isCompletingSocialSignup = pendingSignupToken.length > 0;
+  const canContinueSignupAccount =
+    fullName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    phone.trim().length > 0 &&
+    (isCompletingSocialSignup || password.trim().length > 0);
   const canSubmitSignup =
     fullName.trim().length > 0 &&
     email.trim().length > 0 &&
@@ -124,6 +130,23 @@ export function CustomerAuthScreen({
 
   function clearPendingSignupState() {
     setPendingSignupToken("");
+  }
+
+  function handlePrimarySubmit() {
+    if (mode === "signup" && signupStep === "account") {
+      if (!canContinueSignupAccount) {
+        setErrorMessage(
+          isCompletingSocialSignup ? "Add your name and phone." : "Add your name, email, phone, and password."
+        );
+        return;
+      }
+
+      setErrorMessage("");
+      setSignupStep("property");
+      return;
+    }
+
+    void handleAuth("password");
   }
 
   const handleAuth = async (method: "password" | "google" | "apple") => {
@@ -188,6 +211,7 @@ export function CustomerAuthScreen({
             throw new Error("The social signup callback was missing the account details we need.");
           }
           setMode("signup");
+          setSignupStep("account");
           setPendingSignupToken(pendingToken);
           setEmail(socialEmail);
           if (socialFullName) {
@@ -353,6 +377,7 @@ export function CustomerAuthScreen({
                   setMode(value);
                   if (value === "login") {
                     clearPendingSignupState();
+                    setSignupStep("account");
                   }
                 }}
                 style={[styles.modeButton, isActive && styles.modeButtonActive]}
@@ -365,162 +390,201 @@ export function CustomerAuthScreen({
           })}
         </View>
 
-        <View style={styles.fieldStack}>
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={setEmail}
-            placeholder="customer@example.com"
-            placeholderTextColor="#6e7d71"
-            style={styles.input}
-            value={email}
-          />
-          {!isCompletingSocialSignup ? (
+        {mode === "signup" ? (
+          <View style={styles.signupPath}>
+            <View style={[styles.signupPathItem, signupStep === "account" && styles.signupPathItemActive]}>
+              <Text style={[styles.signupPathLabel, signupStep === "account" && styles.signupPathLabelActive]}>
+                Account
+              </Text>
+              <Text style={styles.signupPathMeta}>{canContinueSignupAccount ? "Ready" : "Now"}</Text>
+            </View>
+            <View style={[styles.signupPathItem, signupStep === "property" && styles.signupPathItemActive]}>
+              <Text style={[styles.signupPathLabel, signupStep === "property" && styles.signupPathLabelActive]}>
+                Property
+              </Text>
+              <Text style={styles.signupPathMeta}>
+                {signupStep === "property" ? (canSubmitSignup ? "Ready" : "Now") : "Next"}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {mode === "login" || signupStep === "account" ? (
+          <View style={styles.fieldStack}>
             <TextInput
-              onChangeText={setPassword}
-              placeholder="Password"
+              autoCapitalize="none"
+              onChangeText={setEmail}
+              placeholder="customer@example.com"
               placeholderTextColor="#6e7d71"
-              secureTextEntry
               style={styles.input}
-              value={password}
+              value={email}
             />
-          ) : null}
-        </View>
+            {!isCompletingSocialSignup ? (
+              <TextInput
+                onChangeText={setPassword}
+                placeholder="Password"
+                placeholderTextColor="#6e7d71"
+                secureTextEntry
+                style={styles.input}
+                value={password}
+              />
+            ) : null}
+          </View>
+        ) : null}
 
         {mode === "signup" ? (
           <View style={styles.fieldStack}>
             {isCompletingSocialSignup ? (
               <View style={styles.inlineNotice}>
                 <Text style={styles.noticeTitle}>Finish your customer account</Text>
-                <Text style={styles.helper}>We already verified {email.trim()}. Add your property details to continue.</Text>
+                <Text style={styles.helper}>We already verified {email.trim()}. Add the basics to continue.</Text>
               </View>
             ) : null}
-            <TextInput
-              autoCapitalize="words"
-              onChangeText={setFullName}
-              placeholder="Full name"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={fullName}
-            />
-            <TextInput
-              keyboardType="phone-pad"
-              onChangeText={setPhone}
-              placeholder="Phone number"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={phone}
-            />
-            <TextInput
-              autoCapitalize="words"
-              onChangeText={(value) => {
-                setAddressQuery(value);
-                setSelectedSuggestion(undefined);
-              }}
-              placeholder="Search city or town"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={addressQuery}
-            />
-            {suggestions.length > 0 ? (
-              <View style={styles.suggestionStack}>
-                {suggestions.map((suggestion) => (
-                  <Pressable
-                    key={suggestion.id}
-                    onPress={() => {
-                      setAddressQuery(suggestion.label);
-                      setAddress(suggestion.address);
-                      setSelectedSuggestion(suggestion);
-                      setSuggestions([]);
-                    }}
-                    style={styles.suggestionRow}
-                  >
-                    <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
-                    <Text style={styles.suggestionMeta}>
-                      {suggestion.matchReason ??
-                        (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : addressQuery.trim().length >= 2 && isSearching ? (
-              <Text style={styles.helper}>Searching nearby areas…</Text>
-            ) : addressQuery.trim().length >= 2 && addressSearchMessage ? (
-              <Text style={styles.helper}>{addressSearchMessage}</Text>
-            ) : null}
-            <TextInput
-              autoCapitalize="words"
-              onChangeText={(value) => setPropertyLabel(value)}
-              placeholder="Property label"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={propertyLabel}
-            />
-            <TextInput
-              autoCapitalize="words"
-              onChangeText={(value) =>
-                setAddress((current) => ({
-                  ...current,
-                  line1: value
-                }))
-              }
-              placeholder="Street address"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={address.line1}
-            />
-            <View style={styles.inlineRow}>
-              <TextInput
-                autoCapitalize="words"
-                onChangeText={(value) =>
-                  setAddress((current) => ({
-                    ...current,
-                    city: value
-                  }))
-                }
-                placeholder="City"
-                placeholderTextColor="#6e7d71"
-                style={[styles.input, styles.inlineInput]}
-                value={address.city}
-              />
-              <TextInput
-                autoCapitalize="characters"
-                maxLength={2}
-                onChangeText={(value) =>
-                  setAddress((current) => ({
-                    ...current,
-                    state: value
-                  }))
-                }
-                placeholder="ST"
-                placeholderTextColor="#6e7d71"
-                style={[styles.input, styles.stateInput]}
-                value={address.state}
-              />
-              <TextInput
-                keyboardType="number-pad"
-                maxLength={10}
-                onChangeText={(value) =>
-                  setAddress((current) => ({
-                    ...current,
-                    postalCode: value
-                  }))
-                }
-                placeholder="ZIP"
-                placeholderTextColor="#6e7d71"
-                style={[styles.input, styles.zipInput]}
-                value={address.postalCode}
-              />
-            </View>
+            {signupStep === "account" ? (
+              <>
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={setFullName}
+                  placeholder="Full name"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={fullName}
+                />
+                <TextInput
+                  keyboardType="phone-pad"
+                  onChangeText={setPhone}
+                  placeholder="Phone number"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={phone}
+                />
+              </>
+            ) : (
+              <>
+                <View style={styles.inlineNotice}>
+                  <Text style={styles.noticeTitle}>First property</Text>
+                  <Text style={styles.helper}>We use this for accurate quotes and crew routing.</Text>
+                </View>
+                <Pressable onPress={() => setSignupStep("account")} style={styles.linkButton}>
+                  <Text style={styles.linkButtonLabel}>Edit account</Text>
+                </Pressable>
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={(value) => {
+                    setAddressQuery(value);
+                    setSelectedSuggestion(undefined);
+                  }}
+                  placeholder="Search city or town"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={addressQuery}
+                />
+                {suggestions.length > 0 ? (
+                  <View style={styles.suggestionStack}>
+                    {suggestions.map((suggestion) => (
+                      <Pressable
+                        key={suggestion.id}
+                        onPress={() => {
+                          setAddressQuery(suggestion.label);
+                          setAddress(suggestion.address);
+                          setSelectedSuggestion(suggestion);
+                          setSuggestions([]);
+                        }}
+                        style={styles.suggestionRow}
+                      >
+                        <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
+                        <Text style={styles.suggestionMeta}>
+                          {suggestion.matchReason ??
+                            (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : addressQuery.trim().length >= 2 && isSearching ? (
+                  <Text style={styles.helper}>Searching nearby areas…</Text>
+                ) : addressQuery.trim().length >= 2 && addressSearchMessage ? (
+                  <Text style={styles.helper}>{addressSearchMessage}</Text>
+                ) : null}
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={(value) => setPropertyLabel(value)}
+                  placeholder="Property label"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={propertyLabel}
+                />
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={(value) =>
+                    setAddress((current) => ({
+                      ...current,
+                      line1: value
+                    }))
+                  }
+                  placeholder="Street address"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={address.line1}
+                />
+                <View style={styles.inlineRow}>
+                  <TextInput
+                    autoCapitalize="words"
+                    onChangeText={(value) =>
+                      setAddress((current) => ({
+                        ...current,
+                        city: value
+                      }))
+                    }
+                    placeholder="City"
+                    placeholderTextColor="#6e7d71"
+                    style={[styles.input, styles.inlineInput]}
+                    value={address.city}
+                  />
+                  <TextInput
+                    autoCapitalize="characters"
+                    maxLength={2}
+                    onChangeText={(value) =>
+                      setAddress((current) => ({
+                        ...current,
+                        state: value
+                      }))
+                    }
+                    placeholder="ST"
+                    placeholderTextColor="#6e7d71"
+                    style={[styles.input, styles.stateInput]}
+                    value={address.state}
+                  />
+                  <TextInput
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    onChangeText={(value) =>
+                      setAddress((current) => ({
+                        ...current,
+                        postalCode: value
+                      }))
+                    }
+                    placeholder="ZIP"
+                    placeholderTextColor="#6e7d71"
+                    style={[styles.input, styles.zipInput]}
+                    value={address.postalCode}
+                  />
+                </View>
+              </>
+            )}
           </View>
         ) : null}
 
-        <Pressable onPress={() => handleAuth("password")} style={styles.primaryButton}>
+        <Pressable onPress={handlePrimarySubmit} style={styles.primaryButton}>
           <Text style={styles.primaryButtonLabel}>
             {isSubmitting
               ? "Working..."
               : isCompletingSocialSignup
-                ? "Finish account"
-                : authCopy.submitLabel}
+                ? signupStep === "account"
+                  ? "Continue"
+                  : "Finish account"
+                : mode === "signup" && signupStep === "account"
+                  ? "Continue"
+                  : authCopy.submitLabel}
           </Text>
         </Pressable>
 
@@ -579,20 +643,22 @@ export function CustomerAuthScreen({
           </View>
         ) : null}
 
-        <View style={styles.socialStack}>
-          <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
-            <AntDesign color="#4285F4" name="google" size={18} />
-            <Text style={styles.socialLabel}>Continue with Google</Text>
-          </Pressable>
-          <Pressable onPress={() => handleAuth("apple")} style={styles.socialButton}>
-            <AntDesign color={BrandTokens.colors.ink} name="apple" size={18} />
-            <Text style={styles.socialLabel}>Continue with Apple</Text>
-          </Pressable>
-        </View>
+        {mode === "login" || signupStep === "account" ? (
+          <View style={styles.socialStack}>
+            <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
+              <AntDesign color="#4285F4" name="google" size={18} />
+              <Text style={styles.socialLabel}>Continue with Google</Text>
+            </Pressable>
+            <Pressable onPress={() => handleAuth("apple")} style={styles.socialButton}>
+              <AntDesign color={BrandTokens.colors.ink} name="apple" size={18} />
+              <Text style={styles.socialLabel}>Continue with Apple</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <Text style={styles.helper}>
           {mode === "signup"
-            ? "You can add service notes, payment details, and extra properties right after sign up."
+            ? "Payment, notes, and extra properties come after the first request."
             : "Property address, service notes, and payment setup come after sign in."}
         </Text>
       </View>
@@ -659,6 +725,37 @@ const styles = StyleSheet.create({
   },
   modeLabelActive: {
     color: "#ffffff"
+  },
+  signupPath: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm
+  },
+  signupPathItem: {
+    flex: 1,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  signupPathItemActive: {
+    borderColor: "rgba(47, 125, 76, 0.36)",
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  signupPathLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  signupPathLabelActive: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  signupPathMeta: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    fontWeight: "700"
   },
   fieldStack: {
     gap: BrandTokens.spacing.md

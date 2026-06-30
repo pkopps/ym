@@ -32,6 +32,16 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
 ];
 const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
 
+type ProviderBusinessSection = "work" | "payouts" | "alerts" | "security" | "help";
+
+const businessSectionOptions: Array<{ value: ProviderBusinessSection; label: string }> = [
+  { value: "work", label: "Work" },
+  { value: "payouts", label: "Payouts" },
+  { value: "alerts", label: "Alerts" },
+  { value: "security", label: "Security" },
+  { value: "help", label: "Help" }
+];
+
 type ProviderPayoutEntry = ProviderPayoutLedgerResponse["entries"][number];
 
 function formatLocalDateTimeValue(date: Date) {
@@ -140,6 +150,7 @@ export function SupportScreen() {
   const [showAlertPreferences, setShowAlertPreferences] = useState(false);
   const [showSupportComposer, setShowSupportComposer] = useState(false);
   const [showSupportHistory, setShowSupportHistory] = useState(false);
+  const [activeSection, setActiveSection] = useState<ProviderBusinessSection>("work");
   const calendarHealth = calendarImports?.syncHealth;
   const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
   const blockedPayoutCents =
@@ -151,6 +162,21 @@ export function SupportScreen() {
       : (payoutLedger?.totalNetReadyCents ?? 0) > 0
         ? "Ready now"
         : "On track";
+  const enabledAlertCount = [
+    preferences?.pushEnabled ?? true,
+    preferences?.emailEnabled ?? true,
+    preferences?.smsEnabled ?? true
+  ].filter(Boolean).length;
+  const sectionSummaries: Record<ProviderBusinessSection, string> = {
+    work: `${provider?.serviceRadiusMiles ?? 0} mi radius`,
+    payouts: payoutStateLabel,
+    alerts: `${unreadCount} unread • ${enabledAlertCount}/3 on`,
+    security: !biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`,
+    help:
+      supportTickets.length > 0
+        ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}`
+        : "Open a ticket"
+  };
 
   async function loadProvider() {
     if (!envelope?.session.token) {
@@ -550,6 +576,26 @@ export function SupportScreen() {
         </InfoCard>
       ) : null}
 
+      <InfoCard title="Manage" description={sectionSummaries[activeSection]}>
+        <View style={styles.issueRow}>
+          {businessSectionOptions.map((option) => {
+            const isActive = option.value === activeSection;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => setActiveSection(option.value)}
+                style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </InfoCard>
+
+      {activeSection === "work" ? (
       <InfoCard title="Service radius" description="Measured from customer property addresses">
         <View style={styles.stepRow}>
           <Pressable
@@ -569,7 +615,9 @@ export function SupportScreen() {
           </Pressable>
         </View>
       </InfoCard>
+      ) : null}
 
+      {activeSection === "security" ? (
       <InfoCard title="Security" description="Protect this device without slowing down daily work">
         <View style={styles.switchRow}>
           <View style={styles.ticketCopy}>
@@ -592,7 +640,9 @@ export function SupportScreen() {
           <Text style={styles.logoutButtonLabel}>Log out</Text>
         </Pressable>
       </InfoCard>
+      ) : null}
 
+      {activeSection === "work" ? (
       <InfoCard title="Staffing and routing" description="Crew assignment, lead time, reminders, and route access">
         <Text style={styles.meta}>
           {provider?.staffingMode === "auto-accept" ? "Auto accept" : "Review first"} • Review{" "}
@@ -742,7 +792,9 @@ export function SupportScreen() {
           </View>
         ) : null}
       </InfoCard>
+      ) : null}
 
+      {activeSection === "payouts" ? (
       <InfoCard title="Payouts" description={payoutStateLabel}>
         <View style={styles.payoutSummaryGrid}>
           <View style={styles.payoutSummaryItem}>
@@ -862,7 +914,9 @@ export function SupportScreen() {
           </Pressable>
         </View>
       </InfoCard>
+      ) : null}
 
+      {activeSection === "work" ? (
       <InfoCard title="Calendar sync" description="Keep YardMatch work alongside outside clients">
         <Text style={styles.meta}>
           Subscribe to your YardMatch schedule in Apple Calendar or Google Calendar so booked jobs show up
@@ -1130,7 +1184,9 @@ export function SupportScreen() {
           </View>
         ) : null}
       </InfoCard>
+      ) : null}
 
+      {activeSection === "alerts" ? (
       <InfoCard title="Updates" description={`${unreadCount} unread`}>
         {notifications.length > 0 ? (
           <View style={styles.ticketStack}>
@@ -1196,7 +1252,9 @@ export function SupportScreen() {
           </View>
         ) : null}
       </InfoCard>
+      ) : null}
 
+      {activeSection === "alerts" ? (
       <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
         {deliveries.length > 0 ? (
           <View style={styles.ticketStack}>
@@ -1214,7 +1272,9 @@ export function SupportScreen() {
           <Text style={styles.meta}>Nothing sent yet.</Text>
         )}
       </InfoCard>
+      ) : null}
 
+      {activeSection === "help" ? (
       <InfoCard title="Help" description="Get help quickly.">
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
@@ -1318,6 +1378,7 @@ export function SupportScreen() {
           </>
         ) : null}
       </InfoCard>
+      ) : null}
     </ScreenShell>
   );
 }

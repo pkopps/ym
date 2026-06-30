@@ -23,6 +23,15 @@ import { useCustomerSession } from "../session/CustomerSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
+type CustomerAccountSection = "properties" | "alerts" | "security" | "help";
+
+const accountSectionOptions: Array<{ value: CustomerAccountSection; label: string }> = [
+  { value: "properties", label: "Properties" },
+  { value: "alerts", label: "Alerts" },
+  { value: "security", label: "Security" },
+  { value: "help", label: "Help" }
+];
+
 function getEnabledAlertCount(preferences?: NotificationPreferences) {
   if (!preferences) {
     return undefined;
@@ -54,6 +63,7 @@ export function SupportScreen() {
   const [showAlertPreferences, setShowAlertPreferences] = useState(false);
   const [showSupportComposer, setShowSupportComposer] = useState(false);
   const [showSupportHistory, setShowSupportHistory] = useState(false);
+  const [activeSection, setActiveSection] = useState<CustomerAccountSection>("properties");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -61,6 +71,15 @@ export function SupportScreen() {
     useCustomerSession();
   const defaultProperty = properties.find((property) => property.isDefault) ?? properties[0];
   const enabledAlertCount = getEnabledAlertCount(preferences);
+  const sectionSummaries: Record<CustomerAccountSection, string> = {
+    properties: defaultProperty ? `${defaultProperty.label} default` : `${properties.length} saved`,
+    alerts: enabledAlertCount === undefined ? "Loading" : `${enabledAlertCount}/4 on`,
+    security: !biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`,
+    help:
+      supportTickets.length > 0
+        ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}`
+        : "Start a ticket"
+  };
 
   async function loadAccount() {
     if (!envelope?.session.token) {
@@ -298,10 +317,25 @@ export function SupportScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard
-        title="Saved properties"
-        description={defaultProperty ? `${defaultProperty.label} default` : `${properties.length} saved`}
-      >
+      <InfoCard title="Manage" description={sectionSummaries[activeSection]}>
+        <View style={styles.chipWrap}>
+          {accountSectionOptions.map((option) => {
+            const isActive = option.value === activeSection;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => setActiveSection(option.value)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </InfoCard>
+
+      {activeSection === "properties" ? (
+      <InfoCard title="Saved properties" description={sectionSummaries.properties}>
         {properties.length > 0 ? (
           <View style={styles.list}>
             {properties.map((property) => (
@@ -340,8 +374,10 @@ export function SupportScreen() {
           <CustomerPropertyForm isWorking={isWorking} onSubmit={handleCreateProperty} submitLabel="Add property" />
         ) : null}
       </InfoCard>
+      ) : null}
 
-      <InfoCard title="Security" description={biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`}>
+      {activeSection === "security" ? (
+      <InfoCard title="Security" description={sectionSummaries.security}>
         <View style={styles.switchRow}>
           <View style={styles.copy}>
             <Text style={styles.title}>Use {biometricLabel}</Text>
@@ -363,7 +399,9 @@ export function SupportScreen() {
           <Text style={styles.logoutButtonLabel}>Log out</Text>
         </Pressable>
       </InfoCard>
+      ) : null}
 
+      {activeSection === "alerts" ? (
       <InfoCard title="Notifications" description={`${unreadCount} unread`}>
         {notifications.length > 0 ? (
           <View style={styles.list}>
@@ -430,9 +468,9 @@ export function SupportScreen() {
             />
           </View>
         ) : null}
-      </InfoCard>
 
-      <InfoCard title="Sent alerts" description="Recent delivery receipts.">
+        <View style={styles.sectionDivider} />
+        <Text style={styles.sectionHeading}>Sent alerts</Text>
         {deliveries.length > 0 ? (
           <View style={styles.list}>
             {deliveries.slice(0, 4).map((delivery) => (
@@ -452,11 +490,10 @@ export function SupportScreen() {
           <Text style={styles.meta}>Nothing sent yet.</Text>
         )}
       </InfoCard>
+      ) : null}
 
-      <InfoCard
-        title="Help"
-        description={supportTickets.length > 0 ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}` : "Start a ticket."}
-      >
+      {activeSection === "help" ? (
+      <InfoCard title="Help" description={sectionSummaries.help}>
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
           style={showSupportComposer ? styles.linkButton : styles.primaryButton}
@@ -560,6 +597,7 @@ export function SupportScreen() {
           </>
         ) : null}
       </InfoCard>
+      ) : null}
 
       <ArrivalTrackingModal
         onClose={() => {
@@ -643,6 +681,15 @@ const styles = StyleSheet.create({
   meta: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  sectionHeading: {
+    color: BrandTokens.colors.ink,
+    fontSize: 15,
+    fontWeight: "800"
   },
   badge: {
     color: BrandTokens.colors.primaryStrong,

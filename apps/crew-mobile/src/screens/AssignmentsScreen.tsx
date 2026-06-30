@@ -9,6 +9,13 @@ import { useCrewSession } from "../session/CrewSessionContext";
 
 type ViewMode = "upcoming" | "history";
 type CrewAssignment = CrewMatchesResponse["matches"][number];
+type AssignmentNextAction = "start-route" | "today";
+
+interface AssignmentNextStep {
+  action?: AssignmentNextAction;
+  detail: string;
+  label: string;
+}
 
 function formatAssignmentStatus(status: string) {
   return status.replaceAll("-", " ");
@@ -62,6 +69,71 @@ function getAssignmentSummary(assignment: CrewAssignment) {
   return formatAssignmentStatus(assignment.bookingStatus);
 }
 
+function getAssignmentNextStep(assignment: CrewAssignment): AssignmentNextStep {
+  if (assignment.status === "pending-provider-review") {
+    return {
+      detail: "The business owner reviews the crew before the shift is final.",
+      label: "Wait for review"
+    };
+  }
+
+  if (assignment.bookingStatus === "requested") {
+    return {
+      detail: "The business owner still needs to confirm the customer visit.",
+      label: "Wait for confirmation"
+    };
+  }
+
+  if (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt) {
+    return assignment.isAssignedRouteLeader
+      ? {
+          action: "start-route",
+          detail: "Start arrival tracking when you are heading to the property.",
+          label: "Start route"
+        }
+      : {
+          detail: "The route lead starts tracking before the crew heads out.",
+          label: "Wait for route"
+        };
+  }
+
+  if (assignment.bookingStatus === "confirmed" && assignment.onRouteConfirmedAt) {
+    return {
+      action: "today",
+      detail: "Open Today when you arrive to start work and capture proof.",
+      label: "Start work"
+    };
+  }
+
+  if (assignment.bookingStatus === "in-progress") {
+    if (assignment.afterEvidenceCount > 0) {
+      return {
+        action: "today",
+        detail: "Proof is saved. Today has the latest job tools and notes.",
+        label: "Proof saved"
+      };
+    }
+
+    return {
+      action: "today",
+      detail: "Add after-work proof so the business can close the job.",
+      label: "Add proof"
+    };
+  }
+
+  if (assignment.bookingStatus === "completed") {
+    return {
+      detail: "Payout status appears after customer payment clears.",
+      label: "Payout processing"
+    };
+  }
+
+  return {
+    detail: formatAssignmentStatus(assignment.bookingStatus),
+    label: "Review status"
+  };
+}
+
 function AssignmentSummaryGrid({ assignment }: { assignment: CrewAssignment }) {
   return (
     <View style={styles.assignmentSummaryGrid}>
@@ -85,7 +157,17 @@ function AssignmentSummaryGrid({ assignment }: { assignment: CrewAssignment }) {
   );
 }
 
-export function AssignmentsScreen() {
+function AssignmentNextPanel({ step }: { step: AssignmentNextStep }) {
+  return (
+    <View style={styles.nextPanel}>
+      <Text style={styles.nextEyebrow}>Next</Text>
+      <Text style={styles.nextTitle}>{step.label}</Text>
+      <Text style={styles.nextDetail}>{step.detail}</Text>
+    </View>
+  );
+}
+
+export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void }) {
   const { envelope } = useCrewSession();
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
@@ -200,44 +282,51 @@ export function AssignmentsScreen() {
           {acceptedAssignments.length > 0 ? (
             <InfoCard title="Accepted shifts" description={`${acceptedAssignments.length} upcoming`}>
               <View style={styles.list}>
-                {acceptedAssignments.map((assignment) => (
-                  <View key={assignment.id} style={styles.assignmentCard}>
-                    <View style={styles.assignmentHeader}>
-                      <View style={styles.copy}>
-                        <Text style={styles.title}>{assignment.providerCompanyName}</Text>
-                        <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                {acceptedAssignments.map((assignment) => {
+                  const nextStep = getAssignmentNextStep(assignment);
+
+                  return (
+                    <View key={assignment.id} style={styles.assignmentCard}>
+                      <View style={styles.assignmentHeader}>
+                        <View style={styles.copy}>
+                          <Text style={styles.title}>{assignment.providerCompanyName}</Text>
+                          <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                        </View>
+                        <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.bookingStatus)}</Text>
                       </View>
-                      <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.bookingStatus)}</Text>
+                      <AssignmentSummaryGrid assignment={assignment} />
+                      <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
+                      <AssignmentNextPanel step={nextStep} />
+                      <Text style={styles.summary}>{getAssignmentSummary(assignment)}</Text>
+                      <View style={styles.actionStack}>
+                        {nextStep.action === "today" && onOpenToday ? (
+                          <Pressable disabled={isWorking} onPress={onOpenToday} style={styles.primaryButton}>
+                            <Text style={styles.primaryButtonLabel}>Open Today</Text>
+                          </Pressable>
+                        ) : null}
+                        {nextStep.action === "start-route" ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() => void startRoute(assignment)}
+                            style={styles.primaryButton}
+                          >
+                            <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                          </Pressable>
+                        ) : null}
+                        {(assignment.bookingStatus === "requested" ||
+                          (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() => confirmCancelAssignment(assignment.id)}
+                            style={styles.cancelButton}
+                          >
+                            <Text style={styles.cancelButtonLabel}>Cancel assignment</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
                     </View>
-                    <AssignmentSummaryGrid assignment={assignment} />
-                    <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
-                    <Text style={styles.summary}>{getAssignmentSummary(assignment)}</Text>
-                    <View style={styles.copy}>
-                      {assignment.isAssignedRouteLeader ? (
-                        <Text style={styles.meta}>You are the assigned route leader.</Text>
-                      ) : assignment.requiresRouteLeaderAssignment ? (
-                        <Text style={styles.meta}>The business owner still needs to assign a route leader.</Text>
-                      ) : null}
-                      {(assignment.bookingStatus === "requested" ||
-                        (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => confirmCancelAssignment(assignment.id)}
-                          style={styles.cancelButton}
-                        >
-                          <Text style={styles.cancelButtonLabel}>Cancel assignment</Text>
-                        </Pressable>
-                      ) : null}
-                      {assignment.bookingStatus === "confirmed" &&
-                      !assignment.onRouteConfirmedAt &&
-                      assignment.isAssignedRouteLeader ? (
-                        <Pressable disabled={isWorking} onPress={() => void startRoute(assignment)} style={styles.primaryButton}>
-                          <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </InfoCard>
           ) : null}
@@ -256,7 +345,7 @@ export function AssignmentsScreen() {
                     </View>
                     <AssignmentSummaryGrid assignment={assignment} />
                     <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
-                    <Text style={styles.summary}>We will notify you when the business decides.</Text>
+                    <AssignmentNextPanel step={getAssignmentNextStep(assignment)} />
                   </View>
                 ))}
               </View>
@@ -379,6 +468,29 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18
   },
+  nextPanel: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(47, 125, 76, 0.16)",
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: BrandTokens.spacing.xs,
+    padding: BrandTokens.spacing.md
+  },
+  nextEyebrow: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  nextTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 16,
+    fontWeight: "800"
+  },
+  nextDetail: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
   copy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
@@ -405,6 +517,9 @@ const styles = StyleSheet.create({
     paddingVertical: BrandTokens.spacing.xs,
     overflow: "hidden",
     fontWeight: "700"
+  },
+  actionStack: {
+    gap: BrandTokens.spacing.sm
   },
   primaryButton: {
     alignSelf: "flex-start",
