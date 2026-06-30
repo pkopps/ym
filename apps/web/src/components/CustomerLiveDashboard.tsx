@@ -174,6 +174,16 @@ function formatCompletedJobTrustLine(completedJobCount: number) {
     : "New on GreenRain, but already ranked well for service fit, timing, and trust signals.";
 }
 
+type RequestStepStatus = "complete" | "current" | "pending";
+
+function getRequestStepStatus(stepIndex: number, activeStepIndex: number): RequestStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
+}
+
 function formatBookingStatusTitle(booking: Booking) {
   if (booking.onRouteConfirmedAt) {
     return "Crew on the way";
@@ -421,6 +431,26 @@ export function CustomerLiveDashboard() {
   const sectionAdditionalBookAgainOptionCount =
     sectionAdditionalRecurringPlans.length + sectionAdditionalRetentionOpportunities.length;
   const hasCurrentBookAgainOptions = Boolean(sectionSpotlightBookAgainOption) || sectionAdditionalBookAgainOptionCount > 0;
+  const requestActiveStepIndex = recommendedProviderCard ? 3 : providerStepActive ? 2 : quote ? 1 : 0;
+  const requestProgressSteps = [
+    { label: "Details", value: selectedServiceLabel },
+    { label: "Price", value: quote ? formatCurrency(quote.estimatedPriceCents) : "Next" },
+    {
+      label: "Match",
+      value: recommendedProviderCard
+        ? recommendedProviderCard.provider.companyName
+        : providerSearchState === "loading"
+          ? "Checking"
+          : "After price"
+    },
+    {
+      label: "Book",
+      value: recommendedProviderCard?.slot ? formatOpenWindow(recommendedProviderCard.slot) : "Review"
+    }
+  ].map((step, index) => ({
+    ...step,
+    status: getRequestStepStatus(index, requestActiveStepIndex)
+  }));
 
   function replaceDashboardSearchParams(nextValues: Record<string, string | undefined>) {
     if (typeof window === "undefined") {
@@ -1252,7 +1282,7 @@ export function CustomerLiveDashboard() {
   function renderRequestDetailsEditor(buttonLabel: string) {
     return (
       <>
-        <p>Pick the service, timing, and repeat schedule.</p>
+        <p>Pick the job, timing, and repeat schedule.</p>
         <div className="form-grid">
           <label className="form-field">
             <span>Property</span>
@@ -1340,6 +1370,46 @@ export function CustomerLiveDashboard() {
           </p>
         ) : null}
       </>
+    );
+  }
+
+  function renderRequestProgress() {
+    return (
+      <section className="customer-request-spine" aria-label="Request progress">
+        <ol className="customer-request-spine__steps">
+          {requestProgressSteps.map((step, index) => (
+            <li
+              aria-current={step.status === "current" ? "step" : undefined}
+              className={`customer-request-spine__step customer-request-spine__step--${step.status}`}
+              key={step.label}
+            >
+              <span className="customer-request-spine__index">{index + 1}</span>
+              <div>
+                <strong>{step.label}</strong>
+                <small>{step.value}</small>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <div className="customer-request-spine__summary" aria-label="Current request">
+          <div>
+            <span>Service</span>
+            <strong>{selectedServiceLabel}</strong>
+          </div>
+          <div>
+            <span>When</span>
+            <strong>{timingLabel}</strong>
+          </div>
+          <div>
+            <span>Property</span>
+            <strong>{activeProperty?.label ?? "Choose property"}</strong>
+          </div>
+          <div>
+            <span>Price</span>
+            <strong>{quote ? formatCurrency(quote.estimatedPriceCents) : "After details"}</strong>
+          </div>
+        </div>
+      </section>
     );
   }
 
@@ -2004,11 +2074,13 @@ export function CustomerLiveDashboard() {
 
       {requestFlowActive ? (
         <>
+          {renderRequestProgress()}
+
           <section className="stack-lg">
             <article className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>Choose the job</h2>
+                  <h2>Service details</h2>
                   {quote ? (
                     <p>
                       {selectedServiceLabel} • {timingLabel} • {selectedCadenceLabel}
@@ -2038,40 +2110,34 @@ export function CustomerLiveDashboard() {
 
             {quote ? (
               <article className="card">
-                <h2>Price</h2>
-                {providerStepActive ? (
-                  <>
-                    <p>
-                      {formatCurrency(quote.estimatedPriceCents)} • {quote.estimatedDurationMinutes} minutes •{" "}
-                      {quote.confidenceTier} confidence
-                    </p>
-                    <p>
-                      Turf {quote.measurements.turfSqFt} sq ft • Shrubs {quote.measurements.shrubBedSqFt} sq ft
-                    </p>
-                  </>
-                ) : (
-                  <div className="stack-lg" style={{ paddingBottom: 0 }}>
-                    <article className="list-panel">
-                      <h3>{formatCurrency(quote.estimatedPriceCents)}</h3>
-                      <p>
-                        {quote.estimatedDurationMinutes} minutes • {quote.confidenceTier} confidence
-                      </p>
-                    </article>
-                    <article className="list-panel">
-                      <h3>Property estimate</h3>
-                      <p>
-                        Turf {quote.measurements.turfSqFt} sq ft • Shrubs {quote.measurements.shrubBedSqFt} sq ft
-                      </p>
-                    </article>
+                <div className="search-result-title">
+                  <div>
+                    <h2>Price</h2>
+                    <p>{quote.estimateSummary}</p>
                   </div>
-                )}
+                  <strong>{formatCurrency(quote.estimatedPriceCents)}</strong>
+                </div>
+                <div className="customer-request-summary-grid" aria-label="Price summary">
+                  <div>
+                    <span>Visit</span>
+                    <strong>{formatCurrency(quote.estimatedPriceCents)}</strong>
+                  </div>
+                  <div>
+                    <span>Time</span>
+                    <strong>{quote.estimatedDurationMinutes} min</strong>
+                  </div>
+                  <div>
+                    <span>Confidence</span>
+                    <strong>{quote.confidenceTier}</strong>
+                  </div>
+                  <div>
+                    <span>Yard size</span>
+                    <strong>{quote.measurements.turfSqFt} sq ft</strong>
+                  </div>
+                </div>
                 <details className="service-card-disclosure">
                   <summary className="service-card-disclosure__summary">Estimate details</summary>
                   <div className="service-card-disclosure__body">
-                    <article className="list-panel">
-                      <h3>Summary</h3>
-                      <p>{quote.estimateSummary}</p>
-                    </article>
                     <article className="list-panel">
                       <h3>Confidence notes</h3>
                       <p>{quote.normalizedAddress.displayLabel}</p>
@@ -2113,7 +2179,17 @@ export function CustomerLiveDashboard() {
 
           {providerStepActive ? (
             <section className="card">
-              <h2>{recommendedProviderCard ? "Ready to book" : "Best fit"}</h2>
+              <div className="search-result-title">
+                <div>
+                  <h2>{recommendedProviderCard ? "Ready to book" : "Best fit"}</h2>
+                  <p>Review the recommended provider and book the open route window.</p>
+                </div>
+                {providerResults ? (
+                  <span className="result-badge result-badge--neutral">
+                    {providerCards.length} option{providerCards.length === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </div>
               {providerSearchState === "loading" ? (
                 <article className="list-panel">
                   <h3>Checking the best fit</h3>
@@ -2156,12 +2232,20 @@ export function CustomerLiveDashboard() {
                     </article>
                   ) : null}
                   {recommendedProviderCard ? (
-                    <article className="list-panel customer-booking-review">
+                    <article className="list-panel customer-booking-review customer-booking-review--recommended">
                       <div className="search-result-title">
-                        <h3>{recommendedProviderCard.provider.companyName}</h3>
-                        <span className="result-badge">
-                          {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
-                        </span>
+                        <div>
+                          <span className="eyebrow">Recommended match</span>
+                          <h3>{recommendedProviderCard.provider.companyName}</h3>
+                        </div>
+                        <div className="chip-row">
+                          <span className="result-badge">
+                            {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
+                          </span>
+                          <span className="result-badge result-badge--neutral">
+                            {recommendedProviderCard.slot ? "Open route window" : "Route full"}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="customer-booking-review__grid" aria-label="Booking summary">
@@ -2278,22 +2362,38 @@ export function CustomerLiveDashboard() {
                   ) : null}
                   {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => {
                     return (
-                      <article className="list-panel" key={provider.id}>
+                      <article className="list-panel customer-provider-option" key={provider.id}>
                         <div className="search-result-title">
-                          <h3>{provider.companyName}</h3>
-                          {providerChoicePresentations[index + 1] ? (
-                            <span className="result-badge">{providerChoicePresentations[index + 1].badge}</span>
-                          ) : null}
-                          {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
+                          <div>
+                            <span className="eyebrow">Backup option</span>
+                            <h3>{provider.companyName}</h3>
+                          </div>
+                          <div className="chip-row">
+                            {providerChoicePresentations[index + 1] ? (
+                              <span className="result-badge">{providerChoicePresentations[index + 1].badge}</span>
+                            ) : null}
+                            {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
+                          </div>
                         </div>
-                        <p>
-                          {provider.rating.toFixed(1)} overall • {provider.timelinessRating.toFixed(1)} punctuality
-                        </p>
                         {providerChoicePresentations[index + 1] ? <p>{providerChoicePresentations[index + 1].detail}</p> : null}
-                        <p>
-                          Radius {provider.serviceRadiusMiles} miles •{" "}
-                          {formatOpenWindow(slot)}
-                        </p>
+                        <div className="live-provider-card__booking-strip" aria-label="Provider option summary">
+                          <div>
+                            <span>Opening</span>
+                            <strong>{formatOpenWindow(slot)}</strong>
+                          </div>
+                          <div>
+                            <span>Trust</span>
+                            <strong>{provider.rating.toFixed(1)} • {provider.reviewCount} reviews</strong>
+                          </div>
+                          <div>
+                            <span>Distance</span>
+                            <strong>
+                              {ranking
+                                ? `${ranking.distanceMiles.toFixed(1)} mi`
+                                : `${provider.serviceRadiusMiles} mi radius`}
+                            </strong>
+                          </div>
+                        </div>
                         {ranking || providerChoicePresentations[index + 1] ? (
                           <details className="service-card-disclosure">
                             <summary className="service-card-disclosure__summary">Why this option</summary>

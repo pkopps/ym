@@ -4,7 +4,7 @@ import { ProviderPaymentsBoard } from "../../../components/ProviderPaymentsBoard
 export const metadata: Metadata = {
   title: "Payments",
   description:
-    "Manage weekly direct deposits, instant cash-outs, and payout accounts for provider operations."
+    "Review provider earnings, payout holds, crew reserves, and weekly payout timing."
 };
 
 export default function ProviderPaymentsPage() {
@@ -14,8 +14,8 @@ export default function ProviderPaymentsPage() {
         <div className="search-result-title">
           <div>
             <span className="eyebrow">Payments</span>
-            <h1>Run crew payouts with weekly deposits and instant cash-out.</h1>
-            <p>Completed-service earnings default to weekly direct deposit, with instant cash-out available whenever you need funds sooner.</p>
+            <h1>Know what is earned, held, ready, and paid.</h1>
+            <p>Track completed-service earnings, crew reserves, payout holds, and the next weekly deposit in one place.</p>
           </div>
           <div className="cta-row">
             <a className="button" href="/provider/management">

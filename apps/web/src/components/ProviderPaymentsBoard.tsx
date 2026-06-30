@@ -20,6 +20,7 @@ function formatDateTime(iso: string) {
 }
 
 type ProviderPayoutEntry = ProviderPayoutLedgerResponse["entries"][number];
+type PayoutStepStatus = "complete" | "current" | "pending";
 
 function formatPayoutStatus(status: ProviderPayoutEntry["status"]) {
   switch (status) {
@@ -48,6 +49,14 @@ function getPayoutStatusClass(status: ProviderPayoutEntry["status"]) {
   }
 
   return "provider-staffing-badge";
+}
+
+function getPayoutStepStatus(stepIndex: number, activeStepIndex: number): PayoutStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
 export function ProviderPaymentsBoard() {
@@ -94,6 +103,39 @@ export function ProviderPaymentsBoard() {
   const blockedAmountCents = (ledger?.pendingCustomerPaymentCents ?? 0) + heldProviderNetCents;
   const payoutStateLabel =
     blockedAmountCents > 0 ? "Needs attention" : (ledger?.totalNetReadyCents ?? 0) > 0 ? "Ready now" : "On track";
+  const paidEntries = ledger?.entries.filter((entry) => entry.status === "paid") ?? [];
+  const activePayoutStepIndex = (() => {
+    if (blockedAmountCents > 0 || crewQueueEntries.length > 0) {
+      return 1;
+    }
+
+    if ((ledger?.totalNetReadyCents ?? 0) > 0) {
+      return 2;
+    }
+
+    return paidEntries.length > 0 ? 3 : 0;
+  })();
+  const payoutSteps = [
+    {
+      label: "Earned",
+      value: formatCurrency(ledger?.totalGrossCapturedCents ?? 0)
+    },
+    {
+      label: "Hold",
+      value: blockedAmountCents > 0 ? formatCurrency(blockedAmountCents) : `${ledger?.payoutSchedule?.holdPeriodHours ?? 0}h`
+    },
+    {
+      label: "Ready",
+      value: formatCurrency(ledger?.totalNetReadyCents ?? 0)
+    },
+    {
+      label: "Paid",
+      value: `${paidEntries.length} job${paidEntries.length === 1 ? "" : "s"}`
+    }
+  ].map((step, index) => ({
+    ...step,
+    status: getPayoutStepStatus(index, activePayoutStepIndex)
+  }));
 
   if (!sessionReady) {
     return (
@@ -132,11 +174,23 @@ export function ProviderPaymentsBoard() {
           <div>
             <span className="eyebrow">Payouts</span>
             <h2>{payoutStateLabel}</h2>
-            <p>Completed jobs, crew share, holds, and weekly payout timing in one place.</p>
+            <p>Completed jobs, holds, crew reserve, and weekly payout timing.</p>
           </div>
           <span className={blockedAmountCents > 0 ? "result-badge result-badge--neutral" : "result-badge"}>
             {ledger?.entries.length ?? 0} entries
           </span>
+        </div>
+
+        <div className="provider-payout-spine" aria-label="Payout path">
+          {payoutSteps.map((step, index) => (
+            <div className={`provider-payout-spine__step provider-payout-spine__step--${step.status}`} key={step.label}>
+              <span className="provider-payout-spine__index">{index + 1}</span>
+              <div>
+                <strong>{step.label}</strong>
+                <small>{step.value}</small>
+              </div>
+            </div>
+          ))}
         </div>
 
         <div className="provider-payment-summary-grid" aria-label="Payout summary">
@@ -146,7 +200,7 @@ export function ProviderPaymentsBoard() {
             <p>
               {ledger?.payoutSchedule.instantPayoutsEnabled
                 ? `${formatCurrency(ledger.payoutSchedule.instantPayoutEligibleCents)} instant eligible`
-                : "Queued for weekly payout"}
+                : "Weekly payout"}
             </p>
           </div>
           <div>

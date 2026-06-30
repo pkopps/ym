@@ -22,6 +22,7 @@ import { getCustomerMobileTracker } from "../lib/tracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
 type ViewMode = "upcoming" | "past";
+type VisitStepStatus = "complete" | "current" | "pending";
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -40,6 +41,14 @@ function formatPrice(cents: number) {
 
 function addOneDay(iso: string) {
   return new Date(new Date(iso).getTime() + 24 * 60 * 60 * 1000).toISOString();
+}
+
+function getVisitStepStatus(stepIndex: number, activeStepIndex: number): VisitStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
 export function BookingsScreen({
@@ -514,7 +523,7 @@ export function BookingsScreen({
   }
 
   return (
-    <ScreenShell eyebrow="Bookings" title="Your visits" description="Upcoming and past visits.">
+    <ScreenShell eyebrow="Bookings" title="Your visits" description="Pay, track, review.">
       <View style={styles.modeRow}>
         <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
         <ModeButton active={viewMode === "past"} label="Past" onPress={() => setViewMode("past")} />
@@ -559,6 +568,8 @@ export function BookingsScreen({
                         tone={booking.status === "disputed" ? "warning" : "success"}
                       />
                     </View>
+
+                    <VisitLifecycle booking={booking} payment={payment} paymentLabel={getPaymentLabel(payment)} />
 
                     <View style={styles.visitSummaryGrid}>
                       <View style={styles.visitSummaryItem}>
@@ -886,6 +897,75 @@ function StatusBadge({
   );
 }
 
+function VisitLifecycle({
+  booking,
+  payment,
+  paymentLabel
+}: {
+  booking: Booking;
+  payment?: PaymentRecord;
+  paymentLabel: string;
+}) {
+  const isPaid = payment?.status === "captured" || payment?.status === "refunded";
+  const activeStepIndex =
+    booking.status === "completed"
+      ? 3
+      : booking.onRouteConfirmedAt || booking.status === "in-progress"
+        ? 2
+        : isPaid
+          ? 2
+          : 1;
+  const arrivalValue =
+    booking.onRouteConfirmedAt
+      ? "On the way"
+      : booking.status === "in-progress"
+        ? "Working"
+        : isPaid
+          ? "Waiting"
+          : "After pay";
+  const steps = [
+    {
+      label: "Booked",
+      value: booking.status === "requested" ? "Requested" : "Confirmed"
+    },
+    {
+      label: "Pay",
+      value: paymentLabel
+    },
+    {
+      label: "Arrival",
+      value: arrivalValue
+    },
+    {
+      label: "Review",
+      value: booking.status === "completed" ? "Ready" : "After visit"
+    }
+  ].map((step, index) => ({
+    ...step,
+    status: getVisitStepStatus(index, activeStepIndex)
+  }));
+
+  return (
+    <View style={styles.visitPath} accessibilityLabel="Visit progress">
+      {steps.map((step, index) => (
+        <View key={step.label} style={[styles.visitPathStep, styles[`visitPathStep_${step.status}`]]}>
+          <View style={[styles.visitPathIndex, styles[`visitPathIndex_${step.status}`]]}>
+            <Text style={[styles.visitPathIndexLabel, styles[`visitPathIndexLabel_${step.status}`]]}>
+              {index + 1}
+            </Text>
+          </View>
+          <View style={styles.visitPathCopy}>
+            <Text style={styles.visitPathLabel}>{step.label}</Text>
+            <Text numberOfLines={2} style={styles.visitPathValue}>
+              {step.value}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function RatingField({
   label,
   rating,
@@ -960,6 +1040,79 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: BrandTokens.spacing.md
+  },
+  visitPath: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  visitPathStep: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 74,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: BrandTokens.spacing.sm,
+    padding: BrandTokens.spacing.sm
+  },
+  visitPathStep_complete: {
+    borderColor: "rgba(47, 125, 76, 0.16)"
+  },
+  visitPathStep_current: {
+    borderColor: "rgba(47, 125, 76, 0.36)",
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  visitPathStep_pending: {
+    opacity: 0.82
+  },
+  visitPathIndex: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  visitPathIndex_complete: {
+    backgroundColor: "rgba(47, 125, 76, 0.14)"
+  },
+  visitPathIndex_current: {
+    backgroundColor: BrandTokens.colors.primary
+  },
+  visitPathIndex_pending: {
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  visitPathIndexLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  visitPathIndexLabel_complete: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  visitPathIndexLabel_current: {
+    color: "#ffffff"
+  },
+  visitPathIndexLabel_pending: {
+    color: BrandTokens.colors.inkSoft
+  },
+  visitPathCopy: {
+    flex: 1,
+    gap: 2
+  },
+  visitPathLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  visitPathValue: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    lineHeight: 16
   },
   visitSummaryGrid: {
     flexDirection: "row",

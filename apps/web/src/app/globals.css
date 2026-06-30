@@ -267,6 +267,12 @@ body {
   flex: 0 0 auto;
 }
 
+.brand-lockup__mark-text {
+  color: var(--ym-color-primary-strong);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
 .brand-lockup__mark-image {
   display: block;
   width: 2.25rem;
@@ -2565,11 +2571,65 @@ body {
 .provider-payment-card-stack,
 .provider-add-card-form,
 .provider-payment-overview,
+.provider-payout-spine,
 .provider-payment-summary-grid,
 .provider-payout-settings,
 .provider-wallet-note {
   display: grid;
   gap: var(--ym-space-4);
+}
+
+.provider-payout-spine {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.provider-payout-spine__step {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 4.4rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.provider-payout-spine__step--current {
+  border-color: rgba(47, 125, 76, 0.32);
+  background: rgba(47, 125, 76, 0.08);
+}
+
+.provider-payout-spine__index {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(20, 40, 29, 0.08);
+  color: var(--ym-color-ink);
+  font-weight: 800;
+}
+
+.provider-payout-spine__step--complete .provider-payout-spine__index {
+  background: rgba(47, 125, 76, 0.15);
+  color: var(--ym-color-primary-strong);
+}
+
+.provider-payout-spine__step--current .provider-payout-spine__index {
+  background: var(--ym-color-primary);
+  color: #ffffff;
+}
+
+.provider-payout-spine__step strong,
+.provider-payout-spine__step small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.provider-payout-spine__step small {
+  color: var(--ym-color-muted);
 }
 
 .provider-payment-summary-grid {
@@ -3357,7 +3417,120 @@ body {
   margin: 0;
 }
 
+.customer-request-spine {
+  display: grid;
+  gap: var(--ym-space-3);
+  padding: var(--ym-space-4);
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(240, 234, 220, 0.82));
+  box-shadow: var(--ym-shadow-soft);
+}
+
+.customer-request-spine__steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.customer-request-spine__step {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  min-height: 4.25rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.customer-request-spine__step strong,
+.customer-request-spine__step small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.customer-request-spine__step small {
+  color: var(--ym-color-muted);
+}
+
+.customer-request-spine__index {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: rgba(20, 40, 29, 0.08);
+  color: var(--ym-color-ink);
+  font-weight: 800;
+}
+
+.customer-request-spine__step--complete .customer-request-spine__index {
+  background: rgba(47, 125, 76, 0.15);
+  color: var(--ym-color-primary-strong);
+}
+
+.customer-request-spine__step--current {
+  border-color: rgba(47, 125, 76, 0.32);
+  background: rgba(47, 125, 76, 0.08);
+}
+
+.customer-request-spine__step--current .customer-request-spine__index {
+  background: var(--ym-color-primary);
+  color: #ffffff;
+}
+
+.customer-request-spine__summary,
+.customer-request-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.customer-request-spine__summary div,
+.customer-request-summary-grid div {
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.2rem;
+  padding: 0.85rem;
+  border: 1px solid rgba(20, 40, 29, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.customer-request-spine__summary span,
+.customer-request-summary-grid span {
+  color: var(--ym-color-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.customer-request-spine__summary strong,
+.customer-request-summary-grid strong {
+  color: var(--ym-color-ink);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
 .customer-booking-review {
+  gap: var(--ym-space-4);
+}
+
+.customer-booking-review--recommended {
+  border-color: rgba(47, 125, 76, 0.3);
+  box-shadow:
+    0 0 0 0.25rem rgba(47, 125, 76, 0.08),
+    var(--ym-shadow-soft);
+}
+
+.customer-provider-option {
+  display: grid;
   gap: var(--ym-space-4);
 }
 
@@ -4164,10 +4337,14 @@ body {
   .customer-search-shell__custom-date,
   .property-guide__grid,
   .history-card__grid,
+  .customer-request-spine__steps,
+  .customer-request-spine__summary,
+  .customer-request-summary-grid,
   .arrival-tracking__details,
   .crew-opportunity-card__grid,
   .crew-signup-review__grid,
   .provider-payment-summary-grid,
+  .provider-payout-spine,
   .crew-calendar-board__shell,
   .crew-calendar-board__days,
   .crew-schedule-grid,
@@ -4306,6 +4483,8 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .customer-request-spine__summary div,
+  .customer-request-summary-grid div,
   .customer-booking-review__grid div {
     min-height: auto;
   }

@@ -146,8 +146,8 @@ export function ProviderSiteHeader() {
     <header className="site-header provider-site-header">
       <div className="container site-header__inner provider-site-header__inner">
         <a href="/provider" className="brand-lockup">
-          <span className="brand-lockup__mark">YM</span>
-          <span>
+          <span className="brand-lockup__mark-frame brand-lockup__mark-text">YM</span>
+          <span className="brand-lockup__wordmark">
             <strong>YardMatch for Businesses</strong>
             <small>Clients, crews, and schedules in one place</small>
           </span>

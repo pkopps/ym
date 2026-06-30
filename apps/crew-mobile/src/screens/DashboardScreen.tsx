@@ -10,6 +10,7 @@ import { useCrewSession } from "../session/CrewSessionContext";
 
 type CrewAssignment = CrewMatchesResponse["matches"][number];
 type CrewPrimaryAction = "start-work" | "proof";
+type ShiftStepStatus = "complete" | "current" | "pending";
 
 function formatShiftWindow(iso: string) {
   const date = new Date(iso);
@@ -50,6 +51,14 @@ function getCrewPrimaryAction(assignment: CrewAssignment): CrewPrimaryAction | u
   return undefined;
 }
 
+function getShiftStepStatus(stepIndex: number, activeStepIndex: number): ShiftStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
+}
+
 export function DashboardScreen({
   onOpenAvailability,
   onOpenSchedule
@@ -73,6 +82,37 @@ export function DashboardScreen({
   const acceptedPrimaryAction = acceptedMatch ? getCrewPrimaryAction(acceptedMatch) : undefined;
   const pendingCount = matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0;
   const acceptedCount = matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0;
+  const activeShiftStepIndex =
+    acceptedMatch?.bookingStatus === "in-progress"
+      ? 3
+      : acceptedMatch?.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt
+        ? 2
+        : acceptedMatch?.bookingStatus === "confirmed"
+          ? 1
+          : 0;
+  const shiftSteps = [
+    {
+      label: "Accepted",
+      value: acceptedMatch ? formatShiftWindow(acceptedMatch.scheduledStartIso) : "Waiting"
+    },
+    {
+      label: "Route",
+      value: acceptedMatch?.onRouteConfirmedAt ? "Live" : "Next"
+    },
+    {
+      label: "Work",
+      value: acceptedMatch?.bookingStatus === "in-progress" ? "Started" : "Start onsite"
+    },
+    {
+      label: "Proof",
+      value: acceptedMatch
+        ? `${acceptedMatch.beforeEvidenceCount + acceptedMatch.afterEvidenceCount} saved`
+        : "Photos"
+    }
+  ].map((step, index) => ({
+    ...step,
+    status: getShiftStepStatus(index, activeShiftStepIndex)
+  }));
 
   async function loadMatches() {
     if (!envelope?.session.token) {
@@ -281,6 +321,22 @@ export function DashboardScreen({
           title={acceptedMatch.providerCompanyName}
           description="Accepted shift"
         >
+          <View style={styles.shiftPath}>
+            {shiftSteps.map((step, index) => (
+              <View key={step.label} style={[styles.shiftPathStep, styles[`shiftPathStep_${step.status}`]]}>
+                <View style={[styles.shiftPathIndex, styles[`shiftPathIndex_${step.status}`]]}>
+                  <Text style={[styles.shiftPathIndexLabel, styles[`shiftPathIndexLabel_${step.status}`]]}>
+                    {index + 1}
+                  </Text>
+                </View>
+                <View style={styles.shiftPathCopy}>
+                  <Text style={styles.shiftPathLabel}>{step.label}</Text>
+                  <Text numberOfLines={2} style={styles.shiftPathValue}>{step.value}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
           <Text style={styles.title}>{acceptedMatch.category.replaceAll("-", " ")}</Text>
           <Text style={styles.meta}>{acceptedMatch.serviceAddress.line1}</Text>
           <Text style={styles.meta}>
@@ -479,6 +535,79 @@ export function DashboardScreen({
 }
 
 const styles = StyleSheet.create({
+  shiftPath: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  shiftPathStep: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 74,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: BrandTokens.spacing.sm,
+    padding: BrandTokens.spacing.sm
+  },
+  shiftPathStep_complete: {
+    borderColor: "rgba(47, 125, 76, 0.16)"
+  },
+  shiftPathStep_current: {
+    borderColor: "rgba(47, 125, 76, 0.36)",
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  shiftPathStep_pending: {
+    opacity: 0.82
+  },
+  shiftPathIndex: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  shiftPathIndex_complete: {
+    backgroundColor: "rgba(47, 125, 76, 0.14)"
+  },
+  shiftPathIndex_current: {
+    backgroundColor: BrandTokens.colors.primary
+  },
+  shiftPathIndex_pending: {
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  shiftPathIndexLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  shiftPathIndexLabel_complete: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  shiftPathIndexLabel_current: {
+    color: "#ffffff"
+  },
+  shiftPathIndexLabel_pending: {
+    color: BrandTokens.colors.inkSoft
+  },
+  shiftPathCopy: {
+    flex: 1,
+    gap: 2
+  },
+  shiftPathLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  shiftPathValue: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    lineHeight: 16
+  },
   title: {
     color: BrandTokens.colors.ink,
     fontWeight: "700"

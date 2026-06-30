@@ -40,6 +40,7 @@ export function DashboardScreen({
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
 
+  const totalJobs = overview?.jobs.length ?? 0;
   const totalAssignedCrew = useMemo(
     () => overview?.jobs.reduce((sum, job) => sum + job.assignedCrewMembers, 0) ?? 0,
     [overview]
@@ -81,6 +82,15 @@ export function DashboardScreen({
 
     return true;
   });
+  const readyJobs = (overview?.jobs ?? []).filter((job) => job.crewGap === 0).length;
+  const nextActionLabel =
+    primaryCardKind === "staffing"
+      ? "Review staffing"
+      : primaryCardKind === "departure"
+        ? "Open schedule"
+        : primaryCardKind === "job"
+          ? "Review next job"
+          : "Open schedule";
 
   async function loadOverview() {
     if (!envelope?.session.token) {
@@ -101,8 +111,45 @@ export function DashboardScreen({
   }, [envelope?.session.token]);
 
   return (
-    <ScreenShell eyebrow="Home" title="Home" description="See what matters now.">
+    <ScreenShell eyebrow="Provider" title="Today" description="One priority, then the route.">
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
+      <View style={styles.opsSummaryCard}>
+        <View style={styles.opsSummaryHeader}>
+          <View>
+            <Text style={styles.opsSummaryEyebrow}>Route health</Text>
+            <Text style={styles.opsSummaryTitle}>{totalCrewGap > 0 ? "Staffing first" : "Route ready"}</Text>
+          </View>
+          <Text style={totalCrewGap > 0 ? styles.warningBadge : styles.successBadge}>
+            {nextActionLabel}
+          </Text>
+        </View>
+        <View style={styles.opsSummaryGrid}>
+          <View style={styles.opsSummaryItem}>
+            <Text style={styles.opsSummaryLabel}>Jobs</Text>
+            <Text style={styles.opsSummaryValue}>{totalJobs}</Text>
+          </View>
+          <View style={styles.opsSummaryItem}>
+            <Text style={styles.opsSummaryLabel}>Ready</Text>
+            <Text style={styles.opsSummaryValue}>{readyJobs}</Text>
+          </View>
+          <View style={styles.opsSummaryItem}>
+            <Text style={styles.opsSummaryLabel}>Crew gap</Text>
+            <Text style={styles.opsSummaryValue}>{totalCrewGap}</Text>
+          </View>
+          <View style={styles.opsSummaryItem}>
+            <Text style={styles.opsSummaryLabel}>Assigned</Text>
+            <Text style={styles.opsSummaryValue}>{totalAssignedCrew}</Text>
+          </View>
+        </View>
+        {nextJob ? (
+          <Text style={styles.opsSummaryMeta}>
+            Next: {nextJob.customerName} • {formatJobWindow(nextJob.scheduledStartIso)}
+          </Text>
+        ) : (
+          <Text style={styles.opsSummaryMeta}>No route work is waiting right now.</Text>
+        )}
+      </View>
 
       {primaryCardKind === "staffing" ? (
         <InfoCard title="Crew gap" description={`${totalCrewGap} open crew slots across upcoming jobs`}>
@@ -241,6 +288,62 @@ function ProviderJobSnapshot({
 }
 
 const styles = StyleSheet.create({
+  opsSummaryCard: {
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(20, 40, 29, 0.08)",
+    backgroundColor: BrandTokens.colors.card,
+    padding: BrandTokens.spacing.lg,
+    gap: BrandTokens.spacing.md
+  },
+  opsSummaryHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
+  },
+  opsSummaryEyebrow: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  opsSummaryTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 20,
+    fontWeight: "800",
+    lineHeight: 24
+  },
+  opsSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  opsSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  opsSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  opsSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 20,
+    fontWeight: "800",
+    lineHeight: 24
+  },
+  opsSummaryMeta: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
   alertText: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 21

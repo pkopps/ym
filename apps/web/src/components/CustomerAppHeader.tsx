@@ -48,8 +48,8 @@ export function CustomerAppHeader() {
     <header className="app-header">
       <div className="container app-header__inner">
         <a className="brand-lockup" href="/customer/dashboard">
-          <span className="brand-lockup__mark">YM</span>
-          <span>
+          <span className="brand-lockup__mark-frame brand-lockup__mark-text">YM</span>
+          <span className="brand-lockup__wordmark">
             <strong>YardMatch</strong>
             <small>{currentSectionLabel}</small>
           </span>

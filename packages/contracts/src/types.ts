@@ -1924,8 +1924,8 @@ function buildRecommendedChoicePresentation(
     badge: "Recommended for this property",
     heading: "Best overall match",
     detail: result.hasOpenSlot
-      ? "GreenRain picked this provider for service fit, trust history, and a real route opening."
-      : "GreenRain picked this provider as the strongest overall fit, even though the near-term route window is currently full."
+      ? "YardMatch picked this provider for service fit, trust history, and a real route opening."
+      : "YardMatch picked this provider as the strongest overall fit, even though the near-term route window is currently full."
   };
 }
 

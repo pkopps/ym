@@ -36,6 +36,8 @@ type CustomerTimingPreference =
   | "day-after-morning"
   | "day-after-afternoon";
 
+type RequestStepStatus = "complete" | "current" | "pending";
+
 const customerTimingOptions: Array<{ value: CustomerTimingPreference; label: string }> = [
   { value: "tomorrow-morning", label: "Tomorrow morning" },
   { value: "tomorrow-afternoon", label: "Tomorrow afternoon" },
@@ -70,6 +72,14 @@ function formatOpenWindow(slot?: AvailabilitySlot) {
 
 function formatProviderTrust(provider: SearchProviderResult["provider"]) {
   return `${provider.rating.toFixed(1)} stars • ${provider.reviewCount} reviews`;
+}
+
+function getRequestStepStatus(stepIndex: number, activeStepIndex: number): RequestStepStatus {
+  if (stepIndex < activeStepIndex) {
+    return "complete";
+  }
+
+  return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
 function getCompanyInitials(companyName: string) {
@@ -330,15 +340,65 @@ export function BookServiceScreen() {
   const recommendedProviderCard = shortlist[0];
   const alternativeProviderCards = shortlist.slice(1);
   const providersWithWindows = providerCards.filter((item) => item.slot);
+  const activeStepIndex = recommendedProviderCard ? 3 : quote ? 2 : 0;
+  const requestSteps = [
+    { label: "Details", value: activeProperty?.label ?? "Property" },
+    { label: "Price", value: quote ? formatPrice(quote.estimatedPriceCents) : "Next" },
+    {
+      label: "Match",
+      value: recommendedProviderCard
+        ? recommendedProviderCard.provider.companyName
+        : searchState === "loading"
+          ? "Checking"
+          : "After price"
+    },
+    {
+      label: "Book",
+      value: recommendedProviderCard?.slot ? formatOpenWindow(recommendedProviderCard.slot) : "Review"
+    }
+  ].map((step, index) => ({
+    ...step,
+    status: getRequestStepStatus(index, activeStepIndex)
+  }));
 
   return (
     <ScreenShell
       eyebrow="Book"
-      title="Book"
-      description="Price, crew, time."
+      title="Request service"
+      description="Details, price, match, book."
     >
       {message ? <InfoCard title="Booking confirmed" description={message} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+
+      <View style={styles.progressCard}>
+        <View style={styles.progressGrid}>
+          {requestSteps.map((step, index) => (
+            <View key={step.label} style={[styles.progressStep, styles[`progressStep_${step.status}`]]}>
+              <View style={[styles.progressIndex, styles[`progressIndex_${step.status}`]]}>
+                <Text style={[styles.progressIndexLabel, styles[`progressIndexLabel_${step.status}`]]}>
+                  {index + 1}
+                </Text>
+              </View>
+              <View style={styles.progressCopy}>
+                <Text style={styles.progressLabel}>{step.label}</Text>
+                <Text numberOfLines={2} style={styles.progressValue}>
+                  {step.value}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+        <View style={styles.intentSummary}>
+          <View style={styles.intentSummaryItem}>
+            <Text style={styles.intentSummaryLabel}>Service</Text>
+            <Text style={styles.intentSummaryValue}>{selectedServiceLabel}</Text>
+          </View>
+          <View style={styles.intentSummaryItem}>
+            <Text style={styles.intentSummaryLabel}>When</Text>
+            <Text style={styles.intentSummaryValue}>{selectedTimingLabel}</Text>
+          </View>
+        </View>
+      </View>
 
       <InfoCard title="Service" description={selectedServiceLabel}>
         <View style={styles.chipWrap}>
@@ -738,6 +798,113 @@ export function BookServiceScreen() {
 }
 
 const styles = StyleSheet.create({
+  progressCard: {
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: "rgba(20, 40, 29, 0.08)",
+    backgroundColor: BrandTokens.colors.card,
+    padding: BrandTokens.spacing.md,
+    gap: BrandTokens.spacing.md
+  },
+  progressGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  progressStep: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    minHeight: 76,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: BrandTokens.spacing.sm,
+    padding: BrandTokens.spacing.sm
+  },
+  progressStep_complete: {
+    borderColor: "rgba(47, 125, 76, 0.16)"
+  },
+  progressStep_current: {
+    borderColor: "rgba(47, 125, 76, 0.36)",
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  progressStep_pending: {
+    opacity: 0.86
+  },
+  progressIndex: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  progressIndex_complete: {
+    backgroundColor: "rgba(47, 125, 76, 0.14)"
+  },
+  progressIndex_current: {
+    backgroundColor: BrandTokens.colors.primary
+  },
+  progressIndex_pending: {
+    backgroundColor: "rgba(20, 40, 29, 0.08)"
+  },
+  progressIndexLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  progressIndexLabel_complete: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  progressIndexLabel_current: {
+    color: "#ffffff"
+  },
+  progressIndexLabel_pending: {
+    color: BrandTokens.colors.inkSoft
+  },
+  progressCopy: {
+    flex: 1,
+    gap: 2
+  },
+  progressLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  progressValue: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    lineHeight: 16
+  },
+  intentSummary: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  intentSummaryItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    gap: 2
+  },
+  intentSummaryLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  intentSummaryValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 18
+  },
   chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
