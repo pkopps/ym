@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { ProviderStaffingOverview, ProviderStaffingJobSummary } from "@yardmatch/contracts";
+import {
+  ProviderPayoutLedgerResponse,
+  ProviderStaffingOverview,
+  ProviderStaffingJobSummary
+} from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
 import { getProviderMobileTracker } from "../lib/tracking";
 import { useProviderSession } from "../session/ProviderSessionContext";
+
+type ProviderTodayJobAction = "complete" | "confirm" | "schedule";
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -28,6 +34,58 @@ function formatJobStatus(status: string) {
   return status.replaceAll("-", " ");
 }
 
+function formatPayoutDate(iso?: string) {
+  if (!iso) {
+    return "Pending";
+  }
+
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatPayoutStatus(status: ProviderPayoutLedgerResponse["entries"][number]["status"]) {
+  switch (status) {
+    case "awaiting-customer-payment":
+      return "Awaiting payment";
+    case "on-hold":
+      return "On hold";
+    case "scheduled":
+      return "Scheduled";
+    case "ready":
+      return "Ready";
+    case "paid":
+      return "Paid";
+    case "reversed":
+      return "Reversed";
+  }
+}
+
+function getTodayJobAction(job?: ProviderStaffingJobSummary): ProviderTodayJobAction {
+  if (!job) {
+    return "schedule";
+  }
+
+  if (job.status === "requested") {
+    return "confirm";
+  }
+
+  if (job.status === "in-progress" && job.afterEvidenceCount > 0) {
+    return "complete";
+  }
+
+  return "schedule";
+}
+
+function getTodayJobActionLabel(action: ProviderTodayJobAction) {
+  switch (action) {
+    case "confirm":
+      return "Confirm booking";
+    case "complete":
+      return "Complete job";
+    case "schedule":
+      return "Open schedule";
+  }
+}
+
 export function DashboardScreen({
   onOpenCrew,
   onOpenSchedule
@@ -38,7 +96,10 @@ export function DashboardScreen({
   const tracker = getProviderMobileTracker();
   const { envelope } = useProviderSession();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
+  const [payoutLedger, setPayoutLedger] = useState<ProviderPayoutLedgerResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
   const totalJobs = overview?.jobs.length ?? 0;
   const totalAssignedCrew = useMemo(
@@ -83,13 +144,27 @@ export function DashboardScreen({
     return true;
   });
   const readyJobs = (overview?.jobs ?? []).filter((job) => job.crewGap === 0).length;
+  const nextJobAction = getTodayJobAction(nextJob);
+  const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
+  const blockedPayoutCents =
+    (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
+    heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0);
+  const latestPayoutEntry = useMemo(
+    () =>
+      (payoutLedger?.entries ?? [])
+        .slice()
+        .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))[0],
+    [payoutLedger]
+  );
+  const shouldShowPayouts =
+    Boolean(payoutLedger) && ((payoutLedger?.entries.length ?? 0) > 0 || totalJobs > 0);
   const nextActionLabel =
     primaryCardKind === "staffing"
       ? "Review staffing"
       : primaryCardKind === "departure"
-        ? "Open schedule"
+        ? "Start route"
         : primaryCardKind === "job"
-          ? "Review next job"
+          ? getTodayJobActionLabel(nextJobAction)
           : "Open schedule";
 
   async function loadOverview() {
@@ -100,7 +175,12 @@ export function DashboardScreen({
     try {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      setOverview(await api.getProviderStaffingOverview());
+      const [nextOverview, nextPayoutLedger] = await Promise.all([
+        api.getProviderStaffingOverview(),
+        api.getProviderPayoutLedger()
+      ]);
+      setOverview(nextOverview);
+      setPayoutLedger(nextPayoutLedger);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load operations.");
     }
@@ -110,8 +190,72 @@ export function DashboardScreen({
     void loadOverview();
   }, [envelope?.session.token]);
 
+  async function startRoute(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      setStatusMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.markBookingOnRoute({ bookingId });
+      setStatusMessage("Route started. Open Schedule for live tracking and job tools.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function confirmJob(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      setStatusMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.confirmBooking({ bookingId });
+      setStatusMessage("Booking confirmed.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm that booking.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function completeJob(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      setStatusMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.completeBooking({ bookingId });
+      setStatusMessage("Job complete. The customer can review the service.");
+      await loadOverview();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to complete that job.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell eyebrow="Provider" title="Today" description="One priority, then the route.">
+      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       <View style={styles.opsSummaryCard}>
@@ -151,6 +295,46 @@ export function DashboardScreen({
         )}
       </View>
 
+      {shouldShowPayouts && payoutLedger ? (
+        <InfoCard
+          title="Payouts"
+          description={
+            blockedPayoutCents > 0
+              ? `${formatCurrency(blockedPayoutCents)} waiting`
+              : `${formatCurrency(payoutLedger.totalNetReadyCents)} ready`
+          }
+        >
+          <View style={styles.jobSummaryGrid}>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>Ready</Text>
+              <Text style={styles.jobSummaryValue}>{formatCurrency(payoutLedger.totalNetReadyCents)}</Text>
+            </View>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>Next</Text>
+              <Text style={styles.jobSummaryValue}>
+                {formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}
+              </Text>
+            </View>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>Scheduled</Text>
+              <Text style={styles.jobSummaryValue}>{formatCurrency(payoutLedger.totalNetScheduledCents)}</Text>
+            </View>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>Crew</Text>
+              <Text style={styles.jobSummaryValue}>{formatCurrency(payoutLedger.totalCrewOwedCents)}</Text>
+            </View>
+          </View>
+          {latestPayoutEntry ? (
+            <Text style={styles.alertText}>
+              Latest: {latestPayoutEntry.customerName} • {formatCurrency(latestPayoutEntry.providerNetAmountCents)} •{" "}
+              {formatPayoutStatus(latestPayoutEntry.status)}
+            </Text>
+          ) : (
+            <Text style={styles.alertText}>Completed paid jobs will appear here.</Text>
+          )}
+        </InfoCard>
+      ) : null}
+
       {primaryCardKind === "staffing" ? (
         <InfoCard title="Crew gap" description={`${totalCrewGap} open crew slots across upcoming jobs`}>
           <Text style={styles.alertText}>
@@ -178,11 +362,18 @@ export function DashboardScreen({
           description={buildDepartureSummary(departureReminderJob)}
         >
           <Text style={styles.alertText}>
-            Start the route from Schedule when you are ready to head to the property.
+            Start the route when you are ready to head to the property.
           </Text>
           <ProviderJobSnapshot job={departureReminderJob} />
-          <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonLabel}>Open schedule</Text>
+          <Pressable
+            disabled={isWorking}
+            onPress={() => void startRoute(departureReminderJob.bookingId)}
+            style={styles.primaryButton}
+          >
+            <Text style={styles.primaryButtonLabel}>{isWorking ? "Starting..." : "Start route"}</Text>
+          </Pressable>
+          <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>Open schedule</Text>
           </Pressable>
         </InfoCard>
       ) : null}
@@ -190,13 +381,38 @@ export function DashboardScreen({
       {primaryCardKind === "job" && nextJob ? (
         <InfoCard title="Next job" description={buildDepartureSummary(nextJob)}>
           <Text style={styles.alertText}>
-            {nextJob.assignedCrewMembers}/{nextJob.requiredCrewMembers} crew
-            {nextJob.crewGap > 0 ? ` • ${nextJob.crewGap} still open` : " • fully staffed"}
+            {nextJobAction === "confirm"
+              ? "Confirm the request so the customer can pay and track the visit."
+              : nextJobAction === "complete"
+                ? "After-work proof is saved. Complete the job when service is reviewed."
+                : `${nextJob.assignedCrewMembers}/${nextJob.requiredCrewMembers} crew${
+                    nextJob.crewGap > 0 ? ` • ${nextJob.crewGap} still open` : " • fully staffed"
+                  }`}
           </Text>
           <ProviderJobSnapshot job={nextJob} />
-          <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonLabel}>Open schedule</Text>
-          </Pressable>
+          {nextJobAction === "confirm" ? (
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void confirmJob(nextJob.bookingId)}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Confirm booking"}</Text>
+            </Pressable>
+          ) : null}
+          {nextJobAction === "complete" ? (
+            <Pressable
+              disabled={isWorking}
+              onPress={() => void completeJob(nextJob.bookingId)}
+              style={styles.primaryButton}
+            >
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Complete job"}</Text>
+            </Pressable>
+          ) : null}
+          {nextJobAction === "schedule" ? (
+            <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonLabel}>Open schedule</Text>
+            </Pressable>
+          ) : null}
         </InfoCard>
       ) : null}
 

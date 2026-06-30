@@ -300,7 +300,7 @@ export function DashboardScreen({
               <Text style={styles.primaryButtonLabel}>Track arrival</Text>
             </Pressable>
             <Pressable onPress={onOpenBookings} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Open booking</Text>
+              <Text style={styles.secondaryButtonLabel}>Open visit</Text>
             </Pressable>
           </View>
         </InfoCard>
@@ -323,9 +323,7 @@ export function DashboardScreen({
           ) : null}
           <View style={styles.actionStack}>
             <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>
-                {nextBooking.status === "requested" ? "See booking" : "See visit"}
-              </Text>
+              <Text style={styles.primaryButtonLabel}>See visit</Text>
             </Pressable>
             <Pressable onPress={onStartBooking} style={styles.secondaryButton}>
               <Text style={styles.secondaryButtonLabel}>Book another visit</Text>
@@ -359,7 +357,7 @@ export function DashboardScreen({
               <Text style={styles.primaryButtonLabel}>Book this property</Text>
             </Pressable>
             <Pressable onPress={onOpenBookings} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Open bookings</Text>
+              <Text style={styles.secondaryButtonLabel}>Open visits</Text>
             </Pressable>
           </View>
         </InfoCard>

@@ -12,7 +12,7 @@ type TabKey = "dashboard" | "book" | "bookings" | "account";
 const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
   { key: "dashboard", label: "Home", icon: "home" },
   { key: "book", label: "Book", icon: "search" },
-  { key: "bookings", label: "Bookings", icon: "file-text" },
+  { key: "bookings", label: "Visits", icon: "file-text" },
   { key: "account", label: "Account", icon: "user" }
 ];
 
@@ -26,7 +26,7 @@ export function CustomerAppNavigator() {
         onStartBooking={() => setActiveTab("book")}
       />
     ),
-    book: <BookServiceScreen />,
+    book: <BookServiceScreen onOpenBookings={() => setActiveTab("bookings")} />,
     bookings: <BookingsScreen onOpenAccount={() => setActiveTab("account")} />,
     account: <SupportScreen />
   }[activeTab];

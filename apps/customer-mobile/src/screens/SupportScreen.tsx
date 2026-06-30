@@ -484,13 +484,13 @@ export function SupportScreen() {
               })}
             </View>
             <View style={styles.list}>
-              <Text style={styles.meta}>Related booking (optional)</Text>
+              <Text style={styles.meta}>Related visit (optional)</Text>
               <View style={styles.chipWrap}>
                 <Pressable
                   onPress={() => setSelectedBookingId("")}
                   style={[styles.chip, !selectedBookingId && styles.chipActive]}
                 >
-                  <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No booking</Text>
+                  <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No visit</Text>
                 </Pressable>
                 {bookings.slice(0, 4).map((booking) => {
                   const isActive = selectedBookingId === booking.id;

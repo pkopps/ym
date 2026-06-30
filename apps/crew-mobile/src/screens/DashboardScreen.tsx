@@ -2,15 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CrewMatchesResponse } from "@yardmatch/contracts";
+import { CrewMatchesResponse, CrewPayoutLedgerResponse } from "@yardmatch/contracts";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
 type CrewAssignment = CrewMatchesResponse["matches"][number];
+type CrewPayoutEntry = CrewPayoutLedgerResponse["entries"][number];
 type CrewPrimaryAction = "start-route" | "start-work" | "proof";
 type ShiftStepStatus = "complete" | "current" | "pending";
+
+interface CrewNextStep {
+  detail: string;
+  label: string;
+}
 
 function formatShiftWindow(iso: string) {
   const date = new Date(iso);
@@ -25,6 +31,39 @@ function formatHourlyPay(cents: number) {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(cents / 100)}/hr`;
+}
+
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100);
+}
+
+function formatPayoutDate(iso?: string) {
+  if (!iso) {
+    return "Pending";
+  }
+
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatPayoutStatus(status: CrewPayoutEntry["status"]) {
+  switch (status) {
+    case "awaiting-customer-payment":
+      return "Awaiting payment";
+    case "on-hold":
+      return "On hold";
+    case "scheduled":
+      return "Scheduled";
+    case "ready":
+      return "Ready";
+    case "paid":
+      return "Paid";
+    case "reversed":
+      return "Reversed";
+  }
 }
 
 function getCrewRoleLabel(assignment: CrewAssignment) {
@@ -67,6 +106,60 @@ function getShiftStepStatus(stepIndex: number, activeStepIndex: number): ShiftSt
   return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
+function getCrewNextStep(assignment: CrewAssignment, payoutEntry?: CrewPayoutEntry): CrewNextStep {
+  if (payoutEntry) {
+    return {
+      detail: `This shift is ${formatPayoutStatus(payoutEntry.status).toLowerCase()}.`,
+      label: "Pay"
+    };
+  }
+
+  if (assignment.bookingStatus === "completed") {
+    return {
+      detail: "Payout appears after customer payment clears.",
+      label: "Payout processing"
+    };
+  }
+
+  if (assignment.bookingStatus === "in-progress") {
+    if (assignment.afterEvidenceCount > 0) {
+      return {
+        detail: "The business owner completes the job after reviewing proof.",
+        label: "Proof saved"
+      };
+    }
+
+    return {
+      detail: "Add after-work proof so the business can close the job.",
+      label: "Add proof"
+    };
+  }
+
+  if (assignment.bookingStatus === "confirmed" && assignment.onRouteConfirmedAt) {
+    return {
+      detail: "Start work once you are onsite.",
+      label: "Start work"
+    };
+  }
+
+  if (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt) {
+    return assignment.isAssignedRouteLeader
+      ? {
+          detail: "Start the route when you are heading to the property.",
+          label: "Start route"
+        }
+      : {
+          detail: "The route leader starts arrival tracking.",
+          label: "Wait for route"
+        };
+  }
+
+  return {
+    detail: "The business owner still needs to confirm this shift.",
+    label: "Wait for confirmation"
+  };
+}
+
 export function DashboardScreen({
   onOpenAvailability,
   onOpenSchedule
@@ -76,6 +169,7 @@ export function DashboardScreen({
 }) {
   const { envelope } = useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
+  const [payoutLedger, setPayoutLedger] = useState<CrewPayoutLedgerResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
@@ -87,17 +181,40 @@ export function DashboardScreen({
     () => matchesResponse?.matches.find((match) => match.status === "accepted"),
     [matchesResponse]
   );
+  const acceptedPayoutEntry = useMemo(
+    () =>
+      acceptedMatch
+        ? payoutLedger?.entries.find((entry) => entry.bookingId === acceptedMatch.bookingId)
+        : undefined,
+    [acceptedMatch, payoutLedger]
+  );
   const acceptedPrimaryAction = acceptedMatch ? getCrewPrimaryAction(acceptedMatch) : undefined;
+  const acceptedNextStep = acceptedMatch ? getCrewNextStep(acceptedMatch, acceptedPayoutEntry) : undefined;
   const pendingCount = matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0;
   const acceptedCount = matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0;
+  const blockedPayoutCents =
+    (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
+    (payoutLedger?.entries ?? [])
+      .filter((entry) => entry.status === "on-hold")
+      .reduce((sum, entry) => sum + entry.amountCents, 0);
+  const shouldShowPayouts =
+    Boolean(payoutLedger) &&
+    ((payoutLedger?.entries.length ?? 0) > 0 ||
+      (payoutLedger?.totalReadyCents ?? 0) > 0 ||
+      (payoutLedger?.totalScheduledCents ?? 0) > 0 ||
+      (payoutLedger?.totalPaidCents ?? 0) > 0);
   const activeShiftStepIndex =
-    acceptedMatch?.bookingStatus === "in-progress"
-      ? 3
-      : acceptedMatch?.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt
-        ? 2
-        : acceptedMatch?.bookingStatus === "confirmed"
-          ? 1
-          : 0;
+    acceptedPayoutEntry?.status === "paid"
+      ? 5
+      : acceptedMatch?.bookingStatus === "completed"
+        ? 4
+        : acceptedMatch?.bookingStatus === "in-progress"
+          ? 3
+          : acceptedMatch?.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt
+            ? 2
+            : acceptedMatch?.bookingStatus === "confirmed"
+              ? 1
+              : 0;
   const shiftSteps = [
     {
       label: "Accepted",
@@ -116,6 +233,14 @@ export function DashboardScreen({
       value: acceptedMatch
         ? `${acceptedMatch.beforeEvidenceCount + acceptedMatch.afterEvidenceCount} saved`
         : "Photos"
+    },
+    {
+      label: "Pay",
+      value: acceptedPayoutEntry
+        ? formatPayoutStatus(acceptedPayoutEntry.status)
+        : acceptedMatch?.bookingStatus === "completed"
+          ? "Processing"
+          : "After proof"
     }
   ].map((step, index) => ({
     ...step,
@@ -130,7 +255,12 @@ export function DashboardScreen({
     try {
       const api = createCrewMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      setMatchesResponse(await api.getCrewMatches());
+      const [nextMatches, nextPayoutLedger] = await Promise.all([
+        api.getCrewMatches(),
+        api.getCrewPayoutLedger()
+      ]);
+      setMatchesResponse(nextMatches);
+      setPayoutLedger(nextPayoutLedger);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load today’s work.");
     }
@@ -396,9 +526,16 @@ export function DashboardScreen({
           ) : acceptedMatch.requiresRouteLeaderAssignment ? (
             <Text style={styles.meta}>The business owner still needs to choose which accepted crew member leads the route.</Text>
           ) : null}
+          {acceptedNextStep ? (
+            <View style={styles.nextActionCard}>
+              <Text style={styles.nextActionEyebrow}>Next</Text>
+              <Text style={styles.nextActionTitle}>{acceptedNextStep.label}</Text>
+              <Text style={styles.nextActionDetail}>{acceptedNextStep.detail}</Text>
+            </View>
+          ) : null}
           {acceptedPrimaryAction === undefined && acceptedMatch.bookingStatus === "requested" ? (
             <View style={styles.waitingBadge}>
-            <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation.</Text>
+              <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation.</Text>
             </View>
           ) : null}
           {acceptedPrimaryAction === undefined && acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
@@ -554,6 +691,44 @@ export function DashboardScreen({
         </InfoCard>
       )}
 
+      {shouldShowPayouts && payoutLedger ? (
+        <InfoCard
+          title="Pay"
+          description={
+            blockedPayoutCents > 0
+              ? `${formatCurrency(blockedPayoutCents)} waiting`
+              : `${formatCurrency(payoutLedger.totalReadyCents)} ready`
+          }
+        >
+          <View style={styles.shiftSummaryGrid}>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Ready</Text>
+              <Text style={styles.shiftSummaryValue}>{formatCurrency(payoutLedger.totalReadyCents)}</Text>
+            </View>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Next</Text>
+              <Text style={styles.shiftSummaryValue}>{formatPayoutDate(payoutLedger.nextWeeklyPayoutDateIso)}</Text>
+            </View>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Scheduled</Text>
+              <Text style={styles.shiftSummaryValue}>{formatCurrency(payoutLedger.totalScheduledCents)}</Text>
+            </View>
+            <View style={styles.shiftSummaryItem}>
+              <Text style={styles.shiftSummaryLabel}>Paid</Text>
+              <Text style={styles.shiftSummaryValue}>{formatCurrency(payoutLedger.totalPaidCents)}</Text>
+            </View>
+          </View>
+          {acceptedPayoutEntry ? (
+            <Text style={styles.meta}>
+              This shift: {formatCurrency(acceptedPayoutEntry.amountCents)} •{" "}
+              {formatPayoutStatus(acceptedPayoutEntry.status)}
+            </Text>
+          ) : (
+            <Text style={styles.meta}>Completed shifts appear here after proof is saved.</Text>
+          )}
+        </InfoCard>
+      ) : null}
+
       <InfoCard title="Assignments" description={`${acceptedCount} accepted • ${pendingCount} pending`}>
         <Text style={styles.meta}>
           {pendingCount > 0
@@ -681,6 +856,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     lineHeight: 18
+  },
+  nextActionCard: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(47, 125, 76, 0.18)",
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  nextActionEyebrow: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  nextActionTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 22
+  },
+  nextActionDetail: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
   },
   input: {
     borderRadius: BrandTokens.radius.md,

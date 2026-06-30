@@ -23,6 +23,13 @@ import { useCustomerSession } from "../session/CustomerSessionContext";
 
 type ViewMode = "upcoming" | "past";
 type VisitStepStatus = "complete" | "current" | "pending";
+type VisitPrimaryActionKind = "checkout" | "support" | "track";
+
+interface VisitNextStep {
+  action?: VisitPrimaryActionKind;
+  detail: string;
+  label: string;
+}
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -165,7 +172,7 @@ export function BookingsScreen({
           reviewResponse.opportunities[0]?.bookingId
       );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load bookings.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to load visits.");
     }
   }
 
@@ -218,10 +225,10 @@ export function BookingsScreen({
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.cancelBooking({ bookingId });
-      setSubmittedMessage("Booking cancelled.");
+      setSubmittedMessage("Visit cancelled.");
       await loadBookings();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel booking.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel visit.");
     } finally {
       setIsWorking(false);
     }
@@ -242,10 +249,10 @@ export function BookingsScreen({
         scheduledStartIso: addOneDay(booking.scheduledStartIso),
         scheduledEndIso: addOneDay(booking.scheduledEndIso)
       });
-      setSubmittedMessage("Booking moved to the next day.");
+      setSubmittedMessage("Visit moved to the next day.");
       await loadBookings();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to reschedule booking.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to reschedule visit.");
     } finally {
       setIsWorking(false);
     }
@@ -271,7 +278,7 @@ export function BookingsScreen({
         bookingId,
         reason
       });
-      setSubmittedMessage("Dispute opened. YardMatch support now has the booking context.");
+      setSubmittedMessage("Dispute opened. YardMatch support now has the visit context.");
       await loadBookings();
       onOpenAccount?.();
     } catch (error) {
@@ -290,7 +297,7 @@ export function BookingsScreen({
     const reason = (refundDrafts[bookingId] ?? "").trim();
 
     if (!payment) {
-      setErrorMessage("There is no payment on file for this booking yet.");
+      setErrorMessage("There is no payment on file for this visit yet.");
       return;
     }
 
@@ -308,7 +315,7 @@ export function BookingsScreen({
         paymentId: payment.id,
         reason
       });
-      setSubmittedMessage("Refund review requested. YardMatch support now has the payment and booking context.");
+      setSubmittedMessage("Refund review requested. YardMatch support now has the payment and visit context.");
       await loadBookings();
       onOpenAccount?.();
     } catch (error) {
@@ -497,6 +504,62 @@ export function BookingsScreen({
     return booking.status;
   }
 
+  function getVisitNextStep(booking: Booking, payment?: PaymentRecord): VisitNextStep {
+    if (booking.activeExceptionType || booking.status === "disputed") {
+      return {
+        action: "support",
+        detail: booking.activeExceptionNotes ?? "YardMatch support has this visit context.",
+        label: "Open support"
+      };
+    }
+
+    if (booking.onRouteConfirmedAt) {
+      return {
+        action: "track",
+        detail: "Crew is on the way. Messaging is available.",
+        label: "Track crew"
+      };
+    }
+
+    if (
+      (booking.status === "requested" || booking.status === "confirmed") &&
+      payment?.status !== "captured"
+    ) {
+      if (payment?.status === "failed") {
+        return {
+          action: "checkout",
+          detail: "The last payment attempt did not finish.",
+          label: "Retry payment"
+        };
+      }
+
+      return {
+        action: "checkout",
+        detail: `${formatPrice(booking.totalCents)} due before the visit.`,
+        label: payment?.status === "pending" ? "Continue checkout" : "Pay now"
+      };
+    }
+
+    if (booking.status === "in-progress") {
+      return {
+        detail: "Work is in progress.",
+        label: "Service underway"
+      };
+    }
+
+    if (payment?.status === "captured") {
+      return {
+        detail: "We’ll show arrival tracking on visit day.",
+        label: "Paid and ready"
+      };
+    }
+
+    return {
+      detail: getBookingStatusSummary(booking),
+      label: "Visit status"
+    };
+  }
+
   async function payWithStripe(booking: Booking) {
     if (!envelope?.session.token) {
       return;
@@ -523,7 +586,7 @@ export function BookingsScreen({
   }
 
   return (
-    <ScreenShell eyebrow="Bookings" title="Your visits" description="Pay, track, review.">
+    <ScreenShell eyebrow="Visits" title="Your visits" description="Pay, track, review.">
       <View style={styles.modeRow}>
         <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
         <ModeButton active={viewMode === "past"} label="Past" onPress={() => setViewMode("past")} />
@@ -535,24 +598,34 @@ export function BookingsScreen({
 
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
+      {readyOpportunity?.canReviewNow ? (
+        <InfoCard title={`Review ${readyOpportunity.providerName}`} description="Post-service only">
+          <RatingField label="Overall" rating={overallRating} onChange={setOverallRating} />
+          <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
+          <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
+          <TextInput
+            multiline
+            onChangeText={setReviewText}
+            placeholder="How did it go?"
+            placeholderTextColor={BrandTokens.colors.muted}
+            style={styles.input}
+            value={reviewText}
+          />
+          <Pressable disabled={isWorking} onPress={() => void submitReview()} style={styles.submitButton}>
+            <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
+
       {viewMode === "upcoming" ? (
         <InfoCard title="Coming up" description={`${upcomingBookings.length} scheduled`}>
           {upcomingBookings.length > 0 ? (
             <View style={styles.list}>
               {upcomingBookings.map((booking) => {
                 const payment = getPaymentRecord(booking.id);
-                const isCheckoutReady =
-                  !booking.onRouteConfirmedAt &&
-                  (booking.status === "requested" || booking.status === "confirmed") &&
-                  payment?.status !== "captured";
                 const isManageOpen = showManageByBookingId[booking.id];
-                const primaryActionKind = booking.activeExceptionType
-                  ? "support"
-                  : booking.onRouteConfirmedAt
-                    ? "track"
-                    : isCheckoutReady
-                      ? "checkout"
-                      : undefined;
+                const nextStep = getVisitNextStep(booking, payment);
+                const primaryActionKind = nextStep.action;
 
                 return (
                   <View key={booking.id} style={styles.liveCard}>
@@ -570,6 +643,12 @@ export function BookingsScreen({
                     </View>
 
                     <VisitLifecycle booking={booking} payment={payment} paymentLabel={getPaymentLabel(payment)} />
+
+                    <View style={styles.nextActionCard}>
+                      <Text style={styles.nextActionEyebrow}>Next</Text>
+                      <Text style={styles.nextActionTitle}>{nextStep.label}</Text>
+                      <Text style={styles.nextActionDetail}>{nextStep.detail}</Text>
+                    </View>
 
                     <View style={styles.visitSummaryGrid}>
                       <View style={styles.visitSummaryItem}>
@@ -592,7 +671,6 @@ export function BookingsScreen({
                       </View>
                     </View>
 
-                    <Text style={styles.bookingNote}>{getBookingStatusSummary(booking)}</Text>
                     <View style={styles.actionPanel}>
                       {primaryActionKind === "track" ? (
                         <Pressable
@@ -600,7 +678,7 @@ export function BookingsScreen({
                           onPress={() => void openArrivalTracking(booking)}
                           style={styles.primaryAction}
                         >
-                          <Text style={styles.primaryActionLabel}>Track crew</Text>
+                          <Text style={styles.primaryActionLabel}>{nextStep.label}</Text>
                         </Pressable>
                       ) : null}
                       {primaryActionKind === "checkout" ? (
@@ -609,14 +687,12 @@ export function BookingsScreen({
                           onPress={() => void payWithStripe(booking)}
                           style={styles.primaryAction}
                         >
-                          <Text style={styles.primaryActionLabel}>
-                            {payment?.status === "pending" ? "Continue checkout" : "Pay now"}
-                          </Text>
+                          <Text style={styles.primaryActionLabel}>{nextStep.label}</Text>
                         </Pressable>
                       ) : null}
                       {primaryActionKind === "support" ? (
                         <Pressable onPress={() => onOpenAccount?.()} style={styles.primaryAction}>
-                          <Text style={styles.primaryActionLabel}>Open support</Text>
+                          <Text style={styles.primaryActionLabel}>{nextStep.label}</Text>
                         </Pressable>
                       ) : null}
                       {booking.onRouteConfirmedAt ? (
@@ -816,29 +892,10 @@ export function BookingsScreen({
             )}
           </InfoCard>
 
-          {pastBookings.length > 0 || readyOpportunity ? (
-            readyOpportunity?.canReviewNow ? (
-              <InfoCard title={`Review ${readyOpportunity.providerName}`} description="Post-service only">
-                <RatingField label="Overall" rating={overallRating} onChange={setOverallRating} />
-                <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
-                <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
-                <TextInput
-                  multiline
-                  onChangeText={setReviewText}
-                  placeholder="How did it go?"
-                  placeholderTextColor={BrandTokens.colors.muted}
-                  style={styles.input}
-                  value={reviewText}
-                />
-                <Pressable disabled={isWorking} onPress={() => void submitReview()} style={styles.submitButton}>
-                  <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
-                </Pressable>
-              </InfoCard>
-            ) : (
-              <InfoCard title="Review status" description={readyOpportunity?.providerName ?? "No review selected"}>
-                <Text style={styles.bookingMeta}>{readyOpportunity?.reason ?? "Nothing needs your attention right now."}</Text>
-              </InfoCard>
-            )
+          {readyOpportunity && !readyOpportunity.canReviewNow ? (
+            <InfoCard title="Review status" description={readyOpportunity.providerName}>
+              <Text style={styles.bookingMeta}>{readyOpportunity.reason}</Text>
+            </InfoCard>
           ) : null}
         </>
       )}
@@ -1140,6 +1197,31 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 18
   },
+  nextActionCard: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(47, 125, 76, 0.18)",
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  nextActionEyebrow: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  nextActionTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 18,
+    fontWeight: "800",
+    lineHeight: 22
+  },
+  nextActionDetail: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
   bookingCopy: {
     flex: 1,
     gap: BrandTokens.spacing.xs
@@ -1151,10 +1233,6 @@ const styles = StyleSheet.create({
   },
   bookingMeta: {
     color: BrandTokens.colors.inkSoft,
-    lineHeight: 20
-  },
-  bookingNote: {
-    color: BrandTokens.colors.primaryStrong,
     lineHeight: 20
   },
   emptyState: {

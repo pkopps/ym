@@ -113,7 +113,11 @@ function buildDateIsoForCustomerTiming(timing: CustomerTimingPreference) {
   return date.toISOString();
 }
 
-export function BookServiceScreen() {
+export function BookServiceScreen({
+  onOpenBookings
+}: {
+  onOpenBookings?: () => void;
+}) {
   const tracker = getCustomerMobileTracker();
   const { envelope } = useCustomerSession();
   const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
@@ -277,7 +281,7 @@ export function BookServiceScreen() {
       setSelectedPropertyId(property.id);
       setIsPropertyModalVisible(false);
       resetMatchState();
-      setMessage(`${property.label} is ready for booking.`);
+      setMessage(`${property.label} is ready for visits.`);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to save that property.");
     } finally {
@@ -319,12 +323,12 @@ export function BookServiceScreen() {
         recommendationSource: "customer-mobile-book"
       });
       setMessage(
-        `Booked ${provider.provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
+        `Requested ${provider.provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
       );
       setRecommendationContext(undefined);
       resetMatchState();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
+      setErrorMessage(error instanceof Error ? error.message : "Unable to request your visit right now.");
     } finally {
       setIsWorking(false);
     }
@@ -353,7 +357,7 @@ export function BookServiceScreen() {
           : "After price"
     },
     {
-      label: "Book",
+      label: "Request",
       value: recommendedProviderCard?.slot ? formatOpenWindow(recommendedProviderCard.slot) : "Review"
     }
   ].map((step, index) => ({
@@ -365,9 +369,15 @@ export function BookServiceScreen() {
     <ScreenShell
       eyebrow="Book"
       title="Request service"
-      description="Details, price, match, book."
+      description="Details, price, match, request."
     >
-      {message ? <InfoCard title="Booking confirmed" description={message} /> : null}
+      {message ? (
+        <InfoCard title="Updated" description={message}>
+          <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonLabel}>Go to visits</Text>
+          </Pressable>
+        </InfoCard>
+      ) : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
       <View style={styles.progressCard}>
@@ -626,12 +636,31 @@ export function BookServiceScreen() {
                     <Text style={styles.providerChoiceDetail}>
                       {recommendedProviderCard.ranking.selectionSummaryDetail}
                     </Text>
+                    <View style={styles.nextStepGrid}>
+                      <View style={styles.nextStepItem}>
+                        <Text style={styles.nextStepLabel}>Pay</Text>
+                        <Text style={styles.nextStepValue}>After request</Text>
+                      </View>
+                      <View style={styles.nextStepItem}>
+                        <Text style={styles.nextStepLabel}>Track</Text>
+                        <Text style={styles.nextStepValue}>Visit day</Text>
+                      </View>
+                      <View style={styles.nextStepItem}>
+                        <Text style={styles.nextStepLabel}>Review</Text>
+                        <Text style={styles.nextStepValue}>After service</Text>
+                      </View>
+                      <View style={styles.nextStepItem}>
+                        <Text style={styles.nextStepLabel}>Support</Text>
+                        <Text style={styles.nextStepValue}>Included</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.providerMeta}>This creates the visit. Payment opens from Your visits.</Text>
                     <Pressable
                       disabled={isWorking || !recommendedProviderCard.slot}
                       onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1)}
                       style={styles.primaryButton}
                     >
-                      <Text style={styles.primaryButtonLabel}>Book for {formatPrice(quote.estimatedPriceCents)}</Text>
+                      <Text style={styles.primaryButtonLabel}>Request visit</Text>
                     </Pressable>
                     <View style={styles.providerStack}>
                       <Pressable
@@ -755,7 +784,7 @@ export function BookServiceScreen() {
                       onPress={() => void handleCreateBooking(ranking, index + 2)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Book for {formatPrice(quote.estimatedPriceCents)}</Text>
+                      <Text style={styles.secondaryButtonLabel}>Request visit</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -1050,6 +1079,34 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     lineHeight: 20
+  },
+  nextStepGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  nextStepItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: "rgba(20, 40, 29, 0.08)",
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm,
+    gap: 2
+  },
+  nextStepLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase"
+  },
+  nextStepValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   providerStack: {
     gap: BrandTokens.spacing.md
