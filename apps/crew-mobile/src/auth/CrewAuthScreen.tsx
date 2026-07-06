@@ -23,8 +23,8 @@ function getModeCopy(mode: AuthFlowMode) {
       }
     : {
         eyebrow: "Crew member sign up",
-        title: "Join landscaping crews through YardMatch.",
-        description: "Start with email and password. Travel limits, skills, and work preferences come after account creation.",
+        title: "Start with your work base.",
+        description: "Create an account, then add the home base we use for nearby shifts.",
         submitLabel: "Create account"
       };
 }
@@ -63,6 +63,7 @@ export function CrewAuthScreen({
   onAuthenticated: (envelope: AuthenticatedUserEnvelope) => void;
 }) {
   const [mode, setMode] = useState<AuthFlowMode>("login");
+  const [signupStep, setSignupStep] = useState<"account" | "homeBase">("account");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
@@ -85,6 +86,11 @@ export function CrewAuthScreen({
   const authCopy = getModeCopy(mode);
   const tracker = getCrewMobileTracker();
   const isCompletingSocialSignup = pendingSignupToken.length > 0;
+  const canContinueSignupAccount =
+    fullName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    phone.trim().length > 0 &&
+    (isCompletingSocialSignup || password.trim().length > 0);
   const canSubmitSignup =
     fullName.trim().length > 0 &&
     email.trim().length > 0 &&
@@ -96,7 +102,7 @@ export function CrewAuthScreen({
     (isCompletingSocialSignup || password.trim().length > 0);
 
   useEffect(() => {
-    if (mode !== "signup" || addressQuery.trim().length < 2) {
+    if (mode !== "signup" || signupStep !== "homeBase" || addressQuery.trim().length < 2) {
       setSuggestions([]);
       return;
     }
@@ -111,10 +117,27 @@ export function CrewAuthScreen({
     }, 220);
 
     return () => clearTimeout(timeoutId);
-  }, [addressQuery, mode]);
+  }, [addressQuery, mode, signupStep]);
 
   function clearPendingSignupState() {
     setPendingSignupToken("");
+  }
+
+  function handlePrimarySubmit() {
+    if (mode === "signup" && signupStep === "account") {
+      if (!canContinueSignupAccount) {
+        setErrorMessage(
+          isCompletingSocialSignup ? "Add your name and phone." : "Add your name, email, phone, and password."
+        );
+        return;
+      }
+
+      setErrorMessage("");
+      setSignupStep("homeBase");
+      return;
+    }
+
+    void handleAuth("password");
   }
 
   const handleAuth = async (method: "password" | "google" | "apple") => {
@@ -179,6 +202,7 @@ export function CrewAuthScreen({
             throw new Error("The social signup callback was missing the account details we need.");
           }
           setMode("signup");
+          setSignupStep("account");
           setPendingSignupToken(pendingToken);
           setEmail(socialEmail);
           if (socialFullName) {
@@ -344,6 +368,9 @@ export function CrewAuthScreen({
                   setMode(value);
                   if (value === "login") {
                     clearPendingSignupState();
+                    setSignupStep("account");
+                  } else if (mode !== "signup") {
+                    setSignupStep("account");
                   }
                 }}
                 style={[styles.modeButton, isActive && styles.modeButtonActive]}
@@ -356,151 +383,190 @@ export function CrewAuthScreen({
           })}
         </View>
 
-        <View style={styles.fieldStack}>
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={setEmail}
-            placeholder="crew.member@example.com"
-            placeholderTextColor="#6e7d71"
-            style={styles.input}
-            value={email}
-          />
-          {!isCompletingSocialSignup ? (
+        {mode === "signup" ? (
+          <View style={styles.signupPath}>
+            <View style={[styles.signupPathItem, signupStep === "account" && styles.signupPathItemActive]}>
+              <Text style={[styles.signupPathLabel, signupStep === "account" && styles.signupPathLabelActive]}>
+                Account
+              </Text>
+              <Text style={styles.signupPathMeta}>{canContinueSignupAccount ? "Ready" : "Now"}</Text>
+            </View>
+            <View style={[styles.signupPathItem, signupStep === "homeBase" && styles.signupPathItemActive]}>
+              <Text style={[styles.signupPathLabel, signupStep === "homeBase" && styles.signupPathLabelActive]}>
+                Home base
+              </Text>
+              <Text style={styles.signupPathMeta}>
+                {signupStep === "homeBase" ? (canSubmitSignup ? "Ready" : "Now") : "Next"}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {mode === "login" || signupStep === "account" ? (
+          <View style={styles.fieldStack}>
             <TextInput
-              onChangeText={setPassword}
-              placeholder="Password"
+              autoCapitalize="none"
+              onChangeText={setEmail}
+              placeholder="crew.member@example.com"
               placeholderTextColor="#6e7d71"
-              secureTextEntry
               style={styles.input}
-              value={password}
+              value={email}
             />
-          ) : null}
-        </View>
+            {!isCompletingSocialSignup ? (
+              <TextInput
+                onChangeText={setPassword}
+                placeholder="Password"
+                placeholderTextColor="#6e7d71"
+                secureTextEntry
+                style={styles.input}
+                value={password}
+              />
+            ) : null}
+          </View>
+        ) : null}
 
         {mode === "signup" ? (
           <View style={styles.fieldStack}>
             {isCompletingSocialSignup ? (
               <View style={styles.inlineNotice}>
                 <Text style={styles.noticeTitle}>Finish your crew account</Text>
-                <Text style={styles.helper}>We already verified {email.trim()}. Add your contact details to continue.</Text>
+                <Text style={styles.helper}>We already verified {email.trim()}. Add the basics to continue.</Text>
               </View>
             ) : null}
-            <TextInput
-              autoCapitalize="words"
-              onChangeText={setFullName}
-              placeholder="Full name"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={fullName}
-            />
-            <TextInput
-              keyboardType="phone-pad"
-              onChangeText={setPhone}
-              placeholder="Phone number"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={phone}
-            />
-            <TextInput
-              autoCapitalize="words"
-              onChangeText={(value) => {
-                setAddressQuery(value);
-                setSelectedSuggestion(undefined);
-              }}
-              placeholder="Search city or town"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={addressQuery}
-            />
-            {suggestions.length > 0 ? (
-              <View style={styles.suggestionStack}>
-                {suggestions.map((suggestion) => (
-                  <Pressable
-                    key={suggestion.id}
-                    onPress={() => {
-                      setAddressQuery(suggestion.label);
-                      setAddress(suggestion.address);
-                      setSelectedSuggestion(suggestion);
-                      setSuggestions([]);
-                    }}
-                    style={styles.suggestionRow}
-                  >
-                    <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
-                    <Text style={styles.suggestionMeta}>
-                      {suggestion.source === "google-geocoding" ? "Google" : "Suggested area"}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : addressQuery.trim().length >= 2 && isSearching ? (
-              <Text style={styles.helper}>Searching nearby areas…</Text>
-            ) : null}
-            <TextInput
-              autoCapitalize="words"
-              onChangeText={(value) =>
-                setAddress((current) => ({
-                  ...current,
-                  line1: value
-                }))
-              }
-              placeholder="Home address"
-              placeholderTextColor="#6e7d71"
-              style={styles.input}
-              value={address.line1}
-            />
-            <View style={styles.inlineRow}>
-              <TextInput
-                autoCapitalize="words"
-                onChangeText={(value) =>
-                  setAddress((current) => ({
-                    ...current,
-                    city: value
-                  }))
-                }
-                placeholder="City"
-                placeholderTextColor="#6e7d71"
-                style={[styles.input, styles.inlineInput]}
-                value={address.city}
-              />
-              <TextInput
-                autoCapitalize="characters"
-                maxLength={2}
-                onChangeText={(value) =>
-                  setAddress((current) => ({
-                    ...current,
-                    state: value
-                  }))
-                }
-                placeholder="ST"
-                placeholderTextColor="#6e7d71"
-                style={[styles.input, styles.stateInput]}
-                value={address.state}
-              />
-              <TextInput
-                keyboardType="number-pad"
-                maxLength={10}
-                onChangeText={(value) =>
-                  setAddress((current) => ({
-                    ...current,
-                    postalCode: value
-                  }))
-                }
-                placeholder="ZIP"
-                placeholderTextColor="#6e7d71"
-                style={[styles.input, styles.zipInput]}
-                value={address.postalCode}
-              />
-            </View>
+            {signupStep === "account" ? (
+              <>
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={setFullName}
+                  placeholder="Full name"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={fullName}
+                />
+                <TextInput
+                  keyboardType="phone-pad"
+                  onChangeText={setPhone}
+                  placeholder="Phone number"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={phone}
+                />
+              </>
+            ) : (
+              <>
+                <View style={styles.inlineNotice}>
+                  <Text style={styles.noticeTitle}>Home base</Text>
+                  <Text style={styles.helper}>Nearby shifts are matched from this address.</Text>
+                </View>
+                <Pressable onPress={() => setSignupStep("account")} style={styles.linkButton}>
+                  <Text style={styles.linkButtonLabel}>Edit account</Text>
+                </Pressable>
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={(value) => {
+                    setAddressQuery(value);
+                    setSelectedSuggestion(undefined);
+                  }}
+                  placeholder="Search city or town"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={addressQuery}
+                />
+                {suggestions.length > 0 ? (
+                  <View style={styles.suggestionStack}>
+                    {suggestions.map((suggestion) => (
+                      <Pressable
+                        key={suggestion.id}
+                        onPress={() => {
+                          setAddressQuery(suggestion.label);
+                          setAddress(suggestion.address);
+                          setSelectedSuggestion(suggestion);
+                          setSuggestions([]);
+                        }}
+                        style={styles.suggestionRow}
+                      >
+                        <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
+                        <Text style={styles.suggestionMeta}>
+                          {suggestion.source === "google-geocoding" ? "Google" : "Suggested area"}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : addressQuery.trim().length >= 2 && isSearching ? (
+                  <Text style={styles.helper}>Searching nearby areas...</Text>
+                ) : null}
+                <TextInput
+                  autoCapitalize="words"
+                  onChangeText={(value) =>
+                    setAddress((current) => ({
+                      ...current,
+                      line1: value
+                    }))
+                  }
+                  placeholder="Home address"
+                  placeholderTextColor="#6e7d71"
+                  style={styles.input}
+                  value={address.line1}
+                />
+                <View style={styles.inlineRow}>
+                  <TextInput
+                    autoCapitalize="words"
+                    onChangeText={(value) =>
+                      setAddress((current) => ({
+                        ...current,
+                        city: value
+                      }))
+                    }
+                    placeholder="City"
+                    placeholderTextColor="#6e7d71"
+                    style={[styles.input, styles.inlineInput]}
+                    value={address.city}
+                  />
+                  <TextInput
+                    autoCapitalize="characters"
+                    maxLength={2}
+                    onChangeText={(value) =>
+                      setAddress((current) => ({
+                        ...current,
+                        state: value
+                      }))
+                    }
+                    placeholder="ST"
+                    placeholderTextColor="#6e7d71"
+                    style={[styles.input, styles.stateInput]}
+                    value={address.state}
+                  />
+                  <TextInput
+                    keyboardType="number-pad"
+                    maxLength={10}
+                    onChangeText={(value) =>
+                      setAddress((current) => ({
+                        ...current,
+                        postalCode: value
+                      }))
+                    }
+                    placeholder="ZIP"
+                    placeholderTextColor="#6e7d71"
+                    style={[styles.input, styles.zipInput]}
+                    value={address.postalCode}
+                  />
+                </View>
+              </>
+            )}
           </View>
         ) : null}
 
-        <Pressable onPress={() => handleAuth("password")} style={styles.primaryButton}>
+        <Pressable onPress={handlePrimarySubmit} style={styles.primaryButton}>
           <Text style={styles.primaryButtonLabel}>
             {isSubmitting
               ? "Working..."
               : isCompletingSocialSignup
-                ? "Finish account"
-                : authCopy.submitLabel}
+                ? signupStep === "account"
+                  ? "Continue"
+                  : "Finish account"
+                : mode === "signup" && signupStep === "account"
+                  ? "Continue"
+                  : authCopy.submitLabel}
           </Text>
         </Pressable>
 
@@ -559,20 +625,22 @@ export function CrewAuthScreen({
           </View>
         ) : null}
 
-        <View style={styles.socialStack}>
-          <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
-            <AntDesign color="#4285F4" name="google" size={18} />
-            <Text style={styles.socialLabel}>Continue with Google</Text>
-          </Pressable>
-          <Pressable onPress={() => handleAuth("apple")} style={styles.socialButton}>
-            <AntDesign color={BrandTokens.colors.ink} name="apple" size={18} />
-            <Text style={styles.socialLabel}>Continue with Apple</Text>
-          </Pressable>
-        </View>
+        {mode === "login" || signupStep === "account" ? (
+          <View style={styles.socialStack}>
+            <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
+              <AntDesign color="#4285F4" name="google" size={18} />
+              <Text style={styles.socialLabel}>Continue with Google</Text>
+            </Pressable>
+            <Pressable onPress={() => handleAuth("apple")} style={styles.socialButton}>
+              <AntDesign color={BrandTokens.colors.ink} name="apple" size={18} />
+              <Text style={styles.socialLabel}>Continue with Apple</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <Text style={styles.helper}>
           {mode === "signup"
-            ? "You can set skills, travel radius, and availability right after sign up."
+            ? "Availability, skills, and travel limits come right after sign up."
             : "Skills, travel radius, and equipment preferences come after sign in."}
         </Text>
       </View>
@@ -639,6 +707,37 @@ const styles = StyleSheet.create({
   },
   modeLabelActive: {
     color: "#ffffff"
+  },
+  signupPath: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm
+  },
+  signupPathItem: {
+    flex: 1,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  signupPathItemActive: {
+    borderColor: "rgba(47, 125, 76, 0.36)",
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  signupPathLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  signupPathLabelActive: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  signupPathMeta: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    fontWeight: "700"
   },
   fieldStack: {
     gap: BrandTokens.spacing.md

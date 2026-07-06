@@ -182,11 +182,10 @@ export function ScheduleScreen() {
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [chatDraft, setChatDraft] = useState("");
-  const [assistantCommand, setAssistantCommand] = useState(
-    "Change my afternoon appointment to evening and notify the customer"
-  );
+  const [assistantCommand, setAssistantCommand] = useState("");
   const [assistantResult, setAssistantResult] = useState<ProviderAssistantCommandResponse | undefined>();
   const [selectedAssistantBookingId, setSelectedAssistantBookingId] = useState<string | undefined>();
+  const [showAssistantTools, setShowAssistantTools] = useState(false);
   const [showAssistantExamples, setShowAssistantExamples] = useState(false);
   const [expandedManageSections, setExpandedManageSections] = useState<Record<string, boolean>>({});
   const [expandedStaffingSections, setExpandedStaffingSections] = useState<Record<string, boolean>>({});
@@ -239,6 +238,8 @@ export function ScheduleScreen() {
       ) ?? sortedJobs[0]
     );
   }, [jobs]);
+  const priorityJobPrimaryAction = priorityJob ? getProviderJobPrimaryAction(priorityJob) : undefined;
+  const priorityJobNeedsStaffing = priorityJob ? hasCrewDecisionPending(priorityJob) : false;
   const priorityJobActiveStepIndex = priorityJob ? getProviderJobActiveStepIndex(priorityJob) : 0;
   const priorityJobSteps = priorityJob
     ? [
@@ -843,126 +844,195 @@ export function ScheduleScreen() {
               <Text style={styles.jobSummaryValue}>{getProviderJobActionLabel(priorityJob)}</Text>
             </View>
           </View>
+          <View style={styles.routeFocusActions}>
+            {priorityJobPrimaryAction === "confirm" ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void confirmJob(priorityJob.bookingId)}
+                style={styles.routeFocusPrimaryButton}
+              >
+                <Text style={styles.routeFocusPrimaryButtonLabel}>
+                  {isWorking ? "Working..." : "Confirm booking"}
+                </Text>
+              </Pressable>
+            ) : null}
+            {priorityJobNeedsStaffing && priorityJobPrimaryAction !== "confirm" ? (
+              <Pressable
+                onPress={() => {
+                  setViewMode("list");
+                  setExpandedManageSections((current) => ({
+                    ...current,
+                    [priorityJob.bookingId]: true
+                  }));
+                  setExpandedStaffingSections((current) => ({
+                    ...current,
+                    [priorityJob.bookingId]: true
+                  }));
+                }}
+                style={styles.routeFocusPrimaryButton}
+              >
+                <Text style={styles.routeFocusPrimaryButtonLabel}>Manage staffing</Text>
+              </Pressable>
+            ) : null}
+            {!priorityJobNeedsStaffing && priorityJobPrimaryAction === "start-route" ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void startRoute(priorityJob.bookingId)}
+                style={styles.routeFocusPrimaryButton}
+              >
+                <Text style={styles.routeFocusPrimaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+              </Pressable>
+            ) : null}
+            {!priorityJobNeedsStaffing && priorityJobPrimaryAction === "start-work" ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void startWork(priorityJob.bookingId)}
+                style={styles.routeFocusPrimaryButton}
+              >
+                <Text style={styles.routeFocusPrimaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+              </Pressable>
+            ) : null}
+            {!priorityJobNeedsStaffing && priorityJobPrimaryAction === "complete" ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void completeJob(priorityJob.bookingId)}
+                style={styles.routeFocusPrimaryButton}
+              >
+                <Text style={styles.routeFocusPrimaryButtonLabel}>{isWorking ? "Working..." : "Complete job"}</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </InfoCard>
       ) : (
         <InfoCard title="Today path" description="No scheduled jobs">
-          <Text style={styles.metaLine}>Calendar and assistant tools are ready when work is booked.</Text>
+          <Text style={styles.metaLine}>Calendar and route tools are ready when work is booked.</Text>
         </InfoCard>
       )}
 
-      <InfoCard title="Quick change" description="Make a route change in plain language.">
-        <Text style={styles.metaLine}>
-          Ask what needs attention, move a job, or update a customer in one step.
-        </Text>
-        <Pressable onPress={() => setShowAssistantExamples((current) => !current)} style={styles.secondaryButton}>
+      <InfoCard title="Route tools" description={showAssistantTools ? "Make a route change" : "Use when plans change"}>
+        <Pressable onPress={() => setShowAssistantTools((current) => !current)} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonLabel}>
-            {showAssistantExamples ? "Hide examples" : "Examples"}
+            {showAssistantTools ? "Hide tools" : "Open tools"}
           </Text>
         </Pressable>
-        {showAssistantExamples ? (
-          <View style={styles.ticketStack}>
-            <Text style={styles.meta}>What needs attention tomorrow?</Text>
-            <Text style={styles.meta}>Do I need more crew tomorrow?</Text>
-            <Text style={styles.meta}>Change my afternoon appointment to evening and notify the customer.</Text>
-            <Text style={styles.meta}>Tell my afternoon customer I am 30 minutes late.</Text>
-            <Text style={styles.meta}>Start route for my afternoon appointment.</Text>
-            <Text style={styles.meta}>Complete my afternoon appointment.</Text>
-          </View>
-        ) : null}
-        <TextInput
-          value={assistantCommand}
-          onChangeText={setAssistantCommand}
-          placeholder="Type a provider scheduling command"
-          placeholderTextColor={BrandTokens.colors.inkSoft}
-          style={[styles.input, styles.multilineInput]}
-          multiline
-        />
-        {selectedAssistantBookingId ? (
-          <Text style={styles.metaLine}>Selected booking: {selectedAssistantBookingId}</Text>
-        ) : null}
-        <View style={styles.stepRow}>
-          <Pressable disabled={isWorking} onPress={() => void runProviderAssistant(false)} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonLabel}>Review plan</Text>
-          </Pressable>
-          <Pressable
-            disabled={isWorking || !assistantResult?.requiresConfirmation}
-            onPress={() => void runProviderAssistant(true)}
-            style={styles.secondaryButton}
-          >
-            <Text style={styles.secondaryButtonLabel}>Apply change</Text>
-          </Pressable>
-        </View>
-        {assistantResult ? (
-          <View style={styles.ticketStack}>
-            <Text style={styles.valueText}>{assistantResult.previewLabel}</Text>
-            <Text style={styles.meta}>{assistantResult.previewMessage}</Text>
-            {assistantResult.actionTypes && assistantResult.actionTypes.length > 1 ? (
-              <Text style={styles.meta}>Planned steps: {assistantResult.actionTypes.join(" -> ")}</Text>
-            ) : null}
-            {assistantResult.targetWindowLabel ? (
-              <Text style={styles.meta}>Target window: {assistantResult.targetWindowLabel}</Text>
-            ) : null}
-            {assistantResult.lateEtaIso ? (
-              <Text style={styles.meta}>
-                New ETA: {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
+        {showAssistantTools ? (
+          <View style={styles.assistantStack}>
+            <Text style={styles.metaLine}>Move a job, check staffing, or notify a customer.</Text>
+            <Pressable onPress={() => setShowAssistantExamples((current) => !current)} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>
+                {showAssistantExamples ? "Hide examples" : "Examples"}
               </Text>
-            ) : null}
-            {assistantResult.dispatchDaySummary ? (
-              <Text style={styles.meta}>
-                Route: {assistantResult.dispatchDaySummary.routeStatus} • Jobs:{" "}
-                {assistantResult.dispatchDaySummary.yardmatchJobCount} • Crew gap:{" "}
-                {assistantResult.dispatchDaySummary.crewGap} • Drive miles:{" "}
-                {assistantResult.dispatchDaySummary.estimatedDriveMiles.toFixed(1)}
-              </Text>
-            ) : null}
-            {assistantResult.dispatchRangeSummary ? (
-              <Text style={styles.meta}>
-                Active days: {assistantResult.dispatchRangeSummary.activeDayCount} • Watch:{" "}
-                {assistantResult.dispatchRangeSummary.watchDayCount} • Overloaded:{" "}
-                {assistantResult.dispatchRangeSummary.overloadedDayCount} • Total crew gap:{" "}
-                {assistantResult.dispatchRangeSummary.totalCrewGap}
-              </Text>
-            ) : null}
-            {assistantResult.dispatchWindowSummary ? (
-              <Text style={styles.meta}>
-                Focus window: {assistantResult.dispatchWindowSummary.label} • Jobs:{" "}
-                {assistantResult.dispatchWindowSummary.yardmatchJobCount} • Crew gap:{" "}
-                {assistantResult.dispatchWindowSummary.crewGap} • Blocked minutes:{" "}
-                {assistantResult.dispatchWindowSummary.blockedMinutes}
-              </Text>
-            ) : null}
-            {assistantResult.customerNotificationPreview ? (
-              <Text style={styles.meta}>{assistantResult.customerNotificationPreview}</Text>
-            ) : null}
-            {assistantResult.bookingCandidates.length > 0 ? (
-              <Text style={styles.meta}>
-                {assistantResult.actionType === "summarize-dispatch"
-                  ? "Appointments in that focus area:"
-                  : assistantResult.actionType === "recommend-dispatch-adjustment"
-                    ? "Appointments in the pressured window:"
-                    : assistantResult.actionType === "recommend-staffing-adjustment"
-                      ? "Bookings that need more crew:"
-                  : "Matching appointments:"}
-              </Text>
-            ) : null}
-            {assistantResult.bookingCandidates.map((candidate) => (
-              <View key={candidate.bookingId} style={styles.ticketRow}>
-                <View style={styles.ticketCopy}>
-                  <Text style={styles.valueText}>{candidate.customerName}</Text>
-                  <Text style={styles.meta}>
-                    {candidate.currentWindowLabel} • {new Date(candidate.scheduledStartIso).toLocaleString()}
-                  </Text>
-                  <Text style={styles.meta}>{candidate.addressLine}</Text>
-                </View>
-                <Pressable
-                  disabled={isWorking}
-                  onPress={() => setSelectedAssistantBookingId(candidate.bookingId)}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>Use</Text>
-                </Pressable>
+            </Pressable>
+            {showAssistantExamples ? (
+              <View style={styles.ticketStack}>
+                <Text style={styles.meta}>What needs attention tomorrow?</Text>
+                <Text style={styles.meta}>Do I need more crew tomorrow?</Text>
+                <Text style={styles.meta}>Change my afternoon appointment to evening and notify the customer.</Text>
+                <Text style={styles.meta}>Tell my afternoon customer I am 30 minutes late.</Text>
+                <Text style={styles.meta}>Start route for my afternoon appointment.</Text>
+                <Text style={styles.meta}>Complete my afternoon appointment.</Text>
               </View>
-            ))}
+            ) : null}
+            <TextInput
+              value={assistantCommand}
+              onChangeText={setAssistantCommand}
+              placeholder="Type a route change"
+              placeholderTextColor={BrandTokens.colors.inkSoft}
+              style={[styles.input, styles.multilineInput]}
+              multiline
+            />
+            {selectedAssistantBookingId ? (
+              <Text style={styles.metaLine}>Selected booking: {selectedAssistantBookingId}</Text>
+            ) : null}
+            <View style={styles.stepRow}>
+              <Pressable
+                disabled={isWorking || assistantCommand.trim().length === 0}
+                onPress={() => void runProviderAssistant(false)}
+                style={[styles.secondaryButton, assistantCommand.trim().length === 0 && styles.secondaryButtonDisabled]}
+              >
+                <Text style={styles.secondaryButtonLabel}>Review plan</Text>
+              </Pressable>
+              <Pressable
+                disabled={isWorking || !assistantResult?.requiresConfirmation}
+                onPress={() => void runProviderAssistant(true)}
+                style={[styles.secondaryButton, !assistantResult?.requiresConfirmation && styles.secondaryButtonDisabled]}
+              >
+                <Text style={styles.secondaryButtonLabel}>Apply change</Text>
+              </Pressable>
+            </View>
+            {assistantResult ? (
+              <View style={styles.ticketStack}>
+                <Text style={styles.valueText}>{assistantResult.previewLabel}</Text>
+                <Text style={styles.meta}>{assistantResult.previewMessage}</Text>
+                {assistantResult.actionTypes && assistantResult.actionTypes.length > 1 ? (
+                  <Text style={styles.meta}>Planned steps: {assistantResult.actionTypes.join(" -> ")}</Text>
+                ) : null}
+                {assistantResult.targetWindowLabel ? (
+                  <Text style={styles.meta}>Target window: {assistantResult.targetWindowLabel}</Text>
+                ) : null}
+                {assistantResult.lateEtaIso ? (
+                  <Text style={styles.meta}>
+                    New ETA: {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
+                  </Text>
+                ) : null}
+                {assistantResult.dispatchDaySummary ? (
+                  <Text style={styles.meta}>
+                    Route: {assistantResult.dispatchDaySummary.routeStatus} • Jobs:{" "}
+                    {assistantResult.dispatchDaySummary.yardmatchJobCount} • Crew gap:{" "}
+                    {assistantResult.dispatchDaySummary.crewGap} • Drive miles:{" "}
+                    {assistantResult.dispatchDaySummary.estimatedDriveMiles.toFixed(1)}
+                  </Text>
+                ) : null}
+                {assistantResult.dispatchRangeSummary ? (
+                  <Text style={styles.meta}>
+                    Active days: {assistantResult.dispatchRangeSummary.activeDayCount} • Watch:{" "}
+                    {assistantResult.dispatchRangeSummary.watchDayCount} • Overloaded:{" "}
+                    {assistantResult.dispatchRangeSummary.overloadedDayCount} • Total crew gap:{" "}
+                    {assistantResult.dispatchRangeSummary.totalCrewGap}
+                  </Text>
+                ) : null}
+                {assistantResult.dispatchWindowSummary ? (
+                  <Text style={styles.meta}>
+                    Focus window: {assistantResult.dispatchWindowSummary.label} • Jobs:{" "}
+                    {assistantResult.dispatchWindowSummary.yardmatchJobCount} • Crew gap:{" "}
+                    {assistantResult.dispatchWindowSummary.crewGap} • Blocked minutes:{" "}
+                    {assistantResult.dispatchWindowSummary.blockedMinutes}
+                  </Text>
+                ) : null}
+                {assistantResult.customerNotificationPreview ? (
+                  <Text style={styles.meta}>{assistantResult.customerNotificationPreview}</Text>
+                ) : null}
+                {assistantResult.bookingCandidates.length > 0 ? (
+                  <Text style={styles.meta}>
+                    {assistantResult.actionType === "summarize-dispatch"
+                      ? "Appointments in that focus area:"
+                      : assistantResult.actionType === "recommend-dispatch-adjustment"
+                        ? "Appointments in the pressured window:"
+                        : assistantResult.actionType === "recommend-staffing-adjustment"
+                          ? "Bookings that need more crew:"
+                          : "Matching appointments:"}
+                  </Text>
+                ) : null}
+                {assistantResult.bookingCandidates.map((candidate) => (
+                  <View key={candidate.bookingId} style={styles.ticketRow}>
+                    <View style={styles.ticketCopy}>
+                      <Text style={styles.valueText}>{candidate.customerName}</Text>
+                      <Text style={styles.meta}>
+                        {candidate.currentWindowLabel} • {new Date(candidate.scheduledStartIso).toLocaleString()}
+                      </Text>
+                      <Text style={styles.meta}>{candidate.addressLine}</Text>
+                    </View>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => setSelectedAssistantBookingId(candidate.bookingId)}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Use</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
         ) : null}
       </InfoCard>
@@ -1754,6 +1824,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: BrandTokens.spacing.md,
     paddingVertical: BrandTokens.spacing.sm
   },
+  routeFocusActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm,
+    marginTop: BrandTokens.spacing.md
+  },
+  routeFocusPrimaryButton: {
+    alignItems: "center",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  routeFocusPrimaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
+  },
   dispatchCard: {
     borderRadius: BrandTokens.radius.md,
     borderWidth: 1,
@@ -1925,6 +2012,9 @@ const styles = StyleSheet.create({
   multilineInput: {
     minHeight: 108
   },
+  assistantStack: {
+    gap: BrandTokens.spacing.md
+  },
   stepRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1943,6 +2033,9 @@ const styles = StyleSheet.create({
   secondaryButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.56
   },
   ticketStack: {
     gap: BrandTokens.spacing.sm,

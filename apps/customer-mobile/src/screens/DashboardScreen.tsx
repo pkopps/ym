@@ -16,13 +16,6 @@ import { createCustomerMobileApiClient } from "../lib/api";
 import { buildTrackingDetail, buildTrackingSummary, findTrackableBooking } from "../lib/arrivalTracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
-}
-
 function formatBookingStatusLabel(booking: Booking) {
   if (booking.status === "requested") {
     return "Waiting for confirmation";
@@ -242,7 +235,7 @@ export function DashboardScreen({
     <ScreenShell
       eyebrow="Home"
       title="Home"
-      description="Book, pay, track, review."
+      description="Your next step."
     >
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
@@ -370,46 +363,6 @@ export function DashboardScreen({
               <Text style={styles.primaryButtonLabel}>Get matched</Text>
             </Pressable>
           </View>
-        </InfoCard>
-      ) : null}
-
-      {tracking &&
-      activeTrackingBookingId &&
-      activeTrackingBooking &&
-      nextBooking &&
-      activeTrackingBooking.id !== nextBooking.id ? (
-        <InfoCard
-          title={formatBookingStatusLabel(nextBooking)}
-          description={formatBookingWindowSummary(nextBooking.scheduledStartIso)}
-        >
-          <Text style={styles.primaryLine}>
-            {providerNamesById[nextBooking.providerId] ?? "Landscaping business"}
-          </Text>
-          <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
-          <Pressable onPress={onOpenBookings} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>See visit</Text>
-          </Pressable>
-        </InfoCard>
-      ) : null}
-
-      {reviewReady && primaryCardKind !== "review" ? (
-        <InfoCard title="Ready to review" description={reviewReady.providerName}>
-          <Text style={styles.secondaryLine}>{reviewReady.reason}</Text>
-          <Pressable onPress={onOpenBookings} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Leave review</Text>
-          </Pressable>
-        </InfoCard>
-      ) : null}
-
-      {activeProperty && primaryCardKind !== "property" ? (
-        <InfoCard title={activeProperty.label} description="Ready for your next visit">
-          <Text style={styles.primaryLine}>{activeProperty.address.line1}</Text>
-          <Text style={styles.secondaryLine}>
-            {activeProperty.address.city}, {activeProperty.address.state} {activeProperty.address.postalCode}
-          </Text>
-          <Pressable onPress={onStartBooking} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Book this property</Text>
-          </Pressable>
         </InfoCard>
       ) : null}
 
@@ -576,18 +529,6 @@ const styles = StyleSheet.create({
     paddingVertical: BrandTokens.spacing.md
   },
   secondaryButtonLabel: {
-    color: BrandTokens.colors.primaryStrong,
-    fontWeight: "700"
-  },
-  linkButton: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: BrandTokens.colors.primary,
-    paddingHorizontal: BrandTokens.spacing.lg,
-    paddingVertical: BrandTokens.spacing.sm
-  },
-  linkButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
   }

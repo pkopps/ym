@@ -66,6 +66,38 @@ function formatPayoutStatus(status: CrewPayoutEntry["status"]) {
   }
 }
 
+function getCrewPayoutFocus(payoutLedger: CrewPayoutLedgerResponse, blockedPayoutCents: number) {
+  if (payoutLedger.totalReadyCents > 0) {
+    return {
+      amount: formatCurrency(payoutLedger.totalReadyCents),
+      detail: `Pays ${formatPayoutDate(payoutLedger.nextWeeklyPayoutDateIso)}`,
+      label: "Ready"
+    };
+  }
+
+  if (payoutLedger.totalScheduledCents > 0) {
+    return {
+      amount: formatCurrency(payoutLedger.totalScheduledCents),
+      detail: `Next payout ${formatPayoutDate(payoutLedger.nextWeeklyPayoutDateIso)}`,
+      label: "Scheduled"
+    };
+  }
+
+  if (blockedPayoutCents > 0) {
+    return {
+      amount: formatCurrency(blockedPayoutCents),
+      detail: "Customer payment or hold needs to clear.",
+      label: "Waiting"
+    };
+  }
+
+  return {
+    amount: "$0",
+    detail: "Completed shifts appear here.",
+    label: "No payout yet"
+  };
+}
+
 function getCrewRoleLabel(assignment: CrewAssignment) {
   if (assignment.isAssignedRouteLeader) {
     return "Route lead";
@@ -190,6 +222,10 @@ export function DashboardScreen({
   );
   const acceptedPrimaryAction = acceptedMatch ? getCrewPrimaryAction(acceptedMatch) : undefined;
   const acceptedNextStep = acceptedMatch ? getCrewNextStep(acceptedMatch, acceptedPayoutEntry) : undefined;
+  const canManageProof =
+    acceptedMatch?.bookingStatus === "confirmed" || acceptedMatch?.bookingStatus === "in-progress";
+  const shouldShowArrivalProof = acceptedMatch?.bookingStatus === "confirmed";
+  const shouldShowCompletionProof = acceptedMatch?.bookingStatus === "in-progress";
   const pendingCount = matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0;
   const acceptedCount = matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0;
   const blockedPayoutCents =
@@ -203,6 +239,7 @@ export function DashboardScreen({
       (payoutLedger?.totalReadyCents ?? 0) > 0 ||
       (payoutLedger?.totalScheduledCents ?? 0) > 0 ||
       (payoutLedger?.totalPaidCents ?? 0) > 0);
+  const payoutFocus = payoutLedger ? getCrewPayoutFocus(payoutLedger, blockedPayoutCents) : undefined;
   const activeShiftStepIndex =
     acceptedPayoutEntry?.status === "paid"
       ? 5
@@ -531,52 +568,39 @@ export function DashboardScreen({
               <Text style={styles.nextActionEyebrow}>Next</Text>
               <Text style={styles.nextActionTitle}>{acceptedNextStep.label}</Text>
               <Text style={styles.nextActionDetail}>{acceptedNextStep.detail}</Text>
+              {acceptedPrimaryAction === "start-route" ? (
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void startRoute()}
+                  style={styles.nextPrimaryButton}
+                >
+                  <Text style={styles.nextPrimaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                </Pressable>
+              ) : null}
+              {acceptedPrimaryAction === "start-work" ? (
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => void startWork()}
+                  style={styles.nextPrimaryButton}
+                >
+                  <Text style={styles.nextPrimaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+                </Pressable>
+              ) : null}
+              {acceptedPrimaryAction === "proof" ? (
+                <Pressable
+                  disabled={isWorking}
+                  onPress={() => setShowEvidenceTools((current) => !current)}
+                  style={styles.nextPrimaryButton}
+                >
+                  <Text style={styles.nextPrimaryButtonLabel}>
+                    {showEvidenceTools ? "Hide proof" : "Add proof"}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
-          ) : null}
-          {acceptedPrimaryAction === undefined && acceptedMatch.bookingStatus === "requested" ? (
-            <View style={styles.waitingBadge}>
-              <Text style={styles.waitingBadgeLabel}>Waiting on business confirmation.</Text>
-            </View>
-          ) : null}
-          {acceptedPrimaryAction === undefined && acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt ? (
-            <View style={styles.waitingBadge}>
-              <Text style={styles.waitingBadgeLabel}>
-                Business owner or assigned route leader will start the route.
-              </Text>
-            </View>
-          ) : null}
-          {acceptedPrimaryAction === "start-route" ? (
-            <Pressable
-              disabled={isWorking}
-              onPress={() => void startRoute()}
-              style={styles.primaryButton}
-            >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
-            </Pressable>
-          ) : null}
-          {acceptedPrimaryAction === "start-work" ? (
-            <Pressable
-              disabled={isWorking}
-              onPress={() => void startWork()}
-              style={styles.primaryButton}
-            >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
-            </Pressable>
-          ) : null}
-          {acceptedPrimaryAction === "proof" ? (
-            <Pressable
-              disabled={isWorking}
-              onPress={() => setShowEvidenceTools((current) => !current)}
-              style={styles.primaryButton}
-            >
-              <Text style={styles.primaryButtonLabel}>
-                {showEvidenceTools ? "Hide proof" : "Add proof"}
-              </Text>
-            </Pressable>
           ) : null}
           <View style={styles.buttonRow}>
-            {(acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") &&
-            acceptedPrimaryAction !== "proof" ? (
+            {canManageProof && acceptedPrimaryAction !== "proof" ? (
               <Pressable onPress={() => setShowEvidenceTools((current) => !current)} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonLabel}>
                   {showEvidenceTools ? "Hide proof of work" : "Proof of work"}
@@ -589,72 +613,82 @@ export function DashboardScreen({
               </Text>
             </Pressable>
           </View>
-          {showEvidenceTools && (acceptedMatch.bookingStatus === "confirmed" || acceptedMatch.bookingStatus === "in-progress") ? (
+          {showEvidenceTools && canManageProof ? (
             <View style={styles.toolStack}>
-              <TextInput
-                value={beforeNoteDraft}
-                onChangeText={setBeforeNoteDraft}
-                placeholder="Add a before-work note for ops and disputes."
-                placeholderTextColor={BrandTokens.colors.inkSoft}
-                style={styles.input}
-              />
-              <View style={styles.buttonRow}>
-                <Pressable
-                  disabled={isWorking}
-                  onPress={() => void captureEvidencePhoto("before")}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>
-                    {acceptedMatch.beforeEvidenceCount > 0 ? "Add before photo" : "Capture before photo"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  disabled={isWorking}
-                  onPress={() => void saveEvidenceNote("before")}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>Save before note</Text>
-                </Pressable>
-                <Pressable
-                  disabled={isWorking}
-                  onPress={() => void saveEvidenceChecklist("before")}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>Save arrival checklist</Text>
-                </Pressable>
-              </View>
-              <TextInput
-                value={afterNoteDraft}
-                onChangeText={setAfterNoteDraft}
-                placeholder="Add an after-work note for ops and disputes."
-                placeholderTextColor={BrandTokens.colors.inkSoft}
-                style={styles.input}
-              />
-              <View style={styles.buttonRow}>
-                <Pressable
-                  disabled={isWorking}
-                  onPress={() => void captureEvidencePhoto("after")}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>
-                    {acceptedMatch.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  disabled={isWorking}
-                  onPress={() => void saveEvidenceNote("after")}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>Save after note</Text>
-                </Pressable>
-                <Pressable
-                  disabled={isWorking}
-                  onPress={() => void saveEvidenceChecklist("after")}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonLabel}>Save completion checklist</Text>
-                </Pressable>
-              </View>
+              {shouldShowArrivalProof ? (
+                <>
+                  <Text style={styles.proofTitle}>Arrival proof</Text>
+                  <TextInput
+                    value={beforeNoteDraft}
+                    onChangeText={setBeforeNoteDraft}
+                    placeholder="Arrival note"
+                    placeholderTextColor={BrandTokens.colors.inkSoft}
+                    style={styles.input}
+                  />
+                  <View style={styles.buttonRow}>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void captureEvidencePhoto("before")}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>
+                        {acceptedMatch.beforeEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void saveEvidenceNote("before")}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Save note</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void saveEvidenceChecklist("before")}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Checklist</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
+              {shouldShowCompletionProof ? (
+                <>
+                  <Text style={styles.proofTitle}>Completion proof</Text>
+                  <TextInput
+                    value={afterNoteDraft}
+                    onChangeText={setAfterNoteDraft}
+                    placeholder="Completion note"
+                    placeholderTextColor={BrandTokens.colors.inkSoft}
+                    style={styles.input}
+                  />
+                  <View style={styles.buttonRow}>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void captureEvidencePhoto("after")}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>
+                        {acceptedMatch.afterEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void saveEvidenceNote("after")}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Save note</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={isWorking}
+                      onPress={() => void saveEvidenceChecklist("after")}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonLabel}>Checklist</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
             </View>
           ) : null}
           {showShiftOptions ? (
@@ -700,6 +734,15 @@ export function DashboardScreen({
               : `${formatCurrency(payoutLedger.totalReadyCents)} ready`
           }
         >
+          {payoutFocus ? (
+            <View style={styles.payoutFocusCard}>
+              <View style={styles.payoutFocusCopy}>
+                <Text style={styles.payoutFocusLabel}>{payoutFocus.label}</Text>
+                <Text style={styles.payoutFocusDetail}>{payoutFocus.detail}</Text>
+              </View>
+              <Text style={styles.payoutFocusAmount}>{payoutFocus.amount}</Text>
+            </View>
+          ) : null}
           <View style={styles.shiftSummaryGrid}>
             <View style={styles.shiftSummaryItem}>
               <Text style={styles.shiftSummaryLabel}>Ready</Text>
@@ -826,6 +869,37 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
+  payoutFocusCard: {
+    alignItems: "center",
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    flexDirection: "row",
+    gap: BrandTokens.spacing.md,
+    justifyContent: "space-between",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  payoutFocusCopy: {
+    flex: 1,
+    gap: 2
+  },
+  payoutFocusLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  payoutFocusDetail: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  payoutFocusAmount: {
+    color: BrandTokens.colors.ink,
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 26,
+    textAlign: "right"
+  },
   statusLine: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700",
@@ -862,7 +936,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(47, 125, 76, 0.18)",
     backgroundColor: BrandTokens.colors.surfaceStrong,
-    gap: 2,
+    gap: BrandTokens.spacing.sm,
     paddingHorizontal: BrandTokens.spacing.md,
     paddingVertical: BrandTokens.spacing.md
   },
@@ -881,6 +955,18 @@ const styles = StyleSheet.create({
   nextActionDetail: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  nextPrimaryButton: {
+    alignSelf: "flex-start",
+    marginTop: BrandTokens.spacing.xs,
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  nextPrimaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
   },
   input: {
     borderRadius: BrandTokens.radius.md,
@@ -901,16 +987,10 @@ const styles = StyleSheet.create({
     gap: BrandTokens.spacing.sm,
     marginTop: BrandTokens.spacing.sm
   },
-  primaryButton: {
-    flex: 1,
-    alignItems: "center",
-    borderRadius: 999,
-    backgroundColor: BrandTokens.colors.primary,
-    paddingVertical: BrandTokens.spacing.md
-  },
-  primaryButtonLabel: {
-    color: "#ffffff",
-    fontWeight: "700"
+  proofTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
   },
   secondaryButton: {
     flex: 1,
@@ -936,20 +1016,6 @@ const styles = StyleSheet.create({
   dangerButtonLabel: {
     color: "#a03838",
     fontWeight: "700"
-  },
-  waitingBadge: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 999,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    paddingVertical: BrandTokens.spacing.md,
-    paddingHorizontal: BrandTokens.spacing.md
-  },
-  waitingBadgeLabel: {
-    color: BrandTokens.colors.inkSoft,
-    fontWeight: "700",
-    textAlign: "center"
   },
   linkButton: {
     alignSelf: "flex-start",

@@ -36,13 +36,16 @@ export function CustomerPropertyForm({
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [searchMessage, setSearchMessage] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [step, setStep] = useState<"address" | "details">("address");
 
-  const canSubmit =
-    label.trim().length > 0 &&
+  const canContinueAddress =
     line1.trim().length > 0 &&
     city.trim().length > 0 &&
     state.trim().length > 0 &&
     postalCode.trim().length > 0;
+  const canSubmit =
+    label.trim().length > 0 &&
+    canContinueAddress;
 
   useEffect(() => {
     if (locationQuery.trim().length < 2) {
@@ -101,108 +104,145 @@ export function CustomerPropertyForm({
     setLocationQuery("");
     setSelectedSuggestion(undefined);
     setSuggestions([]);
+    setStep("address");
   }
 
   return (
     <View style={styles.stack}>
-      <TextInput
-        autoCapitalize="words"
-        onChangeText={(value) => {
-          setLocationQuery(value);
-          setSelectedSuggestion(undefined);
-        }}
-        placeholder="Search city or town"
-        placeholderTextColor={BrandTokens.colors.muted}
-        style={styles.input}
-        value={locationQuery}
-      />
-      {suggestions.length > 0 ? (
-        <View style={styles.suggestionStack}>
-          {suggestions.map((suggestion) => (
-            <Pressable
-              key={suggestion.id}
-              onPress={() => {
-                setLocationQuery(suggestion.label);
-                setCity(suggestion.address.city);
-                setState(suggestion.address.state);
-                setPostalCode(suggestion.address.postalCode);
-                setSelectedSuggestion(suggestion);
-                setSuggestions([]);
-              }}
-              style={styles.suggestionRow}
-            >
-              <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
-              <Text style={styles.suggestionMeta}>
-                {suggestion.matchReason ??
-                  (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
-              </Text>
-            </Pressable>
-          ))}
+      <View style={styles.stepPath}>
+        <View style={[styles.stepItem, step === "address" && styles.stepItemActive]}>
+          <Text style={[styles.stepLabel, step === "address" && styles.stepLabelActive]}>Address</Text>
+          <Text style={styles.stepMeta}>{canContinueAddress ? "Ready" : "Now"}</Text>
         </View>
-      ) : locationQuery.trim().length >= 2 && isSearching ? (
-        <Text style={styles.searchingLabel}>Searching areas…</Text>
-      ) : locationQuery.trim().length >= 2 && searchMessage ? (
-        <Text style={styles.searchingLabel}>{searchMessage}</Text>
-      ) : null}
-      <TextInput
-        autoCapitalize="words"
-        onChangeText={setLabel}
-        placeholder="Home, rental, or office"
-        placeholderTextColor={BrandTokens.colors.muted}
-        style={styles.input}
-        value={label}
-      />
-      <TextInput
-        autoCapitalize="words"
-        onChangeText={setLine1}
-        placeholder="Street address"
-        placeholderTextColor={BrandTokens.colors.muted}
-        style={styles.input}
-        value={line1}
-      />
-      <View style={styles.inlineRow}>
-        <TextInput
-          autoCapitalize="words"
-          onChangeText={setCity}
-          placeholder="City"
-          placeholderTextColor={BrandTokens.colors.muted}
-          style={[styles.input, styles.inlineInput]}
-          value={city}
-        />
-        <TextInput
-          autoCapitalize="characters"
-          maxLength={2}
-          onChangeText={setState}
-          placeholder="ST"
-          placeholderTextColor={BrandTokens.colors.muted}
-          style={[styles.input, styles.stateInput]}
-          value={state}
-        />
-        <TextInput
-          keyboardType="number-pad"
-          maxLength={10}
-          onChangeText={setPostalCode}
-          placeholder="ZIP"
-          placeholderTextColor={BrandTokens.colors.muted}
-          style={[styles.input, styles.zipInput]}
-          value={postalCode}
-        />
+        <View style={[styles.stepItem, step === "details" && styles.stepItemActive]}>
+          <Text style={[styles.stepLabel, step === "details" && styles.stepLabelActive]}>Details</Text>
+          <Text style={styles.stepMeta}>{step === "details" ? (canSubmit ? "Ready" : "Now") : "Next"}</Text>
+        </View>
       </View>
-      <Pressable
-        onPress={() => setSetAsDefault((current) => !current)}
-        style={[styles.toggleButton, setAsDefault && styles.toggleButtonActive]}
-      >
-        <Text style={[styles.toggleButtonLabel, setAsDefault && styles.toggleButtonLabelActive]}>
-          {setAsDefault ? "Default property" : "Keep current default"}
-        </Text>
-      </Pressable>
-      <Pressable
-        disabled={isWorking || !canSubmit}
-        onPress={() => void handleSubmit()}
-        style={[styles.submitButton, (!canSubmit || isWorking) && styles.submitButtonDisabled]}
-      >
-        <Text style={styles.submitButtonLabel}>{isWorking ? "Saving..." : submitLabel}</Text>
-      </Pressable>
+
+      {step === "address" ? (
+        <>
+          <TextInput
+            autoCapitalize="words"
+            onChangeText={(value) => {
+              setLocationQuery(value);
+              setSelectedSuggestion(undefined);
+            }}
+            placeholder="Search city or town"
+            placeholderTextColor={BrandTokens.colors.muted}
+            style={styles.input}
+            value={locationQuery}
+          />
+          {suggestions.length > 0 ? (
+            <View style={styles.suggestionStack}>
+              {suggestions.map((suggestion) => (
+                <Pressable
+                  key={suggestion.id}
+                  onPress={() => {
+                    setLocationQuery(suggestion.label);
+                    setCity(suggestion.address.city);
+                    setState(suggestion.address.state);
+                    setPostalCode(suggestion.address.postalCode);
+                    setSelectedSuggestion(suggestion);
+                    setSuggestions([]);
+                  }}
+                  style={styles.suggestionRow}
+                >
+                  <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
+                  <Text style={styles.suggestionMeta}>
+                    {suggestion.matchReason ??
+                      (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : locationQuery.trim().length >= 2 && isSearching ? (
+            <Text style={styles.searchingLabel}>Searching areas...</Text>
+          ) : locationQuery.trim().length >= 2 && searchMessage ? (
+            <Text style={styles.searchingLabel}>{searchMessage}</Text>
+          ) : null}
+          <TextInput
+            autoCapitalize="words"
+            onChangeText={setLine1}
+            placeholder="Street address"
+            placeholderTextColor={BrandTokens.colors.muted}
+            style={styles.input}
+            value={line1}
+          />
+          <View style={styles.inlineRow}>
+            <TextInput
+              autoCapitalize="words"
+              onChangeText={setCity}
+              placeholder="City"
+              placeholderTextColor={BrandTokens.colors.muted}
+              style={[styles.input, styles.inlineInput]}
+              value={city}
+            />
+            <TextInput
+              autoCapitalize="characters"
+              maxLength={2}
+              onChangeText={setState}
+              placeholder="ST"
+              placeholderTextColor={BrandTokens.colors.muted}
+              style={[styles.input, styles.stateInput]}
+              value={state}
+            />
+            <TextInput
+              keyboardType="number-pad"
+              maxLength={10}
+              onChangeText={setPostalCode}
+              placeholder="ZIP"
+              placeholderTextColor={BrandTokens.colors.muted}
+              style={[styles.input, styles.zipInput]}
+              value={postalCode}
+            />
+          </View>
+          <Pressable
+            disabled={!canContinueAddress}
+            onPress={() => setStep("details")}
+            style={[styles.submitButton, !canContinueAddress && styles.submitButtonDisabled]}
+          >
+            <Text style={styles.submitButtonLabel}>Continue</Text>
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryCopy}>
+              <Text style={styles.summaryTitle}>{line1}</Text>
+              <Text style={styles.summaryMeta}>
+                {city}, {state.toUpperCase()} {postalCode}
+              </Text>
+            </View>
+            <Pressable onPress={() => setStep("address")} style={styles.linkButton}>
+              <Text style={styles.linkButtonLabel}>Edit</Text>
+            </Pressable>
+          </View>
+          <TextInput
+            autoCapitalize="words"
+            onChangeText={setLabel}
+            placeholder="Home, rental, or office"
+            placeholderTextColor={BrandTokens.colors.muted}
+            style={styles.input}
+            value={label}
+          />
+          <Pressable
+            onPress={() => setSetAsDefault((current) => !current)}
+            style={[styles.toggleButton, setAsDefault && styles.toggleButtonActive]}
+          >
+            <Text style={[styles.toggleButtonLabel, setAsDefault && styles.toggleButtonLabelActive]}>
+              {setAsDefault ? "Default property" : "Keep current default"}
+            </Text>
+          </Pressable>
+          <Pressable
+            disabled={isWorking || !canSubmit}
+            onPress={() => void handleSubmit()}
+            style={[styles.submitButton, (!canSubmit || isWorking) && styles.submitButtonDisabled]}
+          >
+            <Text style={styles.submitButtonLabel}>{isWorking ? "Saving..." : submitLabel}</Text>
+          </Pressable>
+        </>
+      )}
     </View>
   );
 }
@@ -210,6 +250,69 @@ export function CustomerPropertyForm({
 const styles = StyleSheet.create({
   stack: {
     gap: BrandTokens.spacing.sm
+  },
+  stepPath: {
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm
+  },
+  stepItem: {
+    flex: 1,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.9)",
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  stepItemActive: {
+    borderColor: "rgba(47, 125, 76, 0.36)",
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  stepLabel: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
+  stepLabelActive: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  stepMeta: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  summaryCard: {
+    alignItems: "center",
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    flexDirection: "row",
+    gap: BrandTokens.spacing.md,
+    justifyContent: "space-between",
+    padding: BrandTokens.spacing.md
+  },
+  summaryCopy: {
+    flex: 1,
+    gap: 2
+  },
+  summaryTitle: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "800"
+  },
+  summaryMeta: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  linkButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.xs
+  },
+  linkButtonLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
   },
   input: {
     borderRadius: BrandTokens.radius.sm,

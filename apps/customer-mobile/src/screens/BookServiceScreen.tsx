@@ -143,6 +143,7 @@ export function BookServiceScreen({
   const [showQuoteDetails, setShowQuoteDetails] = useState(false);
   const [showRecommendedWhy, setShowRecommendedWhy] = useState(false);
   const [showAlternativeWhy, setShowAlternativeWhy] = useState<Record<string, boolean>>({});
+  const [selectedSlotIdByProvider, setSelectedSlotIdByProvider] = useState<Record<string, string>>({});
 
   const activeProperty = useMemo(
     () => properties.find((property) => property.id === selectedPropertyId) ?? properties[0],
@@ -163,6 +164,7 @@ export function BookServiceScreen({
     setShowQuoteDetails(false);
     setShowRecommendedWhy(false);
     setShowAlternativeWhy({});
+    setSelectedSlotIdByProvider({});
   }
 
   function handleChangeDetails() {
@@ -203,6 +205,7 @@ export function BookServiceScreen({
       });
       setProviders(providerSearch.rankedProviders);
       setSlots(providerSearch.suggestedSlots);
+      setSelectedSlotIdByProvider({});
       setRecommendationContext({
         recommendationSessionId: providerSearch.recommendationSessionId,
         recommendedProviderId: providerSearch.recommendedProviderId
@@ -293,12 +296,13 @@ export function BookServiceScreen({
     }
   }
 
-  async function handleCreateBooking(provider: SearchProviderResult, rank: number) {
+  async function handleCreateBooking(provider: SearchProviderResult, rank: number, selectedSlot?: AvailabilitySlot) {
     if (!quote || !activeProperty || !envelope?.session.token) {
       return;
     }
 
     const slot =
+      selectedSlot ??
       provider.suggestedSlot ??
       slots.find((item) => item.providerId === provider.provider.id && !item.isBooked);
     if (!slot) {
@@ -347,6 +351,21 @@ export function BookServiceScreen({
   const shortlist = providerCards.slice(0, 3);
   const recommendedProviderCard = shortlist[0];
   const alternativeProviderCards = shortlist.slice(1);
+  const recommendedProviderOpenSlots = recommendedProviderCard
+    ? [
+        recommendedProviderCard.slot,
+        ...slots.filter((slot) => slot.providerId === recommendedProviderCard.provider.id && !slot.isBooked)
+      ]
+        .filter((slot): slot is AvailabilitySlot => Boolean(slot))
+        .filter((slot, index, allSlots) => allSlots.findIndex((item) => item.id === slot.id) === index)
+        .slice(0, 3)
+    : [];
+  const selectedRecommendedSlot =
+    recommendedProviderOpenSlots.find(
+      (slot) => recommendedProviderCard && slot.id === selectedSlotIdByProvider[recommendedProviderCard.provider.id]
+    ) ??
+    recommendedProviderCard?.slot ??
+    recommendedProviderOpenSlots[0];
   const providersWithWindows = providerCards.filter((item) => item.slot);
   const activeStepIndex = recommendedProviderCard ? 3 : quote ? 2 : 0;
   const requestSteps = [
@@ -406,111 +425,141 @@ export function BookServiceScreen({
 
       <InfoCard
         title="Details"
-        description={activeProperty ? `${selectedServiceLabel} • ${selectedTimingLabel}` : "Add a property to start."}
+        description={quote ? "Ready" : activeProperty ? `${selectedServiceLabel} • ${selectedTimingLabel}` : "Add a property to start."}
       >
-        <View style={styles.detailSection}>
-          <View style={styles.detailHeader}>
-            <Text style={styles.detailLabel}>Service</Text>
-            <Text style={styles.detailValue}>{selectedServiceLabel}</Text>
-          </View>
-          <View style={styles.chipWrap}>
-            {serviceOptions.map((option) => {
-              const isActive = option === selectedService;
-              return (
-                <Pressable
-                  key={option}
-                  onPress={() => {
-                    setSelectedService(option);
-                    resetMatchState();
-                  }}
-                  style={[styles.chip, isActive && styles.chipActive]}
-                >
-                  <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                    {formatServiceLabel(option)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={styles.detailSection}>
-          <View style={styles.detailHeader}>
-            <Text style={styles.detailLabel}>When</Text>
-            <Text style={styles.detailValue}>{selectedTimingLabel}</Text>
-          </View>
-          <View style={styles.chipWrap}>
-            {customerTimingOptions.map((option) => {
-              const isActive = option.value === selectedTiming;
-              return (
-                <Pressable
-                  key={option.value}
-                  onPress={() => {
-                    setSelectedTiming(option.value);
-                    resetMatchState();
-                  }}
-                  style={[styles.chip, isActive && styles.chipActive]}
-                >
-                  <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={styles.detailSection}>
-          <View style={styles.detailHeader}>
-            <Text style={styles.detailLabel}>Property</Text>
-            <Text numberOfLines={1} style={styles.detailValue}>
-              {activeProperty ? activeProperty.label : "Needed"}
-            </Text>
-          </View>
-
-          {properties.length === 0 ? (
-            <View style={styles.propertyStack}>
-              <Text style={styles.emptyState}>Add a property before we price the job.</Text>
-              <Pressable
-                disabled={isWorking}
-                onPress={() => setIsPropertyModalVisible(true)}
-                style={styles.secondaryButtonInline}
-              >
-                <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
-              </Pressable>
+        {quote ? (
+          <View style={styles.detailSummaryStack}>
+            <View style={styles.bookingFactGrid}>
+              <View style={styles.bookingFactItem}>
+                <Text style={styles.bookingFactLabel}>Service</Text>
+                <Text style={styles.bookingFactValue}>{selectedServiceLabel}</Text>
+              </View>
+              <View style={styles.bookingFactItem}>
+                <Text style={styles.bookingFactLabel}>When</Text>
+                <Text style={styles.bookingFactValue}>{selectedTimingLabel}</Text>
+              </View>
+              <View style={styles.bookingFactItem}>
+                <Text style={styles.bookingFactLabel}>Property</Text>
+                <Text style={styles.bookingFactValue}>{activeProperty?.label ?? "Selected property"}</Text>
+              </View>
+              <View style={styles.bookingFactItem}>
+                <Text style={styles.bookingFactLabel}>Address</Text>
+                <Text numberOfLines={2} style={styles.bookingFactValue}>
+                  {quote.normalizedAddress.displayLabel}
+                </Text>
+              </View>
             </View>
-          ) : (
-            <>
-              <View style={styles.propertyStack}>
-                {properties.map((property) => {
-                  const isActive = property.id === selectedPropertyId;
+            <Pressable onPress={handleChangeDetails} style={styles.secondaryButtonInline}>
+              <Text style={styles.secondaryButtonInlineLabel}>Change details</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <View style={styles.detailSection}>
+              <View style={styles.detailHeader}>
+                <Text style={styles.detailLabel}>Service</Text>
+                <Text style={styles.detailValue}>{selectedServiceLabel}</Text>
+              </View>
+              <View style={styles.chipWrap}>
+                {serviceOptions.map((option) => {
+                  const isActive = option === selectedService;
                   return (
                     <Pressable
-                      key={property.id}
+                      key={option}
                       onPress={() => {
-                        setSelectedPropertyId(property.id);
+                        setSelectedService(option);
                         resetMatchState();
                       }}
-                      style={[styles.propertyRow, isActive && styles.propertyRowActive]}
+                      style={[styles.chip, isActive && styles.chipActive]}
                     >
-                      <View style={styles.propertyCopy}>
-                        <Text style={styles.propertyLabel}>{property.label}</Text>
-                        <Text style={styles.propertyAddress}>{property.address.line1}</Text>
-                      </View>
-                      {property.isDefault ? <Text style={styles.defaultBadge}>Default</Text> : null}
+                      <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                        {formatServiceLabel(option)}
+                      </Text>
                     </Pressable>
                   );
                 })}
               </View>
-              <Pressable onPress={() => setIsPropertyModalVisible(true)} style={styles.secondaryButtonInline}>
-                <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
-              </Pressable>
-              <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonLabel}>
-                  {isWorking ? "Checking..." : "See price and crews"}
+            </View>
+
+            <View style={styles.detailSection}>
+              <View style={styles.detailHeader}>
+                <Text style={styles.detailLabel}>When</Text>
+                <Text style={styles.detailValue}>{selectedTimingLabel}</Text>
+              </View>
+              <View style={styles.chipWrap}>
+                {customerTimingOptions.map((option) => {
+                  const isActive = option.value === selectedTiming;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => {
+                        setSelectedTiming(option.value);
+                        resetMatchState();
+                      }}
+                      style={[styles.chip, isActive && styles.chipActive]}
+                    >
+                      <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.detailSection}>
+              <View style={styles.detailHeader}>
+                <Text style={styles.detailLabel}>Property</Text>
+                <Text numberOfLines={1} style={styles.detailValue}>
+                  {activeProperty ? activeProperty.label : "Needed"}
                 </Text>
-              </Pressable>
-            </>
-          )}
-        </View>
+              </View>
+
+              {properties.length === 0 ? (
+                <View style={styles.propertyStack}>
+                  <Text style={styles.emptyState}>Add a property before we price the job.</Text>
+                  <Pressable
+                    disabled={isWorking}
+                    onPress={() => setIsPropertyModalVisible(true)}
+                    style={styles.secondaryButtonInline}
+                  >
+                    <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.propertyStack}>
+                    {properties.map((property) => {
+                      const isActive = property.id === selectedPropertyId;
+                      return (
+                        <Pressable
+                          key={property.id}
+                          onPress={() => {
+                            setSelectedPropertyId(property.id);
+                            resetMatchState();
+                          }}
+                          style={[styles.propertyRow, isActive && styles.propertyRowActive]}
+                        >
+                          <View style={styles.propertyCopy}>
+                            <Text style={styles.propertyLabel}>{property.label}</Text>
+                            <Text style={styles.propertyAddress}>{property.address.line1}</Text>
+                          </View>
+                          {property.isDefault ? <Text style={styles.defaultBadge}>Default</Text> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Pressable onPress={() => setIsPropertyModalVisible(true)} style={styles.secondaryButtonInline}>
+                    <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
+                  </Pressable>
+                  <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
+                    <Text style={styles.primaryButtonLabel}>
+                      {isWorking ? "Checking..." : "See price and crews"}
+                    </Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          </>
+        )}
       </InfoCard>
 
       {quote ? (
@@ -643,7 +692,7 @@ export function BookServiceScreen({
                       </View>
                       <View style={styles.bookingFactItem}>
                         <Text style={styles.bookingFactLabel}>Opening</Text>
-                        <Text style={styles.bookingFactValue}>{formatOpenWindow(recommendedProviderCard.slot)}</Text>
+                        <Text style={styles.bookingFactValue}>{formatOpenWindow(selectedRecommendedSlot)}</Text>
                       </View>
                       <View style={styles.bookingFactItem}>
                         <Text style={styles.bookingFactLabel}>Crew</Text>
@@ -660,28 +709,41 @@ export function BookServiceScreen({
                     <Text style={styles.providerDecisionLine}>
                       {providerChoicePresentations[0]?.heading ?? recommendedProviderCard.ranking.selectionSummaryLabel}
                     </Text>
-                    <View style={styles.nextStepGrid}>
-                      <View style={styles.nextStepItem}>
-                        <Text style={styles.nextStepLabel}>Pay</Text>
-                        <Text style={styles.nextStepValue}>After request</Text>
+                    {recommendedProviderOpenSlots.length > 1 ? (
+                      <View style={styles.openingStack}>
+                        <Text style={styles.openingLabel}>Openings</Text>
+                        <View style={styles.openingChoiceRow}>
+                          {recommendedProviderOpenSlots.map((slot) => {
+                            const isSelected = slot.id === selectedRecommendedSlot?.id;
+                            return (
+                              <Pressable
+                                key={slot.id}
+                                onPress={() =>
+                                  setSelectedSlotIdByProvider((current) => ({
+                                    ...current,
+                                    [recommendedProviderCard.provider.id]: slot.id
+                                  }))
+                                }
+                                style={[styles.openingChoice, isSelected && styles.openingChoiceActive]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.openingChoiceLabel,
+                                    isSelected && styles.openingChoiceLabelActive
+                                  ]}
+                                >
+                                  {formatOpenWindow(slot)}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
                       </View>
-                      <View style={styles.nextStepItem}>
-                        <Text style={styles.nextStepLabel}>Track</Text>
-                        <Text style={styles.nextStepValue}>Visit day</Text>
-                      </View>
-                      <View style={styles.nextStepItem}>
-                        <Text style={styles.nextStepLabel}>Review</Text>
-                        <Text style={styles.nextStepValue}>After service</Text>
-                      </View>
-                      <View style={styles.nextStepItem}>
-                        <Text style={styles.nextStepLabel}>Support</Text>
-                        <Text style={styles.nextStepValue}>Included</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.providerMeta}>This creates the visit. Payment opens from Your visits.</Text>
+                    ) : null}
+                    <Text style={styles.providerMeta}>Request now. Pay after the visit is confirmed.</Text>
                     <Pressable
-                      disabled={isWorking || !recommendedProviderCard.slot}
-                      onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1)}
+                      disabled={isWorking || !selectedRecommendedSlot}
+                      onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1, selectedRecommendedSlot)}
                       style={styles.primaryButton}
                     >
                       <Text style={styles.primaryButtonLabel}>Request visit</Text>
@@ -958,6 +1020,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: "right"
   },
+  detailSummaryStack: {
+    gap: BrandTokens.spacing.md
+  },
   chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1119,33 +1184,39 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 20
   },
-  nextStepGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  openingStack: {
     gap: BrandTokens.spacing.sm
   },
-  nextStepItem: {
-    flexBasis: "47%",
-    flexGrow: 1,
-    borderRadius: BrandTokens.radius.sm,
-    borderWidth: 1,
-    borderColor: "rgba(20, 40, 29, 0.08)",
-    backgroundColor: "rgba(255,255,255,0.92)",
-    paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.sm,
-    gap: 2
-  },
-  nextStepLabel: {
+  openingLabel: {
     color: BrandTokens.colors.inkSoft,
     fontSize: 11,
     fontWeight: "700",
     textTransform: "uppercase"
   },
-  nextStepValue: {
-    color: BrandTokens.colors.ink,
+  openingChoiceRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  openingChoice: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  openingChoiceActive: {
+    borderColor: BrandTokens.colors.primary,
+    backgroundColor: BrandTokens.colors.primary
+  },
+  openingChoiceLabel: {
+    color: BrandTokens.colors.primaryStrong,
     fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18
+    fontWeight: "800"
+  },
+  openingChoiceLabelActive: {
+    color: "#ffffff"
   },
   providerStack: {
     gap: BrandTokens.spacing.md

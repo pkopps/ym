@@ -59,6 +59,38 @@ function formatPayoutStatus(status: ProviderPayoutLedgerResponse["entries"][numb
   }
 }
 
+function getProviderPayoutFocus(payoutLedger: ProviderPayoutLedgerResponse, blockedPayoutCents: number) {
+  if (payoutLedger.totalNetReadyCents > 0) {
+    return {
+      amount: formatCurrency(payoutLedger.totalNetReadyCents),
+      detail: `Pays ${formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}`,
+      label: "Ready"
+    };
+  }
+
+  if (payoutLedger.totalNetScheduledCents > 0) {
+    return {
+      amount: formatCurrency(payoutLedger.totalNetScheduledCents),
+      detail: `Next payout ${formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}`,
+      label: "Scheduled"
+    };
+  }
+
+  if (blockedPayoutCents > 0) {
+    return {
+      amount: formatCurrency(blockedPayoutCents),
+      detail: "Customer payment or hold needs to clear.",
+      label: "Waiting"
+    };
+  }
+
+  return {
+    amount: "$0",
+    detail: "Completed paid jobs appear here.",
+    label: "No payout yet"
+  };
+}
+
 function getTodayJobAction(job?: ProviderStaffingJobSummary): ProviderTodayJobAction {
   if (!job) {
     return "schedule";
@@ -158,6 +190,7 @@ export function DashboardScreen({
   );
   const shouldShowPayouts =
     Boolean(payoutLedger) && ((payoutLedger?.entries.length ?? 0) > 0 || totalJobs > 0);
+  const payoutFocus = payoutLedger ? getProviderPayoutFocus(payoutLedger, blockedPayoutCents) : undefined;
   const nextActionLabel =
     primaryCardKind === "staffing"
       ? "Review staffing"
@@ -304,6 +337,15 @@ export function DashboardScreen({
               : `${formatCurrency(payoutLedger.totalNetReadyCents)} ready`
           }
         >
+          {payoutFocus ? (
+            <View style={styles.payoutFocusCard}>
+              <View style={styles.payoutFocusCopy}>
+                <Text style={styles.payoutFocusLabel}>{payoutFocus.label}</Text>
+                <Text style={styles.payoutFocusDetail}>{payoutFocus.detail}</Text>
+              </View>
+              <Text style={styles.payoutFocusAmount}>{payoutFocus.amount}</Text>
+            </View>
+          ) : null}
           <View style={styles.jobSummaryGrid}>
             <View style={styles.jobSummaryItem}>
               <Text style={styles.jobSummaryLabel}>Ready</Text>
@@ -563,6 +605,37 @@ const styles = StyleSheet.create({
   alertText: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 21
+  },
+  payoutFocusCard: {
+    alignItems: "center",
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    flexDirection: "row",
+    gap: BrandTokens.spacing.md,
+    justifyContent: "space-between",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.md
+  },
+  payoutFocusCopy: {
+    flex: 1,
+    gap: 2
+  },
+  payoutFocusLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  payoutFocusDetail: {
+    color: BrandTokens.colors.inkSoft,
+    lineHeight: 20
+  },
+  payoutFocusAmount: {
+    color: BrandTokens.colors.ink,
+    fontSize: 22,
+    fontWeight: "800",
+    lineHeight: 26,
+    textAlign: "right"
   },
   primaryButton: {
     marginTop: BrandTokens.spacing.sm,

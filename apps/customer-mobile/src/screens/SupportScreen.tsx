@@ -285,37 +285,10 @@ export function SupportScreen() {
     <ScreenShell
       eyebrow="Account"
       title="Account"
-      description="Settings and help."
+      description="Properties, alerts, security, and help."
     >
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
-
-      <InfoCard title="Essentials" description="At a glance.">
-        <View style={styles.accountSummaryGrid}>
-          <View style={styles.accountSummaryItem}>
-            <Text style={styles.accountSummaryLabel}>Property</Text>
-            <Text style={styles.accountSummaryValue}>
-              {defaultProperty?.label ?? "Add one"}
-            </Text>
-          </View>
-          <View style={styles.accountSummaryItem}>
-            <Text style={styles.accountSummaryLabel}>Alerts</Text>
-            <Text style={styles.accountSummaryValue}>
-              {enabledAlertCount === undefined ? "Loading" : `${enabledAlertCount}/4 on`}
-            </Text>
-          </View>
-          <View style={styles.accountSummaryItem}>
-            <Text style={styles.accountSummaryLabel}>Security</Text>
-            <Text style={styles.accountSummaryValue}>
-              {!biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`}
-            </Text>
-          </View>
-          <View style={styles.accountSummaryItem}>
-            <Text style={styles.accountSummaryLabel}>Updates</Text>
-            <Text style={styles.accountSummaryValue}>{unreadCount} unread</Text>
-          </View>
-        </View>
-      </InfoCard>
 
       <InfoCard title="Manage" description={sectionSummaries[activeSection]}>
         <View style={styles.chipWrap}>
@@ -637,32 +610,6 @@ function PreferenceRow({
 const styles = StyleSheet.create({
   list: {
     gap: BrandTokens.spacing.md
-  },
-  accountSummaryGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: BrandTokens.spacing.sm
-  },
-  accountSummaryItem: {
-    flexBasis: "47%",
-    flexGrow: 1,
-    borderRadius: BrandTokens.radius.sm,
-    backgroundColor: BrandTokens.colors.surfaceStrong,
-    gap: 2,
-    paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.sm
-  },
-  accountSummaryLabel: {
-    color: BrandTokens.colors.inkSoft,
-    fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase"
-  },
-  accountSummaryValue: {
-    color: BrandTokens.colors.ink,
-    fontSize: 13,
-    fontWeight: "800",
-    lineHeight: 18
   },
   row: {
     flexDirection: "row",

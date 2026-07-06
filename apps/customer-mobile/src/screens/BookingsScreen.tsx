@@ -75,6 +75,7 @@ export function BookingsScreen({
   const [timelinessRating, setTimelinessRating] = useState<ReviewScore>(5);
   const [detailRating, setDetailRating] = useState<ReviewScore>(5);
   const [reviewText, setReviewText] = useState("");
+  const [showReviewDetails, setShowReviewDetails] = useState(false);
   const [disputeDrafts, setDisputeDrafts] = useState<Record<string, string>>({});
   const [refundDrafts, setRefundDrafts] = useState<Record<string, string>>({});
   const [submittedMessage, setSubmittedMessage] = useState("");
@@ -121,6 +122,7 @@ export function BookingsScreen({
   const readyOpportunity = reviewOpportunities.find(
     (opportunity) => opportunity.bookingId === selectedBookingId
   );
+  const canSubmitReview = Boolean(readyOpportunity?.canReviewNow && reviewText.trim().length > 0);
 
   async function loadBookings() {
     if (!envelope?.session.token) {
@@ -181,7 +183,12 @@ export function BookingsScreen({
   }, [envelope?.session.token]);
 
   const submitReview = async () => {
-    if (!readyOpportunity?.canReviewNow || reviewText.trim().length === 0 || !envelope?.session.token) {
+    if (!readyOpportunity?.canReviewNow || !envelope?.session.token) {
+      return;
+    }
+
+    if (reviewText.trim().length === 0) {
+      setErrorMessage("Add a short note before submitting your review.");
       return;
     }
 
@@ -193,8 +200,8 @@ export function BookingsScreen({
       await api.createProviderReview({
         bookingId: readyOpportunity.bookingId,
         overallRating,
-        timelinessRating,
-        attentionToDetailRating: detailRating,
+        timelinessRating: showReviewDetails ? timelinessRating : overallRating,
+        attentionToDetailRating: showReviewDetails ? detailRating : overallRating,
         reviewText: reviewText.trim()
       });
       void tracker.track(MarketplaceTelemetryEventCatalog.providerReviewSubmitted, {
@@ -206,6 +213,7 @@ export function BookingsScreen({
       });
       setSubmittedMessage(`Review saved for ${readyOpportunity.providerName}.`);
       setReviewText("");
+      setShowReviewDetails(false);
       await loadBookings();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to submit review.");
@@ -598,25 +606,6 @@ export function BookingsScreen({
 
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      {readyOpportunity?.canReviewNow ? (
-        <InfoCard title={`Review ${readyOpportunity.providerName}`} description="Post-service only">
-          <RatingField label="Overall" rating={overallRating} onChange={setOverallRating} />
-          <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
-          <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
-          <TextInput
-            multiline
-            onChangeText={setReviewText}
-            placeholder="How did it go?"
-            placeholderTextColor={BrandTokens.colors.muted}
-            style={styles.input}
-            value={reviewText}
-          />
-          <Pressable disabled={isWorking} onPress={() => void submitReview()} style={styles.submitButton}>
-            <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
-          </Pressable>
-        </InfoCard>
-      ) : null}
-
       {viewMode === "upcoming" ? (
         <InfoCard title="Coming up" description={`${upcomingBookings.length} scheduled`}>
           {upcomingBookings.length > 0 ? (
@@ -648,6 +637,29 @@ export function BookingsScreen({
                       <Text style={styles.nextActionEyebrow}>Next</Text>
                       <Text style={styles.nextActionTitle}>{nextStep.label}</Text>
                       <Text style={styles.nextActionDetail}>{nextStep.detail}</Text>
+                      {primaryActionKind === "track" ? (
+                        <Pressable
+                          disabled={isWorking}
+                          onPress={() => void openArrivalTracking(booking)}
+                          style={styles.nextPrimaryAction}
+                        >
+                          <Text style={styles.nextPrimaryActionLabel}>{nextStep.label}</Text>
+                        </Pressable>
+                      ) : null}
+                      {primaryActionKind === "checkout" ? (
+                        <Pressable
+                          disabled={isWorking}
+                          onPress={() => void payWithStripe(booking)}
+                          style={styles.nextPrimaryAction}
+                        >
+                          <Text style={styles.nextPrimaryActionLabel}>{nextStep.label}</Text>
+                        </Pressable>
+                      ) : null}
+                      {primaryActionKind === "support" ? (
+                        <Pressable onPress={() => onOpenAccount?.()} style={styles.nextPrimaryAction}>
+                          <Text style={styles.nextPrimaryActionLabel}>{nextStep.label}</Text>
+                        </Pressable>
+                      ) : null}
                     </View>
 
                     <View style={styles.visitSummaryGrid}>
@@ -672,29 +684,6 @@ export function BookingsScreen({
                     </View>
 
                     <View style={styles.actionPanel}>
-                      {primaryActionKind === "track" ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void openArrivalTracking(booking)}
-                          style={styles.primaryAction}
-                        >
-                          <Text style={styles.primaryActionLabel}>{nextStep.label}</Text>
-                        </Pressable>
-                      ) : null}
-                      {primaryActionKind === "checkout" ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void payWithStripe(booking)}
-                          style={styles.primaryAction}
-                        >
-                          <Text style={styles.primaryActionLabel}>{nextStep.label}</Text>
-                        </Pressable>
-                      ) : null}
-                      {primaryActionKind === "support" ? (
-                        <Pressable onPress={() => onOpenAccount?.()} style={styles.primaryAction}>
-                          <Text style={styles.primaryActionLabel}>{nextStep.label}</Text>
-                        </Pressable>
-                      ) : null}
                       {booking.onRouteConfirmedAt ? (
                         <Pressable
                           disabled={isWorking}
@@ -855,6 +844,51 @@ export function BookingsScreen({
         </InfoCard>
       ) : (
         <>
+          {readyOpportunity?.canReviewNow ? (
+            <InfoCard title="Review visit" description={readyOpportunity.providerName}>
+              <RatingField
+                label="Rating"
+                rating={overallRating}
+                onChange={(rating) => {
+                  setOverallRating(rating);
+                  if (!showReviewDetails) {
+                    setTimelinessRating(rating);
+                    setDetailRating(rating);
+                  }
+                }}
+              />
+              <TextInput
+                multiline
+                onChangeText={setReviewText}
+                placeholder="A few words about the visit"
+                placeholderTextColor={BrandTokens.colors.muted}
+                style={styles.input}
+                value={reviewText}
+              />
+              <Pressable
+                onPress={() => setShowReviewDetails((current) => !current)}
+                style={styles.secondaryAction}
+              >
+                <Text style={styles.secondaryActionLabel}>
+                  {showReviewDetails ? "Hide detail ratings" : "Detail ratings"}
+                </Text>
+              </Pressable>
+              {showReviewDetails ? (
+                <View style={styles.reviewDetailStack}>
+                  <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
+                  <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
+                </View>
+              ) : null}
+              <Pressable
+                disabled={isWorking || !canSubmitReview}
+                onPress={() => void submitReview()}
+                style={[styles.submitButton, !canSubmitReview && styles.submitButtonDisabled]}
+              >
+                <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
+              </Pressable>
+            </InfoCard>
+          ) : null}
+
           <InfoCard title="Past visits" description={`${pastBookings.length} completed or closed`}>
             {pastBookings.length > 0 ? (
               <View style={styles.list}>
@@ -1202,7 +1236,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(47, 125, 76, 0.18)",
     backgroundColor: BrandTokens.colors.surfaceStrong,
-    gap: 2,
+    gap: BrandTokens.spacing.sm,
     paddingHorizontal: BrandTokens.spacing.md,
     paddingVertical: BrandTokens.spacing.md
   },
@@ -1221,6 +1255,19 @@ const styles = StyleSheet.create({
   nextActionDetail: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  nextPrimaryAction: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    marginTop: BrandTokens.spacing.xs,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  nextPrimaryActionLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
   },
   bookingCopy: {
     flex: 1,
@@ -1282,16 +1329,6 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
   },
-  primaryAction: {
-    borderRadius: 999,
-    backgroundColor: BrandTokens.colors.primary,
-    paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.sm
-  },
-  primaryActionLabel: {
-    color: "#ffffff",
-    fontWeight: "700"
-  },
   statusBadge: {
     alignSelf: "flex-start",
     borderRadius: 999,
@@ -1325,6 +1362,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: BrandTokens.spacing.xs
   },
+  reviewDetailStack: {
+    gap: BrandTokens.spacing.md
+  },
   input: {
     minHeight: 92,
     borderRadius: BrandTokens.radius.sm,
@@ -1343,6 +1383,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: BrandTokens.colors.primary,
     paddingVertical: BrandTokens.spacing.md
+  },
+  submitButtonDisabled: {
+    opacity: 0.56
   },
   submitButtonLabel: {
     color: "#ffffff",

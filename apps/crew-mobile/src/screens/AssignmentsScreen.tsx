@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { CrewMatchesResponse } from "@yardmatch/contracts";
@@ -157,12 +157,13 @@ function AssignmentSummaryGrid({ assignment }: { assignment: CrewAssignment }) {
   );
 }
 
-function AssignmentNextPanel({ step }: { step: AssignmentNextStep }) {
+function AssignmentNextPanel({ children, step }: { children?: ReactNode; step: AssignmentNextStep }) {
   return (
     <View style={styles.nextPanel}>
       <Text style={styles.nextEyebrow}>Next</Text>
       <Text style={styles.nextTitle}>{step.label}</Text>
       <Text style={styles.nextDetail}>{step.detail}</Text>
+      {children}
     </View>
   );
 }
@@ -296,23 +297,24 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
                       </View>
                       <AssignmentSummaryGrid assignment={assignment} />
                       <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
-                      <AssignmentNextPanel step={nextStep} />
-                      <Text style={styles.summary}>{getAssignmentSummary(assignment)}</Text>
-                      <View style={styles.actionStack}>
+                      <AssignmentNextPanel step={nextStep}>
                         {nextStep.action === "today" && onOpenToday ? (
-                          <Pressable disabled={isWorking} onPress={onOpenToday} style={styles.primaryButton}>
-                            <Text style={styles.primaryButtonLabel}>Open Today</Text>
+                          <Pressable disabled={isWorking} onPress={onOpenToday} style={styles.nextPrimaryButton}>
+                            <Text style={styles.nextPrimaryButtonLabel}>Open Today</Text>
                           </Pressable>
                         ) : null}
                         {nextStep.action === "start-route" ? (
                           <Pressable
                             disabled={isWorking}
                             onPress={() => void startRoute(assignment)}
-                            style={styles.primaryButton}
+                            style={styles.nextPrimaryButton}
                           >
-                            <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                            <Text style={styles.nextPrimaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
                           </Pressable>
                         ) : null}
+                      </AssignmentNextPanel>
+                      <Text style={styles.summary}>{getAssignmentSummary(assignment)}</Text>
+                      <View style={styles.actionStack}>
                         {(assignment.bookingStatus === "requested" ||
                           (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
                           <Pressable
@@ -473,7 +475,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(47, 125, 76, 0.16)",
     backgroundColor: BrandTokens.colors.surfaceStrong,
-    gap: BrandTokens.spacing.xs,
+    gap: BrandTokens.spacing.sm,
     padding: BrandTokens.spacing.md
   },
   nextEyebrow: {
@@ -490,6 +492,18 @@ const styles = StyleSheet.create({
   nextDetail: {
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
+  },
+  nextPrimaryButton: {
+    alignSelf: "flex-start",
+    marginTop: BrandTokens.spacing.xs,
+    borderRadius: 999,
+    backgroundColor: BrandTokens.colors.primary,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  nextPrimaryButtonLabel: {
+    color: "#ffffff",
+    fontWeight: "700"
   },
   copy: {
     flex: 1,
@@ -520,18 +534,6 @@ const styles = StyleSheet.create({
   },
   actionStack: {
     gap: BrandTokens.spacing.sm
-  },
-  primaryButton: {
-    alignSelf: "flex-start",
-    marginTop: BrandTokens.spacing.xs,
-    borderRadius: 999,
-    backgroundColor: BrandTokens.colors.primary,
-    paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.sm
-  },
-  primaryButtonLabel: {
-    color: "#ffffff",
-    fontWeight: "700"
   },
   cancelButton: {
     alignSelf: "flex-start",
