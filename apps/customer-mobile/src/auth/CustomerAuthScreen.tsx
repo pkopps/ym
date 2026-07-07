@@ -88,6 +88,7 @@ export function CustomerAuthScreen({
   const authCopy = getModeCopy(mode);
   const tracker = getCustomerMobileTracker();
   const isCompletingSocialSignup = pendingSignupToken.length > 0;
+  const canSubmitLogin = email.trim().length > 0 && password.trim().length > 0;
   const canContinueSignupAccount =
     fullName.trim().length > 0 &&
     email.trim().length > 0 &&
@@ -102,6 +103,12 @@ export function CustomerAuthScreen({
     address.state.trim().length > 0 &&
     address.postalCode.trim().length > 0 &&
     (isCompletingSocialSignup || password.trim().length > 0);
+  const canSubmitPrimary =
+    mode === "login"
+      ? canSubmitLogin
+      : signupStep === "account"
+        ? canContinueSignupAccount
+        : canSubmitSignup;
 
   useEffect(() => {
     if (mode !== "signup" || addressQuery.trim().length < 2) {
@@ -574,7 +581,11 @@ export function CustomerAuthScreen({
           </View>
         ) : null}
 
-        <Pressable onPress={handlePrimarySubmit} style={styles.primaryButton}>
+        <Pressable
+          disabled={isSubmitting || !canSubmitPrimary}
+          onPress={handlePrimarySubmit}
+          style={[styles.primaryButton, (!canSubmitPrimary || isSubmitting) && styles.primaryButtonDisabled]}
+        >
           <Text style={styles.primaryButtonLabel}>
             {isSubmitting
               ? "Working..."
@@ -820,6 +831,9 @@ const styles = StyleSheet.create({
     minHeight: 52,
     borderRadius: 999,
     backgroundColor: BrandTokens.colors.primary
+  },
+  primaryButtonDisabled: {
+    opacity: 0.46
   },
   primaryButtonLabel: {
     color: "#ffffff",

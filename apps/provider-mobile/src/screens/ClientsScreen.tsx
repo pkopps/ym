@@ -7,6 +7,30 @@ import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
+function formatHourlyPay(cents: number) {
+  return `${new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100)}/hr`;
+}
+
+function formatRecommendationLabel(label?: "best-fit" | "good-fit" | "backup") {
+  if (label === "best-fit") {
+    return "Best fit";
+  }
+
+  if (label === "good-fit") {
+    return "Good fit";
+  }
+
+  if (label === "backup") {
+    return "Backup";
+  }
+
+  return "Crew match";
+}
+
 export function ClientsScreen() {
   const { envelope } = useProviderSession();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
@@ -75,36 +99,70 @@ export function ClientsScreen() {
   }
 
   function renderMatchRow(match: ProviderStaffingOverview["jobs"][number]["matches"][number]) {
+    const isPending = match.status === "pending-provider-review";
+    const facts = [
+      {
+        label: "Rate",
+        value: formatHourlyPay(match.hourlyRateCents)
+      },
+      {
+        label: "Distance",
+        value: `${match.distanceMiles} mi`
+      },
+      {
+        label: "Travel",
+        value: `${match.willingToTravelMiles} mi`
+      },
+      {
+        label: "Equipment",
+        value: match.hasOwnEquipment ? "Owns" : "Needs"
+      }
+    ];
+
     return (
       <View key={match.id} style={styles.matchRow}>
-        <View style={styles.copy}>
-          <Text style={styles.title}>{match.crewMemberName}</Text>
-          <Text style={styles.meta}>
-            {match.categories.map((category) => category.replaceAll("-", " ")).join(" • ")}
-          </Text>
-          <Text style={styles.meta}>
-            {match.distanceMiles} mi • {match.availableWeekdays.join(", ")}
-          </Text>
-          <Text style={styles.meta}>
-            {match.status === "pending-provider-review" ? "Ready for your review" : match.status.replaceAll("-", " ")}
+        <View style={styles.matchHeader}>
+          <View style={styles.copy}>
+            <Text style={styles.matchBadge}>{formatRecommendationLabel(match.recommendationLabel)}</Text>
+            <Text style={styles.title}>{match.crewMemberName}</Text>
+            <Text style={styles.meta}>
+              {match.categories.map((category) => category.replaceAll("-", " ")).join(" • ")}
+            </Text>
+          </View>
+          <Text style={isPending ? styles.warningBadge : styles.successBadge}>
+            {isPending ? "Review" : match.status.replaceAll("-", " ")}
           </Text>
         </View>
-        <View style={styles.buttonStack}>
-          {match.status === "pending-provider-review" ? (
+        <View style={styles.matchFactGrid}>
+          {facts.map((fact) => (
+            <View key={fact.label} style={styles.matchFactItem}>
+              <Text style={styles.matchFactLabel}>{fact.label}</Text>
+              <Text style={styles.matchFactValue}>{fact.value}</Text>
+            </View>
+          ))}
+        </View>
+        <Text style={styles.meta}>
+          {match.preferredSchedule.replaceAll("-", " ")} • {match.availableWeekdays.join(", ")}
+        </Text>
+        {match.recommendationReasons && match.recommendationReasons.length > 0 ? (
+          <Text style={styles.meta}>{match.recommendationReasons.slice(0, 2).join(" • ")}</Text>
+        ) : null}
+        <View style={styles.buttonRow}>
+          {isPending ? (
             <>
               <Pressable
                 disabled={isWorking}
                 onPress={() => void reviewMatch(match.id, "accept")}
                 style={styles.primaryButton}
               >
-                <Text style={styles.primaryButtonLabel}>Accept</Text>
+                <Text style={styles.primaryButtonLabel}>Add crew</Text>
               </Pressable>
               <Pressable
                 disabled={isWorking}
                 onPress={() => void reviewMatch(match.id, "deny")}
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>Deny</Text>
+                <Text style={styles.secondaryButtonLabel}>Pass</Text>
               </Pressable>
             </>
           ) : null}
@@ -217,13 +275,17 @@ const styles = StyleSheet.create({
     gap: BrandTokens.spacing.sm
   },
   matchRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     gap: BrandTokens.spacing.md,
     borderTopWidth: 1,
     borderTopColor: BrandTokens.colors.border,
     paddingTop: BrandTokens.spacing.sm,
     marginTop: BrandTokens.spacing.sm
+  },
+  matchHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
   },
   copy: {
     flex: 1,
@@ -237,8 +299,37 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.inkSoft,
     lineHeight: 20
   },
-  buttonStack: {
+  matchBadge: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  matchFactGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: BrandTokens.spacing.sm
+  },
+  matchFactItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  matchFactLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  matchFactValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   buttonRow: {
     flexDirection: "row",
@@ -287,6 +378,14 @@ const styles = StyleSheet.create({
   },
   secondaryButtonInlineLabel: {
     color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  warningBadge: {
+    color: BrandTokens.colors.accent,
+    fontWeight: "700"
+  },
+  successBadge: {
+    color: BrandTokens.colors.success,
     fontWeight: "700"
   }
 });

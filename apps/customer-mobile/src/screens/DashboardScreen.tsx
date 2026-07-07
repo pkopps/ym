@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   Booking,
@@ -70,6 +70,34 @@ function getPaymentLabel(payment?: PaymentRecord) {
   return payment.status;
 }
 
+function formatPrice(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(cents / 100);
+}
+
+function needsCheckout(booking: Booking, payment?: PaymentRecord) {
+  return (
+    (booking.status === "requested" || booking.status === "confirmed") &&
+    payment?.status !== "captured" &&
+    payment?.status !== "refunded"
+  );
+}
+
+function getCheckoutActionLabel(payment?: PaymentRecord) {
+  if (payment?.status === "failed") {
+    return "Retry payment";
+  }
+
+  if (payment?.status === "pending") {
+    return "Continue checkout";
+  }
+
+  return "Pay now";
+}
+
 export function DashboardScreen({
   onStartBooking,
   onOpenBookings
@@ -86,7 +114,9 @@ export function DashboardScreen({
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [isTrackingModalVisible, setIsTrackingModalVisible] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isWorking, setIsWorking] = useState(false);
 
   const nextBooking = useMemo(
     () =>
@@ -103,6 +133,7 @@ export function DashboardScreen({
   const activeProperty = properties.find((property) => property.isDefault) ?? properties[0];
   const reviewReady = reviewOpportunities.find((opportunity) => opportunity.canReviewNow);
   const nextBookingPayment = nextBooking ? paymentsByBookingId[nextBooking.id] : undefined;
+  const nextBookingNeedsCheckout = nextBooking ? needsCheckout(nextBooking, nextBookingPayment) : false;
   const activeTrackingBooking = activeTrackingBookingId
     ? bookings.find((booking) => booking.id === activeTrackingBookingId)
     : undefined;
@@ -116,20 +147,34 @@ export function DashboardScreen({
           ? "property"
           : "empty";
   const activeHomeStepIndex = (() => {
-    if (reviewReady) {
-      return 3;
-    }
-
-    if (tracking || nextBooking?.onRouteConfirmedAt || nextBooking?.status === "in-progress") {
+    if (primaryCardKind === "tracking" || nextBooking?.onRouteConfirmedAt || nextBooking?.status === "in-progress") {
       return 2;
     }
 
-    if (nextBooking) {
-      return nextBookingPayment?.status === "captured" || nextBookingPayment?.status === "refunded" ? 2 : 1;
+    if (primaryCardKind === "booking" && nextBooking) {
+      if (nextBooking.status === "requested") {
+        return 0;
+      }
+
+      return nextBookingNeedsCheckout ? 1 : 2;
+    }
+
+    if (primaryCardKind === "review") {
+      return 3;
     }
 
     return 0;
   })();
+  const homeNowLabel =
+    primaryCardKind === "tracking"
+      ? "Track arrival"
+      : primaryCardKind === "review"
+        ? "Leave review"
+        : primaryCardKind === "booking" && nextBooking
+          ? nextBookingNeedsCheckout
+            ? getCheckoutActionLabel(nextBookingPayment)
+            : formatBookingStatusLabel(nextBooking)
+          : "Request service";
   const homeSteps = [
     {
       label: "Book",
@@ -231,6 +276,32 @@ export function DashboardScreen({
     return () => clearInterval(intervalId);
   }, [activeTrackingBookingId, envelope?.session.token]);
 
+  async function payWithStripe(booking: Booking) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      setStatusMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const checkout = await api.createCheckoutSession({
+        bookingId: booking.id,
+        successPath: "/customer/dashboard?payment=stripe-success",
+        cancelPath: "/customer/dashboard?payment=stripe-cancelled"
+      });
+      setStatusMessage("Stripe checkout opened in your browser.");
+      await Linking.openURL(checkout.checkoutUrl);
+      await loadHome();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to open checkout.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell
       eyebrow="Home"
@@ -260,15 +331,7 @@ export function DashboardScreen({
         <View style={styles.homeFocusGrid}>
           <View style={styles.homeFocusItem}>
             <Text style={styles.homeFocusLabel}>Now</Text>
-            <Text style={styles.homeFocusValue}>
-              {tracking
-                ? "Track arrival"
-                : reviewReady
-                  ? "Leave review"
-                  : nextBooking
-                    ? formatBookingStatusLabel(nextBooking)
-                    : "Request service"}
-            </Text>
+            <Text style={styles.homeFocusValue}>{homeNowLabel}</Text>
           </View>
           <View style={styles.homeFocusItem}>
             <Text style={styles.homeFocusLabel}>Property</Text>
@@ -276,6 +339,8 @@ export function DashboardScreen({
           </View>
         </View>
       </View>
+
+      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
 
       {primaryCardKind === "tracking" && tracking && activeTrackingBookingId ? (
         <InfoCard
@@ -301,7 +366,7 @@ export function DashboardScreen({
 
       {primaryCardKind === "booking" && nextBooking ? (
         <InfoCard
-          title={formatBookingStatusLabel(nextBooking)}
+          title={nextBookingNeedsCheckout ? getCheckoutActionLabel(nextBookingPayment) : formatBookingStatusLabel(nextBooking)}
           description={formatBookingWindowSummary(nextBooking.scheduledStartIso)}
         >
           <Text style={styles.primaryLine}>
@@ -314,12 +379,29 @@ export function DashboardScreen({
               {new Date(nextBooking.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
             </Text>
           ) : null}
+          {nextBookingNeedsCheckout ? (
+            <Text style={styles.noteLine}>{formatPrice(nextBooking.totalCents)} due before the visit.</Text>
+          ) : null}
           <View style={styles.actionStack}>
-            <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>See visit</Text>
-            </Pressable>
-            <Pressable onPress={onStartBooking} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Book another visit</Text>
+            {nextBookingNeedsCheckout ? (
+              <Pressable
+                disabled={isWorking}
+                onPress={() => void payWithStripe(nextBooking)}
+                style={[styles.primaryButton, isWorking && styles.primaryButtonDisabled]}
+              >
+                <Text style={styles.primaryButtonLabel}>
+                  {isWorking ? "Opening..." : getCheckoutActionLabel(nextBookingPayment)}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonLabel}>See visit</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={nextBookingNeedsCheckout ? onOpenBookings : onStartBooking} style={styles.secondaryButton}>
+              <Text style={styles.secondaryButtonLabel}>
+                {nextBookingNeedsCheckout ? "Open visit" : "Book another visit"}
+              </Text>
             </Pressable>
           </View>
         </InfoCard>
@@ -515,6 +597,9 @@ const styles = StyleSheet.create({
     backgroundColor: BrandTokens.colors.primary,
     paddingHorizontal: BrandTokens.spacing.lg,
     paddingVertical: BrandTokens.spacing.md
+  },
+  primaryButtonDisabled: {
+    opacity: 0.46
   },
   primaryButtonLabel: {
     color: "#ffffff",

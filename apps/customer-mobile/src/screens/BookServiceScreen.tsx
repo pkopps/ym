@@ -78,6 +78,20 @@ function formatProviderDistance(distanceMiles: number) {
   return distanceMiles < 1 ? "Nearby" : `${distanceMiles.toFixed(1)} mi`;
 }
 
+function formatProviderServiceRadius(radiusMiles: number) {
+  return `${radiusMiles} mi radius`;
+}
+
+function getProviderOpenSlots(providerId: string, slots: AvailabilitySlot[], preferredSlot?: AvailabilitySlot) {
+  return [
+    preferredSlot,
+    ...slots.filter((slot) => slot.providerId === providerId && !slot.isBooked)
+  ]
+    .filter((slot): slot is AvailabilitySlot => Boolean(slot))
+    .filter((slot, index, allSlots) => allSlots.findIndex((item) => item.id === slot.id) === index)
+    .slice(0, 3);
+}
+
 function getRequestStepStatus(stepIndex: number, activeStepIndex: number): RequestStepStatus {
   if (stepIndex < activeStepIndex) {
     return "complete";
@@ -352,13 +366,7 @@ export function BookServiceScreen({
   const recommendedProviderCard = shortlist[0];
   const alternativeProviderCards = shortlist.slice(1);
   const recommendedProviderOpenSlots = recommendedProviderCard
-    ? [
-        recommendedProviderCard.slot,
-        ...slots.filter((slot) => slot.providerId === recommendedProviderCard.provider.id && !slot.isBooked)
-      ]
-        .filter((slot): slot is AvailabilitySlot => Boolean(slot))
-        .filter((slot, index, allSlots) => allSlots.findIndex((item) => item.id === slot.id) === index)
-        .slice(0, 3)
+    ? getProviderOpenSlots(recommendedProviderCard.provider.id, slots, recommendedProviderCard.slot)
     : [];
   const selectedRecommendedSlot =
     recommendedProviderOpenSlots.find(
@@ -709,44 +717,23 @@ export function BookServiceScreen({
                     <Text style={styles.providerDecisionLine}>
                       {providerChoicePresentations[0]?.heading ?? recommendedProviderCard.ranking.selectionSummaryLabel}
                     </Text>
-                    {recommendedProviderOpenSlots.length > 1 ? (
-                      <View style={styles.openingStack}>
-                        <Text style={styles.openingLabel}>Openings</Text>
-                        <View style={styles.openingChoiceRow}>
-                          {recommendedProviderOpenSlots.map((slot) => {
-                            const isSelected = slot.id === selectedRecommendedSlot?.id;
-                            return (
-                              <Pressable
-                                key={slot.id}
-                                onPress={() =>
-                                  setSelectedSlotIdByProvider((current) => ({
-                                    ...current,
-                                    [recommendedProviderCard.provider.id]: slot.id
-                                  }))
-                                }
-                                style={[styles.openingChoice, isSelected && styles.openingChoiceActive]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.openingChoiceLabel,
-                                    isSelected && styles.openingChoiceLabelActive
-                                  ]}
-                                >
-                                  {formatOpenWindow(slot)}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    ) : null}
+                    <ProviderOpeningChoices
+                      onSelect={(slotId) =>
+                        setSelectedSlotIdByProvider((current) => ({
+                          ...current,
+                          [recommendedProviderCard.provider.id]: slotId
+                        }))
+                      }
+                      selectedSlotId={selectedRecommendedSlot?.id}
+                      slots={recommendedProviderOpenSlots}
+                    />
                     <Text style={styles.providerMeta}>Request now. Pay after the visit is confirmed.</Text>
                     <Pressable
                       disabled={isWorking || !selectedRecommendedSlot}
                       onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1, selectedRecommendedSlot)}
                       style={styles.primaryButton}
                     >
-                      <Text style={styles.primaryButtonLabel}>Request visit</Text>
+                      <Text style={styles.primaryButtonLabel}>Request this time</Text>
                     </Pressable>
                     <View style={styles.providerStack}>
                       <Pressable
@@ -786,6 +773,7 @@ export function BookServiceScreen({
                           <Text style={styles.providerMeta}>
                             {recommendedProviderCard.ranking.reasons.join(" • ")}
                           </Text>
+                          <ProviderTrustProfile ranking={recommendedProviderCard.ranking} />
                         </View>
                       ) : null}
                     </View>
@@ -813,19 +801,39 @@ export function BookServiceScreen({
                     </Pressable>
                   </View>
                 ) : null}
-                {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => (
-                  <View key={provider.id} style={styles.providerRowCompact}>
-                    <View style={styles.providerCopy}>
-                      {providerChoicePresentations[index + 1] ? (
-                        <Text style={styles.providerBadge}>{providerChoicePresentations[index + 1].badge}</Text>
-                      ) : null}
-                      <Text style={styles.providerName}>{provider.companyName}</Text>
-                      <Text style={styles.providerChoiceDetail}>{ranking.selectionSummaryLabel}</Text>
+                {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => {
+                  const openSlots = getProviderOpenSlots(provider.id, slots, slot);
+                  const selectedAlternativeSlot =
+                    openSlots.find((item) => item.id === selectedSlotIdByProvider[provider.id]) ?? slot ?? openSlots[0];
+                  const presentation = providerChoicePresentations[index + 1];
+
+                  return (
+                    <View key={provider.id} style={styles.alternativeCard}>
+                      <View style={styles.providerTopRow}>
+                        <View style={styles.providerAvatarSmall}>
+                          <Text style={styles.providerAvatarLabel}>{getCompanyInitials(provider.companyName)}</Text>
+                        </View>
+                        <View style={styles.providerCopy}>
+                          {presentation ? <Text style={styles.providerBadge}>{presentation.badge}</Text> : null}
+                          <Text style={styles.providerName}>{provider.companyName}</Text>
+                          <Text style={styles.providerChoiceDetail}>{ranking.selectionSummaryLabel}</Text>
+                        </View>
+                      </View>
                       <View style={styles.marketSignalRow}>
-                        <Text style={styles.marketSignalPill}>{formatOpenWindow(slot)}</Text>
                         <Text style={styles.marketSignalPill}>{formatProviderTrust(provider)}</Text>
                         <Text style={styles.marketSignalPill}>{formatProviderDistance(ranking.distanceMiles)}</Text>
+                        <Text style={styles.marketSignalPill}>{formatPrice(quote.estimatedPriceCents)}</Text>
                       </View>
+                      <ProviderOpeningChoices
+                        onSelect={(slotId) =>
+                          setSelectedSlotIdByProvider((current) => ({
+                            ...current,
+                            [provider.id]: slotId
+                          }))
+                        }
+                        selectedSlotId={selectedAlternativeSlot?.id}
+                        slots={openSlots}
+                      />
                       <Pressable
                         onPress={() =>
                           setShowAlternativeWhy((current) => ({
@@ -841,12 +849,10 @@ export function BookServiceScreen({
                       </Pressable>
                       {showAlternativeWhy[provider.id] ? (
                         <View style={styles.providerStack}>
-                          {providerChoicePresentations[index + 1] ? (
+                          {presentation ? (
                             <Text style={styles.providerMeta}>
-                              <Text style={styles.providerChoiceHeading}>
-                                {providerChoicePresentations[index + 1].heading}.{" "}
-                              </Text>
-                              {providerChoicePresentations[index + 1].detail}
+                              <Text style={styles.providerChoiceHeading}>{presentation.heading}. </Text>
+                              {presentation.detail}
                             </Text>
                           ) : null}
                           <Text style={styles.providerMeta}>
@@ -861,18 +867,19 @@ export function BookServiceScreen({
                             {ranking.neighborhoodFamiliarityLabel}. {ranking.neighborhoodFamiliarityDetail}
                           </Text>
                           <Text style={styles.providerMeta}>{ranking.reasons.join(" • ")}</Text>
+                          <ProviderTrustProfile ranking={ranking} />
                         </View>
                       ) : null}
+                      <Pressable
+                        disabled={isWorking || !selectedAlternativeSlot}
+                        onPress={() => void handleCreateBooking(ranking, index + 2, selectedAlternativeSlot)}
+                        style={styles.secondaryButton}
+                      >
+                        <Text style={styles.secondaryButtonLabel}>Request this time</Text>
+                      </Pressable>
                     </View>
-                    <Pressable
-                      disabled={isWorking || !slot}
-                      onPress={() => void handleCreateBooking(ranking, index + 2)}
-                      style={styles.secondaryButton}
-                    >
-                      <Text style={styles.secondaryButtonLabel}>Request visit</Text>
-                    </Pressable>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </InfoCard>
@@ -908,6 +915,84 @@ export function BookServiceScreen({
         </View>
       </Modal>
     </ScreenShell>
+  );
+}
+
+function ProviderTrustProfile({ ranking }: { ranking: SearchProviderResult }) {
+  const { provider } = ranking;
+  const facts = [
+    {
+      label: "Experience",
+      value: `${provider.yearsExperience}+ yrs`
+    },
+    {
+      label: "Jobs",
+      value: `${ranking.completedJobCount} done`
+    },
+    {
+      label: "Nearby",
+      value: `${ranking.nearbyCompletedJobCount} local`
+    },
+    {
+      label: "Coverage",
+      value: formatProviderServiceRadius(provider.serviceRadiusMiles)
+    }
+  ];
+
+  return (
+    <View style={styles.trustProfile}>
+      {provider.bio ? <Text style={styles.providerMeta}>{provider.bio}</Text> : null}
+      <View style={styles.trustFactGrid}>
+        {facts.map((fact) => (
+          <View key={fact.label} style={styles.trustFactItem}>
+            <Text style={styles.trustFactLabel}>{fact.label}</Text>
+            <Text style={styles.trustFactValue}>{fact.value}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={styles.marketSignalRow}>
+        <Text style={styles.marketSignalPill}>{provider.timelinessRating.toFixed(1)} punctuality</Text>
+        <Text style={styles.marketSignalPill}>{provider.attentionToDetailRating.toFixed(1)} detail</Text>
+        <Text style={styles.marketSignalPill}>{ranking.availabilityConfidenceLabel}</Text>
+      </View>
+    </View>
+  );
+}
+
+function ProviderOpeningChoices({
+  onSelect,
+  selectedSlotId,
+  slots
+}: {
+  onSelect: (slotId: string) => void;
+  selectedSlotId?: string;
+  slots: AvailabilitySlot[];
+}) {
+  if (slots.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.openingStack}>
+      <Text style={styles.openingLabel}>{slots.length > 1 ? "Choose a time" : "Opening"}</Text>
+      <View style={styles.openingChoiceRow}>
+        {slots.map((slot) => {
+          const isSelected = slot.id === selectedSlotId;
+
+          return (
+            <Pressable
+              key={slot.id}
+              onPress={() => onSelect(slot.id)}
+              style={[styles.openingChoice, isSelected && styles.openingChoiceActive]}
+            >
+              <Text style={[styles.openingChoiceLabel, isSelected && styles.openingChoiceLabelActive]}>
+                {formatOpenWindow(slot)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -1221,14 +1306,13 @@ const styles = StyleSheet.create({
   providerStack: {
     gap: BrandTokens.spacing.md
   },
-  providerRow: {
-    flexDirection: "row",
+  alternativeCard: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
     gap: BrandTokens.spacing.md,
-    alignItems: "center",
-    justifyContent: "space-between"
-  },
-  providerRowCompact: {
-    gap: BrandTokens.spacing.md
+    padding: BrandTokens.spacing.md
   },
   recommendedCard: {
     borderRadius: BrandTokens.radius.md,
@@ -1254,6 +1338,14 @@ const styles = StyleSheet.create({
   providerAvatarLabel: {
     color: "#ffffff",
     fontWeight: "800"
+  },
+  providerAvatarSmall: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: BrandTokens.colors.primaryStrong
   },
   providerCopy: {
     flex: 1,
@@ -1286,6 +1378,38 @@ const styles = StyleSheet.create({
   providerChoiceHeading: {
     color: BrandTokens.colors.ink,
     fontWeight: "700"
+  },
+  trustProfile: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(20, 40, 29, 0.08)",
+    gap: BrandTokens.spacing.md,
+    paddingTop: BrandTokens.spacing.md
+  },
+  trustFactGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  trustFactItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: "rgba(20, 40, 29, 0.05)",
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  trustFactLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  trustFactValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18
   },
   secondaryButton: {
     borderRadius: 999,

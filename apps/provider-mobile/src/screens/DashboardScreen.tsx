@@ -14,6 +14,14 @@ import { getProviderMobileTracker } from "../lib/tracking";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
 type ProviderTodayJobAction = "complete" | "confirm" | "schedule";
+type PayoutActionTone = "success" | "warning" | "neutral";
+
+interface PayoutActionItem {
+  detail: string;
+  label: string;
+  tone: PayoutActionTone;
+  value: string;
+}
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -59,11 +67,31 @@ function formatPayoutStatus(status: ProviderPayoutLedgerResponse["entries"][numb
   }
 }
 
+function formatHoldPeriod(hours: number) {
+  if (hours < 24) {
+    return `${hours}h hold`;
+  }
+
+  const days = Math.round(hours / 24);
+  return `${days}d hold`;
+}
+
+function getReadyPayoutDetail(payoutLedger: ProviderPayoutLedgerResponse) {
+  if (
+    payoutLedger.payoutSchedule.instantPayoutsEnabled &&
+    payoutLedger.payoutSchedule.instantPayoutEligibleCents > 0
+  ) {
+    return `Instant eligible ${formatCurrency(payoutLedger.payoutSchedule.instantPayoutEligibleCents)}`;
+  }
+
+  return `Pays ${formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}`;
+}
+
 function getProviderPayoutFocus(payoutLedger: ProviderPayoutLedgerResponse, blockedPayoutCents: number) {
   if (payoutLedger.totalNetReadyCents > 0) {
     return {
       amount: formatCurrency(payoutLedger.totalNetReadyCents),
-      detail: `Pays ${formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}`,
+      detail: getReadyPayoutDetail(payoutLedger),
       label: "Ready"
     };
   }
@@ -89,6 +117,60 @@ function getProviderPayoutFocus(payoutLedger: ProviderPayoutLedgerResponse, bloc
     detail: "Completed paid jobs appear here.",
     label: "No payout yet"
   };
+}
+
+function getPayoutActionItems(
+  payoutLedger: ProviderPayoutLedgerResponse,
+  heldPayoutEntries: ProviderPayoutLedgerResponse["entries"]
+): PayoutActionItem[] {
+  const items: PayoutActionItem[] = [];
+
+  if (payoutLedger.totalNetReadyCents > 0) {
+    items.push({
+      detail: getReadyPayoutDetail(payoutLedger),
+      label: "Ready",
+      tone: "success",
+      value: formatCurrency(payoutLedger.totalNetReadyCents)
+    });
+  }
+
+  if (payoutLedger.totalNetScheduledCents > 0) {
+    items.push({
+      detail: formatHoldPeriod(payoutLedger.payoutSchedule.holdPeriodHours),
+      label: "Clearing",
+      tone: "neutral",
+      value: formatCurrency(payoutLedger.totalNetScheduledCents)
+    });
+  }
+
+  if (payoutLedger.pendingCustomerPaymentCents > 0) {
+    items.push({
+      detail: "Customer checkout",
+      label: "Waiting",
+      tone: "warning",
+      value: formatCurrency(payoutLedger.pendingCustomerPaymentCents)
+    });
+  }
+
+  if (heldPayoutEntries.length > 0) {
+    items.push({
+      detail: `${heldPayoutEntries.length} hold${heldPayoutEntries.length === 1 ? "" : "s"}`,
+      label: "On hold",
+      tone: "warning",
+      value: formatCurrency(heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0))
+    });
+  }
+
+  if (items.length === 0) {
+    items.push({
+      detail: "Complete paid jobs",
+      label: "Next",
+      tone: "neutral",
+      value: "$0"
+    });
+  }
+
+  return items.slice(0, 4);
 }
 
 function getTodayJobAction(job?: ProviderStaffingJobSummary): ProviderTodayJobAction {
@@ -181,16 +263,14 @@ export function DashboardScreen({
   const blockedPayoutCents =
     (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
     heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0);
-  const latestPayoutEntry = useMemo(
-    () =>
-      (payoutLedger?.entries ?? [])
-        .slice()
-        .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))[0],
-    [payoutLedger]
-  );
   const shouldShowPayouts =
     Boolean(payoutLedger) && ((payoutLedger?.entries.length ?? 0) > 0 || totalJobs > 0);
   const payoutFocus = payoutLedger ? getProviderPayoutFocus(payoutLedger, blockedPayoutCents) : undefined;
+  const payoutActionItems = payoutLedger ? getPayoutActionItems(payoutLedger, heldPayoutEntries) : [];
+  const payoutRecentEntries = (payoutLedger?.entries ?? [])
+    .slice()
+    .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))
+    .slice(0, 2);
   const nextActionLabel =
     primaryCardKind === "staffing"
       ? "Review staffing"
@@ -366,11 +446,42 @@ export function DashboardScreen({
               <Text style={styles.jobSummaryValue}>{formatCurrency(payoutLedger.totalCrewOwedCents)}</Text>
             </View>
           </View>
-          {latestPayoutEntry ? (
-            <Text style={styles.alertText}>
-              Latest: {latestPayoutEntry.customerName} • {formatCurrency(latestPayoutEntry.providerNetAmountCents)} •{" "}
-              {formatPayoutStatus(latestPayoutEntry.status)}
-            </Text>
+          <View style={styles.payoutActionGrid}>
+            {payoutActionItems.map((item) => (
+              <View
+                key={`${item.label}-${item.value}`}
+                style={[
+                  styles.payoutActionItem,
+                  item.tone === "success"
+                    ? styles.payoutActionItemSuccess
+                    : item.tone === "warning"
+                      ? styles.payoutActionItemWarning
+                      : styles.payoutActionItemNeutral
+                ]}
+              >
+                <Text style={styles.payoutActionLabel}>{item.label}</Text>
+                <Text style={styles.payoutActionValue}>{item.value}</Text>
+                <Text style={styles.payoutActionDetail}>{item.detail}</Text>
+              </View>
+            ))}
+          </View>
+          {payoutRecentEntries.length > 0 ? (
+            <View style={styles.payoutEntryList}>
+              {payoutRecentEntries.map((entry) => (
+                <View key={entry.id} style={styles.payoutEntryRow}>
+                  <View style={styles.payoutEntryCopy}>
+                    <Text style={styles.jobTitle}>{entry.customerName}</Text>
+                    <Text style={styles.jobMeta}>
+                      {entry.serviceLabel} • {formatPayoutDate(entry.serviceDateIso)}
+                    </Text>
+                  </View>
+                  <View style={styles.payoutEntryAmountBlock}>
+                    <Text style={styles.jobSummaryValue}>{formatCurrency(entry.providerNetAmountCents)}</Text>
+                    <Text style={styles.jobSummaryLabel}>{formatPayoutStatus(entry.status)}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
           ) : (
             <Text style={styles.alertText}>Completed paid jobs will appear here.</Text>
           )}
@@ -636,6 +747,69 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 26,
     textAlign: "right"
+  },
+  payoutActionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  payoutActionItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    gap: 2,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  payoutActionItemSuccess: {
+    borderColor: "rgba(47, 125, 76, 0.2)",
+    backgroundColor: "rgba(47, 125, 76, 0.08)"
+  },
+  payoutActionItemWarning: {
+    borderColor: "rgba(230, 167, 86, 0.26)",
+    backgroundColor: "rgba(230, 167, 86, 0.1)"
+  },
+  payoutActionItemNeutral: {
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)"
+  },
+  payoutActionLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  payoutActionValue: {
+    color: BrandTokens.colors.ink,
+    fontSize: 16,
+    fontWeight: "800",
+    lineHeight: 20
+  },
+  payoutActionDetail: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    lineHeight: 16
+  },
+  payoutEntryList: {
+    gap: BrandTokens.spacing.sm
+  },
+  payoutEntryRow: {
+    alignItems: "flex-start",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(20, 40, 29, 0.08)",
+    flexDirection: "row",
+    gap: BrandTokens.spacing.md,
+    justifyContent: "space-between",
+    paddingTop: BrandTokens.spacing.sm
+  },
+  payoutEntryCopy: {
+    flex: 1,
+    gap: BrandTokens.spacing.xs
+  },
+  payoutEntryAmountBlock: {
+    alignItems: "flex-end",
+    gap: 2
   },
   primaryButton: {
     marginTop: BrandTokens.spacing.sm,

@@ -290,7 +290,7 @@ export function SupportScreen() {
       {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
 
-      <InfoCard title="Manage" description={sectionSummaries[activeSection]}>
+      <InfoCard title="Account tools" description={sectionSummaries[activeSection]}>
         <View style={styles.chipWrap}>
           {accountSectionOptions.map((option) => {
             const isActive = option.value === activeSection;
@@ -472,7 +472,7 @@ export function SupportScreen() {
           style={showSupportComposer ? styles.linkButton : styles.primaryButton}
         >
           <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
-            {showSupportComposer ? "Hide form" : "Open ticket"}
+            {showSupportComposer ? "Close" : "New ticket"}
           </Text>
         </Pressable>
         {showSupportComposer ? (
@@ -494,7 +494,7 @@ export function SupportScreen() {
               })}
             </View>
             <View style={styles.list}>
-              <Text style={styles.meta}>Related visit (optional)</Text>
+              <Text style={styles.meta}>Visit (optional)</Text>
               <View style={styles.chipWrap}>
                 <Pressable
                   onPress={() => setSelectedBookingId("")}
@@ -528,7 +528,7 @@ export function SupportScreen() {
             <TextInput
               multiline
               onChangeText={setDescription}
-              placeholder="Tell us what happened and what you need."
+              placeholder="What happened?"
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.textarea]}
               value={description}
@@ -538,7 +538,7 @@ export function SupportScreen() {
               onPress={() => void handleCreateSupportTicket()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send ticket"}</Text>
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send"}</Text>
             </Pressable>
           </View>
         ) : null}
