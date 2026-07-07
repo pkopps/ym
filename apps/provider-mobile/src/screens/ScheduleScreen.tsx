@@ -64,8 +64,21 @@ function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup
 type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
 type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
 
+const assistantExampleCommands = [
+  "What needs attention tomorrow?",
+  "Do I need more crew tomorrow?",
+  "Move my afternoon job to evening and notify the customer.",
+  "Tell my afternoon customer I am 30 minutes late.",
+  "Start route for my afternoon job.",
+  "Complete my afternoon job."
+];
+
 function formatServiceCategoryLabel(category: string) {
   return category.replaceAll("-", " ");
+}
+
+function formatAssistantActionType(actionType: string) {
+  return actionType.replaceAll("-", " ");
 }
 
 function getRouteStepStatus(stepIndex: number, activeStepIndex: number): RouteStepStatus {
@@ -148,10 +161,46 @@ function getProviderJobActionLabel(job: ProviderJobSummary) {
   }
 
   if (primaryAction === "complete") {
-    return "Complete";
+    return job.afterEvidenceCount > 0 ? "Complete" : "Add proof";
   }
 
   return "Review";
+}
+
+function getProviderJobIssueLabel(job: ProviderJobSummary) {
+  if (job.status === "confirmed" && !job.onRouteConfirmedAt) {
+    return "Delay";
+  }
+
+  return "Issue";
+}
+
+function getProviderJobProofSummary(job: ProviderJobSummary) {
+  if (job.status === "requested") {
+    return {
+      label: "Next",
+      value: "Confirm first"
+    };
+  }
+
+  if (job.status === "confirmed") {
+    return {
+      label: "Arrival",
+      value: job.beforeEvidenceCount > 0 ? `${job.beforeEvidenceCount} saved` : "Needed"
+    };
+  }
+
+  if (job.status === "in-progress") {
+    return {
+      label: "Completion",
+      value: job.afterEvidenceCount > 0 ? `${job.afterEvidenceCount} saved` : "Needed"
+    };
+  }
+
+  return {
+    label: "Proof",
+    value: `${job.beforeEvidenceCount + job.afterEvidenceCount} saved`
+  };
 }
 
 function getProviderJobActiveStepIndex(job: ProviderJobSummary) {
@@ -262,13 +311,29 @@ export function ScheduleScreen() {
         },
         {
           label: "Finish",
-          value: priorityJob.status === "in-progress" ? "Now" : `${priorityJob.afterEvidenceCount} proof`
+          value:
+            priorityJob.status === "in-progress"
+              ? priorityJob.afterEvidenceCount > 0
+                ? "Complete"
+                : "Proof"
+              : `${priorityJob.afterEvidenceCount} proof`
         }
       ].map((step, index) => ({
         ...step,
         status: getRouteStepStatus(index, priorityJobActiveStepIndex)
       }))
     : [];
+  const selectedAssistantJob = selectedAssistantBookingId
+    ? jobs.find((job) => job.bookingId === selectedAssistantBookingId)
+    : undefined;
+  const selectedAssistantCandidate = selectedAssistantBookingId
+    ? assistantResult?.bookingCandidates.find((candidate) => candidate.bookingId === selectedAssistantBookingId)
+    : undefined;
+  const selectedAssistantBookingLabel = selectedAssistantJob
+    ? `${selectedAssistantJob.customerName} • ${formatBookingWindowSummary(selectedAssistantJob.scheduledStartIso)}`
+    : selectedAssistantCandidate
+      ? `${selectedAssistantCandidate.customerName} • ${selectedAssistantCandidate.currentWindowLabel}`
+      : undefined;
 
   useEffect(() => {
     activeTrackingBookingIdRef.current = activeTrackingBookingId;
@@ -787,6 +852,18 @@ export function ScheduleScreen() {
     }
   }
 
+  function openProofTools(bookingId: string) {
+    setViewMode("list");
+    setExpandedManageSections((current) => ({
+      ...current,
+      [bookingId]: true
+    }));
+    setExpandedProofSections((current) => ({
+      ...current,
+      [bookingId]: true
+    }));
+  }
+
   return (
     <ScreenShell eyebrow="Schedule" title="Schedule" description="Open the next job or make a route change.">
       <View style={styles.modeRow}>
@@ -895,10 +972,16 @@ export function ScheduleScreen() {
             {!priorityJobNeedsStaffing && priorityJobPrimaryAction === "complete" ? (
               <Pressable
                 disabled={isWorking}
-                onPress={() => void completeJob(priorityJob.bookingId)}
+                onPress={() =>
+                  priorityJob.afterEvidenceCount > 0
+                    ? void completeJob(priorityJob.bookingId)
+                    : openProofTools(priorityJob.bookingId)
+                }
                 style={styles.routeFocusPrimaryButton}
               >
-                <Text style={styles.routeFocusPrimaryButtonLabel}>{isWorking ? "Working..." : "Complete job"}</Text>
+                <Text style={styles.routeFocusPrimaryButtonLabel}>
+                  {isWorking ? "Working..." : priorityJob.afterEvidenceCount > 0 ? "Complete job" : "Add proof"}
+                </Text>
               </Pressable>
             ) : null}
           </View>
@@ -925,24 +1008,33 @@ export function ScheduleScreen() {
             </Pressable>
             {showAssistantExamples ? (
               <View style={styles.ticketStack}>
-                <Text style={styles.meta}>What needs attention tomorrow?</Text>
-                <Text style={styles.meta}>Do I need more crew tomorrow?</Text>
-                <Text style={styles.meta}>Change my afternoon appointment to evening and notify the customer.</Text>
-                <Text style={styles.meta}>Tell my afternoon customer I am 30 minutes late.</Text>
-                <Text style={styles.meta}>Start route for my afternoon appointment.</Text>
-                <Text style={styles.meta}>Complete my afternoon appointment.</Text>
+                {assistantExampleCommands.map((command) => (
+                  <Pressable
+                    key={command}
+                    onPress={() => {
+                      setAssistantCommand(command);
+                      setAssistantResult(undefined);
+                    }}
+                    style={styles.exampleCommandButton}
+                  >
+                    <Text style={styles.exampleCommandLabel}>{command}</Text>
+                  </Pressable>
+                ))}
               </View>
             ) : null}
             <TextInput
               value={assistantCommand}
-              onChangeText={setAssistantCommand}
+              onChangeText={(text) => {
+                setAssistantCommand(text);
+                setAssistantResult(undefined);
+              }}
               placeholder="Type a route change"
               placeholderTextColor={BrandTokens.colors.inkSoft}
               style={[styles.input, styles.multilineInput]}
               multiline
             />
-            {selectedAssistantBookingId ? (
-              <Text style={styles.metaLine}>Selected booking: {selectedAssistantBookingId}</Text>
+            {selectedAssistantBookingLabel ? (
+              <Text style={styles.metaLine}>Selected: {selectedAssistantBookingLabel}</Text>
             ) : null}
             <View style={styles.stepRow}>
               <Pressable
@@ -965,7 +1057,9 @@ export function ScheduleScreen() {
                 <Text style={styles.valueText}>{assistantResult.previewLabel}</Text>
                 <Text style={styles.meta}>{assistantResult.previewMessage}</Text>
                 {assistantResult.actionTypes && assistantResult.actionTypes.length > 1 ? (
-                  <Text style={styles.meta}>Planned steps: {assistantResult.actionTypes.join(" -> ")}</Text>
+                  <Text style={styles.meta}>
+                    Steps: {assistantResult.actionTypes.map(formatAssistantActionType).join(" • ")}
+                  </Text>
                 ) : null}
                 {assistantResult.targetWindowLabel ? (
                   <Text style={styles.meta}>Target window: {assistantResult.targetWindowLabel}</Text>
@@ -1027,7 +1121,7 @@ export function ScheduleScreen() {
                       onPress={() => setSelectedAssistantBookingId(candidate.bookingId)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Use</Text>
+                      <Text style={styles.secondaryButtonLabel}>Select</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -1115,6 +1209,32 @@ export function ScheduleScreen() {
               const isManageOpen = expandedManageSections[job.bookingId];
               const primaryAction = getProviderJobPrimaryAction(job);
               const statusLabel = getProviderJobStatusLabel(job);
+              const issueLabel = getProviderJobIssueLabel(job);
+              const proofSummary = getProviderJobProofSummary(job);
+              const shouldShowArrivalProof = job.status === "confirmed";
+              const shouldShowCompletionProof = job.status === "in-progress";
+              const canDeclineJob = job.status === "requested";
+              const canManageCrew = job.status === "confirmed" || job.status === "in-progress";
+              const hasPendingCrewReview = job.matches.some((match) => match.status === "pending-provider-review");
+              const canAssignRouteLeader =
+                overview?.provider.routeLeaderMode === "accepted-crew-fallback" &&
+                !job.onRouteConfirmedAt &&
+                job.matches.some((match) => match.status === "accepted");
+              const canShowStaffingTools =
+                canManageCrew &&
+                (job.crewGap > 0 || job.requiresRouteLeaderAssignment || hasPendingCrewReview || canAssignRouteLeader);
+              const canShowProofTools = shouldShowArrivalProof || shouldShowCompletionProof;
+              const canShowIssueTools = job.status === "confirmed" || job.status === "in-progress";
+              const canShowDelayActions = job.status === "confirmed" && !job.onRouteConfirmedAt;
+              const canShowArrivalIssueActions = job.status === "confirmed" && Boolean(job.onRouteConfirmedAt);
+              const canShowOnsiteIssueActions = canShowArrivalIssueActions || job.status === "in-progress";
+              const canShowCustomerTools = Boolean(job.onRouteConfirmedAt);
+              const canShowJobTools =
+                canDeclineJob ||
+                canShowStaffingTools ||
+                canShowProofTools ||
+                canShowIssueTools ||
+                canShowCustomerTools;
 
               return (
                 <View key={job.bookingId} style={styles.jobRow}>
@@ -1135,10 +1255,8 @@ export function ScheduleScreen() {
                       </Text>
                     </View>
                     <View style={styles.jobSummaryItem}>
-                      <Text style={styles.jobSummaryLabel}>Proof</Text>
-                      <Text style={styles.jobSummaryValue}>
-                        {job.beforeEvidenceCount} before • {job.afterEvidenceCount} after
-                      </Text>
+                      <Text style={styles.jobSummaryLabel}>{proofSummary.label}</Text>
+                      <Text style={styles.jobSummaryValue}>{proofSummary.value}</Text>
                     </View>
                     <View style={styles.jobSummaryItem}>
                       <Text style={styles.jobSummaryLabel}>Total</Text>
@@ -1203,28 +1321,34 @@ export function ScheduleScreen() {
                     {primaryAction === "complete" ? (
                       <Pressable
                         disabled={isWorking}
-                        onPress={() => void completeJob(job.bookingId)}
+                        onPress={() =>
+                          job.afterEvidenceCount > 0 ? void completeJob(job.bookingId) : openProofTools(job.bookingId)
+                        }
                         style={styles.completeButton}
                       >
-                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Complete job"}</Text>
+                        <Text style={styles.completeButtonLabel}>
+                          {isWorking ? "Working..." : job.afterEvidenceCount > 0 ? "Complete job" : "Add proof"}
+                        </Text>
                       </Pressable>
                     ) : null}
                   </View>
-                  <Pressable
-                    onPress={() =>
-                      setExpandedManageSections((current) => ({
-                        ...current,
-                        [job.bookingId]: !current[job.bookingId]
-                      }))
-                    }
-                    style={styles.chatButton}
-                  >
-                    <Text style={styles.chatButtonLabel}>{isManageOpen ? "Hide" : "Manage"}</Text>
-                  </Pressable>
-                  {isManageOpen ? (
+                  {canShowJobTools ? (
+                    <Pressable
+                      onPress={() =>
+                        setExpandedManageSections((current) => ({
+                          ...current,
+                          [job.bookingId]: !current[job.bookingId]
+                        }))
+                      }
+                      style={styles.chatButton}
+                    >
+                      <Text style={styles.chatButtonLabel}>{isManageOpen ? "Hide tools" : "Tools"}</Text>
+                    </Pressable>
+                  ) : null}
+                  {isManageOpen && canShowJobTools ? (
                     <View style={styles.managePanel}>
                       <View style={styles.actionRow}>
-                        {job.status === "requested" ? (
+                        {canDeclineJob ? (
                           <Pressable
                             disabled={isWorking}
                             onPress={() => void declineJob(job.bookingId)}
@@ -1233,20 +1357,22 @@ export function ScheduleScreen() {
                             <Text style={styles.chatButtonLabel}>{isWorking ? "Working..." : "Decline request"}</Text>
                           </Pressable>
                         ) : null}
-                        <Pressable
-                          onPress={() =>
-                            setExpandedStaffingSections((current) => ({
-                              ...current,
-                              [job.bookingId]: !current[job.bookingId]
-                            }))
-                          }
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>
-                            {expandedStaffingSections[job.bookingId] ? "Hide staffing" : "Staffing"}
-                          </Text>
-                        </Pressable>
-                        {job.status === "confirmed" || job.status === "in-progress" ? (
+                        {canShowStaffingTools ? (
+                          <Pressable
+                            onPress={() =>
+                              setExpandedStaffingSections((current) => ({
+                                ...current,
+                                [job.bookingId]: !current[job.bookingId]
+                              }))
+                            }
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>
+                              {expandedStaffingSections[job.bookingId] ? "Hide staffing" : "Staffing"}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                        {canShowProofTools ? (
                           <Pressable
                             onPress={() =>
                               setExpandedProofSections((current) => ({
@@ -1261,7 +1387,7 @@ export function ScheduleScreen() {
                             </Text>
                           </Pressable>
                         ) : null}
-                        {job.status === "confirmed" || job.status === "in-progress" ? (
+                        {canShowIssueTools ? (
                           <Pressable
                             onPress={() =>
                               setExpandedIssueSections((current) => ({
@@ -1272,11 +1398,11 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedIssueSections[job.bookingId] ? "Hide issues" : "Issue"}
+                              {expandedIssueSections[job.bookingId] ? `Hide ${issueLabel.toLowerCase()}` : issueLabel}
                             </Text>
                           </Pressable>
                         ) : null}
-                        {job.onRouteConfirmedAt ? (
+                        {canShowCustomerTools ? (
                           <Pressable
                             onPress={() =>
                               setExpandedCustomerSections((current) => ({
@@ -1287,14 +1413,14 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedCustomerSections[job.bookingId] ? "Hide customer" : "Customer"}
+                              {expandedCustomerSections[job.bookingId] ? "Hide updates" : "Live updates"}
                             </Text>
                           </Pressable>
                         ) : null}
                       </View>
                     </View>
                   ) : null}
-                  {isManageOpen && expandedStaffingSections[job.bookingId] ? (
+                  {isManageOpen && canShowStaffingTools && expandedStaffingSections[job.bookingId] ? (
                   <View style={styles.matchList}>
                     {job.requiresRouteLeaderAssignment ? (
                       <View style={styles.windowCard}>
@@ -1389,6 +1515,7 @@ export function ScheduleScreen() {
                   </View>
                   ) : null}
                   {isManageOpen &&
+                  canShowStaffingTools &&
                   expandedStaffingSections[job.bookingId] &&
                   overview?.provider.routeLeaderMode === "accepted-crew-fallback" &&
                   job.assignedRouteLeaderCrewMemberId &&
@@ -1401,196 +1528,210 @@ export function ScheduleScreen() {
                       <Text style={styles.chatButtonLabel}>Clear explicit route leader</Text>
                     </Pressable>
                   ) : null}
-                  {isManageOpen && expandedProofSections[job.bookingId] ? (
+                  {isManageOpen && canShowProofTools && expandedProofSections[job.bookingId] ? (
                     <View style={styles.ticketStack}>
-                      <TextInput
-                        multiline
-                        onChangeText={(value) =>
-                          setEvidenceNoteDrafts((current) => ({
-                            ...current,
-                            [`${job.bookingId}:before`]: value
-                          }))
-                        }
-                        placeholder="Add a before-work note for ops and disputes."
-                        placeholderTextColor={BrandTokens.colors.muted}
-                        style={styles.input}
-                        value={evidenceNoteDrafts[`${job.bookingId}:before`] ?? ""}
-                      />
-                      <View style={styles.actionRow}>
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void captureEvidencePhoto(job.bookingId, "before")}
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>
-                            {job.beforeEvidenceCount > 0 ? "Add before photo" : "Capture before photo"}
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void saveEvidenceNote(job.bookingId, "before")}
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>Save before note</Text>
-                        </Pressable>
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void saveEvidenceChecklist(job.bookingId, "before")}
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>Save arrival checklist</Text>
-                        </Pressable>
-                      </View>
-                      <TextInput
-                        multiline
-                        onChangeText={(value) =>
-                          setEvidenceNoteDrafts((current) => ({
-                            ...current,
-                            [`${job.bookingId}:after`]: value
-                          }))
-                        }
-                        placeholder="Add an after-work note for ops and disputes."
-                        placeholderTextColor={BrandTokens.colors.muted}
-                        style={styles.input}
-                        value={evidenceNoteDrafts[`${job.bookingId}:after`] ?? ""}
-                      />
-                      <View style={styles.actionRow}>
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void captureEvidencePhoto(job.bookingId, "after")}
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>
-                            {job.afterEvidenceCount > 0 ? "Add after photo" : "Capture after photo"}
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void saveEvidenceNote(job.bookingId, "after")}
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>Save after note</Text>
-                        </Pressable>
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() => void saveEvidenceChecklist(job.bookingId, "after")}
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>Save completion checklist</Text>
-                        </Pressable>
-                      </View>
-                    </View>
-                  ) : null}
-                  {isManageOpen && expandedIssueSections[job.bookingId] ? (
-                    <View style={styles.actionRow}>
-                      {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() =>
-                            void reportIssue(
-                              job.bookingId,
-                              "customer-no-show",
-                              "The customer did not appear for the scheduled service window."
-                            )
-                          }
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>Customer no-show</Text>
-                        </Pressable>
+                      {shouldShowArrivalProof ? (
+                        <>
+                          <Text style={styles.proofTitle}>Arrival proof</Text>
+                          <TextInput
+                            multiline
+                            onChangeText={(value) =>
+                              setEvidenceNoteDrafts((current) => ({
+                                ...current,
+                                [`${job.bookingId}:before`]: value
+                              }))
+                            }
+                            placeholder="Arrival note"
+                            placeholderTextColor={BrandTokens.colors.muted}
+                            style={styles.input}
+                            value={evidenceNoteDrafts[`${job.bookingId}:before`] ?? ""}
+                          />
+                          <View style={styles.actionRow}>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void captureEvidencePhoto(job.bookingId, "before")}
+                              style={styles.chatButton}
+                            >
+                              <Text style={styles.chatButtonLabel}>
+                                {job.beforeEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void saveEvidenceNote(job.bookingId, "before")}
+                              style={styles.chatButton}
+                            >
+                              <Text style={styles.chatButtonLabel}>Save note</Text>
+                            </Pressable>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void saveEvidenceChecklist(job.bookingId, "before")}
+                              style={styles.chatButton}
+                            >
+                              <Text style={styles.chatButtonLabel}>Checklist</Text>
+                            </Pressable>
+                          </View>
+                        </>
                       ) : null}
-                      {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() =>
-                            void markLate(
-                              job.bookingId,
-                              buildLateEta(job.scheduledStartIso, 15),
-                              "Running about 15 minutes behind the route."
-                            )
-                          }
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>+15 min</Text>
-                        </Pressable>
-                      ) : null}
-                      {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() =>
-                            void markLate(
-                              job.bookingId,
-                              buildLateEta(job.scheduledStartIso, 30),
-                              "Running about 30 minutes behind the route."
-                            )
-                          }
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>+30 min</Text>
-                        </Pressable>
-                      ) : null}
-                      {(job.status === "confirmed" || job.status === "in-progress") ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() =>
-                            void reportIssue(
-                              job.bookingId,
-                              "customer-not-ready",
-                              "The property owner is not ready for the scheduled service."
-                            )
-                          }
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>Customer not ready</Text>
-                        </Pressable>
-                      ) : null}
-                      {(job.status === "confirmed" || job.status === "in-progress") ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() =>
-                            void reportIssue(
-                              job.bookingId,
-                              "unable-to-access-property",
-                              "The crew could not safely access the property as scheduled."
-                            )
-                          }
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>No access</Text>
-                        </Pressable>
-                      ) : null}
-                      {job.status === "in-progress" ? (
-                        <Pressable
-                          disabled={isWorking}
-                          onPress={() =>
-                            void reportIssue(
-                              job.bookingId,
-                              "service-could-not-be-completed",
-                              "The service could not be completed during this visit."
-                            )
-                          }
-                          style={styles.chatButton}
-                        >
-                          <Text style={styles.chatButtonLabel}>Could not complete</Text>
-                        </Pressable>
+                      {shouldShowCompletionProof ? (
+                        <>
+                          <Text style={styles.proofTitle}>Completion proof</Text>
+                          <TextInput
+                            multiline
+                            onChangeText={(value) =>
+                              setEvidenceNoteDrafts((current) => ({
+                                ...current,
+                                [`${job.bookingId}:after`]: value
+                              }))
+                            }
+                            placeholder="Completion note"
+                            placeholderTextColor={BrandTokens.colors.muted}
+                            style={styles.input}
+                            value={evidenceNoteDrafts[`${job.bookingId}:after`] ?? ""}
+                          />
+                          <View style={styles.actionRow}>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void captureEvidencePhoto(job.bookingId, "after")}
+                              style={styles.chatButton}
+                            >
+                              <Text style={styles.chatButtonLabel}>
+                                {job.afterEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                              </Text>
+                            </Pressable>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void saveEvidenceNote(job.bookingId, "after")}
+                              style={styles.chatButton}
+                            >
+                              <Text style={styles.chatButtonLabel}>Save note</Text>
+                            </Pressable>
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void saveEvidenceChecklist(job.bookingId, "after")}
+                              style={styles.chatButton}
+                            >
+                              <Text style={styles.chatButtonLabel}>Checklist</Text>
+                            </Pressable>
+                          </View>
+                        </>
                       ) : null}
                     </View>
                   ) : null}
-                  {isManageOpen && expandedCustomerSections[job.bookingId] ? (
+                  {isManageOpen && canShowIssueTools && expandedIssueSections[job.bookingId] ? (
+                    <View style={styles.ticketStack}>
+                      <Text style={styles.proofTitle}>{issueLabel}</Text>
+                      <View style={styles.actionRow}>
+                        {canShowDelayActions ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() =>
+                              void markLate(
+                                job.bookingId,
+                                buildLateEta(job.scheduledStartIso, 15),
+                                "Running about 15 minutes behind the route."
+                              )
+                            }
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>+15 min</Text>
+                          </Pressable>
+                        ) : null}
+                        {canShowDelayActions ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() =>
+                              void markLate(
+                                job.bookingId,
+                                buildLateEta(job.scheduledStartIso, 30),
+                                "Running about 30 minutes behind the route."
+                              )
+                            }
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>+30 min</Text>
+                          </Pressable>
+                        ) : null}
+                        {canShowArrivalIssueActions ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() =>
+                              void reportIssue(
+                                job.bookingId,
+                                "customer-no-show",
+                                "The customer did not appear for the scheduled service window."
+                              )
+                            }
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>Customer no-show</Text>
+                          </Pressable>
+                        ) : null}
+                        {canShowOnsiteIssueActions ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() =>
+                              void reportIssue(
+                                job.bookingId,
+                                "customer-not-ready",
+                                "The property owner is not ready for the scheduled service."
+                              )
+                            }
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>Customer not ready</Text>
+                          </Pressable>
+                        ) : null}
+                        {canShowOnsiteIssueActions ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() =>
+                              void reportIssue(
+                                job.bookingId,
+                                "unable-to-access-property",
+                                "The crew could not safely access the property as scheduled."
+                              )
+                            }
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>No access</Text>
+                          </Pressable>
+                        ) : null}
+                        {job.status === "in-progress" ? (
+                          <Pressable
+                            disabled={isWorking}
+                            onPress={() =>
+                              void reportIssue(
+                                job.bookingId,
+                                "service-could-not-be-completed",
+                                "The service could not be completed during this visit."
+                              )
+                            }
+                            style={styles.chatButton}
+                          >
+                            <Text style={styles.chatButtonLabel}>Could not complete</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </View>
+                  ) : null}
+                  {isManageOpen && canShowCustomerTools && expandedCustomerSections[job.bookingId] ? (
                     <View style={styles.chatStack}>
+                      <Text style={styles.proofTitle}>Live updates</Text>
                       <View style={styles.actionRow}>
                         <Pressable
                           disabled={isWorking}
                           onPress={() => void openCustomerChat(job.bookingId)}
                           style={styles.chatButton}
                         >
-                          <Text style={styles.chatButtonLabel}>Message customer</Text>
+                          <Text style={styles.chatButtonLabel}>Message</Text>
                         </Pressable>
                         <Pressable
                           disabled={isWorking}
                           onPress={() => void openArrivalTracking(job.bookingId)}
                           style={styles.chatButton}
                         >
-                          <Text style={styles.chatButtonLabel}>Track crew</Text>
+                          <Text style={styles.chatButtonLabel}>Live map</Text>
                         </Pressable>
                       </View>
                       {job.onRouteConfirmedAt &&
@@ -1989,6 +2130,11 @@ const styles = StyleSheet.create({
     gap: BrandTokens.spacing.sm,
     marginTop: BrandTokens.spacing.sm
   },
+  proofTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 13,
+    fontWeight: "800"
+  },
   trackingCard: {
     gap: BrandTokens.spacing.xs,
     marginTop: BrandTokens.spacing.sm,
@@ -2014,6 +2160,19 @@ const styles = StyleSheet.create({
   },
   assistantStack: {
     gap: BrandTokens.spacing.md
+  },
+  exampleCommandButton: {
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  exampleCommandLabel: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700",
+    lineHeight: 20
   },
   stepRow: {
     flexDirection: "row",
