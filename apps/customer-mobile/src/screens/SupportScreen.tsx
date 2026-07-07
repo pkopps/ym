@@ -45,6 +45,49 @@ function getEnabledAlertCount(preferences?: NotificationPreferences) {
   ].filter(Boolean).length;
 }
 
+function formatPropertyArea(value?: number) {
+  if (!value) {
+    return "Not set";
+  }
+
+  return `${new Intl.NumberFormat("en-US").format(value)} sq ft`;
+}
+
+function formatPropertyLocation(property: CustomerProperty) {
+  return `${property.address.city}, ${property.address.state} ${property.address.postalCode}`;
+}
+
+function getPropertyAccessLabel(property: CustomerProperty) {
+  if (property.gateCode && property.accessNotes) {
+    return "Gate + notes";
+  }
+
+  if (property.gateCode) {
+    return "Gate saved";
+  }
+
+  if (property.accessNotes) {
+    return "Notes saved";
+  }
+
+  return "Not set";
+}
+
+function getPropertyMeasurementLabel(property: CustomerProperty) {
+  const savedMeasurements = [
+    property.lawnSizeSqFt,
+    property.shrubBedSqFt,
+    property.drivewaySqFt,
+    property.sidewalkLinearFt
+  ].filter(Boolean).length;
+
+  if (savedMeasurements === 0) {
+    return "Not set";
+  }
+
+  return `${savedMeasurements} saved`;
+}
+
 export function SupportScreen() {
   const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
@@ -308,14 +351,48 @@ export function SupportScreen() {
       </InfoCard>
 
       {activeSection === "properties" ? (
-      <InfoCard title="Saved properties" description={sectionSummaries.properties}>
+      <InfoCard
+        title={defaultProperty ? "Default property" : "Saved properties"}
+        description={defaultProperty ? "Used for pricing and matching." : "Add one property to book faster."}
+      >
+        {defaultProperty ? (
+          <View style={styles.propertySummary}>
+            <View style={styles.propertySummaryHeader}>
+              <View style={styles.copy}>
+                <Text style={styles.propertySummaryTitle}>{defaultProperty.label}</Text>
+                <Text style={styles.meta}>{defaultProperty.address.line1}</Text>
+                <Text style={styles.meta}>{formatPropertyLocation(defaultProperty)}</Text>
+              </View>
+              <Text style={styles.badge}>Default</Text>
+            </View>
+            <View style={styles.propertyFactGrid}>
+              <View style={styles.propertyFact}>
+                <Text style={styles.propertyFactLabel}>Lawn</Text>
+                <Text style={styles.propertyFactValue}>{formatPropertyArea(defaultProperty.lawnSizeSqFt)}</Text>
+              </View>
+              <View style={styles.propertyFact}>
+                <Text style={styles.propertyFactLabel}>Access</Text>
+                <Text style={styles.propertyFactValue}>{getPropertyAccessLabel(defaultProperty)}</Text>
+              </View>
+              <View style={styles.propertyFact}>
+                <Text style={styles.propertyFactLabel}>Beds</Text>
+                <Text style={styles.propertyFactValue}>{formatPropertyArea(defaultProperty.shrubBedSqFt)}</Text>
+              </View>
+              <View style={styles.propertyFact}>
+                <Text style={styles.propertyFactLabel}>Details</Text>
+                <Text style={styles.propertyFactValue}>{getPropertyMeasurementLabel(defaultProperty)}</Text>
+              </View>
+            </View>
+          </View>
+        ) : null}
         {properties.length > 0 ? (
           <View style={styles.list}>
             {properties.map((property) => (
-              <View key={property.id} style={styles.row}>
+              <View key={property.id} style={styles.propertyRow}>
                 <View style={styles.copy}>
                   <Text style={styles.title}>{property.label}</Text>
                   <Text style={styles.meta}>{property.address.line1}</Text>
+                  <Text style={styles.meta}>{formatPropertyLocation(property)}</Text>
                 </View>
                 {property.isDefault ? (
                   <Text style={styles.badge}>Default</Text>
@@ -325,7 +402,7 @@ export function SupportScreen() {
                     onPress={() => void handleSetDefault(property.id)}
                     style={styles.linkButton}
                   >
-                    <Text style={styles.linkButtonLabel}>Make default</Text>
+                    <Text style={styles.linkButtonLabel}>Set default</Text>
                   </Pressable>
                 )}
               </View>
@@ -340,7 +417,7 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAddPropertyForm ? "Hide property form" : "Add property"}
+            {showAddPropertyForm ? "Close" : "Add property"}
           </Text>
         </Pressable>
         {showAddPropertyForm ? (
@@ -611,11 +688,59 @@ const styles = StyleSheet.create({
   list: {
     gap: BrandTokens.spacing.md
   },
-  row: {
+  propertySummary: {
+    borderRadius: BrandTokens.radius.md,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: BrandTokens.colors.surface,
+    gap: BrandTokens.spacing.md,
+    padding: BrandTokens.spacing.md
+  },
+  propertySummaryHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: BrandTokens.spacing.md
+  },
+  propertySummaryTitle: {
+    color: BrandTokens.colors.ink,
+    fontSize: 18,
+    fontWeight: "800"
+  },
+  propertyFactGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  propertyFact: {
+    minWidth: "47%",
+    flexGrow: 1,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: "rgba(255,255,255,0.82)",
+    padding: BrandTokens.spacing.md
+  },
+  propertyFactLabel: {
+    color: BrandTokens.colors.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  propertyFactValue: {
+    color: BrandTokens.colors.ink,
+    fontWeight: "700",
+    lineHeight: 20,
+    marginTop: BrandTokens.spacing.xs
+  },
+  propertyRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: BrandTokens.spacing.md
+    gap: BrandTokens.spacing.md,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    padding: BrandTokens.spacing.md
   },
   copy: {
     flex: 1,

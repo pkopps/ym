@@ -64,13 +64,27 @@ function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup
 type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
 type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
 
-const assistantExampleCommands = [
-  "What needs attention tomorrow?",
-  "Do I need more crew tomorrow?",
-  "Move my afternoon job to evening and notify the customer.",
-  "Tell my afternoon customer I am 30 minutes late.",
-  "Start route for my afternoon job.",
-  "Complete my afternoon job."
+const routeToolPresets: Array<{ command: string; detail: string; label: string }> = [
+  {
+    command: "What needs attention tomorrow?",
+    detail: "Catch route, staffing, and timing risks.",
+    label: "Tomorrow"
+  },
+  {
+    command: "Do I need more crew tomorrow?",
+    detail: "Find jobs that need another person.",
+    label: "Crew gaps"
+  },
+  {
+    command: "Tell my afternoon customer I am 30 minutes late.",
+    detail: "Draft the customer update before sending.",
+    label: "Send delay"
+  },
+  {
+    command: "Move my afternoon job to evening and notify the customer.",
+    detail: "Review the schedule impact first.",
+    label: "Move later"
+  }
 ];
 
 function formatServiceCategoryLabel(category: string) {
@@ -235,7 +249,6 @@ export function ScheduleScreen() {
   const [assistantResult, setAssistantResult] = useState<ProviderAssistantCommandResponse | undefined>();
   const [selectedAssistantBookingId, setSelectedAssistantBookingId] = useState<string | undefined>();
   const [showAssistantTools, setShowAssistantTools] = useState(false);
-  const [showAssistantExamples, setShowAssistantExamples] = useState(false);
   const [expandedManageSections, setExpandedManageSections] = useState<Record<string, boolean>>({});
   const [expandedStaffingSections, setExpandedStaffingSections] = useState<Record<string, boolean>>({});
   const [expandedProofSections, setExpandedProofSections] = useState<Record<string, boolean>>({});
@@ -992,43 +1005,40 @@ export function ScheduleScreen() {
         </InfoCard>
       )}
 
-      <InfoCard title="Route tools" description={showAssistantTools ? "Make a route change" : "Use when plans change"}>
+      <InfoCard title="Plan change" description={showAssistantTools ? "Review before applying." : "Move jobs, check staffing, or update customers."}>
         <Pressable onPress={() => setShowAssistantTools((current) => !current)} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonLabel}>
-            {showAssistantTools ? "Hide tools" : "Open tools"}
+            {showAssistantTools ? "Close" : "Open"}
           </Text>
         </Pressable>
         {showAssistantTools ? (
           <View style={styles.assistantStack}>
-            <Text style={styles.metaLine}>Move a job, check staffing, or notify a customer.</Text>
-            <Pressable onPress={() => setShowAssistantExamples((current) => !current)} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>
-                {showAssistantExamples ? "Hide examples" : "Examples"}
-              </Text>
-            </Pressable>
-            {showAssistantExamples ? (
-              <View style={styles.ticketStack}>
-                {assistantExampleCommands.map((command) => (
+            <View style={styles.presetGrid}>
+              {routeToolPresets.map((preset) => {
+                const isActive = assistantCommand === preset.command;
+                return (
                   <Pressable
-                    key={command}
+                    key={preset.label}
                     onPress={() => {
-                      setAssistantCommand(command);
+                      setAssistantCommand(preset.command);
                       setAssistantResult(undefined);
                     }}
-                    style={styles.exampleCommandButton}
+                    style={[styles.presetButton, isActive && styles.presetButtonActive]}
                   >
-                    <Text style={styles.exampleCommandLabel}>{command}</Text>
+                    <Text style={[styles.presetLabel, isActive && styles.presetLabelActive]}>{preset.label}</Text>
+                    <Text style={[styles.presetDetail, isActive && styles.presetDetailActive]}>{preset.detail}</Text>
                   </Pressable>
-                ))}
-              </View>
-            ) : null}
+                );
+              })}
+            </View>
+            <Text style={styles.sectionLabel}>Custom change</Text>
             <TextInput
               value={assistantCommand}
               onChangeText={(text) => {
                 setAssistantCommand(text);
                 setAssistantResult(undefined);
               }}
-              placeholder="Type a route change"
+              placeholder="Describe the change"
               placeholderTextColor={BrandTokens.colors.inkSoft}
               style={[styles.input, styles.multilineInput]}
               multiline
@@ -1049,7 +1059,7 @@ export function ScheduleScreen() {
                 onPress={() => void runProviderAssistant(true)}
                 style={[styles.secondaryButton, !assistantResult?.requiresConfirmation && styles.secondaryButtonDisabled]}
               >
-                <Text style={styles.secondaryButtonLabel}>Apply change</Text>
+                <Text style={styles.secondaryButtonLabel}>Apply</Text>
               </Pressable>
             </View>
             {assistantResult ? (
@@ -2161,18 +2171,46 @@ const styles = StyleSheet.create({
   assistantStack: {
     gap: BrandTokens.spacing.md
   },
-  exampleCommandButton: {
+  presetGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  presetButton: {
+    flexGrow: 1,
+    minWidth: "47%",
     borderRadius: BrandTokens.radius.sm,
     borderWidth: 1,
     borderColor: BrandTokens.colors.border,
     backgroundColor: "rgba(255,255,255,0.92)",
-    paddingHorizontal: BrandTokens.spacing.md,
-    paddingVertical: BrandTokens.spacing.sm
+    gap: BrandTokens.spacing.xs,
+    padding: BrandTokens.spacing.md
   },
-  exampleCommandLabel: {
+  presetButtonActive: {
+    borderColor: BrandTokens.colors.primary,
+    backgroundColor: BrandTokens.colors.surface
+  },
+  presetLabel: {
     color: BrandTokens.colors.ink,
     fontWeight: "700",
     lineHeight: 20
+  },
+  presetLabelActive: {
+    color: BrandTokens.colors.primaryStrong
+  },
+  presetDetail: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    lineHeight: 18
+  },
+  presetDetailActive: {
+    color: BrandTokens.colors.ink
+  },
+  sectionLabel: {
+    color: BrandTokens.colors.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase"
   },
   stepRow: {
     flexDirection: "row",
