@@ -4,8 +4,7 @@
   "description": "Local Playwright crawler for public Zocdoc UX research screenshots.",
   "main": "index.js",
   "scripts": {
-    "crawl": "node crawl-zocdoc.js",
-    "crawl:mobile-app": "node crawl-zocdoc-mobile-app.js"
+    "crawl": "node crawl-zocdoc.js"
   },
   "keywords": [],
   "author": "",

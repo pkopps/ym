@@ -35,16 +35,16 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     eyebrow: "Support",
     title: "How support works during launch",
     description:
-      "Understand how GreenRain handles pre-booking questions, logged-in support tickets, billing follow-up, and service-quality issues during launch.",
+      "Understand how YardMatch handles pre-booking questions, logged-in support tickets, billing follow-up, and service-quality issues during launch.",
     summary:
-      "Reach GreenRain by email first for pre-booking help, and use logged-in support tickets for live booking, billing, or account issues.",
+      "Reach YardMatch by email first for pre-booking help, and use logged-in support tickets for live booking, billing, or account issues.",
     ctaLabel: "Read support details",
     surfaces: ["home", "help", "footer"],
     sections: [
       {
         heading: "Before you book",
         body:
-          "Use Contact us when you need coverage confirmation, launch pricing context, service recommendations, or help deciding whether GreenRain is the right fit before a booking exists.",
+          "Use Contact us when you need coverage confirmation, launch pricing context, service recommendations, or help deciding whether YardMatch is the right fit before a booking exists.",
         bullets: [
           "Email is the default contact path during launch.",
           "Phone or text follow-up can still be used when you request it.",
@@ -64,7 +64,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
       {
         heading: "Escalation expectations",
         body:
-          "GreenRain is a managed marketplace, so support is expected to stay involved when something goes sideways instead of forcing the customer to start over with a provider alone.",
+          "YardMatch is a managed marketplace, so support is expected to stay involved when something goes sideways instead of forcing the customer to start over with a provider alone.",
         bullets: [
           "Disputes and refund reviews are documented in the ops queue.",
           "Evidence-backed cases follow explicit review guardrails instead of ad hoc judgment only.",
@@ -79,7 +79,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     eyebrow: "Cancellation policy",
     title: "Cancellation and reschedule expectations",
     description:
-      "Learn how YardMatch / GreenRain handles customer cancellations, reschedules, provider delays, and low-supply schedule changes during launch.",
+      "Learn how YardMatch handles customer cancellations, reschedules, provider delays, and low-supply schedule changes during launch.",
     summary:
       "Customers can cancel or reschedule future bookings when the booking state still allows it, and provider-side changes should be communicated clearly instead of silently drifting.",
     ctaLabel: "Read cancellation policy",
@@ -123,7 +123,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     eyebrow: "Refunds",
     title: "Refund review and service-quality policy",
     description:
-      "See how refund requests, disputes, evidence review, and payout holds work in the GreenRain managed marketplace flow.",
+      "See how refund requests, disputes, evidence review, and payout holds work in the YardMatch managed marketplace flow.",
     summary:
       "Refunds are reviewed through an internal support path rather than treated as an instant automatic reversal for every completed job.",
     ctaLabel: "Read refund policy",
@@ -167,9 +167,9 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     eyebrow: "Booking expectations",
     title: "What to expect when you book",
     description:
-      "Understand the recommendation-first booking flow, limited backup options, arrival expectations, and what GreenRain manages after a booking is requested.",
+      "Understand the recommendation-first booking flow, limited backup options, arrival expectations, and what YardMatch manages after a booking is requested.",
     summary:
-      "GreenRain is designed to recommend one best-fit provider first, with a limited backup path for trust, not an open-ended directory experience.",
+      "YardMatch is designed to recommend one best-fit provider first, with a limited backup path for trust, not an open-ended directory experience.",
     ctaLabel: "Read booking expectations",
     surfaces: ["home", "help", "footer"],
     sections: [
@@ -209,11 +209,11 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     id: "provider-verification",
     href: "/provider-verification",
     eyebrow: "Verification",
-    title: "How GreenRain reviews providers before launch demand is shown",
+    title: "How YardMatch reviews providers before launch demand is shown",
     description:
       "Understand the launch-era verification expectations behind the recommendation-first marketplace, including what is reviewed before a landscaping business is surfaced publicly.",
     summary:
-      "GreenRain aims to show only verified providers in the public marketplace overview, so launch trust is based on screening and operational fit instead of directory sprawl alone.",
+      "YardMatch aims to show only verified providers in the public marketplace overview, so launch trust is based on screening and operational fit instead of directory sprawl alone.",
     ctaLabel: "Read verification details",
     surfaces: ["home", "help", "footer", "provider"],
     sections: [
@@ -228,7 +228,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
         ]
       },
       {
-        heading: "What GreenRain is checking at launch",
+        heading: "What YardMatch is checking at launch",
         body:
           "The exact checklist can evolve, but the launch posture is to review whether a provider looks operationally ready for the service area, booking flow, and support expectations being promised publicly.",
         bullets: [
@@ -240,7 +240,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
       {
         heading: "Why this matters to customers",
         body:
-          "Verification does not guarantee a perfect job, but it does mean GreenRain is trying to filter public demand through a narrower, more accountable set of providers than a generic listing directory would.",
+          "Verification does not guarantee a perfect job, but it does mean YardMatch is trying to filter public demand through a narrower, more accountable set of providers than a generic listing directory would.",
         bullets: [
           "Customers still get support, refund-review, and dispute paths if something goes wrong.",
           "Verification works together with review, punctuality, and follow-through data over time.",
@@ -255,9 +255,9 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     eyebrow: "Privacy",
     title: "Privacy and data-use basics",
     description:
-      "See what launch-era customer, provider, and crew data the YardMatch / GreenRain product uses to operate bookings, staffing, payouts, support, and analytics.",
+      "See what launch-era customer, provider, and crew data YardMatch uses to operate bookings, staffing, payouts, support, and analytics.",
     summary:
-      "GreenRain uses customer, provider, and crew information to run marketplace operations, but the public flow should avoid collecting more personal data than launch operations actually need.",
+      "YardMatch uses customer, provider, and crew information to run marketplace operations, but the public flow should avoid collecting more personal data than launch operations actually need.",
     ctaLabel: "Read privacy basics",
     surfaces: ["help", "footer"],
     sections: [
@@ -272,7 +272,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
         ]
       },
       {
-        heading: "What GreenRain tries to avoid",
+        heading: "What YardMatch tries to avoid",
         body:
           "The launch product should stay disciplined about collecting data only when it supports a real marketplace need instead of hoarding information for vague future ideas.",
         bullets: [
@@ -299,7 +299,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     eyebrow: "Terms",
     title: "Launch terms and marketplace expectations",
     description:
-      "Understand the launch-era ground rules for using the YardMatch / GreenRain marketplace, including managed booking expectations, support boundaries, and route-window realities.",
+      "Understand the launch-era ground rules for using YardMatch, including managed booking expectations, support boundaries, and route-window realities.",
     summary:
       "The marketplace is meant to reduce friction without pretending every job is guaranteed, every route window is perfect, or every support issue resolves instantly.",
     ctaLabel: "Read terms",
@@ -308,7 +308,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
       {
         heading: "Managed marketplace posture",
         body:
-          "GreenRain is not a generic lead directory. The product is designed to recommend a best-fit provider, manage the booking flow, and stay involved when support or payment issues appear.",
+          "YardMatch is not a generic lead directory. The product is designed to recommend a best-fit provider, manage the booking flow, and stay involved when support or payment issues appear.",
         bullets: [
           "Recommendation-first booking is the intended default experience.",
           "Limited backup options exist for trust, not for open-ended comparison shopping.",
@@ -343,7 +343,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
     eyebrow: "Provider standards",
     title: "Provider standards and launch expectations",
     description:
-      "See the service-quality, verification, support, and communication expectations GreenRain intends to hold landscaping businesses to during launch.",
+      "See the service-quality, verification, support, and communication expectations YardMatch intends to hold landscaping businesses to during launch.",
     summary:
       "Providers are expected to confirm work they can actually fulfill, communicate clearly, respect route commitments, and participate in support or refund review when a job goes sideways.",
     ctaLabel: "Read provider standards",
@@ -362,7 +362,7 @@ export const trustPolicyPages: TrustPolicyPageContent[] = [
       {
         heading: "During service delivery",
         body:
-          "GreenRain expects providers to treat route windows, communications, and documentation seriously because those behaviors shape trust more than marketing copy does.",
+          "YardMatch expects providers to treat route windows, communications, and documentation seriously because those behaviors shape trust more than marketing copy does.",
         bullets: [
           "Bookings should be confirmed before route and work-start actions continue.",
           "Before and after evidence, notes, or checklists may be required by the live ops flow.",

@@ -117,6 +117,18 @@ function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreferenc
   return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
 }
 
+function formatProviderCount(count: number) {
+  return `${count} provider${count === 1 ? "" : "s"}`;
+}
+
+function formatOpenWindowCount(count: number) {
+  if (count === 0) {
+    return "No open windows";
+  }
+
+  return `${count} open window${count === 1 ? "" : "s"}`;
+}
+
 type ListingsStepStatus = "complete" | "current" | "pending";
 
 function getListingsStepStatus(stepIndex: number, activeStepIndex: number): ListingsStepStatus {
@@ -348,7 +360,7 @@ export function PublicCustomerListingsExperience({
         searchState === "loading"
           ? "Checking"
           : rankedProviders.length > 0
-            ? `${rankedProviders.length} providers`
+            ? formatProviderCount(rankedProviders.length)
             : "Needs area"
     },
     {
@@ -356,8 +368,8 @@ export function PublicCustomerListingsExperience({
       value: rankedProviders[0]?.provider.companyName ?? "Best fit"
     },
     {
-      label: "Book",
-      value: rankedProviders[0]?.hasOpenSlot ? "Continue" : "After review"
+      label: "Request",
+      value: rankedProviders[0]?.hasOpenSlot ? "No charge yet" : "After review"
     }
   ].map((step, index) => ({
     ...step,
@@ -368,8 +380,8 @@ export function PublicCustomerListingsExperience({
     { label: "When", value: timingLabel },
     { label: "Area", value: resolvedAreaLabel },
     {
-      label: "Open",
-      value: searchState === "loading" ? "Checking" : `${providersWithOpenWindows.length} window${providersWithOpenWindows.length === 1 ? "" : "s"}`
+      label: "Availability",
+      value: searchState === "loading" ? "Checking" : formatOpenWindowCount(providersWithOpenWindows.length)
     }
   ];
   const customerSignupHref = buildCustomerSignupHref({
@@ -529,9 +541,10 @@ export function PublicCustomerListingsExperience({
         router.replace(`/customer/listings?${params.toString()}`);
       }
     } catch (error) {
+      console.error("Unable to load public provider recommendations", error);
       setSearchState("error");
       setProviderResults(undefined);
-      setErrorMessage(error instanceof Error ? error.message : "We couldn't check providers right now.");
+      setErrorMessage("Try the search again in a moment.");
     }
   }
 
@@ -672,7 +685,7 @@ export function PublicCustomerListingsExperience({
           </div>
           <div className="results-summary__actions">
             <a className="button-secondary" href={customerSignupHref}>
-              Continue
+              Start request
             </a>
             <a className="button-secondary" href={customerLoginHref}>
               Customer login
@@ -758,8 +771,8 @@ export function PublicCustomerListingsExperience({
 
         {searchState === "loaded" && selectedSuggestion && rankedProviders.length === 0 ? (
           <article className="list-panel live-listings-card__message">
-            <h3>No providers are live here yet.</h3>
-            <p>Try a nearby market or ask YardMatch to flag this area for expansion.</p>
+            <h3>No verified businesses yet.</h3>
+            <p>Try a nearby market or ask us to review coverage.</p>
             <div className="cta-row">
               {canTryLaunchArea ? (
                 <button
@@ -794,8 +807,8 @@ export function PublicCustomerListingsExperience({
           <div className="live-listings-card__grid">
             {providersWithOpenWindows.length === 0 ? (
               <article className="list-panel live-listings-card__banner">
-                <h3>This window is full.</h3>
-                <p>Try another time, or review the best local businesses below.</p>
+                <h3>Routes are full for this window.</h3>
+                <p>Try another time or review local businesses below.</p>
                 <div className="cta-row">
                   {alternativeTimingSuggestions.map((option) => (
                     <button
@@ -873,20 +886,25 @@ function LiveProviderCard({
   const nextWindowLabel = result.suggestedSlot
     ? formatBookingWindowSummary(result.suggestedSlot.startIso)
     : "Window full";
+  const requestCtaLabel = result.hasOpenSlot
+    ? rank === 1
+      ? "Request this match"
+      : "Request"
+    : "Review provider";
 
   return (
     <article className={`list-panel live-provider-card${isPrimaryRecommendation ? " live-provider-card--recommended" : ""}`}>
       <div className="live-provider-card__header">
         <div className="search-result-title">
           <div>
-            {isPrimaryRecommendation ? <span className="eyebrow">Recommended first</span> : null}
+            {isPrimaryRecommendation ? <span className="eyebrow">Best match</span> : null}
             <h3>{provider.companyName}</h3>
           </div>
           <div className="live-provider-card__badges">
             {choicePresentation ? <span className="result-badge">{choicePresentation.badge}</span> : rank === 1 ? <span className="result-badge">Best fit</span> : null}
             {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
             <span className={`result-badge${result.hasOpenSlot ? "" : " result-badge--neutral"}`}>
-              {result.hasOpenSlot ? "Open route window" : "Route full"}
+              {result.hasOpenSlot ? "Open time" : "Window full"}
             </span>
           </div>
         </div>
@@ -904,9 +922,9 @@ function LiveProviderCard({
         <p>{result.selectionSummaryDetail}</p>
       </div>
 
-      <div className="live-provider-card__booking-strip" aria-label="Provider booking facts">
+      <div className="live-provider-card__booking-strip" aria-label="Provider request facts">
         <div>
-          <span>Next opening</span>
+          <span>Availability</span>
           <strong>{nextWindowLabel}</strong>
         </div>
         <div>
@@ -914,13 +932,13 @@ function LiveProviderCard({
           <strong>{result.distanceMiles.toFixed(1)} mi</strong>
         </div>
         <div>
-          <span>Trust</span>
+          <span>Reviews</span>
           <strong>{provider.rating.toFixed(1)} • {provider.reviewCount} reviews</strong>
         </div>
       </div>
 
       <details className="service-card-disclosure">
-        <summary className="service-card-disclosure__summary">Trust details</summary>
+        <summary className="service-card-disclosure__summary">Why this match</summary>
         <div className="service-card-disclosure__body">
           <p className="live-provider-card__address">
             <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
@@ -931,8 +949,8 @@ function LiveProviderCard({
           <p className="live-provider-card__address">
             <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
             {result.hasOpenSlot
-              ? `YardMatch found a real route opening for this property and service request.`
-              : `This provider still serves the area, but there is no open route window to hold right now.`}
+              ? `Route has room for this property and service.`
+              : `No route window is open for this time.`}
           </p>
         </div>
       </details>
@@ -954,10 +972,13 @@ function LiveProviderCard({
       <p className="live-provider-card__address">
         {provider.address.city}, {provider.address.state} • Verified provider
       </p>
+      {result.hasOpenSlot ? (
+        <p className="live-provider-card__address">No charge yet. The provider confirms before checkout.</p>
+      ) : null}
 
       <div className="cta-row">
         <a className="button" href={signupHref}>
-          {rank === 1 ? "Continue with this match" : "Continue"}
+          {requestCtaLabel}
         </a>
         <a className="button-secondary" href={loginHref}>
           Log in

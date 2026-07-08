@@ -355,7 +355,7 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
           ) : null}
 
           {acceptedAssignments.length === 0 && pendingAssignments.length === 0 ? (
-            <InfoCard title="No upcoming work" description="Nothing is scheduled right now.">
+            <InfoCard title="No upcoming work" description="Accepted shifts will show here.">
               <Text style={styles.meta}>Keep your availability current so new work can find you.</Text>
             </InfoCard>
           ) : null}

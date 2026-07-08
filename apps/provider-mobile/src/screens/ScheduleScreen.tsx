@@ -1001,7 +1001,7 @@ export function ScheduleScreen() {
         </InfoCard>
       ) : (
         <InfoCard title="Today path" description="No scheduled jobs">
-          <Text style={styles.metaLine}>Calendar and route tools are ready when work is booked.</Text>
+          <Text style={styles.metaLine}>Booked visits will appear here with route and staffing details.</Text>
         </InfoCard>
       )}
 
@@ -1352,7 +1352,7 @@ export function ScheduleScreen() {
                       }
                       style={styles.chatButton}
                     >
-                      <Text style={styles.chatButtonLabel}>{isManageOpen ? "Hide tools" : "Tools"}</Text>
+                      <Text style={styles.chatButtonLabel}>{isManageOpen ? "Close" : "Options"}</Text>
                     </Pressable>
                   ) : null}
                   {isManageOpen && canShowJobTools ? (
@@ -1378,7 +1378,7 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedStaffingSections[job.bookingId] ? "Hide staffing" : "Staffing"}
+                              {expandedStaffingSections[job.bookingId] ? "Close" : "Staffing"}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -1393,7 +1393,7 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedProofSections[job.bookingId] ? "Hide proof" : "Proof"}
+                              {expandedProofSections[job.bookingId] ? "Close" : "Proof"}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -1408,7 +1408,7 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedIssueSections[job.bookingId] ? `Hide ${issueLabel.toLowerCase()}` : issueLabel}
+                              {expandedIssueSections[job.bookingId] ? "Close" : issueLabel}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -1423,7 +1423,7 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedCustomerSections[job.bookingId] ? "Hide updates" : "Live updates"}
+                              {expandedCustomerSections[job.bookingId] ? "Close" : "Live updates"}
                             </Text>
                           </Pressable>
                         ) : null}

@@ -56,7 +56,7 @@ export function NavBar() {
             />
           </span>
           <span className="brand-lockup__wordmark">
-            <strong>GreenRain</strong>
+            <strong>YardMatch</strong>
             <small>Book, run, or join landscaping crews</small>
           </span>
         </a>

@@ -69,7 +69,7 @@ export function LaunchLeadCaptureCard({
       } satisfies CreateLaunchLeadRequest);
       persistLaunchLeadId(lead.id);
 
-      setStatusMessage("Thanks. GreenRain will follow up within the launch response window.");
+      setStatusMessage("Thanks. YardMatch will follow up within the launch response window.");
       setContactName("");
       setEmail("");
       setPhone("");
@@ -87,7 +87,7 @@ export function LaunchLeadCaptureCard({
       <h2>{title ?? "Need help before you book?"}</h2>
       <p>
         {description ??
-          "If you are not ready to go straight into the booking flow, GreenRain can follow up, confirm coverage, and help you choose the right next step."}
+          "If you are not ready to go straight into the request flow, YardMatch can follow up, confirm coverage, and help you choose the right next step."}
       </p>
       <p>Email is the default contact path, with phone or text available when you ask for it.</p>
       <div className="form-grid">
@@ -145,7 +145,7 @@ export function LaunchLeadCaptureCard({
           <span>What do you need help with?</span>
           <textarea
             onChange={(event) => setMessage(event.target.value)}
-            placeholder="Tell GreenRain what service you need, when you need it, and anything that might affect coverage or pricing."
+            placeholder="Tell YardMatch what service you need, when you need it, and anything that might affect coverage or pricing."
             rows={4}
             value={message}
           />

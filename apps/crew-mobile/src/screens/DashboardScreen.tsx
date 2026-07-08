@@ -293,10 +293,10 @@ export function DashboardScreen({
   );
   const acceptedPrimaryAction = acceptedMatch ? getCrewPrimaryAction(acceptedMatch) : undefined;
   const acceptedNextStep = acceptedMatch ? getCrewNextStep(acceptedMatch, acceptedPayoutEntry) : undefined;
-  const canManageProof =
-    acceptedMatch?.bookingStatus === "confirmed" || acceptedMatch?.bookingStatus === "in-progress";
-  const shouldShowArrivalProof = acceptedMatch?.bookingStatus === "confirmed";
+  const shouldShowArrivalProof =
+    acceptedMatch?.bookingStatus === "confirmed" && Boolean(acceptedMatch.onRouteConfirmedAt);
   const shouldShowCompletionProof = acceptedMatch?.bookingStatus === "in-progress";
+  const canManageProof = shouldShowArrivalProof || shouldShowCompletionProof;
   const pendingCount = matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0;
   const acceptedCount = matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0;
   const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
@@ -669,7 +669,7 @@ export function DashboardScreen({
                   style={styles.nextPrimaryButton}
                 >
                   <Text style={styles.nextPrimaryButtonLabel}>
-                    {showEvidenceTools ? "Hide proof" : "Add proof"}
+                    {showEvidenceTools ? "Close" : "Add proof"}
                   </Text>
                 </Pressable>
               ) : null}
@@ -679,13 +679,13 @@ export function DashboardScreen({
             {canManageProof && acceptedPrimaryAction !== "proof" ? (
               <Pressable onPress={() => setShowEvidenceTools((current) => !current)} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonLabel}>
-                  {showEvidenceTools ? "Hide proof of work" : "Proof of work"}
+                  {showEvidenceTools ? "Close" : "Proof of work"}
                 </Text>
               </Pressable>
             ) : null}
             <Pressable onPress={() => setShowShiftOptions((current) => !current)} style={styles.secondaryButton}>
               <Text style={styles.secondaryButtonLabel}>
-                {showShiftOptions ? "Hide shift options" : "Shift options"}
+                {showShiftOptions ? "Close" : "Shift options"}
               </Text>
             </Pressable>
           </View>

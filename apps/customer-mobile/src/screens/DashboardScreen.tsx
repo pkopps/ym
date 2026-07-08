@@ -70,6 +70,18 @@ function getPaymentLabel(payment?: PaymentRecord) {
   return payment.status;
 }
 
+function getHomePaymentLabel(booking?: Booking, payment?: PaymentRecord) {
+  if (booking?.status === "requested" && payment?.status !== "captured") {
+    return "After confirm";
+  }
+
+  if (booking?.status === "confirmed" && !payment) {
+    return "Ready";
+  }
+
+  return getPaymentLabel(payment);
+}
+
 function formatPrice(cents: number) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -80,7 +92,7 @@ function formatPrice(cents: number) {
 
 function needsCheckout(booking: Booking, payment?: PaymentRecord) {
   return (
-    (booking.status === "requested" || booking.status === "confirmed") &&
+    booking.status === "confirmed" &&
     payment?.status !== "captured" &&
     payment?.status !== "refunded"
   );
@@ -177,12 +189,12 @@ export function DashboardScreen({
           : "Request service";
   const homeSteps = [
     {
-      label: "Book",
-      value: nextBooking ? (nextBooking.status === "requested" ? "Requested" : "Booked") : "Start"
+      label: "Request",
+      value: nextBooking ? (nextBooking.status === "requested" ? "Provider review" : "Booked") : "Start"
     },
     {
       label: "Pay",
-      value: nextBooking ? getPaymentLabel(nextBookingPayment) : "After match"
+      value: nextBooking ? getHomePaymentLabel(nextBooking, nextBookingPayment) : "After match"
     },
     {
       label: "Track",

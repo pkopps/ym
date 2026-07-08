@@ -315,7 +315,7 @@ export function DashboardScreen({
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.markBookingOnRoute({ bookingId });
-      setStatusMessage("Route started. Open Schedule for live tracking and job tools.");
+      setStatusMessage("Route started. Customers can now track arrival from their visit.");
       await loadOverview();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
@@ -491,7 +491,7 @@ export function DashboardScreen({
       {primaryCardKind === "staffing" ? (
         <InfoCard title="Crew gap" description={`${totalCrewGap} open crew slots across upcoming jobs`}>
           <Text style={styles.alertText}>
-            Matching is live. Review candidates before the route falls behind.
+            Review crew matches before the service window.
           </Text>
           <Pressable
             onPress={() => {
@@ -535,7 +535,7 @@ export function DashboardScreen({
         <InfoCard title="Next job" description={buildDepartureSummary(nextJob)}>
           <Text style={styles.alertText}>
             {nextJobAction === "confirm"
-              ? "Confirm the request so the customer can pay and track the visit."
+              ? "Confirm the request so the customer can pay and you can prepare the route."
               : nextJobAction === "complete"
                 ? "After-work proof is saved. Complete the job when service is reviewed."
                 : `${nextJob.assignedCrewMembers}/${nextJob.requiredCrewMembers} crew${
@@ -579,7 +579,7 @@ export function DashboardScreen({
 
       {departureReminderJob && primaryCardKind === "staffing" ? (
         <InfoCard title="Leave soon" description={buildDepartureSummary(departureReminderJob)}>
-          <Text style={styles.alertText}>Route is ready once staffing is covered.</Text>
+          <Text style={styles.alertText}>Cover staffing before starting the route.</Text>
           <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>Open schedule</Text>
           </Pressable>

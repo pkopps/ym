@@ -576,7 +576,7 @@ export function SupportScreen() {
         </InfoCard>
       ) : null}
 
-      <InfoCard title="Manage" description={sectionSummaries[activeSection]}>
+      <InfoCard title="Business tools" description={sectionSummaries[activeSection]}>
         <View style={styles.issueRow}>
           {businessSectionOptions.map((option) => {
             const isActive = option.value === activeSection;
@@ -658,7 +658,7 @@ export function SupportScreen() {
           style={styles.secondaryButton}
         >
           <Text style={styles.secondaryButtonLabel}>
-            {showStaffingSettings ? "Hide staffing details" : "Staffing details"}
+            {showStaffingSettings ? "Close" : "Staffing details"}
           </Text>
         </Pressable>
         {showStaffingSettings ? (
@@ -949,7 +949,7 @@ export function SupportScreen() {
           style={styles.secondaryButton}
         >
           <Text style={styles.secondaryButtonLabel}>
-            {showCalendarTools ? "Hide calendar tools" : "Calendar tools"}
+            {showCalendarTools ? "Close" : "Calendar tools"}
           </Text>
         </Pressable>
         {showCalendarTools ? (
@@ -1201,7 +1201,7 @@ export function SupportScreen() {
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>No updates yet.</Text>
+          <Text style={styles.meta}>You're all caught up.</Text>
         )}
         {unreadCount > 0 ? (
           <Pressable
@@ -1217,7 +1217,7 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAlertPreferences ? "Hide alert preferences" : "Alert preferences"}
+            {showAlertPreferences ? "Close" : "Preferences"}
           </Text>
         </Pressable>
         {showAlertPreferences ? (
@@ -1269,19 +1269,19 @@ export function SupportScreen() {
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>Nothing sent yet.</Text>
+          <Text style={styles.meta}>No delivery records yet.</Text>
         )}
       </InfoCard>
       ) : null}
 
       {activeSection === "help" ? (
-      <InfoCard title="Help" description="Get help quickly.">
+      <InfoCard title="Help" description={sectionSummaries.help}>
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
           style={showSupportComposer ? styles.linkButton : styles.primaryButton}
         >
           <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
-            {showSupportComposer ? "Hide ticket form" : "Open support ticket"}
+            {showSupportComposer ? "Close" : "New ticket"}
           </Text>
         </Pressable>
         {showSupportComposer ? (
@@ -1328,7 +1328,7 @@ export function SupportScreen() {
             </View>
             <TextInput
               onChangeText={setSubject}
-              placeholder="Short subject"
+              placeholder="Subject"
               placeholderTextColor={BrandTokens.colors.muted}
               style={styles.input}
               value={subject}
@@ -1336,7 +1336,7 @@ export function SupportScreen() {
             <TextInput
               multiline
               onChangeText={setDescription}
-              placeholder="What happened, and what do you need help with?"
+              placeholder="What happened?"
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.textarea]}
               value={description}
@@ -1346,7 +1346,7 @@ export function SupportScreen() {
               onPress={() => void handleCreateSupportTicket()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send ticket"}</Text>
+              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send"}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -1357,7 +1357,7 @@ export function SupportScreen() {
               style={styles.linkButton}
             >
               <Text style={styles.linkButtonLabel}>
-                {showSupportHistory ? "Hide recent tickets" : "Recent tickets"}
+                {showSupportHistory ? "Close" : "Recent tickets"}
               </Text>
             </Pressable>
             {showSupportHistory ? (

@@ -474,7 +474,7 @@ export function SupportScreen() {
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>No updates yet.</Text>
+          <Text style={styles.meta}>You're all caught up.</Text>
         )}
         {unreadCount > 0 ? (
           <Pressable
@@ -491,7 +491,7 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAlertPreferences ? "Hide preferences" : "Preferences"}
+            {showAlertPreferences ? "Close" : "Preferences"}
           </Text>
         </Pressable>
         {showAlertPreferences ? (
@@ -537,7 +537,7 @@ export function SupportScreen() {
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>Nothing sent yet.</Text>
+          <Text style={styles.meta}>No delivery records yet.</Text>
         )}
       </InfoCard>
       ) : null}
@@ -597,7 +597,7 @@ export function SupportScreen() {
             </View>
             <TextInput
               onChangeText={setSubject}
-              placeholder="Short subject"
+              placeholder="Subject"
               placeholderTextColor={BrandTokens.colors.muted}
               style={styles.input}
               value={subject}
@@ -626,7 +626,7 @@ export function SupportScreen() {
               style={styles.linkButton}
             >
               <Text style={styles.linkButtonLabel}>
-                {showSupportHistory ? "Hide recent tickets" : "Recent tickets"}
+                {showSupportHistory ? "Close" : "Recent tickets"}
               </Text>
             </Pressable>
             {showSupportHistory ? (

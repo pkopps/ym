@@ -109,6 +109,30 @@ function getCompanyInitials(companyName: string) {
     .join("");
 }
 
+function RequestNextSteps() {
+  const steps = [
+    { label: "Request", value: "No charge yet" },
+    { label: "Confirm", value: "Provider reviews" },
+    { label: "Pay", value: "After provider confirms" }
+  ];
+
+  return (
+    <View style={styles.requestNextSteps}>
+      {steps.map((step, index) => (
+        <View key={step.label} style={styles.requestNextStep}>
+          <View style={styles.requestNextStepIndex}>
+            <Text style={styles.requestNextStepIndexLabel}>{index + 1}</Text>
+          </View>
+          <View style={styles.requestNextStepCopy}>
+            <Text style={styles.requestNextStepLabel}>{step.label}</Text>
+            <Text style={styles.requestNextStepValue}>{step.value}</Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function buildDateIsoForCustomerTiming(timing: CustomerTimingPreference) {
   const date = new Date();
   const isDayAfter = timing.startsWith("day-after");
@@ -589,7 +613,7 @@ export function BookServiceScreen({
             <Text style={styles.providerMeta}>{quote.normalizedAddress.displayLabel}</Text>
             <Pressable onPress={() => setShowQuoteDetails((current) => !current)} style={styles.secondaryButtonInline}>
               <Text style={styles.secondaryButtonInlineLabel}>
-                {showQuoteDetails ? "Hide details" : "How price works"}
+                {showQuoteDetails ? "Close" : "How price works"}
               </Text>
             </Pressable>
             {showQuoteDetails ? (
@@ -607,8 +631,12 @@ export function BookServiceScreen({
           </InfoCard>
 
           <InfoCard
-            title={recommendedProviderCard ? "Ready to book" : "Best fit"}
-            description={recommendedProviderCard ? "One clear recommendation." : `First checked: ${selectedTimingLabel.toLowerCase()}`}
+            title="Best match"
+            description={
+              recommendedProviderCard && selectedRecommendedSlot
+                ? `${formatOpenWindow(selectedRecommendedSlot)} opening`
+                : `First checked: ${selectedTimingLabel.toLowerCase()}`
+            }
           >
             {searchState === "loading" ? (
               <View style={styles.providerStack}>
@@ -632,16 +660,16 @@ export function BookServiceScreen({
               </View>
             ) : providers.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>Nothing is live here yet.</Text>
-                <Text style={styles.providerMeta}>We do not have a verified business covering this request yet.</Text>
+                <Text style={styles.emptyState}>No verified businesses yet.</Text>
+                <Text style={styles.providerMeta}>Try a nearby date or adjust the property details.</Text>
                 <Pressable onPress={handleChangeDetails} style={styles.secondaryButtonInline}>
                   <Text style={styles.secondaryButtonInlineLabel}>Change details</Text>
                 </Pressable>
               </View>
             ) : providersWithWindows.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>Nothing is open {selectedTimingLabel.toLowerCase()}.</Text>
-                <Text style={styles.providerMeta}>This area is covered, but the current route windows are full.</Text>
+                <Text style={styles.emptyState}>No openings {selectedTimingLabel.toLowerCase()}.</Text>
+                <Text style={styles.providerMeta}>Routes are full for this window.</Text>
                 <View style={styles.providerStack}>
                   {alternativeTimingSuggestions.map((option) => (
                     <Pressable
@@ -727,7 +755,7 @@ export function BookServiceScreen({
                       selectedSlotId={selectedRecommendedSlot?.id}
                       slots={recommendedProviderOpenSlots}
                     />
-                    <Text style={styles.providerMeta}>Request now. Pay after the visit is confirmed.</Text>
+                    <RequestNextSteps />
                     <Pressable
                       disabled={isWorking || !selectedRecommendedSlot}
                       onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1, selectedRecommendedSlot)}
@@ -741,7 +769,7 @@ export function BookServiceScreen({
                         style={styles.secondaryButtonInline}
                       >
                         <Text style={styles.secondaryButtonInlineLabel}>
-                          {showRecommendedWhy ? "Hide why" : "Why this pick"}
+                          {showRecommendedWhy ? "Close" : "Why this pick"}
                         </Text>
                       </Pressable>
                       {showRecommendedWhy ? (
@@ -844,7 +872,7 @@ export function BookServiceScreen({
                         style={styles.secondaryButtonInline}
                       >
                         <Text style={styles.secondaryButtonInlineLabel}>
-                          {showAlternativeWhy[provider.id] ? "Hide why" : "Why this option"}
+                          {showAlternativeWhy[provider.id] ? "Close" : "Why this option"}
                         </Text>
                       </Pressable>
                       {showAlternativeWhy[provider.id] ? (
@@ -1268,6 +1296,50 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
     lineHeight: 20
+  },
+  requestNextSteps: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(20, 40, 29, 0.08)",
+    gap: BrandTokens.spacing.sm,
+    paddingTop: BrandTokens.spacing.md
+  },
+  requestNextStep: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm
+  },
+  requestNextStepIndex: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: "rgba(47, 125, 76, 0.12)",
+    height: 24,
+    width: 24
+  },
+  requestNextStepIndexLabel: {
+    color: BrandTokens.colors.primaryStrong,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  requestNextStepCopy: {
+    flex: 1,
+    flexDirection: "row",
+    gap: BrandTokens.spacing.sm,
+    justifyContent: "space-between"
+  },
+  requestNextStepLabel: {
+    color: BrandTokens.colors.ink,
+    flexShrink: 0,
+    fontSize: 12,
+    fontWeight: "800"
+  },
+  requestNextStepValue: {
+    color: BrandTokens.colors.inkSoft,
+    flexShrink: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+    textAlign: "right"
   },
   openingStack: {
     gap: BrandTokens.spacing.sm

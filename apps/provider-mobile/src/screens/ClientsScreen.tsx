@@ -199,7 +199,7 @@ export function ClientsScreen() {
         <View style={styles.buttonRow}>
           <Pressable onPress={() => toggleJobMatches(job.bookingId)} style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonLabel}>
-              {hasExpandedMatches ? "Hide matches" : "Review matches"}
+              {hasExpandedMatches ? "Close" : "Review matches"}
             </Text>
           </Pressable>
         </View>
@@ -219,7 +219,7 @@ export function ClientsScreen() {
               <>
                 <Pressable onPress={() => toggleOtherMatches(job.bookingId)} style={styles.secondaryButtonInline}>
                   <Text style={styles.secondaryButtonInlineLabel}>
-                    {showOtherMatches ? "Hide other matches" : `Other matches (${otherMatches.length})`}
+                    {showOtherMatches ? "Close" : `Other matches (${otherMatches.length})`}
                   </Text>
                 </Pressable>
                 {showOtherMatches ? <View style={styles.list}>{otherMatches.map((match) => renderMatchRow(match))}</View> : null}
@@ -249,7 +249,7 @@ export function ClientsScreen() {
                 style={styles.secondaryButton}
               >
                 <Text style={styles.secondaryButtonLabel}>
-                  {showOtherJobs ? "Hide other jobs" : `Other staffing needs (${otherJobsNeedingAttention.length})`}
+                  {showOtherJobs ? "Close" : `Other staffing needs (${otherJobsNeedingAttention.length})`}
                 </Text>
               </Pressable>
               {showOtherJobs ? (

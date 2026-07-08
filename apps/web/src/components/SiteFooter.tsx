@@ -38,7 +38,7 @@ const footerColumns = [
       { href: "/services/lawn-mowing", label: "Core recurring service" },
       { href: "/services/yard-cleanup", label: "Core reset service" },
       { href: "/customer", label: "Recommendation-first booking" },
-      { href: "/about", label: "Why GreenRain is managed" },
+      { href: "/about", label: "Why YardMatch is managed" },
       { href: "/provider", label: "Provider-side marketplace story" }
     ]
   },

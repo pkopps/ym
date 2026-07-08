@@ -33,18 +33,6 @@ Or:
 npm run crawl
 ```
 
-To capture public mobile app listing screenshots from the Apple App Store and Google Play web listings:
-
-```bash
-npm run crawl:mobile-app
-```
-
-To add only the public Google Play listing media assets:
-
-```bash
-npm run crawl:mobile-app -- --google-play-assets-only
-```
-
 The crawler uses:
 
 - Desktop viewport: `1440x1600`
@@ -66,7 +54,7 @@ The generated `manifest.json` includes each screenshot filename, page URL, viewp
 
 If Zocdoc returns HTTP 403, CAPTCHA, or another access-control page, the crawler records the issue in `manifest.json` and stops that flow. It intentionally does not try to work around those controls.
 
-The mobile-app crawler captures public app-store listing pages and public app-store screenshot/media assets. It does not install, log into, or automate the native iOS/Android Zocdoc app.
+Native iOS/Android app screens are not captured here. Playwright can capture web pages, but it does not install or operate the native Zocdoc app, and app-store marketing/listing assets should not be treated as real app UI evidence.
 
 ## Useful Options
 

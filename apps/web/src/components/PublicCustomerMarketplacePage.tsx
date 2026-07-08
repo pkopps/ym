@@ -322,7 +322,7 @@ export function PublicCustomerMarketplacePage() {
         <LaunchLeadCaptureCard
           defaultAreaLabel={areaQuery}
           defaultServiceCategory={selectedService}
-          description="Not ready to commit to a route window yet? Ask GreenRain to confirm coverage, timing, or the right launch service before you jump into the full booking flow."
+          description="Not ready to commit to a route window yet? Ask YardMatch to confirm coverage, timing, or the right launch service before you jump into the full request flow."
           requestSource="public-homepage-lead-form"
           title="Request a callback or email follow-up"
         />
@@ -352,7 +352,7 @@ export function PublicCustomerMarketplacePage() {
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>How GreenRain works</h2>
+          <h2>How YardMatch works</h2>
           <p>Three quick steps. No directory rabbit hole.</p>
         </div>
         <div className="grid-three market-home__steps">
@@ -365,8 +365,8 @@ export function PublicCustomerMarketplacePage() {
             <p>See one recommended provider first, plus why they were picked.</p>
           </article>
           <article className="card market-home__step">
-            <strong>3. Book and track</strong>
-            <p>Hold the route window, pay in one flow, and track arrival without chasing texts.</p>
+            <strong>3. Request and track</strong>
+            <p>Send the request, pay after confirmation, and track arrival without chasing texts.</p>
           </article>
         </div>
       </section>
@@ -388,7 +388,7 @@ export function PublicCustomerMarketplacePage() {
           <article className="card">
             <h3>Why verified supply matters</h3>
             <p>
-              GreenRain is trying to show verified providers in the public marketplace overview, so
+              YardMatch is trying to show verified providers in the public marketplace overview, so
               the launch trust layer starts with screened local supply instead of open-ended listing
               volume.
             </p>
@@ -473,7 +473,7 @@ export function PublicCustomerMarketplacePage() {
       <section className="container stack-lg">
         <div className="section-header">
           <h2>Know the support rules before you book</h2>
-          <p>Clear launch-era expectations around help, cancellations, refunds, and what GreenRain manages after booking.</p>
+          <p>Clear launch-era expectations around help, cancellations, refunds, and what YardMatch manages after booking.</p>
         </div>
         <div className="grid-two">
           {homeTrustPages.map((page) => (

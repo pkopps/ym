@@ -457,6 +457,18 @@ export function BookingsScreen({
     return "Payment on file";
   }
 
+  function getVisitPaymentLabel(booking: Booking, payment?: PaymentRecord) {
+    if (booking.status === "requested" && payment?.status !== "captured") {
+      return "After provider confirms";
+    }
+
+    if (!payment && booking.status === "confirmed") {
+      return "Ready for checkout";
+    }
+
+    return getPaymentLabel(payment);
+  }
+
   function canRequestRefundReview(booking: Booking, payment?: PaymentRecord) {
     return booking.status === "completed" && payment?.status === "captured" && payment.refundable;
   }
@@ -537,10 +549,14 @@ export function BookingsScreen({
       };
     }
 
-    if (
-      (booking.status === "requested" || booking.status === "confirmed") &&
-      payment?.status !== "captured"
-    ) {
+    if (booking.status === "requested") {
+      return {
+        detail: "You’ll pay after the provider confirms this time.",
+        label: "Provider review"
+      };
+    }
+
+    if (booking.status === "confirmed" && payment?.status !== "captured") {
       if (payment?.status === "failed") {
         return {
           action: "checkout",
@@ -620,6 +636,7 @@ export function BookingsScreen({
             <View style={styles.list}>
               {upcomingBookings.map((booking) => {
                 const payment = getPaymentRecord(booking.id);
+                const paymentLabel = getVisitPaymentLabel(booking, payment);
                 const isManageOpen = showManageByBookingId[booking.id];
                 const nextStep = getVisitNextStep(booking, payment);
                 const primaryActionKind = nextStep.action;
@@ -655,7 +672,7 @@ export function BookingsScreen({
                       />
                     </View>
 
-                    <VisitLifecycle booking={booking} payment={payment} paymentLabel={getPaymentLabel(payment)} />
+                    <VisitLifecycle booking={booking} payment={payment} paymentLabel={paymentLabel} />
 
                     <View style={styles.nextActionCard}>
                       <Text style={styles.nextActionEyebrow}>Next</Text>
@@ -695,7 +712,7 @@ export function BookingsScreen({
                       </View>
                       <View style={styles.visitSummaryItem}>
                         <Text style={styles.visitSummaryLabel}>Payment</Text>
-                        <Text style={styles.visitSummaryValue}>{getPaymentLabel(payment)}</Text>
+                        <Text style={styles.visitSummaryValue}>{paymentLabel}</Text>
                       </View>
                       <View style={styles.visitSummaryItem}>
                         <Text style={styles.visitSummaryLabel}>Property</Text>
@@ -724,7 +741,7 @@ export function BookingsScreen({
                             style={styles.secondaryAction}
                           >
                             <Text style={styles.secondaryActionLabel}>
-                              {isManageOpen ? "Hide" : visitOptionsLabel}
+                              {isManageOpen ? "Close" : visitOptionsLabel}
                             </Text>
                           </Pressable>
                         ) : null
@@ -895,7 +912,7 @@ export function BookingsScreen({
                 style={styles.secondaryAction}
               >
                 <Text style={styles.secondaryActionLabel}>
-                  {showReviewDetails ? "Hide detail ratings" : "Detail ratings"}
+                  {showReviewDetails ? "Close" : "Detail ratings"}
                 </Text>
               </Pressable>
               {showReviewDetails ? (
@@ -1111,6 +1128,7 @@ function VisitLifecycle({
   paymentLabel: string;
 }) {
   const isPaid = payment?.status === "captured" || payment?.status === "refunded";
+  const isRequested = booking.status === "requested";
   const activeStepIndex =
     booking.status === "completed"
       ? 3
@@ -1118,7 +1136,9 @@ function VisitLifecycle({
         ? 2
         : isPaid
           ? 2
-          : 1;
+          : isRequested
+            ? 0
+            : 1;
   const arrivalValue =
     booking.onRouteConfirmedAt
       ? "On the way"
@@ -1129,12 +1149,12 @@ function VisitLifecycle({
           : "After pay";
   const steps = [
     {
-      label: "Booked",
-      value: booking.status === "requested" ? "Requested" : "Confirmed"
+      label: "Request",
+      value: isRequested ? "Provider review" : "Confirmed"
     },
     {
       label: "Pay",
-      value: paymentLabel
+      value: isRequested && payment?.status !== "captured" ? "After confirm" : paymentLabel
     },
     {
       label: "Arrival",
