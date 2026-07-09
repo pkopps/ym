@@ -92,21 +92,6 @@ function formatSearchMetrics(results?: SearchProvidersResponse): Array<{ value: 
   ];
 }
 
-function formatAreaDescription(
-  areaLabel: string | undefined,
-  serviceLabel: string,
-  timing: CustomerTimingPreference,
-  customDate?: string,
-  customWindow?: CustomerCustomTimingWindow
-) {
-  const resolvedArea = areaLabel?.trim() || "your area";
-  return `Top ${serviceLabel.toLowerCase()} matches for ${getCustomerTimingLabel(
-    timing,
-    customDate,
-    customWindow
-  ).toLowerCase()} in ${resolvedArea}.`;
-}
-
 function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreference) {
   const selectedIndex = customerTimingOptions.findIndex((option) => option.value === selectedTiming);
 
@@ -584,13 +569,6 @@ export function PublicCustomerListingsExperience({
     <>
       <CustomerListingsHero
         areaQuery={areaQuery}
-        description={formatAreaDescription(
-          resolvedAreaLabel,
-          serviceLabel,
-          selectedTiming,
-          selectedCustomDate,
-          selectedCustomWindow
-        )}
         initialAreaLabel={initialAreaLabel}
         initialAdditionalTimings={initialAdditionalTimings}
         initialCustomDate={initialCustomDate}

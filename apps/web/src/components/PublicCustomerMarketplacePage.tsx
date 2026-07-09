@@ -12,7 +12,6 @@ import {
 import { faqItems, serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { HomeServiceScroller } from "./HomeServiceScroller";
 import { LaunchLeadCaptureCard } from "./LaunchLeadCaptureCard";
 import {
   CustomerQuickServiceChip,
@@ -28,7 +27,6 @@ import { buildSiteUrl, launchAreaLabel } from "../lib/site";
 import { trustPolicyPages } from "../lib/trustPolicyContent";
 import { StructuredData } from "./StructuredData";
 
-const rotatingServices = ["lawn mowing", "cleanup", "hedge trimming", "mulch refresh"] as const;
 const showCoveragePockets = false;
 
 function getProviderInitials(provider: PublicMarketplaceFeaturedProvider) {
@@ -280,12 +278,10 @@ export function PublicCustomerMarketplacePage() {
 
       <section className="container hero home-hero customer-public-hero">
         <div className="home-hero__content">
-          <h1 className="home-hero__headline">
-            <span>Tell us what needs care.</span>
-            <span className="home-hero__headline-accent">
-              We’ll match the best local fit for <HomeServiceScroller services={rotatingServices} />
-            </span>
-          </h1>
+          <div className="home-hero__header">
+            <span className="eyebrow">YardMatch in {launchAreaLabel}</span>
+            <h1 className="home-hero__headline">One local match for yard care.</h1>
+          </div>
           <PublicMarketplaceSearchShell
             areaQuery={areaQuery}
             onAreaQueryChange={setAreaQuery}
@@ -307,6 +303,11 @@ export function PublicCustomerMarketplacePage() {
             selectedSuggestion={selectedSuggestion}
             selectedTiming={selectedTiming}
           />
+          <div className="home-hero__trust-strip" aria-label="Request basics">
+            <span>Verified local providers</span>
+            <span>Request first</span>
+            <span>Pay after confirmation</span>
+          </div>
           <div className="cta-row">
             <a className="button-secondary" href="/provider">
               I run a landscaping business
@@ -316,16 +317,6 @@ export function PublicCustomerMarketplacePage() {
             </a>
           </div>
         </div>
-      </section>
-
-      <section className="container stack-lg">
-        <LaunchLeadCaptureCard
-          defaultAreaLabel={areaQuery}
-          defaultServiceCategory={selectedService}
-          description="Not ready to commit to a route window yet? Ask YardMatch to confirm coverage, timing, or the right launch service before you jump into the full request flow."
-          requestSource="public-homepage-lead-form"
-          title="Request a callback or email follow-up"
-        />
       </section>
 
       {topRatedProviders.length ? (
@@ -484,6 +475,16 @@ export function PublicCustomerMarketplacePage() {
             </Link>
           ))}
         </div>
+      </section>
+
+      <section className="container stack-lg">
+        <LaunchLeadCaptureCard
+          defaultAreaLabel={areaQuery}
+          defaultServiceCategory={selectedService}
+          description="Ask YardMatch to confirm coverage, timing, or the right service."
+          requestSource="public-homepage-lead-form"
+          title="Need help choosing?"
+        />
       </section>
 
       <section className="container stack-lg">

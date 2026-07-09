@@ -12,29 +12,6 @@ import {
 } from "./PublicMarketplaceSearchShell";
 import { launchAreaLabel } from "../lib/site";
 
-const serviceSpotlightImages: Partial<Record<ServiceCategory, { alt: string; src: string }>> = {
-  "lawn-mowing": {
-    alt: "Lawn mower illustration for mowing service search",
-    src: "/media/landscaping-tools/lawn-mower.png"
-  },
-  "mulch-installation": {
-    alt: "Mulch refresh illustration for mulch service search",
-    src: "/media/landscaping-tools/mulch-refresh.png"
-  },
-  "seasonal-cleanup": {
-    alt: "Leaf blower illustration for cleanup service search",
-    src: "/media/landscaping-tools/leaf-blower.png"
-  },
-  "hedge-trimming": {
-    alt: "Hedge trimmer illustration for hedge trimming search",
-    src: "/media/landscaping-tools/hedge-trimmer.png"
-  },
-  "gutter-cleaning": {
-    alt: "Gutter cleaning illustration for gutter service search",
-    src: "/media/landscaping-tools/gutter-cleaning.png"
-  }
-};
-
 export function CustomerListingsHero({
   initialAreaLabel,
   initialService,
@@ -63,8 +40,7 @@ export function CustomerListingsHero({
   selectedSuggestion,
   selectedTiming,
   selectedAdditionalTimings,
-  metrics,
-  description
+  metrics
 }: {
   initialAreaLabel?: string;
   initialService?: ServiceCategory;
@@ -100,7 +76,6 @@ export function CustomerListingsHero({
   selectedSuggestion?: PlaceSuggestion;
   selectedTiming?: CustomerTimingPreference;
   metrics?: Array<{ value: string; label: string }>;
-  description?: string;
 }) {
   const [localAreaQuery, setLocalAreaQuery] = useState(initialAreaLabel ?? launchAreaLabel);
   const [localSelectedService, setLocalSelectedService] = useState<ServiceCategory>(initialService ?? "lawn-mowing");
@@ -138,32 +113,21 @@ export function CustomerListingsHero({
     resolvedSelectedCustomWindow
   );
   const metricItems = metrics ?? [];
-  const spotlightImage = serviceSpotlightImages[resolvedSelectedService];
   const resolvedAreaLabel = resolvedSelectedSuggestion?.label ?? resolvedAreaQuery;
 
   return (
     <section className="page-hero page-hero--listings">
       <div className="page-hero__copy">
-        <span className="eyebrow">Find your match</span>
-        <h1>
-          {serviceLabel} in {resolvedAreaLabel}
-        </h1>
-        <p>
-          {description ??
-            `YardMatch leads with one strong match for ${timingLabel.toLowerCase()}, then keeps a short backup list ready if you want it.`}
-        </p>
-        {spotlightImage ? (
-          <div className="listing-spotlight">
-            <span className="listing-spotlight__image-wrap" aria-hidden="true">
-              <img alt={spotlightImage.alt} className="listing-spotlight__image" src={spotlightImage.src} />
-            </span>
-            <div className="listing-spotlight__copy">
-              <strong>{serviceLabel}</strong>
-              <span>{timingLabel}</span>
-              <small>{resolvedAreaLabel}</small>
-            </div>
+        <div className="listings-query">
+          <div className="listings-query__title">
+            <span>Current request</span>
+            <h1>{serviceLabel}</h1>
           </div>
-        ) : null}
+          <div className="listings-query__chips" aria-label="Current search">
+            <span>{resolvedAreaLabel}</span>
+            <span>{timingLabel}</span>
+          </div>
+        </div>
         {metricItems.length > 0 ? (
           <div className="page-hero__metrics">
             {metricItems.map((metric) => (
@@ -176,10 +140,7 @@ export function CustomerListingsHero({
         ) : null}
       </div>
 
-      <div className="page-hero__search-card">
-        <span className="eyebrow">Update search</span>
-        <h2>Change the search</h2>
-        <p>Service, timing, and area stay in one place.</p>
+      <div className="page-hero__search-card" aria-label="Update current search">
         <PublicMarketplaceSearchShell
           areaQuery={resolvedAreaQuery}
           onAreaQueryChange={(value) => {
