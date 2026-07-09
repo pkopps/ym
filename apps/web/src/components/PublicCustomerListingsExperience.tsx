@@ -172,35 +172,6 @@ function buildCustomerSignupHref({
   return `/auth/customer?${params.toString()}`;
 }
 
-function buildCustomerDashboardRequestHref({
-  selectedCustomDate,
-  selectedCustomWindow,
-  selectedService,
-  selectedTiming
-}: {
-  selectedCustomDate: string;
-  selectedCustomWindow: CustomerCustomTimingWindow;
-  selectedService: ServiceCategory;
-  selectedTiming: CustomerTimingPreference;
-}) {
-  const params = new URLSearchParams({
-    flow: "request",
-    service: selectedService,
-    when: selectedTiming
-  });
-
-  if ((selectedTiming === "custom-date" || selectedTiming === "custom-range") && selectedCustomDate) {
-    params.set("date", selectedCustomDate);
-    params.set("window", selectedCustomWindow);
-  }
-
-  return `/customer/dashboard?${params.toString()}`;
-}
-
-function buildCustomerLoginHref(returnTo: string) {
-  return `/login/customer?returnTo=${encodeURIComponent(returnTo)}`;
-}
-
 function buildBoundingBox(origin: GeoPoint, results: SearchProviderResult[]) {
   const points = [origin, ...results.map((result) => result.provider.address.point)];
   const latitudes = points.map((point) => point.latitude);
@@ -369,23 +340,6 @@ export function PublicCustomerListingsExperience({
       value: searchState === "loading" ? "Checking" : formatOpenWindowCount(providersWithOpenWindows.length)
     }
   ];
-  const customerSignupHref = buildCustomerSignupHref({
-    areaQuery,
-    selectedCustomDate,
-    selectedCustomEndDate,
-    selectedCustomWindow,
-    selectedCustomWindows,
-    selectedService,
-    selectedSuggestion,
-    selectedTiming
-  });
-  const customerDashboardRequestHref = buildCustomerDashboardRequestHref({
-    selectedCustomDate,
-    selectedCustomWindow,
-    selectedService,
-    selectedTiming
-  });
-  const customerLoginHref = buildCustomerLoginHref(customerDashboardRequestHref);
   const listingsMapRadiusMiles = rankedProviders.length
     ? Math.max(
         12,
@@ -653,24 +607,6 @@ export function PublicCustomerListingsExperience({
           </details>
         </div>
 
-        <div className="results-summary">
-          <div className="results-summary__copy">
-            <strong>{serviceLabel} in {resolvedAreaLabel}</strong>
-            <span>{timingLabel}</span>
-            <small>
-              One recommendation first. Backup options only if you want them.
-            </small>
-          </div>
-          <div className="results-summary__actions">
-            <a className="button-secondary" href={customerSignupHref}>
-              Start request
-            </a>
-            <a className="button-secondary" href={customerLoginHref}>
-              Customer login
-            </a>
-          </div>
-        </div>
-
         {searchState === "loading" ? (
           <div className="live-listings-card__grid">
             <article className="list-panel live-listings-card__message">
@@ -807,7 +743,6 @@ export function PublicCustomerListingsExperience({
                   choicePresentation={providerChoicePresentations[index]}
                   isPrimaryRecommendation={index === 0}
                   key={result.provider.id}
-                  loginHref={customerLoginHref}
                   result={result}
                   rank={index + 1}
                   signupHref={buildCustomerSignupHref({
@@ -845,14 +780,12 @@ export function PublicCustomerListingsExperience({
 function LiveProviderCard({
   choicePresentation,
   isPrimaryRecommendation = false,
-  loginHref,
   rank,
   result,
   signupHref
 }: {
   choicePresentation?: { badge: string; heading: string; detail: string };
   isPrimaryRecommendation?: boolean;
-  loginHref: string;
   rank: number;
   result: SearchProviderResult;
   signupHref: string;
@@ -869,99 +802,98 @@ function LiveProviderCard({
       ? "Request this match"
       : "Request"
     : "Review provider";
+  const matchHeading = choicePresentation?.heading ?? result.selectionSummaryLabel;
+  const matchDetail = choicePresentation?.detail ?? result.selectionSummaryDetail;
+  const availabilityNote = result.hasOpenSlot
+    ? "Provider confirms before payment."
+    : "Try another time before requesting.";
+  const detailServices = displayedCategories.length ? displayedCategories.join(", ") : "Requested yard service";
+  const detailReasons = result.reasons.length
+    ? result.reasons.slice(0, 3).join(" • ")
+    : "Service area, timing, and job type match this request.";
 
   return (
     <article className={`list-panel live-provider-card${isPrimaryRecommendation ? " live-provider-card--recommended" : ""}`}>
       <div className="live-provider-card__header">
-        <div className="search-result-title">
-          <div>
-            {isPrimaryRecommendation ? <span className="eyebrow">Best match</span> : null}
-            <h3>{provider.companyName}</h3>
-          </div>
-          <div className="live-provider-card__badges">
-            {choicePresentation ? <span className="result-badge">{choicePresentation.badge}</span> : rank === 1 ? <span className="result-badge">Best fit</span> : null}
-            {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
-            <span className={`result-badge${result.hasOpenSlot ? "" : " result-badge--neutral"}`}>
-              {result.hasOpenSlot ? "Open time" : "Window full"}
-            </span>
-          </div>
+        <div className="live-provider-card__identity">
+          <h3>{provider.companyName}</h3>
+          <p>
+            {provider.address.city}, {provider.address.state} • {provider.rating.toFixed(1)} rating •{" "}
+            {provider.reviewCount} reviews
+          </p>
+        </div>
+        <div className="live-provider-card__badges">
+          {choicePresentation ? (
+            <span className="result-badge">{choicePresentation.badge}</span>
+          ) : rank === 1 ? (
+            <span className="result-badge">Best fit</span>
+          ) : null}
+          {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
+          <span className={`result-badge${result.hasOpenSlot ? "" : " result-badge--neutral"}`}>
+            {result.hasOpenSlot ? "Open time" : "Window full"}
+          </span>
         </div>
       </div>
 
-      {choicePresentation ? (
-        <div className="live-provider-card__decision">
-          <strong>{choicePresentation.heading}</strong>
-          <p>{choicePresentation.detail}</p>
-        </div>
-      ) : null}
-
-      <div className="live-provider-card__decision live-provider-card__decision--summary">
-        <strong>{result.selectionSummaryLabel}</strong>
-        <p>{result.selectionSummaryDetail}</p>
+      <div className="live-provider-card__match-note">
+        <strong>{matchHeading}</strong>
+        <p>{matchDetail}</p>
       </div>
 
-      <div className="live-provider-card__booking-strip" aria-label="Provider request facts">
-        <div>
-          <span>Availability</span>
+      <div className="live-provider-card__request-row" aria-label="Provider request facts">
+        <div className="live-provider-card__slot">
+          <span>{result.hasOpenSlot ? "Next opening" : "Availability"}</span>
           <strong>{nextWindowLabel}</strong>
+          <small>{availabilityNote}</small>
         </div>
-        <div>
-          <span>Distance</span>
-          <strong>{result.distanceMiles.toFixed(1)} mi</strong>
-        </div>
-        <div>
-          <span>Reviews</span>
-          <strong>{provider.rating.toFixed(1)} • {provider.reviewCount} reviews</strong>
-        </div>
+        <dl className="live-provider-card__facts">
+          <div>
+            <dt>Distance</dt>
+            <dd>{result.distanceMiles.toFixed(1)} mi</dd>
+          </div>
+          <div>
+            <dt>Fit</dt>
+            <dd>{result.selectionSummaryLabel}</dd>
+          </div>
+        </dl>
+        <a className="button live-provider-card__action" href={signupHref}>
+          {requestCtaLabel}
+        </a>
       </div>
 
       <details className="service-card-disclosure">
-        <summary className="service-card-disclosure__summary">Why this match</summary>
-        <div className="service-card-disclosure__body">
-          <p className="live-provider-card__address">
-            <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
-          </p>
-          <p className="live-provider-card__address">
-            <strong>{result.neighborhoodFamiliarityLabel}.</strong> {result.neighborhoodFamiliarityDetail}
-          </p>
-          <p className="live-provider-card__address">
-            <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
-            {result.hasOpenSlot
-              ? `Route has room for this property and service.`
-              : `No route window is open for this time.`}
-          </p>
+        <summary className="service-card-disclosure__summary">Details</summary>
+        <div className="service-card-disclosure__body live-provider-card__details">
+          <div>
+            <span>Services</span>
+            <p>{detailServices}</p>
+          </div>
+          <div>
+            <span>Why it fits</span>
+            <p>{detailReasons}</p>
+          </div>
+          <div>
+            <span>Route check</span>
+            <p>
+              <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
+            </p>
+          </div>
+          <div>
+            <span>Local coverage</span>
+            <p>
+              <strong>{result.neighborhoodFamiliarityLabel}.</strong>{" "}
+              {result.neighborhoodFamiliarityDetail}
+            </p>
+          </div>
+          <div>
+            <span>Timing</span>
+            <p>
+              <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
+              {result.hasOpenSlot ? "Route has room for this request." : "No route window is open for this time."}
+            </p>
+          </div>
         </div>
       </details>
-
-      <div className="chip-row">
-        {displayedCategories.map((category) => (
-          <span key={`${provider.id}-${category}`}>{category}</span>
-        ))}
-      </div>
-
-      <div className="live-provider-card__reasons">
-        {result.reasons.slice(0, 3).map((reason) => (
-          <span className="live-provider-card__reason" key={`${provider.id}-${reason}`}>
-            {reason}
-          </span>
-        ))}
-      </div>
-
-      <p className="live-provider-card__address">
-        {provider.address.city}, {provider.address.state} • Verified provider
-      </p>
-      {result.hasOpenSlot ? (
-        <p className="live-provider-card__address">No charge yet. The provider confirms before checkout.</p>
-      ) : null}
-
-      <div className="cta-row">
-        <a className="button" href={signupHref}>
-          {requestCtaLabel}
-        </a>
-        <a className="button-secondary" href={loginHref}>
-          Log in
-        </a>
-      </div>
     </article>
   );
 }

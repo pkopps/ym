@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Address, ServiceCategory } from "@yardmatch/contracts";
+import { Address, ServiceCategory, formatBookingWindowSummary } from "@yardmatch/contracts";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../lib/api";
@@ -66,6 +66,18 @@ function parseCustomTimingWindow(value: string | null): CustomerCustomTimingWind
   return value as CustomerCustomTimingWindow;
 }
 
+function formatCarriedSlotLabel(value: string) {
+  if (!value) {
+    return "";
+  }
+
+  try {
+    return formatBookingWindowSummary(value);
+  } catch {
+    return "";
+  }
+}
+
 export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -74,7 +86,11 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const carriedCustomDate = role === "customer" ? getSearchParamValue(searchParams, "date") || getSearchParamValue(searchParams, "start") : "";
   const carriedCustomWindow = role === "customer" ? parseCustomTimingWindow(searchParams.get("window")) : "morning";
   const carriedArea = role === "customer" ? getSearchParamValue(searchParams, "area") : "";
+  const carriedProviderId = role === "customer" ? getSearchParamValue(searchParams, "providerId") : "";
   const carriedProviderName = role === "customer" ? getSearchParamValue(searchParams, "providerName") : "";
+  const carriedProviderRank = role === "customer" ? getSearchParamValue(searchParams, "rank") : "";
+  const carriedSlot = role === "customer" ? getSearchParamValue(searchParams, "slot") : "";
+  const carriedSlotLabel = formatCarriedSlotLabel(carriedSlot);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -113,6 +129,18 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
     if ((carriedTiming === "custom-date" || carriedTiming === "custom-range") && carriedCustomDate) {
       redirectParams.set("date", carriedCustomDate);
       redirectParams.set("window", carriedCustomWindow);
+    }
+    if (carriedProviderId) {
+      redirectParams.set("providerId", carriedProviderId);
+    }
+    if (carriedProviderName) {
+      redirectParams.set("providerName", carriedProviderName);
+    }
+    if (carriedProviderRank) {
+      redirectParams.set("rank", carriedProviderRank);
+    }
+    if (carriedSlot) {
+      redirectParams.set("slot", carriedSlot);
     }
 
     return `/customer/dashboard?${redirectParams.toString()}`;
@@ -194,13 +222,16 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   }
 
   return (
-    <section className="card">
+    <section className="card auth-signup-card">
       <form className="auth-form-stack" onSubmit={handleSubmit}>
         {shouldShowCustomerIntent ? (
           <div className="auth-intent-panel">
-            <div>
-              <span className="eyebrow">Ready to book</span>
-              <h2>{carriedProviderName || "Your YardMatch request"}</h2>
+            <div className="auth-intent-panel__header">
+              <div>
+                <span className="eyebrow">Selected request</span>
+                <h2>{carriedProviderName || "YardMatch request"}</h2>
+              </div>
+              {carriedProviderRank ? <span className="result-badge">Match {carriedProviderRank}</span> : null}
             </div>
             <div className="auth-intent-panel__grid" aria-label="Signup request summary">
               {carriedService ? (
@@ -215,6 +246,12 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
                   <strong>{getCustomerTimingLabel(carriedTiming, carriedCustomDate, carriedCustomWindow)}</strong>
                 </div>
               ) : null}
+              {carriedSlotLabel ? (
+                <div>
+                  <span>Opening</span>
+                  <strong>{carriedSlotLabel}</strong>
+                </div>
+              ) : null}
               {carriedArea ? (
                 <div>
                   <span>Area</span>
@@ -222,6 +259,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
                 </div>
               ) : null}
             </div>
+            <p className="auth-intent-panel__note">Create your account to save the property and continue the request. No payment yet.</p>
           </div>
         ) : null}
         <div className="form-grid">

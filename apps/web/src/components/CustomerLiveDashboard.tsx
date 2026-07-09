@@ -263,6 +263,8 @@ export function CustomerLiveDashboard() {
   const requestedTiming = parseDashboardTimingParam(searchParams.get("when"));
   const requestedCustomDate = parseDashboardDateParam(searchParams.get("date"));
   const requestedCustomWindow = parseDashboardCustomWindowParam(searchParams.get("window"));
+  const requestedProviderId = searchParams.get("providerId")?.trim() ?? "";
+  const requestedProviderName = searchParams.get("providerName")?.trim() ?? "";
   const dashboardView = requestedView === "history" ? "history" : "account";
   const historyOnlyView = dashboardView === "history";
   const requestFlow = requestedFlow === "request";
@@ -316,7 +318,7 @@ export function CustomerLiveDashboard() {
     serviceOptions.find((option) => option.value === selectedCategory)?.label ?? "Selected service";
   const selectedCadenceLabel =
     selectedCadence === "one-time" ? "One-time visit" : formatRecurringFrequency(selectedCadence);
-  const providerCards =
+  const baseProviderCards =
     providerResults?.rankedProviders.map((result) => ({
       provider: result.provider,
       ranking: result,
@@ -330,11 +332,36 @@ export function CustomerLiveDashboard() {
       slot: providerResults.suggestedSlots.find((candidate) => candidate.providerId === provider.id)
     })) ??
     [];
-  const providerChoicePresentations = buildCustomerProviderChoicePresentations(
-    providerResults?.rankedProviders ?? []
+  const providerCards = requestedProviderId
+    ? [...baseProviderCards].sort((left, right) => {
+        if (left.provider.id === requestedProviderId) {
+          return -1;
+        }
+        if (right.provider.id === requestedProviderId) {
+          return 1;
+        }
+        return 0;
+      })
+    : baseProviderCards;
+  const providerChoicePresentations = buildCustomerProviderChoicePresentations(providerResults?.rankedProviders ?? []);
+  const providerChoicePresentationById = new Map(
+    (providerResults?.rankedProviders ?? []).map((result, index) => [
+      result.provider.id,
+      providerChoicePresentations[index]
+    ])
   );
   const recommendedProviderCard = providerCards[0];
   const alternativeProviderCards = providerCards.slice(1, 4);
+  const selectedProviderWasRequested = Boolean(
+    requestedProviderId && recommendedProviderCard?.provider.id === requestedProviderId
+  );
+  const selectedProviderLabel =
+    selectedProviderWasRequested && requestedProviderName
+      ? requestedProviderName
+      : recommendedProviderCard?.provider.companyName;
+  const recommendedChoicePresentation = recommendedProviderCard
+    ? providerChoicePresentationById.get(recommendedProviderCard.provider.id)
+    : undefined;
   const providersWithWindows = providerCards.filter((item) => item.slot);
   const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
   const activeRecurringPlans = recurringPlans.filter((summary) => summary.plan.status === "active");
@@ -438,7 +465,7 @@ export function CustomerLiveDashboard() {
     {
       label: "Match",
       value: recommendedProviderCard
-        ? recommendedProviderCard.provider.companyName
+        ? selectedProviderLabel ?? recommendedProviderCard.provider.companyName
         : providerSearchState === "loading"
           ? "Checking"
           : "After price"
@@ -992,6 +1019,11 @@ export function CustomerLiveDashboard() {
     } finally {
       setLoadingState("idle");
     }
+  }
+
+  function getProviderSelectionRank(providerId: string, fallbackRank: number) {
+    const rankedIndex = providerResults?.rankedProviders.findIndex((result) => result.provider.id === providerId) ?? -1;
+    return rankedIndex >= 0 ? rankedIndex + 1 : fallbackRank;
   }
 
   async function handleStartCheckout(booking: Booking) {
@@ -2195,8 +2227,8 @@ export function CustomerLiveDashboard() {
             <section className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>{recommendedProviderCard ? "Best match" : "Best fit"}</h2>
-                  <p>Review the provider and route window. You’ll pay after the provider confirms.</p>
+                  <h2>{selectedProviderWasRequested ? "Selected match" : recommendedProviderCard ? "Best match" : "Best fit"}</h2>
+                  <p>Review the provider and route window. Payment comes after confirmation.</p>
                 </div>
                 {providerResults ? (
                   <span className="result-badge result-badge--neutral">
@@ -2249,13 +2281,15 @@ export function CustomerLiveDashboard() {
                     <article className="list-panel customer-booking-review customer-booking-review--recommended">
                       <div className="search-result-title">
                         <div>
-                          <span className="eyebrow">Recommended match</span>
+                          <span className="eyebrow">
+                            {selectedProviderWasRequested ? "Selected match" : "Recommended match"}
+                          </span>
                           <h3>{recommendedProviderCard.provider.companyName}</h3>
                         </div>
                         <div className="chip-row">
-                          <span className="result-badge">
-                            {providerChoicePresentations[0]?.badge ?? "Recommended for this property"}
-                          </span>
+                          {recommendedChoicePresentation ? (
+                            <span className="result-badge">{recommendedChoicePresentation.badge}</span>
+                          ) : null}
                           <span className="result-badge result-badge--neutral">
                             {recommendedProviderCard.slot ? "Open route window" : "Route full"}
                           </span>
@@ -2293,18 +2327,18 @@ export function CustomerLiveDashboard() {
                         </div>
                       </div>
 
-                      {providerChoicePresentations[0] ? <p>{providerChoicePresentations[0].detail}</p> : null}
+                      {recommendedChoicePresentation ? <p>{recommendedChoicePresentation.detail}</p> : null}
                       {selectedCadence === "one-time" ? (
                         <p>No charge yet. The provider reviews the request before checkout.</p>
                       ) : null}
-                      {recommendedProviderCard.ranking || providerChoicePresentations[0] ? (
+                      {recommendedProviderCard.ranking || recommendedChoicePresentation ? (
                         <details className="service-card-disclosure">
                           <summary className="service-card-disclosure__summary">Why this pick</summary>
                           <div className="service-card-disclosure__body">
-                            {providerChoicePresentations[0] ? (
+                            {recommendedChoicePresentation ? (
                               <article className="list-panel">
-                                <h3>{providerChoicePresentations[0].heading}</h3>
-                                <p>{providerChoicePresentations[0].detail}</p>
+                                <h3>{recommendedChoicePresentation.heading}</h3>
+                                <p>{recommendedChoicePresentation.detail}</p>
                               </article>
                             ) : null}
                             {recommendedProviderCard.ranking ? (
@@ -2338,7 +2372,12 @@ export function CustomerLiveDashboard() {
                         <button
                           className="button"
                           disabled={!recommendedProviderCard.slot || loadingState === "loading"}
-                          onClick={() => void handleCreateBooking(recommendedProviderCard, 1)}
+                          onClick={() =>
+                            void handleCreateBooking(
+                              recommendedProviderCard,
+                              getProviderSelectionRank(recommendedProviderCard.provider.id, 1)
+                            )
+                          }
                           type="button"
                         >
                           {quote
@@ -2378,6 +2417,7 @@ export function CustomerLiveDashboard() {
                     </article>
                   ) : null}
                   {(showAlternativeProviders ? alternativeProviderCards : []).map(({ provider, ranking, slot }, index) => {
+                    const choicePresentation = providerChoicePresentationById.get(provider.id);
                     return (
                       <article className="list-panel customer-provider-option" key={provider.id}>
                         <div className="search-result-title">
@@ -2386,39 +2426,62 @@ export function CustomerLiveDashboard() {
                             <h3>{provider.companyName}</h3>
                           </div>
                           <div className="chip-row">
-                            {providerChoicePresentations[index + 1] ? (
-                              <span className="result-badge">{providerChoicePresentations[index + 1].badge}</span>
+                            {choicePresentation ? (
+                              <span className="result-badge">{choicePresentation.badge}</span>
                             ) : null}
                             {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
                           </div>
                         </div>
-                        {providerChoicePresentations[index + 1] ? <p>{providerChoicePresentations[index + 1].detail}</p> : null}
-                        <div className="live-provider-card__booking-strip" aria-label="Provider option summary">
-                          <div>
+                        {choicePresentation ? <p>{choicePresentation.detail}</p> : null}
+                        <div className="live-provider-card__request-row" aria-label="Provider option summary">
+                          <div className="live-provider-card__slot">
                             <span>Opening</span>
                             <strong>{formatOpenWindow(slot)}</strong>
                           </div>
-                          <div>
-                            <span>Trust</span>
-                            <strong>{provider.rating.toFixed(1)} • {provider.reviewCount} reviews</strong>
-                          </div>
-                          <div>
-                            <span>Distance</span>
-                            <strong>
-                              {ranking
-                                ? `${ranking.distanceMiles.toFixed(1)} mi`
-                                : `${provider.serviceRadiusMiles} mi radius`}
-                            </strong>
-                          </div>
+                          <dl className="live-provider-card__facts">
+                            <div>
+                              <dt>Trust</dt>
+                              <dd>
+                                {provider.rating.toFixed(1)} • {provider.reviewCount} reviews
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Distance</dt>
+                              <dd>
+                                {ranking
+                                  ? `${ranking.distanceMiles.toFixed(1)} mi`
+                                  : `${provider.serviceRadiusMiles} mi radius`}
+                              </dd>
+                            </div>
+                          </dl>
+                          <button
+                            className="button live-provider-card__action"
+                            disabled={!slot || loadingState === "loading"}
+                            onClick={() =>
+                              void handleCreateBooking(
+                                { provider, ranking, slot },
+                                getProviderSelectionRank(provider.id, index + 2)
+                              )
+                            }
+                            type="button"
+                          >
+                            {quote
+                              ? selectedCadence === "one-time"
+                                ? "Request this time"
+                                : `Start for ${formatCurrency(quote.estimatedPriceCents)}`
+                              : selectedCadence === "one-time"
+                                ? "Request this time"
+                                : "Start repeat plan"}
+                          </button>
                         </div>
-                        {ranking || providerChoicePresentations[index + 1] ? (
+                        {ranking || choicePresentation ? (
                           <details className="service-card-disclosure">
                             <summary className="service-card-disclosure__summary">Why this option</summary>
                             <div className="service-card-disclosure__body">
-                              {providerChoicePresentations[index + 1] ? (
+                              {choicePresentation ? (
                                 <article className="list-panel">
-                                  <h3>{providerChoicePresentations[index + 1].heading}</h3>
-                                  <p>{providerChoicePresentations[index + 1].detail}</p>
+                                  <h3>{choicePresentation.heading}</h3>
+                                  <p>{choicePresentation.detail}</p>
                                 </article>
                               ) : null}
                               {ranking ? (
@@ -2445,27 +2508,6 @@ export function CustomerLiveDashboard() {
                             </div>
                           </details>
                         ) : null}
-                        <div className="cta-row">
-                          <button
-                            className="button"
-                            disabled={!slot || loadingState === "loading"}
-                            onClick={() =>
-                              void handleCreateBooking(
-                                { provider, ranking, slot },
-                                index + 2
-                              )
-                            }
-                            type="button"
-                          >
-                            {quote
-                              ? selectedCadence === "one-time"
-                                ? "Request this time"
-                                : `Start for ${formatCurrency(quote.estimatedPriceCents)}`
-                              : selectedCadence === "one-time"
-                                ? "Request this time"
-                                : "Start repeat plan"}
-                          </button>
-                        </div>
                         {!slot ? (
                           <p style={{ marginTop: "0.75rem" }}>
                             This business serves the area, but it does not have an open route window right now.

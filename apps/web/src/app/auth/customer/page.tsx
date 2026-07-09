@@ -9,11 +9,11 @@ export const metadata: Metadata = {
 
 export default function CustomerSignupPage() {
   return (
-    <main className="container stack-lg">
-      <section className="page-hero">
-        <span className="eyebrow">Property owner sign up</span>
-        <h1>Create your customer account.</h1>
-        <p>Add your contact and service address so you can request or manage yard care.</p>
+    <main className="container stack-lg auth-signup-page">
+      <section className="auth-page-header">
+        <span className="eyebrow">Customer account</span>
+        <h1>Finish your request.</h1>
+        <p>Save the service address and continue with the selected match.</p>
       </section>
 
       <Suspense fallback={<LoadingScreen label="Loading signup..." />}>
