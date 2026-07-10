@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { saveStoredSession } from "../lib/api";
 import { createWebApiClient } from "../lib/api";
 import { getRoleRedirectPath } from "../lib/redirects";
+import { buildSocialAuthRedirectUri } from "../lib/socialAuth";
 import { AuthIdentityOptions } from "./SignupIdentityOptions";
 
 const roleCopy: Record<
@@ -46,10 +47,7 @@ export function RoleLoginCard({
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = getRoleRedirectPath(role, searchParams.get("returnTo"), roleCopy[role].redirectPath);
-  const socialRedirectUri =
-    typeof window === "undefined"
-      ? undefined
-      : `${window.location.origin}/auth/complete?role=${encodeURIComponent(role)}&returnTo=${encodeURIComponent(redirectPath)}`;
+  const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: redirectPath });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);

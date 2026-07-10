@@ -5,6 +5,7 @@ import { Address, ServiceCategory, formatBookingWindowSummary } from "@yardmatch
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../lib/api";
+import { buildSocialAuthRedirectUri } from "../lib/socialAuth";
 import { SignupIdentityOptions } from "./SignupIdentityOptions";
 import {
   CustomerCustomTimingWindow,
@@ -109,10 +110,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const shouldShowCustomerIntent = role === "customer" && (carriedService || carriedTiming || carriedArea || carriedProviderName);
   const postSignupRedirectPath = buildPostSignupRedirectPath();
-  const socialRedirectUri =
-    typeof window === "undefined"
-      ? undefined
-      : `${window.location.origin}/auth/complete?role=${encodeURIComponent(role)}&returnTo=${encodeURIComponent(postSignupRedirectPath)}`;
+  const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: postSignupRedirectPath });
 
   function buildPostSignupRedirectPath() {
     if (role === "provider") {
