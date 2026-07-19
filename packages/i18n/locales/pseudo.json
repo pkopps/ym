@@ -1,0 +1,5 @@
+{
+  "api.error.malformed_json": "[!! Málfõrmëd JSÕN rëqüëst bõdÿ. !!]",
+  "api.error.route_not_found": "[!! Rõütë nõt föünd !!]",
+  "api.error.unknown_server_error": "[!! Üñknõwn sërvër ërrõr !!]"
+}

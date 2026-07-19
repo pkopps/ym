@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CrewMatchesResponse, CrewPayoutLedgerResponse } from "@yardmatch/contracts";
+import { BookingStatus, CrewMatchesResponse, CrewPayoutLedgerResponse, ServiceCategory } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
@@ -26,96 +29,109 @@ interface CrewPayoutActionItem {
   value: string;
 }
 
-function formatShiftWindow(iso: string) {
-  const date = new Date(iso);
-  const day = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${day} • ${time}`;
+const bookingStatusLabelKeys: Record<BookingStatus, TranslationKey> = {
+  cancelled: "provider_mobile.schedule.status.cancelled",
+  completed: "provider_mobile.schedule.status.completed",
+  confirmed: "provider_mobile.schedule.status.confirmed",
+  disputed: "provider_mobile.schedule.status.disputed",
+  "in-progress": "provider_mobile.schedule.status.in_progress",
+  refunded: "provider_mobile.schedule.status.refunded",
+  requested: "provider_mobile.schedule.status.requested"
+};
+
+function formatShiftWindow(i18n: I18nInstance, iso: string) {
+  return i18n.t("crew_mobile.dashboard.shift_window", {
+    day: i18n.formatDate(iso, { weekday: "short", month: "short", day: "numeric" }),
+    time: i18n.formatDate(iso, { hour: "numeric", minute: "2-digit" })
+  });
 }
 
-function formatHourlyPay(cents: number) {
-  return `${new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(cents / 100)}/hr`;
+function formatHourlyPay(i18n: I18nInstance, cents: number) {
+  return i18n.t("provider_mobile.clients.hourly_rate", {
+    rate: i18n.formatCurrency(cents)
+  });
 }
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(cents / 100);
+function formatCurrency(i18n: I18nInstance, cents: number) {
+  return i18n.formatCurrency(cents);
 }
 
-function formatPayoutDate(iso?: string) {
+function formatPayoutDate(i18n: I18nInstance, iso?: string) {
   if (!iso) {
-    return "Pending";
+    return i18n.t("provider_mobile.dashboard.pending");
   }
 
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return i18n.formatDate(iso, { month: "short", day: "numeric" });
 }
 
-function formatPayoutStatus(status: CrewPayoutEntry["status"]) {
+function formatPayoutStatus(i18n: I18nInstance, status: CrewPayoutEntry["status"]) {
   switch (status) {
     case "awaiting-customer-payment":
-      return "Awaiting payment";
+      return i18n.t("provider_mobile.dashboard.payout.awaiting_payment");
     case "on-hold":
-      return "On hold";
+      return i18n.t("provider_mobile.dashboard.payout.on_hold");
     case "scheduled":
-      return "Scheduled";
+      return i18n.t("provider_mobile.dashboard.payout.scheduled");
     case "ready":
-      return "Ready";
+      return i18n.t("provider_mobile.dashboard.payout.ready");
     case "paid":
-      return "Paid";
+      return i18n.t("provider_mobile.dashboard.payout.paid");
     case "reversed":
-      return "Reversed";
+      return i18n.t("provider_mobile.dashboard.payout.reversed");
   }
 }
 
-function formatHoldPeriod(hours: number) {
+function formatHoldPeriod(i18n: I18nInstance, hours: number) {
   if (hours < 24) {
-    return `${hours}h hold`;
+    return i18n.t("provider_mobile.dashboard.hold_hours", { count: hours });
   }
 
   const days = Math.round(hours / 24);
-  return `${days}d hold`;
+  return i18n.t("provider_mobile.dashboard.hold_days", { count: days });
 }
 
-function getCrewPayoutFocus(payoutLedger: CrewPayoutLedgerResponse, blockedPayoutCents: number) {
+function getCrewPayoutFocus(
+  i18n: I18nInstance,
+  payoutLedger: CrewPayoutLedgerResponse,
+  blockedPayoutCents: number
+) {
   if (payoutLedger.totalReadyCents > 0) {
     return {
-      amount: formatCurrency(payoutLedger.totalReadyCents),
-      detail: `Pays ${formatPayoutDate(payoutLedger.nextWeeklyPayoutDateIso)}`,
-      label: "Ready"
+      amount: formatCurrency(i18n, payoutLedger.totalReadyCents),
+      detail: i18n.t("provider_mobile.dashboard.payout.pays_date", {
+        date: formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)
+      }),
+      label: i18n.t("provider_mobile.dashboard.payout.ready")
     };
   }
 
   if (payoutLedger.totalScheduledCents > 0) {
     return {
-      amount: formatCurrency(payoutLedger.totalScheduledCents),
-      detail: `Next payout ${formatPayoutDate(payoutLedger.nextWeeklyPayoutDateIso)}`,
-      label: "Scheduled"
+      amount: formatCurrency(i18n, payoutLedger.totalScheduledCents),
+      detail: i18n.t("provider_mobile.dashboard.payout.next_payout", {
+        date: formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)
+      }),
+      label: i18n.t("provider_mobile.dashboard.payout.scheduled")
     };
   }
 
   if (blockedPayoutCents > 0) {
     return {
-      amount: formatCurrency(blockedPayoutCents),
-      detail: "Customer payment or hold needs to clear.",
-      label: "Waiting"
+      amount: formatCurrency(i18n, blockedPayoutCents),
+      detail: i18n.t("provider_mobile.dashboard.payout.blocked_detail"),
+      label: i18n.t("provider_mobile.dashboard.payout.waiting")
     };
   }
 
   return {
-    amount: "$0",
-    detail: "Completed shifts appear here.",
-    label: "No payout yet"
+    amount: formatCurrency(i18n, 0),
+    detail: i18n.t("crew_mobile.dashboard.payout.completed_shifts_here"),
+    label: i18n.t("provider_mobile.dashboard.payout.no_payout")
   };
 }
 
 function getCrewPayoutActionItems(
+  i18n: I18nInstance,
   payoutLedger: CrewPayoutLedgerResponse,
   heldPayoutEntries: CrewPayoutEntry[]
 ): CrewPayoutActionItem[] {
@@ -123,62 +139,64 @@ function getCrewPayoutActionItems(
 
   if (payoutLedger.totalReadyCents > 0) {
     items.push({
-      detail: `Pays ${formatPayoutDate(payoutLedger.nextWeeklyPayoutDateIso)}`,
-      label: "Ready",
+      detail: i18n.t("provider_mobile.dashboard.payout.pays_date", {
+        date: formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)
+      }),
+      label: i18n.t("provider_mobile.dashboard.payout.ready"),
       tone: "success",
-      value: formatCurrency(payoutLedger.totalReadyCents)
+      value: formatCurrency(i18n, payoutLedger.totalReadyCents)
     });
   }
 
   if (payoutLedger.totalScheduledCents > 0) {
     items.push({
-      detail: formatHoldPeriod(payoutLedger.holdPeriodHours),
-      label: "Clearing",
+      detail: formatHoldPeriod(i18n, payoutLedger.holdPeriodHours),
+      label: i18n.t("provider_mobile.dashboard.payout.clearing"),
       tone: "neutral",
-      value: formatCurrency(payoutLedger.totalScheduledCents)
+      value: formatCurrency(i18n, payoutLedger.totalScheduledCents)
     });
   }
 
   if (payoutLedger.pendingCustomerPaymentCents > 0) {
     items.push({
-      detail: "Customer checkout",
-      label: "Waiting",
+      detail: i18n.t("provider_mobile.dashboard.payout.customer_checkout"),
+      label: i18n.t("provider_mobile.dashboard.payout.waiting"),
       tone: "warning",
-      value: formatCurrency(payoutLedger.pendingCustomerPaymentCents)
+      value: formatCurrency(i18n, payoutLedger.pendingCustomerPaymentCents)
     });
   }
 
   if (heldPayoutEntries.length > 0) {
     items.push({
-      detail: `${heldPayoutEntries.length} hold${heldPayoutEntries.length === 1 ? "" : "s"}`,
-      label: "On hold",
+      detail: i18n.t("provider_mobile.dashboard.payout.hold_count", { count: heldPayoutEntries.length }),
+      label: i18n.t("provider_mobile.dashboard.payout.on_hold"),
       tone: "warning",
-      value: formatCurrency(heldPayoutEntries.reduce((sum, entry) => sum + entry.amountCents, 0))
+      value: formatCurrency(i18n, heldPayoutEntries.reduce((sum, entry) => sum + entry.amountCents, 0))
     });
   }
 
   if (items.length === 0) {
     items.push({
-      detail: "Complete a shift",
-      label: "Next",
+      detail: i18n.t("crew_mobile.dashboard.payout.complete_shift"),
+      label: i18n.t("provider_mobile.schedule.summary.next"),
       tone: "neutral",
-      value: "$0"
+      value: formatCurrency(i18n, 0)
     });
   }
 
   return items.slice(0, 4);
 }
 
-function getCrewRoleLabel(assignment: CrewAssignment) {
+function getCrewRoleLabel(i18n: I18nInstance, assignment: CrewAssignment) {
   if (assignment.isAssignedRouteLeader) {
-    return "Route lead";
+    return i18n.t("crew_mobile.dashboard.role.route_lead");
   }
 
   if (assignment.requiresRouteLeaderAssignment) {
-    return "Lead pending";
+    return i18n.t("crew_mobile.dashboard.role.lead_pending");
   }
 
-  return "Crew";
+  return i18n.t("provider_mobile.dashboard.crew");
 }
 
 function getCrewPrimaryAction(assignment: CrewAssignment): CrewPrimaryAction | undefined {
@@ -209,57 +227,71 @@ function getShiftStepStatus(stepIndex: number, activeStepIndex: number): ShiftSt
   return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
-function getCrewNextStep(assignment: CrewAssignment, payoutEntry?: CrewPayoutEntry): CrewNextStep {
+function formatCrewBookingStatus(i18n: I18nInstance, status: BookingStatus) {
+  return i18n.t(bookingStatusLabelKeys[status]);
+}
+
+function formatServiceCategory(i18n: I18nInstance, category: ServiceCategory) {
+  return i18n.t(serviceCategoryToI18nKey(category));
+}
+
+function getCrewNextStep(
+  i18n: I18nInstance,
+  assignment: CrewAssignment,
+  payoutEntry?: CrewPayoutEntry
+): CrewNextStep {
   if (payoutEntry) {
     return {
-      detail: `This shift is ${formatPayoutStatus(payoutEntry.status).toLowerCase()}.`,
-      label: "Pay"
+      detail: i18n.t("crew_mobile.dashboard.next_step.payout_status", {
+        status: formatPayoutStatus(i18n, payoutEntry.status).toLowerCase()
+      }),
+      label: i18n.t("crew_mobile.dashboard.pay")
     };
   }
 
   if (assignment.bookingStatus === "completed") {
     return {
-      detail: "Payout appears after customer payment clears.",
-      label: "Payout processing"
+      detail: i18n.t("crew_mobile.dashboard.next_step.payout_processing_detail"),
+      label: i18n.t("crew_mobile.dashboard.next_step.payout_processing")
     };
   }
 
   if (assignment.bookingStatus === "in-progress") {
     if (assignment.afterEvidenceCount > 0) {
       return {
-        detail: "The business owner completes the job after reviewing proof.",
-        label: "Proof saved"
+        detail: i18n.t("crew_mobile.dashboard.next_step.proof_saved_detail"),
+        label: i18n.t("crew_mobile.dashboard.next_step.proof_saved")
       };
     }
 
     return {
-      detail: "Add after-work proof so the business can close the job.",
-      label: "Add proof"
+      detail: i18n.t("crew_mobile.dashboard.next_step.add_proof_detail"),
+      label: i18n.t("provider_mobile.schedule.action.add_proof")
     };
   }
 
   if (assignment.bookingStatus === "confirmed" && assignment.onRouteConfirmedAt) {
     return {
-      detail: "Start work once you are onsite.",
-      label: "Start work"
+      detail: i18n.t("crew_mobile.dashboard.next_step.start_work_detail"),
+      label: i18n.t("provider_mobile.schedule.action.start_work")
     };
   }
 
   if (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt) {
     return assignment.isAssignedRouteLeader
       ? {
-          detail: "Start the route when you are heading to the property.",
-          label: "Start route"
+          detail: i18n.t("crew_mobile.dashboard.next_step.start_route_detail"),
+          label: i18n.t("provider_mobile.dashboard.action.start_route")
         }
       : {
-          detail: "The route leader starts arrival tracking.",
-          label: "Wait for route"
+          detail: i18n.t("crew_mobile.dashboard.next_step.wait_route_detail"),
+          label: i18n.t("crew_mobile.dashboard.next_step.wait_route")
         };
   }
 
   return {
-    detail: "The business owner still needs to confirm this shift.",
-    label: "Wait for confirmation"
+    detail: i18n.t("crew_mobile.dashboard.next_step.wait_confirmation_detail"),
+    label: i18n.t("crew_mobile.dashboard.next_step.wait_confirmation")
   };
 }
 
@@ -270,6 +302,7 @@ export function DashboardScreen({
   onOpenAvailability?: () => void;
   onOpenSchedule?: () => void;
 }) {
+  const i18n = useI18n();
   const { envelope } = useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
   const [payoutLedger, setPayoutLedger] = useState<CrewPayoutLedgerResponse | undefined>();
@@ -292,7 +325,7 @@ export function DashboardScreen({
     [acceptedMatch, payoutLedger]
   );
   const acceptedPrimaryAction = acceptedMatch ? getCrewPrimaryAction(acceptedMatch) : undefined;
-  const acceptedNextStep = acceptedMatch ? getCrewNextStep(acceptedMatch, acceptedPayoutEntry) : undefined;
+  const acceptedNextStep = acceptedMatch ? getCrewNextStep(i18n, acceptedMatch, acceptedPayoutEntry) : undefined;
   const shouldShowArrivalProof =
     acceptedMatch?.bookingStatus === "confirmed" && Boolean(acceptedMatch.onRouteConfirmedAt);
   const shouldShowCompletionProof = acceptedMatch?.bookingStatus === "in-progress";
@@ -310,8 +343,8 @@ export function DashboardScreen({
       (payoutLedger?.totalScheduledCents ?? 0) > 0 ||
       (payoutLedger?.totalPaidCents ?? 0) > 0 ||
       (payoutLedger?.pendingCustomerPaymentCents ?? 0) > 0);
-  const payoutFocus = payoutLedger ? getCrewPayoutFocus(payoutLedger, blockedPayoutCents) : undefined;
-  const payoutActionItems = payoutLedger ? getCrewPayoutActionItems(payoutLedger, heldPayoutEntries) : [];
+  const payoutFocus = payoutLedger ? getCrewPayoutFocus(i18n, payoutLedger, blockedPayoutCents) : undefined;
+  const payoutActionItems = payoutLedger ? getCrewPayoutActionItems(i18n, payoutLedger, heldPayoutEntries) : [];
   const payoutRecentEntries = (payoutLedger?.entries ?? [])
     .slice()
     .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))
@@ -330,30 +363,35 @@ export function DashboardScreen({
               : 0;
   const shiftSteps = [
     {
-      label: "Accepted",
-      value: acceptedMatch ? formatShiftWindow(acceptedMatch.scheduledStartIso) : "Waiting"
+      label: i18n.t("crew_mobile.dashboard.step.accepted"),
+      value: acceptedMatch ? formatShiftWindow(i18n, acceptedMatch.scheduledStartIso) : i18n.t("provider_mobile.dashboard.payout.waiting")
     },
     {
-      label: "Route",
-      value: acceptedMatch?.onRouteConfirmedAt ? "Live" : "Next"
+      label: i18n.t("provider_mobile.schedule.summary.route"),
+      value: acceptedMatch?.onRouteConfirmedAt ? i18n.t("provider_mobile.schedule.state.live") : i18n.t("provider_mobile.schedule.summary.next")
     },
     {
-      label: "Work",
-      value: acceptedMatch?.bookingStatus === "in-progress" ? "Started" : "Start onsite"
+      label: i18n.t("crew_mobile.dashboard.step.work"),
+      value:
+        acceptedMatch?.bookingStatus === "in-progress"
+          ? i18n.t("crew_mobile.dashboard.step.started")
+          : i18n.t("crew_mobile.dashboard.step.start_onsite")
     },
     {
-      label: "Proof",
+      label: i18n.t("provider_mobile.schedule.proof.title"),
       value: acceptedMatch
-        ? `${acceptedMatch.beforeEvidenceCount + acceptedMatch.afterEvidenceCount} saved`
-        : "Photos"
+        ? i18n.t("mobile.support.property.measurements_saved", {
+            count: acceptedMatch.beforeEvidenceCount + acceptedMatch.afterEvidenceCount
+          })
+        : i18n.t("crew_mobile.dashboard.step.photos")
     },
     {
-      label: "Pay",
+      label: i18n.t("crew_mobile.dashboard.pay"),
       value: acceptedPayoutEntry
-        ? formatPayoutStatus(acceptedPayoutEntry.status)
+        ? formatPayoutStatus(i18n, acceptedPayoutEntry.status)
         : acceptedMatch?.bookingStatus === "completed"
-          ? "Processing"
-          : "After proof"
+          ? i18n.t("crew_mobile.dashboard.step.processing")
+          : i18n.t("crew_mobile.dashboard.step.after_proof")
     }
   ].map((step, index) => ({
     ...step,
@@ -375,7 +413,7 @@ export function DashboardScreen({
       setMatchesResponse(nextMatches);
       setPayoutLedger(nextPayoutLedger);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load today’s work.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_mobile.dashboard.error.load_work"));
     }
   }
 
@@ -393,10 +431,10 @@ export function DashboardScreen({
       api.setAuthToken(envelope.session.token);
       setIsWorking(true);
       await api.startBooking({ bookingId: acceptedMatch.bookingId });
-      setStatusMessage("Work started.");
+      setStatusMessage(i18n.t("provider_mobile.schedule.message.work_started"));
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start work.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.start_work"));
     } finally {
       setIsWorking(false);
     }
@@ -413,10 +451,10 @@ export function DashboardScreen({
       setIsWorking(true);
       setErrorMessage("");
       await api.markBookingOnRoute({ bookingId: acceptedMatch.bookingId });
-      setStatusMessage("Route started. The customer can now track the arrival.");
+      setStatusMessage(i18n.t("crew_mobile.dashboard.message.route_started"));
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.start_route"));
     } finally {
       setIsWorking(false);
     }
@@ -432,7 +470,7 @@ export function DashboardScreen({
       setErrorMessage("");
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setErrorMessage("Camera access is required to capture service photos.");
+        setErrorMessage(i18n.t("provider_mobile.schedule.error.camera_required"));
         return;
       }
 
@@ -456,11 +494,13 @@ export function DashboardScreen({
         imageDataUrl: `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`
       });
       setStatusMessage(
-        phase === "before" ? "Before photo saved to the job record." : "After photo saved to the job record."
+        phase === "before"
+          ? i18n.t("provider_mobile.schedule.message.before_photo_saved")
+          : i18n.t("provider_mobile.schedule.message.after_photo_saved")
       );
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to capture that service photo.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.capture_photo"));
     } finally {
       setIsWorking(false);
     }
@@ -473,7 +513,7 @@ export function DashboardScreen({
 
     const draft = (phase === "before" ? beforeNoteDraft : afterNoteDraft).trim();
     if (!draft) {
-      setErrorMessage("Add a short onsite note before saving it.");
+      setErrorMessage(i18n.t("provider_mobile.schedule.error.note_required"));
       return;
     }
 
@@ -493,10 +533,14 @@ export function DashboardScreen({
       } else {
         setAfterNoteDraft("");
       }
-      setStatusMessage(phase === "before" ? "Before-work note saved." : "After-work note saved.");
+      setStatusMessage(
+        phase === "before"
+          ? i18n.t("provider_mobile.schedule.message.before_note_saved")
+          : i18n.t("provider_mobile.schedule.message.after_note_saved")
+      );
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to save that onsite note.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.save_note"));
     } finally {
       setIsWorking(false);
     }
@@ -510,14 +554,14 @@ export function DashboardScreen({
     const checklistItems =
       phase === "before"
         ? [
-            { label: "Access path confirmed", completed: true },
-            { label: "Equipment unloaded", completed: true },
-            { label: "Service area reviewed", completed: true }
+            { label: i18n.t("provider_mobile.schedule.checklist.access_path"), completed: true },
+            { label: i18n.t("crew_mobile.dashboard.checklist.equipment_unloaded"), completed: true },
+            { label: i18n.t("crew_mobile.dashboard.checklist.service_area_reviewed"), completed: true }
           ]
         : [
-            { label: "Primary service completed", completed: true },
-            { label: "Debris cleared", completed: true },
-            { label: "Gate secured", completed: true }
+            { label: i18n.t("provider_mobile.schedule.checklist.service_completed"), completed: true },
+            { label: i18n.t("provider_mobile.schedule.checklist.debris_cleared"), completed: true },
+            { label: i18n.t("crew_mobile.dashboard.checklist.gate_secured"), completed: true }
           ];
 
     try {
@@ -531,10 +575,14 @@ export function DashboardScreen({
         evidenceType: "checklist",
         checklistItems
       });
-      setStatusMessage(phase === "before" ? "Arrival checklist saved." : "Completion checklist saved.");
+      setStatusMessage(
+        phase === "before"
+          ? i18n.t("provider_mobile.schedule.message.arrival_checklist_saved")
+          : i18n.t("provider_mobile.schedule.message.completion_checklist_saved")
+      );
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to save that checklist.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.save_checklist"));
     } finally {
       setIsWorking(false);
     }
@@ -552,12 +600,12 @@ export function DashboardScreen({
       setErrorMessage("");
       await api.cancelCrewMatch({
         crewMatchId: acceptedMatch.id,
-        reason: "Crew member cancelled from the mobile crew dashboard."
+        reason: i18n.t("crew_mobile.dashboard.cancel.reason")
       });
-      setStatusMessage("Assignment cancelled. The business owner was notified.");
+      setStatusMessage(i18n.t("crew_mobile.dashboard.cancel.message"));
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel this assignment.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_mobile.dashboard.cancel.error"));
     } finally {
       setIsWorking(false);
     }
@@ -569,12 +617,12 @@ export function DashboardScreen({
     }
 
     Alert.alert(
-      "Cancel accepted assignment?",
-      "Backing out of an accepted shift can negatively affect your reliability score, which may reduce your chances of being selected for future crews.",
+      i18n.t("crew_mobile.dashboard.cancel.confirm_title"),
+      i18n.t("crew_mobile.dashboard.cancel.confirm_body"),
       [
-        { text: "Keep assignment", style: "cancel" },
+        { text: i18n.t("crew_mobile.dashboard.cancel.keep_assignment"), style: "cancel" },
         {
-          text: "Cancel assignment",
+          text: i18n.t("crew_mobile.dashboard.cancel.cancel_assignment"),
           style: "destructive",
           onPress: () => void cancelAcceptedAssignment()
         }
@@ -583,14 +631,18 @@ export function DashboardScreen({
   }
 
   return (
-    <ScreenShell eyebrow="Today" title="Today" description="See what matters now.">
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+    <ScreenShell
+      eyebrow={i18n.t("crew_mobile.dashboard.eyebrow")}
+      title={i18n.t("crew_mobile.dashboard.title")}
+      description={i18n.t("crew_mobile.dashboard.description")}
+    >
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       {acceptedMatch ? (
         <InfoCard
           title={acceptedMatch.providerCompanyName}
-          description="Accepted shift"
+          description={i18n.t("crew_mobile.dashboard.accepted_shift")}
         >
           <View style={styles.shiftPath}>
             {shiftSteps.map((step, index) => (
@@ -608,40 +660,43 @@ export function DashboardScreen({
             ))}
           </View>
 
-          <Text style={styles.title}>{acceptedMatch.category.replaceAll("-", " ")}</Text>
+          <Text style={styles.title}>{formatServiceCategory(i18n, acceptedMatch.category)}</Text>
           <Text style={styles.meta}>{acceptedMatch.serviceAddress.line1}</Text>
           <Text style={styles.meta}>
             {acceptedMatch.serviceAddress.city}, {acceptedMatch.serviceAddress.state}
           </Text>
           <View style={styles.shiftSummaryGrid}>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Window</Text>
-              <Text style={styles.shiftSummaryValue}>{formatShiftWindow(acceptedMatch.scheduledStartIso)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.schedule.summary.window")}</Text>
+              <Text style={styles.shiftSummaryValue}>{formatShiftWindow(i18n, acceptedMatch.scheduledStartIso)}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Pay</Text>
-              <Text style={styles.shiftSummaryValue}>{formatHourlyPay(acceptedMatch.hourlyRateCents)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("crew_mobile.dashboard.pay")}</Text>
+              <Text style={styles.shiftSummaryValue}>{formatHourlyPay(i18n, acceptedMatch.hourlyRateCents)}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Role</Text>
-              <Text style={styles.shiftSummaryValue}>{getCrewRoleLabel(acceptedMatch)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("crew_mobile.dashboard.role.label")}</Text>
+              <Text style={styles.shiftSummaryValue}>{getCrewRoleLabel(i18n, acceptedMatch)}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Proof</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.schedule.proof.title")}</Text>
               <Text style={styles.shiftSummaryValue}>
-                {acceptedMatch.beforeEvidenceCount} before • {acceptedMatch.afterEvidenceCount} after
+                {i18n.t("crew_mobile.dashboard.proof_counts", {
+                  before: acceptedMatch.beforeEvidenceCount,
+                  after: acceptedMatch.afterEvidenceCount
+                })}
               </Text>
             </View>
           </View>
-          <Text style={styles.statusLine}>{acceptedMatch.bookingStatus.replaceAll("-", " ")}</Text>
+          <Text style={styles.statusLine}>{formatCrewBookingStatus(i18n, acceptedMatch.bookingStatus)}</Text>
           {acceptedMatch.isAssignedRouteLeader ? (
-            <Text style={styles.meta}>You are the assigned route leader for this job.</Text>
+            <Text style={styles.meta}>{i18n.t("crew_mobile.dashboard.route_leader.assigned")}</Text>
           ) : acceptedMatch.requiresRouteLeaderAssignment ? (
-            <Text style={styles.meta}>The business owner still needs to choose which accepted crew member leads the route.</Text>
+            <Text style={styles.meta}>{i18n.t("crew_mobile.dashboard.route_leader.pending")}</Text>
           ) : null}
           {acceptedNextStep ? (
             <View style={styles.nextActionCard}>
-              <Text style={styles.nextActionEyebrow}>Next</Text>
+              <Text style={styles.nextActionEyebrow}>{i18n.t("provider_mobile.schedule.summary.next")}</Text>
               <Text style={styles.nextActionTitle}>{acceptedNextStep.label}</Text>
               <Text style={styles.nextActionDetail}>{acceptedNextStep.detail}</Text>
               {acceptedPrimaryAction === "start-route" ? (
@@ -650,7 +705,9 @@ export function DashboardScreen({
                   onPress={() => void startRoute()}
                   style={styles.nextPrimaryButton}
                 >
-                  <Text style={styles.nextPrimaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                  <Text style={styles.nextPrimaryButtonLabel}>
+                    {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.start_route")}
+                  </Text>
                 </Pressable>
               ) : null}
               {acceptedPrimaryAction === "start-work" ? (
@@ -659,7 +716,9 @@ export function DashboardScreen({
                   onPress={() => void startWork()}
                   style={styles.nextPrimaryButton}
                 >
-                  <Text style={styles.nextPrimaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+                  <Text style={styles.nextPrimaryButtonLabel}>
+                    {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.schedule.action.start_work")}
+                  </Text>
                 </Pressable>
               ) : null}
               {acceptedPrimaryAction === "proof" ? (
@@ -669,7 +728,7 @@ export function DashboardScreen({
                   style={styles.nextPrimaryButton}
                 >
                   <Text style={styles.nextPrimaryButtonLabel}>
-                    {showEvidenceTools ? "Close" : "Add proof"}
+                    {showEvidenceTools ? i18n.t("common.actions.close") : i18n.t("provider_mobile.schedule.action.add_proof")}
                   </Text>
                 </Pressable>
               ) : null}
@@ -679,13 +738,13 @@ export function DashboardScreen({
             {canManageProof && acceptedPrimaryAction !== "proof" ? (
               <Pressable onPress={() => setShowEvidenceTools((current) => !current)} style={styles.secondaryButton}>
                 <Text style={styles.secondaryButtonLabel}>
-                  {showEvidenceTools ? "Close" : "Proof of work"}
+                  {showEvidenceTools ? i18n.t("common.actions.close") : i18n.t("crew_mobile.dashboard.proof_of_work")}
                 </Text>
               </Pressable>
             ) : null}
             <Pressable onPress={() => setShowShiftOptions((current) => !current)} style={styles.secondaryButton}>
               <Text style={styles.secondaryButtonLabel}>
-                {showShiftOptions ? "Close" : "Shift options"}
+                {showShiftOptions ? i18n.t("common.actions.close") : i18n.t("crew_mobile.dashboard.shift_options")}
               </Text>
             </Pressable>
           </View>
@@ -693,11 +752,11 @@ export function DashboardScreen({
             <View style={styles.toolStack}>
               {shouldShowArrivalProof ? (
                 <>
-                  <Text style={styles.proofTitle}>Arrival proof</Text>
+                  <Text style={styles.proofTitle}>{i18n.t("provider_mobile.schedule.proof.arrival_title")}</Text>
                   <TextInput
                     value={beforeNoteDraft}
                     onChangeText={setBeforeNoteDraft}
-                    placeholder="Arrival note"
+                    placeholder={i18n.t("provider_mobile.schedule.proof.arrival_note")}
                     placeholderTextColor={BrandTokens.colors.inkSoft}
                     style={styles.input}
                   />
@@ -708,7 +767,9 @@ export function DashboardScreen({
                       style={styles.secondaryButton}
                     >
                       <Text style={styles.secondaryButtonLabel}>
-                        {acceptedMatch.beforeEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                        {acceptedMatch.beforeEvidenceCount > 0
+                          ? i18n.t("provider_mobile.schedule.proof.add_photo")
+                          : i18n.t("provider_mobile.schedule.proof.take_photo")}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -716,25 +777,25 @@ export function DashboardScreen({
                       onPress={() => void saveEvidenceNote("before")}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Save note</Text>
+                      <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.schedule.proof.save_note")}</Text>
                     </Pressable>
                     <Pressable
                       disabled={isWorking}
                       onPress={() => void saveEvidenceChecklist("before")}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Checklist</Text>
+                      <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.schedule.proof.checklist")}</Text>
                     </Pressable>
                   </View>
                 </>
               ) : null}
               {shouldShowCompletionProof ? (
                 <>
-                  <Text style={styles.proofTitle}>Completion proof</Text>
+                  <Text style={styles.proofTitle}>{i18n.t("provider_mobile.schedule.proof.completion_title")}</Text>
                   <TextInput
                     value={afterNoteDraft}
                     onChangeText={setAfterNoteDraft}
-                    placeholder="Completion note"
+                    placeholder={i18n.t("provider_mobile.schedule.proof.completion_note")}
                     placeholderTextColor={BrandTokens.colors.inkSoft}
                     style={styles.input}
                   />
@@ -745,7 +806,9 @@ export function DashboardScreen({
                       style={styles.secondaryButton}
                     >
                       <Text style={styles.secondaryButtonLabel}>
-                        {acceptedMatch.afterEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                        {acceptedMatch.afterEvidenceCount > 0
+                          ? i18n.t("provider_mobile.schedule.proof.add_photo")
+                          : i18n.t("provider_mobile.schedule.proof.take_photo")}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -753,14 +816,14 @@ export function DashboardScreen({
                       onPress={() => void saveEvidenceNote("after")}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Save note</Text>
+                      <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.schedule.proof.save_note")}</Text>
                     </Pressable>
                     <Pressable
                       disabled={isWorking}
                       onPress={() => void saveEvidenceChecklist("after")}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Checklist</Text>
+                      <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.schedule.proof.checklist")}</Text>
                     </Pressable>
                   </View>
                 </>
@@ -769,7 +832,11 @@ export function DashboardScreen({
           ) : null}
           {showShiftOptions ? (
             <View style={styles.toolStack}>
-              <Text style={styles.meta}>Reliability call-offs on record: {matchesResponse?.crewMember.cancellationCount ?? 0}</Text>
+              <Text style={styles.meta}>
+                {i18n.t("crew_mobile.dashboard.cancel.calloffs", {
+                  count: matchesResponse?.crewMember.cancellationCount ?? 0
+                })}
+              </Text>
               {(acceptedMatch.bookingStatus === "requested" ||
                 (acceptedMatch.bookingStatus === "confirmed" && !acceptedMatch.onRouteConfirmedAt)) ? (
                 <Pressable
@@ -777,37 +844,41 @@ export function DashboardScreen({
                   onPress={confirmCancelAcceptedAssignment}
                   style={styles.dangerButton}
                 >
-                  <Text style={styles.dangerButtonLabel}>Cancel assignment</Text>
+                  <Text style={styles.dangerButtonLabel}>{i18n.t("crew_mobile.dashboard.cancel.cancel_assignment")}</Text>
                 </Pressable>
               ) : null}
               <Pressable
                 onPress={() => void Linking.openURL(`tel:${acceptedMatch.providerPhone}`)}
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>Call business</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("crew_mobile.dashboard.call_business")}</Text>
               </Pressable>
             </View>
           ) : null}
           <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Open schedule</Text>
+            <Text style={styles.linkButtonLabel}>{i18n.t("provider_mobile.dashboard.action.open_schedule")}</Text>
           </Pressable>
         </InfoCard>
       ) : (
-        <InfoCard title="No accepted shift yet" description="Keep your profile ready.">
-          <Text style={styles.meta}>Providers will see you automatically when the job fits your profile.</Text>
+        <InfoCard title={i18n.t("crew_mobile.dashboard.empty.title")} description={i18n.t("crew_mobile.dashboard.empty.description")}>
+          <Text style={styles.meta}>{i18n.t("crew_mobile.dashboard.empty.body")}</Text>
           <Pressable onPress={onOpenAvailability} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Update availability</Text>
+            <Text style={styles.linkButtonLabel}>{i18n.t("crew_mobile.dashboard.update_availability")}</Text>
           </Pressable>
         </InfoCard>
       )}
 
       {shouldShowPayouts && payoutLedger ? (
         <InfoCard
-          title="Pay"
+          title={i18n.t("crew_mobile.dashboard.pay")}
           description={
             blockedPayoutCents > 0
-              ? `${formatCurrency(blockedPayoutCents)} waiting`
-              : `${formatCurrency(payoutLedger.totalReadyCents)} ready`
+              ? i18n.t("provider_mobile.dashboard.payout.waiting_amount", {
+                  amount: formatCurrency(i18n, blockedPayoutCents)
+                })
+              : i18n.t("provider_mobile.dashboard.payout.ready_amount", {
+                  amount: formatCurrency(i18n, payoutLedger.totalReadyCents)
+                })
           }
         >
           {payoutFocus ? (
@@ -821,20 +892,20 @@ export function DashboardScreen({
           ) : null}
           <View style={styles.shiftSummaryGrid}>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Ready</Text>
-              <Text style={styles.shiftSummaryValue}>{formatCurrency(payoutLedger.totalReadyCents)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.ready")}</Text>
+              <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, payoutLedger.totalReadyCents)}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Next</Text>
-              <Text style={styles.shiftSummaryValue}>{formatPayoutDate(payoutLedger.nextWeeklyPayoutDateIso)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.next")}</Text>
+              <Text style={styles.shiftSummaryValue}>{formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Scheduled</Text>
-              <Text style={styles.shiftSummaryValue}>{formatCurrency(payoutLedger.totalScheduledCents)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.scheduled")}</Text>
+              <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, payoutLedger.totalScheduledCents)}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>Paid</Text>
-              <Text style={styles.shiftSummaryValue}>{formatCurrency(payoutLedger.totalPaidCents)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.paid")}</Text>
+              <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, payoutLedger.totalPaidCents)}</Text>
             </View>
           </View>
           <View style={styles.payoutActionGrid}>
@@ -863,30 +934,39 @@ export function DashboardScreen({
                   <View style={styles.payoutEntryCopy}>
                     <Text style={styles.title}>{entry.providerCompanyName}</Text>
                     <Text style={styles.meta}>
-                      {entry.serviceLabel} • {formatPayoutDate(entry.serviceDateIso)}
+                      {i18n.t("crew_mobile.dashboard.payout.entry_summary", {
+                        service: entry.serviceLabel,
+                        date: formatPayoutDate(i18n, entry.serviceDateIso)
+                      })}
                     </Text>
                   </View>
                   <View style={styles.payoutEntryAmountBlock}>
-                    <Text style={styles.shiftSummaryValue}>{formatCurrency(entry.amountCents)}</Text>
-                    <Text style={styles.shiftSummaryLabel}>{formatPayoutStatus(entry.status)}</Text>
+                    <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, entry.amountCents)}</Text>
+                    <Text style={styles.shiftSummaryLabel}>{formatPayoutStatus(i18n, entry.status)}</Text>
                   </View>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={styles.meta}>Completed shifts appear here after proof is saved.</Text>
+            <Text style={styles.meta}>{i18n.t("crew_mobile.dashboard.payout.empty")}</Text>
           )}
         </InfoCard>
       ) : null}
 
-      <InfoCard title="Assignments" description={`${acceptedCount} accepted • ${pendingCount} pending`}>
+      <InfoCard
+        title={i18n.t("crew_mobile.dashboard.assignments")}
+        description={i18n.t("crew_mobile.dashboard.assignments_summary", {
+          accepted: acceptedCount,
+          pending: pendingCount
+        })}
+      >
         <Text style={styles.meta}>
           {pendingCount > 0
-            ? "You still have pending matches waiting on the business owner."
-            : "No other pending decisions right now."}
+            ? i18n.t("crew_mobile.dashboard.assignments_pending")
+            : i18n.t("crew_mobile.dashboard.assignments_clear")}
         </Text>
         <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
-          <Text style={styles.linkButtonLabel}>Open schedule</Text>
+          <Text style={styles.linkButtonLabel}>{i18n.t("provider_mobile.dashboard.action.open_schedule")}</Text>
         </Pressable>
       </InfoCard>
 

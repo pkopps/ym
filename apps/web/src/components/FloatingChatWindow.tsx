@@ -1,5 +1,8 @@
 "use client";
 
+import { type I18nInstance } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
+
 type FloatingChatMessage = {
   id: string;
   body: string;
@@ -23,8 +26,8 @@ type FloatingChatWindowProps = {
   onSend: () => void;
 };
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+function formatDateTime(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
@@ -44,6 +47,8 @@ export function FloatingChatWindow({
   onClose,
   onSend
 }: FloatingChatWindowProps) {
+  const i18n = useI18n();
+
   return (
     <div className="floating-chat">
       {isOpen ? (
@@ -54,14 +59,14 @@ export function FloatingChatWindow({
               <p>{subtitle}</p>
             </div>
             <button className="floating-chat__close" onClick={onClose} type="button">
-              Close
+              {i18n.t("common.actions.close")}
             </button>
           </header>
 
           <div className="floating-chat__messages">
             {messages.length === 0 ? (
               <div className="floating-chat__empty">
-                <p>Start the conversation.</p>
+                <p>{i18n.t("chat.empty")}</p>
               </div>
             ) : (
               messages.map((message) => (
@@ -73,7 +78,7 @@ export function FloatingChatWindow({
                 >
                   <strong>{message.senderLabel}</strong>
                   <p>{message.body}</p>
-                  <small>{formatDateTime(message.createdAt)}</small>
+                  <small>{formatDateTime(i18n, message.createdAt)}</small>
                 </article>
               ))
             )}
@@ -94,7 +99,7 @@ export function FloatingChatWindow({
             />
             <div className="floating-chat__actions">
               <button className="button" disabled={busy} onClick={onSend} type="button">
-                {busy ? "Sending..." : "Send"}
+                {busy ? i18n.t("chat.sending") : i18n.t("chat.send")}
               </button>
             </div>
           </div>

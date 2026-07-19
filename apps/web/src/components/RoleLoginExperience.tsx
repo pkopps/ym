@@ -1,6 +1,8 @@
 "use client";
 
 import { MarketplaceRole } from "@yardmatch/contracts";
+import { addLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { Suspense } from "react";
 import { landscapingToolIllustrations } from "../lib/landscapingToolIllustrations";
 import { LoadingScreen } from "./LoadingScreen";
@@ -9,120 +11,117 @@ import { RoleLoginCard } from "./RoleLoginCard";
 const roleExperienceCopy: Record<
   MarketplaceRole,
   {
-    eyebrow: string;
-    title: string;
-    description: string;
+    eyebrowKey: TranslationKey;
+    titleKey: TranslationKey;
+    descriptionKey: TranslationKey;
     illustrationId: (typeof landscapingToolIllustrations)[number]["id"];
-    metrics: Array<{ value: string; label: string }>;
-    highlights: string[];
+    metrics: Array<{ valueKey: TranslationKey; labelKey: TranslationKey }>;
+    highlightKeys: TranslationKey[];
     primaryHref: string;
-    primaryLabel: string;
+    primaryLabelKey: TranslationKey;
     secondaryHref: string;
-    secondaryLabel: string;
-    formEyebrow: string;
-    formTitle: string;
-    formCopy: string;
+    secondaryLabelKey: TranslationKey;
+    formEyebrowKey: TranslationKey;
+    formTitleKey: TranslationKey;
+    formCopyKey: TranslationKey;
   }
 > = {
   customer: {
-    eyebrow: "Customer access",
-    title: "Manage bookings without the back-and-forth.",
-    description:
-      "Open bookings, recurring care, tracking, and support in one customer workspace.",
+    eyebrowKey: "login_experience.customer.eyebrow",
+    titleKey: "login_experience.customer.title",
+    descriptionKey: "login_experience.customer.description",
     illustrationId: "lawn-mower",
     metrics: [
-      { value: "Live", label: "arrival tracking" },
-      { value: "Weekly", label: "recurring care ready" },
-      { value: "Support", label: "built into bookings" }
+      { valueKey: "login_experience.customer.metric.tracking.value", labelKey: "login_experience.customer.metric.tracking.label" },
+      { valueKey: "login_experience.customer.metric.weekly.value", labelKey: "login_experience.customer.metric.weekly.label" },
+      { valueKey: "login_experience.customer.metric.support.value", labelKey: "login_experience.customer.metric.support.label" }
     ],
-    highlights: [
-      "Track arrival without chasing texts.",
-      "Reschedule or renew recurring care fast.",
-      "Keep payment, reviews, and support in one timeline."
+    highlightKeys: [
+      "login_experience.customer.highlight.tracking",
+      "login_experience.customer.highlight.recurring",
+      "login_experience.customer.highlight.timeline"
     ],
     primaryHref: "/auth",
-    primaryLabel: "Create customer account",
+    primaryLabelKey: "login_experience.customer.primary_cta",
     secondaryHref: "/customer/listings",
-    secondaryLabel: "Browse providers first",
-    formEyebrow: "Customer login",
-    formTitle: "Open your customer workspace",
-    formCopy: "Manage properties, bookings, reviews, and recurring care."
+    secondaryLabelKey: "login_experience.customer.secondary_cta",
+    formEyebrowKey: "login_experience.customer.form_eyebrow",
+    formTitleKey: "login_experience.customer.form_title",
+    formCopyKey: "login_experience.customer.form_copy"
   },
   provider: {
-    eyebrow: "Business owner access",
-    title: "Run routes, crew, and payouts from one place.",
-    description:
-      "Open today’s jobs, staffing review, payouts, and calendar pressure in one management flow.",
+    eyebrowKey: "login_experience.provider.eyebrow",
+    titleKey: "login_experience.provider.title",
+    descriptionKey: "login_experience.provider.description",
     illustrationId: "leaf-blower",
     metrics: [
-      { value: "Route-aware", label: "dispatch planning" },
-      { value: "Crew-fit", label: "staffing recommendations" },
-      { value: "Ops-backed", label: "refund and dispute flow" }
+      { valueKey: "login_experience.provider.metric.route.value", labelKey: "login_experience.provider.metric.route.label" },
+      { valueKey: "login_experience.provider.metric.crew.value", labelKey: "login_experience.provider.metric.crew.label" },
+      { valueKey: "login_experience.provider.metric.ops.value", labelKey: "login_experience.provider.metric.ops.label" }
     ],
-    highlights: [
-      "Review jobs in real morning, afternoon, and evening windows.",
-      "See staffing gaps, payout holds, and calendar conflicts together.",
-      "Use the assistant for fast reschedules and field updates."
+    highlightKeys: [
+      "login_experience.provider.highlight.windows",
+      "login_experience.provider.highlight.gaps",
+      "login_experience.provider.highlight.assistant"
     ],
     primaryHref: "/auth/provider/create",
-    primaryLabel: "Create provider account",
+    primaryLabelKey: "login_experience.provider.primary_cta",
     secondaryHref: "/help",
-    secondaryLabel: "Talk to support",
-    formEyebrow: "Provider login",
-    formTitle: "Open the management board",
-    formCopy: "Run bookings, crews, payouts, calendar sync, and route operations."
+    secondaryLabelKey: "login_experience.provider.secondary_cta",
+    formEyebrowKey: "login_experience.provider.form_eyebrow",
+    formTitleKey: "login_experience.provider.form_title",
+    formCopyKey: "login_experience.provider.form_copy"
   },
   ops: {
-    eyebrow: "Internal operations access",
-    title: "Work launch operations, support, and marketplace quality from one workspace.",
-    description:
-      "Open the internal dashboard for support queues, lead follow-up, provider verification, review response, and marketplace health.",
+    eyebrowKey: "login_experience.ops.eyebrow",
+    titleKey: "login_experience.ops.title",
+    descriptionKey: "login_experience.ops.description",
     illustrationId: "hedge-trimmer",
     metrics: [
-      { value: "Ops", label: "overview and alerts" },
-      { value: "Support", label: "queue management" },
-      { value: "Launch", label: "lead follow-up ready" }
+      { valueKey: "login_experience.ops.metric.ops.value", labelKey: "login_experience.ops.metric.ops.label" },
+      { valueKey: "login_experience.ops.metric.support.value", labelKey: "login_experience.ops.metric.support.label" },
+      { valueKey: "login_experience.ops.metric.launch.value", labelKey: "login_experience.ops.metric.launch.label" }
     ],
-    highlights: [
-      "Review support, refunds, verification, and launch leads in one place.",
-      "Track live marketplace health without anonymous internal endpoints.",
-      "Use the internal login path instead of provider-facing account creation."
+    highlightKeys: [
+      "login_experience.ops.highlight.support",
+      "login_experience.ops.highlight.health",
+      "login_experience.ops.highlight.login"
     ],
     primaryHref: "/help",
-    primaryLabel: "Need access?",
+    primaryLabelKey: "login_experience.ops.primary_cta",
     secondaryHref: "/login",
-    secondaryLabel: "Back to login choices",
-    formEyebrow: "Ops login",
-    formTitle: "Open the internal operations workspace",
-    formCopy: "For authorized YardMatch staff handling launch operations, support, and marketplace quality."
+    secondaryLabelKey: "login_experience.ops.secondary_cta",
+    formEyebrowKey: "login_experience.ops.form_eyebrow",
+    formTitleKey: "login_experience.ops.form_title",
+    formCopyKey: "login_experience.ops.form_copy"
   },
   "crew-member": {
-    eyebrow: "Crew member access",
-    title: "Keep assignments and route details in one schedule.",
-    description:
-      "Open accepted work, directions, and schedule history without bouncing between texts and map apps.",
+    eyebrowKey: "login_experience.crew.eyebrow",
+    titleKey: "login_experience.crew.title",
+    descriptionKey: "login_experience.crew.description",
     illustrationId: "string-trimmer",
     metrics: [
-      { value: "Live", label: "assignment schedule" },
-      { value: "One tap", label: "directions access" },
-      { value: "Clear", label: "reliability expectations" }
+      { valueKey: "login_experience.crew.metric.live.value", labelKey: "login_experience.crew.metric.live.label" },
+      { valueKey: "login_experience.crew.metric.directions.value", labelKey: "login_experience.crew.metric.directions.label" },
+      { valueKey: "login_experience.crew.metric.clear.value", labelKey: "login_experience.crew.metric.clear.label" }
     ],
-    highlights: [
-      "See accepted work and directions in one place.",
-      "Understand cancellation impact before backing out.",
-      "Keep schedule, route context, and earnings tied to real work history."
+    highlightKeys: [
+      "login_experience.crew.highlight.work",
+      "login_experience.crew.highlight.cancellation",
+      "login_experience.crew.highlight.history"
     ],
     primaryHref: "/auth/crew",
-    primaryLabel: "Create crew account",
+    primaryLabelKey: "login_experience.crew.primary_cta",
     secondaryHref: "/crew",
-    secondaryLabel: "See open work",
-    formEyebrow: "Crew login",
-    formTitle: "Open your crew schedule",
-    formCopy: "Manage assignments, availability, directions, and future work."
+    secondaryLabelKey: "login_experience.crew.secondary_cta",
+    formEyebrowKey: "login_experience.crew.form_eyebrow",
+    formTitleKey: "login_experience.crew.form_title",
+    formCopyKey: "login_experience.crew.form_copy"
   }
 };
 
 export function RoleLoginExperience({ role }: { role: MarketplaceRole }) {
+  const i18n = useI18n();
   const content = roleExperienceCopy[role];
   const illustration = landscapingToolIllustrations.find((item) => item.id === content.illustrationId);
 
@@ -130,15 +129,15 @@ export function RoleLoginExperience({ role }: { role: MarketplaceRole }) {
     <main className="container stack-lg">
       <section className="role-login-shell">
         <div className="role-login-shell__story">
-          <span className="eyebrow">{content.eyebrow}</span>
-          <h1>{content.title}</h1>
-          <p>{content.description}</p>
+          <span className="eyebrow">{i18n.t(content.eyebrowKey)}</span>
+          <h1>{i18n.t(content.titleKey)}</h1>
+          <p>{i18n.t(content.descriptionKey)}</p>
 
           <div className="role-login-shell__metrics">
             {content.metrics.map((metric) => (
-              <div className="role-login-shell__metric" key={metric.label}>
-                <strong>{metric.value}</strong>
-                <span>{metric.label}</span>
+              <div className="role-login-shell__metric" key={metric.labelKey}>
+                <strong>{i18n.t(metric.valueKey)}</strong>
+                <span>{i18n.t(metric.labelKey)}</span>
               </div>
             ))}
           </div>
@@ -146,33 +145,33 @@ export function RoleLoginExperience({ role }: { role: MarketplaceRole }) {
           <div className="role-login-shell__feature-panel">
             {illustration ? (
               <div className="role-login-shell__art">
-                <img alt={illustration.alt} src={illustration.src} />
+                <img alt={i18n.t(illustration.altKey)} src={illustration.src} />
               </div>
             ) : null}
             <ul className="role-login-shell__highlights">
-              {content.highlights.map((highlight) => (
-                <li key={highlight}>{highlight}</li>
+              {content.highlightKeys.map((key) => (
+                <li key={key}>{i18n.t(key)}</li>
               ))}
             </ul>
           </div>
 
           <div className="cta-row">
-            <a className="button" href={content.primaryHref}>
-              {content.primaryLabel}
+            <a className="button" href={addLocalePrefix(content.primaryHref, i18n.locale)}>
+              {i18n.t(content.primaryLabelKey)}
             </a>
-            <a className="button-secondary" href={content.secondaryHref}>
-              {content.secondaryLabel}
+            <a className="button-secondary" href={addLocalePrefix(content.secondaryHref, i18n.locale)}>
+              {i18n.t(content.secondaryLabelKey)}
             </a>
           </div>
         </div>
 
         <div className="role-login-shell__form-column">
           <div className="role-login-shell__form-intro">
-            <span className="eyebrow">{content.formEyebrow}</span>
-            <h2>{content.formTitle}</h2>
-            <p>{content.formCopy}</p>
+            <span className="eyebrow">{i18n.t(content.formEyebrowKey)}</span>
+            <h2>{i18n.t(content.formTitleKey)}</h2>
+            <p>{i18n.t(content.formCopyKey)}</p>
           </div>
-          <Suspense fallback={<LoadingScreen label="Loading login..." />}>
+          <Suspense fallback={<LoadingScreen label={i18n.t("login_experience.loading")} />}>
             <RoleLoginCard role={role} />
           </Suspense>
         </div>

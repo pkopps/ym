@@ -3,6 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 import { AntDesign } from "@expo/vector-icons";
 import { openAuthSessionAsync } from "expo-web-browser";
 import { BrandTokens } from "@yardmatch/branding";
+import { I18nInstance } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import {
   Address,
   AuthenticatedUserEnvelope,
@@ -13,23 +15,24 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { createCustomerMobileApiClient } from "../lib/api";
 import { getCustomerMobileTracker } from "../lib/tracking";
 
-function getModeCopy(mode: AuthFlowMode) {
+function getModeCopy(i18n: I18nInstance, mode: AuthFlowMode) {
   return mode === "login"
     ? {
-        eyebrow: "Customer login",
-        title: "Welcome back.",
-        description: "Manage visits, properties, and reviews.",
-        submitLabel: "Log in"
+        eyebrow: i18n.t("mobile.auth.customer_login_eyebrow"),
+        title: i18n.t("mobile.auth.customer_login_title"),
+        description: i18n.t("mobile.auth.customer_login_description"),
+        submitLabel: i18n.t("mobile.auth.log_in")
       }
     : {
-        eyebrow: "Customer sign up",
-        title: "Start with your home.",
-        description: "Create an account, then add the property we'll service.",
-        submitLabel: "Create account"
+        eyebrow: i18n.t("mobile.auth.customer_signup_eyebrow"),
+        title: i18n.t("mobile.auth.customer_signup_title"),
+        description: i18n.t("mobile.auth.customer_signup_description"),
+        submitLabel: i18n.t("auth_signup.create_account")
       };
 }
 
 const customerRedirectUri = "yardmatch-customer://auth/complete";
+type AuthCompletionSource = "login" | "signup";
 
 function buildEstimatedPoint(state: string, postalCode: string) {
   const normalizedState = state.trim().toUpperCase();
@@ -60,8 +63,9 @@ function createEmptyAddress(): Address {
 export function CustomerAuthScreen({
   onAuthenticated
 }: {
-  onAuthenticated: (envelope: AuthenticatedUserEnvelope) => void;
+  onAuthenticated: (envelope: AuthenticatedUserEnvelope, source: AuthCompletionSource) => void;
 }) {
+  const i18n = useI18n();
   const [mode, setMode] = useState<AuthFlowMode>("login");
   const [signupStep, setSignupStep] = useState<"account" | "property">("account");
   const [email, setEmail] = useState("");
@@ -74,7 +78,7 @@ export function CustomerAuthScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [propertyLabel, setPropertyLabel] = useState("Home");
+  const [propertyLabel, setPropertyLabel] = useState(i18n.t("mobile.auth.default_home_label"));
   const [addressQuery, setAddressQuery] = useState("");
   const [address, setAddress] = useState<Address>(createEmptyAddress());
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
@@ -85,7 +89,7 @@ export function CustomerAuthScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const authCopy = getModeCopy(mode);
+  const authCopy = getModeCopy(i18n, mode);
   const tracker = getCustomerMobileTracker();
   const isCompletingSocialSignup = pendingSignupToken.length > 0;
   const canSubmitLogin = email.trim().length > 0 && password.trim().length > 0;
@@ -143,7 +147,9 @@ export function CustomerAuthScreen({
     if (mode === "signup" && signupStep === "account") {
       if (!canContinueSignupAccount) {
         setErrorMessage(
-          isCompletingSocialSignup ? "Add your name and phone." : "Add your name, email, phone, and password."
+          isCompletingSocialSignup
+            ? i18n.t("mobile.auth.error.name_phone")
+            : i18n.t("mobile.auth.error.name_email_phone_password")
         );
         return;
       }
@@ -192,12 +198,12 @@ export function CustomerAuthScreen({
           const token = callbackUrl.searchParams.get("token");
           const expiresAtIso = callbackUrl.searchParams.get("expiresAtIso");
           if (!token || !expiresAtIso) {
-            throw new Error("The social sign-in callback was missing session details.");
+            throw new Error(i18n.t("mobile.auth.error.missing_social_session"));
           }
           api.setAuthToken(token);
           const currentUser = await api.getCurrentUser();
           if (currentUser.user.role !== "customer") {
-            throw new Error("Use a customer account in the customer app.");
+            throw new Error(i18n.t("mobile.auth.error.customer_role"));
           }
           onAuthenticated({
             session: {
@@ -206,7 +212,7 @@ export function CustomerAuthScreen({
               expiresInSeconds: Math.max(0, Math.round((Date.parse(expiresAtIso) - Date.now()) / 1000))
             },
             user: currentUser.user
-          });
+          }, mode === "signup" ? "signup" : "login");
           return;
         }
 
@@ -215,7 +221,7 @@ export function CustomerAuthScreen({
           const socialEmail = callbackUrl.searchParams.get("email");
           const socialFullName = callbackUrl.searchParams.get("fullName");
           if (!pendingToken || !socialEmail) {
-            throw new Error("The social signup callback was missing the account details we need.");
+            throw new Error(i18n.t("mobile.auth.error.missing_social_signup"));
           }
           setMode("signup");
           setSignupStep("account");
@@ -229,10 +235,10 @@ export function CustomerAuthScreen({
         }
 
         throw new Error(
-          callbackUrl.searchParams.get("message") ?? "Unable to finish the social sign-in right now."
+          callbackUrl.searchParams.get("message") ?? i18n.t("mobile.auth.error.social_signin")
         );
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to finish social sign-in right now.");
+        setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.social_signin"));
       } finally {
         setIsSubmitting(false);
       }
@@ -255,13 +261,13 @@ export function CustomerAuthScreen({
       });
 
       if (envelope.user.role !== "customer") {
-        setErrorMessage("Use a customer account in the customer app.");
+        setErrorMessage(i18n.t("mobile.auth.error.customer_role"));
         return;
       }
 
-      onAuthenticated(envelope);
+      onAuthenticated(envelope, "login");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to log in right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.login"));
     } finally {
       setIsSubmitting(false);
     }
@@ -269,7 +275,7 @@ export function CustomerAuthScreen({
 
   const handleSignupSubmit = async () => {
     if (!canSubmitSignup) {
-      setErrorMessage("Add your contact and property details so we can finish the account.");
+      setErrorMessage(i18n.t("mobile.auth.error.customer_signup_details"));
       return;
     }
 
@@ -298,7 +304,7 @@ export function CustomerAuthScreen({
             phone: phone.trim(),
             role: "customer",
             address: normalizedAddress,
-            propertyLabel: propertyLabel.trim() || "Home"
+            propertyLabel: propertyLabel.trim() || i18n.t("mobile.auth.default_home_label")
           })
         : await api.registerUser({
             fullName: fullName.trim(),
@@ -307,17 +313,17 @@ export function CustomerAuthScreen({
             phone: phone.trim(),
             role: "customer",
             address: normalizedAddress,
-            propertyLabel: propertyLabel.trim() || "Home"
+            propertyLabel: propertyLabel.trim() || i18n.t("mobile.auth.default_home_label")
           });
 
       if (envelope.user.role !== "customer") {
-        setErrorMessage("Use a customer account in the customer app.");
+        setErrorMessage(i18n.t("mobile.auth.error.customer_role"));
         return;
       }
 
-      onAuthenticated(envelope);
+      onAuthenticated(envelope, "signup");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to finish signup right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.signup"));
     } finally {
       setIsSubmitting(false);
     }
@@ -336,7 +342,7 @@ export function CustomerAuthScreen({
       setRecoveryMessage(result.message);
       setResetCodePreview(result.resetCodePreview ?? "");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start password reset right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.start_reset"));
     } finally {
       setIsRequestingReset(false);
     }
@@ -354,12 +360,12 @@ export function CustomerAuthScreen({
         newPassword
       });
       if (envelope.user.role !== "customer") {
-        setErrorMessage("Use a customer account in the customer app.");
+        setErrorMessage(i18n.t("mobile.auth.error.customer_role"));
         return;
       }
-      onAuthenticated(envelope);
+      onAuthenticated(envelope, "login");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to reset the password right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.reset_password"));
     } finally {
       setIsResettingPassword(false);
     }
@@ -390,7 +396,7 @@ export function CustomerAuthScreen({
                 style={[styles.modeButton, isActive && styles.modeButtonActive]}
               >
                 <Text style={[styles.modeLabel, isActive && styles.modeLabelActive]}>
-                  {value === "login" ? "Log in" : "Sign up"}
+                  {value === "login" ? i18n.t("mobile.auth.log_in") : i18n.t("mobile.auth.sign_up")}
                 </Text>
               </Pressable>
             );
@@ -401,16 +407,22 @@ export function CustomerAuthScreen({
           <View style={styles.signupPath}>
             <View style={[styles.signupPathItem, signupStep === "account" && styles.signupPathItemActive]}>
               <Text style={[styles.signupPathLabel, signupStep === "account" && styles.signupPathLabelActive]}>
-                Account
+                {i18n.t("mobile.auth.step.account")}
               </Text>
-              <Text style={styles.signupPathMeta}>{canContinueSignupAccount ? "Ready" : "Now"}</Text>
+              <Text style={styles.signupPathMeta}>
+                {canContinueSignupAccount ? i18n.t("provider_live.step.ready") : i18n.t("provider_live.step.now")}
+              </Text>
             </View>
             <View style={[styles.signupPathItem, signupStep === "property" && styles.signupPathItemActive]}>
               <Text style={[styles.signupPathLabel, signupStep === "property" && styles.signupPathLabelActive]}>
-                Property
+                {i18n.t("customer_live.label.property")}
               </Text>
               <Text style={styles.signupPathMeta}>
-                {signupStep === "property" ? (canSubmitSignup ? "Ready" : "Now") : "Next"}
+                {signupStep === "property"
+                  ? canSubmitSignup
+                    ? i18n.t("provider_live.step.ready")
+                    : i18n.t("provider_live.step.now")
+                  : i18n.t("customer_live.next")}
               </Text>
             </View>
           </View>
@@ -421,7 +433,7 @@ export function CustomerAuthScreen({
             <TextInput
               autoCapitalize="none"
               onChangeText={setEmail}
-              placeholder="customer@example.com"
+              placeholder={i18n.t("mobile.auth.placeholder.customer_email")}
               placeholderTextColor="#6e7d71"
               style={styles.input}
               value={email}
@@ -429,7 +441,7 @@ export function CustomerAuthScreen({
             {!isCompletingSocialSignup ? (
               <TextInput
                 onChangeText={setPassword}
-                placeholder="Password"
+                placeholder={i18n.t("auth_signup.field.password")}
                 placeholderTextColor="#6e7d71"
                 secureTextEntry
                 style={styles.input}
@@ -443,8 +455,10 @@ export function CustomerAuthScreen({
           <View style={styles.fieldStack}>
             {isCompletingSocialSignup ? (
               <View style={styles.inlineNotice}>
-                <Text style={styles.noticeTitle}>Finish your customer account</Text>
-                <Text style={styles.helper}>We already verified {email.trim()}. Add the basics to continue.</Text>
+                <Text style={styles.noticeTitle}>{i18n.t("mobile.auth.finish_customer_account")}</Text>
+                <Text style={styles.helper}>
+                  {i18n.t("mobile.auth.verified_email_continue", { email: email.trim() })}
+                </Text>
               </View>
             ) : null}
             {signupStep === "account" ? (
@@ -452,7 +466,7 @@ export function CustomerAuthScreen({
                 <TextInput
                   autoCapitalize="words"
                   onChangeText={setFullName}
-                  placeholder="Full name"
+                  placeholder={i18n.t("auth_signup.field.full_name")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={fullName}
@@ -460,7 +474,7 @@ export function CustomerAuthScreen({
                 <TextInput
                   keyboardType="phone-pad"
                   onChangeText={setPhone}
-                  placeholder="Phone number"
+                  placeholder={i18n.t("auth_signup.field.phone")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={phone}
@@ -469,11 +483,11 @@ export function CustomerAuthScreen({
             ) : (
               <>
                 <View style={styles.inlineNotice}>
-                  <Text style={styles.noticeTitle}>First property</Text>
-                  <Text style={styles.helper}>We use this for accurate quotes and crew routing.</Text>
+                  <Text style={styles.noticeTitle}>{i18n.t("mobile.auth.first_property")}</Text>
+                  <Text style={styles.helper}>{i18n.t("mobile.auth.customer_property_helper")}</Text>
                 </View>
                 <Pressable onPress={() => setSignupStep("account")} style={styles.linkButton}>
-                  <Text style={styles.linkButtonLabel}>Edit account</Text>
+                  <Text style={styles.linkButtonLabel}>{i18n.t("mobile.auth.edit_account")}</Text>
                 </Pressable>
                 <TextInput
                   autoCapitalize="words"
@@ -481,7 +495,7 @@ export function CustomerAuthScreen({
                     setAddressQuery(value);
                     setSelectedSuggestion(undefined);
                   }}
-                  placeholder="Search city or town"
+                  placeholder={i18n.t("mobile.auth.search_city")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={addressQuery}
@@ -502,20 +516,22 @@ export function CustomerAuthScreen({
                         <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
                         <Text style={styles.suggestionMeta}>
                           {suggestion.matchReason ??
-                            (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
+                            (suggestion.source === "google-geocoding"
+                              ? i18n.t("mobile.auth.google_verified_area")
+                              : i18n.t("mobile.auth.suggested_area"))}
                         </Text>
                       </Pressable>
                     ))}
                   </View>
                 ) : addressQuery.trim().length >= 2 && isSearching ? (
-                  <Text style={styles.helper}>Searching nearby areas…</Text>
+                  <Text style={styles.helper}>{i18n.t("mobile.auth.searching_nearby_areas")}</Text>
                 ) : addressQuery.trim().length >= 2 && addressSearchMessage ? (
                   <Text style={styles.helper}>{addressSearchMessage}</Text>
                 ) : null}
                 <TextInput
                   autoCapitalize="words"
                   onChangeText={(value) => setPropertyLabel(value)}
-                  placeholder="Property label"
+                  placeholder={i18n.t("mobile.auth.property_label")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={propertyLabel}
@@ -528,7 +544,7 @@ export function CustomerAuthScreen({
                       line1: value
                     }))
                   }
-                  placeholder="Street address"
+                  placeholder={i18n.t("auth_signup.placeholder.street")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={address.line1}
@@ -542,7 +558,7 @@ export function CustomerAuthScreen({
                         city: value
                       }))
                     }
-                    placeholder="City"
+                    placeholder={i18n.t("auth_signup.field.city")}
                     placeholderTextColor="#6e7d71"
                     style={[styles.input, styles.inlineInput]}
                     value={address.city}
@@ -556,7 +572,7 @@ export function CustomerAuthScreen({
                         state: value
                       }))
                     }
-                    placeholder="ST"
+                    placeholder={i18n.t("auth_signup.field.state")}
                     placeholderTextColor="#6e7d71"
                     style={[styles.input, styles.stateInput]}
                     value={address.state}
@@ -570,7 +586,7 @@ export function CustomerAuthScreen({
                         postalCode: value
                       }))
                     }
-                    placeholder="ZIP"
+                    placeholder={i18n.t("auth_signup.field.zip")}
                     placeholderTextColor="#6e7d71"
                     style={[styles.input, styles.zipInput]}
                     value={address.postalCode}
@@ -588,13 +604,13 @@ export function CustomerAuthScreen({
         >
           <Text style={styles.primaryButtonLabel}>
             {isSubmitting
-              ? "Working..."
+              ? i18n.t("mobile.bookings.working")
               : isCompletingSocialSignup
                 ? signupStep === "account"
-                  ? "Continue"
-                  : "Finish account"
+                  ? i18n.t("common.actions.continue")
+                  : i18n.t("mobile.auth.finish_account")
                 : mode === "signup" && signupStep === "account"
-                  ? "Continue"
+                  ? i18n.t("common.actions.continue")
                   : authCopy.submitLabel}
           </Text>
         </Pressable>
@@ -602,7 +618,7 @@ export function CustomerAuthScreen({
         {mode === "login" ? (
           <Pressable onPress={() => void handleRequestReset()} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>
-              {isRequestingReset ? "Sending reset code..." : "Forgot password?"}
+              {isRequestingReset ? i18n.t("mobile.auth.sending_reset_code") : i18n.t("mobile.auth.forgot_password")}
             </Text>
           </Pressable>
         ) : null}
@@ -611,21 +627,27 @@ export function CustomerAuthScreen({
 
         {showRecovery ? (
           <View style={styles.recoveryCard}>
-            <Text style={styles.recoveryTitle}>Reset your password</Text>
-            <Text style={styles.helper}>Use the latest reset code for {email.trim() || "your account"}.</Text>
+            <Text style={styles.recoveryTitle}>{i18n.t("mobile.auth.reset_password_title")}</Text>
+            <Text style={styles.helper}>
+              {i18n.t("mobile.auth.use_latest_reset_code", {
+                account: email.trim() || i18n.t("mobile.auth.your_account")
+              })}
+            </Text>
             {recoveryMessage ? <Text style={styles.helper}>{recoveryMessage}</Text> : null}
-            {resetCodePreview ? <Text style={styles.helper}>Local preview code: {resetCodePreview}</Text> : null}
+            {resetCodePreview ? (
+              <Text style={styles.helper}>{i18n.t("mobile.auth.local_preview_code", { code: resetCodePreview })}</Text>
+            ) : null}
             <View style={styles.fieldStack}>
               <TextInput
                 onChangeText={setRecoveryCode}
-                placeholder="Reset code"
+                placeholder={i18n.t("mobile.auth.reset_code")}
                 placeholderTextColor="#6e7d71"
                 style={styles.input}
                 value={recoveryCode}
               />
               <TextInput
                 onChangeText={setNewPassword}
-                placeholder="New password"
+                placeholder={i18n.t("mobile.auth.new_password")}
                 placeholderTextColor="#6e7d71"
                 secureTextEntry
                 style={styles.input}
@@ -635,7 +657,7 @@ export function CustomerAuthScreen({
             <View style={styles.recoveryActions}>
               <Pressable onPress={() => void handleConfirmReset()} style={styles.primaryButton}>
                 <Text style={styles.primaryButtonLabel}>
-                  {isResettingPassword ? "Updating..." : "Reset password"}
+                  {isResettingPassword ? i18n.t("mobile.auth.updating") : i18n.t("mobile.auth.reset_password")}
                 </Text>
               </Pressable>
               <Pressable
@@ -648,7 +670,7 @@ export function CustomerAuthScreen({
                 }}
                 style={styles.linkButton}
               >
-                <Text style={styles.linkButtonLabel}>Close</Text>
+                <Text style={styles.linkButtonLabel}>{i18n.t("common.actions.close")}</Text>
               </Pressable>
             </View>
           </View>
@@ -658,19 +680,19 @@ export function CustomerAuthScreen({
           <View style={styles.socialStack}>
             <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
               <AntDesign color="#4285F4" name="google" size={18} />
-              <Text style={styles.socialLabel}>Continue with Google</Text>
+              <Text style={styles.socialLabel}>{i18n.t("mobile.auth.continue_google")}</Text>
             </Pressable>
             <Pressable onPress={() => handleAuth("apple")} style={styles.socialButton}>
               <AntDesign color={BrandTokens.colors.ink} name="apple" size={18} />
-              <Text style={styles.socialLabel}>Continue with Apple</Text>
+              <Text style={styles.socialLabel}>{i18n.t("mobile.auth.continue_apple")}</Text>
             </Pressable>
           </View>
         ) : null}
 
         <Text style={styles.helper}>
           {mode === "signup"
-            ? "Payment, notes, and extra properties come after the first request."
-            : "Property address, service notes, and payment setup come after sign in."}
+            ? i18n.t("mobile.auth.customer_signup_helper")
+            : i18n.t("mobile.auth.customer_login_helper")}
         </Text>
       </View>
     </ScrollView>

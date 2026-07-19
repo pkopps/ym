@@ -2,21 +2,28 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
+import { TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { AssignmentsScreen } from "../screens/AssignmentsScreen";
 import { AvailabilityScreen } from "../screens/AvailabilityScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { SupportScreen } from "../screens/SupportScreen";
 
 type TabKey = "today" | "schedule" | "availability" | "account";
+type LanguageSettings = {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+};
 
-const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
-  { key: "today", label: "Today", icon: "sun" },
-  { key: "schedule", label: "Schedule", icon: "calendar" },
-  { key: "availability", label: "Availability", icon: "clock" },
-  { key: "account", label: "Account", icon: "user" }
+const tabs: Array<{ key: TabKey; labelKey: TranslationKey; icon: React.ComponentProps<typeof Feather>["name"] }> = [
+  { key: "today", labelKey: "mobile.nav.today", icon: "sun" },
+  { key: "schedule", labelKey: "mobile.nav.schedule", icon: "calendar" },
+  { key: "availability", labelKey: "mobile.nav.availability", icon: "clock" },
+  { key: "account", labelKey: "mobile.nav.account", icon: "user" }
 ];
 
-export function CrewAppNavigator() {
+export function CrewAppNavigator({ languageSettings }: { languageSettings: LanguageSettings }) {
+  const i18n = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("today");
 
   const screen = {
@@ -28,7 +35,7 @@ export function CrewAppNavigator() {
     ),
     schedule: <AssignmentsScreen onOpenToday={() => setActiveTab("today")} />,
     availability: <AvailabilityScreen />,
-    account: <SupportScreen />
+    account: <SupportScreen languageSettings={languageSettings} />
   }[activeTab];
 
   return (
@@ -49,7 +56,7 @@ export function CrewAppNavigator() {
                 name={tab.icon}
                 size={18}
               />
-              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{tab.label}</Text>
+              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{i18n.t(tab.labelKey)}</Text>
             </Pressable>
           );
         })}

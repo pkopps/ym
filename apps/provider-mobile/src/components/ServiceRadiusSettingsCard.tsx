@@ -1,23 +1,26 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
+import { TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "./InfoCard";
 
 const radiusPresets = [10, 15, 20, 30, 45];
 
-function getRadiusGuidance(serviceRadiusMiles: number): string {
+function getRadiusGuidanceKey(serviceRadiusMiles: number): TranslationKey {
   if (serviceRadiusMiles <= 12) {
-    return "Tight route density with lower drive time between properties.";
+    return "provider_radius.guidance.dense";
   }
 
   if (serviceRadiusMiles <= 25) {
-    return "Balanced growth radius for most suburban crews and repeat clients.";
+    return "provider_radius.guidance.balanced";
   }
 
-  return "Wider market reach, but expect more crew transit time and fewer back-to-back jobs.";
+  return "provider_radius.guidance.wide";
 }
 
 export function ServiceRadiusSettingsCard() {
+  const i18n = useI18n();
   const [serviceRadiusMiles, setServiceRadiusMiles] = useState(18);
 
   const adjustRadius = (delta: number) => {
@@ -26,12 +29,11 @@ export function ServiceRadiusSettingsCard() {
 
   return (
     <InfoCard
-      title="Service radius settings"
-      description="Set the maximum distance your business is willing to travel from each customer property address."
+      title={i18n.t("provider_radius.eyebrow")}
+      description={i18n.t("provider_radius.title")}
     >
       <Text style={styles.copy}>
-        Customers only enter your lead pool when the property they want serviced falls inside this
-        radius.
+        {i18n.t("provider_radius.copy")}
       </Text>
 
       <View style={styles.presetRow}>
@@ -43,7 +45,9 @@ export function ServiceRadiusSettingsCard() {
               onPress={() => setServiceRadiusMiles(preset)}
               style={[styles.presetButton, isActive && styles.presetButtonActive]}
             >
-              <Text style={[styles.presetLabel, isActive && styles.presetLabelActive]}>{preset} mi</Text>
+              <Text style={[styles.presetLabel, isActive && styles.presetLabelActive]}>
+                {i18n.t("provider_radius.preset_miles", { count: preset })}
+              </Text>
             </Pressable>
           );
         })}
@@ -55,7 +59,7 @@ export function ServiceRadiusSettingsCard() {
         </Pressable>
         <View style={styles.valueBadge}>
           <Text style={styles.valueNumber}>{serviceRadiusMiles}</Text>
-          <Text style={styles.valueSuffix}>miles</Text>
+          <Text style={styles.valueSuffix}>{i18n.t("provider_radius.unit_miles")}</Text>
         </View>
         <Pressable onPress={() => adjustRadius(5)} style={styles.stepperButton}>
           <Text style={styles.stepperLabel}>+5</Text>
@@ -75,12 +79,12 @@ export function ServiceRadiusSettingsCard() {
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryBlock}>
-          <Text style={styles.summaryTitle}>Match rule</Text>
-          <Text style={styles.summaryText}>Use the selected booking property address, not the account default.</Text>
+          <Text style={styles.summaryTitle}>{i18n.t("provider_radius.match_rule.title")}</Text>
+          <Text style={styles.summaryText}>{i18n.t("provider_radius.match_rule.body")}</Text>
         </View>
         <View style={styles.summaryBlock}>
-          <Text style={styles.summaryTitle}>Operational effect</Text>
-          <Text style={styles.summaryText}>{getRadiusGuidance(serviceRadiusMiles)}</Text>
+          <Text style={styles.summaryTitle}>{i18n.t("provider_radius.operational_effect.title")}</Text>
+          <Text style={styles.summaryText}>{i18n.t(getRadiusGuidanceKey(serviceRadiusMiles))}</Text>
         </View>
       </View>
     </InfoCard>

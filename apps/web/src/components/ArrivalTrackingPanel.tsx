@@ -1,6 +1,7 @@
 "use client";
 
 import { BookingArrivalTracking } from "@yardmatch/contracts";
+import { useI18n } from "@yardmatch/i18n/react";
 
 function buildBoundingBox(tracking: BookingArrivalTracking) {
   const points = [tracking.destination.point];
@@ -58,16 +59,22 @@ export function ArrivalTrackingPanel({
   subtitle?: string;
   showProviderRouteDetails?: boolean;
 }) {
+  const i18n = useI18n();
+
   return (
     <section className="arrival-tracking card">
       <div className="arrival-tracking__header">
         <div>
-          <span className="eyebrow">Arrival tracking</span>
+          <span className="eyebrow">{i18n.t("arrival_tracking.eyebrow")}</span>
           <h2>{title}</h2>
           {subtitle ? <p>{subtitle}</p> : null}
         </div>
         <div className="arrival-tracking__eta">
-          <strong>{tracking.etaMinutes ? `${tracking.etaMinutes} min` : "Arrived"}</strong>
+          <strong>
+            {tracking.etaMinutes
+              ? i18n.t("arrival_tracking.minutes", { minutes: tracking.etaMinutes })
+              : i18n.t("arrival_tracking.arrived")}
+          </strong>
           <span>{tracking.status.replaceAll("-", " ")}</span>
         </div>
       </div>
@@ -80,11 +87,11 @@ export function ArrivalTrackingPanel({
           />
         </div>
         <div className="arrival-tracking__progress-copy">
-          <span>{formatPercent(tracking.progressPercent)} complete</span>
+          <span>{i18n.t("arrival_tracking.complete", { percent: formatPercent(tracking.progressPercent) })}</span>
           <span>
             {tracking.remainingDistanceMiles !== undefined
-              ? `${tracking.remainingDistanceMiles.toFixed(1)} miles left`
-              : "Waiting for route"}
+              ? i18n.t("arrival_tracking.miles_left", { miles: tracking.remainingDistanceMiles })
+              : i18n.t("arrival_tracking.waiting_route")}
           </span>
         </div>
       </div>
@@ -95,31 +102,35 @@ export function ArrivalTrackingPanel({
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
           src={buildMapUrl(tracking)}
-          title="Live crew tracking map"
+          title={i18n.t("arrival_tracking.map_title")}
         />
       </div>
 
       <div className="arrival-tracking__details">
         <div className="list-panel">
-          <h3>Crew</h3>
-          <p>{tracking.crewMemberName ?? "Assigned crew member"}</p>
+          <h3>{i18n.t("arrival_tracking.crew")}</h3>
+          <p>{tracking.crewMemberName ?? i18n.t("arrival_tracking.assigned_crew")}</p>
           <p>
             {tracking.source === "provider-device"
               ? tracking.isLiveLocationStale
-                ? "Live provider location paused"
-                : "Live provider location"
+                ? i18n.t("arrival_tracking.provider_location_paused")
+                : i18n.t("arrival_tracking.provider_location")
               : tracking.source === "crew-device"
                 ? tracking.isLiveLocationStale
-                  ? "Live crew location paused"
-                  : "Live crew location"
-                : "Estimated route"}
+                  ? i18n.t("arrival_tracking.crew_location_paused")
+                  : i18n.t("arrival_tracking.crew_location")
+                : i18n.t("arrival_tracking.estimated_route")}
           </p>
           {tracking.liveUpdatedAt ? (
-            <p>Updated {new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, { timeStyle: "short" })}</p>
+            <p>
+              {i18n.t("arrival_tracking.updated", {
+                time: i18n.formatDate(tracking.liveUpdatedAt, { timeStyle: "short" })
+              })}
+            </p>
           ) : null}
         </div>
         <div className="list-panel">
-          <h3>Destination</h3>
+          <h3>{i18n.t("arrival_tracking.destination")}</h3>
           <p>{tracking.destination.line1}</p>
           <p>
             {tracking.destination.city}, {tracking.destination.state} {tracking.destination.postalCode}
@@ -127,7 +138,7 @@ export function ArrivalTrackingPanel({
         </div>
         {showProviderRouteDetails && tracking.activeRouteStop ? (
           <div className="list-panel">
-            <h3>Provider-only stop</h3>
+            <h3>{i18n.t("arrival_tracking.provider_stop")}</h3>
             <p>{tracking.activeRouteStop.label}</p>
             <p>{tracking.activeRouteStop.address.line1}</p>
             <p>
@@ -135,7 +146,7 @@ export function ArrivalTrackingPanel({
               {tracking.activeRouteStop.address.postalCode}
             </p>
             {tracking.etaToCurrentLegMinutes ? (
-              <p>{tracking.etaToCurrentLegMinutes} min to this stop</p>
+              <p>{i18n.t("arrival_tracking.minutes_to_stop", { minutes: tracking.etaToCurrentLegMinutes })}</p>
             ) : null}
           </div>
         ) : null}

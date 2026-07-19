@@ -1,33 +1,28 @@
 "use client";
 
 import { CrewMatchSummary } from "@yardmatch/contracts";
+import { addLocalePrefix, type I18nInstance } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 
 type ScheduleView = "calendar" | "list";
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
-}
-
-function formatDateLabel(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+function formatDateLabel(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     weekday: "short",
     month: "short",
     day: "numeric"
   });
 }
 
-function formatTimeRange(startIso: string, endIso: string) {
-  const start = new Date(startIso).toLocaleTimeString(undefined, {
+function formatTimeRange(i18n: I18nInstance, startIso: string, endIso: string) {
+  const start = i18n.formatDate(startIso, {
     hour: "numeric",
     minute: "2-digit"
   });
-  const end = new Date(endIso).toLocaleTimeString(undefined, {
+  const end = i18n.formatDate(endIso, {
     hour: "numeric",
     minute: "2-digit"
   });
@@ -43,6 +38,7 @@ function buildAppleMapsDirectionsUrl(addressLine: string) {
 }
 
 export function CrewScheduleBoard() {
+  const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [view, setView] = useState<ScheduleView>("calendar");
   const [accessDenied, setAccessDenied] = useState(false);
@@ -71,10 +67,10 @@ export function CrewScheduleBoard() {
             .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
         );
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to load your schedule right now.");
+        setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_schedule.board.load_error"));
       }
     })();
-  }, [sessionReady, session?.role, session?.token]);
+  }, [i18n, sessionReady, session?.role, session?.token]);
 
   const plannedHours = useMemo(
     () =>
@@ -105,15 +101,15 @@ export function CrewScheduleBoard() {
 
     return [...groups.entries()].map(([date, matches]) => ({
       date,
-      label: formatDateLabel(matches[0]?.scheduledStartIso ?? date),
+      label: formatDateLabel(i18n, matches[0]?.scheduledStartIso ?? date),
       matches
     }));
-  }, [acceptedMatches]);
+  }, [acceptedMatches, i18n]);
 
   if (!sessionReady) {
     return (
       <section className="card">
-        <h2>Loading your schedule...</h2>
+        <h2>{i18n.t("crew_schedule.board.loading")}</h2>
       </section>
     );
   }
@@ -121,11 +117,11 @@ export function CrewScheduleBoard() {
   if (accessDenied) {
     return (
       <section className="card">
-        <h2>Crew member login required</h2>
-        <p>Log in to see accepted shifts, route details, and directions.</p>
+        <h2>{i18n.t("crew_schedule.board.login_required")}</h2>
+        <p>{i18n.t("crew_schedule.board.login_body")}</p>
         <div className="cta-row">
-          <a className="button" href="/login/crew">
-            Go to crew login
+          <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+            {i18n.t("crew_schedule.board.login_cta")}
           </a>
         </div>
       </section>
@@ -136,7 +132,7 @@ export function CrewScheduleBoard() {
     <div className="stack-lg">
       {errorMessage ? (
         <section className="card">
-          <h2>Something needs attention</h2>
+          <h2>{i18n.t("common.state.needs_attention")}</h2>
           <p>{errorMessage}</p>
         </section>
       ) : null}
@@ -144,45 +140,45 @@ export function CrewScheduleBoard() {
       <section className="grid-three">
         <article className="card">
           <h2>{plannedHours.toFixed(1)}</h2>
-          <p>Planned hours</p>
+          <p>{i18n.t("crew_schedule.board.metric.planned_hours")}</p>
         </article>
         <article className="card">
-          <h2>{formatCurrency(Math.round(expectedEarnings * 100))}</h2>
-          <p>Expected earnings</p>
+          <h2>{i18n.formatCurrency(Math.round(expectedEarnings * 100))}</h2>
+          <p>{i18n.t("crew_schedule.board.metric.expected_earnings")}</p>
         </article>
         <article className="card">
           <h2>{acceptedMatches.length}</h2>
-          <p>Accepted shifts</p>
+          <p>{i18n.t("crew_schedule.board.metric.accepted_shifts")}</p>
         </article>
       </section>
 
       <section className="search-result-title">
         <div>
-          <span className="eyebrow">Live crew schedule</span>
-          <h2>Upcoming work</h2>
+          <span className="eyebrow">{i18n.t("crew_schedule.board.eyebrow")}</span>
+          <h2>{i18n.t("crew_schedule.board.upcoming_work")}</h2>
         </div>
-        <div className="view-toggle" role="tablist" aria-label="Schedule view">
+        <div className="view-toggle" role="tablist" aria-label={i18n.t("crew_schedule.board.view_aria")}>
           <button
             className={view === "calendar" ? "button" : "button-secondary"}
             onClick={() => setView("calendar")}
             type="button"
           >
-            Day groups
+            {i18n.t("crew_schedule.board.view.day_groups")}
           </button>
           <button
             className={view === "list" ? "button" : "button-secondary"}
             onClick={() => setView("list")}
             type="button"
           >
-            Full list
+            {i18n.t("crew_schedule.board.view.full_list")}
           </button>
         </div>
       </section>
 
       {acceptedMatches.length === 0 ? (
         <section className="card">
-          <h2>No accepted shifts yet</h2>
-          <p>Once a provider accepts you for a job, it will show up here automatically.</p>
+          <h2>{i18n.t("crew_schedule.board.empty.title")}</h2>
+          <p>{i18n.t("crew_schedule.board.empty.body")}</p>
         </section>
       ) : view === "calendar" ? (
         <section className="stack-lg">
@@ -191,7 +187,7 @@ export function CrewScheduleBoard() {
               <div className="search-result-title">
                 <div>
                   <span className="eyebrow">{group.label}</span>
-                  <h2>{group.matches.length} scheduled stop{group.matches.length === 1 ? "" : "s"}</h2>
+                  <h2>{i18n.t("crew_schedule.board.scheduled_stop_count", { count: group.matches.length })}</h2>
                 </div>
               </div>
               <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -202,7 +198,7 @@ export function CrewScheduleBoard() {
                         <h3>{match.providerCompanyName}</h3>
                         <p>{match.category.replaceAll("-", " ")}</p>
                       </div>
-                      <strong>{formatTimeRange(match.scheduledStartIso, match.scheduledEndIso)}</strong>
+                      <strong>{formatTimeRange(i18n, match.scheduledStartIso, match.scheduledEndIso)}</strong>
                     </div>
                     <p>{match.serviceAddress.line1}</p>
                     <p>
@@ -217,7 +213,7 @@ export function CrewScheduleBoard() {
                         rel="noreferrer"
                         target="_blank"
                       >
-                        Google Maps
+                        {i18n.t("common.maps.google")}
                       </a>
                       <a
                         className="button-secondary crew-mobile-directions"
@@ -225,7 +221,7 @@ export function CrewScheduleBoard() {
                         rel="noreferrer"
                         target="_blank"
                       >
-                        Apple Maps
+                        {i18n.t("common.maps.apple")}
                       </a>
                     </div>
                   </article>
@@ -240,19 +236,19 @@ export function CrewScheduleBoard() {
             <article className="history-card" key={match.id}>
               <div className="history-card__header">
                 <div>
-                  <span className="eyebrow">{formatDateLabel(match.scheduledStartIso)}</span>
+                  <span className="eyebrow">{formatDateLabel(i18n, match.scheduledStartIso)}</span>
                   <h2>{match.providerCompanyName}</h2>
                 </div>
-                <strong>{formatTimeRange(match.scheduledStartIso, match.scheduledEndIso)}</strong>
+                <strong>{formatTimeRange(i18n, match.scheduledStartIso, match.scheduledEndIso)}</strong>
               </div>
               <div className="history-card__grid">
                 <div>
-                  <h3>Work</h3>
+                  <h3>{i18n.t("crew_schedule.board.work")}</h3>
                   <p>{match.category.replaceAll("-", " ")}</p>
                   <p>{match.summary}</p>
                 </div>
                 <div>
-                  <h3>Route</h3>
+                  <h3>{i18n.t("crew_schedule.board.route")}</h3>
                   <p>{match.serviceAddress.line1}</p>
                   <p>
                     {match.serviceAddress.city}, {match.serviceAddress.state}{" "}
@@ -260,9 +256,9 @@ export function CrewScheduleBoard() {
                   </p>
                 </div>
                 <div>
-                  <h3>Status</h3>
+                  <h3>{i18n.t("crew_schedule.board.status")}</h3>
                   <p>{match.bookingStatus.replaceAll("-", " ")}</p>
-                  <p>{formatCurrency(match.hourlyRateCents)}/hour</p>
+                  <p>{i18n.t("crew_schedule.board.hour_rate", { rate: i18n.formatCurrency(match.hourlyRateCents) })}</p>
                   <div className="cta-row">
                     <a
                       className="button-secondary crew-mobile-directions"
@@ -270,7 +266,7 @@ export function CrewScheduleBoard() {
                       rel="noreferrer"
                       target="_blank"
                     >
-                      Google Maps
+                      {i18n.t("common.maps.google")}
                     </a>
                     <a
                       className="button-secondary crew-mobile-directions"
@@ -278,7 +274,7 @@ export function CrewScheduleBoard() {
                       rel="noreferrer"
                       target="_blank"
                     >
-                      Apple Maps
+                      {i18n.t("common.maps.apple")}
                     </a>
                   </div>
                 </div>

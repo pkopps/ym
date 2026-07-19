@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { providerCrewMemberSnapshots, providerManagedJobs } from "@yardmatch/ui";
+import { useI18n } from "@yardmatch/i18n/react";
 
 type PortalView = "calendar" | "list";
 type PropertyTypeFilter = "all" | "commercial" | "estate" | "hoa" | "homes";
@@ -62,6 +63,7 @@ function buildAppleCalendarData({
 }
 
 export function ProviderManagementBoard() {
+  const i18n = useI18n();
   const [view, setView] = useState<PortalView>("calendar");
   const [propertyTypeFilter, setPropertyTypeFilter] = useState<PropertyTypeFilter>("all");
   const [staffingFilter, setStaffingFilter] = useState<StaffingFilter>("all");
@@ -133,7 +135,7 @@ export function ProviderManagementBoard() {
     <div className="stack-lg">
       <section className={`provider-capacity-alert ${shortfallCount > 0 ? "provider-capacity-alert--warning" : "provider-capacity-alert--healthy"}`}>
         <div>
-          <span className="eyebrow">Crew balance</span>
+          <span className="eyebrow">{i18n.t("ops_auto.provider_management_board.crew_balance_xu3zk3")}</span>
           <h2>
             {shortfallCount > 0
               ? `You are short ${shortfallCount} crew member${shortfallCount === 1 ? "" : "s"} across ${shortStaffedJobs} upcoming job${shortStaffedJobs === 1 ? "" : "s"}.`
@@ -147,97 +149,93 @@ export function ProviderManagementBoard() {
         </div>
         <div className="cta-row">
           <a className="button" href="/crew">
-            Find crew members
-          </a>
+            {i18n.t("ops_auto.provider_management_board.find_crew_members_zz96p")} </a>
           <a className="button-secondary" href="/provider/partnerships">
-            Equipment and partner deals
-          </a>
+            {i18n.t("ops_auto.provider_management_board.equipment_and_partner_deals_rtdaq4")} </a>
         </div>
       </section>
 
       <section className="provider-filters">
         <div className="provider-filters__group">
           <label className="form-field">
-            <span>Property type</span>
+            <span>{i18n.t("ops_auto.provider_management_board.property_type_4luyyj")}</span>
             <select value={propertyTypeFilter} onChange={(event) => setPropertyTypeFilter(event.target.value as PropertyTypeFilter)}>
-              <option value="all">All properties</option>
-              <option value="homes">Homes</option>
-              <option value="estate">Estates</option>
+              <option value="all">{i18n.t("ops_auto.provider_management_board.all_properties_rhn1zi")}</option>
+              <option value="homes">{i18n.t("ops_auto.provider_management_board.homes_15mdlg")}</option>
+              <option value="estate">{i18n.t("ops_auto.provider_management_board.estates_3kfu6f")}</option>
               <option value="hoa">HOA</option>
-              <option value="commercial">Commercial</option>
+              <option value="commercial">{i18n.t("ops_auto.provider_management_board.commercial_n50qs6")}</option>
             </select>
           </label>
           <label className="form-field">
-            <span>Staffing</span>
+            <span>{i18n.t("ops_auto.provider_management_board.staffing_mnmtcy")}</span>
             <select value={staffingFilter} onChange={(event) => setStaffingFilter(event.target.value as StaffingFilter)}>
-              <option value="all">All jobs</option>
-              <option value="short">Short-staffed</option>
-              <option value="covered">Fully covered</option>
+              <option value="all">{i18n.t("ops_auto.provider_management_board.all_jobs_tubf6d")}</option>
+              <option value="short">{i18n.t("ops_auto.provider_management_board.short_staffed_e5dyia")}</option>
+              <option value="covered">{i18n.t("ops_auto.provider_management_board.fully_covered_7gnaao")}</option>
             </select>
           </label>
           <label className="form-field">
-            <span>Sort by</span>
+            <span>{i18n.t("ops_auto.provider_management_board.sort_by_5yc0zr")}</span>
             <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)}>
-              <option value="date">Date</option>
-              <option value="distance">Distance</option>
-              <option value="crew-needed">Crew needed</option>
+              <option value="date">{i18n.t("ops_auto.provider_management_board.date_19hvy")}</option>
+              <option value="distance">{i18n.t("ops_auto.provider_management_board.distance_5u88ph")}</option>
+              <option value="crew-needed">{i18n.t("ops_auto.provider_management_board.crew_needed_6t43po")}</option>
             </select>
           </label>
         </div>
         <div className="chip-row">
-          <span>{futureJobsCount} jobs in view</span>
+          <span>{futureJobsCount} {i18n.t("ops_auto.provider_management_board.jobs_in_view_khje2e")}</span>
           <span>{shortStaffedJobs} short-staffed</span>
-          <span>{totalCrewNeeded} crew slots needed</span>
+          <span>{totalCrewNeeded} {i18n.t("ops_auto.provider_management_board.crew_slots_needed_lz72ov")}</span>
         </div>
       </section>
 
       <section className="grid-three">
         <article className="card">
           <h2>{futureJobsCount}</h2>
-          <p>Future jobs</p>
+          <p>{i18n.t("ops_auto.provider_management_board.future_jobs_i9rvcj")}</p>
         </article>
         <article className="card">
           <h2>{availableCrewCount}</h2>
-          <p>Available crew members</p>
+          <p>{i18n.t("ops_auto.provider_management_board.available_crew_members_w7solr")}</p>
         </article>
         <article className="card">
           <h2>{totalCrewNeeded}</h2>
-          <p>Total crew slots needed</p>
+          <p>{i18n.t("ops_auto.provider_management_board.total_crew_slots_needed_en9o65")}</p>
         </article>
         <article className="card">
           <h2>{totalAssignedCrew}</h2>
-          <p>Crew slots already assigned</p>
+          <p>{i18n.t("ops_auto.provider_management_board.crew_slots_already_assigned_e48dy8")}</p>
         </article>
         <article className="card">
           <h2>{shortStaffedJobs}</h2>
-          <p>Short-staffed jobs</p>
+          <p>{i18n.t("ops_auto.provider_management_board.short_staffed_jobs_68f0vc")}</p>
         </article>
         <article className="card">
           <h2>{shortfallCount}</h2>
-          <p>Open crew gap</p>
+          <p>{i18n.t("ops_auto.provider_management_board.open_crew_gap_picqk3")}</p>
         </article>
       </section>
 
       <section className="search-result-title">
         <div>
-          <span className="eyebrow">Management portal</span>
-          <h2>Upcoming jobs and crew coverage</h2>
+          <span className="eyebrow">{i18n.t("ops_auto.provider_management_board.management_portal_9up5br")}</span>
+          <h2>{i18n.t("ops_auto.provider_management_board.upcoming_jobs_and_crew_coverage_klf61k")}</h2>
         </div>
-        <div className="view-toggle" role="tablist" aria-label="Portal view">
+        <div className="view-toggle" role="tablist" aria-label={i18n.t("ops_auto.provider_management_board.portal_view_mkcng9")}>
           <button
             className={view === "calendar" ? "button" : "button-secondary"}
             onClick={() => setView("calendar")}
             type="button"
           >
-            Calendar view
-          </button>
+            {i18n.t("ops_auto.provider_management_board.calendar_view_qb80yh")} </button>
           <button
             className={view === "list" ? "button" : "button-secondary"}
             onClick={() => setView("list")}
             type="button"
           >
-            List view
-          </button>
+            {i18n.t("ops_auto.provider_management_board.list_view_bxpzgn")} </button>
         </div>
       </section>
 
@@ -265,22 +263,19 @@ export function ProviderManagementBoard() {
                 <p>{job.serviceLabel}</p>
                 <p>{job.timeLabel}</p>
                 <p>{job.addressLine}</p>
-                <p>{job.distanceMiles} mi away • {job.propertySizeLabel}</p>
+                <p>{job.distanceMiles} {i18n.t("ops_auto.provider_management_board.mi_away_1j7q0k")} {job.propertySizeLabel}</p>
                 <p>
-                  Need {job.requiredCrewMembers} crew • Assigned {job.assignedCrewMembers.length}
+                  {i18n.t("ops_auto.provider_management_board.need_1fyd2")} {job.requiredCrewMembers} {i18n.t("ops_auto.provider_management_board.crew_assigned_kvun5h")} {job.assignedCrewMembers.length}
                 </p>
                 <div className="cta-row">
                   {job.missingCrewCount > 0 ? (
                     <a className="button" href="/crew">
-                      Find crew
-                    </a>
+                      {i18n.t("ops_auto.provider_management_board.find_crew_vqvb94")} </a>
                   ) : null}
                   <a className="button-secondary" href={job.googleUrl} rel="noreferrer" target="_blank">
-                    Google
-                  </a>
+                    {i18n.t("ops_auto.provider_management_board.google_zd9eft")} </a>
                   <a className="button-secondary" download={`${job.id}.ics`} href={job.appleUrl}>
-                    Apple
-                  </a>
+                    {i18n.t("ops_auto.provider_management_board.apple_11sit6")} </a>
                 </div>
               </div>
             </article>
@@ -299,38 +294,34 @@ export function ProviderManagementBoard() {
               </div>
               <div className="history-card__grid">
                 <div>
-                  <h3>Service</h3>
+                  <h3>{i18n.t("ops_auto.provider_management_board.service_aopgtn")}</h3>
                   <p>{job.serviceLabel}</p>
                   <p>{job.notes}</p>
                 </div>
                 <div>
-                  <h3>Property</h3>
+                  <h3>{i18n.t("ops_auto.provider_management_board.property_fcswzv")}</h3>
                   <p>{job.addressLine}</p>
-                  <p>{job.distanceMiles} mi away • {job.propertySizeLabel}</p>
+                  <p>{job.distanceMiles} {i18n.t("ops_auto.provider_management_board.mi_away_1j7q0k")} {job.propertySizeLabel}</p>
                 </div>
                 <div>
-                  <h3>Crew plan</h3>
-                  <p>Need {job.requiredCrewMembers} • Assigned {job.assignedCrewMembers.length}</p>
+                  <h3>{i18n.t("ops_auto.provider_management_board.crew_plan_iuqpi0")}</h3>
+                  <p>{i18n.t("ops_auto.provider_management_board.need_1fyd2")} {job.requiredCrewMembers} {i18n.t("ops_auto.provider_management_board.assigned_66aofg")} {job.assignedCrewMembers.length}</p>
                   <p>{job.assignedCrewMembers.join(", ") || "No crew assigned yet"}</p>
                 </div>
               </div>
               {job.missingCrewCount > 0 ? (
                 <div className="provider-job-shortfall">
-                  <strong>Staffing gap</strong>
+                  <strong>{i18n.t("ops_auto.provider_management_board.staffing_gap_vbt594")}</strong>
                   <p>
-                    This property size and service scope need {job.missingCrewCount} more crew member
-                    {job.missingCrewCount === 1 ? "" : "s"}.
+                    {i18n.t("ops_auto.provider_management_board.this_property_size_and_service_scope_need_tr9x1w")} {job.missingCrewCount} {i18n.t("ops_auto.provider_management_board.more_crew_member_b66sxa")} {job.missingCrewCount === 1 ? "" : "s"}.
                   </p>
                   <div className="cta-row">
                     <a className="button" href="/crew">
-                      Find crew members
-                    </a>
+                      {i18n.t("ops_auto.provider_management_board.find_crew_members_zz96p")} </a>
                     <a className="button-secondary" href={job.googleUrl} rel="noreferrer" target="_blank">
-                      Add to Google
-                    </a>
+                      {i18n.t("ops_auto.provider_management_board.add_to_google_sk5d1d")} </a>
                     <a className="button-secondary" download={`${job.id}.ics`} href={job.appleUrl}>
-                      Add to Apple
-                    </a>
+                      {i18n.t("ops_auto.provider_management_board.add_to_apple_lwff2s")} </a>
                   </div>
                 </div>
               ) : null}

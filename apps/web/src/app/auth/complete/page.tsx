@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Address, MarketplaceRole, PlaceSuggestion } from "@yardmatch/contracts";
+import { addLocalePrefix, stripLocalePrefix, type SupportedLocale } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../../../lib/api";
 import { getRoleRedirectPath } from "../../../lib/redirects";
@@ -12,6 +14,10 @@ const redirectByRole: Record<MarketplaceRole, string> = {
   ops: "/ops",
   "crew-member": "/crew"
 };
+
+function localizeRedirectPath(path: string, locale: SupportedLocale) {
+  return stripLocalePrefix(path).locale ? path : addLocalePrefix(path, locale);
+}
 
 function createEmptyAddress(): Address {
   return {
@@ -28,6 +34,7 @@ function createEmptyAddress(): Address {
 }
 
 export default function AuthCompletePage() {
+  const i18n = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const status = searchParams.get("authStatus");
@@ -43,7 +50,7 @@ export default function AuthCompletePage() {
   const [errorMessage, setErrorMessage] = useState(searchParams.get("message") ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const api = useMemo(() => createWebApiClient(), []);
+  const api = useMemo(() => createWebApiClient(i18n.locale), [i18n.locale]);
 
   useEffect(() => {
     if (status !== "success") {
@@ -56,7 +63,7 @@ export default function AuthCompletePage() {
     const userId = searchParams.get("userId");
     const storedFullName = searchParams.get("fullName");
     if (!token || !expiresAtIso || !email || !userId || !storedFullName) {
-      setErrorMessage("The social sign-in callback was missing session details.");
+      setErrorMessage(i18n.t("auth_complete.error.missing_session_details"));
       return;
     }
 
@@ -70,13 +77,13 @@ export default function AuthCompletePage() {
       expiresAtIso
     });
 
-    router.replace(getRoleRedirectPath(role, returnTo, redirectByRole[role] ?? "/"));
+    router.replace(localizeRedirectPath(getRoleRedirectPath(role, returnTo, redirectByRole[role] ?? "/"), i18n.locale));
     router.refresh();
-  }, [returnTo, role, router, searchParams, status]);
+  }, [i18n, returnTo, role, router, searchParams, status]);
 
   async function handleSearchAddress() {
     if (addressQuery.trim().length < 3) {
-      setErrorMessage("Enter at least a few characters so we can find your address.");
+      setErrorMessage(i18n.t("auth_complete.error.address_too_short"));
       return;
     }
 
@@ -87,10 +94,10 @@ export default function AuthCompletePage() {
       setSuggestions(result.suggestions);
       setAddressSearchMessage(result.searchMessage ?? "");
       if (result.suggestions.length === 0) {
-        setErrorMessage("No matching addresses were found yet. Try a fuller street, city, or ZIP.");
+        setErrorMessage(i18n.t("auth_complete.error.no_addresses"));
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to search addresses right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("auth_complete.error.address_search_failed"));
       setAddressSearchMessage("");
     } finally {
       setIsSearching(false);
@@ -101,7 +108,7 @@ export default function AuthCompletePage() {
     event.preventDefault();
     const pendingToken = searchParams.get("pendingToken");
     if (!pendingToken) {
-      setErrorMessage("The social signup session is missing. Start again from the sign-up page.");
+      setErrorMessage(i18n.t("auth_complete.error.missing_signup_session"));
       return;
     }
 
@@ -127,10 +134,10 @@ export default function AuthCompletePage() {
         expiresAtIso: envelope.session.expiresAtIso
       });
 
-      router.replace(getRoleRedirectPath(envelope.user.role, returnTo, redirectByRole[envelope.user.role]));
+      router.replace(localizeRedirectPath(getRoleRedirectPath(envelope.user.role, returnTo, redirectByRole[envelope.user.role]), i18n.locale));
       router.refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to finish the social signup right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("auth_complete.error.finish_failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -140,9 +147,9 @@ export default function AuthCompletePage() {
     return (
       <main className="container stack-lg">
         <section className="page-hero">
-          <span className="eyebrow">Finishing sign-in</span>
-          <h1>Taking you into YardMatch.</h1>
-          <p>Saving your session and opening the right workspace.</p>
+          <span className="eyebrow">{i18n.t("auth_complete.success.eyebrow")}</span>
+          <h1>{i18n.t("auth_complete.success.title")}</h1>
+          <p>{i18n.t("auth_complete.success.body")}</p>
         </section>
       </main>
     );
@@ -152,9 +159,9 @@ export default function AuthCompletePage() {
     return (
       <main className="container stack-lg">
         <section className="page-hero">
-          <span className="eyebrow">Finish your account</span>
-          <h1>One more step to create your YardMatch profile.</h1>
-          <p>We already verified your email. Add the contact and address details your role needs.</p>
+          <span className="eyebrow">{i18n.t("auth_complete.pending.eyebrow")}</span>
+          <h1>{i18n.t("auth_complete.pending.title")}</h1>
+          <p>{i18n.t("auth_complete.pending.body")}</p>
         </section>
 
         <section className="card">
@@ -162,46 +169,47 @@ export default function AuthCompletePage() {
             <div className="list-panel">
               <strong>{searchParams.get("email")}</strong>
               <p>
-                {role === "provider"
-                  ? "Business owner"
-                  : role === "ops"
-                    ? "Operations"
-                    : role === "crew-member"
-                      ? "Crew member"
-                      : "Property owner"}{" "}
-                account
+                {i18n.t(
+                  role === "provider"
+                    ? "auth_complete.role.provider"
+                    : role === "ops"
+                      ? "auth_complete.role.ops"
+                      : role === "crew-member"
+                        ? "auth_complete.role.crew"
+                        : "auth_complete.role.customer"
+                )}
               </p>
             </div>
 
             <div className="form-grid">
               <label className="form-field form-field--full">
-                <span>Full name</span>
+                <span>{i18n.t("auth_signup.field.full_name")}</span>
                 <input onChange={(event) => setFullName(event.target.value)} value={fullName} />
               </label>
               <label className="form-field">
-                <span>Phone</span>
+                <span>{i18n.t("auth_signup.field.phone")}</span>
                 <input onChange={(event) => setPhone(event.target.value)} placeholder="555-0100" value={phone} />
               </label>
               {role === "provider" ? (
                 <label className="form-field">
-                  <span>Company name</span>
+                  <span>{i18n.t("auth_complete.field.company_name")}</span>
                   <input
                     onChange={(event) => setCompanyName(event.target.value)}
-                    placeholder="Your business name"
+                    placeholder={i18n.t("auth_complete.placeholder.business_name")}
                     value={companyName}
                   />
                 </label>
               ) : null}
               <label className="form-field form-field--full">
-                <span>Address search</span>
+                <span>{i18n.t("auth_complete.field.address_search")}</span>
                 <div className="cta-row">
                   <input
                     onChange={(event) => setAddressQuery(event.target.value)}
-                    placeholder="Search your address, city, or ZIP"
+                    placeholder={i18n.t("auth_complete.placeholder.address_search")}
                     value={addressQuery}
                   />
                   <button className="button-secondary" disabled={isSearching} onClick={() => void handleSearchAddress()} type="button">
-                    {isSearching ? "Searching..." : "Find address"}
+                    {isSearching ? i18n.t("auth_complete.searching") : i18n.t("auth_complete.find_address")}
                   </button>
                 </div>
               </label>
@@ -226,7 +234,14 @@ export default function AuthCompletePage() {
                       {suggestion.address.line1}, {suggestion.address.city}, {suggestion.address.state}{" "}
                       {suggestion.address.postalCode}
                     </p>
-                    <p>{suggestion.matchReason ?? (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}</p>
+                    <p>
+                      {suggestion.matchReason ??
+                        i18n.t(
+                          suggestion.source === "google-geocoding"
+                            ? "customer.search.google_verified_area"
+                            : "customer.search.suggested_area"
+                        )}
+                    </p>
                   </button>
                 ))}
               </div>
@@ -235,38 +250,39 @@ export default function AuthCompletePage() {
             ) : null}
 
             <div className="list-panel">
-              <strong>Selected address</strong>
+              <strong>{i18n.t("auth_complete.selected_address")}</strong>
               <p>
                 {address.line1
                   ? `${address.line1}, ${address.city}, ${address.state} ${address.postalCode}`
-                  : "Search and choose your address before continuing."}
+                  : i18n.t("auth_complete.choose_address")}
               </p>
             </div>
 
             {errorMessage ? (
               <div className="list-panel" role="alert">
-                <strong>We still need one more thing</strong>
+                <strong>{i18n.t("auth_complete.error_title")}</strong>
                 <p>{errorMessage}</p>
               </div>
             ) : null}
 
             <div className="cta-row">
               <button className="button" disabled={isSubmitting} type="submit">
-                {isSubmitting ? "Creating account..." : "Finish account"}
+                {isSubmitting ? i18n.t("auth_signup.creating") : i18n.t("auth_complete.finish_account")}
               </button>
               <a
                 className="button-secondary"
-                href={
+                href={addLocalePrefix(
                   role === "provider"
                     ? "/auth/provider/create"
                     : role === "ops"
                       ? "/help"
                       : role === "crew-member"
                         ? "/auth/crew"
-                        : "/auth/customer"
-                }
+                        : "/auth/customer",
+                  i18n.locale
+                )}
               >
-                Start over
+                {i18n.t("auth_complete.start_over")}
               </a>
             </div>
           </form>
@@ -278,40 +294,42 @@ export default function AuthCompletePage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">Sign-in issue</span>
-        <h1>We couldn&apos;t finish that social sign-in.</h1>
-        <p>{errorMessage || "Try again, or use your email and password while we sort it out."}</p>
+        <span className="eyebrow">{i18n.t("auth_complete.issue.eyebrow")}</span>
+        <h1>{i18n.t("auth_complete.issue.title")}</h1>
+        <p>{errorMessage || i18n.t("auth_complete.issue.body")}</p>
       </section>
 
       <section className="card">
         <div className="cta-row">
           <a
             className="button"
-            href={
+            href={addLocalePrefix(
               role === "provider"
                 ? "/login/provider"
                 : role === "ops"
                   ? "/login/ops"
                   : role === "crew-member"
                     ? "/login/crew"
-                    : "/login/customer"
-            }
+                    : "/login/customer",
+              i18n.locale
+            )}
           >
-            Back to login
+            {i18n.t("auth_complete.back_to_login")}
           </a>
           <a
             className="button-secondary"
-            href={
+            href={addLocalePrefix(
               role === "provider"
                 ? "/auth/provider/create"
                 : role === "ops"
                   ? "/help"
                   : role === "crew-member"
                     ? "/auth/crew"
-                    : "/auth/customer"
-            }
+                    : "/auth/customer",
+              i18n.locale
+            )}
           >
-            Try sign up again
+            {i18n.t("auth_complete.try_signup_again")}
           </a>
         </div>
       </section>

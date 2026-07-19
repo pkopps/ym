@@ -324,6 +324,16 @@ body {
   justify-self: end;
 }
 
+.language-picker select {
+  border: 1px solid var(--ym-color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--ym-color-ink);
+  font: inherit;
+  min-height: 36px;
+  padding: 0 var(--ym-space-4);
+}
+
 .site-header__nav {
   min-width: 0;
 }

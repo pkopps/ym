@@ -1,16 +1,18 @@
 "use client";
 
-import { launchOpsPlaybookSections } from "../lib/launchOpsPlaybookContent";
+import { localizeLaunchOpsPlaybookSections } from "../lib/launchOpsPlaybookContent";
+import { useI18n } from "@yardmatch/i18n/react";
 
 export function OpsLaunchPlaybook() {
+  const i18n = useI18n();
+  const launchOpsPlaybookSections = localizeLaunchOpsPlaybookSections(i18n);
+
   return (
     <section className="card">
-      <span className="eyebrow">Launch playbook</span>
-      <h2>Run the first weeks with explicit rules.</h2>
+      <span className="eyebrow">{i18n.t("ops_auto.ops_launch_playbook.launch_playbook_pv92ve")}</span>
+      <h2>{i18n.t("ops_auto.ops_launch_playbook.run_the_first_weeks_with_explicit_rules_td5476")}</h2>
       <p>
-        This turns the launch checklist into working guidance for coverage, service recovery,
-        no-shows, and provider go-live decisions.
-      </p>
+        {i18n.t("ops_auto.ops_launch_playbook.this_turns_the_launch_checklist_into_working_guidance_5do9jy")} </p>
 
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
         {launchOpsPlaybookSections.map((section) => (
@@ -24,19 +26,19 @@ export function OpsLaunchPlaybook() {
                 <article className="card" key={scenario.id}>
                   <h4>{scenario.title}</h4>
                   <p>
-                    <strong>Trigger:</strong> {scenario.trigger}
+                    <strong>{i18n.t("ops_auto.ops_launch_playbook.trigger_pxe1sy")}</strong> {scenario.trigger}
                   </p>
                   <p>
-                    <strong>Primary action:</strong> {scenario.primaryAction}
+                    <strong>{i18n.t("ops_auto.ops_launch_playbook.primary_action_h45pbu")}</strong> {scenario.primaryAction}
                   </p>
                   <p>
-                    <strong>Customer owner:</strong> {scenario.customerOwner}
+                    <strong>{i18n.t("ops_auto.ops_launch_playbook.customer_owner_5rp3rd")}</strong> {scenario.customerOwner}
                   </p>
                   <p>
-                    <strong>Escalate when:</strong> {scenario.escalationRule}
+                    <strong>{i18n.t("ops_auto.ops_launch_playbook.escalate_when_bwc1la")}</strong> {scenario.escalationRule}
                   </p>
                   <div className="stack-sm">
-                    <p>Guardrails</p>
+                    <p>{i18n.t("ops_auto.ops_launch_playbook.guardrails_8rihfg")}</p>
                     <ul className="timeline">
                       {scenario.guardrails.map((guardrail) => (
                         <li key={guardrail}>

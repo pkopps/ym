@@ -138,6 +138,7 @@ import { ApiRoutes } from "./routes";
 
 export class MarketplaceApiClient {
   private authToken?: string;
+  private locale?: string;
   private onUnauthorized?: (error: Error) => void;
 
   public constructor(private readonly baseUrl: string) {}
@@ -146,8 +147,20 @@ export class MarketplaceApiClient {
     this.authToken = token;
   }
 
+  public setLocale(locale: string | undefined): void {
+    this.locale = locale;
+  }
+
   public setUnauthorizedHandler(handler: ((error: Error) => void) | undefined): void {
     this.onUnauthorized = handler;
+  }
+
+  private buildHeaders(): Record<string, string> {
+    return {
+      "Content-Type": "application/json",
+      ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+      ...(this.locale ? { "X-YardMatch-Locale": this.locale } : {})
+    };
   }
 
   private async buildError(response: Response, path: string): Promise<Error> {
@@ -165,10 +178,7 @@ export class MarketplaceApiClient {
   private async postJson<TResponse>(path: string, payload: unknown): Promise<TResponse> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {})
-      },
+      headers: this.buildHeaders(),
       body: JSON.stringify(payload)
     });
 
@@ -186,10 +196,7 @@ export class MarketplaceApiClient {
   private async getJson<TResponse>(path: string): Promise<TResponse> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {})
-      },
+      headers: this.buildHeaders(),
       cache: "no-store"
     });
 

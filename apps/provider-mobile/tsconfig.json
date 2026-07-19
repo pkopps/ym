@@ -20,6 +20,9 @@
       "path": "../../packages/help-center"
     },
     {
+      "path": "../../packages/i18n"
+    },
+    {
       "path": "../../packages/observability"
     },
     {

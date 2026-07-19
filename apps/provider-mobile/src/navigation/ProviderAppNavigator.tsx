@@ -2,21 +2,28 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
+import { TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { ClientsScreen } from "../screens/ClientsScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { ScheduleScreen } from "../screens/ScheduleScreen";
 import { SupportScreen } from "../screens/SupportScreen";
 
 type TabKey = "dashboard" | "schedule" | "crew" | "account";
+type LanguageSettings = {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+};
 
-const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
-  { key: "dashboard", label: "Home", icon: "home" },
-  { key: "schedule", label: "Schedule", icon: "calendar" },
-  { key: "crew", label: "Staffing", icon: "users" },
-  { key: "account", label: "Business", icon: "user" }
+const tabs: Array<{ key: TabKey; labelKey: TranslationKey; icon: React.ComponentProps<typeof Feather>["name"] }> = [
+  { key: "dashboard", labelKey: "mobile.nav.home", icon: "home" },
+  { key: "schedule", labelKey: "mobile.nav.schedule", icon: "calendar" },
+  { key: "crew", labelKey: "mobile.nav.staffing", icon: "users" },
+  { key: "account", labelKey: "mobile.nav.business", icon: "user" }
 ];
 
-export function ProviderAppNavigator() {
+export function ProviderAppNavigator({ languageSettings }: { languageSettings: LanguageSettings }) {
+  const i18n = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
 
   const screen = {
@@ -28,7 +35,7 @@ export function ProviderAppNavigator() {
     ),
     schedule: <ScheduleScreen />,
     crew: <ClientsScreen />,
-    account: <SupportScreen />
+    account: <SupportScreen languageSettings={languageSettings} />
   }[activeTab];
 
   return (
@@ -49,7 +56,7 @@ export function ProviderAppNavigator() {
                 name={tab.icon}
                 size={18}
               />
-              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{tab.label}</Text>
+              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{i18n.t(tab.labelKey)}</Text>
             </Pressable>
           );
         })}

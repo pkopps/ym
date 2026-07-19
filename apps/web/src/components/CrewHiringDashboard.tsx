@@ -1,11 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { addLocalePrefix } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { crewHiringOpportunities } from "@yardmatch/ui";
 
 type RequestStatus = "idle" | "success" | "filled";
 
 export function CrewHiringDashboard() {
+  const i18n = useI18n();
   const [requestStates, setRequestStates] = useState<Record<string, RequestStatus>>({});
 
   const trainingCount = crewHiringOpportunities.filter((opportunity) => opportunity.trainingProvided).length;
@@ -19,15 +22,15 @@ export function CrewHiringDashboard() {
       <section className="grid-three">
         <article className="card">
           <h2>{crewHiringOpportunities.length}</h2>
-          <p>Businesses hiring now</p>
+          <p>{i18n.t("crew_hiring.metric.businesses")}</p>
         </article>
         <article className="card">
           <h2>{totalOpenWindows}</h2>
-          <p>Open shift windows</p>
+          <p>{i18n.t("crew_hiring.metric.windows")}</p>
         </article>
         <article className="card">
           <h2>{trainingCount}</h2>
-          <p>Businesses offering training</p>
+          <p>{i18n.t("crew_hiring.metric.training")}</p>
         </article>
       </section>
 
@@ -35,9 +38,9 @@ export function CrewHiringDashboard() {
         <article className="card">
           <div id="open-crews" />
           <div className="search-result-title">
-            <h2>Open crews</h2>
-            <a className="button-secondary" href="/crew/schedule">
-              View your schedule
+            <h2>{i18n.t("crew_hiring.open_crews")}</h2>
+            <a className="button-secondary" href={addLocalePrefix("/crew/schedule", i18n.locale)}>
+              {i18n.t("crew_hiring.view_schedule")}
             </a>
           </div>
           <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -49,7 +52,7 @@ export function CrewHiringDashboard() {
                   <div className="crew-opportunity-card__header">
                     <div className="crew-opportunity-card__identity">
                       <img
-                        alt={`${opportunity.ownerName} avatar`}
+                        alt={i18n.t("crew_hiring.avatar_alt", { ownerName: opportunity.ownerName })}
                         className="crew-opportunity-card__avatar"
                         src={opportunity.avatarUrl}
                       />
@@ -59,8 +62,12 @@ export function CrewHiringDashboard() {
                           <span className="result-badge">{opportunity.urgencyLabel}</span>
                         </div>
                         <p>
-                          {opportunity.ownerName} • {opportunity.city}, {opportunity.state} •{" "}
-                          {opportunity.distanceMiles} miles away
+                          {i18n.t("crew_hiring.owner_location_distance", {
+                            ownerName: opportunity.ownerName,
+                            city: opportunity.city,
+                            state: opportunity.state,
+                            distance: opportunity.distanceMiles
+                          })}
                         </p>
                       </div>
                     </div>
@@ -69,12 +76,12 @@ export function CrewHiringDashboard() {
 
                   <div className="crew-opportunity-card__grid">
                     <div>
-                      <h4>Need</h4>
+                      <h4>{i18n.t("crew_hiring.need")}</h4>
                       <p>{opportunity.needsLabel}</p>
                       <p>{opportunity.crewGapLabel}</p>
                     </div>
                     <div>
-                      <h4>Best for</h4>
+                      <h4>{i18n.t("crew_hiring.best_for")}</h4>
                       <div className="chip-row">
                         {opportunity.serviceNeeds.map((need) => (
                           <span key={need}>{need}</span>
@@ -85,7 +92,7 @@ export function CrewHiringDashboard() {
 
                   <div className="crew-opportunity-card__grid">
                     <div>
-                      <h4>When they need help</h4>
+                      <h4>{i18n.t("crew_hiring.when")}</h4>
                       <ul className="timeline">
                         {opportunity.hiringWindows.map((window) => (
                           <li key={`${window.dayLabel}-${window.timeLabel}`}>
@@ -96,8 +103,14 @@ export function CrewHiringDashboard() {
                       </ul>
                     </div>
                     <div>
-                      <h4>Training and equipment</h4>
-                      <p>{opportunity.trainingProvided ? "Training provided" : "No formal training"}</p>
+                      <h4>{i18n.t("crew_hiring.training_equipment")}</h4>
+                      <p>
+                        {i18n.t(
+                          opportunity.trainingProvided
+                            ? "crew_hiring.training_provided"
+                            : "crew_hiring.no_formal_training"
+                        )}
+                      </p>
                       <p>{opportunity.guidanceStyle}</p>
                       <p>{opportunity.equipmentProvided}</p>
                     </div>
@@ -105,11 +118,11 @@ export function CrewHiringDashboard() {
 
                   {status === "success" ? (
                     <div className="crew-request-feedback crew-request-feedback--success">
-                      <strong>Request sent.</strong>
-                      <p>This business owner can review your request now.</p>
+                      <strong>{i18n.t("crew_hiring.request_sent")}</strong>
+                      <p>{i18n.t("crew_hiring.request_sent_body")}</p>
                       <div className="cta-row">
-                        <a className="button-secondary" href="/crew/schedule">
-                          View your schedule
+                        <a className="button-secondary" href={addLocalePrefix("/crew/schedule", i18n.locale)}>
+                          {i18n.t("crew_hiring.view_schedule")}
                         </a>
                       </div>
                     </div>
@@ -117,11 +130,11 @@ export function CrewHiringDashboard() {
 
                   {status === "filled" ? (
                     <div className="crew-request-feedback crew-request-feedback--warning">
-                      <strong>No longer available.</strong>
-                      <p>That spot was filled while you were browsing.</p>
+                      <strong>{i18n.t("crew_hiring.no_longer_available")}</strong>
+                      <p>{i18n.t("crew_hiring.no_longer_available_body")}</p>
                       <div className="cta-row">
                         <a className="button-secondary" href="#open-crews">
-                          Don&apos;t worry, more businesses still need help
+                          {i18n.t("crew_hiring.more_businesses")}
                         </a>
                       </div>
                     </div>
@@ -138,10 +151,10 @@ export function CrewHiringDashboard() {
                       }
                       type="button"
                     >
-                      Request to join
+                      {i18n.t("crew_hiring.request_to_join")}
                     </button>
                     <button className="button-secondary" type="button">
-                      Save for later
+                      {i18n.t("crew_hiring.save_for_later")}
                     </button>
                   </div>
                 </article>
@@ -151,30 +164,30 @@ export function CrewHiringDashboard() {
         </article>
 
         <article className="card" id="other-open-crews">
-          <h2>Your crew profile</h2>
+          <h2>{i18n.t("crew_hiring.profile.title")}</h2>
           <div className="stack-lg" style={{ paddingBottom: 0 }}>
             <article className="list-panel">
-              <h3>Skills</h3>
-              <p>Lawn mowing, hedge trimming, edging, cleanup, snow shoveling</p>
+              <h3>{i18n.t("crew_signup.skills")}</h3>
+              <p>{i18n.t("crew_hiring.profile.skills")}</p>
             </article>
             <article className="list-panel">
-              <h3>Availability</h3>
-              <p>Mon, Wed, Fri • 7:00 AM - 4:00 PM</p>
+              <h3>{i18n.t("crew_hiring.profile.availability")}</h3>
+              <p>{i18n.t("crew_hiring.profile.availability_value")}</p>
             </article>
             <article className="list-panel">
-              <h3>Travel radius</h3>
-              <p>20 miles from home base</p>
+              <h3>{i18n.t("crew_hiring.profile.travel_radius")}</h3>
+              <p>{i18n.t("crew_hiring.profile.travel_radius_value", { distance: 20 })}</p>
             </article>
             <article className="list-panel">
-              <h3>Equipment</h3>
-              <p>Prefers companies that provide equipment on site.</p>
+              <h3>{i18n.t("crew_hiring.profile.equipment")}</h3>
+              <p>{i18n.t("crew_hiring.profile.equipment_value")}</p>
             </article>
             <article className="list-panel">
-              <h3>Schedule</h3>
-              <p>Accepted shifts appear in your calendar and list view.</p>
+              <h3>{i18n.t("crew_signup.schedule")}</h3>
+              <p>{i18n.t("crew_hiring.profile.schedule_value")}</p>
               <div className="cta-row">
-                <a className="button-secondary" href="/crew/schedule">
-                  Open schedule
+                <a className="button-secondary" href={addLocalePrefix("/crew/schedule", i18n.locale)}>
+                  {i18n.t("crew_hiring.profile.open_schedule")}
                 </a>
               </div>
             </article>

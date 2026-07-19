@@ -20,6 +20,9 @@ import {
   SearchProvidersResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { addLocalePrefix, type I18nInstance, type TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -41,17 +44,17 @@ import {
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
 
-const serviceOptions: Array<{ label: string; value: ServiceCategory }> = [
-  { label: "Lawn mowing", value: "lawn-mowing" },
-  { label: "Hedge trimming", value: "hedge-trimming" },
-  { label: "Mulch installation", value: "mulch-installation" },
-  { label: "Seasonal cleanup", value: "seasonal-cleanup" },
-  { label: "Weed control", value: "weed-control" },
-  { label: "Leaf blowing", value: "leaf-blowing" }
+const serviceOptions: Array<{ labelKey: TranslationKey; value: ServiceCategory }> = [
+  { labelKey: "service.category.lawn_mowing", value: "lawn-mowing" },
+  { labelKey: "service.category.hedge_trimming", value: "hedge-trimming" },
+  { labelKey: "service.category.mulch_installation", value: "mulch-installation" },
+  { labelKey: "service.category.seasonal_cleanup", value: "seasonal-cleanup" },
+  { labelKey: "service.category.weed_control", value: "weed-control" },
+  { labelKey: "service.category.leaf_blowing", value: "leaf-blowing" }
 ];
-const dashboardTimingOptions: Array<{ label: string; value: CustomerTimingPreference }> = [
+const dashboardTimingOptions: Array<{ label?: string; labelKey?: TranslationKey; value: CustomerTimingPreference }> = [
   ...customerTimingOptions,
-  { label: "Choose date", value: "custom-date" }
+  { labelKey: "customer.timing.choose_date", value: "custom-date" }
 ];
 const dashboardTimingValues = new Set<CustomerTimingPreference>(dashboardTimingOptions.map((option) => option.value));
 const dashboardCustomWindowValues = new Set<CustomerCustomTimingWindow>(
@@ -65,30 +68,26 @@ const historicalBookingStatuses = new Set<Booking["status"]>([
   "disputed"
 ]);
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
+function formatOpenWindow(i18n: I18nInstance, slot?: SearchProvidersResponse["suggestedSlots"][number]) {
+  return slot ? formatBookingWindowSummary(slot.startIso) : i18n.t("customer_live.no_open_slot");
 }
 
-function formatOpenWindow(slot?: SearchProvidersResponse["suggestedSlots"][number]) {
-  return slot ? formatBookingWindowSummary(slot.startIso) : "No open slot";
+function formatProviderTrust(i18n: I18nInstance, provider: ProviderProfile) {
+  return i18n.t("market.home.provider.rating_line", {
+    rating: provider.rating,
+    count: provider.reviewCount
+  });
 }
 
-function formatProviderTrust(provider: ProviderProfile) {
-  return `${provider.rating.toFixed(1)} overall • ${provider.reviewCount} reviews`;
-}
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+function formatDateTime(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
 }
 
-function formatEta(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+function formatEta(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
@@ -104,8 +103,16 @@ function toDateTimeLocalValue(iso: string) {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-function formatRecurringFrequency(frequency: RecurringServiceFrequency) {
-  return frequency === "biweekly" ? "Every 2 weeks" : "Every week";
+function formatRecurringFrequency(i18n: I18nInstance, frequency: RecurringServiceFrequency) {
+  return frequency === "biweekly" ? i18n.t("customer_live.cadence.biweekly") : i18n.t("customer_live.cadence.weekly");
+}
+
+function customerWindowLabelKey(window: CustomerCustomTimingWindow): TranslationKey {
+  return window === "morning"
+    ? "customer.window.morning"
+    : window === "afternoon"
+      ? "customer.window.afternoon"
+      : "customer.window.evening";
 }
 
 function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreference) {
@@ -146,32 +153,32 @@ function parseDashboardDateParam(value: string | null): string {
   return value;
 }
 
-function formatRetentionTrigger(trigger: CustomerRetentionOpportunity["trigger"]) {
+function formatRetentionTrigger(i18n: I18nInstance, trigger: CustomerRetentionOpportunity["trigger"]) {
   return trigger === "recent-completion"
-    ? "Recent completion"
+    ? i18n.t("customer_live.retention.trigger.recent_completion")
     : trigger === "30-day-follow-up"
-      ? "30-day follow-up"
+      ? i18n.t("customer_live.retention.trigger.30_day")
       : trigger === "60-day-follow-up"
-        ? "60-day reminder"
+        ? i18n.t("customer_live.retention.trigger.60_day")
         : trigger === "spring-season-window"
-          ? "Spring reminder"
+          ? i18n.t("customer_live.retention.trigger.spring")
           : trigger === "fall-season-window"
-            ? "Fall reminder"
-            : "90-day follow-up";
+            ? i18n.t("customer_live.retention.trigger.fall")
+            : i18n.t("customer_live.retention.trigger.90_day");
 }
 
-function formatRetentionLoyaltyLabel(segment: CustomerRetentionOpportunity["loyaltySegment"]) {
+function formatRetentionLoyaltyLabel(i18n: I18nInstance, segment: CustomerRetentionOpportunity["loyaltySegment"]) {
   return segment === "provider-loyal"
-    ? "Same provider repeat"
+    ? i18n.t("customer_live.retention.loyalty.provider_loyal")
     : segment === "repeat-customer"
-      ? "Repeat customer"
-      : "First repeat";
+      ? i18n.t("customer_live.retention.loyalty.repeat_customer")
+      : i18n.t("customer_live.retention.loyalty.first_repeat");
 }
 
-function formatCompletedJobTrustLine(completedJobCount: number) {
+function formatCompletedJobTrustLine(i18n: I18nInstance, completedJobCount: number) {
   return completedJobCount > 0
-    ? `${completedJobCount} completed YardMatch jobs.`
-    : "New on YardMatch, but already ranked well for service fit, timing, and trust signals.";
+    ? i18n.t("customer_live.provider.completed_job_trust", { count: completedJobCount })
+    : i18n.t("customer_live.provider.new_trust");
 }
 
 type RequestStepStatus = "complete" | "current" | "pending";
@@ -184,9 +191,9 @@ function getRequestStepStatus(stepIndex: number, activeStepIndex: number): Reque
   return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
-function formatBookingStatusTitle(booking: Booking) {
+function formatBookingStatusTitle(i18n: I18nInstance, booking: Booking) {
   if (booking.onRouteConfirmedAt) {
-    return "Crew on the way";
+    return i18n.t("customer_live.status.crew_on_way");
   }
 
   if (booking.activeExceptionType) {
@@ -194,18 +201,18 @@ function formatBookingStatusTitle(booking: Booking) {
   }
 
   if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
-    return "Running behind";
+    return i18n.t("customer_live.status.running_behind");
   }
 
   switch (booking.status) {
     case "requested":
-      return "Waiting on confirmation";
+      return i18n.t("customer_live.status.waiting_confirmation");
     case "confirmed":
-      return "Visit confirmed";
+      return i18n.t("customer_live.status.visit_confirmed");
     case "in-progress":
-      return "Visit in progress";
+      return i18n.t("customer_live.status.visit_in_progress");
     case "completed":
-      return "Visit completed";
+      return i18n.t("customer_live.status.visit_completed");
     default:
       return booking.status.replaceAll("-", " ");
   }
@@ -216,46 +223,47 @@ function formatSentenceTail(value: string) {
   return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
-function getBookingStateMessage(booking: Booking, providerName: string, payment?: PaymentRecord) {
+function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerName: string, payment?: PaymentRecord) {
   if (booking.onRouteConfirmedAt) {
-    return `${providerName} is on the way. You can message the business or track the crew live.`;
+    return i18n.t("customer_live.state.on_way", { provider: providerName });
   }
 
   if (booking.activeExceptionType) {
-    return `${providerName} flagged an issue with this visit. Review the update, then decide if you need support.`;
+    return i18n.t("customer_live.state.exception", { provider: providerName });
   }
 
   if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
-    return `${providerName} is running behind. Check the updated arrival time before changing the visit.`;
+    return i18n.t("customer_live.state.late", { provider: providerName });
   }
 
   switch (booking.status) {
     case "requested":
-      return `${providerName} is reviewing this request. You’ll pay after they confirm the time.`;
+      return i18n.t("customer_live.state.requested", { provider: providerName });
     case "confirmed":
       return payment?.status === "pending"
-        ? `Your visit is set with ${formatSentenceTail(providerName)} Finish checkout when you are ready.`
-        : `Your visit is set with ${formatSentenceTail(providerName)} Everything is lined up for the scheduled window.`;
+        ? i18n.t("customer_live.state.confirmed_checkout", { provider: formatSentenceTail(providerName) })
+        : i18n.t("customer_live.state.confirmed", { provider: formatSentenceTail(providerName) });
     case "in-progress":
-      return `${providerName} is working this visit now. Keep support close if anything changes in the field.`;
+      return i18n.t("customer_live.state.in_progress", { provider: providerName });
     default:
-      return `${providerName} is attached to this visit.`;
+      return i18n.t("customer_live.state.attached", { provider: providerName });
   }
 }
 
-function getPriorityBookingCardTitle(booking: Booking, payment?: PaymentRecord) {
+function getPriorityBookingCardTitle(i18n: I18nInstance, booking: Booking, payment?: PaymentRecord) {
   if (booking.status === "confirmed" && payment?.status !== "captured") {
-    return "Finish booking";
+    return i18n.t("customer_live.finish_booking");
   }
 
   if (booking.status === "confirmed" && !booking.onRouteConfirmedAt && !booking.activeExceptionType && !booking.lateEtaIso) {
-    return "You're set";
+    return i18n.t("customer_live.youre_set");
   }
 
-  return formatBookingStatusTitle(booking);
+  return formatBookingStatusTitle(i18n, booking);
 }
 
 export function CustomerLiveDashboard() {
+  const i18n = useI18n();
   const searchParams = useSearchParams();
   const requestedView = searchParams.get("view");
   const requestedFlow = searchParams.get("flow");
@@ -313,11 +321,12 @@ export function CustomerLiveDashboard() {
   const trackedRetentionPromptIds = useRef(new Set<string>());
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
-  const timingLabel = getCustomerTimingLabel(selectedTiming, selectedCustomDate, selectedCustomWindow);
+  const timingLabel = getCustomerTimingLabel(selectedTiming, selectedCustomDate, selectedCustomWindow, i18n);
+  const selectedServiceOption = serviceOptions.find((option) => option.value === selectedCategory);
   const selectedServiceLabel =
-    serviceOptions.find((option) => option.value === selectedCategory)?.label ?? "Selected service";
+    selectedServiceOption ? i18n.t(selectedServiceOption.labelKey) : i18n.t("customer_live.selected_service");
   const selectedCadenceLabel =
-    selectedCadence === "one-time" ? "One-time visit" : formatRecurringFrequency(selectedCadence);
+    selectedCadence === "one-time" ? i18n.t("customer_live.cadence.one_time") : formatRecurringFrequency(i18n, selectedCadence);
   const baseProviderCards =
     providerResults?.rankedProviders.map((result) => ({
       provider: result.provider,
@@ -460,19 +469,19 @@ export function CustomerLiveDashboard() {
   const hasCurrentBookAgainOptions = Boolean(sectionSpotlightBookAgainOption) || sectionAdditionalBookAgainOptionCount > 0;
   const requestActiveStepIndex = recommendedProviderCard ? 3 : providerStepActive ? 2 : quote ? 1 : 0;
   const requestProgressSteps = [
-    { label: "Details", value: selectedServiceLabel },
-    { label: "Price", value: quote ? formatCurrency(quote.estimatedPriceCents) : "Next" },
+    { label: i18n.t("customer_live.progress.details"), value: selectedServiceLabel },
+    { label: i18n.t("customer_live.progress.price"), value: quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.next") },
     {
-      label: "Match",
+      label: i18n.t("customer_live.progress.match"),
       value: recommendedProviderCard
         ? selectedProviderLabel ?? recommendedProviderCard.provider.companyName
         : providerSearchState === "loading"
-          ? "Checking"
-          : "After price"
+          ? i18n.t("common.loading.checking")
+          : i18n.t("customer_live.after_price")
     },
     {
-      label: "Request",
-      value: recommendedProviderCard?.slot ? formatOpenWindow(recommendedProviderCard.slot) : "Review"
+      label: i18n.t("customer_live.progress.request"),
+      value: recommendedProviderCard?.slot ? formatOpenWindow(i18n, recommendedProviderCard.slot) : i18n.t("customer_live.review")
     }
   ].map((step, index) => ({
     ...step,
@@ -676,7 +685,7 @@ export function CustomerLiveDashboard() {
     };
 
     if (paymentState === "stripe-cancelled") {
-      setBookingMessage("Stripe checkout cancelled.");
+      setBookingMessage(i18n.t("customer_live.message.stripe_cancelled"));
       setPaymentActionHandled(true);
       clearPaymentParams();
       return;
@@ -697,10 +706,10 @@ export function CustomerLiveDashboard() {
           checkoutSessionId
         });
         await loadDashboard();
-        setBookingMessage("Stripe payment received.");
+        setBookingMessage(i18n.t("customer_live.message.stripe_received"));
       } catch (error) {
         setErrorMessage(
-          error instanceof Error ? error.message : "Unable to confirm your Stripe payment right now."
+          error instanceof Error ? error.message : i18n.t("customer_live.error.confirm_stripe")
         );
       } finally {
         setLoadingState("idle");
@@ -711,7 +720,7 @@ export function CustomerLiveDashboard() {
 
   async function handleQuote() {
     if (!activeProperty) {
-      setErrorMessage("Choose a property first.");
+      setErrorMessage(i18n.t("customer_live.error.choose_property"));
       return;
     }
 
@@ -730,7 +739,7 @@ export function CustomerLiveDashboard() {
       setProviderResults(undefined);
       setProviderSearchState("idle");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to build a quote right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.build_quote"));
     } finally {
       setLoadingState("idle");
     }
@@ -738,7 +747,7 @@ export function CustomerLiveDashboard() {
 
   async function runProviderSearch(timingPreference: CustomerTimingPreference) {
     if (!activeProperty) {
-      setErrorMessage("Choose a property first.");
+      setErrorMessage(i18n.t("customer_live.error.choose_property"));
       return;
     }
 
@@ -775,7 +784,7 @@ export function CustomerLiveDashboard() {
       setProviderSearchState("loaded");
     } catch (error) {
       setProviderSearchState("idle");
-      setErrorMessage(error instanceof Error ? error.message : "Unable to search providers right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.search_providers"));
     } finally {
       setLoadingState("idle");
     }
@@ -792,7 +801,7 @@ export function CustomerLiveDashboard() {
   async function handleApplyRetentionOpportunity(opportunity: CustomerRetentionOpportunity) {
     const property = properties.find((candidate) => candidate.id === opportunity.propertyId);
     if (!property) {
-      setErrorMessage("That saved property is no longer available.");
+      setErrorMessage(i18n.t("customer_live.error.saved_property_unavailable"));
       return;
     }
 
@@ -858,13 +867,13 @@ export function CustomerLiveDashboard() {
       setProviderSearchState("loaded");
       setBookingMessage(
         opportunity.kind === "start-recurring-plan"
-          ? "Recurring mowing setup is ready. Review the recommendation and route window to start the plan."
-          : "Your next service request is ready. Review the recommendation and route window."
+          ? i18n.t("customer_live.message.recurring_setup_ready")
+          : i18n.t("customer_live.message.next_service_ready")
       );
     } catch (error) {
       setProviderSearchState("idle");
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to prepare that follow-up service right now."
+        error instanceof Error ? error.message : i18n.t("customer_live.error.prepare_followup")
       );
     } finally {
       setLoadingState("idle");
@@ -881,7 +890,7 @@ export function CustomerLiveDashboard() {
       );
 
     if (!property) {
-      setErrorMessage("That saved property is no longer available.");
+      setErrorMessage(i18n.t("customer_live.error.saved_property_unavailable"));
       return;
     }
 
@@ -916,11 +925,11 @@ export function CustomerLiveDashboard() {
 
       setProviderResults(results);
       setProviderSearchState("loaded");
-      setBookingMessage("Your next repeat visit is ready. Review the recommendation and route window to queue it.");
+      setBookingMessage(i18n.t("customer_live.message.next_repeat_ready"));
     } catch (error) {
       setProviderSearchState("idle");
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to prepare the next repeat visit right now."
+        error instanceof Error ? error.message : i18n.t("customer_live.error.prepare_repeat")
       );
     } finally {
       setLoadingState("idle");
@@ -929,14 +938,14 @@ export function CustomerLiveDashboard() {
 
   async function handleCreateBooking(providerCard: (typeof providerCards)[number], rank: number) {
     if (!activeProperty) {
-      setErrorMessage("Choose a property first.");
+      setErrorMessage(i18n.t("customer_live.error.choose_property"));
       return;
     }
 
     const provider = providerCard.provider;
     const slot = providerCard.slot ?? providerResults?.suggestedSlots.find((candidate) => candidate.providerId === provider.id);
     if (!slot || !quote) {
-      setErrorMessage("Pick a provider with an available slot first.");
+      setErrorMessage(i18n.t("customer_live.error.pick_provider_slot"));
       return;
     }
 
@@ -978,7 +987,10 @@ export function CustomerLiveDashboard() {
           attribution: getLaunchAttributionContext()
         });
         setBookingMessage(
-          `Requested ${provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
+          i18n.t("customer_live.message.booking_requested", {
+            provider: provider.companyName,
+            window: formatBookingWindowSummary(slot.startIso)
+          })
         );
       } else {
         const recurringPlan = await api.createRecurringServicePlan({
@@ -1002,9 +1014,11 @@ export function CustomerLiveDashboard() {
           attribution: getLaunchAttributionContext()
         });
         setBookingMessage(
-          `Started an ${formatRecurringFrequency(selectedCadence).toLowerCase()} plan with ${provider.companyName}. First visit requested for ${formatBookingWindowSummary(
-            recurringPlan.initialBooking.scheduledStartIso
-          )}.`
+          i18n.t("customer_live.message.recurring_started", {
+            cadence: formatRecurringFrequency(i18n, selectedCadence).toLowerCase(),
+            provider: provider.companyName,
+            window: formatBookingWindowSummary(recurringPlan.initialBooking.scheduledStartIso)
+          })
         );
       }
       await loadDashboard();
@@ -1015,7 +1029,7 @@ export function CustomerLiveDashboard() {
       setProviderSearchState("idle");
       replaceDashboardSearchParams({ flow: undefined });
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to create your booking right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.create_booking"));
     } finally {
       setLoadingState("idle");
     }
@@ -1041,7 +1055,7 @@ export function CustomerLiveDashboard() {
       window.location.assign(checkout.checkoutUrl);
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to open Stripe checkout right now."
+        error instanceof Error ? error.message : i18n.t("customer_live.error.open_checkout")
       );
       setLoadingState("idle");
     }
@@ -1052,7 +1066,7 @@ export function CustomerLiveDashboard() {
     const rating = getReviewRating(opportunity.bookingId);
 
     if (!reviewText) {
-      setErrorMessage("Add a short review note before sending.");
+      setErrorMessage(i18n.t("customer_live.error.review_note_required"));
       return;
     }
 
@@ -1077,7 +1091,7 @@ export function CustomerLiveDashboard() {
       });
       await loadDashboard();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to submit your review right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.submit_review"));
     } finally {
       setLoadingState("idle");
     }
@@ -1091,10 +1105,10 @@ export function CustomerLiveDashboard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.cancelBooking({ bookingId });
-      setBookingMessage("Booking cancelled.");
+      setBookingMessage(i18n.t("customer_live.message.booking_cancelled"));
       await loadDashboard();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel this booking right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.cancel_booking"));
     } finally {
       setLoadingState("idle");
     }
@@ -1109,13 +1123,13 @@ export function CustomerLiveDashboard() {
       const api = createAuthenticatedWebApiClient();
       await api.cancelRecurringServicePlan({
         planId,
-        reason: "Customer cancelled the recurring service plan from the dashboard."
+        reason: i18n.t("customer_live.cancel_plan.reason")
       });
-      setBookingMessage("Recurring plan cancelled.");
+      setBookingMessage(i18n.t("customer_live.message.recurring_cancelled"));
       await loadDashboard();
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Unable to cancel this recurring plan right now."
+        error instanceof Error ? error.message : i18n.t("customer_live.error.cancel_recurring")
       );
     } finally {
       setLoadingState("idle");
@@ -1125,7 +1139,7 @@ export function CustomerLiveDashboard() {
   async function handleRescheduleBooking(bookingId: string) {
     const draft = rescheduleDrafts[bookingId];
     if (!draft) {
-      setErrorMessage("Pick a new date and time first.");
+      setErrorMessage(i18n.t("customer_live.error.pick_reschedule_time"));
       return;
     }
 
@@ -1140,10 +1154,10 @@ export function CustomerLiveDashboard() {
         scheduledStartIso: new Date(draft.start).toISOString(),
         scheduledEndIso: new Date(draft.end).toISOString()
       });
-      setBookingMessage("Booking rescheduled.");
+      setBookingMessage(i18n.t("customer_live.message.booking_rescheduled"));
       await loadDashboard();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to reschedule this booking right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.reschedule_booking"));
     } finally {
       setLoadingState("idle");
     }
@@ -1152,7 +1166,7 @@ export function CustomerLiveDashboard() {
   async function handleOpenDispute(bookingId: string) {
     const reason = (disputeDrafts[bookingId] ?? "").trim();
     if (!reason) {
-      setErrorMessage("Tell us why you need to dispute this booking.");
+      setErrorMessage(i18n.t("customer_live.error.dispute_reason_required"));
       return;
     }
 
@@ -1166,10 +1180,10 @@ export function CustomerLiveDashboard() {
         bookingId,
         reason
       });
-      setBookingMessage("Dispute opened. YardMatch support now has the booking context.");
+      setBookingMessage(i18n.t("customer_live.message.dispute_opened"));
       await loadDashboard();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open this dispute right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.open_dispute"));
     } finally {
       setLoadingState("idle");
     }
@@ -1180,12 +1194,12 @@ export function CustomerLiveDashboard() {
     const reason = (refundDrafts[bookingId] ?? "").trim();
 
     if (!payment) {
-      setErrorMessage("There is no payment on file for this booking yet.");
+      setErrorMessage(i18n.t("customer_live.error.no_payment"));
       return;
     }
 
     if (!reason) {
-      setErrorMessage("Tell us why you need a refund review.");
+      setErrorMessage(i18n.t("customer_live.error.refund_reason_required"));
       return;
     }
 
@@ -1199,10 +1213,10 @@ export function CustomerLiveDashboard() {
         paymentId: payment.id,
         reason
       });
-      setBookingMessage("Refund review requested. YardMatch support now has the payment and booking context.");
+      setBookingMessage(i18n.t("customer_live.message.refund_review_requested"));
       await loadDashboard();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to request a refund review right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.request_refund"));
     } finally {
       setLoadingState("idle");
     }
@@ -1218,7 +1232,7 @@ export function CustomerLiveDashboard() {
       setActiveChatBookingId(bookingId);
       setChatThread(nextThread);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open business chat right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.open_chat"));
     } finally {
       setLoadingState("idle");
     }
@@ -1234,7 +1248,7 @@ export function CustomerLiveDashboard() {
       setActiveTrackingBookingId(bookingId);
       setActiveTracking(tracking);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load arrival tracking right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.load_tracking"));
     } finally {
       setLoadingState("idle");
     }
@@ -1259,7 +1273,7 @@ export function CustomerLiveDashboard() {
       setChatThread(nextThread);
       setChatDraft("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send your message right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.send_message"));
     } finally {
       setLoadingState("idle");
     }
@@ -1278,7 +1292,7 @@ export function CustomerLiveDashboard() {
     return (
       <section className="container stack-lg">
         <section className="card">
-          <h2>Loading your account...</h2>
+          <h2>{i18n.t("customer_live.loading_account")}</h2>
         </section>
       </section>
     );
@@ -1288,14 +1302,14 @@ export function CustomerLiveDashboard() {
     return (
       <main className="container stack-lg">
         <section className="card">
-          <h2>Log in to manage your account</h2>
-          <p>Search for service, or log in to see bookings, repeat visits, and reviews.</p>
+          <h2>{i18n.t("customer_live.login_required.title")}</h2>
+          <p>{i18n.t("customer_live.login_required.body")}</p>
           <div className="cta-row">
-            <a className="button-secondary" href="/customer">
-              Request service
+            <a className="button-secondary" href={addLocalePrefix("/customer", i18n.locale)}>
+              {i18n.t("customer_history.request_service")}
             </a>
-            <a className="button" href="/login/customer">
-              Log in
+            <a className="button" href={addLocalePrefix("/login/customer", i18n.locale)}>
+              {i18n.t("nav.log_in")}
             </a>
           </div>
         </section>
@@ -1314,10 +1328,10 @@ export function CustomerLiveDashboard() {
   function renderRequestDetailsEditor(buttonLabel: string) {
     return (
       <>
-        <p>Pick the job, timing, and repeat schedule.</p>
+        <p>{i18n.t("customer_live.request_editor.body")}</p>
         <div className="form-grid">
           <label className="form-field">
-            <span>Property</span>
+            <span>{i18n.t("customer_live.label.property")}</span>
             <select onChange={(event) => setSelectedPropertyId(event.target.value)} value={selectedPropertyId}>
               {properties.map((property) => (
                 <option key={property.id} value={property.id}>
@@ -1327,27 +1341,27 @@ export function CustomerLiveDashboard() {
             </select>
           </label>
           <label className="form-field">
-            <span>Service</span>
+            <span>{i18n.t("customer_live.label.service")}</span>
             <select
               onChange={(event) => setSelectedCategory(event.target.value as ServiceCategory)}
               value={selectedCategory}
             >
               {serviceOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {i18n.t(option.labelKey)}
                 </option>
               ))}
             </select>
           </label>
           <label className="form-field">
-            <span>When</span>
+            <span>{i18n.t("customer_live.label.when")}</span>
             <select
               onChange={(event) => setSelectedTiming(event.target.value as CustomerTimingPreference)}
               value={selectedTiming}
             >
               {dashboardTimingOptions.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {option.labelKey ? i18n.t(option.labelKey) : option.label ?? option.value}
                 </option>
               ))}
             </select>
@@ -1355,7 +1369,7 @@ export function CustomerLiveDashboard() {
           {selectedTiming === "custom-date" ? (
             <>
               <label className="form-field">
-                <span>Date</span>
+                <span>{i18n.t("customer_live.label.date")}</span>
                 <input
                   min={getMinimumCustomerCustomDateString()}
                   onChange={(event) => setSelectedCustomDate(event.target.value)}
@@ -1364,14 +1378,14 @@ export function CustomerLiveDashboard() {
                 />
               </label>
               <label className="form-field">
-                <span>Window</span>
+                <span>{i18n.t("customer_live.label.window")}</span>
                 <select
                   onChange={(event) => setSelectedCustomWindow(event.target.value as CustomerCustomTimingWindow)}
                   value={selectedCustomWindow}
                 >
                   {customerCustomTimingWindowOptions.map((option) => (
                     <option key={option.value} value={option.value}>
-                      {option.label}
+                      {i18n.t(customerWindowLabelKey(option.value))}
                     </option>
                   ))}
                 </select>
@@ -1379,20 +1393,20 @@ export function CustomerLiveDashboard() {
             </>
           ) : null}
           <label className="form-field">
-            <span>Cadence</span>
+            <span>{i18n.t("customer_live.label.cadence")}</span>
             <select
               onChange={(event) => setSelectedCadence(event.target.value as "one-time" | RecurringServiceFrequency)}
               value={selectedCadence}
             >
-              <option value="one-time">One-time visit</option>
-              <option value="weekly">Every week</option>
-              <option value="biweekly">Every 2 weeks</option>
+              <option value="one-time">{i18n.t("customer_live.cadence.one_time")}</option>
+              <option value="weekly">{i18n.t("customer_live.cadence.weekly")}</option>
+              <option value="biweekly">{i18n.t("customer_live.cadence.biweekly")}</option>
             </select>
           </label>
         </div>
         <div className="cta-row" style={{ marginTop: "1rem" }}>
           <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} type="button">
-            {loadingState === "loading" ? "Working..." : buttonLabel}
+            {loadingState === "loading" ? i18n.t("customer_live.working") : buttonLabel}
           </button>
         </div>
         {activeProperty ? (
@@ -1407,7 +1421,7 @@ export function CustomerLiveDashboard() {
 
   function renderRequestProgress() {
     return (
-      <section className="customer-request-spine" aria-label="Request progress">
+      <section className="customer-request-spine" aria-label={i18n.t("customer_live.request_progress_aria")}>
         <ol className="customer-request-spine__steps">
           {requestProgressSteps.map((step, index) => (
             <li
@@ -1423,22 +1437,22 @@ export function CustomerLiveDashboard() {
             </li>
           ))}
         </ol>
-        <div className="customer-request-spine__summary" aria-label="Current request">
+        <div className="customer-request-spine__summary" aria-label={i18n.t("customer_listings_hero.current_request")}>
           <div>
-            <span>Service</span>
+            <span>{i18n.t("customer_live.label.service")}</span>
             <strong>{selectedServiceLabel}</strong>
           </div>
           <div>
-            <span>When</span>
+            <span>{i18n.t("customer_live.label.when")}</span>
             <strong>{timingLabel}</strong>
           </div>
           <div>
-            <span>Property</span>
-            <strong>{activeProperty?.label ?? "Choose property"}</strong>
+            <span>{i18n.t("customer_live.label.property")}</span>
+            <strong>{activeProperty?.label ?? i18n.t("customer_live.choose_property")}</strong>
           </div>
           <div>
-            <span>Price</span>
-            <strong>{quote ? formatCurrency(quote.estimatedPriceCents) : "After details"}</strong>
+            <span>{i18n.t("customer_live.progress.price")}</span>
+            <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.after_details")}</strong>
           </div>
         </div>
       </section>
@@ -1446,7 +1460,7 @@ export function CustomerLiveDashboard() {
   }
 
   function renderActiveBookingCard(booking: Booking) {
-    const providerName = providerNamesById[booking.providerId] ?? "Landscaping business";
+    const providerName = providerNamesById[booking.providerId] ?? i18n.t("market.home.provider.landscaping_business");
     const paymentRecord = getPaymentRecord(booking.id);
     const paymentLabel = getBookingPaymentLabel(booking, paymentRecord);
     const canEditVisit = booking.status === "requested" || booking.status === "confirmed";
@@ -1462,12 +1476,12 @@ export function CustomerLiveDashboard() {
         <div className="history-card__header">
           <div>
             <span className="eyebrow">{booking.category.replaceAll("-", " ")}</span>
-            <h2>{formatBookingStatusTitle(booking)}</h2>
+            <h2>{formatBookingStatusTitle(i18n, booking)}</h2>
             <p>{providerName}</p>
           </div>
-          <strong>{formatCurrency(booking.totalCents)}</strong>
+          <strong>{i18n.formatCurrency(booking.totalCents)}</strong>
         </div>
-        <p className="history-card__summary">{getBookingStateMessage(booking, providerName, paymentRecord)}</p>
+        <p className="history-card__summary">{getBookingStateMessage(i18n, booking, providerName, paymentRecord)}</p>
         <div className="chip-row">
           <span className="result-badge result-badge--neutral">
             {formatBookingWindowSummary(booking.scheduledStartIso)}
@@ -1482,7 +1496,9 @@ export function CustomerLiveDashboard() {
               onClick={() => void handleStartCheckout(booking)}
               type="button"
             >
-              {paymentRecord?.status === "pending" ? "Continue checkout" : "Pay now"}
+              {paymentRecord?.status === "pending"
+                ? i18n.t("customer_live.action.continue_checkout")
+                : i18n.t("customer_live.action.pay_now")}
             </button>
           ) : null}
           {booking.onRouteConfirmedAt ? (
@@ -1491,41 +1507,44 @@ export function CustomerLiveDashboard() {
                 className="button-secondary"
                 disabled={loadingState === "loading"}
                 onClick={() => void openCustomerChat(booking.id)}
-                type="button"
-              >
-                Message business
+              type="button"
+            >
+                {i18n.t("customer_live.action.message_business")}
               </button>
               <button
                 className="button-secondary"
                 disabled={loadingState === "loading"}
                 onClick={() => void openArrivalTracking(booking.id)}
-                type="button"
-              >
-                Track crew
+              type="button"
+            >
+                {i18n.t("customer_live.action.track_crew")}
               </button>
             </>
           ) : null}
           <a
             className="button-secondary"
-            href={`/help?bookingId=${encodeURIComponent(booking.id)}&issueType=${encodeURIComponent(
-              booking.onRouteConfirmedAt || booking.activeExceptionType ? "service-quality" : "general"
-            )}&subject=${encodeURIComponent(
-              booking.onRouteConfirmedAt
-                ? "On-route support"
-                : booking.activeExceptionType
-                  ? getBookingExceptionLabel(booking.activeExceptionType)
-                  : "Booking support"
-            )}`}
+            href={addLocalePrefix(
+              `/help?bookingId=${encodeURIComponent(booking.id)}&issueType=${encodeURIComponent(
+                booking.onRouteConfirmedAt || booking.activeExceptionType ? "service-quality" : "general"
+              )}&subject=${encodeURIComponent(
+                booking.onRouteConfirmedAt
+                  ? i18n.t("customer_live.subject.on_route")
+                  : booking.activeExceptionType
+                    ? getBookingExceptionLabel(booking.activeExceptionType)
+                    : i18n.t("customer_live.subject.booking")
+              )}`,
+              i18n.locale
+            )}
           >
-            Get help
+            {i18n.t("crew_live.action.get_help")}
           </a>
         </div>
         {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
           <div className="list-panel" style={{ marginTop: "1rem" }}>
-            <h3>Delay update</h3>
-            <p>{providerName} is running behind.</p>
+            <h3>{i18n.t("customer_live.active_booking.delay_update")}</h3>
+            <p>{i18n.t("customer_live.active_booking.running_behind", { provider: providerName })}</p>
             <p>
-              New target: {formatEta(booking.lateEtaIso)}.
+              {i18n.t("customer_live.active_booking.new_target", { eta: formatEta(i18n, booking.lateEtaIso) })}
               {booking.lateReason ? ` ${booking.lateReason}` : ""}
             </p>
           </div>
@@ -1533,22 +1552,22 @@ export function CustomerLiveDashboard() {
         {booking.activeExceptionType ? (
           <div className="list-panel" style={{ marginTop: "1rem" }}>
             <h3>{getBookingExceptionLabel(booking.activeExceptionType)}</h3>
-            <p>{providerName} flagged an issue with this visit.</p>
+            <p>{i18n.t("customer_live.active_booking.flagged_issue", { provider: providerName })}</p>
             <p>
               {booking.activeExceptionNotes ??
-                "Check in with the business or support to work out the next step."}
+                i18n.t("customer_live.active_booking.check_support")}
             </p>
           </div>
         ) : null}
         {activeTrackingBookingId === booking.id && activeTracking ? (
-          <ArrivalTrackingPanel subtitle={providerName} title="Crew on the way" tracking={activeTracking} />
+          <ArrivalTrackingPanel subtitle={providerName} title={i18n.t("customer_live.status.crew_on_way")} tracking={activeTracking} />
         ) : null}
         <details className="service-card-disclosure">
-          <summary className="service-card-disclosure__summary">Visit details</summary>
+          <summary className="service-card-disclosure__summary">{i18n.t("customer_live.active_booking.visit_details")}</summary>
           <div className="service-card-disclosure__body">
             <div className="history-card__grid">
               <div>
-                <h3>Address</h3>
+                <h3>{i18n.t("common.label.address")}</h3>
                 <p>{booking.serviceAddress.line1}</p>
                 <p>
                   {booking.serviceAddress.city}, {booking.serviceAddress.state}{" "}
@@ -1556,28 +1575,28 @@ export function CustomerLiveDashboard() {
                 </p>
               </div>
               <div>
-                <h3>Schedule</h3>
+                <h3>{i18n.t("crew_signup.schedule")}</h3>
                 <p>{formatBookingWindowSummary(booking.scheduledStartIso)}</p>
-                <p>{formatDateTime(booking.scheduledStartIso)}</p>
+                <p>{formatDateTime(i18n, booking.scheduledStartIso)}</p>
               </div>
               <div>
-                <h3>Notes</h3>
-                <p>{booking.notes || "No extra notes."}</p>
+                <h3>{i18n.t("customer_live.label.notes")}</h3>
+                <p>{booking.notes || i18n.t("customer_live.no_extra_notes")}</p>
               </div>
               <div>
-                <h3>Payment</h3>
+                <h3>{i18n.t("customer_live.label.payment")}</h3>
                 <p>{getPaymentLabel(paymentRecord)}</p>
-                {paymentRecord?.paidAt ? <p>{formatDateTime(paymentRecord.paidAt)}</p> : null}
+                {paymentRecord?.paidAt ? <p>{formatDateTime(i18n, paymentRecord.paidAt)}</p> : null}
               </div>
             </div>
             {canEditVisit ? (
               <>
                 <p className="history-card__detail-copy">
-                  Need a different time or want to cancel this visit? Make the change here.
+                  {i18n.t("customer_live.active_booking.change_copy")}
                 </p>
                 <div className="form-grid">
                   <label className="form-field">
-                    <span>New start</span>
+                    <span>{i18n.t("customer_live.active_booking.new_start")}</span>
                     <input
                       onChange={(event) =>
                         setRescheduleDrafts((current) => ({
@@ -1596,7 +1615,7 @@ export function CustomerLiveDashboard() {
                     />
                   </label>
                   <label className="form-field">
-                    <span>New end</span>
+                    <span>{i18n.t("customer_live.active_booking.new_end")}</span>
                     <input
                       onChange={(event) =>
                         setRescheduleDrafts((current) => ({
@@ -1623,7 +1642,7 @@ export function CustomerLiveDashboard() {
                     onClick={() => void handleRescheduleBooking(booking.id)}
                     type="button"
                   >
-                    Reschedule
+                    {i18n.t("customer_live.action.reschedule")}
                   </button>
                   <button
                     className="button-secondary"
@@ -1631,7 +1650,7 @@ export function CustomerLiveDashboard() {
                     onClick={() => void handleCancelBooking(booking.id)}
                     type="button"
                   >
-                    Cancel booking
+                    {i18n.t("customer_live.action.cancel_booking")}
                   </button>
                 </div>
               </>
@@ -1640,17 +1659,15 @@ export function CustomerLiveDashboard() {
         </details>
         {canOpenDispute || canReviewRefund ? (
           <details className="service-card-disclosure">
-            <summary className="service-card-disclosure__summary">Billing and support</summary>
+            <summary className="service-card-disclosure__summary">{i18n.t("customer_live.billing_support")}</summary>
             <div className="service-card-disclosure__body">
               {canOpenDispute ? (
                 <div className="list-panel">
-                  <h3>Need to dispute this service?</h3>
-                  <p>
-                    Open a formal dispute so YardMatch support can step in with the booking context attached.
-                  </p>
+                  <h3>{i18n.t("customer_live.dispute.title")}</h3>
+                  <p>{i18n.t("customer_live.dispute.body")}</p>
                   <div className="form-grid" style={{ marginTop: "1rem" }}>
                     <label className="form-field form-field--full">
-                      <span>Dispute reason</span>
+                      <span>{i18n.t("customer_live.dispute.reason")}</span>
                       <textarea
                         rows={3}
                         value={disputeDrafts[booking.id] ?? ""}
@@ -1660,7 +1677,7 @@ export function CustomerLiveDashboard() {
                             [booking.id]: event.target.value
                           }))
                         }
-                        placeholder="What went wrong with this service?"
+                        placeholder={i18n.t("customer_live.dispute.placeholder")}
                       />
                     </label>
                   </div>
@@ -1671,26 +1688,28 @@ export function CustomerLiveDashboard() {
                       onClick={() => void handleOpenDispute(booking.id)}
                       type="button"
                     >
-                      Open dispute
+                      {i18n.t("customer_live.action.open_dispute")}
                     </button>
                   </div>
                 </div>
               ) : null}
               {canReviewRefund ? (
                 <div className="list-panel">
-                  <h3>Refund review</h3>
+                  <h3>{i18n.t("customer_live.refund.title")}</h3>
                   <p>
                     {paymentRecord?.refundReviewStatus === "requested"
-                      ? "YardMatch support is reviewing this refund request. Payouts stay on hold until the review is resolved."
+                      ? i18n.t("customer_live.refund.reviewing")
                       : paymentRecord?.refundReviewStatus === "denied"
-                        ? `The last refund review was denied.${paymentRecord?.refundDecisionNotes ? ` ${paymentRecord.refundDecisionNotes}` : ""}`
-                        : "If this completed service needs a billing review, send a refund request with the reason below."}
+                        ? i18n.t("customer_live.refund.denied", {
+                            notes: paymentRecord?.refundDecisionNotes ? ` ${paymentRecord.refundDecisionNotes}` : ""
+                          })
+                        : i18n.t("customer_live.refund.body")}
                   </p>
                   {paymentRecord?.refundReviewStatus !== "requested" ? (
                     <>
                       <div className="form-grid" style={{ marginTop: "1rem" }}>
                         <label className="form-field form-field--full">
-                          <span>Refund reason</span>
+                          <span>{i18n.t("customer_live.refund.reason")}</span>
                           <textarea
                             rows={3}
                             value={refundDrafts[booking.id] ?? ""}
@@ -1700,7 +1719,7 @@ export function CustomerLiveDashboard() {
                                 [booking.id]: event.target.value
                               }))
                             }
-                            placeholder="Why should YardMatch review this payment?"
+                            placeholder={i18n.t("customer_live.refund.placeholder")}
                           />
                         </label>
                       </div>
@@ -1711,7 +1730,7 @@ export function CustomerLiveDashboard() {
                           onClick={() => void handleRequestRefundReview(booking.id)}
                           type="button"
                         >
-                          Request refund review
+                          {i18n.t("customer_live.action.request_refund_review")}
                         </button>
                       </div>
                     </>
@@ -1736,40 +1755,40 @@ export function CustomerLiveDashboard() {
       <article className={`${variant === "card" ? "card" : "list-panel"} customer-review-card`}>
         <div className="search-result-title">
           <div>
-            <span className="eyebrow">Ready to review</span>
+            <span className="eyebrow">{i18n.t("customer_live.review.ready")}</span>
             <h2>{opportunity.providerName}</h2>
             <p>{opportunity.reason}</p>
           </div>
           <div className="chip-row">
             <span className="result-badge result-badge--neutral">
-              {opportunity.category.replaceAll("-", " ")}
+              {i18n.t(serviceCategoryToI18nKey(opportunity.category))}
             </span>
             {opportunity.completedAt ? (
               <span className="result-badge result-badge--neutral">
-                {formatDateTime(opportunity.completedAt)}
+                {formatDateTime(i18n, opportunity.completedAt)}
               </span>
             ) : null}
           </div>
         </div>
-        <div className="customer-review-card__grid" aria-label="Review summary">
+        <div className="customer-review-card__grid" aria-label={i18n.t("customer_live.review.summary_aria")}>
           <div>
-            <span>Service</span>
-            <strong>{opportunity.category.replaceAll("-", " ")}</strong>
+            <span>{i18n.t("customer_live.label.service")}</span>
+            <strong>{i18n.t(serviceCategoryToI18nKey(opportunity.category))}</strong>
           </div>
           <div>
-            <span>Completed</span>
-            <strong>{opportunity.completedAt ? formatDateTime(opportunity.completedAt) : "Recently"}</strong>
+            <span>{i18n.t("customer_live.review.completed")}</span>
+            <strong>{opportunity.completedAt ? formatDateTime(i18n, opportunity.completedAt) : i18n.t("customer_live.recently")}</strong>
           </div>
           <div>
-            <span>Rating</span>
+            <span>{i18n.t("customer_live.review.rating")}</span>
             <strong>{selectedRating}/5</strong>
           </div>
         </div>
         {composerOpen ? (
           <div className="customer-review-card__composer">
             <div>
-              <span className="eyebrow">Rating</span>
-              <div className="chip-row" role="group" aria-label="Choose rating">
+              <span className="eyebrow">{i18n.t("customer_live.review.rating")}</span>
+              <div className="chip-row" role="group" aria-label={i18n.t("customer_live.review.choose_rating_aria")}>
                 {([5, 4, 3, 2, 1] as ReviewScore[]).map((rating) => {
                   const active = rating === selectedRating;
                   return (
@@ -1802,7 +1821,7 @@ export function CustomerLiveDashboard() {
                   [opportunity.bookingId]: event.target.value
                 }))
               }
-              placeholder="What should the provider know?"
+              placeholder={i18n.t("customer_live.review.placeholder")}
               rows={3}
               value={reviewDrafts[opportunity.bookingId] ?? ""}
             />
@@ -1817,14 +1836,14 @@ export function CustomerLiveDashboard() {
                 onClick={() => void handleSubmitReview(opportunity)}
                 type="button"
               >
-                Send review
+                {i18n.t("customer_live.review.send")}
               </button>
               <button
                 className="button-secondary"
                 onClick={() => setReviewComposerBookingId(undefined)}
                 type="button"
               >
-                Not now
+                {i18n.t("customer_live.review.not_now")}
               </button>
             </>
           ) : (
@@ -1833,7 +1852,7 @@ export function CustomerLiveDashboard() {
               onClick={() => setReviewComposerBookingId(opportunity.bookingId)}
               type="button"
             >
-              Leave review
+              {i18n.t("customer_live.review.leave")}
             </button>
           )}
         </div>
@@ -1847,26 +1866,27 @@ export function CustomerLiveDashboard() {
         <div className="search-result-title">
           <div>
             <h3>{summary.providerName}</h3>
-            <p>{summary.plan.category.replaceAll("-", " ")} plan</p>
+            <p>{i18n.t("customer_live.plan.category_plan", { category: i18n.t(serviceCategoryToI18nKey(summary.plan.category)) })}</p>
           </div>
           <div className="chip-row">
-            <span className="result-badge result-badge--neutral">Active plan</span>
-            <span className="result-badge">{formatRecurringFrequency(summary.plan.frequency)}</span>
+            <span className="result-badge result-badge--neutral">{i18n.t("customer_live.plan.active")}</span>
+            <span className="result-badge">{formatRecurringFrequency(i18n, summary.plan.frequency)}</span>
           </div>
         </div>
         {summary.upcomingBooking ? (
           <p>
-            Next visit: {formatBookingWindowSummary(summary.upcomingBooking.scheduledStartIso)} •{" "}
-            {formatDateTime(summary.upcomingBooking.scheduledStartIso)}
+            {i18n.t("customer_live.plan.next_visit", {
+              window: formatBookingWindowSummary(summary.upcomingBooking.scheduledStartIso),
+              date: formatDateTime(i18n, summary.upcomingBooking.scheduledStartIso)
+            })}
           </p>
         ) : (
-          <p>No visit is queued yet. Queue the next one when you are ready.</p>
+          <p>{i18n.t("customer_live.plan.no_queued_visit")}</p>
         )}
-        <p>
-          {summary.completedOccurrenceCount} completed visit
-          {summary.completedOccurrenceCount === 1 ? "" : "s"}
-          {summary.activeOccurrenceCount > 0 ? ` • ${summary.activeOccurrenceCount} active` : ""}
-        </p>
+        <p>{i18n.t("customer_live.plan.visit_counts", {
+          completed: summary.completedOccurrenceCount,
+          active: summary.activeOccurrenceCount
+        })}</p>
         {summary.plan.lastSchedulingError ? <p>{summary.plan.lastSchedulingError}</p> : null}
         {summary.plan.status === "active" ? (
           <div className="cta-row">
@@ -1877,7 +1897,7 @@ export function CustomerLiveDashboard() {
                 onClick={() => void handleQueueNextRecurringPlan(summary)}
                 type="button"
               >
-                Queue next visit
+                {i18n.t("customer_live.plan.queue_next")}
               </button>
             ) : null}
             <button
@@ -1886,7 +1906,7 @@ export function CustomerLiveDashboard() {
               onClick={() => void handleCancelRecurringPlan(summary.plan.id)}
               type="button"
             >
-              Cancel plan
+              {i18n.t("customer_live.plan.cancel")}
             </button>
           </div>
         ) : null}
@@ -1901,34 +1921,31 @@ export function CustomerLiveDashboard() {
           <div>
             <h3>{opportunity.title}</h3>
             <p>
-              {opportunity.providerName} • {opportunity.category.replaceAll("-", " ")}
+              {opportunity.providerName} • {i18n.t(serviceCategoryToI18nKey(opportunity.category))}
             </p>
           </div>
           <span className="result-badge">
             {opportunity.recommendedCadence === "one-time"
-              ? "One-time rebook"
-              : formatRecurringFrequency(opportunity.recommendedCadence)}
+              ? i18n.t("customer_live.retention.one_time_rebook")
+              : formatRecurringFrequency(i18n, opportunity.recommendedCadence)}
           </span>
-          <span className="result-badge">{formatRetentionTrigger(opportunity.trigger)}</span>
-          <span className="result-badge">{formatRetentionLoyaltyLabel(opportunity.loyaltySegment)}</span>
+          <span className="result-badge">{formatRetentionTrigger(i18n, opportunity.trigger)}</span>
+          <span className="result-badge">{formatRetentionLoyaltyLabel(i18n, opportunity.loyaltySegment)}</span>
         </div>
         <p>{opportunity.message}</p>
         <p>
-          Last completed: {formatDateTime(opportunity.completedAt)} • {opportunity.daysSinceCompleted} day
-          {opportunity.daysSinceCompleted === 1 ? "" : "s"} ago
+          {i18n.t("customer_live.retention.last_completed", {
+            date: formatDateTime(i18n, opportunity.completedAt),
+            count: opportunity.daysSinceCompleted
+          })}
         </p>
-        <p>
-          {opportunity.completedCategoryCount} completed {opportunity.category.replaceAll("-", " ")} visit
-          {opportunity.completedCategoryCount === 1 ? "" : "s"} at this property
-          {opportunity.sameProviderCompletedCount > 1
-            ? ` • ${opportunity.sameProviderCompletedCount} with ${opportunity.providerName}`
-            : ""}
-          {opportunity.lastServiceGapDays
-            ? ` • last gap ${opportunity.lastServiceGapDays} day${
-                opportunity.lastServiceGapDays === 1 ? "" : "s"
-              }`
-            : ""}
-        </p>
+        <p>{i18n.t("customer_live.retention.property_history", {
+          count: opportunity.completedCategoryCount,
+          category: i18n.t(serviceCategoryToI18nKey(opportunity.category)),
+          sameProviderCount: opportunity.sameProviderCompletedCount,
+          provider: opportunity.providerName,
+          gapDays: opportunity.lastServiceGapDays ?? 0
+        })}</p>
         <div className="cta-row">
           <button
             className="button-secondary"
@@ -1949,61 +1966,58 @@ export function CustomerLiveDashboard() {
         <div className="search-result-title">
           <div>
             <h3>{summary.providerName}</h3>
-            <p>{summary.plan.category.replaceAll("-", " ")} plan</p>
+            <p>{i18n.t("customer_live.plan.category_plan", { category: i18n.t(serviceCategoryToI18nKey(summary.plan.category)) })}</p>
           </div>
           <div className="chip-row">
-            <span className="result-badge result-badge--neutral">Cancelled</span>
-            <span className="result-badge">{formatRecurringFrequency(summary.plan.frequency)}</span>
+            <span className="result-badge result-badge--neutral">{i18n.t("customer_live.plan.cancelled")}</span>
+            <span className="result-badge">{formatRecurringFrequency(i18n, summary.plan.frequency)}</span>
           </div>
         </div>
-        <p>This plan is no longer running.</p>
-        <p>
-          {summary.completedOccurrenceCount} completed visit
-          {summary.completedOccurrenceCount === 1 ? "" : "s"}
-        </p>
+        <p>{i18n.t("customer_live.plan.no_longer_running")}</p>
+        <p>{i18n.t("customer_live.plan.completed_count", { count: summary.completedOccurrenceCount })}</p>
       </article>
     );
   }
 
   function getPaymentLabel(payment?: PaymentRecord) {
     if (!payment) {
-      return "Not paid";
+      return i18n.t("customer_live.payment.not_paid");
     }
 
     if (payment.refundReviewStatus === "requested") {
-      return "Refund review in progress";
+      return i18n.t("customer_live.payment.refund_review_progress");
     }
 
     if (payment.refundReviewStatus === "denied") {
-      return "Refund request denied";
+      return i18n.t("customer_live.payment.refund_denied");
     }
 
     if (payment.status === "captured") {
-      return "Paid";
+      return i18n.t("customer_history.payment.paid");
     }
 
     if (payment.status === "pending") {
-      return "Awaiting Stripe checkout";
+      return i18n.t("customer_live.payment.awaiting_checkout");
     }
 
     if (payment.status === "failed") {
-      return "Payment needs attention";
+      return i18n.t("customer_live.payment.needs_attention");
     }
 
     if (payment.status === "refunded") {
-      return "Refunded";
+      return i18n.t("customer_history.payment.refunded");
     }
 
-    return "Payment on file";
+    return i18n.t("customer_live.payment.on_file");
   }
 
   function getBookingPaymentLabel(booking: Booking, payment?: PaymentRecord) {
     if (booking.status === "requested" && payment?.status !== "captured") {
-      return "After provider confirms";
+      return i18n.t("customer_live.payment.after_provider_confirms");
     }
 
     if (booking.status === "confirmed" && !payment) {
-      return "Ready for checkout";
+      return i18n.t("customer_live.payment.ready_for_checkout");
     }
 
     return getPaymentLabel(payment);
@@ -2014,26 +2028,26 @@ export function CustomerLiveDashboard() {
   }
 
   const accountViews = [
-    { href: "/customer/dashboard", label: "Account", view: "account" },
-    { href: "/customer/dashboard?view=history", label: "Past visits", view: "history" }
-  ] as const;
+    { href: "/customer/dashboard", labelKey: "nav.user.account", view: "account" },
+    { href: "/customer/dashboard?view=history", labelKey: "nav.user.past_visits", view: "history" }
+  ] satisfies Array<{ href: string; labelKey: TranslationKey; view: "account" | "history" }>;
 
   if (historyOnlyView) {
     return (
       <main className="container stack-lg">
         <section className="page-hero">
-          <h1>Past visits</h1>
-          <p>Completed, cancelled, refunded, and disputed visits.</p>
+          <h1>{i18n.t("nav.user.past_visits")}</h1>
+          <p>{i18n.t("customer_live.past_visits.body")}</p>
         </section>
 
-        <nav aria-label="Customer account sections" className="dashboard-switcher">
+        <nav aria-label={i18n.t("customer_live.account_sections_aria")} className="dashboard-switcher">
           {accountViews.map((item) => (
             <a
               className={`dashboard-switcher__link${dashboardView === item.view ? " dashboard-switcher__link--active" : ""}`}
-              href={item.href}
+              href={addLocalePrefix(item.href, i18n.locale)}
               key={item.view}
             >
-              {item.label}
+              {i18n.t(item.labelKey)}
             </a>
           ))}
         </nav>
@@ -2049,30 +2063,30 @@ export function CustomerLiveDashboard() {
         {requestFlowActive ? (
           <div className="search-result-title">
             <div>
-              <h1>Request service</h1>
-              <p>Choose the job, check the price, then book.</p>
+              <h1>{i18n.t("customer_history.request_service")}</h1>
+              <p>{i18n.t("customer_live.request_service.body")}</p>
             </div>
-            <a className="button-secondary" href="/customer/dashboard">
-              Back to account
+            <a className="button-secondary" href={addLocalePrefix("/customer/dashboard", i18n.locale)}>
+              {i18n.t("customer_live.back_to_account")}
             </a>
           </div>
         ) : (
           <>
-            <h1>Welcome back, {customer?.fullName?.split(" ")[0] ?? "there"}.</h1>
-            <p>Manage visits, repeat service, and reviews in one place.</p>
+            <h1>{i18n.t("customer_live.welcome_back", { name: customer?.fullName?.split(" ")[0] ?? i18n.t("customer_live.there") })}</h1>
+            <p>{i18n.t("customer_live.account.body")}</p>
           </>
         )}
       </section>
 
       {!requestFlowActive ? (
-        <nav aria-label="Customer account sections" className="dashboard-switcher">
+        <nav aria-label={i18n.t("customer_live.account_sections_aria")} className="dashboard-switcher">
           {accountViews.map((item) => (
             <a
               className={`dashboard-switcher__link${dashboardView === item.view ? " dashboard-switcher__link--active" : ""}`}
-              href={item.href}
+              href={addLocalePrefix(item.href, i18n.locale)}
               key={item.view}
             >
-              {item.label}
+              {i18n.t(item.labelKey)}
             </a>
           ))}
         </nav>
@@ -2082,11 +2096,11 @@ export function CustomerLiveDashboard() {
         <section className="card">
           <div className="search-result-title">
             <div>
-              <h2>Done</h2>
+              <h2>{i18n.t("customer_live.done")}</h2>
               <p>{bookingMessage}</p>
             </div>
             <button className="button-secondary" onClick={() => setBookingMessage(undefined)} type="button">
-              Dismiss
+              {i18n.t("customer_live.dismiss")}
             </button>
           </div>
         </section>
@@ -2094,11 +2108,11 @@ export function CustomerLiveDashboard() {
 
       {dashboardLoadError ? (
         <section className="card">
-          <h2>We couldn't load your account</h2>
+          <h2>{i18n.t("customer_live.account_load_error")}</h2>
           <p>{dashboardLoadError}</p>
           <div className="cta-row">
             <button className="button" disabled={isLoadingDashboard} onClick={() => void loadDashboard()} type="button">
-              {isLoadingDashboard ? "Trying again..." : "Try again"}
+              {isLoadingDashboard ? i18n.t("common.actions.trying_again") : i18n.t("common.actions.try_again")}
             </button>
           </div>
         </section>
@@ -2108,11 +2122,11 @@ export function CustomerLiveDashboard() {
         <section className="card">
           <div className="search-result-title">
             <div>
-              <h2>We couldn't finish that</h2>
+              <h2>{i18n.t("customer_live.action_error")}</h2>
               <p>{errorMessage}</p>
             </div>
             <button className="button-secondary" onClick={() => setErrorMessage(undefined)} type="button">
-              Dismiss
+              {i18n.t("customer_live.dismiss")}
             </button>
           </div>
         </section>
@@ -2126,7 +2140,7 @@ export function CustomerLiveDashboard() {
             <article className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>Service details</h2>
+                  <h2>{i18n.t("customer_live.service_details")}</h2>
                   {quote ? (
                     <p>
                       {selectedServiceLabel} • {timingLabel} • {selectedCadenceLabel}
@@ -2145,12 +2159,12 @@ export function CustomerLiveDashboard() {
                     </p>
                   ) : null}
                   <details className="service-card-disclosure">
-                    <summary className="service-card-disclosure__summary">Change details</summary>
-                    <div className="service-card-disclosure__body">{renderRequestDetailsEditor("Refresh price")}</div>
+                    <summary className="service-card-disclosure__summary">{i18n.t("customer_live.action.change_details")}</summary>
+                    <div className="service-card-disclosure__body">{renderRequestDetailsEditor(i18n.t("customer_live.refresh_price"))}</div>
                   </details>
                 </>
               ) : (
-                renderRequestDetailsEditor("Get price")
+                renderRequestDetailsEditor(i18n.t("customer_live.get_price"))
               )}
             </article>
 
@@ -2158,37 +2172,37 @@ export function CustomerLiveDashboard() {
               <article className="card">
                 <div className="search-result-title">
                   <div>
-                    <h2>Price</h2>
+                    <h2>{i18n.t("customer_live.progress.price")}</h2>
                     <p>{quote.estimateSummary}</p>
                   </div>
-                  <strong>{formatCurrency(quote.estimatedPriceCents)}</strong>
+                  <strong>{i18n.formatCurrency(quote.estimatedPriceCents)}</strong>
                 </div>
-                <div className="customer-request-summary-grid" aria-label="Price summary">
+                <div className="customer-request-summary-grid" aria-label={i18n.t("customer_live.price_summary_aria")}>
                   <div>
-                    <span>Visit</span>
-                    <strong>{formatCurrency(quote.estimatedPriceCents)}</strong>
+                    <span>{i18n.t("customer_live.price.visit")}</span>
+                    <strong>{i18n.formatCurrency(quote.estimatedPriceCents)}</strong>
                   </div>
                   <div>
-                    <span>Time</span>
+                    <span>{i18n.t("customer_live.price.time")}</span>
                     <strong>{quote.estimatedDurationMinutes} min</strong>
                   </div>
                   <div>
-                    <span>Confidence</span>
+                    <span>{i18n.t("customer_live.price.confidence")}</span>
                     <strong>{quote.confidenceTier}</strong>
                   </div>
                   <div>
-                    <span>Yard size</span>
-                    <strong>{quote.measurements.turfSqFt} sq ft</strong>
+                    <span>{i18n.t("customer_live.price.yard_size")}</span>
+                    <strong>{i18n.t("customer_live.price.sq_ft", { count: quote.measurements.turfSqFt })}</strong>
                   </div>
                 </div>
                 <details className="service-card-disclosure">
-                  <summary className="service-card-disclosure__summary">Estimate details</summary>
+                  <summary className="service-card-disclosure__summary">{i18n.t("customer_live.price.estimate_details")}</summary>
                   <div className="service-card-disclosure__body">
                     <article className="list-panel">
-                      <h3>Confidence notes</h3>
+                      <h3>{i18n.t("customer_live.price.confidence_notes")}</h3>
                       <p>{quote.normalizedAddress.displayLabel}</p>
                       {quote.normalizedAddress.wasNormalized ? (
-                        <p>We cleaned up the address before matching and quoting.</p>
+                        <p>{i18n.t("customer_live.price.cleaned_address")}</p>
                       ) : null}
                       {quote.normalizedAddress.validationMessage ? (
                         <p>{quote.normalizedAddress.validationMessage}</p>
@@ -2201,8 +2215,10 @@ export function CustomerLiveDashboard() {
                         ))}
                       </div>
                       <p>
-                        Turf source {quote.measurementSources.turfSqFt} • Shrubs source{" "}
-                        {quote.measurementSources.shrubBedSqFt}
+                        {i18n.t("customer_live.price.measurement_sources", {
+                          turf: quote.measurementSources.turfSqFt,
+                          shrubs: quote.measurementSources.shrubBedSqFt
+                        })}
                       </p>
                     </article>
                   </div>
@@ -2215,7 +2231,7 @@ export function CustomerLiveDashboard() {
                       onClick={handleSearchProviders}
                       type="button"
                     >
-                      See provider
+                      {i18n.t("customer_live.action.see_provider")}
                     </button>
                   </div>
                 ) : null}
@@ -2227,40 +2243,52 @@ export function CustomerLiveDashboard() {
             <section className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>{selectedProviderWasRequested ? "Selected match" : recommendedProviderCard ? "Best match" : "Best fit"}</h2>
-                  <p>Review the provider and route window. Payment comes after confirmation.</p>
+                  <h2>
+                    {selectedProviderWasRequested
+                      ? i18n.t("customer_live.provider.selected_match")
+                      : recommendedProviderCard
+                        ? i18n.t("customer_live.provider.best_match")
+                        : i18n.t("customer_live.provider.best_fit")}
+                  </h2>
+                  <p>{i18n.t("customer_live.provider.review_body")}</p>
                 </div>
                 {providerResults ? (
                   <span className="result-badge result-badge--neutral">
-                    {providerCards.length} option{providerCards.length === 1 ? "" : "s"}
+                    {i18n.t("customer_live.provider.option_count", { count: providerCards.length })}
                   </span>
                 ) : null}
               </div>
               {providerSearchState === "loading" ? (
                 <article className="list-panel">
-                  <h3>Checking the best fit</h3>
-                  <p>Looking at live route openings, coverage, and trust signals for this property.</p>
+                  <h3>{i18n.t("customer_live.provider.checking_title")}</h3>
+                  <p>{i18n.t("customer_live.provider.checking_body")}</p>
                 </article>
               ) : providerResults ? (
                 <div className="stack-lg" style={{ paddingBottom: 0 }}>
                   {providerResults.providers.length === 0 ? (
                     <article className="list-panel">
-                      <h3>No verified businesses yet.</h3>
-                      <p>Try a nearby date or adjust the property details.</p>
+                      <h3>{i18n.t("customer_live.provider.no_verified.title")}</h3>
+                      <p>{i18n.t("customer_live.provider.no_verified.body")}</p>
                       <div className="cta-row">
                         <button className="button" onClick={handleEditRequestDetails} type="button">
-                          Change details
+                          {i18n.t("customer_live.action.change_details")}
                         </button>
-                        <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
-                          Request service in this area
+                        <a
+                          className="button-secondary"
+                          href={addLocalePrefix(
+                            `/help?issueType=general&subject=${encodeURIComponent(i18n.t("customer_live.subject.need_service_area"))}`,
+                            i18n.locale
+                          )}
+                        >
+                          {i18n.t("customer_live.action.request_service_area")}
                         </a>
                       </div>
                     </article>
                   ) : null}
                   {providerResults.providers.length > 0 && providersWithWindows.length === 0 ? (
                     <article className="list-panel">
-                      <h3>No openings {timingLabel.toLowerCase()}.</h3>
-                      <p>Routes are full for this window.</p>
+                      <h3>{i18n.t("customer_live.provider.no_openings.title", { timing: timingLabel.toLowerCase() })}</h3>
+                      <p>{i18n.t("customer_live.provider.no_openings.body")}</p>
                       <div className="cta-row">
                         {alternativeTimingSuggestions.map((option, index) => (
                           <button
@@ -2270,11 +2298,11 @@ export function CustomerLiveDashboard() {
                             onClick={() => void handleTryAnotherTiming(option.value)}
                             type="button"
                           >
-                            {option.label}
+                            {getCustomerTimingLabel(option.value, selectedCustomDate, selectedCustomWindow, i18n)}
                           </button>
                         ))}
                       </div>
-                      <p>Need a different property or service? Change the request above.</p>
+                      <p>{i18n.t("customer_live.provider.change_request_hint")}</p>
                     </article>
                   ) : null}
                   {recommendedProviderCard ? (
@@ -2282,7 +2310,9 @@ export function CustomerLiveDashboard() {
                       <div className="search-result-title">
                         <div>
                           <span className="eyebrow">
-                            {selectedProviderWasRequested ? "Selected match" : "Recommended match"}
+                            {selectedProviderWasRequested
+                              ? i18n.t("customer_live.provider.selected_match")
+                              : i18n.t("customer_live.provider.recommended_match")}
                           </span>
                           <h3>{recommendedProviderCard.provider.companyName}</h3>
                         </div>
@@ -2291,49 +2321,51 @@ export function CustomerLiveDashboard() {
                             <span className="result-badge">{recommendedChoicePresentation.badge}</span>
                           ) : null}
                           <span className="result-badge result-badge--neutral">
-                            {recommendedProviderCard.slot ? "Open route window" : "Route full"}
+                            {recommendedProviderCard.slot
+                              ? i18n.t("customer_live.provider.open_route_window")
+                              : i18n.t("customer_live.provider.route_full")}
                           </span>
                         </div>
                       </div>
 
-                      <div className="customer-booking-review__grid" aria-label="Booking summary">
+                      <div className="customer-booking-review__grid" aria-label={i18n.t("customer_live.booking_summary_aria")}>
                         <div>
-                          <span>Price</span>
-                          <strong>{quote ? formatCurrency(quote.estimatedPriceCents) : "Quote pending"}</strong>
+                          <span>{i18n.t("customer_live.progress.price")}</span>
+                          <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.quote_pending")}</strong>
                         </div>
                         <div>
-                          <span>Opening</span>
-                          <strong>{formatOpenWindow(recommendedProviderCard.slot)}</strong>
+                          <span>{i18n.t("customer_live.provider.opening")}</span>
+                          <strong>{formatOpenWindow(i18n, recommendedProviderCard.slot)}</strong>
                         </div>
                         <div>
-                          <span>Plan</span>
+                          <span>{i18n.t("customer_live.provider.plan")}</span>
                           <strong>{selectedCadenceLabel}</strong>
                         </div>
                         <div>
-                          <span>Property</span>
-                          <strong>{activeProperty?.label ?? "Selected property"}</strong>
+                          <span>{i18n.t("customer_live.label.property")}</span>
+                          <strong>{activeProperty?.label ?? i18n.t("customer_live.selected_property")}</strong>
                         </div>
                         <div>
-                          <span>Trust</span>
-                          <strong>{formatProviderTrust(recommendedProviderCard.provider)}</strong>
+                          <span>{i18n.t("customer_live.provider.trust")}</span>
+                          <strong>{formatProviderTrust(i18n, recommendedProviderCard.provider)}</strong>
                         </div>
                         <div>
-                          <span>Distance</span>
+                          <span>{i18n.t("customer_live.provider.distance")}</span>
                           <strong>
                             {recommendedProviderCard.ranking
                               ? `${recommendedProviderCard.ranking.distanceMiles.toFixed(1)} mi`
-                              : `${recommendedProviderCard.provider.serviceRadiusMiles} mi radius`}
+                              : i18n.t("customer_live.provider.mile_radius", { count: recommendedProviderCard.provider.serviceRadiusMiles })}
                           </strong>
                         </div>
                       </div>
 
                       {recommendedChoicePresentation ? <p>{recommendedChoicePresentation.detail}</p> : null}
                       {selectedCadence === "one-time" ? (
-                        <p>No charge yet. The provider reviews the request before checkout.</p>
+                        <p>{i18n.t("customer_live.no_charge_provider_reviews")}</p>
                       ) : null}
                       {recommendedProviderCard.ranking || recommendedChoicePresentation ? (
                         <details className="service-card-disclosure">
-                          <summary className="service-card-disclosure__summary">Why this pick</summary>
+                          <summary className="service-card-disclosure__summary">{i18n.t("customer_live.provider.why_pick")}</summary>
                           <div className="service-card-disclosure__body">
                             {recommendedChoicePresentation ? (
                               <article className="list-panel">
@@ -2352,8 +2384,10 @@ export function CustomerLiveDashboard() {
                                   {recommendedProviderCard.ranking.reliabilityDetail}
                                 </p>
                                 <p>
-                                  {recommendedProviderCard.ranking.distanceMiles.toFixed(1)} miles away •{" "}
-                                  {recommendedProviderCard.ranking.reasons.join(" • ")}
+                                  {i18n.t("customer_live.provider.distance_reasons", {
+                                    distance: recommendedProviderCard.ranking.distanceMiles,
+                                    reasons: recommendedProviderCard.ranking.reasons.join(" • ")
+                                  })}
                                 </p>
                                 <p>
                                   <strong>{recommendedProviderCard.ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
@@ -2361,7 +2395,7 @@ export function CustomerLiveDashboard() {
                                 </p>
                                 <p>
                                   <strong>{recommendedProviderCard.ranking.availabilityConfidenceLabel}.</strong>{" "}
-                                  {formatCompletedJobTrustLine(recommendedProviderCard.ranking.completedJobCount)}
+                                  {formatCompletedJobTrustLine(i18n, recommendedProviderCard.ranking.completedJobCount)}
                                 </p>
                               </article>
                             ) : null}
@@ -2380,13 +2414,13 @@ export function CustomerLiveDashboard() {
                           }
                           type="button"
                         >
-                          {quote
-                            ? selectedCadence === "one-time"
-                              ? "Request this time"
-                              : `Start for ${formatCurrency(quote.estimatedPriceCents)}`
-                            : selectedCadence === "one-time"
-                              ? "Request this time"
-                              : "Start repeat plan"}
+                          {selectedCadence === "one-time"
+                            ? i18n.t("customer_live.action.request_this_time")
+                            : quote
+                              ? i18n.t("customer_live.start_for_price", {
+                                  price: i18n.formatCurrency(quote.estimatedPriceCents)
+                                })
+                              : i18n.t("customer_live.action.start_repeat_plan")}
                         </button>
                         {alternativeProviderCards.length > 0 && !showAlternativeProviders ? (
                           <button
@@ -2405,13 +2439,13 @@ export function CustomerLiveDashboard() {
                             }}
                             type="button"
                           >
-                            Compare options
+                            {i18n.t("customer_live.provider.compare_options")}
                           </button>
                         ) : null}
                       </div>
                       {!recommendedProviderCard.slot ? (
                         <p style={{ marginTop: "0.75rem" }}>
-                          This business serves the area, but it does not have an open route window right now.
+                          {i18n.t("customer_live.provider.serves_no_window")}
                         </p>
                       ) : null}
                     </article>
@@ -2422,35 +2456,35 @@ export function CustomerLiveDashboard() {
                       <article className="list-panel customer-provider-option" key={provider.id}>
                         <div className="search-result-title">
                           <div>
-                            <span className="eyebrow">Backup option</span>
+                            <span className="eyebrow">{i18n.t("customer_live.provider.backup_option")}</span>
                             <h3>{provider.companyName}</h3>
                           </div>
                           <div className="chip-row">
                             {choicePresentation ? (
                               <span className="result-badge">{choicePresentation.badge}</span>
                             ) : null}
-                            {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
+                            {provider.sponsoredListingEnabled ? <span className="result-badge">{i18n.t("booked_results.sponsored")}</span> : null}
                           </div>
                         </div>
                         {choicePresentation ? <p>{choicePresentation.detail}</p> : null}
-                        <div className="live-provider-card__request-row" aria-label="Provider option summary">
+                        <div className="live-provider-card__request-row" aria-label={i18n.t("customer_live.provider.option_summary_aria")}>
                           <div className="live-provider-card__slot">
-                            <span>Opening</span>
-                            <strong>{formatOpenWindow(slot)}</strong>
+                            <span>{i18n.t("customer_live.provider.opening")}</span>
+                            <strong>{formatOpenWindow(i18n, slot)}</strong>
                           </div>
                           <dl className="live-provider-card__facts">
                             <div>
-                              <dt>Trust</dt>
+                              <dt>{i18n.t("customer_live.provider.trust")}</dt>
                               <dd>
                                 {provider.rating.toFixed(1)} • {provider.reviewCount} reviews
                               </dd>
                             </div>
                             <div>
-                              <dt>Distance</dt>
+                              <dt>{i18n.t("customer_live.provider.distance")}</dt>
                               <dd>
                                 {ranking
                                   ? `${ranking.distanceMiles.toFixed(1)} mi`
-                                  : `${provider.serviceRadiusMiles} mi radius`}
+                                  : i18n.t("customer_live.provider.mile_radius", { count: provider.serviceRadiusMiles })}
                               </dd>
                             </div>
                           </dl>
@@ -2465,18 +2499,18 @@ export function CustomerLiveDashboard() {
                             }
                             type="button"
                           >
-                            {quote
-                              ? selectedCadence === "one-time"
-                                ? "Request this time"
-                                : `Start for ${formatCurrency(quote.estimatedPriceCents)}`
-                              : selectedCadence === "one-time"
-                                ? "Request this time"
-                                : "Start repeat plan"}
+                            {selectedCadence === "one-time"
+                              ? i18n.t("customer_live.action.request_this_time")
+                              : quote
+                                ? i18n.t("customer_live.start_for_price", {
+                                    price: i18n.formatCurrency(quote.estimatedPriceCents)
+                                  })
+                                : i18n.t("customer_live.action.start_repeat_plan")}
                           </button>
                         </div>
                         {ranking || choicePresentation ? (
                           <details className="service-card-disclosure">
-                            <summary className="service-card-disclosure__summary">Why this option</summary>
+                            <summary className="service-card-disclosure__summary">{i18n.t("customer_live.provider.why_option")}</summary>
                             <div className="service-card-disclosure__body">
                               {choicePresentation ? (
                                 <article className="list-panel">
@@ -2493,7 +2527,10 @@ export function CustomerLiveDashboard() {
                                     <strong>{ranking.reliabilityLabel}.</strong> {ranking.reliabilityDetail}
                                   </p>
                                   <p>
-                                    {ranking.distanceMiles.toFixed(1)} miles away • {ranking.reasons.join(" • ")}
+                                    {i18n.t("customer_live.provider.distance_reasons", {
+                                      distance: ranking.distanceMiles,
+                                      reasons: ranking.reasons.join(" • ")
+                                    })}
                                   </p>
                                   <p>
                                     <strong>{ranking.neighborhoodFamiliarityLabel}.</strong>{" "}
@@ -2501,7 +2538,7 @@ export function CustomerLiveDashboard() {
                                   </p>
                                   <p>
                                     <strong>{ranking.availabilityConfidenceLabel}.</strong>{" "}
-                                    {formatCompletedJobTrustLine(ranking.completedJobCount)}
+                                    {formatCompletedJobTrustLine(i18n, ranking.completedJobCount)}
                                   </p>
                                 </article>
                               ) : null}
@@ -2510,7 +2547,7 @@ export function CustomerLiveDashboard() {
                         ) : null}
                         {!slot ? (
                           <p style={{ marginTop: "0.75rem" }}>
-                            This business serves the area, but it does not have an open route window right now.
+                            {i18n.t("customer_live.provider.serves_no_window")}
                           </p>
                         ) : null}
                       </article>
@@ -2527,36 +2564,36 @@ export function CustomerLiveDashboard() {
             <section className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>{getPriorityBookingCardTitle(nextBooking, nextBookingPayment)}</h2>
-                  <p>{getBookingStateMessage(nextBooking, nextBookingProviderName, nextBookingPayment)}</p>
+                  <h2>{getPriorityBookingCardTitle(i18n, nextBooking, nextBookingPayment)}</h2>
+                  <p>{getBookingStateMessage(i18n, nextBooking, nextBookingProviderName, nextBookingPayment)}</p>
                 </div>
-                <strong>{formatCurrency(nextBooking.totalCents)}</strong>
+                <strong>{i18n.formatCurrency(nextBooking.totalCents)}</strong>
               </div>
 
-              <div className="customer-booking-review__grid" aria-label="Next visit summary">
+              <div className="customer-booking-review__grid" aria-label={i18n.t("customer_live.next_visit_summary_aria")}>
                 <div>
-                  <span>Status</span>
-                  <strong>{getPriorityBookingCardTitle(nextBooking, nextBookingPayment)}</strong>
+                  <span>{i18n.t("customer_live.provider.status")}</span>
+                  <strong>{getPriorityBookingCardTitle(i18n, nextBooking, nextBookingPayment)}</strong>
                 </div>
                 <div>
-                  <span>When</span>
+                  <span>{i18n.t("customer_live.label.when")}</span>
                   <strong>{formatBookingWindowSummary(nextBooking.scheduledStartIso)}</strong>
                 </div>
                 <div>
-                  <span>Provider</span>
+                  <span>{i18n.t("customer_live.provider.provider")}</span>
                   <strong>{nextBookingProviderName}</strong>
                 </div>
                 <div>
-                  <span>Payment</span>
+                  <span>{i18n.t("customer_live.label.payment")}</span>
                   <strong>{getBookingPaymentLabel(nextBooking, nextBookingPayment)}</strong>
                 </div>
                 <div>
-                  <span>Property</span>
+                  <span>{i18n.t("customer_live.label.property")}</span>
                   <strong>{nextBooking.serviceAddress.line1}</strong>
                 </div>
                 <div>
-                  <span>Price</span>
-                  <strong>{formatCurrency(nextBooking.totalCents)}</strong>
+                  <span>{i18n.t("customer_live.progress.price")}</span>
+                  <strong>{i18n.formatCurrency(nextBooking.totalCents)}</strong>
                 </div>
               </div>
 
@@ -2569,7 +2606,9 @@ export function CustomerLiveDashboard() {
                       onClick={() => void handleStartCheckout(nextBooking)}
                       type="button"
                     >
-                      {nextBookingPayment?.status === "pending" ? "Continue checkout" : "Pay now"}
+                      {nextBookingPayment?.status === "pending"
+                        ? i18n.t("customer_live.action.continue_checkout")
+                        : i18n.t("customer_live.action.pay_now")}
                     </button>
                   ) : null}
                   {nextBookingHasTracking ? (
@@ -2579,23 +2618,26 @@ export function CustomerLiveDashboard() {
                       onClick={() => void openArrivalTracking(nextBooking.id)}
                       type="button"
                     >
-                      Track crew
+                      {i18n.t("customer_live.action.track_crew")}
                     </button>
                   ) : null}
                   {nextBookingNeedsPrimarySupport ? (
                     <a
                       className="button"
-                      href={`/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
-                        nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
-                      )}&subject=${encodeURIComponent(
-                        nextBooking.onRouteConfirmedAt
-                          ? "On-route support"
-                          : nextBooking.activeExceptionType
-                            ? getBookingExceptionLabel(nextBooking.activeExceptionType)
-                            : "Booking support"
-                      )}`}
+                      href={addLocalePrefix(
+                        `/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
+                          nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
+                        )}&subject=${encodeURIComponent(
+                          nextBooking.onRouteConfirmedAt
+                            ? i18n.t("customer_live.subject.on_route")
+                            : nextBooking.activeExceptionType
+                              ? getBookingExceptionLabel(nextBooking.activeExceptionType)
+                              : i18n.t("customer_live.subject.booking")
+                        )}`,
+                        i18n.locale
+                      )}
                     >
-                      Get help
+                      {i18n.t("crew_live.action.get_help")}
                     </a>
                   ) : null}
                 </div>
@@ -2603,7 +2645,7 @@ export function CustomerLiveDashboard() {
 
               {nextBookingHasPrimaryAction || !nextBookingNeedsPrimarySupport ? (
                 <details className="service-card-disclosure">
-                  <summary className="service-card-disclosure__summary">More options</summary>
+                  <summary className="service-card-disclosure__summary">{i18n.t("customer_live.more_options")}</summary>
                   <div className="service-card-disclosure__body">
                     <div className="cta-row">
                       {nextBookingHasTracking ? (
@@ -2613,23 +2655,26 @@ export function CustomerLiveDashboard() {
                           onClick={() => void openCustomerChat(nextBooking.id)}
                           type="button"
                         >
-                          Message business
+                          {i18n.t("customer_live.action.message_business")}
                         </button>
                       ) : null}
                       {!nextBookingNeedsPrimarySupport ? (
                         <a
                           className="button-secondary"
-                          href={`/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
-                            nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
-                          )}&subject=${encodeURIComponent(
-                            nextBooking.onRouteConfirmedAt
-                              ? "On-route support"
-                              : nextBooking.activeExceptionType
-                                ? getBookingExceptionLabel(nextBooking.activeExceptionType)
-                                : "Booking support"
-                          )}`}
+                          href={addLocalePrefix(
+                            `/help?bookingId=${encodeURIComponent(nextBooking.id)}&issueType=${encodeURIComponent(
+                              nextBooking.onRouteConfirmedAt || nextBooking.activeExceptionType ? "service-quality" : "general"
+                            )}&subject=${encodeURIComponent(
+                              nextBooking.onRouteConfirmedAt
+                                ? i18n.t("customer_live.subject.on_route")
+                                : nextBooking.activeExceptionType
+                                  ? getBookingExceptionLabel(nextBooking.activeExceptionType)
+                                  : i18n.t("customer_live.subject.booking")
+                            )}`,
+                            i18n.locale
+                          )}
                         >
-                          Get help
+                          {i18n.t("crew_live.action.get_help")}
                         </a>
                       ) : null}
                     </div>
@@ -2643,13 +2688,13 @@ export function CustomerLiveDashboard() {
             <section className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>Book again</h2>
+                  <h2>{i18n.t("customer_live.book_again")}</h2>
                   <p>{primaryRetentionOpportunity.message}</p>
                 </div>
                 <span className="result-badge">
                   {primaryRetentionOpportunity.recommendedCadence === "one-time"
-                    ? "One-time rebook"
-                    : formatRecurringFrequency(primaryRetentionOpportunity.recommendedCadence)}
+                    ? i18n.t("customer_live.retention.one_time_rebook")
+                    : formatRecurringFrequency(i18n, primaryRetentionOpportunity.recommendedCadence)}
                 </span>
               </div>
               <div className="cta-row">
@@ -2667,18 +2712,23 @@ export function CustomerLiveDashboard() {
             <section className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>Repeat service is set</h2>
+                  <h2>{i18n.t("customer_live.repeat_service_set")}</h2>
                   <p>
                     {primaryRecurringPlan.upcomingBooking
-                      ? `Next visit ${formatBookingWindowSummary(primaryRecurringPlan.upcomingBooking.scheduledStartIso)} with ${primaryRecurringPlan.providerName}.`
-                      : `${primaryRecurringPlan.providerName} is still set for repeat service.`}
+                      ? i18n.t("customer_live.repeat.next_visit_with_provider", {
+                          window: formatBookingWindowSummary(primaryRecurringPlan.upcomingBooking.scheduledStartIso),
+                          provider: primaryRecurringPlan.providerName
+                        })
+                      : i18n.t("customer_live.repeat.provider_still_set", {
+                          provider: primaryRecurringPlan.providerName
+                        })}
                   </p>
                 </div>
-                <span className="result-badge">{formatRecurringFrequency(primaryRecurringPlan.plan.frequency)}</span>
+                <span className="result-badge">{formatRecurringFrequency(i18n, primaryRecurringPlan.plan.frequency)}</span>
               </div>
               <div className="cta-row">
-                <a className="button" href="/customer/dashboard?flow=request">
-                  Start request
+                <a className="button" href={addLocalePrefix("/customer/dashboard?flow=request", i18n.locale)}>
+                  {i18n.t("customer_live.start_request")}
                 </a>
               </div>
             </section>
@@ -2686,15 +2736,15 @@ export function CustomerLiveDashboard() {
             <section className="card">
               <div className="search-result-title">
                 <div>
-                  <h2>{hasAccountHistory ? "Ready for another visit?" : "Need service?"}</h2>
+                  <h2>{hasAccountHistory ? i18n.t("customer_live.ready_another_visit") : i18n.t("customer_live.need_service")}</h2>
                   <p>
                     {hasAccountHistory
-                      ? "Start one request. We will price it first, then show the best fit."
-                      : "Start one request. Visits, reviews, and repeat service will show up here after that."}
+                      ? i18n.t("customer_live.ready_another_visit_body")
+                      : i18n.t("customer_live.need_service_body")}
                   </p>
                 </div>
-                <a className="button" href="/customer/dashboard?flow=request">
-                  Request service
+                <a className="button" href={addLocalePrefix("/customer/dashboard?flow=request", i18n.locale)}>
+                  {i18n.t("customer_history.request_service")}
                 </a>
               </div>
             </section>
@@ -2709,9 +2759,9 @@ export function CustomerLiveDashboard() {
               <h2>
                 {hasCurrentBookAgainOptions
                   ? priorityCardKind === "retention" || priorityCardKind === "plan"
-                    ? "Other repeat options"
-                    : "Book again"
-                  : "Past repeat plans"}
+                    ? i18n.t("customer_live.other_repeat_options")
+                    : i18n.t("customer_live.book_again")
+                  : i18n.t("customer_live.past_repeat_plans")}
               </h2>
               <div className="stack-lg" style={{ paddingBottom: 0 }}>
                 {sectionSpotlightBookAgainOption?.kind === "plan"
@@ -2722,9 +2772,9 @@ export function CustomerLiveDashboard() {
                 {sectionAdditionalBookAgainOptionCount ? (
                   <details className="service-card-disclosure">
                     <summary className="service-card-disclosure__summary">
-                      {sectionAdditionalBookAgainOptionCount === 1
-                        ? "1 other repeat option"
-                        : `${sectionAdditionalBookAgainOptionCount} other repeat options`}
+                      {i18n.t("customer_live.other_repeat_option_count", {
+                        count: sectionAdditionalBookAgainOptionCount
+                      })}
                     </summary>
                     <div className="service-card-disclosure__body">
                       <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -2740,7 +2790,7 @@ export function CustomerLiveDashboard() {
                 ) : null}
                 {pastRecurringPlans.length && hasCurrentBookAgainOptions ? (
                   <details className="service-card-disclosure">
-                    <summary className="service-card-disclosure__summary">Past repeat plans</summary>
+                    <summary className="service-card-disclosure__summary">{i18n.t("customer_live.past_repeat_plans")}</summary>
                     <div className="service-card-disclosure__body">
                       {pastRecurringPlans.map((summary) => (
                         <div key={summary.plan.id}>{renderPastRecurringPlanCard(summary)}</div>
@@ -2761,15 +2811,15 @@ export function CustomerLiveDashboard() {
             <section className={sectionSpotlightBooking && sectionSpotlightReviewOpportunity ? "grid-two" : "stack-lg"}>
               {sectionSpotlightBooking ? (
                 <article className="card">
-                  <h2>{priorityCardKind === "booking" ? "Other visits" : "Happening now"}</h2>
+                  <h2>{priorityCardKind === "booking" ? i18n.t("customer_live.other_visits") : i18n.t("customer_live.happening_now")}</h2>
                   <div className="stack-lg" style={{ paddingBottom: 0 }}>
                     {renderActiveBookingCard(sectionSpotlightBooking)}
                     {sectionAdditionalActiveBookings.length ? (
                       <details className="service-card-disclosure">
                         <summary className="service-card-disclosure__summary">
-                          {sectionAdditionalActiveBookings.length === 1
-                            ? "1 other visit"
-                            : `${sectionAdditionalActiveBookings.length} other visits`}
+                          {i18n.t("customer_live.other_visit_count", {
+                            count: sectionAdditionalActiveBookings.length
+                          })}
                         </summary>
                         <div className="service-card-disclosure__body">
                           <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -2786,15 +2836,15 @@ export function CustomerLiveDashboard() {
 
               {sectionSpotlightReviewOpportunity ? (
                 <article className="card">
-                  <h2>{priorityCardKind === "review" ? "Other reviews" : "Ready to review"}</h2>
+                  <h2>{priorityCardKind === "review" ? i18n.t("customer_live.other_reviews") : i18n.t("customer_live.review.ready")}</h2>
                   <div className="stack-lg" style={{ paddingBottom: 0 }}>
                     {renderReviewOpportunityCard(sectionSpotlightReviewOpportunity)}
                     {sectionAdditionalReviewOpportunities.length ? (
                       <details className="service-card-disclosure">
                         <summary className="service-card-disclosure__summary">
-                          {sectionAdditionalReviewOpportunities.length === 1
-                            ? "1 other review"
-                            : `${sectionAdditionalReviewOpportunities.length} other reviews`}
+                          {i18n.t("customer_live.other_review_count", {
+                            count: sectionAdditionalReviewOpportunities.length
+                          })}
                         </summary>
                         <div className="service-card-disclosure__body">
                           <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -2816,16 +2866,16 @@ export function CustomerLiveDashboard() {
         <FloatingChatWindow
           busy={loadingState === "loading"}
           draft={chatDraft}
-          inputPlaceholder="Message the business about arrival or access."
+          inputPlaceholder={i18n.t("customer_live.chat.placeholder")}
           isOpen={Boolean(activeChatBookingId)}
-          launcherLabel="Open chat"
+          launcherLabel={i18n.t("customer_live.chat.open")}
           messages={chatThread.messages.map((message) => ({
             id: message.id,
             body: message.body,
             createdAt: message.createdAt,
             senderLabel:
               message.senderRole === "customer"
-                ? "You"
+                ? i18n.t("customer_live.chat.you")
                 : providerNamesById[chatThread.thread.providerId] ?? chatThread.thread.providerName,
             isCurrentUser: message.senderRole === "customer"
           }))}
@@ -2838,7 +2888,7 @@ export function CustomerLiveDashboard() {
           onOpen={() => undefined}
           onSend={() => void sendCustomerChat(activeChatBookingId)}
           subtitle={chatThread.thread.providerName}
-          title="Business chat"
+          title={i18n.t("customer_live.chat.title")}
         />
       ) : null}
     </main>

@@ -7,6 +7,9 @@ import {
   CrewMemberSchedulePreference,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
@@ -20,42 +23,49 @@ const skillOptions: ServiceCategory[] = [
   "mulch-installation",
   "snow-shoveling"
 ];
-const scheduleOptions: Array<{ value: CrewMemberSchedulePreference; label: string }> = [
-  { value: "flex", label: "Flexible" },
-  { value: "part-time", label: "Part time" },
-  { value: "full-time", label: "Full time" },
-  { value: "seasonal", label: "Seasonal" }
+const scheduleOptions: Array<{ value: CrewMemberSchedulePreference; labelKey: TranslationKey }> = [
+  { value: "flex", labelKey: "crew_signup.schedule.flex" },
+  { value: "part-time", labelKey: "crew_signup.schedule.part_time" },
+  { value: "full-time", labelKey: "crew_signup.schedule.full_time" },
+  { value: "seasonal", labelKey: "crew_signup.schedule.seasonal" }
 ];
 
-function formatDaySummary(days: CrewAvailabilityDay[]) {
+function formatDayLabel(i18n: I18nInstance, day: CrewAvailabilityDay) {
+  return i18n.t(`provider_mobile.support.weekday.${day.toLowerCase()}` as TranslationKey);
+}
+
+function formatDaySummary(i18n: I18nInstance, days: CrewAvailabilityDay[]) {
   if (days.length === 0) {
-    return "Add days";
+    return i18n.t("crew_mobile.availability.add_days");
   }
 
   if (days.length === 7) {
-    return "Every day";
+    return i18n.t("crew_mobile.availability.every_day");
   }
 
-  return days.length <= 3 ? days.join(", ") : `${days.length} days`;
+  return days.length <= 3
+    ? days.map((day) => formatDayLabel(i18n, day)).join(", ")
+    : i18n.t("crew_mobile.availability.day_count", { count: days.length });
 }
 
-function formatSkillLabel(skill: ServiceCategory) {
-  return skill.replaceAll("-", " ");
+function formatSkillLabel(i18n: I18nInstance, skill: ServiceCategory) {
+  return i18n.t(serviceCategoryToI18nKey(skill));
 }
 
-function formatSkillSummary(skills: ServiceCategory[]) {
+function formatSkillSummary(i18n: I18nInstance, skills: ServiceCategory[]) {
   if (skills.length === 0) {
-    return "Add skills";
+    return i18n.t("crew_mobile.availability.add_skills");
   }
 
   if (skills.length === 1) {
-    return formatSkillLabel(skills[0]);
+    return formatSkillLabel(i18n, skills[0]);
   }
 
-  return `${skills.length} services`;
+  return i18n.t("crew_mobile.availability.service_count", { count: skills.length });
 }
 
 export function AvailabilityScreen() {
+  const i18n = useI18n();
   const { envelope } = useCrewSession();
   const [crewMember, setCrewMember] = useState<CrewMemberProfile | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
@@ -73,7 +83,7 @@ export function AvailabilityScreen() {
       const me = await api.getCurrentUser();
       setCrewMember(me.user as CrewMemberProfile);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load availability.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_mobile.availability.error.load"));
     }
   }
 
@@ -100,9 +110,9 @@ export function AvailabilityScreen() {
         winterWorkEnabled: updates.winterWorkEnabled ?? crewMember.winterWorkEnabled
       });
       setCrewMember(nextCrewMember);
-      setStatusMessage("Work profile saved.");
+      setStatusMessage(i18n.t("crew_mobile.availability.message.saved"));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update availability.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_mobile.availability.error.update"));
     } finally {
       setIsWorking(false);
     }
@@ -116,38 +126,50 @@ export function AvailabilityScreen() {
   const currentSkills = crewMember?.categories ?? [];
   const profileReady = currentDays.length > 0 && currentSkills.length > 0;
   const profileSummary = !crewMember
-    ? "Loading work profile."
+    ? i18n.t("crew_mobile.availability.loading_profile")
     : profileReady
-      ? `${formatSkillSummary(currentSkills)} within ${crewMember.willingToTravelMiles} miles.`
-      : "Add days and skills to improve matches.";
+      ? i18n.t("crew_mobile.availability.ready_summary", {
+          skills: formatSkillSummary(i18n, currentSkills),
+          count: crewMember.willingToTravelMiles
+        })
+      : i18n.t("crew_mobile.availability.incomplete_summary");
 
   return (
-    <ScreenShell eyebrow="Availability" title="Availability" description="Control the jobs you see.">
-      {statusMessage ? <InfoCard title="Saved" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+    <ScreenShell
+      eyebrow={i18n.t("crew_mobile.availability.eyebrow")}
+      title={i18n.t("crew_mobile.availability.title")}
+      description={i18n.t("crew_mobile.availability.description")}
+    >
+      {statusMessage ? <InfoCard title={i18n.t("crew_mobile.availability.saved")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
-      <InfoCard title={profileReady ? "Ready for matching" : "Finish work profile"} description={profileSummary}>
+      <InfoCard
+        title={profileReady ? i18n.t("crew_mobile.availability.ready_title") : i18n.t("crew_mobile.availability.finish_title")}
+        description={profileSummary}
+      >
         <View style={styles.summaryGrid}>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Days</Text>
-            <Text style={styles.summaryValue}>{formatDaySummary(currentDays)}</Text>
+            <Text style={styles.summaryLabel}>{i18n.t("crew_mobile.availability.days")}</Text>
+            <Text style={styles.summaryValue}>{formatDaySummary(i18n, currentDays)}</Text>
           </View>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Radius</Text>
-            <Text style={styles.summaryValue}>{crewMember?.willingToTravelMiles ?? 0} mi</Text>
+            <Text style={styles.summaryLabel}>{i18n.t("crew_mobile.availability.radius")}</Text>
+            <Text style={styles.summaryValue}>{i18n.t("common.format.miles", { count: crewMember?.willingToTravelMiles ?? 0 })}</Text>
           </View>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Services</Text>
-            <Text style={styles.summaryValue}>{formatSkillSummary(currentSkills)}</Text>
+            <Text style={styles.summaryLabel}>{i18n.t("crew_mobile.availability.services")}</Text>
+            <Text style={styles.summaryValue}>{formatSkillSummary(i18n, currentSkills)}</Text>
           </View>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Gear</Text>
-            <Text style={styles.summaryValue}>{crewMember?.hasOwnEquipment ? "Own" : "Shared"}</Text>
+            <Text style={styles.summaryLabel}>{i18n.t("crew_mobile.availability.gear")}</Text>
+            <Text style={styles.summaryValue}>
+              {crewMember?.hasOwnEquipment ? i18n.t("crew_mobile.availability.gear_own") : i18n.t("crew_mobile.availability.gear_shared")}
+            </Text>
           </View>
         </View>
       </InfoCard>
 
-      <InfoCard title="Work days" description="Pick the days you want offers.">
+      <InfoCard title={i18n.t("crew_mobile.availability.work_days")} description={i18n.t("crew_mobile.availability.work_days_description")}>
         <View style={styles.chipWrap}>
           {dayOptions.map((day) => {
             const isActive = currentDays.includes(day);
@@ -162,14 +184,14 @@ export function AvailabilityScreen() {
                 }
                 style={[styles.chip, isActive && styles.chipActive]}
               >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{day}</Text>
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{formatDayLabel(i18n, day)}</Text>
               </Pressable>
             );
           })}
         </View>
       </InfoCard>
 
-      <InfoCard title="Travel radius" description="Keep routes realistic.">
+      <InfoCard title={i18n.t("crew_mobile.availability.travel_radius")} description={i18n.t("crew_mobile.availability.travel_radius_description")}>
         <View style={styles.radiusRow}>
           <Pressable
             disabled={isWorking || !crewMember}
@@ -178,9 +200,9 @@ export function AvailabilityScreen() {
             }
             style={styles.radiusButton}
           >
-            <Text style={styles.radiusButtonLabel}>-5</Text>
+            <Text style={styles.radiusButtonLabel}>{i18n.t("provider_live.settings.minus_5_miles")}</Text>
           </Pressable>
-          <Text style={styles.radiusValue}>{crewMember?.willingToTravelMiles ?? 0} miles</Text>
+          <Text style={styles.radiusValue}>{i18n.t("provider_radius.value_miles", { count: crewMember?.willingToTravelMiles ?? 0 })}</Text>
           <Pressable
             disabled={isWorking || !crewMember}
             onPress={() =>
@@ -188,12 +210,12 @@ export function AvailabilityScreen() {
             }
             style={styles.radiusButton}
           >
-            <Text style={styles.radiusButtonLabel}>+5</Text>
+            <Text style={styles.radiusButtonLabel}>{i18n.t("provider_live.settings.plus_5_miles")}</Text>
           </Pressable>
         </View>
       </InfoCard>
 
-      <InfoCard title="Services" description="Only select work you can confidently complete.">
+      <InfoCard title={i18n.t("crew_mobile.availability.services")} description={i18n.t("crew_mobile.availability.services_description")}>
         <View style={styles.chipWrap}>
           {skillOptions.map((skill) => {
             const isActive = currentSkills.includes(skill);
@@ -209,7 +231,7 @@ export function AvailabilityScreen() {
                 style={[styles.chip, isActive && styles.chipActive]}
               >
                 <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                  {formatSkillLabel(skill)}
+                  {formatSkillLabel(i18n, skill)}
                 </Text>
               </Pressable>
             );
@@ -217,7 +239,7 @@ export function AvailabilityScreen() {
         </View>
       </InfoCard>
 
-      <InfoCard title="Work style" description="Help providers choose the right crew.">
+      <InfoCard title={i18n.t("crew_mobile.availability.work_style")} description={i18n.t("crew_mobile.availability.work_style_description")}>
         <View style={styles.chipWrap}>
           {scheduleOptions.map((schedule) => {
             const isActive = crewMember?.preferredSchedule === schedule.value;
@@ -228,7 +250,7 @@ export function AvailabilityScreen() {
                 onPress={() => void savePreferences({ preferredSchedule: schedule.value })}
                 style={[styles.chip, isActive && styles.chipActive]}
               >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{schedule.label}</Text>
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{i18n.t(schedule.labelKey)}</Text>
               </Pressable>
             );
           })}
@@ -236,8 +258,8 @@ export function AvailabilityScreen() {
         <View style={styles.switchStack}>
           <View style={styles.switchRow}>
             <View style={styles.switchCopy}>
-              <Text style={styles.switchLabel}>Own equipment</Text>
-              <Text style={styles.switchMeta}>Show providers when you can bring gear.</Text>
+              <Text style={styles.switchLabel}>{i18n.t("crew_mobile.availability.own_equipment")}</Text>
+              <Text style={styles.switchMeta}>{i18n.t("crew_mobile.availability.own_equipment_description")}</Text>
             </View>
             <Switch
               disabled={isWorking || !crewMember}
@@ -249,8 +271,8 @@ export function AvailabilityScreen() {
           </View>
           <View style={styles.switchRow}>
             <View style={styles.switchCopy}>
-              <Text style={styles.switchLabel}>Winter work</Text>
-              <Text style={styles.switchMeta}>Stay visible for snow jobs.</Text>
+              <Text style={styles.switchLabel}>{i18n.t("crew_mobile.availability.winter_work")}</Text>
+              <Text style={styles.switchMeta}>{i18n.t("crew_mobile.availability.winter_work_description")}</Text>
             </View>
             <Switch
               disabled={isWorking || !crewMember}

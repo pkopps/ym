@@ -325,7 +325,7 @@ export class MarketplacePlatformService {
     this.stripeCheckout = stripeCheckout;
     this.appBaseUrl = appBaseUrl;
     this.apiBaseUrl =
-      process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? "4000"}`;
+      process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? "4001"}`;
   }
 
   public async registerUser(

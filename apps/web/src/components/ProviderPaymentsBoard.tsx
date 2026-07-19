@@ -4,6 +4,7 @@ import { ProviderPayoutLedgerResponse } from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { useI18n } from "@yardmatch/i18n/react";
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -60,6 +61,7 @@ function getPayoutStepStatus(stepIndex: number, activeStepIndex: number): Payout
 }
 
 export function ProviderPaymentsBoard() {
+  const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [ledger, setLedger] = useState<ProviderPayoutLedgerResponse | undefined>();
@@ -117,19 +119,19 @@ export function ProviderPaymentsBoard() {
   })();
   const payoutSteps = [
     {
-      label: "Earned",
+      label: i18n.t("ops_auto.provider_payments_board.earned_y7j3br"),
       value: formatCurrency(ledger?.totalGrossCapturedCents ?? 0)
     },
     {
-      label: "Hold",
+      label: i18n.t("ops_auto.provider_payments_board.hold_1cc0v"),
       value: blockedAmountCents > 0 ? formatCurrency(blockedAmountCents) : `${ledger?.payoutSchedule?.holdPeriodHours ?? 0}h`
     },
     {
-      label: "Ready",
+      label: i18n.t("ops_auto.provider_payments_board.ready_1axoqr"),
       value: formatCurrency(ledger?.totalNetReadyCents ?? 0)
     },
     {
-      label: "Paid",
+      label: i18n.t("ops_auto.provider_payments_board.paid_1h5gs"),
       value: `${paidEntries.length} job${paidEntries.length === 1 ? "" : "s"}`
     }
   ].map((step, index) => ({
@@ -140,8 +142,8 @@ export function ProviderPaymentsBoard() {
   if (!sessionReady) {
     return (
       <section className="card">
-        <h2>Loading payments…</h2>
-        <p>Checking the provider payout ledger.</p>
+        <h2>{i18n.t("ops_auto.provider_payments_board.loading_payments_tj6gdn")}</h2>
+        <p>{i18n.t("ops_auto.provider_payments_board.checking_the_provider_payout_ledger_nbvpgl")}</p>
       </section>
     );
   }
@@ -149,12 +151,11 @@ export function ProviderPaymentsBoard() {
   if (accessDenied) {
     return (
       <section className="card">
-        <h2>Provider login required</h2>
-        <p>Use a business owner account to view the payout ledger and crew earnings queue.</p>
+        <h2>{i18n.t("ops_auto.provider_payments_board.provider_login_required_hd0xut")}</h2>
+        <p>{i18n.t("ops_auto.provider_payments_board.use_a_business_owner_account_to_view_the_hhfsyg")}</p>
         <div className="cta-row">
           <a className="button" href="/login/provider">
-            Go to provider login
-          </a>
+            {i18n.t("ops_auto.provider_payments_board.go_to_provider_login_wv0crr")} </a>
         </div>
       </section>
     );
@@ -164,7 +165,7 @@ export function ProviderPaymentsBoard() {
     <div className="stack-lg">
       {errorMessage ? (
         <section className="card">
-          <h2>Something needs attention</h2>
+          <h2>{i18n.t("ops_auto.provider_payments_board.something_needs_attention_gocolx")}</h2>
           <p>{errorMessage}</p>
         </section>
       ) : null}
@@ -172,16 +173,16 @@ export function ProviderPaymentsBoard() {
       <section className="card provider-payment-overview">
         <div className="search-result-title">
           <div>
-            <span className="eyebrow">Payouts</span>
+            <span className="eyebrow">{i18n.t("ops_auto.provider_payments_board.payouts_eirlgt")}</span>
             <h2>{payoutStateLabel}</h2>
-            <p>Completed jobs, holds, crew reserve, and weekly payout timing.</p>
+            <p>{i18n.t("ops_auto.provider_payments_board.completed_jobs_holds_crew_reserve_and_weekly_payout_dfqply")}</p>
           </div>
           <span className={blockedAmountCents > 0 ? "result-badge result-badge--neutral" : "result-badge"}>
             {ledger?.entries.length ?? 0} entries
           </span>
         </div>
 
-        <div className="provider-payout-spine" aria-label="Payout path">
+        <div className="provider-payout-spine" aria-label={i18n.t("ops_auto.provider_payments_board.payout_path_c1mbsv")}>
           {payoutSteps.map((step, index) => (
             <div className={`provider-payout-spine__step provider-payout-spine__step--${step.status}`} key={step.label}>
               <span className="provider-payout-spine__index">{index + 1}</span>
@@ -193,9 +194,9 @@ export function ProviderPaymentsBoard() {
           ))}
         </div>
 
-        <div className="provider-payment-summary-grid" aria-label="Payout summary">
+        <div className="provider-payment-summary-grid" aria-label={i18n.t("ops_auto.provider_payments_board.payout_summary_wzv0s4")}>
           <div>
-            <span>Ready now</span>
+            <span>{i18n.t("ops_auto.provider_payments_board.ready_now_f307uh")}</span>
             <strong>{formatCurrency(ledger?.totalNetReadyCents ?? 0)}</strong>
             <p>
               {ledger?.payoutSchedule.instantPayoutsEnabled
@@ -204,12 +205,12 @@ export function ProviderPaymentsBoard() {
             </p>
           </div>
           <div>
-            <span>Next payout</span>
+            <span>{i18n.t("ops_auto.provider_payments_board.next_payout_lkuj71")}</span>
             <strong>{ledger?.payoutSchedule ? formatDateTime(ledger.payoutSchedule.nextWeeklyPayoutDateIso) : "—"}</strong>
             <p>{ledger?.payoutSchedule ? `${ledger.payoutSchedule.holdPeriodHours}h standard hold` : "Schedule pending"}</p>
           </div>
           <div>
-            <span>Blocked</span>
+            <span>{i18n.t("ops_auto.provider_payments_board.blocked_r6bt1o")}</span>
             <strong>{formatCurrency(blockedAmountCents)}</strong>
             <p>
               {blockedAmountCents > 0
@@ -218,44 +219,42 @@ export function ProviderPaymentsBoard() {
             </p>
           </div>
           <div>
-            <span>Crew reserve</span>
+            <span>{i18n.t("ops_auto.provider_payments_board.crew_reserve_a2zwtf")}</span>
             <strong>{formatCurrency(ledger?.totalCrewOwedCents ?? 0)}</strong>
-            <p>{crewQueueEntries.length} crew payout item{crewQueueEntries.length === 1 ? "" : "s"}</p>
+            <p>{crewQueueEntries.length} {i18n.t("ops_auto.provider_payments_board.crew_payout_item_20qacy")}{crewQueueEntries.length === 1 ? "" : "s"}</p>
           </div>
         </div>
 
         <div className="cta-row">
           <a className="button" href="/provider/management">
-            Open management
-          </a>
+            {i18n.t("ops_auto.provider_payments_board.open_management_aa9gvt")} </a>
           <a className="button-secondary" href="/help">
-            Payout help
-          </a>
+            {i18n.t("ops_auto.provider_payments_board.payout_help_c1haor")} </a>
         </div>
 
         <details className="service-card-disclosure">
-          <summary className="service-card-disclosure__summary">Ledger totals</summary>
+          <summary className="service-card-disclosure__summary">{i18n.t("ops_auto.provider_payments_board.ledger_totals_wik9pi")}</summary>
           <div className="service-card-disclosure__body">
             <div className="provider-payment-summary-grid">
               <div>
-                <span>Scheduled</span>
+                <span>{i18n.t("ops_auto.provider_payments_board.scheduled_uhfekt")}</span>
                 <strong>{formatCurrency(ledger?.totalNetScheduledCents ?? 0)}</strong>
-                <p>Provider net already assigned to a future run.</p>
+                <p>{i18n.t("ops_auto.provider_payments_board.provider_net_already_assigned_to_a_future_run_oc2d3o")}</p>
               </div>
               <div>
-                <span>Captured</span>
+                <span>{i18n.t("ops_auto.provider_payments_board.captured_8vldq")}</span>
                 <strong>{formatCurrency(ledger?.totalGrossCapturedCents ?? 0)}</strong>
-                <p>Customer revenue captured before provider and crew split.</p>
+                <p>{i18n.t("ops_auto.provider_payments_board.customer_revenue_captured_before_provider_and_crew_split_483tsw")}</p>
               </div>
               <div>
-                <span>Instant minimum</span>
+                <span>{i18n.t("ops_auto.provider_payments_board.instant_minimum_7i3x67")}</span>
                 <strong>{ledger?.payoutSchedule ? formatCurrency(ledger.payoutSchedule.instantPayoutMinimumCents) : "—"}</strong>
                 <p>{ledger?.payoutSchedule.instantPayoutsEnabled ? "Instant payouts are on." : "Weekly payouts only."}</p>
               </div>
               <div>
-                <span>Holds</span>
+                <span>{i18n.t("ops_auto.provider_payments_board.holds_15mctw")}</span>
                 <strong>{heldEntries.length}</strong>
-                <p>Refund or dispute review keeps these out of payout.</p>
+                <p>{i18n.t("ops_auto.provider_payments_board.refund_or_dispute_review_keeps_these_out_of_na3ey1")}</p>
               </div>
             </div>
           </div>
@@ -266,8 +265,8 @@ export function ProviderPaymentsBoard() {
         <article className="card provider-payment-card-stack">
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">Provider net</span>
-              <h2>Upcoming provider payouts</h2>
+              <span className="eyebrow">{i18n.t("ops_auto.provider_payments_board.provider_net_48ldrm")}</span>
+              <h2>{i18n.t("ops_auto.provider_payments_board.upcoming_provider_payouts_ccq8qq")}</h2>
             </div>
           </div>
 
@@ -292,15 +291,15 @@ export function ProviderPaymentsBoard() {
               </div>
             ))
           ) : (
-            <p>No completed work has reached the payout ledger yet.</p>
+            <p>{i18n.t("ops_auto.provider_payments_board.no_completed_work_has_reached_the_payout_ledger_abce8x")}</p>
           )}
         </article>
 
         <article className="card provider-payment-card-stack">
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">Crew share</span>
-              <h2>Crew payout queue</h2>
+              <span className="eyebrow">{i18n.t("ops_auto.provider_payments_board.crew_share_g6ioow")}</span>
+              <h2>{i18n.t("ops_auto.provider_payments_board.crew_payout_queue_2msqc6")}</h2>
             </div>
           </div>
 
@@ -308,7 +307,7 @@ export function ProviderPaymentsBoard() {
             crewQueueEntries.map((entry) => (
               <div className="provider-payout-row" key={`${entry.id}-crew`}>
                 <div>
-                  <strong>{entry.crewMembersAssigned} assigned crew member{entry.crewMembersAssigned === 1 ? "" : "s"}</strong>
+                  <strong>{entry.crewMembersAssigned} {i18n.t("ops_auto.provider_payments_board.assigned_crew_member_o285qx")}{entry.crewMembersAssigned === 1 ? "" : "s"}</strong>
                   <p>
                     {entry.serviceLabel} • {entry.addressLine}
                   </p>
@@ -321,15 +320,13 @@ export function ProviderPaymentsBoard() {
               </div>
             ))
           ) : (
-            <p>No crew payout items are queued yet.</p>
+            <p>{i18n.t("ops_auto.provider_payments_board.no_crew_payout_items_are_queued_yet_wutrhv")}</p>
           )}
 
           <div className="provider-wallet-note">
-            <strong>Still ahead</strong>
+            <strong>{i18n.t("ops_auto.provider_payments_board.still_ahead_b13wo9")}</strong>
             <p>
-              Bank-transfer rails and instant cash-out controls remain separate roadmap work. This view shows what
-              is earned, reserved for crew, and blocked by payment or review state.
-            </p>
+              {i18n.t("ops_auto.provider_payments_board.bank_transfer_rails_and_instant_cash_out_controls_7heh3p")} </p>
           </div>
         </article>
       </section>

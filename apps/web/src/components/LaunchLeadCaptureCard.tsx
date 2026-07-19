@@ -1,12 +1,20 @@
 "use client";
 
 import { CreateLaunchLeadRequest, LaunchLeadContactPreference, ServiceCategory } from "@yardmatch/contracts";
-import { serviceCategoryLabels } from "@yardmatch/ui";
+import { type TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createWebApiClient } from "../lib/api";
 import { getLaunchAttributionContext, persistLaunchLeadId } from "../lib/launchAttribution";
 
 const contactMethodOptions: LaunchLeadContactPreference[] = ["email", "phone", "text"];
+const contactMethodLabelKeys: Record<LaunchLeadContactPreference, TranslationKey> = {
+  email: "launch_lead.contact.email",
+  "platform-message": "launch_lead.contact.platform_message",
+  phone: "launch_lead.contact.phone",
+  text: "launch_lead.contact.text"
+};
 const serviceOptions: ServiceCategory[] = [
   "lawn-mowing",
   "seasonal-cleanup",
@@ -29,6 +37,7 @@ export function LaunchLeadCaptureCard({
   defaultAreaLabel?: string;
   defaultServiceCategory?: ServiceCategory;
 }) {
+  const i18n = useI18n();
   const api = createWebApiClient();
   const [contactName, setContactName] = useState("");
   const [email, setEmail] = useState("");
@@ -69,13 +78,13 @@ export function LaunchLeadCaptureCard({
       } satisfies CreateLaunchLeadRequest);
       persistLaunchLeadId(lead.id);
 
-      setStatusMessage("Thanks. YardMatch will follow up within the launch response window.");
+      setStatusMessage(i18n.t("launch_lead.status.submitted"));
       setContactName("");
       setEmail("");
       setPhone("");
       setMessage("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send that follow-up request right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("launch_lead.error.submit"));
     } finally {
       setIsWorking(false);
     }
@@ -83,69 +92,69 @@ export function LaunchLeadCaptureCard({
 
   return (
     <article className="card">
-      <span className="eyebrow">Launch follow-up</span>
-      <h2>{title ?? "Need help before you book?"}</h2>
+      <span className="eyebrow">{i18n.t("launch_lead.eyebrow")}</span>
+      <h2>{title ?? i18n.t("launch_lead.title")}</h2>
       <p>
         {description ??
-          "If you are not ready to go straight into the request flow, YardMatch can follow up, confirm coverage, and help you choose the right next step."}
+          i18n.t("launch_lead.description")}
       </p>
-      <p>Email is the default contact path, with phone or text available when you ask for it.</p>
+      <p>{i18n.t("launch_lead.default_contact")}</p>
       <div className="form-grid">
         <label className="form-field">
-          <span>Name</span>
+          <span>{i18n.t("launch_lead.name")}</span>
           <input onChange={(event) => setContactName(event.target.value)} value={contactName} />
         </label>
         <label className="form-field">
-          <span>Email</span>
+          <span>{i18n.t("launch_lead.contact.email")}</span>
           <input
             onChange={(event) => setEmail(event.target.value)}
-            placeholder="homeowner@example.com"
+            placeholder={i18n.t("launch_lead.email_placeholder")}
             type="email"
             value={email}
           />
         </label>
         <label className="form-field">
-          <span>Phone</span>
+          <span>{i18n.t("launch_lead.contact.phone")}</span>
           <input
             onChange={(event) => setPhone(event.target.value)}
-            placeholder="Optional unless you want text or phone follow-up"
+            placeholder={i18n.t("launch_lead.phone_placeholder")}
             type="tel"
             value={phone}
           />
         </label>
         <label className="form-field">
-          <span>Preferred follow-up</span>
+          <span>{i18n.t("launch_lead.preferred_follow_up")}</span>
           <select
             onChange={(event) => setPreferredContactMethod(event.target.value as LaunchLeadContactPreference)}
             value={preferredContactMethod}
           >
             {contactMethodOptions.map((option) => (
               <option key={option} value={option}>
-                {option}
+                {i18n.t(contactMethodLabelKeys[option])}
               </option>
             ))}
           </select>
         </label>
         <label className="form-field">
-          <span>Town or area</span>
+          <span>{i18n.t("launch_lead.area")}</span>
           <input onChange={(event) => setAreaLabel(event.target.value)} value={areaLabel} />
         </label>
         <label className="form-field">
-          <span>Service</span>
+          <span>{i18n.t("customer_live.label.service")}</span>
           <select onChange={(event) => setServiceCategory(event.target.value as ServiceCategory | "")} value={serviceCategory}>
-            <option value="">Not sure yet</option>
+            <option value="">{i18n.t("launch_lead.not_sure")}</option>
             {serviceOptions.map((option) => (
               <option key={option} value={option}>
-                {serviceCategoryLabels[option]}
+                {i18n.t(serviceCategoryToI18nKey(option))}
               </option>
             ))}
           </select>
         </label>
         <label className="form-field form-field--full">
-          <span>What do you need help with?</span>
+          <span>{i18n.t("launch_lead.help_question")}</span>
           <textarea
             onChange={(event) => setMessage(event.target.value)}
-            placeholder="Tell YardMatch what service you need, when you need it, and anything that might affect coverage or pricing."
+            placeholder={i18n.t("launch_lead.help_placeholder")}
             rows={4}
             value={message}
           />
@@ -153,7 +162,7 @@ export function LaunchLeadCaptureCard({
       </div>
       <div className="cta-row" style={{ marginTop: "1rem" }}>
         <button className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
-          {isWorking ? "Sending..." : "Request follow-up"}
+          {isWorking ? i18n.t("chat.sending") : i18n.t("launch_lead.request_follow_up")}
         </button>
       </div>
       {statusMessage ? <p style={{ marginTop: "1rem" }}>{statusMessage}</p> : null}

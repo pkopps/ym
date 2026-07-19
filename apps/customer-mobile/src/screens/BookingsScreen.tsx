@@ -3,11 +3,16 @@ import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-nat
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  I18nInstance,
+  TranslationKey
+} from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
+import {
   BookingArrivalTracking,
   Booking,
   CustomerProviderConversationThread,
-  formatBookingWindowSummary,
-  getBookingExceptionLabel,
+  getBookingServiceWindow,
   PaymentRecord,
   CustomerReviewOpportunity,
   ReviewScore
@@ -31,19 +36,56 @@ interface VisitNextStep {
   label: string;
 }
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+const bookingWindowLabelKeys: Record<ReturnType<typeof getBookingServiceWindow>["key"], TranslationKey> = {
+  morning: "booking.window.morning.label",
+  afternoon: "booking.window.afternoon.label",
+  "late-afternoon-night": "booking.window.late_afternoon_night.label"
+};
+
+const bookingWindowRangeKeys: Record<ReturnType<typeof getBookingServiceWindow>["key"], TranslationKey> = {
+  morning: "booking.window.morning.range",
+  afternoon: "booking.window.afternoon.range",
+  "late-afternoon-night": "booking.window.late_afternoon_night.range"
+};
+
+const bookingExceptionKeys: Record<Booking["activeExceptionType"] & string, TranslationKey> = {
+  "customer-no-show": "booking.exception.customer_no_show",
+  "customer-not-ready": "booking.exception.customer_not_ready",
+  "unable-to-access-property": "booking.exception.unable_to_access_property",
+  "service-could-not-be-completed": "booking.exception.service_could_not_be_completed"
+};
+
+function formatDateTime(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
 }
 
-function formatPrice(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(cents / 100);
+function formatTime(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
+    timeStyle: "short"
+  });
+}
+
+function formatPrice(i18n: I18nInstance, cents: number) {
+  return i18n.formatCurrency(cents, "USD", { maximumFractionDigits: 0 });
+}
+
+function formatBookingWindow(i18n: I18nInstance, iso: string) {
+  const window = getBookingServiceWindow(iso);
+  return i18n.t("booking.window.summary", {
+    label: i18n.t(bookingWindowLabelKeys[window.key]),
+    range: i18n.t(bookingWindowRangeKeys[window.key])
+  });
+}
+
+function formatServiceLabel(i18n: I18nInstance, booking: Booking) {
+  return i18n.t(serviceCategoryToI18nKey(booking.category));
+}
+
+function getBookingExceptionLabel(i18n: I18nInstance, booking: Booking) {
+  return booking.activeExceptionType ? i18n.t(bookingExceptionKeys[booking.activeExceptionType]) : "";
 }
 
 function addOneDay(iso: string) {
@@ -71,6 +113,7 @@ export function BookingsScreen({
 }: {
   onOpenAccount?: () => void;
 }) {
+  const i18n = useI18n();
   const tracker = getCustomerMobileTracker();
   const { envelope } = useCustomerSession();
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
@@ -182,7 +225,7 @@ export function BookingsScreen({
           reviewResponse.opportunities[0]?.bookingId
       );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load visits.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.bookings.error.load_visits"));
     }
   }
 
@@ -196,7 +239,7 @@ export function BookingsScreen({
     }
 
     if (reviewText.trim().length === 0) {
-      setErrorMessage("Add a short note before submitting your review.");
+      setErrorMessage(i18n.t("customer_live.error.review_note_required"));
       return;
     }
 
@@ -219,12 +262,12 @@ export function BookingsScreen({
         timelinessRating,
         detailRating
       });
-      setSubmittedMessage(`Review saved for ${readyOpportunity.providerName}.`);
+      setSubmittedMessage(i18n.t("mobile.bookings.message.review_saved", { provider: readyOpportunity.providerName }));
       setReviewText("");
       setShowReviewDetails(false);
       await loadBookings();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to submit review.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.submit_review"));
     } finally {
       setIsWorking(false);
     }
@@ -241,10 +284,10 @@ export function BookingsScreen({
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.cancelBooking({ bookingId });
-      setSubmittedMessage("Visit cancelled.");
+      setSubmittedMessage(i18n.t("customer_live.message.booking_cancelled"));
       await loadBookings();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel visit.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.cancel_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -265,10 +308,10 @@ export function BookingsScreen({
         scheduledStartIso: addOneDay(booking.scheduledStartIso),
         scheduledEndIso: addOneDay(booking.scheduledEndIso)
       });
-      setSubmittedMessage("Visit moved to the next day.");
+      setSubmittedMessage(i18n.t("mobile.bookings.message.moved_next_day"));
       await loadBookings();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to reschedule visit.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.reschedule_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -281,7 +324,7 @@ export function BookingsScreen({
 
     const reason = (disputeDrafts[bookingId] ?? "").trim();
     if (!reason) {
-      setErrorMessage("Add a dispute reason first.");
+      setErrorMessage(i18n.t("customer_live.error.dispute_reason_required"));
       return;
     }
 
@@ -294,11 +337,11 @@ export function BookingsScreen({
         bookingId,
         reason
       });
-      setSubmittedMessage("Dispute opened. YardMatch support now has the visit context.");
+      setSubmittedMessage(i18n.t("mobile.bookings.message.dispute_opened"));
       await loadBookings();
       onOpenAccount?.();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open this dispute.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.open_dispute"));
     } finally {
       setIsWorking(false);
     }
@@ -313,12 +356,12 @@ export function BookingsScreen({
     const reason = (refundDrafts[bookingId] ?? "").trim();
 
     if (!payment) {
-      setErrorMessage("There is no payment on file for this visit yet.");
+      setErrorMessage(i18n.t("customer_live.error.no_payment"));
       return;
     }
 
     if (!reason) {
-      setErrorMessage("Add a refund reason first.");
+      setErrorMessage(i18n.t("customer_live.error.refund_reason_required"));
       return;
     }
 
@@ -331,11 +374,11 @@ export function BookingsScreen({
         paymentId: payment.id,
         reason
       });
-      setSubmittedMessage("Refund review requested. YardMatch support now has the payment and visit context.");
+      setSubmittedMessage(i18n.t("mobile.bookings.message.refund_review_requested"));
       await loadBookings();
       onOpenAccount?.();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to request a refund review.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.request_refund"));
     } finally {
       setIsWorking(false);
     }
@@ -358,7 +401,7 @@ export function BookingsScreen({
         setChatThread(undefined);
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open chat.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.open_chat"));
     }
   }
 
@@ -381,7 +424,7 @@ export function BookingsScreen({
       );
       setChatDraft("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send this message.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.send_message"));
     } finally {
       setIsWorking(false);
     }
@@ -400,7 +443,7 @@ export function BookingsScreen({
       setActiveTrackingBookingId(booking.id);
       setIsTrackingModalVisible(true);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load arrival tracking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.load_tracking"));
     }
   }
 
@@ -427,43 +470,43 @@ export function BookingsScreen({
 
   function getPaymentLabel(payment?: PaymentRecord) {
     if (!payment) {
-      return "Not paid";
+      return i18n.t("customer_live.payment.not_paid");
     }
 
     if (payment.refundReviewStatus === "requested") {
-      return "Refund review in progress";
+      return i18n.t("customer_live.payment.refund_review_progress");
     }
 
     if (payment.refundReviewStatus === "denied") {
-      return "Refund request denied";
+      return i18n.t("customer_live.payment.refund_denied");
     }
 
     if (payment.status === "captured") {
-      return "Paid";
+      return i18n.t("mobile.bookings.payment.paid");
     }
 
     if (payment.status === "pending") {
-      return "Checkout started";
+      return i18n.t("mobile.bookings.payment.checkout_started");
     }
 
     if (payment.status === "failed") {
-      return "Payment needs attention";
+      return i18n.t("customer_live.payment.needs_attention");
     }
 
     if (payment.status === "refunded") {
-      return "Refunded";
+      return i18n.t("mobile.bookings.payment.refunded");
     }
 
-    return "Payment on file";
+    return i18n.t("customer_live.payment.on_file");
   }
 
   function getVisitPaymentLabel(booking: Booking, payment?: PaymentRecord) {
     if (booking.status === "requested" && payment?.status !== "captured") {
-      return "After provider confirms";
+      return i18n.t("customer_live.payment.after_provider_confirms");
     }
 
     if (!payment && booking.status === "confirmed") {
-      return "Ready for checkout";
+      return i18n.t("customer_live.payment.ready_for_checkout");
     }
 
     return getPaymentLabel(payment);
@@ -475,58 +518,79 @@ export function BookingsScreen({
 
   function getBookingStatusLabel(booking: Booking) {
     if (booking.status === "confirmed") {
-      return "Confirmed";
+      return i18n.t("mobile.bookings.status.confirmed");
     }
 
     if (booking.status === "in-progress") {
-      return "In progress";
+      return i18n.t("mobile.bookings.status.in_progress");
     }
 
     if (booking.status === "disputed") {
-      return "Disputed";
+      return i18n.t("mobile.bookings.status.disputed");
     }
 
-    return "Requested";
+    if (booking.status === "completed") {
+      return i18n.t("customer_live.done");
+    }
+
+    if (booking.status === "cancelled") {
+      return i18n.t("mobile.bookings.status.cancelled");
+    }
+
+    if (booking.status === "refunded") {
+      return i18n.t("mobile.bookings.payment.refunded");
+    }
+
+    return i18n.t("mobile.bookings.status.requested");
   }
 
   function getBookingStatusSummary(booking: Booking) {
     if (booking.onRouteConfirmedAt) {
       if (activeTrackingBookingId === booking.id && tracking) {
-        return `${buildTrackingSummary(tracking)} • Business chat is open.`;
+        return i18n.t("mobile.bookings.status.tracking_chat_open", {
+          tracking: buildTrackingSummary(i18n, tracking)
+        });
       }
 
-      return "Crew is on the way. Business chat is open.";
+      return i18n.t("mobile.bookings.status.crew_on_way_chat");
     }
 
     if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
-      const delayedTime = new Date(booking.lateEtaIso).toLocaleTimeString(undefined, {
-        timeStyle: "short"
-      });
+      const delayedTime = formatTime(i18n, booking.lateEtaIso);
       return booking.lateReason
-        ? `Running behind until around ${delayedTime} • ${booking.lateReason}`
-        : `Running behind until around ${delayedTime}`;
+        ? i18n.t("mobile.bookings.status.running_behind_reason", {
+            time: delayedTime,
+            reason: booking.lateReason
+          })
+        : i18n.t("mobile.bookings.status.running_behind", { time: delayedTime });
     }
 
     if (booking.activeExceptionType) {
+      const exceptionLabel = getBookingExceptionLabel(i18n, booking);
       return booking.activeExceptionNotes
-        ? `${getBookingExceptionLabel(booking.activeExceptionType)} • ${booking.activeExceptionNotes}`
-        : getBookingExceptionLabel(booking.activeExceptionType);
+        ? i18n.t("mobile.bookings.status.exception_notes", {
+            label: exceptionLabel,
+            notes: booking.activeExceptionNotes
+          })
+        : exceptionLabel;
     }
 
     if (booking.status === "disputed") {
-      return booking.disputeReason ? `Disputed • ${booking.disputeReason}` : "Disputed";
+      return booking.disputeReason
+        ? i18n.t("mobile.bookings.status.disputed_reason", { reason: booking.disputeReason })
+        : i18n.t("mobile.bookings.status.disputed");
     }
 
     if (booking.status === "confirmed") {
-      return "Confirmed and ready.";
+      return i18n.t("mobile.bookings.status.confirmed_ready");
     }
 
     if (booking.status === "requested") {
-      return "Requested and waiting on the provider.";
+      return i18n.t("mobile.bookings.status.requested_waiting");
     }
 
     if (booking.status === "in-progress") {
-      return "Work is in progress.";
+      return i18n.t("mobile.bookings.status.work_in_progress");
     }
 
     return booking.status;
@@ -536,23 +600,23 @@ export function BookingsScreen({
     if (booking.activeExceptionType || booking.status === "disputed") {
       return {
         action: "support",
-        detail: booking.activeExceptionNotes ?? "YardMatch support has this visit context.",
-        label: "Open support"
+        detail: booking.activeExceptionNotes ?? i18n.t("mobile.bookings.next.support_context"),
+        label: i18n.t("mobile.bookings.action.open_support")
       };
     }
 
     if (booking.onRouteConfirmedAt) {
       return {
         action: "track",
-        detail: "Crew is on the way. Messaging is available.",
-        label: "Track crew"
+        detail: i18n.t("mobile.bookings.next.crew_on_way"),
+        label: i18n.t("customer_live.action.track_crew")
       };
     }
 
     if (booking.status === "requested") {
       return {
-        detail: "You’ll pay after the provider confirms this time.",
-        label: "Provider review"
+        detail: i18n.t("mobile.bookings.next.pay_after_confirm"),
+        label: i18n.t("mobile.book.provider_reviews")
       };
     }
 
@@ -560,35 +624,40 @@ export function BookingsScreen({
       if (payment?.status === "failed") {
         return {
           action: "checkout",
-          detail: "The last payment attempt did not finish.",
-          label: "Retry payment"
+          detail: i18n.t("mobile.bookings.next.payment_failed"),
+          label: i18n.t("mobile.bookings.action.retry_payment")
         };
       }
 
       return {
         action: "checkout",
-        detail: `${formatPrice(booking.totalCents)} due before the visit.`,
-        label: payment?.status === "pending" ? "Continue checkout" : "Pay now"
+        detail: i18n.t("mobile.bookings.next.payment_due", {
+          price: formatPrice(i18n, booking.totalCents)
+        }),
+        label:
+          payment?.status === "pending"
+            ? i18n.t("customer_live.action.continue_checkout")
+            : i18n.t("customer_live.action.pay_now")
       };
     }
 
     if (booking.status === "in-progress") {
       return {
-        detail: "Work is in progress.",
-        label: "Service underway"
+        detail: i18n.t("mobile.bookings.status.work_in_progress"),
+        label: i18n.t("mobile.bookings.next.service_underway")
       };
     }
 
     if (payment?.status === "captured") {
       return {
-        detail: "We’ll show arrival tracking on visit day.",
-        label: "Paid and ready"
+        detail: i18n.t("mobile.bookings.next.tracking_on_visit_day"),
+        label: i18n.t("mobile.bookings.next.paid_ready")
       };
     }
 
     return {
       detail: getBookingStatusSummary(booking),
-      label: "Visit status"
+      label: i18n.t("mobile.bookings.next.visit_status")
     };
   }
 
@@ -607,31 +676,42 @@ export function BookingsScreen({
         successPath: "/customer/dashboard?payment=stripe-success",
         cancelPath: "/customer/dashboard?payment=stripe-cancelled"
       });
-      setSubmittedMessage("Stripe checkout opened in your browser.");
+      setSubmittedMessage(i18n.t("mobile.bookings.message.checkout_opened"));
       await Linking.openURL(checkout.checkoutUrl);
       await loadBookings();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open Stripe checkout.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.open_checkout"));
     } finally {
       setIsWorking(false);
     }
   }
 
   return (
-    <ScreenShell eyebrow="Visits" title="Your visits" description="Pay, track, review.">
+    <ScreenShell
+      eyebrow={i18n.t("mobile.bookings.eyebrow")}
+      title={i18n.t("mobile.bookings.title")}
+      description={i18n.t("mobile.bookings.description")}
+    >
       <View style={styles.modeRow}>
-        <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
-        <ModeButton active={viewMode === "past"} label="Past" onPress={() => setViewMode("past")} />
+        <ModeButton
+          active={viewMode === "upcoming"}
+          label={i18n.t("mobile.bookings.tab.upcoming")}
+          onPress={() => setViewMode("upcoming")}
+        />
+        <ModeButton active={viewMode === "past"} label={i18n.t("mobile.bookings.tab.past")} onPress={() => setViewMode("past")} />
       </View>
 
       {submittedMessage ? (
-        <InfoCard title="Updated" description={submittedMessage} />
+        <InfoCard title={i18n.t("provider_live.updated")} description={submittedMessage} />
       ) : null}
 
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       {viewMode === "upcoming" ? (
-        <InfoCard title="Coming up" description={`${upcomingBookings.length} scheduled`}>
+        <InfoCard
+          title={i18n.t("mobile.bookings.coming_up")}
+          description={i18n.t("mobile.bookings.scheduled_count", { count: upcomingBookings.length })}
+        >
           {upcomingBookings.length > 0 ? (
             <View style={styles.list}>
               {upcomingBookings.map((booking) => {
@@ -650,20 +730,20 @@ export function BookingsScreen({
                   canModifyVisit || Boolean(booking.activeExceptionType) || canOpenDisputeTools || canShowRefundTools;
                 const visitOptionsLabel =
                   booking.activeExceptionType
-                    ? "Support"
+                    ? i18n.t("mobile.bookings.action.support")
                     : canModifyVisit
-                      ? "Options"
+                      ? i18n.t("mobile.bookings.action.options")
                       : canOpenDisputeTools || canShowRefundTools
-                        ? "Get help"
-                        : "Options";
+                        ? i18n.t("mobile.bookings.action.get_help")
+                        : i18n.t("mobile.bookings.action.options");
 
                 return (
                   <View key={booking.id} style={styles.liveCard}>
                     <View style={styles.visitHeader}>
                       <View style={styles.bookingCopy}>
-                        <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
+                        <Text style={styles.bookingTitle}>{formatServiceLabel(i18n, booking)}</Text>
                         <Text style={styles.bookingMeta}>
-                          {providerNamesById[booking.providerId] ?? "Landscaping business"}
+                          {providerNamesById[booking.providerId] ?? i18n.t("mobile.bookings.landscaping_business")}
                         </Text>
                       </View>
                       <StatusBadge
@@ -672,10 +752,10 @@ export function BookingsScreen({
                       />
                     </View>
 
-                    <VisitLifecycle booking={booking} payment={payment} paymentLabel={paymentLabel} />
+                    <VisitLifecycle booking={booking} payment={payment} paymentLabel={paymentLabel} i18n={i18n} />
 
                     <View style={styles.nextActionCard}>
-                      <Text style={styles.nextActionEyebrow}>Next</Text>
+                      <Text style={styles.nextActionEyebrow}>{i18n.t("customer_live.next")}</Text>
                       <Text style={styles.nextActionTitle}>{nextStep.label}</Text>
                       <Text style={styles.nextActionDetail}>{nextStep.detail}</Text>
                       {primaryActionKind === "track" ? (
@@ -705,22 +785,22 @@ export function BookingsScreen({
 
                     <View style={styles.visitSummaryGrid}>
                       <View style={styles.visitSummaryItem}>
-                        <Text style={styles.visitSummaryLabel}>When</Text>
+                        <Text style={styles.visitSummaryLabel}>{i18n.t("customer_live.label.when")}</Text>
                         <Text style={styles.visitSummaryValue}>
-                          {formatBookingWindowSummary(booking.scheduledStartIso)}
+                          {formatBookingWindow(i18n, booking.scheduledStartIso)}
                         </Text>
                       </View>
                       <View style={styles.visitSummaryItem}>
-                        <Text style={styles.visitSummaryLabel}>Payment</Text>
+                        <Text style={styles.visitSummaryLabel}>{i18n.t("customer_live.label.payment")}</Text>
                         <Text style={styles.visitSummaryValue}>{paymentLabel}</Text>
                       </View>
                       <View style={styles.visitSummaryItem}>
-                        <Text style={styles.visitSummaryLabel}>Property</Text>
+                        <Text style={styles.visitSummaryLabel}>{i18n.t("customer_live.label.property")}</Text>
                         <Text style={styles.visitSummaryValue}>{booking.serviceAddress.line1}</Text>
                       </View>
                       <View style={styles.visitSummaryItem}>
-                        <Text style={styles.visitSummaryLabel}>Price</Text>
-                        <Text style={styles.visitSummaryValue}>{formatPrice(booking.totalCents)}</Text>
+                        <Text style={styles.visitSummaryLabel}>{i18n.t("customer_live.progress.price")}</Text>
+                        <Text style={styles.visitSummaryValue}>{formatPrice(i18n, booking.totalCents)}</Text>
                       </View>
                     </View>
 
@@ -731,7 +811,7 @@ export function BookingsScreen({
                           onPress={() => void openCustomerChat(booking)}
                           style={styles.secondaryAction}
                         >
-                          <Text style={styles.secondaryActionLabel}>Message</Text>
+                          <Text style={styles.secondaryActionLabel}>{i18n.t("customer_live.action.message_business")}</Text>
                         </Pressable>
                       ) : null}
                       {booking.status !== "cancelled" && booking.status !== "refunded" ? (
@@ -741,7 +821,7 @@ export function BookingsScreen({
                             style={styles.secondaryAction}
                           >
                             <Text style={styles.secondaryActionLabel}>
-                              {isManageOpen ? "Close" : visitOptionsLabel}
+                              {isManageOpen ? i18n.t("common.actions.close") : visitOptionsLabel}
                             </Text>
                           </Pressable>
                         ) : null
@@ -751,9 +831,11 @@ export function BookingsScreen({
                       <View style={styles.managePanel}>
                         <View style={styles.detailStack}>
                           <Text style={styles.detailLabel}>
-                            {visitOptionsLabel === "Get help" ? "Help" : "Details"}
+                            {visitOptionsLabel === i18n.t("mobile.bookings.action.get_help")
+                              ? i18n.t("mobile.bookings.action.help")
+                              : i18n.t("customer_live.progress.details")}
                           </Text>
-                          <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
+                          <Text style={styles.bookingMeta}>{formatDateTime(i18n, booking.scheduledStartIso)}</Text>
                           <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
                           <Text style={styles.bookingMeta}>{getBookingStatusLabel(booking)}</Text>
                         </View>
@@ -764,20 +846,20 @@ export function BookingsScreen({
                               onPress={() => void rescheduleBooking(booking)}
                               style={styles.secondaryAction}
                             >
-                              <Text style={styles.secondaryActionLabel}>Move to next day</Text>
+                              <Text style={styles.secondaryActionLabel}>{i18n.t("mobile.bookings.action.move_next_day")}</Text>
                             </Pressable>
                             <Pressable
                               disabled={isWorking}
                               onPress={() => void cancelBooking(booking.id)}
                               style={styles.secondaryAction}
                             >
-                              <Text style={styles.secondaryActionLabel}>Cancel</Text>
+                              <Text style={styles.secondaryActionLabel}>{i18n.t("customer_live.action.cancel_booking")}</Text>
                             </Pressable>
                           </View>
                         ) : null}
                         {booking.activeExceptionType ? (
                           <Pressable onPress={() => onOpenAccount?.()} style={styles.secondaryAction}>
-                            <Text style={styles.secondaryActionLabel}>Open support</Text>
+                            <Text style={styles.secondaryActionLabel}>{i18n.t("mobile.bookings.action.open_support")}</Text>
                           </Pressable>
                         ) : null}
                         {canOpenDisputeTools ? (
@@ -789,7 +871,7 @@ export function BookingsScreen({
                                   [booking.id]: value
                                 }))
                               }
-                              placeholder="Why are you disputing this service?"
+                              placeholder={i18n.t("mobile.bookings.placeholder.dispute_service")}
                               placeholderTextColor={BrandTokens.colors.muted}
                               style={[styles.input, styles.compactInput]}
                               value={disputeDrafts[booking.id] ?? ""}
@@ -799,7 +881,7 @@ export function BookingsScreen({
                               onPress={() => void openDispute(booking.id)}
                               style={styles.secondaryAction}
                             >
-                              <Text style={styles.secondaryActionLabel}>Open dispute</Text>
+                              <Text style={styles.secondaryActionLabel}>{i18n.t("customer_live.action.open_dispute")}</Text>
                             </Pressable>
                           </>
                         ) : null}
@@ -815,8 +897,8 @@ export function BookingsScreen({
                               }
                               placeholder={
                                 payment?.refundReviewStatus === "requested"
-                                  ? "Refund review in progress"
-                                  : "Why should YardMatch review this payment?"
+                                  ? i18n.t("customer_live.payment.refund_review_progress")
+                                  : i18n.t("customer_live.refund.placeholder")
                               }
                               placeholderTextColor={BrandTokens.colors.muted}
                               style={[styles.input, styles.compactInput]}
@@ -837,8 +919,8 @@ export function BookingsScreen({
                             >
                               <Text style={styles.secondaryActionLabel}>
                                 {payment?.refundReviewStatus === "requested"
-                                  ? "Refund review open"
-                                  : "Request refund review"}
+                                  ? i18n.t("mobile.bookings.refund_review_open")
+                                  : i18n.t("customer_live.action.request_refund_review")}
                               </Text>
                             </Pressable>
                           </>
@@ -851,8 +933,8 @@ export function BookingsScreen({
                           <View key={message.id} style={styles.chatBubble}>
                             <Text style={styles.bookingTitle}>
                               {message.senderRole === "customer"
-                                ? "You"
-                                : providerNamesById[booking.providerId] ?? "Business"}
+                                ? i18n.t("customer_live.chat.you")
+                                : providerNamesById[booking.providerId] ?? i18n.t("mobile.bookings.business")}
                             </Text>
                             <Text style={styles.bookingMeta}>{message.body}</Text>
                           </View>
@@ -860,7 +942,7 @@ export function BookingsScreen({
                         <TextInput
                           multiline
                           onChangeText={setChatDraft}
-                          placeholder="Message the business owner."
+                          placeholder={i18n.t("mobile.bookings.placeholder.message_owner")}
                           placeholderTextColor={BrandTokens.colors.muted}
                           style={styles.input}
                           value={chatDraft}
@@ -870,7 +952,9 @@ export function BookingsScreen({
                           onPress={() => void sendCustomerChat(booking.id)}
                           style={styles.submitButton}
                         >
-                          <Text style={styles.submitButtonLabel}>{isWorking ? "Sending..." : "Send message"}</Text>
+                          <Text style={styles.submitButtonLabel}>
+                            {isWorking ? i18n.t("chat.sending") : i18n.t("mobile.bookings.action.send_message")}
+                          </Text>
                         </Pressable>
                       </View>
                     ) : null}
@@ -880,16 +964,16 @@ export function BookingsScreen({
             </View>
           ) : (
             <Text style={styles.emptyState}>
-              Your next visit will show up here.
+              {i18n.t("mobile.bookings.empty.upcoming")}
             </Text>
           )}
         </InfoCard>
       ) : (
         <>
           {readyOpportunity?.canReviewNow ? (
-            <InfoCard title="Review visit" description={readyOpportunity.providerName}>
+            <InfoCard title={i18n.t("mobile.bookings.review_visit")} description={readyOpportunity.providerName}>
               <RatingField
-                label="Rating"
+                label={i18n.t("customer_live.review.rating")}
                 rating={overallRating}
                 onChange={(rating) => {
                   setOverallRating(rating);
@@ -902,7 +986,7 @@ export function BookingsScreen({
               <TextInput
                 multiline
                 onChangeText={setReviewText}
-                placeholder="A few words about the visit"
+                placeholder={i18n.t("mobile.bookings.placeholder.review")}
                 placeholderTextColor={BrandTokens.colors.muted}
                 style={styles.input}
                 value={reviewText}
@@ -912,13 +996,13 @@ export function BookingsScreen({
                 style={styles.secondaryAction}
               >
                 <Text style={styles.secondaryActionLabel}>
-                  {showReviewDetails ? "Close" : "Detail ratings"}
+                  {showReviewDetails ? i18n.t("common.actions.close") : i18n.t("mobile.bookings.detail_ratings")}
                 </Text>
               </Pressable>
               {showReviewDetails ? (
                 <View style={styles.reviewDetailStack}>
-                  <RatingField label="Timeliness" rating={timelinessRating} onChange={setTimelinessRating} />
-                  <RatingField label="Detail" rating={detailRating} onChange={setDetailRating} />
+                  <RatingField label={i18n.t("mobile.bookings.timeliness")} rating={timelinessRating} onChange={setTimelinessRating} />
+                  <RatingField label={i18n.t("mobile.bookings.detail")} rating={detailRating} onChange={setDetailRating} />
                 </View>
               ) : null}
               <Pressable
@@ -926,12 +1010,17 @@ export function BookingsScreen({
                 onPress={() => void submitReview()}
                 style={[styles.submitButton, !canSubmitReview && styles.submitButtonDisabled]}
               >
-                <Text style={styles.submitButtonLabel}>{isWorking ? "Working..." : "Submit review"}</Text>
+                <Text style={styles.submitButtonLabel}>
+                  {isWorking ? i18n.t("mobile.bookings.working") : i18n.t("mobile.bookings.submit_review")}
+                </Text>
               </Pressable>
             </InfoCard>
           ) : null}
 
-          <InfoCard title="Past visits" description={`${pastBookings.length} completed or closed`}>
+          <InfoCard
+            title={i18n.t("mobile.bookings.past_visits")}
+            description={i18n.t("mobile.bookings.completed_closed_count", { count: pastBookings.length })}
+          >
             {pastBookings.length > 0 ? (
               <View style={styles.list}>
                 {pastBookings.map((booking) => {
@@ -947,11 +1036,11 @@ export function BookingsScreen({
                     <View key={booking.id} style={[styles.pastVisitCard, isSelected && styles.pastVisitCardActive]}>
                       <Pressable onPress={() => setSelectedBookingId(booking.id)} style={styles.bookingRow}>
                         <View style={styles.bookingCopy}>
-                          <Text style={styles.bookingTitle}>{booking.category.replaceAll("-", " ")}</Text>
+                          <Text style={styles.bookingTitle}>{formatServiceLabel(i18n, booking)}</Text>
                           <Text style={styles.bookingMeta}>
-                            {providerNamesById[booking.providerId] ?? "Landscaping business"}
+                            {providerNamesById[booking.providerId] ?? i18n.t("mobile.bookings.landscaping_business")}
                           </Text>
-                          <Text style={styles.bookingMeta}>{formatDateTime(booking.scheduledStartIso)}</Text>
+                          <Text style={styles.bookingMeta}>{formatDateTime(i18n, booking.scheduledStartIso)}</Text>
                           {booking.disputeReason ? (
                             <Text style={styles.bookingMeta}>{booking.disputeReason}</Text>
                           ) : null}
@@ -959,10 +1048,10 @@ export function BookingsScreen({
                         <StatusBadge
                           label={
                             booking.status === "completed"
-                              ? "Done"
+                              ? i18n.t("customer_live.done")
                               : booking.status === "disputed"
-                                ? "Disputed"
-                                : booking.status
+                                ? i18n.t("mobile.bookings.status.disputed")
+                                : getBookingStatusLabel(booking)
                           }
                           tone={booking.status === "completed" ? "success" : "warning"}
                         />
@@ -972,12 +1061,12 @@ export function BookingsScreen({
                         <View style={styles.managePanel}>
                           <View style={styles.visitSummaryGrid}>
                             <View style={styles.visitSummaryItem}>
-                              <Text style={styles.visitSummaryLabel}>Payment</Text>
+                              <Text style={styles.visitSummaryLabel}>{i18n.t("customer_live.label.payment")}</Text>
                               <Text style={styles.visitSummaryValue}>{getPaymentLabel(payment)}</Text>
                             </View>
                             <View style={styles.visitSummaryItem}>
-                              <Text style={styles.visitSummaryLabel}>Price</Text>
-                              <Text style={styles.visitSummaryValue}>{formatPrice(booking.totalCents)}</Text>
+                              <Text style={styles.visitSummaryLabel}>{i18n.t("customer_live.progress.price")}</Text>
+                              <Text style={styles.visitSummaryValue}>{formatPrice(i18n, booking.totalCents)}</Text>
                             </View>
                           </View>
                           {canOpenDisputeTools ? (
@@ -989,7 +1078,7 @@ export function BookingsScreen({
                                     [booking.id]: value
                                   }))
                                 }
-                                placeholder="What went wrong?"
+                                placeholder={i18n.t("mobile.bookings.placeholder.what_wrong")}
                                 placeholderTextColor={BrandTokens.colors.muted}
                                 style={[styles.input, styles.compactInput]}
                                 value={disputeDrafts[booking.id] ?? ""}
@@ -999,7 +1088,7 @@ export function BookingsScreen({
                                 onPress={() => void openDispute(booking.id)}
                                 style={styles.secondaryAction}
                               >
-                                <Text style={styles.secondaryActionLabel}>Open dispute</Text>
+                                <Text style={styles.secondaryActionLabel}>{i18n.t("customer_live.action.open_dispute")}</Text>
                               </Pressable>
                             </>
                           ) : null}
@@ -1015,8 +1104,8 @@ export function BookingsScreen({
                                 }
                                 placeholder={
                                   payment?.refundReviewStatus === "requested"
-                                    ? "Refund review in progress"
-                                    : "Why should YardMatch review this payment?"
+                                    ? i18n.t("customer_live.payment.refund_review_progress")
+                                    : i18n.t("customer_live.refund.placeholder")
                                 }
                                 placeholderTextColor={BrandTokens.colors.muted}
                                 style={[styles.input, styles.compactInput]}
@@ -1037,8 +1126,8 @@ export function BookingsScreen({
                               >
                                 <Text style={styles.secondaryActionLabel}>
                                   {payment?.refundReviewStatus === "requested"
-                                    ? "Refund review open"
-                                    : "Request refund review"}
+                                    ? i18n.t("mobile.bookings.refund_review_open")
+                                    : i18n.t("customer_live.action.request_refund_review")}
                                 </Text>
                               </Pressable>
                             </>
@@ -1051,13 +1140,13 @@ export function BookingsScreen({
               </View>
             ) : (
               <Text style={styles.emptyState}>
-                Completed visits will show up here.
+                {i18n.t("mobile.bookings.empty.past")}
               </Text>
             )}
           </InfoCard>
 
           {readyOpportunity && !readyOpportunity.canReviewNow ? (
-            <InfoCard title="Review status" description={readyOpportunity.providerName}>
+            <InfoCard title={i18n.t("mobile.bookings.review_status")} description={readyOpportunity.providerName}>
               <Text style={styles.bookingMeta}>{readyOpportunity.reason}</Text>
             </InfoCard>
           ) : null}
@@ -1067,7 +1156,8 @@ export function BookingsScreen({
         onClose={() => setIsTrackingModalVisible(false)}
         onRefresh={() => void refreshArrivalTracking()}
         providerName={
-          providerNamesById[bookings.find((booking) => booking.id === activeTrackingBookingId)?.providerId ?? ""]
+          providerNamesById[bookings.find((booking) => booking.id === activeTrackingBookingId)?.providerId ?? ""] ??
+          i18n.t("mobile.bookings.business")
         }
         tracking={tracking}
         visible={isTrackingModalVisible && Boolean(tracking)}
@@ -1120,10 +1210,12 @@ function StatusBadge({
 
 function VisitLifecycle({
   booking,
+  i18n,
   payment,
   paymentLabel
 }: {
   booking: Booking;
+  i18n: I18nInstance;
   payment?: PaymentRecord;
   paymentLabel: string;
 }) {
@@ -1141,28 +1233,28 @@ function VisitLifecycle({
             : 1;
   const arrivalValue =
     booking.onRouteConfirmedAt
-      ? "On the way"
+      ? i18n.t("customer_live.status.crew_on_way")
       : booking.status === "in-progress"
-        ? "Working"
+        ? i18n.t("mobile.bookings.lifecycle.working")
         : isPaid
-          ? "Waiting"
-          : "After pay";
+          ? i18n.t("mobile.bookings.lifecycle.waiting")
+          : i18n.t("mobile.bookings.lifecycle.after_pay");
   const steps = [
     {
-      label: "Request",
-      value: isRequested ? "Provider review" : "Confirmed"
+      label: i18n.t("customer_live.progress.request"),
+      value: isRequested ? i18n.t("mobile.book.provider_reviews") : i18n.t("mobile.bookings.status.confirmed")
     },
     {
-      label: "Pay",
-      value: isRequested && payment?.status !== "captured" ? "After confirm" : paymentLabel
+      label: i18n.t("mobile.book.pay"),
+      value: isRequested && payment?.status !== "captured" ? i18n.t("mobile.bookings.lifecycle.after_confirm") : paymentLabel
     },
     {
-      label: "Arrival",
+      label: i18n.t("mobile.bookings.lifecycle.arrival"),
       value: arrivalValue
     },
     {
-      label: "Review",
-      value: booking.status === "completed" ? "Ready" : "After visit"
+      label: i18n.t("mobile.bookings.lifecycle.review"),
+      value: booking.status === "completed" ? i18n.t("provider_live.step.ready") : i18n.t("mobile.bookings.lifecycle.after_visit")
     }
   ].map((step, index) => ({
     ...step,
@@ -1170,7 +1262,7 @@ function VisitLifecycle({
   }));
 
   return (
-    <View style={styles.visitPath} accessibilityLabel="Visit progress">
+    <View style={styles.visitPath} accessibilityLabel={i18n.t("mobile.bookings.visit_progress_aria")}>
       {steps.map((step, index) => (
         <View key={step.label} style={[styles.visitPathStep, styles[`visitPathStep_${step.status}`]]}>
           <View style={[styles.visitPathIndex, styles[`visitPathIndex_${step.status}`]]}>

@@ -6,6 +6,9 @@ import {
   ProviderStaffingOverview,
   ProviderStaffingJobSummary
 } from "@yardmatch/contracts";
+import { I18nInstance } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
@@ -23,103 +26,106 @@ interface PayoutActionItem {
   value: string;
 }
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(cents / 100);
+function formatCurrency(i18n: I18nInstance, cents: number) {
+  return i18n.formatCurrency(cents);
 }
 
-function formatJobWindow(iso: string) {
+function formatJobWindow(i18n: I18nInstance, iso: string) {
   const date = new Date(iso);
-  const day = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${day} • ${time}`;
+  const day = i18n.formatDate(date, { weekday: "short", month: "short", day: "numeric" });
+  const time = i18n.formatDate(date, { hour: "numeric", minute: "2-digit" });
+  return i18n.t("provider_mobile.dashboard.job_window", { day, time });
 }
 
 function formatJobStatus(status: string) {
   return status.replaceAll("-", " ");
 }
 
-function formatPayoutDate(iso?: string) {
+function formatPayoutDate(i18n: I18nInstance, iso?: string) {
   if (!iso) {
-    return "Pending";
+    return i18n.t("provider_mobile.dashboard.pending");
   }
 
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return i18n.formatDate(iso, { month: "short", day: "numeric" });
 }
 
-function formatPayoutStatus(status: ProviderPayoutLedgerResponse["entries"][number]["status"]) {
+function formatPayoutStatus(i18n: I18nInstance, status: ProviderPayoutLedgerResponse["entries"][number]["status"]) {
   switch (status) {
     case "awaiting-customer-payment":
-      return "Awaiting payment";
+      return i18n.t("provider_mobile.dashboard.payout.awaiting_payment");
     case "on-hold":
-      return "On hold";
+      return i18n.t("provider_mobile.dashboard.payout.on_hold");
     case "scheduled":
-      return "Scheduled";
+      return i18n.t("provider_mobile.dashboard.payout.scheduled");
     case "ready":
-      return "Ready";
+      return i18n.t("provider_mobile.dashboard.payout.ready");
     case "paid":
-      return "Paid";
+      return i18n.t("provider_mobile.dashboard.payout.paid");
     case "reversed":
-      return "Reversed";
+      return i18n.t("provider_mobile.dashboard.payout.reversed");
   }
 }
 
-function formatHoldPeriod(hours: number) {
+function formatHoldPeriod(i18n: I18nInstance, hours: number) {
   if (hours < 24) {
-    return `${hours}h hold`;
+    return i18n.t("provider_mobile.dashboard.hold_hours", { count: hours });
   }
 
   const days = Math.round(hours / 24);
-  return `${days}d hold`;
+  return i18n.t("provider_mobile.dashboard.hold_days", { count: days });
 }
 
-function getReadyPayoutDetail(payoutLedger: ProviderPayoutLedgerResponse) {
+function getReadyPayoutDetail(i18n: I18nInstance, payoutLedger: ProviderPayoutLedgerResponse) {
   if (
     payoutLedger.payoutSchedule.instantPayoutsEnabled &&
     payoutLedger.payoutSchedule.instantPayoutEligibleCents > 0
   ) {
-    return `Instant eligible ${formatCurrency(payoutLedger.payoutSchedule.instantPayoutEligibleCents)}`;
+    return i18n.t("provider_mobile.dashboard.payout.instant_eligible", {
+      amount: formatCurrency(i18n, payoutLedger.payoutSchedule.instantPayoutEligibleCents)
+    });
   }
 
-  return `Pays ${formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}`;
+  return i18n.t("provider_mobile.dashboard.payout.pays_date", {
+    date: formatPayoutDate(i18n, payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)
+  });
 }
 
-function getProviderPayoutFocus(payoutLedger: ProviderPayoutLedgerResponse, blockedPayoutCents: number) {
+function getProviderPayoutFocus(i18n: I18nInstance, payoutLedger: ProviderPayoutLedgerResponse, blockedPayoutCents: number) {
   if (payoutLedger.totalNetReadyCents > 0) {
     return {
-      amount: formatCurrency(payoutLedger.totalNetReadyCents),
-      detail: getReadyPayoutDetail(payoutLedger),
-      label: "Ready"
+      amount: formatCurrency(i18n, payoutLedger.totalNetReadyCents),
+      detail: getReadyPayoutDetail(i18n, payoutLedger),
+      label: i18n.t("provider_mobile.dashboard.payout.ready")
     };
   }
 
   if (payoutLedger.totalNetScheduledCents > 0) {
     return {
-      amount: formatCurrency(payoutLedger.totalNetScheduledCents),
-      detail: `Next payout ${formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}`,
-      label: "Scheduled"
+      amount: formatCurrency(i18n, payoutLedger.totalNetScheduledCents),
+      detail: i18n.t("provider_mobile.dashboard.payout.next_payout", {
+        date: formatPayoutDate(i18n, payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)
+      }),
+      label: i18n.t("provider_mobile.dashboard.payout.scheduled")
     };
   }
 
   if (blockedPayoutCents > 0) {
     return {
-      amount: formatCurrency(blockedPayoutCents),
-      detail: "Customer payment or hold needs to clear.",
-      label: "Waiting"
+      amount: formatCurrency(i18n, blockedPayoutCents),
+      detail: i18n.t("provider_mobile.dashboard.payout.blocked_detail"),
+      label: i18n.t("provider_mobile.dashboard.payout.waiting")
     };
   }
 
   return {
-    amount: "$0",
-    detail: "Completed paid jobs appear here.",
-    label: "No payout yet"
+    amount: formatCurrency(i18n, 0),
+    detail: i18n.t("provider_mobile.dashboard.payout.completed_paid_jobs_here"),
+    label: i18n.t("provider_mobile.dashboard.payout.no_payout")
   };
 }
 
 function getPayoutActionItems(
+  i18n: I18nInstance,
   payoutLedger: ProviderPayoutLedgerResponse,
   heldPayoutEntries: ProviderPayoutLedgerResponse["entries"]
 ): PayoutActionItem[] {
@@ -127,46 +133,46 @@ function getPayoutActionItems(
 
   if (payoutLedger.totalNetReadyCents > 0) {
     items.push({
-      detail: getReadyPayoutDetail(payoutLedger),
-      label: "Ready",
+      detail: getReadyPayoutDetail(i18n, payoutLedger),
+      label: i18n.t("provider_mobile.dashboard.payout.ready"),
       tone: "success",
-      value: formatCurrency(payoutLedger.totalNetReadyCents)
+      value: formatCurrency(i18n, payoutLedger.totalNetReadyCents)
     });
   }
 
   if (payoutLedger.totalNetScheduledCents > 0) {
     items.push({
-      detail: formatHoldPeriod(payoutLedger.payoutSchedule.holdPeriodHours),
-      label: "Clearing",
+      detail: formatHoldPeriod(i18n, payoutLedger.payoutSchedule.holdPeriodHours),
+      label: i18n.t("provider_mobile.dashboard.payout.clearing"),
       tone: "neutral",
-      value: formatCurrency(payoutLedger.totalNetScheduledCents)
+      value: formatCurrency(i18n, payoutLedger.totalNetScheduledCents)
     });
   }
 
   if (payoutLedger.pendingCustomerPaymentCents > 0) {
     items.push({
-      detail: "Customer checkout",
-      label: "Waiting",
+      detail: i18n.t("provider_mobile.dashboard.payout.customer_checkout"),
+      label: i18n.t("provider_mobile.dashboard.payout.waiting"),
       tone: "warning",
-      value: formatCurrency(payoutLedger.pendingCustomerPaymentCents)
+      value: formatCurrency(i18n, payoutLedger.pendingCustomerPaymentCents)
     });
   }
 
   if (heldPayoutEntries.length > 0) {
     items.push({
-      detail: `${heldPayoutEntries.length} hold${heldPayoutEntries.length === 1 ? "" : "s"}`,
-      label: "On hold",
+      detail: i18n.t("provider_mobile.dashboard.payout.hold_count", { count: heldPayoutEntries.length }),
+      label: i18n.t("provider_mobile.dashboard.payout.on_hold"),
       tone: "warning",
-      value: formatCurrency(heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0))
+      value: formatCurrency(i18n, heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0))
     });
   }
 
   if (items.length === 0) {
     items.push({
-      detail: "Complete paid jobs",
-      label: "Next",
+      detail: i18n.t("provider_mobile.dashboard.payout.complete_paid_jobs"),
+      label: i18n.t("provider_mobile.dashboard.payout.next"),
       tone: "neutral",
-      value: "$0"
+      value: formatCurrency(i18n, 0)
     });
   }
 
@@ -189,14 +195,14 @@ function getTodayJobAction(job?: ProviderStaffingJobSummary): ProviderTodayJobAc
   return "schedule";
 }
 
-function getTodayJobActionLabel(action: ProviderTodayJobAction) {
+function getTodayJobActionLabel(i18n: I18nInstance, action: ProviderTodayJobAction) {
   switch (action) {
     case "confirm":
-      return "Confirm booking";
+      return i18n.t("provider_mobile.dashboard.action.confirm_booking");
     case "complete":
-      return "Complete job";
+      return i18n.t("provider_mobile.dashboard.action.complete_job");
     case "schedule":
-      return "Open schedule";
+      return i18n.t("provider_mobile.dashboard.action.open_schedule");
   }
 }
 
@@ -207,6 +213,7 @@ export function DashboardScreen({
   onOpenCrew?: () => void;
   onOpenSchedule?: () => void;
 }) {
+  const i18n = useI18n();
   const tracker = getProviderMobileTracker();
   const { envelope } = useProviderSession();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
@@ -265,20 +272,20 @@ export function DashboardScreen({
     heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0);
   const shouldShowPayouts =
     Boolean(payoutLedger) && ((payoutLedger?.entries.length ?? 0) > 0 || totalJobs > 0);
-  const payoutFocus = payoutLedger ? getProviderPayoutFocus(payoutLedger, blockedPayoutCents) : undefined;
-  const payoutActionItems = payoutLedger ? getPayoutActionItems(payoutLedger, heldPayoutEntries) : [];
+  const payoutFocus = payoutLedger ? getProviderPayoutFocus(i18n, payoutLedger, blockedPayoutCents) : undefined;
+  const payoutActionItems = payoutLedger ? getPayoutActionItems(i18n, payoutLedger, heldPayoutEntries) : [];
   const payoutRecentEntries = (payoutLedger?.entries ?? [])
     .slice()
     .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))
     .slice(0, 2);
   const nextActionLabel =
     primaryCardKind === "staffing"
-      ? "Review staffing"
+      ? i18n.t("provider_mobile.dashboard.action.review_staffing")
       : primaryCardKind === "departure"
-        ? "Start route"
+        ? i18n.t("provider_mobile.dashboard.action.start_route")
         : primaryCardKind === "job"
-          ? getTodayJobActionLabel(nextJobAction)
-          : "Open schedule";
+          ? getTodayJobActionLabel(i18n, nextJobAction)
+          : i18n.t("provider_mobile.dashboard.action.open_schedule");
 
   async function loadOverview() {
     if (!envelope?.session.token) {
@@ -295,7 +302,7 @@ export function DashboardScreen({
       setOverview(nextOverview);
       setPayoutLedger(nextPayoutLedger);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load operations.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.load_operations"));
     }
   }
 
@@ -315,10 +322,10 @@ export function DashboardScreen({
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.markBookingOnRoute({ bookingId });
-      setStatusMessage("Route started. Customers can now track arrival from their visit.");
+      setStatusMessage(i18n.t("provider_mobile.dashboard.message.route_started"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.start_route"));
     } finally {
       setIsWorking(false);
     }
@@ -336,10 +343,10 @@ export function DashboardScreen({
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.confirmBooking({ bookingId });
-      setStatusMessage("Booking confirmed.");
+      setStatusMessage(i18n.t("provider_mobile.dashboard.message.booking_confirmed"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm that booking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.confirm_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -357,25 +364,33 @@ export function DashboardScreen({
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.completeBooking({ bookingId });
-      setStatusMessage("Job complete. The customer can review the service.");
+      setStatusMessage(i18n.t("provider_mobile.dashboard.message.job_complete"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to complete that job.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.complete_job"));
     } finally {
       setIsWorking(false);
     }
   }
 
   return (
-    <ScreenShell eyebrow="Provider" title="Today" description="One priority, then the route.">
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+    <ScreenShell
+      eyebrow={i18n.t("provider_mobile.dashboard.eyebrow")}
+      title={i18n.t("provider_mobile.dashboard.title")}
+      description={i18n.t("provider_mobile.dashboard.description")}
+    >
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       <View style={styles.opsSummaryCard}>
         <View style={styles.opsSummaryHeader}>
           <View>
-            <Text style={styles.opsSummaryEyebrow}>Route health</Text>
-            <Text style={styles.opsSummaryTitle}>{totalCrewGap > 0 ? "Staffing first" : "Route ready"}</Text>
+            <Text style={styles.opsSummaryEyebrow}>{i18n.t("provider_mobile.dashboard.route_health")}</Text>
+            <Text style={styles.opsSummaryTitle}>
+              {totalCrewGap > 0
+                ? i18n.t("provider_mobile.dashboard.staffing_first")
+                : i18n.t("provider_mobile.dashboard.route_ready")}
+            </Text>
           </View>
           <Text style={totalCrewGap > 0 ? styles.warningBadge : styles.successBadge}>
             {nextActionLabel}
@@ -383,38 +398,45 @@ export function DashboardScreen({
         </View>
         <View style={styles.opsSummaryGrid}>
           <View style={styles.opsSummaryItem}>
-            <Text style={styles.opsSummaryLabel}>Jobs</Text>
+            <Text style={styles.opsSummaryLabel}>{i18n.t("provider_mobile.dashboard.jobs")}</Text>
             <Text style={styles.opsSummaryValue}>{totalJobs}</Text>
           </View>
           <View style={styles.opsSummaryItem}>
-            <Text style={styles.opsSummaryLabel}>Ready</Text>
+            <Text style={styles.opsSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.ready")}</Text>
             <Text style={styles.opsSummaryValue}>{readyJobs}</Text>
           </View>
           <View style={styles.opsSummaryItem}>
-            <Text style={styles.opsSummaryLabel}>Crew gap</Text>
+            <Text style={styles.opsSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew_gap")}</Text>
             <Text style={styles.opsSummaryValue}>{totalCrewGap}</Text>
           </View>
           <View style={styles.opsSummaryItem}>
-            <Text style={styles.opsSummaryLabel}>Assigned</Text>
+            <Text style={styles.opsSummaryLabel}>{i18n.t("provider_mobile.dashboard.assigned")}</Text>
             <Text style={styles.opsSummaryValue}>{totalAssignedCrew}</Text>
           </View>
         </View>
         {nextJob ? (
           <Text style={styles.opsSummaryMeta}>
-            Next: {nextJob.customerName} • {formatJobWindow(nextJob.scheduledStartIso)}
+            {i18n.t("provider_mobile.dashboard.next_job_line", {
+              customer: nextJob.customerName,
+              window: formatJobWindow(i18n, nextJob.scheduledStartIso)
+            })}
           </Text>
         ) : (
-          <Text style={styles.opsSummaryMeta}>No route work is waiting right now.</Text>
+          <Text style={styles.opsSummaryMeta}>{i18n.t("provider_mobile.dashboard.no_route_work")}</Text>
         )}
       </View>
 
       {shouldShowPayouts && payoutLedger ? (
         <InfoCard
-          title="Payouts"
+          title={i18n.t("provider_mobile.dashboard.payouts")}
           description={
             blockedPayoutCents > 0
-              ? `${formatCurrency(blockedPayoutCents)} waiting`
-              : `${formatCurrency(payoutLedger.totalNetReadyCents)} ready`
+              ? i18n.t("provider_mobile.dashboard.payout.waiting_amount", {
+                  amount: formatCurrency(i18n, blockedPayoutCents)
+                })
+              : i18n.t("provider_mobile.dashboard.payout.ready_amount", {
+                  amount: formatCurrency(i18n, payoutLedger.totalNetReadyCents)
+                })
           }
         >
           {payoutFocus ? (
@@ -428,22 +450,22 @@ export function DashboardScreen({
           ) : null}
           <View style={styles.jobSummaryGrid}>
             <View style={styles.jobSummaryItem}>
-              <Text style={styles.jobSummaryLabel}>Ready</Text>
-              <Text style={styles.jobSummaryValue}>{formatCurrency(payoutLedger.totalNetReadyCents)}</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.ready")}</Text>
+              <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, payoutLedger.totalNetReadyCents)}</Text>
             </View>
             <View style={styles.jobSummaryItem}>
-              <Text style={styles.jobSummaryLabel}>Next</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.next")}</Text>
               <Text style={styles.jobSummaryValue}>
-                {formatPayoutDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}
+                {formatPayoutDate(i18n, payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso)}
               </Text>
             </View>
             <View style={styles.jobSummaryItem}>
-              <Text style={styles.jobSummaryLabel}>Scheduled</Text>
-              <Text style={styles.jobSummaryValue}>{formatCurrency(payoutLedger.totalNetScheduledCents)}</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.scheduled")}</Text>
+              <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, payoutLedger.totalNetScheduledCents)}</Text>
             </View>
             <View style={styles.jobSummaryItem}>
-              <Text style={styles.jobSummaryLabel}>Crew</Text>
-              <Text style={styles.jobSummaryValue}>{formatCurrency(payoutLedger.totalCrewOwedCents)}</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew")}</Text>
+              <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, payoutLedger.totalCrewOwedCents)}</Text>
             </View>
           </View>
           <View style={styles.payoutActionGrid}>
@@ -472,26 +494,26 @@ export function DashboardScreen({
                   <View style={styles.payoutEntryCopy}>
                     <Text style={styles.jobTitle}>{entry.customerName}</Text>
                     <Text style={styles.jobMeta}>
-                      {entry.serviceLabel} • {formatPayoutDate(entry.serviceDateIso)}
+                      {entry.serviceLabel} • {formatPayoutDate(i18n, entry.serviceDateIso)}
                     </Text>
                   </View>
                   <View style={styles.payoutEntryAmountBlock}>
-                    <Text style={styles.jobSummaryValue}>{formatCurrency(entry.providerNetAmountCents)}</Text>
-                    <Text style={styles.jobSummaryLabel}>{formatPayoutStatus(entry.status)}</Text>
+                    <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, entry.providerNetAmountCents)}</Text>
+                    <Text style={styles.jobSummaryLabel}>{formatPayoutStatus(i18n, entry.status)}</Text>
                   </View>
                 </View>
               ))}
             </View>
           ) : (
-            <Text style={styles.alertText}>Completed paid jobs will appear here.</Text>
+            <Text style={styles.alertText}>{i18n.t("provider_mobile.dashboard.payout.completed_paid_jobs_here")}</Text>
           )}
         </InfoCard>
       ) : null}
 
       {primaryCardKind === "staffing" ? (
-        <InfoCard title="Crew gap" description={`${totalCrewGap} open crew slots across upcoming jobs`}>
+        <InfoCard title={i18n.t("provider_mobile.dashboard.crew_gap")} description={i18n.t("provider_mobile.dashboard.open_crew_slots", { count: totalCrewGap })}>
           <Text style={styles.alertText}>
-            Review crew matches before the service window.
+            {i18n.t("provider_mobile.dashboard.review_crew_before_window")}
           </Text>
           <Pressable
             onPress={() => {
@@ -504,52 +526,61 @@ export function DashboardScreen({
             }}
             style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonLabel}>Review staffing</Text>
+            <Text style={styles.primaryButtonLabel}>{i18n.t("provider_mobile.dashboard.action.review_staffing")}</Text>
           </Pressable>
         </InfoCard>
       ) : null}
 
       {primaryCardKind === "departure" && departureReminderJob ? (
         <InfoCard
-          title="Leave soon"
-          description={buildDepartureSummary(departureReminderJob)}
+          title={i18n.t("provider_mobile.dashboard.leave_soon")}
+          description={buildDepartureSummary(i18n, departureReminderJob)}
         >
           <Text style={styles.alertText}>
-            Start the route when you are ready to head to the property.
+            {i18n.t("provider_mobile.dashboard.start_route_ready")}
           </Text>
-          <ProviderJobSnapshot job={departureReminderJob} />
+          <ProviderJobSnapshot i18n={i18n} job={departureReminderJob} />
           <Pressable
             disabled={isWorking}
             onPress={() => void startRoute(departureReminderJob.bookingId)}
             style={styles.primaryButton}
           >
-            <Text style={styles.primaryButtonLabel}>{isWorking ? "Starting..." : "Start route"}</Text>
+            <Text style={styles.primaryButtonLabel}>
+              {isWorking ? i18n.t("provider_mobile.dashboard.loading.starting") : i18n.t("provider_mobile.dashboard.action.start_route")}
+            </Text>
           </Pressable>
           <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Open schedule</Text>
+            <Text style={styles.linkButtonLabel}>{i18n.t("provider_mobile.dashboard.action.open_schedule")}</Text>
           </Pressable>
         </InfoCard>
       ) : null}
 
       {primaryCardKind === "job" && nextJob ? (
-        <InfoCard title="Next job" description={buildDepartureSummary(nextJob)}>
+        <InfoCard title={i18n.t("provider_mobile.dashboard.next_job")} description={buildDepartureSummary(i18n, nextJob)}>
           <Text style={styles.alertText}>
             {nextJobAction === "confirm"
-              ? "Confirm the request so the customer can pay and you can prepare the route."
+              ? i18n.t("provider_mobile.dashboard.confirm_request_guidance")
               : nextJobAction === "complete"
-                ? "After-work proof is saved. Complete the job when service is reviewed."
-                : `${nextJob.assignedCrewMembers}/${nextJob.requiredCrewMembers} crew${
-                    nextJob.crewGap > 0 ? ` • ${nextJob.crewGap} still open` : " • fully staffed"
-                  }`}
+                ? i18n.t("provider_mobile.dashboard.complete_job_guidance")
+                : i18n.t("provider_mobile.dashboard.crew_staffing_line", {
+                    assigned: nextJob.assignedCrewMembers,
+                    required: nextJob.requiredCrewMembers,
+                    detail:
+                      nextJob.crewGap > 0
+                        ? i18n.t("provider_mobile.dashboard.still_open", { count: nextJob.crewGap })
+                        : i18n.t("provider_mobile.dashboard.fully_staffed")
+                  })}
           </Text>
-          <ProviderJobSnapshot job={nextJob} />
+          <ProviderJobSnapshot i18n={i18n} job={nextJob} />
           {nextJobAction === "confirm" ? (
             <Pressable
               disabled={isWorking}
               onPress={() => void confirmJob(nextJob.bookingId)}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Confirm booking"}</Text>
+              <Text style={styles.primaryButtonLabel}>
+                {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.confirm_booking")}
+              </Text>
             </Pressable>
           ) : null}
           {nextJobAction === "complete" ? (
@@ -558,40 +589,45 @@ export function DashboardScreen({
               onPress={() => void completeJob(nextJob.bookingId)}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Working..." : "Complete job"}</Text>
+              <Text style={styles.primaryButtonLabel}>
+                {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.complete_job")}
+              </Text>
             </Pressable>
           ) : null}
           {nextJobAction === "schedule" ? (
             <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>Open schedule</Text>
+              <Text style={styles.primaryButtonLabel}>{i18n.t("provider_mobile.dashboard.action.open_schedule")}</Text>
             </Pressable>
           ) : null}
         </InfoCard>
       ) : null}
 
       {primaryCardKind === "empty" ? (
-        <InfoCard title="You’re caught up" description="No upcoming jobs need review right now.">
+        <InfoCard title={i18n.t("provider_mobile.dashboard.caught_up")} description={i18n.t("provider_mobile.dashboard.no_upcoming_jobs_need_review")}>
           <Pressable onPress={onOpenSchedule} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonLabel}>Open schedule</Text>
+            <Text style={styles.primaryButtonLabel}>{i18n.t("provider_mobile.dashboard.action.open_schedule")}</Text>
           </Pressable>
         </InfoCard>
       ) : null}
 
       {departureReminderJob && primaryCardKind === "staffing" ? (
-        <InfoCard title="Leave soon" description={buildDepartureSummary(departureReminderJob)}>
-          <Text style={styles.alertText}>Cover staffing before starting the route.</Text>
+        <InfoCard title={i18n.t("provider_mobile.dashboard.leave_soon")} description={buildDepartureSummary(i18n, departureReminderJob)}>
+          <Text style={styles.alertText}>{i18n.t("provider_mobile.dashboard.cover_staffing_before_route")}</Text>
           <Pressable onPress={onOpenSchedule} style={styles.linkButton}>
-            <Text style={styles.linkButtonLabel}>Open schedule</Text>
+            <Text style={styles.linkButtonLabel}>{i18n.t("provider_mobile.dashboard.action.open_schedule")}</Text>
           </Pressable>
         </InfoCard>
       ) : null}
 
       <InfoCard
-        title={remainingJobs.length > 0 ? "Later jobs" : "Schedule health"}
+        title={remainingJobs.length > 0 ? i18n.t("provider_mobile.dashboard.later_jobs") : i18n.t("provider_mobile.dashboard.schedule_health")}
         description={
           remainingJobs.length > 0
-            ? `${remainingJobs.length} more upcoming`
-            : `${overview?.jobs.length ?? 0} total jobs • ${totalAssignedCrew} crew assigned`
+            ? i18n.t("provider_mobile.dashboard.more_upcoming", { count: remainingJobs.length })
+            : i18n.t("provider_mobile.dashboard.schedule_health_summary", {
+                jobs: overview?.jobs.length ?? 0,
+                crew: totalAssignedCrew
+              })
         }
       >
         {remainingJobs.length > 0 ? (
@@ -600,19 +636,23 @@ export function DashboardScreen({
             <View key={job.bookingId} style={styles.jobRow}>
               <View style={styles.jobCopy}>
                 <Text style={styles.jobTitle}>{job.customerName}</Text>
-                <Text style={styles.jobMeta}>{job.category.replaceAll("-", " ")}</Text>
-                <ProviderJobSnapshot job={job} compact />
+                <Text style={styles.jobMeta}>{i18n.t(serviceCategoryToI18nKey(job.category))}</Text>
+                <ProviderJobSnapshot i18n={i18n} job={job} compact />
               </View>
               <Text style={job.crewGap > 0 ? styles.warningBadge : styles.successBadge}>
-                {job.crewGap > 0 ? "Needs review" : "Covered"}
+                {job.crewGap > 0 ? i18n.t("provider_mobile.dashboard.needs_review") : i18n.t("provider_mobile.dashboard.covered")}
               </Text>
             </View>
           ))}
         </View>
         ) : (
           <Text style={styles.alertText}>
-            Staffing is set to {overview?.provider.staffingMode === "auto-accept" ? "auto-accept" : "review first"} and there
-            are no other upcoming jobs behind the current priority.
+            {i18n.t("provider_mobile.dashboard.staffing_mode_no_other_jobs", {
+              mode:
+                overview?.provider.staffingMode === "auto-accept"
+                  ? i18n.t("provider_mobile.dashboard.staffing_mode.auto_accept")
+                  : i18n.t("provider_mobile.dashboard.staffing_mode.review_first")
+            })}
           </Text>
         )}
       </InfoCard>
@@ -620,36 +660,45 @@ export function DashboardScreen({
   );
 }
 
-function buildDepartureSummary(job: ProviderStaffingJobSummary) {
-  return `${job.customerName} • ${new Date(job.scheduledStartIso).toLocaleDateString()} • ${new Date(job.scheduledStartIso).toLocaleTimeString([], { timeStyle: "short" })}`;
+function buildDepartureSummary(i18n: I18nInstance, job: ProviderStaffingJobSummary) {
+  return i18n.t("provider_mobile.dashboard.departure_summary", {
+    customer: job.customerName,
+    date: i18n.formatDate(job.scheduledStartIso),
+    time: i18n.formatDate(job.scheduledStartIso, { timeStyle: "short" })
+  });
 }
 
 function ProviderJobSnapshot({
   compact = false,
+  i18n,
   job
 }: {
   compact?: boolean;
+  i18n: I18nInstance;
   job: ProviderStaffingJobSummary;
 }) {
   return (
     <View style={[styles.jobSummaryGrid, compact && styles.jobSummaryGridCompact]}>
       <View style={styles.jobSummaryItem}>
-        <Text style={styles.jobSummaryLabel}>Window</Text>
-        <Text style={styles.jobSummaryValue}>{formatJobWindow(job.scheduledStartIso)}</Text>
+        <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.window")}</Text>
+        <Text style={styles.jobSummaryValue}>{formatJobWindow(i18n, job.scheduledStartIso)}</Text>
       </View>
       <View style={styles.jobSummaryItem}>
-        <Text style={styles.jobSummaryLabel}>Crew</Text>
+        <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew")}</Text>
         <Text style={styles.jobSummaryValue}>
-          {job.assignedCrewMembers}/{job.requiredCrewMembers}
-          {job.crewGap ? ` • gap ${job.crewGap}` : ""}
+          {i18n.t("provider_mobile.dashboard.crew_ratio", {
+            assigned: job.assignedCrewMembers,
+            required: job.requiredCrewMembers,
+            gap: job.crewGap ? i18n.t("provider_mobile.dashboard.gap_count", { count: job.crewGap }) : ""
+          })}
         </Text>
       </View>
       <View style={styles.jobSummaryItem}>
-        <Text style={styles.jobSummaryLabel}>Total</Text>
-        <Text style={styles.jobSummaryValue}>{formatCurrency(job.totalCents)}</Text>
+        <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.total")}</Text>
+        <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, job.totalCents)}</Text>
       </View>
       <View style={styles.jobSummaryItem}>
-        <Text style={styles.jobSummaryLabel}>Status</Text>
+        <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.status")}</Text>
         <Text style={styles.jobSummaryValue}>{formatJobStatus(job.status)}</Text>
       </View>
     </View>

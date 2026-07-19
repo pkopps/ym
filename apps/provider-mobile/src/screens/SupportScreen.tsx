@@ -7,7 +7,8 @@ import {
   CreateSupportTicketRequest,
   ExternalCalendarProvider,
   ExternalCalendarBlockType,
-  getExternalCalendarBlockLabel,
+  NotificationChannel,
+  NotificationDeliveryStatus,
   NotificationDeliveryRecord,
   NotificationPreferences,
   ProviderPayoutLedgerResponse,
@@ -16,8 +17,11 @@ import {
   ProviderProfile,
   ProviderStaffingOverview,
   SupportIssueType,
-  SupportTicket
+  SupportTicket,
+  SupportTicketStatus
 } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
@@ -32,15 +36,60 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
 ];
 const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
 
-type ProviderBusinessSection = "work" | "payouts" | "alerts" | "security" | "help";
+type ProviderBusinessSection = "work" | "payouts" | "alerts" | "language" | "security" | "help";
+type LanguageSettings = {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+};
 
-const businessSectionOptions: Array<{ value: ProviderBusinessSection; label: string }> = [
-  { value: "work", label: "Work" },
-  { value: "payouts", label: "Payouts" },
-  { value: "alerts", label: "Alerts" },
-  { value: "security", label: "Security" },
-  { value: "help", label: "Help" }
+const businessSectionOptions: Array<{ value: ProviderBusinessSection; labelKey: TranslationKey }> = [
+  { value: "work", labelKey: "provider_mobile.support.section.work" },
+  { value: "payouts", labelKey: "provider_mobile.dashboard.payouts" },
+  { value: "alerts", labelKey: "mobile.support.section.alerts" },
+  { value: "language", labelKey: "common.language.label" },
+  { value: "security", labelKey: "mobile.support.section.security" },
+  { value: "help", labelKey: "mobile.support.section.help" }
 ];
+
+const supportIssueLabelKeys: Record<SupportIssueType, TranslationKey> = {
+  billing: "mobile.support.issue.billing",
+  "service-quality": "mobile.support.issue.service_quality",
+  account: "mobile.support.issue.account",
+  general: "mobile.support.issue.general"
+};
+
+const externalCalendarBlockLabelKeys: Record<ExternalCalendarBlockType, TranslationKey> = {
+  "off-platform-client": "provider_mobile.support.calendar.block_type.off_platform_client",
+  "personal-time": "provider_mobile.support.calendar.block_type.personal_time",
+  "travel-buffer": "provider_mobile.support.calendar.block_type.travel_buffer",
+  "equipment-maintenance": "provider_mobile.support.calendar.block_type.equipment_maintenance"
+};
+
+const externalCalendarProviderLabelKeys: Record<ExternalCalendarProvider, TranslationKey> = {
+  apple: "provider_mobile.support.calendar.provider.apple",
+  google: "provider_mobile.support.calendar.provider.google",
+  ical: "provider_mobile.support.calendar.provider.ical"
+};
+
+const notificationChannelLabelKeys: Record<NotificationChannel, TranslationKey> = {
+  email: "mobile.support.preference.email",
+  "in-app": "provider_mobile.support.notification.channel.in_app",
+  push: "mobile.support.preference.push",
+  sms: "mobile.support.preference.sms"
+};
+
+const notificationDeliveryStatusLabelKeys: Record<NotificationDeliveryStatus, TranslationKey> = {
+  failed: "provider_mobile.support.notification.delivery.failed",
+  queued: "provider_mobile.support.notification.delivery.queued",
+  sent: "provider_mobile.support.notification.delivery.sent",
+  skipped: "provider_mobile.support.notification.delivery.skipped"
+};
+
+const supportTicketStatusLabelKeys: Record<SupportTicketStatus, TranslationKey> = {
+  open: "provider_mobile.support.ticket.status.open",
+  resolved: "provider_mobile.support.ticket.status.resolved",
+  triaged: "provider_mobile.support.ticket.status.triaged"
+};
 
 type ProviderPayoutEntry = ProviderPayoutLedgerResponse["entries"][number];
 
@@ -49,64 +98,82 @@ function formatLocalDateTimeValue(date: Date) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
+function formatCurrency(i18n: I18nInstance, cents: number) {
+  return i18n.formatCurrency(cents);
 }
 
-function formatCalendarHealthLabel(status: "healthy" | "attention" | "at-risk") {
+function formatCalendarHealthLabel(i18n: I18nInstance, status: "healthy" | "attention" | "at-risk") {
   switch (status) {
     case "healthy":
-      return "Healthy";
+      return i18n.t("provider_mobile.support.calendar.healthy");
     case "attention":
-      return "Needs attention";
+      return i18n.t("common.state.needs_attention");
     case "at-risk":
-      return "At risk";
+      return i18n.t("provider_mobile.support.calendar.at_risk");
   }
 }
 
-function formatWeekdayLabel(weekday: ProviderProfile["weeklyPayoutDay"]) {
-  const map: Record<ProviderProfile["weeklyPayoutDay"], string> = {
-    Mon: "Monday",
-    Tue: "Tuesday",
-    Wed: "Wednesday",
-    Thu: "Thursday",
-    Fri: "Friday",
-    Sat: "Saturday",
-    Sun: "Sunday"
+function formatWeekdayLabel(i18n: I18nInstance, weekday: ProviderProfile["weeklyPayoutDay"]) {
+  const map: Record<ProviderProfile["weeklyPayoutDay"], TranslationKey> = {
+    Mon: "provider_mobile.support.weekday.mon",
+    Tue: "provider_mobile.support.weekday.tue",
+    Wed: "provider_mobile.support.weekday.wed",
+    Thu: "provider_mobile.support.weekday.thu",
+    Fri: "provider_mobile.support.weekday.fri",
+    Sat: "provider_mobile.support.weekday.sat",
+    Sun: "provider_mobile.support.weekday.sun"
   };
 
-  return map[weekday];
+  return i18n.t(map[weekday]);
 }
 
-function formatMinimumLeadHoursLabel(hours: number) {
+function formatMinimumLeadHoursLabel(i18n: I18nInstance, hours: number) {
   if (hours <= 0) {
-    return "No minimum";
+    return i18n.t("provider_mobile.support.no_minimum");
   }
 
-  return hours === 1 ? "1 hour" : `${hours} hours`;
+  return i18n.t("provider_mobile.support.hours", { count: hours });
 }
 
-function formatPayoutStatus(status: ProviderPayoutEntry["status"]) {
+function formatPayoutStatus(i18n: I18nInstance, status: ProviderPayoutEntry["status"]) {
   switch (status) {
     case "awaiting-customer-payment":
-      return "Awaiting payment";
+      return i18n.t("provider_mobile.dashboard.payout.awaiting_payment");
     case "on-hold":
-      return "On hold";
+      return i18n.t("provider_mobile.dashboard.payout.on_hold");
     case "scheduled":
-      return "Scheduled";
+      return i18n.t("provider_mobile.dashboard.payout.scheduled");
     case "ready":
-      return "Ready";
+      return i18n.t("provider_mobile.dashboard.payout.ready");
     case "paid":
-      return "Paid";
+      return i18n.t("provider_mobile.dashboard.payout.paid");
     case "reversed":
-      return "Reversed";
+      return i18n.t("provider_mobile.dashboard.payout.reversed");
   }
 }
 
-export function SupportScreen() {
+function formatExternalCalendarBlockLabel(i18n: I18nInstance, blockType: ExternalCalendarBlockType) {
+  return i18n.t(externalCalendarBlockLabelKeys[blockType]);
+}
+
+function formatExternalCalendarProviderLabel(i18n: I18nInstance, provider: ExternalCalendarProvider) {
+  return i18n.t(externalCalendarProviderLabelKeys[provider]);
+}
+
+function formatNotificationChannelLabel(i18n: I18nInstance, channel: NotificationChannel) {
+  return i18n.t(notificationChannelLabelKeys[channel]);
+}
+
+function formatNotificationDeliveryStatus(i18n: I18nInstance, status: NotificationDeliveryStatus) {
+  return i18n.t(notificationDeliveryStatusLabelKeys[status]);
+}
+
+function formatSupportTicketStatus(i18n: I18nInstance, status: SupportTicketStatus) {
+  return i18n.t(supportTicketStatusLabelKeys[status]);
+}
+
+export function SupportScreen({ languageSettings }: { languageSettings: LanguageSettings }) {
+  const i18n = useI18n();
   const {
     biometricAvailable,
     biometricEnabled,
@@ -130,9 +197,9 @@ export function SupportScreen() {
   const [selectedBookingId, setSelectedBookingId] = useState<string>("");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
-  const [blockTitle, setBlockTitle] = useState("Off-platform client");
+  const [blockTitle, setBlockTitle] = useState(() => i18n.t("provider_mobile.support.calendar.default_block_title"));
   const [blockType, setBlockType] = useState<ExternalCalendarBlockType>("off-platform-client");
-  const [importTitle, setImportTitle] = useState("Google Calendar - Outside work");
+  const [importTitle, setImportTitle] = useState(() => i18n.t("provider_mobile.support.calendar.default_import_title"));
   const [importProvider, setImportProvider] = useState<ExternalCalendarProvider>("google");
   const [importFeedUrl, setImportFeedUrl] = useState("");
   const [blockStartText, setBlockStartText] = useState(() =>
@@ -158,24 +225,34 @@ export function SupportScreen() {
     heldPayoutEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0);
   const payoutStateLabel =
     blockedPayoutCents > 0
-      ? "Needs attention"
+      ? i18n.t("common.state.needs_attention")
       : (payoutLedger?.totalNetReadyCents ?? 0) > 0
-        ? "Ready now"
-        : "On track";
+        ? i18n.t("provider_mobile.support.payout.ready_now")
+        : i18n.t("provider_mobile.support.payout.on_track");
   const enabledAlertCount = [
     preferences?.pushEnabled ?? true,
     preferences?.emailEnabled ?? true,
     preferences?.smsEnabled ?? true
   ].filter(Boolean).length;
+  const currentLanguageLabel =
+    languageSettings.locale === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english");
   const sectionSummaries: Record<ProviderBusinessSection, string> = {
-    work: `${provider?.serviceRadiusMiles ?? 0} mi radius`,
+    work: i18n.t("provider_mobile.support.summary.radius", { count: provider?.serviceRadiusMiles ?? 0 }),
     payouts: payoutStateLabel,
-    alerts: `${unreadCount} unread • ${enabledAlertCount}/3 on`,
-    security: !biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`,
+    alerts: i18n.t("provider_mobile.support.summary.alerts", {
+      unread: unreadCount,
+      enabled: enabledAlertCount
+    }),
+    language: i18n.t("mobile.settings.language.summary", { language: currentLanguageLabel }),
+    security: !biometricAvailable
+      ? i18n.t("mobile.support.summary.unavailable")
+      : biometricEnabled
+        ? i18n.t("mobile.support.summary.biometric_on", { biometric: biometricLabel })
+        : i18n.t("mobile.support.summary.biometric_off", { biometric: biometricLabel }),
     help:
       supportTickets.length > 0
-        ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}`
-        : "Open a ticket"
+        ? i18n.t("mobile.support.summary.recent_tickets", { count: supportTickets.length })
+        : i18n.t("provider_mobile.support.summary.open_ticket")
   };
 
   async function loadProvider() {
@@ -218,7 +295,7 @@ export function SupportScreen() {
       setCalendarImports(nextCalendarImports);
       setPayoutLedger(nextPayoutLedger);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load settings.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.load_settings"));
     }
   }
 
@@ -264,9 +341,9 @@ export function SupportScreen() {
         sponsoredListingEnabled: provider.sponsoredListingEnabled
       });
       setProvider(nextProvider);
-      setStatusMessage("Settings updated.");
+      setStatusMessage(i18n.t("provider_mobile.support.message.settings_updated"));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update settings.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.update_settings"));
     } finally {
       setIsWorking(false);
     }
@@ -302,11 +379,11 @@ export function SupportScreen() {
       setProvider(nextProvider);
       setStatusMessage(
         (overrides.enabled ?? nextProvider.calendarConnection.externalEventsBlockingEnabled)
-          ? "Outside calendar blocks now protect your YardMatch schedule."
-          : "Outside calendar blocks are saved without affecting availability yet."
+          ? i18n.t("provider_mobile.support.message.calendar_blocks_protecting")
+          : i18n.t("provider_mobile.support.message.calendar_blocks_saved")
       );
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update outside calendar blocks.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.update_calendar_blocks"));
     } finally {
       setIsWorking(false);
     }
@@ -320,7 +397,7 @@ export function SupportScreen() {
     const start = new Date(blockStartText);
     const end = new Date(blockEndText);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      setErrorMessage("Use a valid start and end time like 2026-06-10T09:00.");
+      setErrorMessage(i18n.t("provider_mobile.support.error.valid_start_end"));
       return;
     }
 
@@ -328,7 +405,7 @@ export function SupportScreen() {
       ...(provider.calendarConnection.externalBlocks ?? []),
       {
         id: `manual-block-${Date.now()}`,
-        title: blockTitle.trim() || getExternalCalendarBlockLabel(blockType),
+        title: blockTitle.trim() || formatExternalCalendarBlockLabel(i18n, blockType),
         blockType,
         startIso: start.toISOString(),
         endIso: end.toISOString(),
@@ -342,7 +419,7 @@ export function SupportScreen() {
       enabled: true,
       blocks: nextBlocks
     });
-    setBlockTitle("Off-platform client");
+    setBlockTitle(i18n.t("provider_mobile.support.calendar.default_block_title"));
     setBlockType("off-platform-client");
     setBlockNotes("");
   }
@@ -359,7 +436,7 @@ export function SupportScreen() {
 
   async function handleCreateCalendarImport() {
     if (!envelope?.session.token || !importTitle.trim() || !importFeedUrl.trim()) {
-      setErrorMessage("Add a calendar title and feed URL first.");
+      setErrorMessage(i18n.t("provider_mobile.support.error.calendar_title_feed"));
       return;
     }
 
@@ -375,10 +452,10 @@ export function SupportScreen() {
       } satisfies CreateExternalCalendarImportRequest);
       setCalendarImports(nextImports);
       setImportFeedUrl("");
-      setStatusMessage("Outside calendar synced into YardMatch.");
+      setStatusMessage(i18n.t("provider_mobile.support.message.calendar_synced"));
       await loadProvider();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to import that calendar.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.import_calendar"));
     } finally {
       setIsWorking(false);
     }
@@ -396,10 +473,10 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       const nextImports = await api.syncProviderCalendarImport({ subscriptionId });
       setCalendarImports(nextImports);
-      setStatusMessage("Outside calendar import refreshed.");
+      setStatusMessage(i18n.t("provider_mobile.support.message.calendar_refreshed"));
       await loadProvider();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh that calendar.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.refresh_calendar"));
     } finally {
       setIsWorking(false);
     }
@@ -419,12 +496,15 @@ export function SupportScreen() {
       setCalendarImports(nextImports);
       setStatusMessage(
         nextImports.attemptedSubscriptionCount === 0
-          ? "No stale or errored calendar feeds needed a refresh."
-          : `Refreshed ${nextImports.syncedSubscriptionCount} feed${nextImports.syncedSubscriptionCount === 1 ? "" : "s"} and ${nextImports.failedSubscriptionCount} still need attention.`
+          ? i18n.t("provider_mobile.support.message.no_stale_feeds")
+          : i18n.t("provider_mobile.support.message.stale_feeds_refreshed", {
+              synced: nextImports.syncedSubscriptionCount,
+              failed: nextImports.failedSubscriptionCount
+            })
       );
       await loadProvider();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh stale calendar feeds.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.refresh_stale_calendars"));
     } finally {
       setIsWorking(false);
     }
@@ -442,10 +522,10 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       const nextImports = await api.removeProviderCalendarImport({ subscriptionId });
       setCalendarImports(nextImports);
-      setStatusMessage("Outside calendar removed.");
+      setStatusMessage(i18n.t("provider_mobile.support.message.calendar_removed"));
       await loadProvider();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to remove that calendar.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.remove_calendar"));
     } finally {
       setIsWorking(false);
     }
@@ -467,14 +547,14 @@ export function SupportScreen() {
         subject: subject.trim(),
         description: description.trim()
       } satisfies CreateSupportTicketRequest);
-      setStatusMessage("Support ticket submitted.");
+      setStatusMessage(i18n.t("mobile.support.message.support_ticket_submitted"));
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
       setShowSupportComposer(false);
       await loadProvider();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.open_support_ticket"));
     } finally {
       setIsWorking(false);
     }
@@ -492,9 +572,9 @@ export function SupportScreen() {
       const response = await api.markNotificationsRead({});
       setNotifications(response.notifications);
       setUnreadCount(response.unreadCount);
-      setStatusMessage("Notifications marked read.");
+      setStatusMessage(i18n.t("mobile.support.message.notifications_marked_read"));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update notifications.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("notifications.error.update"));
     } finally {
       setIsWorking(false);
     }
@@ -514,11 +594,11 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       const nextPreferences = await api.updateNotificationPreferences(updates);
       setPreferences(nextPreferences);
-      setStatusMessage("Delivery preferences updated.");
+      setStatusMessage(i18n.t("mobile.support.message.delivery_preferences_updated"));
       const nextDeliveries = await api.getNotificationDeliveries();
       setDeliveries(nextDeliveries.deliveries);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update delivery preferences.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.update_delivery_preferences"));
     } finally {
       setIsWorking(false);
     }
@@ -529,54 +609,58 @@ export function SupportScreen() {
     if (updated) {
       setStatusMessage(
         nextValue
-          ? `${biometricLabel} will be used when you reopen the provider app.`
-          : "Biometric unlock turned off for this app."
+          ? i18n.t("provider_mobile.support.message.biometric_enabled", { biometric: biometricLabel })
+          : i18n.t("mobile.support.message.biometric_disabled")
       );
       return;
     }
 
     if (nextValue) {
-      setErrorMessage(`Unable to enable ${biometricLabel} right now.`);
+      setErrorMessage(i18n.t("mobile.support.error.enable_biometric", { biometric: biometricLabel }));
     }
   }
 
   return (
     <ScreenShell
-      eyebrow="Business"
-      title="Business"
-      description="Payouts, staffing, calendar, and support."
+      eyebrow={i18n.t("provider_mobile.support.eyebrow")}
+      title={i18n.t("provider_mobile.support.title")}
+      description={i18n.t("provider_mobile.support.description")}
     >
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       {provider ? (
         <InfoCard
           title={
             provider.verificationStatus === "verified"
-              ? "Business verified"
+              ? i18n.t("provider_mobile.support.verification.verified")
               : provider.verificationStatus === "rejected"
-                ? "Business profile needs updates"
-                : "Business review in progress"
+                ? i18n.t("provider_mobile.support.verification.needs_updates")
+                : i18n.t("provider_mobile.support.verification.in_progress")
           }
           description={
             provider.verificationStatus === "verified"
-              ? "This business is live in YardMatch search."
+              ? i18n.t("provider_mobile.support.verification.live")
               : provider.verificationStatus === "rejected"
                 ? provider.verificationNotes ??
-                  "Ops reviewed the business profile and left a note before it can go live."
-                : "Ops will review this business before it appears in customer search."
+                  i18n.t("provider_mobile.support.verification.rejected_fallback")
+                : i18n.t("provider_mobile.support.verification.review_pending")
           }
         >
           <Text style={styles.meta}>
-            Submitted {new Date(provider.verificationSubmittedAt ?? provider.createdAt).toLocaleDateString()}.
+            {i18n.t("provider_mobile.support.verification.submitted", {
+              date: i18n.formatDate(provider.verificationSubmittedAt ?? provider.createdAt)
+            })}
             {provider.verificationReviewedAt
-              ? ` Reviewed ${new Date(provider.verificationReviewedAt).toLocaleDateString()}.`
+              ? ` ${i18n.t("provider_mobile.support.verification.reviewed", {
+                  date: i18n.formatDate(provider.verificationReviewedAt)
+                })}`
               : ""}
           </Text>
         </InfoCard>
       ) : null}
 
-      <InfoCard title="Business tools" description={sectionSummaries[activeSection]}>
+      <InfoCard title={i18n.t("provider_mobile.support.business_tools")} description={sectionSummaries[activeSection]}>
         <View style={styles.issueRow}>
           {businessSectionOptions.map((option) => {
             const isActive = option.value === activeSection;
@@ -587,7 +671,7 @@ export function SupportScreen() {
                 style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
               >
                 <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
-                  {option.label}
+                  {i18n.t(option.labelKey)}
                 </Text>
               </Pressable>
             );
@@ -596,36 +680,57 @@ export function SupportScreen() {
       </InfoCard>
 
       {activeSection === "work" ? (
-      <InfoCard title="Service radius" description="Measured from customer property addresses">
+      <InfoCard title={i18n.t("auth_signup.field.service_radius")} description={i18n.t("provider_mobile.support.radius_description")}>
         <View style={styles.stepRow}>
           <Pressable
             disabled={isWorking || !provider}
             onPress={() => void saveSettings({ serviceRadiusMiles: Math.max(5, (provider?.serviceRadiusMiles ?? 15) - 5) })}
             style={styles.secondaryButton}
           >
-            <Text style={styles.secondaryButtonLabel}>-5</Text>
+            <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.minus_5_miles")}</Text>
           </Pressable>
-          <Text style={styles.valueText}>{provider?.serviceRadiusMiles ?? 0} miles</Text>
+          <Text style={styles.valueText}>{i18n.t("provider_radius.value_miles", { count: provider?.serviceRadiusMiles ?? 0 })}</Text>
           <Pressable
             disabled={isWorking || !provider}
             onPress={() => void saveSettings({ serviceRadiusMiles: Math.min(60, (provider?.serviceRadiusMiles ?? 15) + 5) })}
             style={styles.secondaryButton}
           >
-            <Text style={styles.secondaryButtonLabel}>+5</Text>
+            <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.plus_5_miles")}</Text>
           </Pressable>
         </View>
       </InfoCard>
       ) : null}
 
+      {activeSection === "language" ? (
+      <InfoCard title={i18n.t("mobile.settings.language.title")} description={i18n.t("mobile.settings.language.description")}>
+        <View style={styles.issueRow}>
+          {(["en", "es"] as SupportedLocale[]).map((option) => {
+            const isActive = languageSettings.locale === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => languageSettings.onLocaleChange(option)}
+                style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
+              >
+                <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
+                  {option === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english")}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </InfoCard>
+      ) : null}
+
       {activeSection === "security" ? (
-      <InfoCard title="Security" description="Protect this device without slowing down daily work">
+      <InfoCard title={i18n.t("mobile.support.section.security")} description={i18n.t("provider_mobile.support.security_description")}>
         <View style={styles.switchRow}>
           <View style={styles.ticketCopy}>
-            <Text style={styles.title}>Use {biometricLabel}</Text>
+            <Text style={styles.title}>{i18n.t("mobile.support.use_biometric", { biometric: biometricLabel })}</Text>
             <Text style={styles.meta}>
               {biometricAvailable
-                ? "Ask for biometric unlock after the app has been away for about a minute."
-                : "Face ID or another enrolled biometric method is not available on this device yet."}
+                ? i18n.t("provider_mobile.support.biometric_description")
+                : i18n.t("provider_mobile.support.biometric_unavailable")}
             </Text>
           </View>
           <Switch
@@ -637,28 +742,38 @@ export function SupportScreen() {
           />
         </View>
         <Pressable onPress={signOut} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonLabel}>Log out</Text>
+          <Text style={styles.logoutButtonLabel}>{i18n.t("mobile.support.log_out")}</Text>
         </Pressable>
       </InfoCard>
       ) : null}
 
       {activeSection === "work" ? (
-      <InfoCard title="Staffing and routing" description="Crew assignment, lead time, reminders, and route access">
+      <InfoCard title={i18n.t("provider_mobile.support.staffing.title")} description={i18n.t("provider_mobile.support.staffing.description")}>
         <Text style={styles.meta}>
-          {provider?.staffingMode === "auto-accept" ? "Auto accept" : "Review first"} • Review{" "}
-          {provider?.crewReviewLeadHours ?? 0} hours before start • Minimum lead time{" "}
-          {formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)}
+          {i18n.t("provider_mobile.support.staffing.summary", {
+            mode:
+              provider?.staffingMode === "auto-accept"
+                ? i18n.t("provider_mobile.dashboard.staffing_mode.auto_accept")
+                : i18n.t("provider_mobile.dashboard.staffing_mode.review_first"),
+            reviewHours: provider?.crewReviewLeadHours ?? 0,
+            leadTime: formatMinimumLeadHoursLabel(i18n, provider?.minimumBookingLeadHours ?? 0)
+          })}
         </Text>
         <Text style={styles.meta}>
-          Leave reminder {provider?.departureReminderLeadMinutes ?? 0} minutes before route •{" "}
-          {provider?.routeLeaderMode === "accepted-crew-fallback" ? "Crew fallback can share tracking" : "Provider starts tracking"}
+          {i18n.t("provider_mobile.support.staffing.route_summary", {
+            minutes: provider?.departureReminderLeadMinutes ?? 0,
+            mode:
+              provider?.routeLeaderMode === "accepted-crew-fallback"
+                ? i18n.t("provider_mobile.support.route_leader.crew_fallback_tracking")
+                : i18n.t("provider_mobile.support.route_leader.provider_tracking")
+          })}
         </Text>
         <Pressable
           onPress={() => setShowStaffingSettings((current) => !current)}
           style={styles.secondaryButton}
         >
           <Text style={styles.secondaryButtonLabel}>
-            {showStaffingSettings ? "Close" : "Staffing details"}
+            {showStaffingSettings ? i18n.t("common.actions.close") : i18n.t("provider_mobile.support.staffing.details")}
           </Text>
         </Pressable>
         {showStaffingSettings ? (
@@ -670,7 +785,7 @@ export function SupportScreen() {
                 style={[styles.secondaryButton, provider?.staffingMode === "review-first" && styles.secondaryButtonActive]}
               >
                 <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "review-first" && styles.secondaryButtonLabelActive]}>
-                  Review first
+                  {i18n.t("provider_mobile.dashboard.staffing_mode.review_first")}
                 </Text>
               </Pressable>
               <Pressable
@@ -679,29 +794,29 @@ export function SupportScreen() {
                 style={[styles.secondaryButton, provider?.staffingMode === "auto-accept" && styles.secondaryButtonActive]}
               >
                 <Text style={[styles.secondaryButtonLabel, provider?.staffingMode === "auto-accept" && styles.secondaryButtonLabelActive]}>
-                  Auto accept
+                  {i18n.t("provider_mobile.dashboard.staffing_mode.auto_accept")}
                 </Text>
               </Pressable>
             </View>
-            <Text style={styles.fieldLabel}>Staffing review timing</Text>
+            <Text style={styles.fieldLabel}>{i18n.t("provider_mobile.support.staffing.review_timing")}</Text>
             <View style={styles.stepRow}>
               <Pressable
                 disabled={isWorking || !provider}
                 onPress={() => void saveSettings({ crewReviewLeadHours: Math.max(1, (provider?.crewReviewLeadHours ?? 24) - 1) })}
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.minus_1_hour")}</Text>
               </Pressable>
-              <Text style={styles.valueText}>{provider?.crewReviewLeadHours ?? 0} hours</Text>
+              <Text style={styles.valueText}>{i18n.t("provider_mobile.support.hours", { count: provider?.crewReviewLeadHours ?? 0 })}</Text>
               <Pressable
                 disabled={isWorking || !provider}
                 onPress={() => void saveSettings({ crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) })}
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.plus_1_hour")}</Text>
               </Pressable>
             </View>
-            <Text style={styles.fieldLabel}>Acceptance window</Text>
+            <Text style={styles.fieldLabel}>{i18n.t("provider_mobile.support.staffing.acceptance_window")}</Text>
             <View style={styles.stepRow}>
               <Pressable
                 disabled={isWorking || !provider}
@@ -710,9 +825,9 @@ export function SupportScreen() {
                 }
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>-1 hr</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.minus_1_hour")}</Text>
               </Pressable>
-              <Text style={styles.valueText}>{formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)}</Text>
+              <Text style={styles.valueText}>{formatMinimumLeadHoursLabel(i18n, provider?.minimumBookingLeadHours ?? 0)}</Text>
               <Pressable
                 disabled={isWorking || !provider}
                 onPress={() =>
@@ -720,10 +835,10 @@ export function SupportScreen() {
                 }
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>+1 hr</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.plus_1_hour")}</Text>
               </Pressable>
             </View>
-            <Text style={styles.fieldLabel}>Departure reminder</Text>
+            <Text style={styles.fieldLabel}>{i18n.t("provider_mobile.support.staffing.departure_reminder")}</Text>
             <View style={styles.stepRow}>
               <Pressable
                 disabled={isWorking || !provider}
@@ -737,9 +852,9 @@ export function SupportScreen() {
                 }
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>-10 min</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.minus_10_min")}</Text>
               </Pressable>
-              <Text style={styles.valueText}>{provider?.departureReminderLeadMinutes ?? 0} minutes</Text>
+              <Text style={styles.valueText}>{i18n.t("provider_mobile.support.minutes", { count: provider?.departureReminderLeadMinutes ?? 0 })}</Text>
               <Pressable
                 disabled={isWorking || !provider}
                 onPress={() =>
@@ -752,10 +867,10 @@ export function SupportScreen() {
                 }
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>+10 min</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.settings.plus_10_min")}</Text>
               </Pressable>
             </View>
-            <Text style={styles.fieldLabel}>Route leader</Text>
+            <Text style={styles.fieldLabel}>{i18n.t("provider_mobile.support.route_leader.title")}</Text>
             <View style={styles.stepRow}>
               <Pressable
                 disabled={isWorking || !provider}
@@ -763,7 +878,7 @@ export function SupportScreen() {
                 style={[styles.secondaryButton, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonActive]}
               >
                 <Text style={[styles.secondaryButtonLabel, provider?.routeLeaderMode === "provider-only" && styles.secondaryButtonLabelActive]}>
-                  Provider only
+                  {i18n.t("provider_mobile.support.route_leader.provider_only")}
                 </Text>
               </Pressable>
               <Pressable
@@ -780,14 +895,14 @@ export function SupportScreen() {
                     provider?.routeLeaderMode === "accepted-crew-fallback" && styles.secondaryButtonLabelActive
                   ]}
                 >
-                  Crew fallback
+                  {i18n.t("provider_mobile.support.route_leader.crew_fallback")}
                 </Text>
               </Pressable>
             </View>
             <Text style={styles.meta}>
               {provider?.routeLeaderMode === "accepted-crew-fallback"
-                ? "Accepted crew can start the route and share live tracking when needed."
-                : "Only the business owner can start the route and share live tracking."}
+                ? i18n.t("provider_mobile.support.route_leader.crew_fallback_description")
+                : i18n.t("provider_mobile.support.route_leader.provider_only_description")}
             </Text>
           </View>
         ) : null}
@@ -795,36 +910,40 @@ export function SupportScreen() {
       ) : null}
 
       {activeSection === "payouts" ? (
-      <InfoCard title="Payouts" description={payoutStateLabel}>
+      <InfoCard title={i18n.t("provider_mobile.dashboard.payouts")} description={payoutStateLabel}>
         <View style={styles.payoutSummaryGrid}>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Ready</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalNetReadyCents ?? 0)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.ready")}</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, payoutLedger?.totalNetReadyCents ?? 0)}</Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Next</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.next")}</Text>
             <Text style={styles.payoutSummaryValue}>
               {payoutLedger?.payoutSchedule
-                ? new Date(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso).toLocaleDateString(undefined, {
+                ? i18n.formatDate(payoutLedger.payoutSchedule.nextWeeklyPayoutDateIso, {
                     month: "short",
                     day: "numeric"
                   })
-                : "Not set"}
+                : i18n.t("mobile.support.not_set")}
             </Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Blocked</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(blockedPayoutCents)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.support.payout.blocked")}</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, blockedPayoutCents)}</Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Crew</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalCrewOwedCents ?? 0)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew")}</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, payoutLedger?.totalCrewOwedCents ?? 0)}</Text>
           </View>
         </View>
         <Text style={styles.meta}>
-          {formatCurrency(payoutLedger?.payoutSchedule.instantPayoutEligibleCents ?? 0)} instant eligible •{" "}
-          {formatCurrency(payoutLedger?.totalNetScheduledCents ?? 0)} scheduled •{" "}
-          {provider?.instantPayoutsEnabled ? "Instant on" : "Weekly only"}
+          {i18n.t("provider_mobile.support.payout.schedule_summary", {
+            instant: formatCurrency(i18n, payoutLedger?.payoutSchedule.instantPayoutEligibleCents ?? 0),
+            scheduled: formatCurrency(i18n, payoutLedger?.totalNetScheduledCents ?? 0),
+            mode: provider?.instantPayoutsEnabled
+              ? i18n.t("provider_mobile.support.payout.instant_on")
+              : i18n.t("provider_mobile.support.payout.weekly_only")
+          })}
         </Text>
         {(payoutLedger?.entries ?? []).length > 0 ? (
           <View style={styles.ticketStack}>
@@ -833,7 +952,10 @@ export function SupportScreen() {
                 <View style={styles.ticketCopy}>
                   <Text style={styles.title}>{entry.customerName}</Text>
                   <Text style={styles.meta}>
-                    {entry.serviceLabel} • {formatCurrency(entry.providerNetAmountCents)}
+                    {i18n.t("provider_mobile.support.payout.entry_summary", {
+                      service: entry.serviceLabel,
+                      amount: formatCurrency(i18n, entry.providerNetAmountCents)
+                    })}
                   </Text>
                   <Text style={styles.meta}>{entry.note}</Text>
                 </View>
@@ -847,13 +969,13 @@ export function SupportScreen() {
                       styles.payoutStatusBadgeWarning
                   ]}
                 >
-                  {formatPayoutStatus(entry.status)}
+                  {formatPayoutStatus(i18n, entry.status)}
                 </Text>
               </View>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>Completed jobs will show payout entries here.</Text>
+          <Text style={styles.meta}>{i18n.t("provider_mobile.support.payout.empty")}</Text>
         )}
         <View style={styles.stepRow}>
           {(["Tue", "Thu", "Fri"] as const).map((weekday) => (
@@ -872,7 +994,7 @@ export function SupportScreen() {
                   provider?.weeklyPayoutDay === weekday && styles.secondaryButtonLabelActive
                 ]}
               >
-                {formatWeekdayLabel(weekday)}
+                {formatWeekdayLabel(i18n, weekday)}
               </Text>
             </Pressable>
           ))}
@@ -892,7 +1014,7 @@ export function SupportScreen() {
                 provider?.instantPayoutsEnabled && styles.secondaryButtonLabelActive
               ]}
             >
-              Enable instant
+              {i18n.t("provider_mobile.support.payout.enable_instant")}
             </Text>
           </Pressable>
           <Pressable
@@ -909,7 +1031,7 @@ export function SupportScreen() {
                 !provider?.instantPayoutsEnabled && styles.secondaryButtonLabelActive
               ]}
             >
-              Weekly only
+              {i18n.t("provider_mobile.support.payout.weekly_only")}
             </Text>
           </Pressable>
         </View>
@@ -917,24 +1039,34 @@ export function SupportScreen() {
       ) : null}
 
       {activeSection === "work" ? (
-      <InfoCard title="Calendar sync" description="Keep YardMatch work alongside outside clients">
-        <Text style={styles.meta}>
-          Subscribe to your YardMatch schedule in Apple Calendar or Google Calendar so booked jobs show up
-          next to direct clients and personal blocks.
-        </Text>
+      <InfoCard
+        title={i18n.t("provider_live.calendar.eyebrow")}
+        description={i18n.t("provider_mobile.support.calendar.description")}
+      >
+        <Text style={styles.meta}>{i18n.t("provider_live.calendar.body")}</Text>
         {calendarHealth ? (
           <View style={styles.ticketRow}>
             <View style={styles.ticketCopy}>
               <Text style={styles.valueText}>
-                Outside calendar health: {formatCalendarHealthLabel(calendarHealth.status)}
+                {i18n.t("provider_mobile.support.calendar.health_title", {
+                  status: formatCalendarHealthLabel(i18n, calendarHealth.status)
+                })}
               </Text>
               <Text style={styles.meta}>
-                {calendarHealth.subscriptionCount} feeds • {calendarHealth.importedBlockCount} imported blocks •{" "}
-                {calendarHealth.externalBlockingEnabled ? "blocking on" : "save only"}
+                {i18n.t("provider_live.calendar.health_counts", {
+                  feeds: calendarHealth.subscriptionCount,
+                  importedBlocks: calendarHealth.importedBlockCount,
+                  mode: calendarHealth.externalBlockingEnabled
+                    ? i18n.t("provider_live.calendar.blocking_on")
+                    : i18n.t("provider_live.calendar.save_only")
+                })}
               </Text>
               <Text style={styles.meta}>
-                {calendarHealth.erroredSubscriptionCount} errors • {calendarHealth.staleSubscriptionCount} stale feeds •{" "}
-                {calendarHealth.conflictingYardmatchJobCount} booking conflicts
+                {i18n.t("provider_live.calendar.health_issues", {
+                  errors: calendarHealth.erroredSubscriptionCount,
+                  staleFeeds: calendarHealth.staleSubscriptionCount,
+                  conflicts: calendarHealth.conflictingYardmatchJobCount
+                })}
               </Text>
               {calendarHealth.notes.map((note) => (
                 <Text key={note} style={styles.meta}>
@@ -949,7 +1081,7 @@ export function SupportScreen() {
           style={styles.secondaryButton}
         >
           <Text style={styles.secondaryButtonLabel}>
-            {showCalendarTools ? "Close" : "Calendar tools"}
+            {showCalendarTools ? i18n.t("common.actions.close") : i18n.t("provider_mobile.support.calendar.tools")}
           </Text>
         </Pressable>
         {showCalendarTools ? (
@@ -981,17 +1113,15 @@ export function SupportScreen() {
             <View style={styles.ticketStack}>
               {(calendarHealth?.staleSubscriptionCount ?? 0) > 0 || (calendarHealth?.erroredSubscriptionCount ?? 0) > 0 ? (
                 <Pressable disabled={isWorking} onPress={() => void handleSyncStaleCalendarImports()} style={styles.secondaryButton}>
-                  <Text style={styles.secondaryButtonLabel}>Sync stale feeds</Text>
+                  <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.calendar.sync_stale_feeds")}</Text>
                 </Pressable>
               ) : null}
-              <Text style={styles.valueText}>Import an outside calendar feed</Text>
-              <Text style={styles.meta}>
-                Paste a Google, Apple, or generic iCal feed URL and YardMatch will pull those events in as blocking time.
-              </Text>
+              <Text style={styles.valueText}>{i18n.t("provider_mobile.support.calendar.import_feed_title")}</Text>
+              <Text style={styles.meta}>{i18n.t("provider_mobile.support.calendar.import_feed_description")}</Text>
               <TextInput
                 value={importTitle}
                 onChangeText={setImportTitle}
-                placeholder="Imported calendar title"
+                placeholder={i18n.t("provider_live.calendar.import_title")}
                 placeholderTextColor={BrandTokens.colors.inkSoft}
                 style={styles.input}
               />
@@ -1009,7 +1139,7 @@ export function SupportScreen() {
                         importProvider === option && styles.secondaryButtonLabelActive
                       ]}
                     >
-                      {option === "ical" ? "iCal" : option.charAt(0).toUpperCase() + option.slice(1)}
+                      {formatExternalCalendarProviderLabel(i18n, option)}
                     </Text>
                   </Pressable>
                 ))}
@@ -1017,29 +1147,43 @@ export function SupportScreen() {
               <TextInput
                 value={importFeedUrl}
                 onChangeText={setImportFeedUrl}
-                placeholder="Paste an external feed URL"
+                placeholder={i18n.t("provider_live.calendar.feed_url_placeholder")}
                 placeholderTextColor={BrandTokens.colors.inkSoft}
                 style={styles.input}
                 autoCapitalize="none"
               />
               <Pressable disabled={isWorking} onPress={() => void handleCreateCalendarImport()} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonLabel}>Import outside calendar</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.calendar.import_outside")}</Text>
               </Pressable>
               {(calendarImports?.subscriptions ?? []).map((subscription) => (
                 <View key={subscription.id} style={styles.ticketRow}>
                   <View style={styles.ticketCopy}>
                     <Text style={styles.valueText}>{subscription.title}</Text>
                     <Text style={styles.meta}>
-                      {subscription.provider === "ical"
-                        ? "Generic iCal feed"
-                        : `${subscription.provider.charAt(0).toUpperCase()}${subscription.provider.slice(1)} Calendar`}{" "}
-                      • {subscription.importedEventCount} imported events
+                      {i18n.t("provider_mobile.support.calendar.subscription_summary", {
+                        provider: formatExternalCalendarProviderLabel(i18n, subscription.provider),
+                        events: i18n.t("provider_live.calendar.imported_events", {
+                          count: subscription.importedEventCount
+                        })
+                      })}
                     </Text>
                     <Text style={styles.meta}>
-                      Status: {subscription.syncStatus === "active" ? "Active" : "Sync issue"}
+                      {i18n.t("provider_mobile.support.calendar.subscription_status", {
+                        status:
+                          subscription.syncStatus === "active"
+                            ? i18n.t("provider_live.calendar.sync_active")
+                            : i18n.t("provider_live.calendar.sync_issue")
+                      })}
                     </Text>
                     {subscription.lastSyncedAt ? (
-                      <Text style={styles.meta}>Synced {new Date(subscription.lastSyncedAt).toLocaleString()}</Text>
+                      <Text style={styles.meta}>
+                        {i18n.t("provider_mobile.support.calendar.synced_at", {
+                          date: i18n.formatDate(subscription.lastSyncedAt, {
+                            dateStyle: "medium",
+                            timeStyle: "short"
+                          })
+                        })}
+                      </Text>
                     ) : null}
                     {subscription.lastError ? <Text style={styles.meta}>{subscription.lastError}</Text> : null}
                   </View>
@@ -1049,14 +1193,14 @@ export function SupportScreen() {
                       onPress={() => void handleSyncCalendarImport(subscription.id)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Sync</Text>
+                      <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.calendar.sync_now")}</Text>
                     </Pressable>
                     <Pressable
                       disabled={isWorking}
                       onPress={() => void handleRemoveCalendarImport(subscription.id)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Remove</Text>
+                      <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.calendar.remove_feed")}</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -1065,8 +1209,8 @@ export function SupportScreen() {
             <View style={styles.ticketStack}>
               <Text style={styles.meta}>
                 {(provider?.calendarConnection.externalEventsBlockingEnabled ?? false)
-                  ? "Outside blocks are actively reducing YardMatch availability."
-                  : "Outside blocks are saved only until you switch blocking on."}
+                  ? i18n.t("provider_mobile.support.calendar.blocks_active")
+                  : i18n.t("provider_mobile.support.calendar.blocks_saved")}
               </Text>
               <View style={styles.stepRow}>
                 <Pressable
@@ -1085,7 +1229,7 @@ export function SupportScreen() {
                         styles.secondaryButtonLabelActive
                     ]}
                   >
-                    Blocking on
+                    {i18n.t("provider_mobile.support.calendar.blocking_on")}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -1104,14 +1248,14 @@ export function SupportScreen() {
                         styles.secondaryButtonLabelActive
                     ]}
                   >
-                    Save only
+                    {i18n.t("provider_mobile.support.calendar.save_only")}
                   </Text>
                 </Pressable>
               </View>
               <TextInput
                 value={blockTitle}
                 onChangeText={setBlockTitle}
-                placeholder="Outside block title"
+                placeholder={i18n.t("provider_live.calendar.block_title")}
                 placeholderTextColor={BrandTokens.colors.inkSoft}
                 style={styles.input}
               />
@@ -1129,7 +1273,7 @@ export function SupportScreen() {
                         blockType === option && styles.secondaryButtonLabelActive
                       ]}
                     >
-                      {getExternalCalendarBlockLabel(option)}
+                      {formatExternalCalendarBlockLabel(i18n, option)}
                     </Text>
                   </Pressable>
                 ))}
@@ -1137,7 +1281,7 @@ export function SupportScreen() {
               <TextInput
                 value={blockStartText}
                 onChangeText={setBlockStartText}
-                placeholder="Start like 2026-06-10T09:00"
+                placeholder={i18n.t("provider_mobile.support.calendar.start_placeholder")}
                 placeholderTextColor={BrandTokens.colors.inkSoft}
                 style={styles.input}
                 autoCapitalize="none"
@@ -1145,7 +1289,7 @@ export function SupportScreen() {
               <TextInput
                 value={blockEndText}
                 onChangeText={setBlockEndText}
-                placeholder="End like 2026-06-10T11:00"
+                placeholder={i18n.t("provider_mobile.support.calendar.end_placeholder")}
                 placeholderTextColor={BrandTokens.colors.inkSoft}
                 style={styles.input}
                 autoCapitalize="none"
@@ -1153,21 +1297,30 @@ export function SupportScreen() {
               <TextInput
                 value={blockNotes}
                 onChangeText={setBlockNotes}
-                placeholder="Optional note"
+                placeholder={i18n.t("provider_live.calendar.block_notes_placeholder")}
                 placeholderTextColor={BrandTokens.colors.inkSoft}
                 style={[styles.input, styles.multilineInput]}
                 multiline
               />
               <Pressable disabled={isWorking} onPress={() => void handleAddCalendarBlock()} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonLabel}>Add outside block</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.calendar.add_outside_block")}</Text>
               </Pressable>
               {(provider?.calendarConnection.externalBlocks ?? []).map((block) => (
                 <View key={block.id} style={styles.ticketRow}>
                   <View style={styles.ticketCopy}>
                     <Text style={styles.valueText}>{block.title}</Text>
                     <Text style={styles.meta}>
-                      {getExternalCalendarBlockLabel(block.blockType)} • {new Date(block.startIso).toLocaleString()} to{" "}
-                      {new Date(block.endIso).toLocaleString()}
+                      {i18n.t("provider_mobile.support.calendar.block_summary", {
+                        type: formatExternalCalendarBlockLabel(i18n, block.blockType),
+                        start: i18n.formatDate(block.startIso, {
+                          dateStyle: "medium",
+                          timeStyle: "short"
+                        }),
+                        end: i18n.formatDate(block.endIso, {
+                          dateStyle: "medium",
+                          timeStyle: "short"
+                        })
+                      })}
                     </Text>
                     {block.notes ? <Text style={styles.meta}>{block.notes}</Text> : null}
                   </View>
@@ -1176,7 +1329,7 @@ export function SupportScreen() {
                     onPress={() => void handleRemoveCalendarBlock(block.id)}
                     style={styles.secondaryButton}
                   >
-                    <Text style={styles.secondaryButtonLabel}>Remove</Text>
+                    <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_live.calendar.remove_block")}</Text>
                   </Pressable>
                 </View>
               ))}
@@ -1187,7 +1340,7 @@ export function SupportScreen() {
       ) : null}
 
       {activeSection === "alerts" ? (
-      <InfoCard title="Updates" description={`${unreadCount} unread`}>
+      <InfoCard title={i18n.t("provider_mobile.support.updates.title")} description={i18n.t("mobile.support.unread_count", { count: unreadCount })}>
         {notifications.length > 0 ? (
           <View style={styles.ticketStack}>
             {notifications.slice(0, 4).map((notification) => (
@@ -1196,12 +1349,14 @@ export function SupportScreen() {
                   <Text style={styles.valueText}>{notification.title}</Text>
                   <Text style={styles.meta}>{notification.body}</Text>
                 </View>
-                <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
+                <Text style={styles.meta}>
+                  {notification.isRead ? i18n.t("mobile.support.notification.read") : i18n.t("common.state.new")}
+                </Text>
               </View>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>You're all caught up.</Text>
+          <Text style={styles.meta}>{i18n.t("mobile.support.all_caught_up")}</Text>
         )}
         {unreadCount > 0 ? (
           <Pressable
@@ -1209,7 +1364,7 @@ export function SupportScreen() {
             onPress={() => void handleMarkNotificationsRead()}
             style={styles.linkButton}
           >
-            <Text style={styles.linkButtonLabel}>Mark updates read</Text>
+            <Text style={styles.linkButtonLabel}>{i18n.t("mobile.support.mark_read")}</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -1217,7 +1372,7 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAlertPreferences ? "Close" : "Preferences"}
+            {showAlertPreferences ? i18n.t("common.actions.close") : i18n.t("mobile.support.preferences")}
           </Text>
         </Pressable>
         {showAlertPreferences ? (
@@ -1228,7 +1383,12 @@ export function SupportScreen() {
               style={[styles.secondaryButton, (preferences?.pushEnabled ?? true) && styles.secondaryButtonActive]}
             >
               <Text style={[styles.secondaryButtonLabel, (preferences?.pushEnabled ?? true) && styles.secondaryButtonLabelActive]}>
-                Push {(preferences?.pushEnabled ?? true) ? "on" : "off"}
+                {i18n.t("provider_mobile.support.preference_state", {
+                  label: i18n.t("mobile.support.preference.push"),
+                  state: (preferences?.pushEnabled ?? true)
+                    ? i18n.t("provider_mobile.support.state.on")
+                    : i18n.t("provider_mobile.support.state.off")
+                })}
               </Text>
             </Pressable>
             <Pressable
@@ -1237,7 +1397,12 @@ export function SupportScreen() {
               style={[styles.secondaryButton, (preferences?.emailEnabled ?? true) && styles.secondaryButtonActive]}
             >
               <Text style={[styles.secondaryButtonLabel, (preferences?.emailEnabled ?? true) && styles.secondaryButtonLabelActive]}>
-                Email {(preferences?.emailEnabled ?? true) ? "on" : "off"}
+                {i18n.t("provider_mobile.support.preference_state", {
+                  label: i18n.t("mobile.support.preference.email"),
+                  state: (preferences?.emailEnabled ?? true)
+                    ? i18n.t("provider_mobile.support.state.on")
+                    : i18n.t("provider_mobile.support.state.off")
+                })}
               </Text>
             </Pressable>
             <Pressable
@@ -1246,7 +1411,12 @@ export function SupportScreen() {
               style={[styles.secondaryButton, (preferences?.smsEnabled ?? true) && styles.secondaryButtonActive]}
             >
               <Text style={[styles.secondaryButtonLabel, (preferences?.smsEnabled ?? true) && styles.secondaryButtonLabelActive]}>
-                SMS {(preferences?.smsEnabled ?? true) ? "on" : "off"}
+                {i18n.t("provider_mobile.support.preference_state", {
+                  label: i18n.t("mobile.support.preference.sms"),
+                  state: (preferences?.smsEnabled ?? true)
+                    ? i18n.t("provider_mobile.support.state.on")
+                    : i18n.t("provider_mobile.support.state.off")
+                })}
               </Text>
             </Pressable>
           </View>
@@ -1255,33 +1425,41 @@ export function SupportScreen() {
       ) : null}
 
       {activeSection === "alerts" ? (
-      <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
+      <InfoCard
+        title={i18n.t("provider_mobile.support.delivery.title")}
+        description={i18n.t("provider_mobile.support.delivery.description")}
+      >
         {deliveries.length > 0 ? (
           <View style={styles.ticketStack}>
             {deliveries.slice(0, 4).map((delivery) => (
               <View key={delivery.id} style={styles.ticketRow}>
                 <View style={styles.ticketCopy}>
-                  <Text style={styles.valueText}>{delivery.channel.toUpperCase()} • {delivery.title}</Text>
+                  <Text style={styles.valueText}>
+                    {i18n.t("provider_mobile.support.delivery.item_title", {
+                      channel: formatNotificationChannelLabel(i18n, delivery.channel),
+                      title: delivery.title
+                    })}
+                  </Text>
                   <Text style={styles.meta}>{delivery.destination}</Text>
                 </View>
-                <Text style={styles.meta}>{delivery.status}</Text>
+                <Text style={styles.meta}>{formatNotificationDeliveryStatus(i18n, delivery.status)}</Text>
               </View>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>No delivery records yet.</Text>
+          <Text style={styles.meta}>{i18n.t("mobile.support.no_delivery_records")}</Text>
         )}
       </InfoCard>
       ) : null}
 
       {activeSection === "help" ? (
-      <InfoCard title="Help" description={sectionSummaries.help}>
+      <InfoCard title={i18n.t("mobile.support.section.help")} description={sectionSummaries.help}>
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
           style={showSupportComposer ? styles.linkButton : styles.primaryButton}
         >
           <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
-            {showSupportComposer ? "Close" : "New ticket"}
+            {showSupportComposer ? i18n.t("common.actions.close") : i18n.t("mobile.support.new_ticket")}
           </Text>
         </Pressable>
         {showSupportComposer ? (
@@ -1296,7 +1474,7 @@ export function SupportScreen() {
                     style={[styles.secondaryButton, isActive && styles.secondaryButtonActive]}
                   >
                     <Text style={[styles.secondaryButtonLabel, isActive && styles.secondaryButtonLabelActive]}>
-                      {issueType.replaceAll("-", " ")}
+                      {i18n.t(supportIssueLabelKeys[issueType])}
                     </Text>
                   </Pressable>
                 );
@@ -1308,7 +1486,7 @@ export function SupportScreen() {
                 style={[styles.secondaryButton, !selectedBookingId && styles.secondaryButtonActive]}
               >
                 <Text style={[styles.secondaryButtonLabel, !selectedBookingId && styles.secondaryButtonLabelActive]}>
-                  No booking
+                  {i18n.t("provider_mobile.support.no_booking")}
                 </Text>
               </Pressable>
               {(overview?.jobs ?? []).slice(0, 3).map((job) => {
@@ -1328,7 +1506,7 @@ export function SupportScreen() {
             </View>
             <TextInput
               onChangeText={setSubject}
-              placeholder="Subject"
+              placeholder={i18n.t("mobile.support.subject")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={styles.input}
               value={subject}
@@ -1336,7 +1514,7 @@ export function SupportScreen() {
             <TextInput
               multiline
               onChangeText={setDescription}
-              placeholder="What happened?"
+              placeholder={i18n.t("mobile.support.what_happened")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.textarea]}
               value={description}
@@ -1346,7 +1524,9 @@ export function SupportScreen() {
               onPress={() => void handleCreateSupportTicket()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send"}</Text>
+              <Text style={styles.primaryButtonLabel}>
+                {isWorking ? i18n.t("mobile.support.sending") : i18n.t("mobile.support.send")}
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -1357,7 +1537,7 @@ export function SupportScreen() {
               style={styles.linkButton}
             >
               <Text style={styles.linkButtonLabel}>
-                {showSupportHistory ? "Close" : "Recent tickets"}
+                {showSupportHistory ? i18n.t("common.actions.close") : i18n.t("mobile.support.recent_tickets")}
               </Text>
             </Pressable>
             {showSupportHistory ? (
@@ -1367,10 +1547,13 @@ export function SupportScreen() {
                   <View style={styles.ticketCopy}>
                     <Text style={styles.valueText}>{ticket.subject}</Text>
                     <Text style={styles.meta}>
-                      {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                      {i18n.t("provider_mobile.support.ticket.summary", {
+                        issue: i18n.t(supportIssueLabelKeys[ticket.issueType]),
+                        status: formatSupportTicketStatus(i18n, ticket.status)
+                      })}
                     </Text>
                   </View>
-                  <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+                  <Text style={styles.meta}>{i18n.formatDate(ticket.createdAt)}</Text>
                 </View>
               ))}
             </View>

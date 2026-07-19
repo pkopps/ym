@@ -6,6 +6,9 @@ import {
   CrewMemberSchedulePreference,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { addLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../lib/api";
@@ -26,22 +29,6 @@ const categoryOptions: ServiceCategory[] = [
   "snow-blowing"
 ];
 const scheduleOptions: CrewMemberSchedulePreference[] = ["flex", "full-time", "part-time", "seasonal"];
-const categoryLabels: Record<ServiceCategory, string> = {
-  "lawn-mowing": "lawn mowing",
-  "hedge-trimming": "hedge trimming",
-  "mulch-installation": "mulch installation",
-  "seasonal-cleanup": "seasonal cleanup",
-  "weed-control": "weed control",
-  "irrigation-check": "irrigation checks",
-  "leaf-blowing": "leaf blowing",
-  "aeration": "aeration",
-  "fertilization": "fertilization",
-  "gutter-cleaning": "gutter cleaning",
-  "snow-shoveling": "snow shoveling",
-  "ice-melt-salting": "ice melt salting",
-  "snow-blowing": "snow blowing"
-};
-
 function buildEstimatedPoint(state: string, postalCode: string) {
   const normalizedState = state.trim().toUpperCase();
   const stateSignal =
@@ -54,12 +41,17 @@ function buildEstimatedPoint(state: string, postalCode: string) {
   };
 }
 
-function formatCategory(category: ServiceCategory) {
-  return categoryLabels[category];
-}
-
-function formatSchedulePreference(preference: CrewMemberSchedulePreference) {
-  return preference.replaceAll("-", " ");
+function schedulePreferenceKey(preference: CrewMemberSchedulePreference): TranslationKey {
+  switch (preference) {
+    case "full-time":
+      return "crew_signup.schedule.full_time";
+    case "part-time":
+      return "crew_signup.schedule.part_time";
+    case "seasonal":
+      return "crew_signup.schedule.seasonal";
+    case "flex":
+      return "crew_signup.schedule.flex";
+  }
 }
 
 function formatPreviewList<T extends string>(items: T[], formatter: (item: T) => string) {
@@ -90,6 +82,7 @@ function toggleRequiredValue<T extends string>(current: T[], value: T) {
 }
 
 export function CrewSignupExperience() {
+  const i18n = useI18n();
   const router = useRouter();
   const [opportunityId, setOpportunityId] = useState("");
   const [categories, setCategories] = useState<ServiceCategory[]>(["lawn-mowing", "seasonal-cleanup"]);
@@ -140,12 +133,12 @@ export function CrewSignupExperience() {
     setErrorMessage(undefined);
 
     if (password !== confirmPassword) {
-      setErrorMessage("Passwords do not match.");
+      setErrorMessage(i18n.t("auth_signup.error.passwords_mismatch"));
       return;
     }
 
     if (!fullName.trim() || !email.trim() || !phone.trim() || !line1.trim() || !city.trim() || !state.trim() || !postalCode.trim()) {
-      setErrorMessage("Add your contact and home-base details to create a crew profile.");
+      setErrorMessage(i18n.t("crew_signup.error.contact_home_base_required"));
       return;
     }
 
@@ -160,7 +153,7 @@ export function CrewSignupExperience() {
 
     try {
       setIsSubmitting(true);
-      const api = createWebApiClient();
+      const api = createWebApiClient(i18n.locale);
       const envelope = await api.registerUser({
         fullName: fullName.trim(),
         email: email.trim(),
@@ -177,7 +170,7 @@ export function CrewSignupExperience() {
       });
 
       if (envelope.user.role !== "crew-member") {
-        throw new Error("Use a crew account in the crew workspace.");
+        throw new Error(i18n.t("crew_signup.error.wrong_role"));
       }
 
       saveStoredSession({
@@ -189,10 +182,10 @@ export function CrewSignupExperience() {
         expiresAtIso: envelope.session.expiresAtIso
       });
 
-      router.push("/crew");
+      router.push(addLocalePrefix("/crew", i18n.locale));
       router.refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to create this crew account right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_signup.error.create_failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -203,57 +196,59 @@ export function CrewSignupExperience() {
       <form className="auth-form-stack" onSubmit={handleSubmit}>
         <div className="crew-signup-review">
           <div>
-            <span className="eyebrow">{opportunityId ? "Opening selected" : "Crew profile"}</span>
-            <h2>{opportunityId ? "Confirm your fit" : "Create your profile"}</h2>
+            <span className="eyebrow">
+              {i18n.t(opportunityId ? "crew_signup.review.opening_selected" : "crew_signup.review.profile")}
+            </span>
+            <h2>{i18n.t(opportunityId ? "crew_signup.review.confirm_fit" : "crew_signup.review.create_profile")}</h2>
             <p>
               {opportunityId
-                ? "These details carry over from the opening you picked."
-                : "YardMatch uses this to recommend nearby crew work."}
+                ? i18n.t("crew_signup.review.carryover")
+                : i18n.t("crew_signup.review.recommend")}
             </p>
           </div>
           <div className="crew-signup-review__grid">
             <div>
-              <span>Skills</span>
-              <strong>{formatPreviewList(categories, formatCategory)}</strong>
+              <span>{i18n.t("crew_signup.skills")}</span>
+              <strong>{formatPreviewList(categories, (category) => i18n.t(serviceCategoryToI18nKey(category)))}</strong>
             </div>
             <div>
-              <span>Days</span>
+              <span>{i18n.t("crew_signup.days")}</span>
               <strong>{formatPreviewList(availableWeekdays, (day) => day)}</strong>
             </div>
             <div>
-              <span>Radius</span>
-              <strong>{willingToTravelMiles} miles</strong>
+              <span>{i18n.t("crew_signup.radius")}</span>
+              <strong>{i18n.t("common.format.miles", { count: willingToTravelMiles })}</strong>
             </div>
             <div>
-              <span>Schedule</span>
-              <strong>{formatSchedulePreference(preferredSchedule)}</strong>
+              <span>{i18n.t("crew_signup.schedule")}</span>
+              <strong>{i18n.t(schedulePreferenceKey(preferredSchedule))}</strong>
             </div>
           </div>
         </div>
 
         <div className="crew-fit-panel__group">
-          <h3>Account</h3>
+          <h3>{i18n.t("crew_signup.account")}</h3>
           <div className="form-grid">
             <label className="form-field">
-              <span>Full name</span>
+              <span>{i18n.t("auth_signup.field.full_name")}</span>
               <input
                 autoComplete="name"
                 onChange={(event) => setFullName(event.target.value)}
-                placeholder="Maya Brooks"
+                placeholder={i18n.t("auth_signup.placeholder.full_name")}
                 value={fullName}
               />
             </label>
             <label className="form-field">
-              <span>Email</span>
+              <span>{i18n.t("auth_signup.field.email")}</span>
               <input
                 autoComplete="email"
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
+                placeholder={i18n.t("auth_signup.placeholder.email")}
                 value={email}
               />
             </label>
             <label className="form-field">
-              <span>Phone</span>
+              <span>{i18n.t("auth_signup.field.phone")}</span>
               <input
                 autoComplete="tel"
                 onChange={(event) => setPhone(event.target.value)}
@@ -262,21 +257,21 @@ export function CrewSignupExperience() {
               />
             </label>
             <label className="form-field">
-              <span>Password</span>
+              <span>{i18n.t("auth_signup.field.password")}</span>
               <input
                 autoComplete="new-password"
                 onChange={(event) => setPassword(event.target.value)}
-                placeholder="Create a password"
+                placeholder={i18n.t("auth_signup.placeholder.password")}
                 type="password"
                 value={password}
               />
             </label>
             <label className="form-field">
-              <span>Confirm password</span>
+              <span>{i18n.t("auth_signup.field.confirm_password")}</span>
               <input
                 autoComplete="new-password"
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                placeholder="Re-enter password"
+                placeholder={i18n.t("auth_signup.placeholder.confirm_password")}
                 type="password"
                 value={confirmPassword}
               />
@@ -285,34 +280,34 @@ export function CrewSignupExperience() {
         </div>
 
         <div className="crew-fit-panel__group">
-          <h3>Home base</h3>
+          <h3>{i18n.t("crew_signup.home_base")}</h3>
           <div className="form-grid">
             <label className="form-field form-field--full">
-              <span>Home base</span>
+              <span>{i18n.t("crew_signup.home_base")}</span>
               <input
                 autoComplete="street-address"
                 onChange={(event) => setLine1(event.target.value)}
-                placeholder="170 5th Ave"
+                placeholder={i18n.t("auth_signup.placeholder.street")}
                 value={line1}
               />
             </label>
             <label className="form-field">
-              <span>City</span>
+              <span>{i18n.t("auth_signup.field.city")}</span>
               <input autoComplete="address-level2" onChange={(event) => setCity(event.target.value)} value={city} />
             </label>
             <label className="form-field">
-              <span>State</span>
+              <span>{i18n.t("auth_signup.field.state")}</span>
               <input autoComplete="address-level1" onChange={(event) => setState(event.target.value)} value={state} />
             </label>
             <label className="form-field">
-              <span>ZIP</span>
+              <span>{i18n.t("auth_signup.field.zip")}</span>
               <input autoComplete="postal-code" onChange={(event) => setPostalCode(event.target.value)} value={postalCode} />
             </label>
           </div>
         </div>
 
         <div className="crew-fit-panel__group">
-          <h3>Skills</h3>
+          <h3>{i18n.t("crew_signup.skills")}</h3>
           <div className="chip-row">
             {categoryOptions.map((category) => {
               const active = categories.includes(category);
@@ -323,7 +318,7 @@ export function CrewSignupExperience() {
                   onClick={() => setCategories((current) => toggleRequiredValue(current, category))}
                   type="button"
                 >
-                  {formatCategory(category)}
+                  {i18n.t(serviceCategoryToI18nKey(category))}
                 </button>
               );
             })}
@@ -331,7 +326,7 @@ export function CrewSignupExperience() {
         </div>
 
         <div className="crew-fit-panel__group">
-          <h3>Days</h3>
+          <h3>{i18n.t("crew_signup.days")}</h3>
           <div className="chip-row">
             {dayOptions.map((day) => {
               const active = availableWeekdays.includes(day);
@@ -350,7 +345,7 @@ export function CrewSignupExperience() {
         </div>
 
         <div className="crew-fit-panel__group">
-          <h3>Preferences</h3>
+          <h3>{i18n.t("crew_signup.preferences")}</h3>
           <div className="chip-row">
             {scheduleOptions.map((schedule) => (
               <button
@@ -359,7 +354,7 @@ export function CrewSignupExperience() {
                 onClick={() => setPreferredSchedule(schedule)}
                 type="button"
               >
-                {formatSchedulePreference(schedule)}
+                {i18n.t(schedulePreferenceKey(schedule))}
               </button>
             ))}
             <button
@@ -367,14 +362,14 @@ export function CrewSignupExperience() {
               onClick={() => setHasOwnEquipment((current) => !current)}
               type="button"
             >
-              Own equipment
+              {i18n.t("crew_signup.own_equipment")}
             </button>
             <button
               className={winterWorkEnabled ? "button crew-fit-chip" : "button-secondary crew-fit-chip"}
               onClick={() => setWinterWorkEnabled((current) => !current)}
               type="button"
             >
-              Winter work
+              {i18n.t("crew_signup.winter_work")}
             </button>
           </div>
           <div className="crew-fit-radius">
@@ -383,32 +378,32 @@ export function CrewSignupExperience() {
               onClick={() => setWillingToTravelMiles((current) => Math.max(5, current - 5))}
               type="button"
             >
-              -5 miles
+              {i18n.t("crew_signup.minus_miles")}
             </button>
-            <span>{willingToTravelMiles} miles</span>
+            <span>{i18n.t("common.format.miles", { count: willingToTravelMiles })}</span>
             <button
               className="button-secondary"
               onClick={() => setWillingToTravelMiles((current) => Math.min(60, current + 5))}
               type="button"
             >
-              +5 miles
+              {i18n.t("crew_signup.plus_miles")}
             </button>
           </div>
         </div>
 
         {errorMessage ? (
           <div className="list-panel" role="alert">
-            <strong>Signup failed</strong>
+            <strong>{i18n.t("auth_signup.error_title")}</strong>
             <p>{errorMessage}</p>
           </div>
         ) : null}
 
         <div className="cta-row">
           <button className="button" disabled={isSubmitting} type="submit">
-            {isSubmitting ? "Creating account..." : "Create crew account"}
+            {isSubmitting ? i18n.t("auth_signup.creating") : i18n.t("crew_signup.create_account")}
           </button>
-          <a className="button-secondary" href="/crew">
-            Back
+          <a className="button-secondary" href={addLocalePrefix("/crew", i18n.locale)}>
+            {i18n.t("common.actions.back")}
           </a>
         </div>
 

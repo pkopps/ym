@@ -21,7 +21,7 @@ export function ObservabilityProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
     const api = new MarketplaceApiClient(
-      runtimeEnv?.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:4000"
+      runtimeEnv?.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:4001"
     );
     const sessionId = createSessionId();
 

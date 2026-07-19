@@ -6,9 +6,10 @@ import {
   BookingArrivalTracking,
   CustomerProperty,
   CustomerReviewOpportunity,
-  PaymentRecord,
-  formatBookingWindowSummary
+  PaymentRecord
 } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
@@ -16,24 +17,57 @@ import { createCustomerMobileApiClient } from "../lib/api";
 import { buildTrackingDetail, buildTrackingSummary, findTrackableBooking } from "../lib/arrivalTracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
-function formatBookingStatusLabel(booking: Booking) {
+const bookingWindowLabelKeys: Record<string, TranslationKey> = {
+  morning: "booking.window.morning.label",
+  afternoon: "booking.window.afternoon.label",
+  "late-afternoon-night": "booking.window.late_afternoon_night.label"
+};
+
+const bookingWindowRangeKeys: Record<string, TranslationKey> = {
+  morning: "booking.window.morning.range",
+  afternoon: "booking.window.afternoon.range",
+  "late-afternoon-night": "booking.window.late_afternoon_night.range"
+};
+
+function getBookingWindowKey(iso: string) {
+  const hour = new Date(iso).getHours();
+  if (hour < 12) {
+    return "morning";
+  }
+
+  if (hour < 16) {
+    return "afternoon";
+  }
+
+  return "late-afternoon-night";
+}
+
+function formatBookingWindow(i18n: I18nInstance, iso: string) {
+  const key = getBookingWindowKey(iso);
+  return i18n.t("booking.window.summary", {
+    label: i18n.t(bookingWindowLabelKeys[key]),
+    range: i18n.t(bookingWindowRangeKeys[key])
+  });
+}
+
+function formatBookingStatusLabel(i18n: I18nInstance, booking: Booking) {
   if (booking.status === "requested") {
-    return "Waiting for confirmation";
+    return i18n.t("mobile.dashboard.booking.waiting_confirmation");
   }
 
   if (booking.status === "in-progress") {
-    return "Work in progress";
+    return i18n.t("mobile.dashboard.booking.work_in_progress");
   }
 
   if (booking.lateEtaIso && !booking.onRouteConfirmedAt) {
-    return "Running behind";
+    return i18n.t("mobile.dashboard.booking.running_behind");
   }
 
   if (booking.onRouteConfirmedAt) {
-    return "Crew on the way";
+    return i18n.t("mobile.dashboard.booking.crew_on_way");
   }
 
-  return "Upcoming visit";
+  return i18n.t("mobile.dashboard.booking.upcoming_visit");
 }
 
 type HomeStepStatus = "complete" | "current" | "pending";
@@ -46,48 +80,40 @@ function getHomeStepStatus(stepIndex: number, activeStepIndex: number): HomeStep
   return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
-function getPaymentLabel(payment?: PaymentRecord) {
+function getPaymentLabel(i18n: I18nInstance, payment?: PaymentRecord) {
   if (!payment) {
-    return "After confirm";
+    return i18n.t("mobile.bookings.lifecycle.after_confirm");
   }
 
   if (payment.status === "captured") {
-    return "Paid";
+    return i18n.t("mobile.bookings.payment.paid");
   }
 
   if (payment.status === "pending") {
-    return "Ready";
+    return i18n.t("mobile.dashboard.payment.ready");
   }
 
   if (payment.status === "failed") {
-    return "Retry";
+    return i18n.t("mobile.dashboard.payment.retry");
   }
 
   if (payment.status === "refunded") {
-    return "Refunded";
+    return i18n.t("mobile.bookings.payment.refunded");
   }
 
   return payment.status;
 }
 
-function getHomePaymentLabel(booking?: Booking, payment?: PaymentRecord) {
+function getHomePaymentLabel(i18n: I18nInstance, booking?: Booking, payment?: PaymentRecord) {
   if (booking?.status === "requested" && payment?.status !== "captured") {
-    return "After confirm";
+    return i18n.t("mobile.bookings.lifecycle.after_confirm");
   }
 
   if (booking?.status === "confirmed" && !payment) {
-    return "Ready";
+    return i18n.t("mobile.dashboard.payment.ready");
   }
 
-  return getPaymentLabel(payment);
-}
-
-function formatPrice(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(cents / 100);
+  return getPaymentLabel(i18n, payment);
 }
 
 function needsCheckout(booking: Booking, payment?: PaymentRecord) {
@@ -98,16 +124,16 @@ function needsCheckout(booking: Booking, payment?: PaymentRecord) {
   );
 }
 
-function getCheckoutActionLabel(payment?: PaymentRecord) {
+function getCheckoutActionLabel(i18n: I18nInstance, payment?: PaymentRecord) {
   if (payment?.status === "failed") {
-    return "Retry payment";
+    return i18n.t("mobile.bookings.action.retry_payment");
   }
 
   if (payment?.status === "pending") {
-    return "Continue checkout";
+    return i18n.t("customer_live.action.continue_checkout");
   }
 
-  return "Pay now";
+  return i18n.t("mobile.dashboard.action.pay_now");
 }
 
 export function DashboardScreen({
@@ -117,6 +143,7 @@ export function DashboardScreen({
   onStartBooking?: () => void;
   onOpenBookings?: () => void;
 }) {
+  const i18n = useI18n();
   const { envelope } = useCustomerSession();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
@@ -179,30 +206,38 @@ export function DashboardScreen({
   })();
   const homeNowLabel =
     primaryCardKind === "tracking"
-      ? "Track arrival"
+      ? i18n.t("mobile.dashboard.action.track_arrival")
       : primaryCardKind === "review"
-        ? "Leave review"
+        ? i18n.t("customer_live.review.leave")
         : primaryCardKind === "booking" && nextBooking
           ? nextBookingNeedsCheckout
-            ? getCheckoutActionLabel(nextBookingPayment)
-            : formatBookingStatusLabel(nextBooking)
-          : "Request service";
+            ? getCheckoutActionLabel(i18n, nextBookingPayment)
+            : formatBookingStatusLabel(i18n, nextBooking)
+          : i18n.t("mobile.dashboard.action.request_service");
   const homeSteps = [
     {
-      label: "Request",
-      value: nextBooking ? (nextBooking.status === "requested" ? "Provider review" : "Booked") : "Start"
+      label: i18n.t("mobile.dashboard.step.request"),
+      value: nextBooking
+        ? nextBooking.status === "requested"
+          ? i18n.t("mobile.dashboard.step.provider_review")
+          : i18n.t("mobile.dashboard.step.booked")
+        : i18n.t("mobile.dashboard.step.start")
     },
     {
-      label: "Pay",
-      value: nextBooking ? getHomePaymentLabel(nextBooking, nextBookingPayment) : "After match"
+      label: i18n.t("mobile.dashboard.step.pay"),
+      value: nextBooking ? getHomePaymentLabel(i18n, nextBooking, nextBookingPayment) : i18n.t("mobile.dashboard.step.after_match")
     },
     {
-      label: "Track",
-      value: tracking || nextBooking?.onRouteConfirmedAt ? "Live" : nextBooking ? "Visit day" : "After pay"
+      label: i18n.t("mobile.dashboard.step.track"),
+      value: tracking || nextBooking?.onRouteConfirmedAt
+        ? i18n.t("provider_live.step.live")
+        : nextBooking
+          ? i18n.t("mobile.dashboard.step.visit_day")
+          : i18n.t("mobile.dashboard.step.after_pay")
     },
     {
-      label: "Review",
-      value: reviewReady ? "Ready" : "After visit"
+      label: i18n.t("mobile.dashboard.step.review"),
+      value: reviewReady ? i18n.t("mobile.dashboard.payment.ready") : i18n.t("mobile.bookings.lifecycle.after_visit")
     }
   ].map((step, index) => ({
     ...step,
@@ -268,7 +303,7 @@ export function DashboardScreen({
         setIsTrackingModalVisible(false);
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.load_account"));
     }
   }
 
@@ -304,11 +339,11 @@ export function DashboardScreen({
         successPath: "/customer/dashboard?payment=stripe-success",
         cancelPath: "/customer/dashboard?payment=stripe-cancelled"
       });
-      setStatusMessage("Stripe checkout opened in your browser.");
+      setStatusMessage(i18n.t("mobile.bookings.message.checkout_opened"));
       await Linking.openURL(checkout.checkoutUrl);
       await loadHome();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open checkout.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.open_checkout"));
     } finally {
       setIsWorking(false);
     }
@@ -316,13 +351,13 @@ export function DashboardScreen({
 
   return (
     <ScreenShell
-      eyebrow="Home"
-      title="Home"
-      description="Your next step."
+      eyebrow={i18n.t("mobile.dashboard.eyebrow")}
+      title={i18n.t("mobile.dashboard.title")}
+      description={i18n.t("mobile.dashboard.description")}
     >
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
-      <View style={styles.homePathCard} accessibilityLabel="Home progress">
+      <View style={styles.homePathCard} accessibilityLabel={i18n.t("mobile.dashboard.home_progress")}>
         <View style={styles.homePathGrid}>
           {homeSteps.map((step, index) => (
             <View key={step.label} style={[styles.homePathStep, styles[`homePathStep_${step.status}`]]}>
@@ -342,35 +377,35 @@ export function DashboardScreen({
         </View>
         <View style={styles.homeFocusGrid}>
           <View style={styles.homeFocusItem}>
-            <Text style={styles.homeFocusLabel}>Now</Text>
+            <Text style={styles.homeFocusLabel}>{i18n.t("mobile.dashboard.now")}</Text>
             <Text style={styles.homeFocusValue}>{homeNowLabel}</Text>
           </View>
           <View style={styles.homeFocusItem}>
-            <Text style={styles.homeFocusLabel}>Property</Text>
-            <Text style={styles.homeFocusValue}>{activeProperty?.label ?? "Add property"}</Text>
+            <Text style={styles.homeFocusLabel}>{i18n.t("customer_live.label.property")}</Text>
+            <Text style={styles.homeFocusValue}>{activeProperty?.label ?? i18n.t("mobile.book.add_property")}</Text>
           </View>
         </View>
       </View>
 
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
 
       {primaryCardKind === "tracking" && tracking && activeTrackingBookingId ? (
         <InfoCard
-          title={buildTrackingSummary(tracking)}
+          title={buildTrackingSummary(i18n, tracking)}
           description={
-            providerNamesById[activeTrackingBooking?.providerId ?? ""] ?? "Crew on the way"
+            providerNamesById[activeTrackingBooking?.providerId ?? ""] ?? i18n.t("mobile.dashboard.booking.crew_on_way")
           }
         >
           <Text style={styles.primaryLine}>{tracking.message}</Text>
-          {buildTrackingDetail(tracking) ? (
-            <Text style={styles.secondaryLine}>{buildTrackingDetail(tracking)}</Text>
+          {buildTrackingDetail(i18n, tracking) ? (
+            <Text style={styles.secondaryLine}>{buildTrackingDetail(i18n, tracking)}</Text>
           ) : null}
           <View style={styles.actionStack}>
             <Pressable onPress={() => setIsTrackingModalVisible(true)} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>Track arrival</Text>
+              <Text style={styles.primaryButtonLabel}>{i18n.t("mobile.dashboard.action.track_arrival")}</Text>
             </Pressable>
             <Pressable onPress={onOpenBookings} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Open visit</Text>
+              <Text style={styles.secondaryButtonLabel}>{i18n.t("mobile.dashboard.action.open_visit")}</Text>
             </Pressable>
           </View>
         </InfoCard>
@@ -378,21 +413,26 @@ export function DashboardScreen({
 
       {primaryCardKind === "booking" && nextBooking ? (
         <InfoCard
-          title={nextBookingNeedsCheckout ? getCheckoutActionLabel(nextBookingPayment) : formatBookingStatusLabel(nextBooking)}
-          description={formatBookingWindowSummary(nextBooking.scheduledStartIso)}
+          title={nextBookingNeedsCheckout ? getCheckoutActionLabel(i18n, nextBookingPayment) : formatBookingStatusLabel(i18n, nextBooking)}
+          description={formatBookingWindow(i18n, nextBooking.scheduledStartIso)}
         >
           <Text style={styles.primaryLine}>
-            {providerNamesById[nextBooking.providerId] ?? "Landscaping business"}
+            {providerNamesById[nextBooking.providerId] ?? i18n.t("mobile.dashboard.landscaping_business")}
           </Text>
           <Text style={styles.secondaryLine}>{nextBooking.serviceAddress.line1}</Text>
           {nextBooking.lateEtaIso && !nextBooking.onRouteConfirmedAt ? (
             <Text style={styles.noteLine}>
-              Now around{" "}
-              {new Date(nextBooking.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}
+              {i18n.t("mobile.dashboard.now_around", {
+                time: i18n.formatDate(nextBooking.lateEtaIso, { timeStyle: "short" })
+              })}
             </Text>
           ) : null}
           {nextBookingNeedsCheckout ? (
-            <Text style={styles.noteLine}>{formatPrice(nextBooking.totalCents)} due before the visit.</Text>
+            <Text style={styles.noteLine}>
+              {i18n.t("mobile.bookings.next.payment_due", {
+                price: i18n.formatCurrency(nextBooking.totalCents)
+              })}
+            </Text>
           ) : null}
           <View style={styles.actionStack}>
             {nextBookingNeedsCheckout ? (
@@ -402,17 +442,19 @@ export function DashboardScreen({
                 style={[styles.primaryButton, isWorking && styles.primaryButtonDisabled]}
               >
                 <Text style={styles.primaryButtonLabel}>
-                  {isWorking ? "Opening..." : getCheckoutActionLabel(nextBookingPayment)}
+                  {isWorking ? i18n.t("mobile.dashboard.loading.opening") : getCheckoutActionLabel(i18n, nextBookingPayment)}
                 </Text>
               </Pressable>
             ) : (
               <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonLabel}>See visit</Text>
+                <Text style={styles.primaryButtonLabel}>{i18n.t("mobile.dashboard.action.see_visit")}</Text>
               </Pressable>
             )}
             <Pressable onPress={nextBookingNeedsCheckout ? onOpenBookings : onStartBooking} style={styles.secondaryButton}>
               <Text style={styles.secondaryButtonLabel}>
-                {nextBookingNeedsCheckout ? "Open visit" : "Book another visit"}
+                {nextBookingNeedsCheckout
+                  ? i18n.t("mobile.dashboard.action.open_visit")
+                  : i18n.t("mobile.dashboard.action.book_another_visit")}
               </Text>
             </Pressable>
           </View>
@@ -420,41 +462,41 @@ export function DashboardScreen({
       ) : null}
 
       {primaryCardKind === "review" && reviewReady ? (
-        <InfoCard title="Leave your review" description={reviewReady.providerName}>
+        <InfoCard title={i18n.t("mobile.dashboard.review.title")} description={reviewReady.providerName}>
           <Text style={styles.secondaryLine}>{reviewReady.reason}</Text>
           <View style={styles.actionStack}>
             <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>Leave review</Text>
+              <Text style={styles.primaryButtonLabel}>{i18n.t("customer_live.review.leave")}</Text>
             </Pressable>
             <Pressable onPress={onStartBooking} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Book again</Text>
+              <Text style={styles.secondaryButtonLabel}>{i18n.t("mobile.dashboard.action.book_again")}</Text>
             </Pressable>
           </View>
         </InfoCard>
       ) : null}
 
       {primaryCardKind === "property" && activeProperty ? (
-        <InfoCard title="Start your next visit" description={activeProperty.label}>
+        <InfoCard title={i18n.t("mobile.dashboard.property.title")} description={activeProperty.label}>
           <Text style={styles.primaryLine}>{activeProperty.address.line1}</Text>
           <Text style={styles.secondaryLine}>
             {activeProperty.address.city}, {activeProperty.address.state} {activeProperty.address.postalCode}
           </Text>
           <View style={styles.actionStack}>
             <Pressable onPress={onStartBooking} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>Book this property</Text>
+              <Text style={styles.primaryButtonLabel}>{i18n.t("mobile.dashboard.action.book_this_property")}</Text>
             </Pressable>
             <Pressable onPress={onOpenBookings} style={styles.secondaryButton}>
-              <Text style={styles.secondaryButtonLabel}>Open visits</Text>
+              <Text style={styles.secondaryButtonLabel}>{i18n.t("mobile.dashboard.action.open_visits")}</Text>
             </Pressable>
           </View>
         </InfoCard>
       ) : null}
 
       {primaryCardKind === "empty" ? (
-        <InfoCard title="Start your first visit" description="Pick a service and we’ll match the best fit.">
+        <InfoCard title={i18n.t("mobile.dashboard.empty.title")} description={i18n.t("mobile.dashboard.empty.description")}>
           <View style={styles.actionStack}>
             <Pressable onPress={onStartBooking} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonLabel}>Get matched</Text>
+              <Text style={styles.primaryButtonLabel}>{i18n.t("mobile.dashboard.action.get_matched")}</Text>
             </Pressable>
           </View>
         </InfoCard>

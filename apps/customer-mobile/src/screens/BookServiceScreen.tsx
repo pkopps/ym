@@ -2,18 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  I18nInstance,
+  TranslationKey
+} from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
+import {
   AvailabilitySlot,
   buildCustomerProviderChoicePresentations,
   CreateCustomerPropertyRequest,
   CustomerProperty,
-  formatBookingWindowSummary,
+  getBookingServiceWindow,
   InstantQuoteResponse,
   SearchProvidersResponse,
   SearchProviderResult,
   ServiceCategory
 } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
-import { serviceCategoryLabels } from "@yardmatch/ui";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
@@ -38,13 +43,25 @@ type CustomerTimingPreference =
 
 type RequestStepStatus = "complete" | "current" | "pending";
 
-const customerTimingOptions: Array<{ value: CustomerTimingPreference; label: string }> = [
-  { value: "tomorrow-morning", label: "Tomorrow morning" },
-  { value: "tomorrow-afternoon", label: "Tomorrow afternoon" },
-  { value: "tomorrow-evening", label: "Tomorrow evening" },
-  { value: "day-after-morning", label: "Day after morning" },
-  { value: "day-after-afternoon", label: "Day after afternoon" }
+const customerTimingOptions: Array<{ value: CustomerTimingPreference; labelKey: TranslationKey }> = [
+  { value: "tomorrow-morning", labelKey: "customer.timing.tomorrow_morning" },
+  { value: "tomorrow-afternoon", labelKey: "customer.timing.tomorrow_afternoon" },
+  { value: "tomorrow-evening", labelKey: "customer.timing.tomorrow_evening" },
+  { value: "day-after-morning", labelKey: "customer.timing.day_after_morning" },
+  { value: "day-after-afternoon", labelKey: "customer.timing.day_after_afternoon" }
 ];
+
+const bookingWindowLabelKeys: Record<ReturnType<typeof getBookingServiceWindow>["key"], TranslationKey> = {
+  morning: "booking.window.morning.label",
+  afternoon: "booking.window.afternoon.label",
+  "late-afternoon-night": "booking.window.late_afternoon_night.label"
+};
+
+const bookingWindowRangeKeys: Record<ReturnType<typeof getBookingServiceWindow>["key"], TranslationKey> = {
+  morning: "booking.window.morning.range",
+  afternoon: "booking.window.afternoon.range",
+  "late-afternoon-night": "booking.window.late_afternoon_night.range"
+};
 
 function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreference) {
   const selectedIndex = customerTimingOptions.findIndex((option) => option.value === selectedTiming);
@@ -56,30 +73,41 @@ function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreferenc
   return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
 }
 
-function formatServiceLabel(service: ServiceCategory) {
-  return serviceCategoryLabels[service];
+function formatServiceLabel(i18n: I18nInstance, service: ServiceCategory) {
+  return i18n.t(serviceCategoryToI18nKey(service));
 }
 
-function formatPrice(cents: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(
-    cents / 100
-  );
+function formatPrice(i18n: I18nInstance, cents: number) {
+  return i18n.formatCurrency(cents, "USD", { maximumFractionDigits: 0 });
 }
 
-function formatOpenWindow(slot?: AvailabilitySlot) {
-  return slot ? formatBookingWindowSummary(slot.startIso) : "No open slot";
+function formatOpenWindow(i18n: I18nInstance, slot?: AvailabilitySlot) {
+  if (!slot) {
+    return i18n.t("customer_live.no_open_slot");
+  }
+
+  const window = getBookingServiceWindow(slot.startIso);
+  return i18n.t("booking.window.summary", {
+    label: i18n.t(bookingWindowLabelKeys[window.key]),
+    range: i18n.t(bookingWindowRangeKeys[window.key])
+  });
 }
 
-function formatProviderTrust(provider: SearchProviderResult["provider"]) {
-  return `${provider.rating.toFixed(1)} stars • ${provider.reviewCount} reviews`;
+function formatProviderTrust(i18n: I18nInstance, provider: SearchProviderResult["provider"]) {
+  return i18n.t("common.format.rating_reviews", {
+    rating: provider.rating,
+    count: provider.reviewCount
+  });
 }
 
-function formatProviderDistance(distanceMiles: number) {
-  return distanceMiles < 1 ? "Nearby" : `${distanceMiles.toFixed(1)} mi`;
+function formatProviderDistance(i18n: I18nInstance, distanceMiles: number) {
+  return distanceMiles < 1
+    ? i18n.t("mobile.book.nearby")
+    : i18n.t("common.format.miles", { count: Number(distanceMiles.toFixed(1)) });
 }
 
-function formatProviderServiceRadius(radiusMiles: number) {
-  return `${radiusMiles} mi radius`;
+function formatProviderServiceRadius(i18n: I18nInstance, radiusMiles: number) {
+  return i18n.t("customer_live.provider.mile_radius", { count: radiusMiles });
 }
 
 function getProviderOpenSlots(providerId: string, slots: AvailabilitySlot[], preferredSlot?: AvailabilitySlot) {
@@ -109,11 +137,11 @@ function getCompanyInitials(companyName: string) {
     .join("");
 }
 
-function RequestNextSteps() {
+function RequestNextSteps({ i18n }: { i18n: I18nInstance }) {
   const steps = [
-    { label: "Request", value: "No charge yet" },
-    { label: "Confirm", value: "Provider reviews" },
-    { label: "Pay", value: "After provider confirms" }
+    { label: i18n.t("customer_live.progress.request"), value: i18n.t("common.state.no_charge_yet") },
+    { label: i18n.t("provider_live.action.confirm"), value: i18n.t("mobile.book.provider_reviews") },
+    { label: i18n.t("mobile.book.pay"), value: i18n.t("customer_live.payment.after_provider_confirms") }
   ];
 
   return (
@@ -160,6 +188,7 @@ export function BookServiceScreen({
 }: {
   onOpenBookings?: () => void;
 }) {
+  const i18n = useI18n();
   const tracker = getCustomerMobileTracker();
   const { envelope } = useCustomerSession();
   const [selectedService, setSelectedService] = useState<ServiceCategory>("lawn-mowing");
@@ -188,9 +217,11 @@ export function BookServiceScreen({
     [properties, selectedPropertyId]
   );
   const selectedTimingLabel =
-    customerTimingOptions.find((option) => option.value === selectedTiming)?.label ?? "Tomorrow morning";
+    customerTimingOptions.find((option) => option.value === selectedTiming)?.labelKey
+      ? i18n.t(customerTimingOptions.find((option) => option.value === selectedTiming)?.labelKey ?? "customer.timing.tomorrow_morning")
+      : i18n.t("customer.timing.tomorrow_morning");
   const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
-  const selectedServiceLabel = formatServiceLabel(selectedService);
+  const selectedServiceLabel = formatServiceLabel(i18n, selectedService);
 
   function resetMatchState() {
     setQuote(undefined);
@@ -252,7 +283,7 @@ export function BookServiceScreen({
       setSearchState("loaded");
     } catch (error) {
       setSearchState("error");
-      setErrorMessage(error instanceof Error ? error.message : "Unable to check providers right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.search_providers"));
     } finally {
       setIsWorking(false);
     }
@@ -270,7 +301,7 @@ export function BookServiceScreen({
       setProperties(nextProperties);
       setSelectedPropertyId(nextProperties.find((property) => property.isDefault)?.id ?? nextProperties[0]?.id ?? "");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load properties.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.book.error.load_properties"));
     }
   }
 
@@ -304,7 +335,7 @@ export function BookServiceScreen({
       await runProviderSearch(nextQuote, selectedTiming);
     } catch (error) {
       setSearchState("error");
-      setErrorMessage(error instanceof Error ? error.message : "Unable to build quote right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.build_quote"));
     } finally {
       setIsWorking(false);
     }
@@ -326,9 +357,9 @@ export function BookServiceScreen({
       setSelectedPropertyId(property.id);
       setIsPropertyModalVisible(false);
       resetMatchState();
-      setMessage(`${property.label} is ready for visits.`);
+      setMessage(i18n.t("mobile.book.message.property_ready", { property: property.label }));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to save that property.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.book.error.save_property"));
     } finally {
       setIsWorking(false);
     }
@@ -344,7 +375,7 @@ export function BookServiceScreen({
       provider.suggestedSlot ??
       slots.find((item) => item.providerId === provider.provider.id && !item.isBooked);
     if (!slot) {
-      setErrorMessage("No open slot is available for that provider.");
+      setErrorMessage(i18n.t("mobile.book.error.no_open_slot_provider"));
       return;
     }
 
@@ -360,7 +391,7 @@ export function BookServiceScreen({
         category: selectedService,
         scheduledStartIso: slot.startIso,
         scheduledEndIso: slot.endIso,
-        notes: "Booked from the mobile customer app.",
+        notes: i18n.t("mobile.book.booking_note"),
         totalCents: quote.estimatedPriceCents,
         recommendationSessionId: recommendationContext?.recommendationSessionId,
         recommendedProviderId: recommendationContext?.recommendedProviderId,
@@ -369,12 +400,15 @@ export function BookServiceScreen({
         recommendationSource: "customer-mobile-book"
       });
       setMessage(
-        `Requested ${provider.provider.companyName} for the ${formatBookingWindowSummary(slot.startIso)} window.`
+        i18n.t("customer_live.message.booking_requested", {
+          provider: provider.provider.companyName,
+          window: formatOpenWindow(i18n, slot)
+        })
       );
       setRecommendationContext(undefined);
       resetMatchState();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to request your visit right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.create_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -401,19 +435,19 @@ export function BookServiceScreen({
   const providersWithWindows = providerCards.filter((item) => item.slot);
   const activeStepIndex = recommendedProviderCard ? 3 : quote ? 2 : 0;
   const requestSteps = [
-    { label: "Details", value: activeProperty?.label ?? "Property" },
-    { label: "Price", value: quote ? formatPrice(quote.estimatedPriceCents) : "Next" },
+    { label: i18n.t("customer_live.progress.details"), value: activeProperty?.label ?? i18n.t("customer_live.label.property") },
+    { label: i18n.t("customer_live.progress.price"), value: quote ? formatPrice(i18n, quote.estimatedPriceCents) : i18n.t("customer_live.next") },
     {
-      label: "Match",
+      label: i18n.t("customer_live.progress.match"),
       value: recommendedProviderCard
         ? recommendedProviderCard.provider.companyName
         : searchState === "loading"
-          ? "Checking"
-          : "After price"
+          ? i18n.t("common.loading.checking")
+          : i18n.t("customer_live.after_price")
     },
     {
-      label: "Request",
-      value: recommendedProviderCard?.slot ? formatOpenWindow(recommendedProviderCard.slot) : "Review"
+      label: i18n.t("customer_live.progress.request"),
+      value: recommendedProviderCard?.slot ? formatOpenWindow(i18n, recommendedProviderCard.slot) : i18n.t("provider_live.action.review")
     }
   ].map((step, index) => ({
     ...step,
@@ -422,18 +456,18 @@ export function BookServiceScreen({
 
   return (
     <ScreenShell
-      eyebrow="Book"
-      title="Request service"
-      description="Details, price, match, request."
+      eyebrow={i18n.t("mobile.book.eyebrow")}
+      title={i18n.t("mobile.book.title")}
+      description={i18n.t("mobile.book.description")}
     >
       {message ? (
-        <InfoCard title="Updated" description={message}>
+        <InfoCard title={i18n.t("provider_live.updated")} description={message}>
           <Pressable onPress={onOpenBookings} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonLabel}>Go to visits</Text>
+            <Text style={styles.primaryButtonLabel}>{i18n.t("mobile.book.go_to_visits")}</Text>
           </Pressable>
         </InfoCard>
       ) : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       <View style={styles.progressCard}>
         <View style={styles.progressGrid}>
@@ -456,40 +490,40 @@ export function BookServiceScreen({
       </View>
 
       <InfoCard
-        title="Details"
-        description={quote ? "Ready" : activeProperty ? `${selectedServiceLabel} • ${selectedTimingLabel}` : "Add a property to start."}
+        title={i18n.t("customer_live.progress.details")}
+        description={quote ? i18n.t("provider_live.step.ready") : activeProperty ? `${selectedServiceLabel} • ${selectedTimingLabel}` : i18n.t("mobile.book.add_property_to_start")}
       >
         {quote ? (
           <View style={styles.detailSummaryStack}>
             <View style={styles.bookingFactGrid}>
               <View style={styles.bookingFactItem}>
-                <Text style={styles.bookingFactLabel}>Service</Text>
+                <Text style={styles.bookingFactLabel}>{i18n.t("customer_live.label.service")}</Text>
                 <Text style={styles.bookingFactValue}>{selectedServiceLabel}</Text>
               </View>
               <View style={styles.bookingFactItem}>
-                <Text style={styles.bookingFactLabel}>When</Text>
+                <Text style={styles.bookingFactLabel}>{i18n.t("customer_live.label.when")}</Text>
                 <Text style={styles.bookingFactValue}>{selectedTimingLabel}</Text>
               </View>
               <View style={styles.bookingFactItem}>
-                <Text style={styles.bookingFactLabel}>Property</Text>
-                <Text style={styles.bookingFactValue}>{activeProperty?.label ?? "Selected property"}</Text>
+                <Text style={styles.bookingFactLabel}>{i18n.t("customer_live.label.property")}</Text>
+                <Text style={styles.bookingFactValue}>{activeProperty?.label ?? i18n.t("customer_live.selected_property")}</Text>
               </View>
               <View style={styles.bookingFactItem}>
-                <Text style={styles.bookingFactLabel}>Address</Text>
+                <Text style={styles.bookingFactLabel}>{i18n.t("common.label.address")}</Text>
                 <Text numberOfLines={2} style={styles.bookingFactValue}>
                   {quote.normalizedAddress.displayLabel}
                 </Text>
               </View>
             </View>
             <Pressable onPress={handleChangeDetails} style={styles.secondaryButtonInline}>
-              <Text style={styles.secondaryButtonInlineLabel}>Change details</Text>
+              <Text style={styles.secondaryButtonInlineLabel}>{i18n.t("customer_live.action.change_details")}</Text>
             </Pressable>
           </View>
         ) : (
           <>
             <View style={styles.detailSection}>
               <View style={styles.detailHeader}>
-                <Text style={styles.detailLabel}>Service</Text>
+                <Text style={styles.detailLabel}>{i18n.t("customer_live.label.service")}</Text>
                 <Text style={styles.detailValue}>{selectedServiceLabel}</Text>
               </View>
               <View style={styles.chipWrap}>
@@ -505,7 +539,7 @@ export function BookServiceScreen({
                       style={[styles.chip, isActive && styles.chipActive]}
                     >
                       <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                        {formatServiceLabel(option)}
+                        {formatServiceLabel(i18n, option)}
                       </Text>
                     </Pressable>
                   );
@@ -515,7 +549,7 @@ export function BookServiceScreen({
 
             <View style={styles.detailSection}>
               <View style={styles.detailHeader}>
-                <Text style={styles.detailLabel}>When</Text>
+                <Text style={styles.detailLabel}>{i18n.t("customer_live.label.when")}</Text>
                 <Text style={styles.detailValue}>{selectedTimingLabel}</Text>
               </View>
               <View style={styles.chipWrap}>
@@ -530,7 +564,7 @@ export function BookServiceScreen({
                       }}
                       style={[styles.chip, isActive && styles.chipActive]}
                     >
-                      <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
+                      <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{i18n.t(option.labelKey)}</Text>
                     </Pressable>
                   );
                 })}
@@ -539,21 +573,21 @@ export function BookServiceScreen({
 
             <View style={styles.detailSection}>
               <View style={styles.detailHeader}>
-                <Text style={styles.detailLabel}>Property</Text>
+                <Text style={styles.detailLabel}>{i18n.t("customer_live.label.property")}</Text>
                 <Text numberOfLines={1} style={styles.detailValue}>
-                  {activeProperty ? activeProperty.label : "Needed"}
+                  {activeProperty ? activeProperty.label : i18n.t("provider_live.step.needed")}
                 </Text>
               </View>
 
               {properties.length === 0 ? (
                 <View style={styles.propertyStack}>
-                  <Text style={styles.emptyState}>Add a property before we price the job.</Text>
+                  <Text style={styles.emptyState}>{i18n.t("mobile.book.add_property_before_price")}</Text>
                   <Pressable
                     disabled={isWorking}
                     onPress={() => setIsPropertyModalVisible(true)}
                     style={styles.secondaryButtonInline}
                   >
-                    <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
+                    <Text style={styles.secondaryButtonInlineLabel}>{i18n.t("mobile.book.add_property")}</Text>
                   </Pressable>
                 </View>
               ) : (
@@ -574,17 +608,17 @@ export function BookServiceScreen({
                             <Text style={styles.propertyLabel}>{property.label}</Text>
                             <Text style={styles.propertyAddress}>{property.address.line1}</Text>
                           </View>
-                          {property.isDefault ? <Text style={styles.defaultBadge}>Default</Text> : null}
+                          {property.isDefault ? <Text style={styles.defaultBadge}>{i18n.t("mobile.book.default_property")}</Text> : null}
                         </Pressable>
                       );
                     })}
                   </View>
                   <Pressable onPress={() => setIsPropertyModalVisible(true)} style={styles.secondaryButtonInline}>
-                    <Text style={styles.secondaryButtonInlineLabel}>Add property</Text>
+                    <Text style={styles.secondaryButtonInlineLabel}>{i18n.t("mobile.book.add_property")}</Text>
                   </Pressable>
                   <Pressable disabled={isWorking} onPress={() => void handleBuildQuote()} style={styles.primaryButton}>
                     <Text style={styles.primaryButtonLabel}>
-                      {isWorking ? "Checking..." : "See price and crews"}
+                      {isWorking ? i18n.t("common.loading.checking") : i18n.t("mobile.book.see_price_and_crews")}
                     </Text>
                   </Pressable>
                 </>
@@ -597,23 +631,23 @@ export function BookServiceScreen({
       {quote ? (
         <>
           <InfoCard
-            title="Quote"
-            description="Review only if needed."
+            title={i18n.t("mobile.book.quote")}
+            description={i18n.t("mobile.book.quote_description")}
           >
             <View style={styles.priceSummary}>
-              <Text style={styles.priceAmount}>{formatPrice(quote.estimatedPriceCents)}</Text>
-              <Text style={styles.priceCaption}>Includes route, crew, and service estimate.</Text>
+              <Text style={styles.priceAmount}>{formatPrice(i18n, quote.estimatedPriceCents)}</Text>
+              <Text style={styles.priceCaption}>{i18n.t("mobile.book.price_caption")}</Text>
             </View>
             <View style={styles.factRow}>
-              <Text style={styles.factPill}>{quote.estimatedDurationMinutes} min</Text>
-              <Text style={styles.factPill}>{quote.estimatedCrewSize} crew</Text>
+              <Text style={styles.factPill}>{i18n.t("provider_live.duration.minutes", { count: quote.estimatedDurationMinutes })}</Text>
+              <Text style={styles.factPill}>{i18n.t("mobile.book.crew_count", { count: quote.estimatedCrewSize })}</Text>
               <Text style={styles.factPill}>{selectedServiceLabel}</Text>
             </View>
             <Text style={styles.quoteSummary}>{quote.estimateSummary}</Text>
             <Text style={styles.providerMeta}>{quote.normalizedAddress.displayLabel}</Text>
             <Pressable onPress={() => setShowQuoteDetails((current) => !current)} style={styles.secondaryButtonInline}>
               <Text style={styles.secondaryButtonInlineLabel}>
-                {showQuoteDetails ? "Close" : "How price works"}
+                {showQuoteDetails ? i18n.t("common.actions.close") : i18n.t("mobile.book.how_price_works")}
               </Text>
             </Pressable>
             {showQuoteDetails ? (
@@ -631,21 +665,23 @@ export function BookServiceScreen({
           </InfoCard>
 
           <InfoCard
-            title="Best match"
+            title={i18n.t("customer_live.provider.best_match")}
             description={
               recommendedProviderCard && selectedRecommendedSlot
-                ? `${formatOpenWindow(selectedRecommendedSlot)} opening`
-                : `First checked: ${selectedTimingLabel.toLowerCase()}`
+                ? i18n.t("mobile.book.opening_description", {
+                    window: formatOpenWindow(i18n, selectedRecommendedSlot)
+                  })
+                : i18n.t("mobile.book.first_checked", { timing: selectedTimingLabel })
             }
           >
             {searchState === "loading" ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>Checking nearby openings…</Text>
+                <Text style={styles.emptyState}>{i18n.t("mobile.book.checking_nearby_openings")}</Text>
               </View>
             ) : searchState === "error" ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>We could not finish the match check.</Text>
-                <Text style={styles.providerMeta}>Try again. Your price is still ready.</Text>
+                <Text style={styles.emptyState}>{i18n.t("mobile.book.match_check_failed")}</Text>
+                <Text style={styles.providerMeta}>{i18n.t("mobile.book.price_still_ready")}</Text>
                 <Pressable
                   disabled={isWorking}
                   onPress={() => {
@@ -655,21 +691,23 @@ export function BookServiceScreen({
                   }}
                   style={styles.secondaryButtonInline}
                 >
-                  <Text style={styles.secondaryButtonInlineLabel}>Try again</Text>
+                  <Text style={styles.secondaryButtonInlineLabel}>{i18n.t("common.actions.try_again")}</Text>
                 </Pressable>
               </View>
             ) : providers.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>No verified businesses yet.</Text>
-                <Text style={styles.providerMeta}>Try a nearby date or adjust the property details.</Text>
+                <Text style={styles.emptyState}>{i18n.t("customer_live.provider.no_verified.title")}</Text>
+                <Text style={styles.providerMeta}>{i18n.t("customer_live.provider.no_verified.body")}</Text>
                 <Pressable onPress={handleChangeDetails} style={styles.secondaryButtonInline}>
-                  <Text style={styles.secondaryButtonInlineLabel}>Change details</Text>
+                  <Text style={styles.secondaryButtonInlineLabel}>{i18n.t("customer_live.action.change_details")}</Text>
                 </Pressable>
               </View>
             ) : providersWithWindows.length === 0 ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>No openings {selectedTimingLabel.toLowerCase()}.</Text>
-                <Text style={styles.providerMeta}>Routes are full for this window.</Text>
+                <Text style={styles.emptyState}>
+                  {i18n.t("customer_live.provider.no_openings.title", { timing: selectedTimingLabel })}
+                </Text>
+                <Text style={styles.providerMeta}>{i18n.t("customer_live.provider.no_openings.body")}</Text>
                 <View style={styles.providerStack}>
                   {alternativeTimingSuggestions.map((option) => (
                     <Pressable
@@ -682,11 +720,11 @@ export function BookServiceScreen({
                       }}
                       style={styles.secondaryButtonInline}
                     >
-                      <Text style={styles.secondaryButtonInlineLabel}>{option.label}</Text>
+                      <Text style={styles.secondaryButtonInlineLabel}>{i18n.t(option.labelKey)}</Text>
                     </Pressable>
                   ))}
                 </View>
-                <Text style={styles.providerMeta}>Need a different property or service? Change the details above.</Text>
+                <Text style={styles.providerMeta}>{i18n.t("customer_live.provider.change_request_hint")}</Text>
               </View>
             ) : (
               <View style={styles.providerStack}>
@@ -700,45 +738,52 @@ export function BookServiceScreen({
                       </View>
                       <View style={styles.providerCopy}>
                         <Text style={styles.providerBadge}>
-                          {providerChoicePresentations[0]?.badge ?? "Recommended"}
+                          {providerChoicePresentations[0]?.badge ?? i18n.t("customer_live.provider.recommended_match")}
                         </Text>
                         <Text style={styles.providerName}>{recommendedProviderCard.provider.companyName}</Text>
                         <Text style={styles.providerMeta}>
-                          {formatOpenWindow(recommendedProviderCard.slot)} opening
+                          {i18n.t("mobile.book.opening_description", {
+                            window: formatOpenWindow(i18n, recommendedProviderCard.slot)
+                          })}
                         </Text>
                       </View>
                     </View>
 
                     <View style={styles.marketSignalRow}>
                       <Text style={styles.marketSignalPill}>
-                        {recommendedProviderCard.provider.rating.toFixed(1)} stars
+                        {i18n.t("mobile.book.stars", { rating: recommendedProviderCard.provider.rating })}
                       </Text>
                       <Text style={styles.marketSignalPill}>
-                        {recommendedProviderCard.provider.reviewCount} reviews
+                        {i18n.t("mobile.book.review_count", { count: recommendedProviderCard.provider.reviewCount })}
                       </Text>
                       <Text style={styles.marketSignalPill}>
-                        {formatProviderDistance(recommendedProviderCard.ranking.distanceMiles)}
+                        {formatProviderDistance(i18n, recommendedProviderCard.ranking.distanceMiles)}
                       </Text>
                     </View>
 
                     <View style={styles.bookingFactGrid}>
                       <View style={styles.bookingFactItem}>
-                        <Text style={styles.bookingFactLabel}>Price</Text>
-                        <Text style={styles.bookingFactValue}>{formatPrice(quote.estimatedPriceCents)}</Text>
+                        <Text style={styles.bookingFactLabel}>{i18n.t("customer_live.progress.price")}</Text>
+                        <Text style={styles.bookingFactValue}>{formatPrice(i18n, quote.estimatedPriceCents)}</Text>
                       </View>
                       <View style={styles.bookingFactItem}>
-                        <Text style={styles.bookingFactLabel}>Opening</Text>
-                        <Text style={styles.bookingFactValue}>{formatOpenWindow(selectedRecommendedSlot)}</Text>
+                        <Text style={styles.bookingFactLabel}>{i18n.t("customer_live.provider.opening")}</Text>
+                        <Text style={styles.bookingFactValue}>{formatOpenWindow(i18n, selectedRecommendedSlot)}</Text>
                       </View>
                       <View style={styles.bookingFactItem}>
-                        <Text style={styles.bookingFactLabel}>Crew</Text>
+                        <Text style={styles.bookingFactLabel}>{i18n.t("provider_live.step.crew")}</Text>
                         <Text style={styles.bookingFactValue}>
-                          {quote.estimatedCrewSize} crew • {quote.estimatedDurationMinutes} min
+                          {i18n.t("mobile.book.crew_duration", {
+                            crewCount: quote.estimatedCrewSize,
+                            minutes: quote.estimatedDurationMinutes
+                          })}
                         </Text>
                       </View>
                       <View style={styles.bookingFactItem}>
-                        <Text style={styles.bookingFactLabel}>Property</Text>
-                        <Text style={styles.bookingFactValue}>{activeProperty?.label ?? "Selected property"}</Text>
+                        <Text style={styles.bookingFactLabel}>{i18n.t("customer_live.label.property")}</Text>
+                        <Text style={styles.bookingFactValue}>
+                          {activeProperty?.label ?? i18n.t("customer_live.selected_property")}
+                        </Text>
                       </View>
                     </View>
 
@@ -754,14 +799,15 @@ export function BookServiceScreen({
                       }
                       selectedSlotId={selectedRecommendedSlot?.id}
                       slots={recommendedProviderOpenSlots}
+                      i18n={i18n}
                     />
-                    <RequestNextSteps />
+                    <RequestNextSteps i18n={i18n} />
                     <Pressable
                       disabled={isWorking || !selectedRecommendedSlot}
                       onPress={() => void handleCreateBooking(recommendedProviderCard.ranking, 1, selectedRecommendedSlot)}
                       style={styles.primaryButton}
                     >
-                      <Text style={styles.primaryButtonLabel}>Request this time</Text>
+                      <Text style={styles.primaryButtonLabel}>{i18n.t("customer_live.action.request_this_time")}</Text>
                     </Pressable>
                     <View style={styles.providerStack}>
                       <Pressable
@@ -769,7 +815,7 @@ export function BookServiceScreen({
                         style={styles.secondaryButtonInline}
                       >
                         <Text style={styles.secondaryButtonInlineLabel}>
-                          {showRecommendedWhy ? "Close" : "Why this pick"}
+                          {showRecommendedWhy ? i18n.t("common.actions.close") : i18n.t("customer_live.provider.why_pick")}
                         </Text>
                       </Pressable>
                       {showRecommendedWhy ? (
@@ -801,7 +847,7 @@ export function BookServiceScreen({
                           <Text style={styles.providerMeta}>
                             {recommendedProviderCard.ranking.reasons.join(" • ")}
                           </Text>
-                          <ProviderTrustProfile ranking={recommendedProviderCard.ranking} />
+                          <ProviderTrustProfile ranking={recommendedProviderCard.ranking} i18n={i18n} />
                         </View>
                       ) : null}
                     </View>
@@ -825,7 +871,7 @@ export function BookServiceScreen({
                       }}
                       style={styles.secondaryButtonInline}
                     >
-                      <Text style={styles.secondaryButtonInlineLabel}>Compare options</Text>
+                      <Text style={styles.secondaryButtonInlineLabel}>{i18n.t("customer_live.provider.compare_options")}</Text>
                     </Pressable>
                   </View>
                 ) : null}
@@ -848,9 +894,9 @@ export function BookServiceScreen({
                         </View>
                       </View>
                       <View style={styles.marketSignalRow}>
-                        <Text style={styles.marketSignalPill}>{formatProviderTrust(provider)}</Text>
-                        <Text style={styles.marketSignalPill}>{formatProviderDistance(ranking.distanceMiles)}</Text>
-                        <Text style={styles.marketSignalPill}>{formatPrice(quote.estimatedPriceCents)}</Text>
+                        <Text style={styles.marketSignalPill}>{formatProviderTrust(i18n, provider)}</Text>
+                        <Text style={styles.marketSignalPill}>{formatProviderDistance(i18n, ranking.distanceMiles)}</Text>
+                        <Text style={styles.marketSignalPill}>{formatPrice(i18n, quote.estimatedPriceCents)}</Text>
                       </View>
                       <ProviderOpeningChoices
                         onSelect={(slotId) =>
@@ -861,6 +907,7 @@ export function BookServiceScreen({
                         }
                         selectedSlotId={selectedAlternativeSlot?.id}
                         slots={openSlots}
+                        i18n={i18n}
                       />
                       <Pressable
                         onPress={() =>
@@ -872,7 +919,9 @@ export function BookServiceScreen({
                         style={styles.secondaryButtonInline}
                       >
                         <Text style={styles.secondaryButtonInlineLabel}>
-                          {showAlternativeWhy[provider.id] ? "Close" : "Why this option"}
+                          {showAlternativeWhy[provider.id]
+                            ? i18n.t("common.actions.close")
+                            : i18n.t("customer_live.provider.why_option")}
                         </Text>
                       </Pressable>
                       {showAlternativeWhy[provider.id] ? (
@@ -895,7 +944,7 @@ export function BookServiceScreen({
                             {ranking.neighborhoodFamiliarityLabel}. {ranking.neighborhoodFamiliarityDetail}
                           </Text>
                           <Text style={styles.providerMeta}>{ranking.reasons.join(" • ")}</Text>
-                          <ProviderTrustProfile ranking={ranking} />
+                          <ProviderTrustProfile ranking={ranking} i18n={i18n} />
                         </View>
                       ) : null}
                       <Pressable
@@ -903,7 +952,7 @@ export function BookServiceScreen({
                         onPress={() => void handleCreateBooking(ranking, index + 2, selectedAlternativeSlot)}
                         style={styles.secondaryButton}
                       >
-                        <Text style={styles.secondaryButtonLabel}>Request this time</Text>
+                        <Text style={styles.secondaryButtonLabel}>{i18n.t("customer_live.action.request_this_time")}</Text>
                       </Pressable>
                     </View>
                   );
@@ -923,21 +972,25 @@ export function BookServiceScreen({
         <View style={styles.modalShell}>
           <View style={styles.modalHeader}>
             <View style={styles.modalHeaderCopy}>
-              <Text style={styles.modalEyebrow}>Property</Text>
+              <Text style={styles.modalEyebrow}>{i18n.t("customer_live.label.property")}</Text>
               <Text style={styles.modalTitle}>
-                {properties.length === 0 ? "Add your first property" : "Add another property"}
+                {properties.length === 0
+                  ? i18n.t("mobile.book.add_first_property")
+                  : i18n.t("mobile.book.add_another_property")}
               </Text>
-              <Text style={styles.modalDescription}>Keep the address short and clean. You can book it right after.</Text>
+              <Text style={styles.modalDescription}>{i18n.t("mobile.book.property_modal_description")}</Text>
             </View>
             <Pressable onPress={() => setIsPropertyModalVisible(false)} style={styles.modalCloseButton}>
-              <Text style={styles.modalCloseButtonLabel}>Close</Text>
+              <Text style={styles.modalCloseButtonLabel}>{i18n.t("common.actions.close")}</Text>
             </Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.modalBody}>
             <CustomerPropertyForm
               isWorking={isWorking}
               onSubmit={handleCreateProperty}
-              submitLabel={properties.length === 0 ? "Save property" : "Add property"}
+              submitLabel={
+                properties.length === 0 ? i18n.t("mobile.book.save_property") : i18n.t("mobile.book.add_property")
+              }
             />
           </ScrollView>
         </View>
@@ -946,24 +999,24 @@ export function BookServiceScreen({
   );
 }
 
-function ProviderTrustProfile({ ranking }: { ranking: SearchProviderResult }) {
+function ProviderTrustProfile({ ranking, i18n }: { ranking: SearchProviderResult; i18n: I18nInstance }) {
   const { provider } = ranking;
   const facts = [
     {
-      label: "Experience",
-      value: `${provider.yearsExperience}+ yrs`
+      label: i18n.t("mobile.book.experience"),
+      value: i18n.t("mobile.book.experience_years", { count: provider.yearsExperience })
     },
     {
-      label: "Jobs",
-      value: `${ranking.completedJobCount} done`
+      label: i18n.t("mobile.book.jobs"),
+      value: i18n.t("mobile.book.completed_jobs", { count: ranking.completedJobCount })
     },
     {
-      label: "Nearby",
-      value: `${ranking.nearbyCompletedJobCount} local`
+      label: i18n.t("mobile.book.nearby"),
+      value: i18n.t("mobile.book.local_jobs", { count: ranking.nearbyCompletedJobCount })
     },
     {
-      label: "Coverage",
-      value: formatProviderServiceRadius(provider.serviceRadiusMiles)
+      label: i18n.t("mobile.book.coverage"),
+      value: formatProviderServiceRadius(i18n, provider.serviceRadiusMiles)
     }
   ];
 
@@ -979,8 +1032,12 @@ function ProviderTrustProfile({ ranking }: { ranking: SearchProviderResult }) {
         ))}
       </View>
       <View style={styles.marketSignalRow}>
-        <Text style={styles.marketSignalPill}>{provider.timelinessRating.toFixed(1)} punctuality</Text>
-        <Text style={styles.marketSignalPill}>{provider.attentionToDetailRating.toFixed(1)} detail</Text>
+        <Text style={styles.marketSignalPill}>
+          {i18n.t("mobile.book.punctuality_rating", { rating: provider.timelinessRating })}
+        </Text>
+        <Text style={styles.marketSignalPill}>
+          {i18n.t("mobile.book.detail_rating", { rating: provider.attentionToDetailRating })}
+        </Text>
         <Text style={styles.marketSignalPill}>{ranking.availabilityConfidenceLabel}</Text>
       </View>
     </View>
@@ -988,10 +1045,12 @@ function ProviderTrustProfile({ ranking }: { ranking: SearchProviderResult }) {
 }
 
 function ProviderOpeningChoices({
+  i18n,
   onSelect,
   selectedSlotId,
   slots
 }: {
+  i18n: I18nInstance;
   onSelect: (slotId: string) => void;
   selectedSlotId?: string;
   slots: AvailabilitySlot[];
@@ -1002,7 +1061,9 @@ function ProviderOpeningChoices({
 
   return (
     <View style={styles.openingStack}>
-      <Text style={styles.openingLabel}>{slots.length > 1 ? "Choose a time" : "Opening"}</Text>
+      <Text style={styles.openingLabel}>
+        {slots.length > 1 ? i18n.t("mobile.book.choose_time") : i18n.t("customer_live.provider.opening")}
+      </Text>
       <View style={styles.openingChoiceRow}>
         {slots.map((slot) => {
           const isSelected = slot.id === selectedSlotId;
@@ -1014,7 +1075,7 @@ function ProviderOpeningChoices({
               style={[styles.openingChoice, isSelected && styles.openingChoiceActive]}
             >
               <Text style={[styles.openingChoiceLabel, isSelected && styles.openingChoiceLabelActive]}>
-                {formatOpenWindow(slot)}
+                {formatOpenWindow(i18n, slot)}
               </Text>
             </Pressable>
           );

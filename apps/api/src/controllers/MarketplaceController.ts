@@ -60,6 +60,7 @@ import {
   requireRole
 } from "../controller-auth";
 import { ApiController, RequestContext, sendJson, sendText } from "../http";
+import { localizeProviderCalendarOverview } from "../i18n";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
 export class MarketplaceController implements ApiController {
@@ -865,13 +866,14 @@ export class MarketplaceController implements ApiController {
 
     if (context.method === "GET" && context.path === "/api/calendar/overview") {
       const identity = await requireRole(context, this.platform, "provider");
+      const overview = await this.platform.getProviderCalendarOverview(identity.userId, {
+        fromIso: context.query.get("from") ?? undefined,
+        toIso: context.query.get("to") ?? undefined
+      });
       sendJson(
         response,
         200,
-        await this.platform.getProviderCalendarOverview(identity.userId, {
-          fromIso: context.query.get("from") ?? undefined,
-          toIso: context.query.get("to") ?? undefined
-        })
+        await localizeProviderCalendarOverview(overview, context.headers)
       );
       return;
     }

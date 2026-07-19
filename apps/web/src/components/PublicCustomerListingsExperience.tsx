@@ -8,10 +8,12 @@ import {
   SearchProviderResult,
   SearchProvidersResponse,
   ServiceCategory,
-  formatBookingWindowSummary
+  getBookingServiceWindow
 } from "@yardmatch/contracts";
+import { addLocalePrefix, I18nInstance, TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryLabelKeys } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
-import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWebApiClient } from "../lib/api";
@@ -68,7 +70,10 @@ function buildInitialSuggestion({
   };
 }
 
-function formatSearchMetrics(results?: SearchProvidersResponse): Array<{ value: string; label: string }> | undefined {
+function formatSearchMetrics(
+  i18n: I18nInstance,
+  results?: SearchProvidersResponse
+): Array<{ value: string; label: string }> | undefined {
   if (!results) {
     return undefined;
   }
@@ -76,9 +81,9 @@ function formatSearchMetrics(results?: SearchProvidersResponse): Array<{ value: 
   const ranked = results.rankedProviders;
   if (ranked.length === 0) {
     return [
-      { value: "0", label: "verified providers" },
-      { value: "0", label: "open route windows" },
-      { value: "0 mi", label: "closest match" }
+      { value: "0", label: i18n.t("customer.listings.metrics.verified_providers") },
+      { value: "0", label: i18n.t("customer.listings.metrics.open_route_windows") },
+      { value: i18n.t("common.format.miles", { count: 0 }), label: i18n.t("customer.listings.metrics.closest_match") }
     ];
   }
 
@@ -86,9 +91,9 @@ function formatSearchMetrics(results?: SearchProvidersResponse): Array<{ value: 
   const closestDistance = Math.min(...ranked.map((provider) => provider.distanceMiles));
 
   return [
-    { value: String(ranked.length), label: "verified providers" },
-    { value: String(openWindows), label: "open route windows" },
-    { value: `${closestDistance.toFixed(1)} mi`, label: "closest match" }
+    { value: String(ranked.length), label: i18n.t("customer.listings.metrics.verified_providers") },
+    { value: String(openWindows), label: i18n.t("customer.listings.metrics.open_route_windows") },
+    { value: i18n.t("common.format.miles", { count: Number(closestDistance.toFixed(1)) }), label: i18n.t("customer.listings.metrics.closest_match") }
   ];
 }
 
@@ -102,16 +107,16 @@ function getAlternativeTimingSuggestions(selectedTiming: CustomerTimingPreferenc
   return [...customerTimingOptions.slice(selectedIndex + 1), ...customerTimingOptions.slice(0, selectedIndex)].slice(0, 2);
 }
 
-function formatProviderCount(count: number) {
-  return `${count} provider${count === 1 ? "" : "s"}`;
+function formatProviderCount(i18n: I18nInstance, count: number) {
+  return i18n.t("common.format.provider_count", { count });
 }
 
-function formatOpenWindowCount(count: number) {
+function formatOpenWindowCount(i18n: I18nInstance, count: number) {
   if (count === 0) {
-    return "No open windows";
+    return i18n.t("common.format.no_open_windows");
   }
 
-  return `${count} open window${count === 1 ? "" : "s"}`;
+  return i18n.t("common.format.open_window_count", { count });
 }
 
 type ListingsStepStatus = "complete" | "current" | "pending";
@@ -214,6 +219,21 @@ function buildMarkerPosition(point: GeoPoint, bbox: ReturnType<typeof buildBound
   };
 }
 
+function formatWindowSummary(i18n: I18nInstance, iso: string) {
+  const window = getBookingServiceWindow(iso);
+  const keyPrefix =
+    window.key === "morning"
+      ? "booking.window.morning"
+      : window.key === "afternoon"
+        ? "booking.window.afternoon"
+        : "booking.window.late_afternoon_night";
+
+  return i18n.t("booking.window.summary", {
+    label: i18n.t(`${keyPrefix}.label` as TranslationKey),
+    range: i18n.t(`${keyPrefix}.range` as TranslationKey)
+  });
+}
+
 export function PublicCustomerListingsExperience({
   initialAreaLabel,
   initialCity,
@@ -243,6 +263,7 @@ export function PublicCustomerListingsExperience({
   initialTiming?: CustomerTimingPreference;
   initialState?: string;
 }) {
+  const i18n = useI18n();
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
   const launchAreaSuggestion = useMemo(
@@ -292,52 +313,52 @@ export function PublicCustomerListingsExperience({
     initialCustomWindows?.length ? initialCustomWindows : [initialCustomWindow ?? "morning"]
   );
 
-  const serviceLabel = serviceCategoryLabels[selectedService];
-  const timingLabel = getCustomerTimingLabel(selectedTiming, selectedCustomDate, selectedCustomWindow);
+  const serviceLabel = i18n.t(serviceCategoryLabelKeys[selectedService]);
+  const timingLabel = getCustomerTimingLabel(selectedTiming, selectedCustomDate, selectedCustomWindow, i18n);
   const normalizedLaunchAreaLabel = launchAreaLabel.trim().toLowerCase();
   const canTryLaunchArea =
     (selectedSuggestion?.label ?? areaQuery).trim().toLowerCase() !== normalizedLaunchAreaLabel;
   const rankedProviders = providerResults?.rankedProviders ?? [];
   const providerChoicePresentations = buildCustomerProviderChoicePresentations(rankedProviders);
   const featuredProviders = rankedProviders.slice(0, 3);
-  const liveMetrics = formatSearchMetrics(providerResults);
+  const liveMetrics = formatSearchMetrics(i18n, providerResults);
   const providersWithOpenWindows = rankedProviders.filter((provider) => provider.hasOpenSlot);
   const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
   const listingsActiveStepIndex =
     searchState === "loading" ? 1 : searchState === "loaded" && rankedProviders.length > 0 ? 2 : 0;
   const listingsSteps = [
     {
-      label: "Search",
+      label: i18n.t("customer.listings.steps.search"),
       value: `${serviceLabel} • ${resolvedAreaLabel}`
     },
     {
-      label: "Match",
+      label: i18n.t("customer.listings.steps.match"),
       value:
         searchState === "loading"
-          ? "Checking"
+          ? i18n.t("common.loading.checking")
           : rankedProviders.length > 0
-            ? formatProviderCount(rankedProviders.length)
-            : "Needs area"
+            ? formatProviderCount(i18n, rankedProviders.length)
+            : i18n.t("common.state.needs_area")
     },
     {
-      label: "Review",
-      value: rankedProviders[0]?.provider.companyName ?? "Best fit"
+      label: i18n.t("customer.listings.steps.review"),
+      value: rankedProviders[0]?.provider.companyName ?? i18n.t("common.state.best_fit")
     },
     {
-      label: "Request",
-      value: rankedProviders[0]?.hasOpenSlot ? "No charge yet" : "After review"
+      label: i18n.t("customer.listings.steps.request"),
+      value: rankedProviders[0]?.hasOpenSlot ? i18n.t("common.state.no_charge_yet") : i18n.t("common.state.after_review")
     }
   ].map((step, index) => ({
     ...step,
     status: getListingsStepStatus(index, listingsActiveStepIndex)
   }));
   const listingsFilterChips = [
-    { label: "Service", value: serviceLabel },
-    { label: "When", value: timingLabel },
-    { label: "Area", value: resolvedAreaLabel },
+    { label: i18n.t("customer.listings.filter.service"), value: serviceLabel },
+    { label: i18n.t("customer.listings.filter.when"), value: timingLabel },
+    { label: i18n.t("customer.listings.filter.area"), value: resolvedAreaLabel },
     {
-      label: "Availability",
-      value: searchState === "loading" ? "Checking" : formatOpenWindowCount(providersWithOpenWindows.length)
+      label: i18n.t("customer.listings.filter.availability"),
+      value: searchState === "loading" ? i18n.t("common.loading.checking") : formatOpenWindowCount(i18n, providersWithOpenWindows.length)
     }
   ];
   const listingsMapRadiusMiles = rankedProviders.length
@@ -404,7 +425,7 @@ export function PublicCustomerListingsExperience({
           setSearchState("loaded");
           setErrorMessage(
             placeResponse.searchMessage ??
-              "Choose one of the suggested areas so YardMatch does not guess the wrong location."
+              i18n.t("customer.search.choose_area_guidance")
           );
           if (shouldUpdateUrl) {
             const params = buildCustomerListingsSearchParams({
@@ -417,7 +438,7 @@ export function PublicCustomerListingsExperience({
               selectedCustomWindows: nextCustomWindows,
               selectedAdditionalTimings: nextAdditionalTimings
             });
-            router.replace(`/customer/listings?${params.toString()}`);
+            router.replace(addLocalePrefix(`/customer/listings?${params.toString()}`, i18n.locale));
           }
           return;
         }
@@ -439,7 +460,7 @@ export function PublicCustomerListingsExperience({
             selectedCustomWindows: nextCustomWindows,
             selectedAdditionalTimings: nextAdditionalTimings
           });
-          router.replace(`/customer/listings?${params.toString()}`);
+          router.replace(addLocalePrefix(`/customer/listings?${params.toString()}`, i18n.locale));
         }
         return;
       }
@@ -477,13 +498,13 @@ export function PublicCustomerListingsExperience({
           selectedCustomWindows: nextCustomWindows,
           selectedAdditionalTimings: nextAdditionalTimings
         });
-        router.replace(`/customer/listings?${params.toString()}`);
+        router.replace(addLocalePrefix(`/customer/listings?${params.toString()}`, i18n.locale));
       }
     } catch (error) {
       console.error("Unable to load public provider recommendations", error);
       setSearchState("error");
       setProviderResults(undefined);
-      setErrorMessage("Try the search again in a moment.");
+      setErrorMessage(i18n.t("customer.listings.error.body"));
     }
   }
 
@@ -566,7 +587,7 @@ export function PublicCustomerListingsExperience({
       />
 
       <section className="card live-listings-card">
-        <div className="customer-listings-spine" aria-label="Search progress">
+        <div className="customer-listings-spine" aria-label={i18n.t("customer.listings.search_progress")}>
           <ol className="customer-listings-spine__steps">
             {listingsSteps.map((step, index) => (
               <li
@@ -582,7 +603,7 @@ export function PublicCustomerListingsExperience({
               </li>
             ))}
           </ol>
-          <div className="customer-listings-filterbar" aria-label="Active search filters">
+          <div className="customer-listings-filterbar" aria-label={i18n.t("customer.listings.active_search_filters")}>
             {listingsFilterChips.map((chip) => (
               <div className="customer-listings-filterbar__chip" key={chip.label}>
                 <span>{chip.label}</span>
@@ -591,7 +612,7 @@ export function PublicCustomerListingsExperience({
             ))}
           </div>
           <details className="customer-listings-filterdrawer">
-            <summary>Timing options</summary>
+            <summary>{i18n.t("customer.search.backup_times")}</summary>
             <div className="customer-listings-filterdrawer__body">
               {alternativeTimingSuggestions.map((option) => (
                 <button
@@ -600,7 +621,7 @@ export function PublicCustomerListingsExperience({
                   onClick={() => handleTimingSearch(option.value)}
                   type="button"
                 >
-                  {option.label}
+                  {i18n.t(option.labelKey)}
                 </button>
               ))}
             </div>
@@ -610,20 +631,20 @@ export function PublicCustomerListingsExperience({
         {searchState === "loading" ? (
           <div className="live-listings-card__grid">
             <article className="list-panel live-listings-card__message">
-              <h3>Checking providers</h3>
-              <p>Looking at route openings, service fit, and reliability for {timingLabel.toLowerCase()}.</p>
+              <h3>{i18n.t("customer.listings.loading.checking.title")}</h3>
+              <p>{i18n.t("customer.listings.loading.checking.body", { timing: timingLabel.toLowerCase() })}</p>
             </article>
             <article className="list-panel live-listings-card__message">
-              <h3>Sorting the best fit</h3>
-              <p>Only providers with real local coverage make the shortlist.</p>
+              <h3>{i18n.t("customer.listings.loading.sorting.title")}</h3>
+              <p>{i18n.t("customer.listings.loading.sorting.body")}</p>
             </article>
           </div>
         ) : null}
 
         {searchState === "error" ? (
           <article className="list-panel live-listings-card__message">
-            <h3>Providers are unavailable right now.</h3>
-            <p>{errorMessage ?? "Try the search again in a moment."}</p>
+            <h3>{i18n.t("customer.listings.error.title")}</h3>
+            <p>{errorMessage ?? i18n.t("customer.listings.error.body")}</p>
             <div className="cta-row">
               <button
                 className="button-secondary"
@@ -643,7 +664,7 @@ export function PublicCustomerListingsExperience({
                 }
                 type="button"
               >
-                Try again
+                {i18n.t("customer.listings.error.retry")}
               </button>
             </div>
           </article>
@@ -651,10 +672,10 @@ export function PublicCustomerListingsExperience({
 
         {searchState === "loaded" && !selectedSuggestion ? (
           <article className="list-panel live-listings-card__message">
-            <h3>No suggested area matched that search yet.</h3>
+            <h3>{i18n.t("customer.listings.empty.no_area.title")}</h3>
             <p>
               {errorMessage ??
-                "Try a nearby city, ZIP code, or fuller address so we can match the right market."}
+                i18n.t("customer.listings.empty.no_area.body")}
             </p>
             {canTryLaunchArea ? (
               <div className="cta-row">
@@ -676,7 +697,7 @@ export function PublicCustomerListingsExperience({
                   }
                   type="button"
                 >
-                  Try {launchAreaLabel}
+                  {i18n.t("customer.listings.empty.try_area", { area: launchAreaLabel })}
                 </button>
               </div>
             ) : null}
@@ -685,8 +706,8 @@ export function PublicCustomerListingsExperience({
 
         {searchState === "loaded" && selectedSuggestion && rankedProviders.length === 0 ? (
           <article className="list-panel live-listings-card__message">
-            <h3>No verified businesses yet.</h3>
-            <p>Try a nearby market or ask us to review coverage.</p>
+            <h3>{i18n.t("customer.listings.empty.no_businesses.title")}</h3>
+            <p>{i18n.t("customer.listings.empty.no_businesses.body")}</p>
             <div className="cta-row">
               {canTryLaunchArea ? (
                 <button
@@ -707,11 +728,11 @@ export function PublicCustomerListingsExperience({
                   }
                   type="button"
                 >
-                  Try {launchAreaLabel}
+                  {i18n.t("customer.listings.empty.try_area", { area: launchAreaLabel })}
                 </button>
               ) : null}
-              <a className="button-secondary" href="/help?issueType=general&subject=Need service in my area">
-                Request service in this area
+              <a className="button-secondary" href={addLocalePrefix("/help?issueType=general&subject=Need service in my area", i18n.locale)}>
+                {i18n.t("customer.listings.empty.no_businesses.cta")}
               </a>
             </div>
           </article>
@@ -721,8 +742,8 @@ export function PublicCustomerListingsExperience({
           <div className="live-listings-card__grid">
             {providersWithOpenWindows.length === 0 ? (
               <article className="list-panel live-listings-card__banner">
-                <h3>Routes are full for this window.</h3>
-                <p>Try another time or review local businesses below.</p>
+                <h3>{i18n.t("customer.listings.full.title")}</h3>
+                <p>{i18n.t("customer.listings.full.body")}</p>
                 <div className="cta-row">
                   {alternativeTimingSuggestions.map((option) => (
                     <button
@@ -731,7 +752,7 @@ export function PublicCustomerListingsExperience({
                       onClick={() => handleTimingSearch(option.value)}
                       type="button"
                     >
-                      {option.label}
+                      {i18n.t(option.labelKey)}
                     </button>
                   ))}
                 </div>
@@ -741,28 +762,33 @@ export function PublicCustomerListingsExperience({
               {featuredProviders.map((result, index) => (
                 <LiveProviderCard
                   choicePresentation={providerChoicePresentations[index]}
+                  i18n={i18n}
                   isPrimaryRecommendation={index === 0}
                   key={result.provider.id}
                   result={result}
                   rank={index + 1}
-                  signupHref={buildCustomerSignupHref({
-                    areaQuery,
-                    rank: index + 1,
-                    result,
-                    selectedCustomDate,
-                    selectedCustomEndDate,
-                    selectedCustomWindow,
-                    selectedCustomWindows,
-                    selectedService,
-                    selectedSuggestion,
-                    selectedTiming
-                  })}
+                  signupHref={addLocalePrefix(
+                    buildCustomerSignupHref({
+                      areaQuery,
+                      rank: index + 1,
+                      result,
+                      selectedCustomDate,
+                      selectedCustomEndDate,
+                      selectedCustomWindow,
+                      selectedCustomWindows,
+                      selectedService,
+                      selectedSuggestion,
+                      selectedTiming
+                    }),
+                    i18n.locale
+                  )}
                 />
               ))}
             </div>
             {selectedSuggestion && mapProviders.length > 0 ? (
               <LiveProviderMap
                 areaLabel={resolvedAreaLabel}
+                i18n={i18n}
                 providerResults={mapProviders}
                 radiusMiles={listingsMapRadiusMiles}
                 selectedSuggestion={selectedSuggestion}
@@ -779,12 +805,14 @@ export function PublicCustomerListingsExperience({
 
 function LiveProviderCard({
   choicePresentation,
+  i18n,
   isPrimaryRecommendation = false,
   rank,
   result,
   signupHref
 }: {
   choicePresentation?: { badge: string; heading: string; detail: string };
+  i18n: I18nInstance;
   isPrimaryRecommendation?: boolean;
   rank: number;
   result: SearchProviderResult;
@@ -793,24 +821,24 @@ function LiveProviderCard({
   const provider = result.provider;
   const displayedCategories = provider.categories
     .slice(0, 4)
-    .map((category) => serviceCategoryLabels[category]);
+    .map((category) => i18n.t(serviceCategoryLabelKeys[category]));
   const nextWindowLabel = result.suggestedSlot
-    ? formatBookingWindowSummary(result.suggestedSlot.startIso)
-    : "Window full";
+    ? formatWindowSummary(i18n, result.suggestedSlot.startIso)
+    : i18n.t("customer.listings.card.window_full");
   const requestCtaLabel = result.hasOpenSlot
     ? rank === 1
-      ? "Request this match"
-      : "Request"
-    : "Review provider";
+      ? i18n.t("customer.listings.card.request_match")
+      : i18n.t("customer.listings.card.request")
+    : i18n.t("customer.listings.card.review_provider");
   const matchHeading = choicePresentation?.heading ?? result.selectionSummaryLabel;
   const matchDetail = choicePresentation?.detail ?? result.selectionSummaryDetail;
   const availabilityNote = result.hasOpenSlot
-    ? "Provider confirms before payment."
-    : "Try another time before requesting.";
-  const detailServices = displayedCategories.length ? displayedCategories.join(", ") : "Requested yard service";
+    ? i18n.t("customer.listings.card.provider_confirms")
+    : i18n.t("customer.listings.card.try_another_time");
+  const detailServices = displayedCategories.length ? displayedCategories.join(", ") : i18n.t("customer.listings.card.requested_yard_service");
   const detailReasons = result.reasons.length
     ? result.reasons.slice(0, 3).join(" • ")
-    : "Service area, timing, and job type match this request.";
+    : i18n.t("customer.listings.card.service_fit_fallback");
 
   return (
     <article className={`list-panel live-provider-card${isPrimaryRecommendation ? " live-provider-card--recommended" : ""}`}>
@@ -818,19 +846,22 @@ function LiveProviderCard({
         <div className="live-provider-card__identity">
           <h3>{provider.companyName}</h3>
           <p>
-            {provider.address.city}, {provider.address.state} • {provider.rating.toFixed(1)} rating •{" "}
-            {provider.reviewCount} reviews
+            {provider.address.city}, {provider.address.state} •{" "}
+            {i18n.t("common.format.rating_reviews", {
+              rating: Number(provider.rating.toFixed(1)),
+              count: provider.reviewCount
+            })}
           </p>
         </div>
         <div className="live-provider-card__badges">
           {choicePresentation ? (
             <span className="result-badge">{choicePresentation.badge}</span>
           ) : rank === 1 ? (
-            <span className="result-badge">Best fit</span>
+            <span className="result-badge">{i18n.t("customer.listings.card.best_fit")}</span>
           ) : null}
-          {provider.sponsoredListingEnabled ? <span className="result-badge">Sponsored</span> : null}
+          {provider.sponsoredListingEnabled ? <span className="result-badge">{i18n.t("customer.listings.card.sponsored")}</span> : null}
           <span className={`result-badge${result.hasOpenSlot ? "" : " result-badge--neutral"}`}>
-            {result.hasOpenSlot ? "Open time" : "Window full"}
+            {result.hasOpenSlot ? i18n.t("customer.listings.card.open_time") : i18n.t("customer.listings.card.window_full")}
           </span>
         </div>
       </div>
@@ -840,19 +871,19 @@ function LiveProviderCard({
         <p>{matchDetail}</p>
       </div>
 
-      <div className="live-provider-card__request-row" aria-label="Provider request facts">
+      <div className="live-provider-card__request-row" aria-label={i18n.t("customer.listings.card.provider_facts")}>
         <div className="live-provider-card__slot">
-          <span>{result.hasOpenSlot ? "Next opening" : "Availability"}</span>
+          <span>{result.hasOpenSlot ? i18n.t("customer.listings.card.next_opening") : i18n.t("customer.listings.card.availability")}</span>
           <strong>{nextWindowLabel}</strong>
           <small>{availabilityNote}</small>
         </div>
         <dl className="live-provider-card__facts">
           <div>
-            <dt>Distance</dt>
-            <dd>{result.distanceMiles.toFixed(1)} mi</dd>
+            <dt>{i18n.t("customer.listings.card.distance")}</dt>
+            <dd>{i18n.t("common.format.miles", { count: Number(result.distanceMiles.toFixed(1)) })}</dd>
           </div>
           <div>
-            <dt>Fit</dt>
+            <dt>{i18n.t("customer.listings.card.fit")}</dt>
             <dd>{result.selectionSummaryLabel}</dd>
           </div>
         </dl>
@@ -862,34 +893,34 @@ function LiveProviderCard({
       </div>
 
       <details className="service-card-disclosure">
-        <summary className="service-card-disclosure__summary">Details</summary>
+        <summary className="service-card-disclosure__summary">{i18n.t("customer.listings.card.details")}</summary>
         <div className="service-card-disclosure__body live-provider-card__details">
           <div>
-            <span>Services</span>
+            <span>{i18n.t("customer.listings.card.services")}</span>
             <p>{detailServices}</p>
           </div>
           <div>
-            <span>Why it fits</span>
+            <span>{i18n.t("customer.listings.card.why_it_fits")}</span>
             <p>{detailReasons}</p>
           </div>
           <div>
-            <span>Route check</span>
+            <span>{i18n.t("customer.listings.card.route_check")}</span>
             <p>
               <strong>{result.reliabilityLabel}.</strong> {result.reliabilityDetail}
             </p>
           </div>
           <div>
-            <span>Local coverage</span>
+            <span>{i18n.t("customer.listings.card.local_coverage")}</span>
             <p>
               <strong>{result.neighborhoodFamiliarityLabel}.</strong>{" "}
               {result.neighborhoodFamiliarityDetail}
             </p>
           </div>
           <div>
-            <span>Timing</span>
+            <span>{i18n.t("customer.listings.card.timing")}</span>
             <p>
               <strong>{result.availabilityConfidenceLabel}.</strong>{" "}
-              {result.hasOpenSlot ? "Route has room for this request." : "No route window is open for this time."}
+              {result.hasOpenSlot ? i18n.t("customer.listings.card.route_has_room") : i18n.t("customer.listings.card.no_route_window")}
             </p>
           </div>
         </div>
@@ -900,12 +931,14 @@ function LiveProviderCard({
 
 function LiveProviderMap({
   areaLabel,
+  i18n,
   providerResults,
   radiusMiles,
   selectedSuggestion,
   serviceLabel
 }: {
   areaLabel: string;
+  i18n: I18nInstance;
   providerResults: SearchProviderResult[];
   radiusMiles: number;
   selectedSuggestion: PlaceSuggestion;
@@ -919,24 +952,28 @@ function LiveProviderMap({
   return (
     <section className="map-panel live-provider-map">
       <div className="map-panel__toolbar">
-        <span className="eyebrow">Nearby providers</span>
+        <span className="eyebrow">{i18n.t("customer.listings.map.nearby")}</span>
         <strong>
-          {providerResults.length} verified providers within {radiusMiles} miles of {areaLabel}
+          {i18n.t("customer.listings.map.provider_count", {
+            count: providerResults.length,
+            miles: radiusMiles,
+            area: areaLabel
+          })}
         </strong>
-        <p>These are the nearby businesses YardMatch considered for this {serviceLabel.toLowerCase()} request.</p>
+        <p>{i18n.t("customer.listings.map.considered", { service: serviceLabel.toLowerCase() })}</p>
       </div>
 
-      <div className="map-viewport" aria-label="Map of nearby provider recommendations">
+      <div className="map-viewport" aria-label={i18n.t("customer.listings.map.aria")}>
         <iframe
           className="map-viewport__frame"
           loading="lazy"
           referrerPolicy="no-referrer-when-downgrade"
           src={mapUrl}
-          title="Nearby provider recommendation map"
+          title={i18n.t("customer.listings.map.title")}
         />
         <div className="map-viewport__overlay" />
         <div className="map-user-marker" style={customerMarker}>
-          <span>Property</span>
+          <span>{i18n.t("customer.listings.map.property")}</span>
         </div>
         {providerResults.map((result, index) => (
           <div
@@ -945,7 +982,7 @@ function LiveProviderMap({
             style={buildMarkerPosition(result.provider.address.point, bbox)}
           >
             <strong>{index + 1}</strong>
-            <span>{result.distanceMiles.toFixed(1)} mi</span>
+            <span>{i18n.t("common.format.miles", { count: Number(result.distanceMiles.toFixed(1)) })}</span>
           </div>
         ))}
       </div>
@@ -959,11 +996,11 @@ function LiveProviderMap({
                 <h4>{result.provider.companyName}</h4>
                 <p>
                   {result.provider.address.city}, {result.provider.address.state}
-                  {index === 0 ? " • Recommended first" : ""}
+                  {index === 0 ? ` • ${i18n.t("customer.listings.map.recommended_first")}` : ""}
                 </p>
               </div>
             </div>
-            <span>{result.distanceMiles.toFixed(1)} mi</span>
+            <span>{i18n.t("common.format.miles", { count: Number(result.distanceMiles.toFixed(1)) })}</span>
           </article>
         ))}
       </div>

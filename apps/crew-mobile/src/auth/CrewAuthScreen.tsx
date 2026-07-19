@@ -3,6 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-
 import { AntDesign } from "@expo/vector-icons";
 import { openAuthSessionAsync } from "expo-web-browser";
 import { BrandTokens } from "@yardmatch/branding";
+import { I18nInstance } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import {
   Address,
   AuthenticatedUserEnvelope,
@@ -13,23 +15,24 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { createCrewMobileApiClient } from "../lib/api";
 import { getCrewMobileTracker } from "../lib/tracking";
 
-function getModeCopy(mode: AuthFlowMode) {
+function getModeCopy(i18n: I18nInstance, mode: AuthFlowMode) {
   return mode === "login"
     ? {
-        eyebrow: "Crew member login",
-        title: "Get back to your shifts.",
-        description: "Log in to review assignments, availability, and work history.",
-        submitLabel: "Log in"
+        eyebrow: i18n.t("mobile.auth.crew_login_eyebrow"),
+        title: i18n.t("mobile.auth.crew_login_title"),
+        description: i18n.t("mobile.auth.crew_login_description"),
+        submitLabel: i18n.t("mobile.auth.log_in")
       }
     : {
-        eyebrow: "Crew member sign up",
-        title: "Start with your work base.",
-        description: "Create an account, then add the home base we use for nearby shifts.",
-        submitLabel: "Create account"
+        eyebrow: i18n.t("mobile.auth.crew_signup_eyebrow"),
+        title: i18n.t("mobile.auth.crew_signup_title"),
+        description: i18n.t("mobile.auth.crew_signup_description"),
+        submitLabel: i18n.t("auth_signup.create_account")
       };
 }
 
 const crewRedirectUri = "yardmatch-crew://auth/complete";
+type AuthCompletionSource = "login" | "signup";
 
 function buildEstimatedPoint(state: string, postalCode: string) {
   const normalizedState = state.trim().toUpperCase();
@@ -60,8 +63,9 @@ function createEmptyAddress(): Address {
 export function CrewAuthScreen({
   onAuthenticated
 }: {
-  onAuthenticated: (envelope: AuthenticatedUserEnvelope) => void;
+  onAuthenticated: (envelope: AuthenticatedUserEnvelope, source: AuthCompletionSource) => void;
 }) {
+  const i18n = useI18n();
   const [mode, setMode] = useState<AuthFlowMode>("login");
   const [signupStep, setSignupStep] = useState<"account" | "homeBase">("account");
   const [email, setEmail] = useState("");
@@ -83,7 +87,7 @@ export function CrewAuthScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
-  const authCopy = getModeCopy(mode);
+  const authCopy = getModeCopy(i18n, mode);
   const tracker = getCrewMobileTracker();
   const isCompletingSocialSignup = pendingSignupToken.length > 0;
   const canSubmitLogin = email.trim().length > 0 && password.trim().length > 0;
@@ -134,7 +138,9 @@ export function CrewAuthScreen({
     if (mode === "signup" && signupStep === "account") {
       if (!canContinueSignupAccount) {
         setErrorMessage(
-          isCompletingSocialSignup ? "Add your name and phone." : "Add your name, email, phone, and password."
+          isCompletingSocialSignup
+            ? i18n.t("mobile.auth.error.name_phone")
+            : i18n.t("mobile.auth.error.name_email_phone_password")
         );
         return;
       }
@@ -183,12 +189,12 @@ export function CrewAuthScreen({
           const token = callbackUrl.searchParams.get("token");
           const expiresAtIso = callbackUrl.searchParams.get("expiresAtIso");
           if (!token || !expiresAtIso) {
-            throw new Error("The social sign-in callback was missing session details.");
+            throw new Error(i18n.t("mobile.auth.error.missing_social_session"));
           }
           api.setAuthToken(token);
           const currentUser = await api.getCurrentUser();
           if (currentUser.user.role !== "crew-member") {
-            throw new Error("Use a crew member account in the crew app.");
+            throw new Error(i18n.t("mobile.auth.error.crew_role"));
           }
           onAuthenticated({
             session: {
@@ -197,7 +203,7 @@ export function CrewAuthScreen({
               expiresInSeconds: Math.max(0, Math.round((Date.parse(expiresAtIso) - Date.now()) / 1000))
             },
             user: currentUser.user
-          });
+          }, mode === "signup" ? "signup" : "login");
           return;
         }
 
@@ -206,7 +212,7 @@ export function CrewAuthScreen({
           const socialEmail = callbackUrl.searchParams.get("email");
           const socialFullName = callbackUrl.searchParams.get("fullName");
           if (!pendingToken || !socialEmail) {
-            throw new Error("The social signup callback was missing the account details we need.");
+            throw new Error(i18n.t("mobile.auth.error.missing_social_signup"));
           }
           setMode("signup");
           setSignupStep("account");
@@ -220,10 +226,10 @@ export function CrewAuthScreen({
         }
 
         throw new Error(
-          callbackUrl.searchParams.get("message") ?? "Unable to finish the social sign-in right now."
+          callbackUrl.searchParams.get("message") ?? i18n.t("mobile.auth.error.social_signin")
         );
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to finish social sign-in right now.");
+        setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.social_signin"));
       } finally {
         setIsSubmitting(false);
       }
@@ -246,13 +252,13 @@ export function CrewAuthScreen({
       });
 
       if (envelope.user.role !== "crew-member") {
-        setErrorMessage("Use a crew account in the crew app.");
+        setErrorMessage(i18n.t("mobile.auth.error.crew_role"));
         return;
       }
 
-      onAuthenticated(envelope);
+      onAuthenticated(envelope, "login");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to log in right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.login"));
     } finally {
       setIsSubmitting(false);
     }
@@ -260,7 +266,7 @@ export function CrewAuthScreen({
 
   const handleSignupSubmit = async () => {
     if (!canSubmitSignup) {
-      setErrorMessage("Add your contact and home-base details so we can finish the account.");
+      setErrorMessage(i18n.t("mobile.auth.error.crew_signup_details"));
       return;
     }
 
@@ -300,13 +306,13 @@ export function CrewAuthScreen({
           });
 
       if (envelope.user.role !== "crew-member") {
-        setErrorMessage("Use a crew account in the crew app.");
+        setErrorMessage(i18n.t("mobile.auth.error.crew_role"));
         return;
       }
 
-      onAuthenticated(envelope);
+      onAuthenticated(envelope, "signup");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to finish signup right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.signup"));
     } finally {
       setIsSubmitting(false);
     }
@@ -325,7 +331,7 @@ export function CrewAuthScreen({
       setRecoveryMessage(result.message);
       setResetCodePreview(result.resetCodePreview ?? "");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start password reset right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.start_reset"));
     } finally {
       setIsRequestingReset(false);
     }
@@ -344,13 +350,13 @@ export function CrewAuthScreen({
       });
 
       if (envelope.user.role !== "crew-member") {
-        setErrorMessage("Use a crew account in the crew app.");
+        setErrorMessage(i18n.t("mobile.auth.error.crew_role"));
         return;
       }
 
-      onAuthenticated(envelope);
+      onAuthenticated(envelope, "login");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to reset the password right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.reset_password"));
     } finally {
       setIsResettingPassword(false);
     }
@@ -383,7 +389,7 @@ export function CrewAuthScreen({
                 style={[styles.modeButton, isActive && styles.modeButtonActive]}
               >
                 <Text style={[styles.modeLabel, isActive && styles.modeLabelActive]}>
-                  {value === "login" ? "Log in" : "Sign up"}
+                  {value === "login" ? i18n.t("mobile.auth.log_in") : i18n.t("mobile.auth.sign_up")}
                 </Text>
               </Pressable>
             );
@@ -394,16 +400,22 @@ export function CrewAuthScreen({
           <View style={styles.signupPath}>
             <View style={[styles.signupPathItem, signupStep === "account" && styles.signupPathItemActive]}>
               <Text style={[styles.signupPathLabel, signupStep === "account" && styles.signupPathLabelActive]}>
-                Account
+                {i18n.t("mobile.auth.step.account")}
               </Text>
-              <Text style={styles.signupPathMeta}>{canContinueSignupAccount ? "Ready" : "Now"}</Text>
+              <Text style={styles.signupPathMeta}>
+                {canContinueSignupAccount ? i18n.t("provider_live.step.ready") : i18n.t("provider_live.step.now")}
+              </Text>
             </View>
             <View style={[styles.signupPathItem, signupStep === "homeBase" && styles.signupPathItemActive]}>
               <Text style={[styles.signupPathLabel, signupStep === "homeBase" && styles.signupPathLabelActive]}>
-                Home base
+                {i18n.t("mobile.auth.step.home_base")}
               </Text>
               <Text style={styles.signupPathMeta}>
-                {signupStep === "homeBase" ? (canSubmitSignup ? "Ready" : "Now") : "Next"}
+                {signupStep === "homeBase"
+                  ? canSubmitSignup
+                    ? i18n.t("provider_live.step.ready")
+                    : i18n.t("provider_live.step.now")
+                  : i18n.t("customer_live.next")}
               </Text>
             </View>
           </View>
@@ -414,7 +426,7 @@ export function CrewAuthScreen({
             <TextInput
               autoCapitalize="none"
               onChangeText={setEmail}
-              placeholder="crew.member@example.com"
+              placeholder={i18n.t("mobile.auth.placeholder.crew_email")}
               placeholderTextColor="#6e7d71"
               style={styles.input}
               value={email}
@@ -422,7 +434,7 @@ export function CrewAuthScreen({
             {!isCompletingSocialSignup ? (
               <TextInput
                 onChangeText={setPassword}
-                placeholder="Password"
+                placeholder={i18n.t("auth_signup.field.password")}
                 placeholderTextColor="#6e7d71"
                 secureTextEntry
                 style={styles.input}
@@ -436,8 +448,10 @@ export function CrewAuthScreen({
           <View style={styles.fieldStack}>
             {isCompletingSocialSignup ? (
               <View style={styles.inlineNotice}>
-                <Text style={styles.noticeTitle}>Finish your crew account</Text>
-                <Text style={styles.helper}>We already verified {email.trim()}. Add the basics to continue.</Text>
+                <Text style={styles.noticeTitle}>{i18n.t("mobile.auth.finish_crew_account")}</Text>
+                <Text style={styles.helper}>
+                  {i18n.t("mobile.auth.verified_email_continue", { email: email.trim() })}
+                </Text>
               </View>
             ) : null}
             {signupStep === "account" ? (
@@ -445,7 +459,7 @@ export function CrewAuthScreen({
                 <TextInput
                   autoCapitalize="words"
                   onChangeText={setFullName}
-                  placeholder="Full name"
+                  placeholder={i18n.t("auth_signup.field.full_name")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={fullName}
@@ -453,7 +467,7 @@ export function CrewAuthScreen({
                 <TextInput
                   keyboardType="phone-pad"
                   onChangeText={setPhone}
-                  placeholder="Phone number"
+                  placeholder={i18n.t("auth_signup.field.phone")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={phone}
@@ -462,11 +476,11 @@ export function CrewAuthScreen({
             ) : (
               <>
                 <View style={styles.inlineNotice}>
-                  <Text style={styles.noticeTitle}>Home base</Text>
-                  <Text style={styles.helper}>Nearby shifts are matched from this address.</Text>
+                  <Text style={styles.noticeTitle}>{i18n.t("mobile.auth.step.home_base")}</Text>
+                  <Text style={styles.helper}>{i18n.t("mobile.auth.crew_home_base_helper")}</Text>
                 </View>
                 <Pressable onPress={() => setSignupStep("account")} style={styles.linkButton}>
-                  <Text style={styles.linkButtonLabel}>Edit account</Text>
+                  <Text style={styles.linkButtonLabel}>{i18n.t("mobile.auth.edit_account")}</Text>
                 </Pressable>
                 <TextInput
                   autoCapitalize="words"
@@ -474,7 +488,7 @@ export function CrewAuthScreen({
                     setAddressQuery(value);
                     setSelectedSuggestion(undefined);
                   }}
-                  placeholder="Search city or town"
+                  placeholder={i18n.t("mobile.auth.search_city")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={addressQuery}
@@ -494,13 +508,15 @@ export function CrewAuthScreen({
                       >
                         <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
                         <Text style={styles.suggestionMeta}>
-                          {suggestion.source === "google-geocoding" ? "Google" : "Suggested area"}
+                          {suggestion.source === "google-geocoding"
+                            ? i18n.t("mobile.auth.google_verified_area")
+                            : i18n.t("mobile.auth.suggested_area")}
                         </Text>
                       </Pressable>
                     ))}
                   </View>
                 ) : addressQuery.trim().length >= 2 && isSearching ? (
-                  <Text style={styles.helper}>Searching nearby areas...</Text>
+                  <Text style={styles.helper}>{i18n.t("mobile.auth.searching_nearby_areas")}</Text>
                 ) : null}
                 <TextInput
                   autoCapitalize="words"
@@ -510,7 +526,7 @@ export function CrewAuthScreen({
                       line1: value
                     }))
                   }
-                  placeholder="Home address"
+                  placeholder={i18n.t("mobile.auth.home_address")}
                   placeholderTextColor="#6e7d71"
                   style={styles.input}
                   value={address.line1}
@@ -524,7 +540,7 @@ export function CrewAuthScreen({
                         city: value
                       }))
                     }
-                    placeholder="City"
+                    placeholder={i18n.t("auth_signup.field.city")}
                     placeholderTextColor="#6e7d71"
                     style={[styles.input, styles.inlineInput]}
                     value={address.city}
@@ -538,7 +554,7 @@ export function CrewAuthScreen({
                         state: value
                       }))
                     }
-                    placeholder="ST"
+                    placeholder={i18n.t("auth_signup.field.state")}
                     placeholderTextColor="#6e7d71"
                     style={[styles.input, styles.stateInput]}
                     value={address.state}
@@ -552,7 +568,7 @@ export function CrewAuthScreen({
                         postalCode: value
                       }))
                     }
-                    placeholder="ZIP"
+                    placeholder={i18n.t("auth_signup.field.zip")}
                     placeholderTextColor="#6e7d71"
                     style={[styles.input, styles.zipInput]}
                     value={address.postalCode}
@@ -570,13 +586,13 @@ export function CrewAuthScreen({
         >
           <Text style={styles.primaryButtonLabel}>
             {isSubmitting
-              ? "Working..."
+              ? i18n.t("mobile.bookings.working")
               : isCompletingSocialSignup
                 ? signupStep === "account"
-                  ? "Continue"
-                  : "Finish account"
+                  ? i18n.t("common.actions.continue")
+                  : i18n.t("mobile.auth.finish_account")
                 : mode === "signup" && signupStep === "account"
-                  ? "Continue"
+                  ? i18n.t("common.actions.continue")
                   : authCopy.submitLabel}
           </Text>
         </Pressable>
@@ -584,7 +600,7 @@ export function CrewAuthScreen({
         {mode === "login" ? (
           <Pressable onPress={() => void handleRequestReset()} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>
-              {isRequestingReset ? "Sending reset code..." : "Forgot password?"}
+              {isRequestingReset ? i18n.t("mobile.auth.sending_reset_code") : i18n.t("mobile.auth.forgot_password")}
             </Text>
           </Pressable>
         ) : null}
@@ -593,21 +609,27 @@ export function CrewAuthScreen({
 
         {showRecovery ? (
           <View style={styles.recoveryCard}>
-            <Text style={styles.recoveryTitle}>Reset your password</Text>
-            <Text style={styles.helper}>Use the latest reset code for {email.trim() || "your account"}.</Text>
+            <Text style={styles.recoveryTitle}>{i18n.t("mobile.auth.reset_password_title")}</Text>
+            <Text style={styles.helper}>
+              {i18n.t("mobile.auth.use_latest_reset_code", {
+                account: email.trim() || i18n.t("mobile.auth.your_account")
+              })}
+            </Text>
             {recoveryMessage ? <Text style={styles.helper}>{recoveryMessage}</Text> : null}
-            {resetCodePreview ? <Text style={styles.helper}>Local preview code: {resetCodePreview}</Text> : null}
+            {resetCodePreview ? (
+              <Text style={styles.helper}>{i18n.t("mobile.auth.local_preview_code", { code: resetCodePreview })}</Text>
+            ) : null}
             <View style={styles.fieldStack}>
               <TextInput
                 onChangeText={setRecoveryCode}
-                placeholder="Reset code"
+                placeholder={i18n.t("mobile.auth.reset_code")}
                 placeholderTextColor="#6e7d71"
                 style={styles.input}
                 value={recoveryCode}
               />
               <TextInput
                 onChangeText={setNewPassword}
-                placeholder="New password"
+                placeholder={i18n.t("mobile.auth.new_password")}
                 placeholderTextColor="#6e7d71"
                 secureTextEntry
                 style={styles.input}
@@ -617,7 +639,7 @@ export function CrewAuthScreen({
             <View style={styles.recoveryActions}>
               <Pressable onPress={() => void handleConfirmReset()} style={styles.primaryButton}>
                 <Text style={styles.primaryButtonLabel}>
-                  {isResettingPassword ? "Updating..." : "Reset password"}
+                  {isResettingPassword ? i18n.t("mobile.auth.updating") : i18n.t("mobile.auth.reset_password")}
                 </Text>
               </Pressable>
               <Pressable
@@ -630,7 +652,7 @@ export function CrewAuthScreen({
                 }}
                 style={styles.linkButton}
               >
-                <Text style={styles.linkButtonLabel}>Close</Text>
+                <Text style={styles.linkButtonLabel}>{i18n.t("common.actions.close")}</Text>
               </Pressable>
             </View>
           </View>
@@ -640,19 +662,19 @@ export function CrewAuthScreen({
           <View style={styles.socialStack}>
             <Pressable onPress={() => handleAuth("google")} style={styles.socialButton}>
               <AntDesign color="#4285F4" name="google" size={18} />
-              <Text style={styles.socialLabel}>Continue with Google</Text>
+              <Text style={styles.socialLabel}>{i18n.t("mobile.auth.continue_google")}</Text>
             </Pressable>
             <Pressable onPress={() => handleAuth("apple")} style={styles.socialButton}>
               <AntDesign color={BrandTokens.colors.ink} name="apple" size={18} />
-              <Text style={styles.socialLabel}>Continue with Apple</Text>
+              <Text style={styles.socialLabel}>{i18n.t("mobile.auth.continue_apple")}</Text>
             </Pressable>
           </View>
         ) : null}
 
         <Text style={styles.helper}>
           {mode === "signup"
-            ? "Availability, skills, and travel limits come right after sign up."
-            : "Skills, travel radius, and equipment preferences come after sign in."}
+            ? i18n.t("mobile.auth.crew_signup_helper")
+            : i18n.t("mobile.auth.crew_login_helper")}
         </Text>
       </View>
     </ScrollView>

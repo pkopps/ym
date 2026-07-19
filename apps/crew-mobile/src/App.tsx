@@ -1,7 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { AuthenticatedUserEnvelope } from "@yardmatch/contracts";
+import {
+  createI18n,
+  loadFallbackMessages,
+  loadLocaleMessages,
+  type MessageDictionary,
+  type SupportedLocale,
+  type TranslationKey,
+  type TranslationValues
+} from "@yardmatch/i18n";
+import { I18nProvider, useI18n } from "@yardmatch/i18n/react";
 import { CrewAuthScreen } from "./auth/CrewAuthScreen";
 import { CrewAppNavigator } from "./navigation/CrewAppNavigator";
 import { ObservabilityProvider } from "./providers/ObservabilityProvider";
@@ -16,50 +26,126 @@ import {
   saveStoredCrewSession
 } from "./lib/sessionSecurity";
 import { registerCrewPushDevice } from "./lib/pushNotifications";
+import {
+  getCrewMobileLocale,
+  loadStoredCrewLocale,
+  saveCrewLocale,
+  setCrewMobileLocale
+} from "./lib/i18n";
 
 const relockAfterMs = 60_000;
+const mobileLocales: SupportedLocale[] = ["en", "es"];
+type AuthCompletionSource = "login" | "signup";
 
 export default function App() {
+  const [locale, setLocale] = useState<SupportedLocale>(getCrewMobileLocale);
+  const [messages, setMessages] = useState<MessageDictionary | undefined>();
+  const [fallbackMessages, setFallbackMessages] = useState<MessageDictionary | undefined>();
   const [sessionEnvelope, setSessionEnvelope] = useState<AuthenticatedUserEnvelope | undefined>();
+  const [showLanguageOnboarding, setShowLanguageOnboarding] = useState(false);
   const [isRestoringSession, setIsRestoringSession] = useState(true);
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [biometricLabel, setBiometricLabel] = useState("device biometrics");
+  const [biometricLabel, setBiometricLabel] = useState("");
   const [isBiometricLocked, setIsBiometricLocked] = useState(false);
-  const [lockMessage, setLockMessage] = useState("Unlock to continue.");
+  const [lockMessage, setLockMessage] = useState("");
   const backgroundedAtRef = useRef<number | undefined>(undefined);
+  const i18n = useMemo(
+    () =>
+      messages
+        ? createI18n({
+            locale,
+            messages,
+            fallbackMessages
+          })
+        : undefined,
+    [fallbackMessages, locale, messages]
+  );
+  const resolvedBiometricLabel = biometricLabel || i18n?.t("mobile.auth.device_biometrics") || "";
+
+  function t(key: TranslationKey, values?: TranslationValues) {
+    return i18n?.t(key, values) ?? "";
+  }
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadStoredCrewLocale()
+      .then((storedLocale) => {
+        if (isMounted) {
+          setLocale(storedLocale);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    setCrewMobileLocale(locale);
+
+    Promise.all([
+      loadLocaleMessages(locale),
+      locale === "en" ? loadLocaleMessages("en") : loadFallbackMessages()
+    ])
+      .then(([nextMessages, nextFallbackMessages]) => {
+        if (isMounted) {
+          setMessages(nextMessages);
+          setFallbackMessages(nextFallbackMessages);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [locale]);
+
+  async function handleLocaleChange(nextLocale: SupportedLocale) {
+    setLocale(nextLocale);
+    await saveCrewLocale(nextLocale);
+  }
 
   async function signOutAndClearSession() {
     setSessionEnvelope(undefined);
+    setShowLanguageOnboarding(false);
     setIsBiometricLocked(false);
-    setLockMessage("Unlock to continue.");
+    setLockMessage(t("mobile.auth.unlock_prompt"));
     await clearStoredCrewSession();
   }
 
-  async function handleAuthenticated(envelope: AuthenticatedUserEnvelope) {
+  async function handleAuthenticated(envelope: AuthenticatedUserEnvelope, source: AuthCompletionSource = "login") {
     setSessionEnvelope(envelope);
+    setShowLanguageOnboarding(source === "signup");
     setIsBiometricLocked(false);
-    setLockMessage("Unlock to continue.");
+    setLockMessage(t("mobile.auth.unlock_prompt"));
     await saveStoredCrewSession(envelope);
   }
 
   async function handleSetBiometricEnabled(enabled: boolean) {
     if (enabled) {
       if (!biometricAvailable) {
-        setLockMessage("This device does not have Face ID or another enrolled biometric method yet.");
+        setLockMessage(t("mobile.auth.no_biometrics"));
         return false;
       }
 
       const unlocked = await promptCrewBiometricUnlock();
       if (!unlocked) {
-        setLockMessage(`Unable to verify ${biometricLabel}.`);
+        setLockMessage(t("mobile.auth.unable_to_verify", { biometricLabel: resolvedBiometricLabel }));
         return false;
       }
     }
 
     setBiometricEnabledState(enabled);
     await saveCrewBiometricPreference(enabled);
-    setLockMessage(enabled ? `${biometricLabel} will be used when you reopen the app.` : "Unlock to continue.");
+    setLockMessage(
+      enabled
+        ? t("mobile.auth.will_use_biometrics", { biometricLabel: resolvedBiometricLabel })
+        : t("mobile.auth.unlock_prompt")
+    );
     return true;
   }
 
@@ -67,11 +153,11 @@ export default function App() {
     const unlocked = await promptCrewBiometricUnlock();
     if (unlocked) {
       setIsBiometricLocked(false);
-      setLockMessage("Unlock to continue.");
+      setLockMessage(t("mobile.auth.unlock_prompt"));
       return;
     }
 
-    setLockMessage(`${biometricLabel} did not verify. Try again or sign in with your password.`);
+    setLockMessage(t("mobile.auth.unlock_failed", { biometricLabel: resolvedBiometricLabel }));
   }
 
   useEffect(() => {
@@ -175,16 +261,25 @@ export default function App() {
     });
   }, [sessionEnvelope?.session.token]);
 
-  return (
-    <ObservabilityProvider>
+  if (!i18n || !messages || !fallbackMessages) {
+    return (
       <SafeAreaView style={{ flex: 1, backgroundColor: BrandTokens.colors.surface }}>
+        <StatusBar barStyle="dark-content" />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <I18nProvider fallbackMessages={fallbackMessages} locale={locale} messages={messages}>
+      <ObservabilityProvider>
+        <SafeAreaView style={{ flex: 1, backgroundColor: BrandTokens.colors.surface }}>
         <StatusBar barStyle="dark-content" />
         <CrewSessionProvider
           value={{
             envelope: sessionEnvelope,
             biometricEnabled,
             biometricAvailable,
-            biometricLabel,
+            biometricLabel: resolvedBiometricLabel,
             setBiometricEnabled: handleSetBiometricEnabled,
             signOut: () => {
               void signOutAndClearSession();
@@ -192,28 +287,46 @@ export default function App() {
           }}
         >
           {isRestoringSession ? (
-            <CenteredMessage eyebrow="Crew app" title="Restoring your session" description="Checking secure sign-in on this device." />
+            <CenteredMessage
+              eyebrow={t("mobile.auth.crew_eyebrow")}
+              title={t("mobile.auth.restoring_title")}
+              description={t("mobile.auth.restoring_description")}
+            />
           ) : sessionEnvelope && isBiometricLocked ? (
             <BiometricLockScreen
-              description={`Use ${biometricLabel} to reopen your crew account.`}
-              eyebrow="Locked"
-              message={lockMessage}
+              description={t("mobile.auth.unlock_description_crew", { biometricLabel: resolvedBiometricLabel })}
+              eyebrow={t("mobile.auth.locked_eyebrow")}
+              message={lockMessage || t("mobile.auth.unlock_prompt")}
               onSignInInstead={() => {
                 void signOutAndClearSession();
               }}
               onUnlock={() => {
                 void unlockWithBiometrics();
               }}
-              title={`Unlock with ${biometricLabel}`}
+              title={t("mobile.auth.unlock_title", { biometricLabel: resolvedBiometricLabel })}
+            />
+          ) : sessionEnvelope && showLanguageOnboarding ? (
+            <LanguageOnboardingScreen
+              locale={locale}
+              onContinue={() => setShowLanguageOnboarding(false)}
+              onLocaleChange={(nextLocale) => void handleLocaleChange(nextLocale)}
             />
           ) : sessionEnvelope ? (
-            <CrewAppNavigator />
+            <CrewAppNavigator
+              languageSettings={{
+                locale,
+                onLocaleChange: (nextLocale) => {
+                  void handleLocaleChange(nextLocale);
+                }
+              }}
+            />
           ) : (
-            <CrewAuthScreen onAuthenticated={(envelope) => void handleAuthenticated(envelope)} />
+            <CrewAuthScreen onAuthenticated={(envelope, source) => void handleAuthenticated(envelope, source)} />
           )}
         </CrewSessionProvider>
-      </SafeAreaView>
-    </ObservabilityProvider>
+        </SafeAreaView>
+      </ObservabilityProvider>
+    </I18nProvider>
   );
 }
 
@@ -250,6 +363,8 @@ function BiometricLockScreen({
   onUnlock: () => void;
   onSignInInstead: () => void;
 }) {
+  const i18n = useI18n();
+
   return (
     <View style={styles.lockShell}>
       <Text style={styles.eyebrow}>{eyebrow}</Text>
@@ -257,11 +372,62 @@ function BiometricLockScreen({
       <Text style={styles.description}>{description}</Text>
       <Text style={styles.message}>{message}</Text>
       <Pressable onPress={onUnlock} style={styles.primaryButton}>
-        <Text style={styles.primaryButtonLabel}>Unlock now</Text>
+        <Text style={styles.primaryButtonLabel}>{i18n.t("common.actions.unlock_now")}</Text>
       </Pressable>
       <Pressable onPress={onSignInInstead} style={styles.secondaryButton}>
-        <Text style={styles.secondaryButtonLabel}>Use password instead</Text>
+        <Text style={styles.secondaryButtonLabel}>{i18n.t("common.actions.use_password_instead")}</Text>
       </Pressable>
+    </View>
+  );
+}
+
+function LanguageOnboardingScreen({
+  locale,
+  onLocaleChange,
+  onContinue
+}: {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+  onContinue: () => void;
+}) {
+  const i18n = useI18n();
+
+  return (
+    <View style={styles.lockShell}>
+      <Text style={styles.eyebrow}>{i18n.t("mobile.language_onboarding.eyebrow")}</Text>
+      <Text style={styles.title}>{i18n.t("mobile.language_onboarding.title")}</Text>
+      <Text style={styles.description}>{i18n.t("mobile.language_onboarding.description")}</Text>
+      <MobileLanguagePicker locale={locale} onLocaleChange={onLocaleChange} />
+      <Pressable onPress={onContinue} style={styles.primaryButton}>
+        <Text style={styles.primaryButtonLabel}>{i18n.t("common.actions.continue")}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function MobileLanguagePicker({
+  locale,
+  onLocaleChange
+}: {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+}) {
+  const i18n = useI18n();
+
+  return (
+    <View accessibilityLabel={i18n.t("common.language.label")} style={styles.languagePicker}>
+      {mobileLocales.map((option) => (
+        <Pressable
+          accessibilityRole="button"
+          key={option}
+          onPress={() => onLocaleChange(option)}
+          style={[styles.languageOption, locale === option && styles.languageOptionActive]}
+        >
+          <Text style={[styles.languageOptionLabel, locale === option && styles.languageOptionLabelActive]}>
+            {option === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english")}
+          </Text>
+        </Pressable>
+      ))}
     </View>
   );
 }
@@ -321,5 +487,33 @@ const styles = StyleSheet.create({
   secondaryButtonLabel: {
     color: BrandTokens.colors.primaryStrong,
     fontWeight: "700"
+  },
+  languagePicker: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: BrandTokens.spacing.sm,
+    backgroundColor: BrandTokens.colors.surface,
+    paddingHorizontal: BrandTokens.spacing.lg,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  languageOption: {
+    minWidth: 104,
+    alignItems: "center",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingHorizontal: BrandTokens.spacing.md,
+    paddingVertical: BrandTokens.spacing.sm
+  },
+  languageOptionActive: {
+    borderColor: BrandTokens.colors.primary,
+    backgroundColor: BrandTokens.colors.primary
+  },
+  languageOptionLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontWeight: "700"
+  },
+  languageOptionLabelActive: {
+    color: "#ffffff"
   }
 });

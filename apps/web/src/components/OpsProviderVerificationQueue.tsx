@@ -5,6 +5,7 @@ import {
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useI18n } from "@yardmatch/i18n/react";
 
 function formatDateTime(iso?: string) {
   if (!iso) {
@@ -30,6 +31,7 @@ function defaultReviewNotes(item: ProviderVerificationQueueItem, action: "approv
 }
 
 export function OpsProviderVerificationQueue() {
+  const i18n = useI18n();
   const [items, setItems] = useState<ProviderVerificationQueueItem[]>([]);
   const [approvalOverrideNotes, setApprovalOverrideNotes] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
@@ -90,12 +92,10 @@ export function OpsProviderVerificationQueue() {
 
   return (
     <section className="card">
-      <span className="eyebrow">Provider verification</span>
-      <h2>Review new landscaping businesses before they go live.</h2>
+      <span className="eyebrow">{i18n.t("ops_auto.ops_provider_verification_queue.provider_verification_uu1gl2")}</span>
+      <h2>{i18n.t("ops_auto.ops_provider_verification_queue.review_new_landscaping_businesses_before_they_go_live_zbgs5f")}</h2>
       <p>
-        Approve providers when their business profile is ready for customer search, or send them
-        back with notes if something still needs attention.
-      </p>
+        {i18n.t("ops_auto.ops_provider_verification_queue.approve_providers_when_their_business_profile_is_ready_22r3z9")} </p>
       {statusMessage ? <p>{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -121,22 +121,19 @@ export function OpsProviderVerificationQueue() {
               <p>{provider.bio}</p>
               <div className="stack-md">
                 <p>
-                  Submitted: {formatDateTime(provider.verificationSubmittedAt)} • {provider.yearsExperience}{" "}
-                  years experience
-                </p>
+                  {i18n.t("ops_auto.ops_provider_verification_queue.submitted_1d29fl")} {formatDateTime(provider.verificationSubmittedAt)} • {provider.yearsExperience}{" "}
+                  {i18n.t("ops_auto.ops_provider_verification_queue.years_experience_6bwjyk")} </p>
                 <p>
-                  Radius: {provider.serviceRadiusMiles} miles • {reviewCount} customer review
-                  {reviewCount === 1 ? "" : "s"} • {openBookingCount} open booking
-                  {openBookingCount === 1 ? "" : "s"}
+                  {i18n.t("ops_auto.ops_provider_verification_queue.radius_rh7eig")} {provider.serviceRadiusMiles} {i18n.t("ops_auto.ops_provider_verification_queue.miles_hkmuf4")} {reviewCount} {i18n.t("ops_auto.ops_provider_verification_queue.customer_review_neoel6")} {reviewCount === 1 ? "" : "s"} • {openBookingCount} {i18n.t("ops_auto.ops_provider_verification_queue.open_booking_uy3ji5")} {openBookingCount === 1 ? "" : "s"}
                 </p>
-                <p>Services: {provider.categories.map((category) => category.replaceAll("-", " ")).join(", ")}</p>
+                <p>{i18n.t("ops_auto.ops_provider_verification_queue.services_txhy0s")} {provider.categories.map((category) => category.replaceAll("-", " ")).join(", ")}</p>
                 <p>
-                  Recommended action: {item.guidance.recommendedAction.replaceAll("-", " ")} •{" "}
+                  {i18n.t("ops_auto.ops_provider_verification_queue.recommended_action_v1n6xr")} {item.guidance.recommendedAction.replaceAll("-", " ")} •{" "}
                   {item.guidance.rationale}
                 </p>
                 {item.guidance.warnings.length > 0 ? (
                   <div className="stack-sm">
-                    <p>Watchouts</p>
+                    <p>{i18n.t("ops_auto.ops_provider_verification_queue.watchouts_sii2ok")}</p>
                     <ul className="timeline">
                       {item.guidance.warnings.map((warning: string) => (
                         <li key={warning}>
@@ -149,7 +146,7 @@ export function OpsProviderVerificationQueue() {
                 ) : null}
                 {needsApprovalOverride ? (
                   <div className="stack-sm">
-                    <p>Approval override required</p>
+                    <p>{i18n.t("ops_auto.ops_provider_verification_queue.approval_override_required_bm6xh2")}</p>
                     <p>{item.guidance.approvalOverridePrompt}</p>
                     <textarea
                       className="input"
@@ -160,18 +157,16 @@ export function OpsProviderVerificationQueue() {
                           [provider.id]: event.target.value
                         }))
                       }
-                      placeholder="Explain the specific launch-fit checks, exceptions, and safeguards that make this approval safe."
+                      placeholder={i18n.t("ops_auto.ops_provider_verification_queue.explain_the_specific_launch_fit_checks_exceptions_and_q1v7b9")}
                       rows={4}
                       value={overrideNote}
                     />
                     <p>
-                      Add at least {minimumOverrideLength} characters and avoid generic approval notes so
-                      the launch override is auditable.
-                    </p>
+                      {i18n.t("ops_auto.ops_provider_verification_queue.add_at_least_pic0ed")} {minimumOverrideLength} {i18n.t("ops_auto.ops_provider_verification_queue.characters_and_avoid_generic_approval_notes_so_the_uk0f1a")} </p>
                   </div>
                 ) : null}
                 <div className="stack-sm">
-                  <p>Verification checklist</p>
+                  <p>{i18n.t("ops_auto.ops_provider_verification_queue.verification_checklist_x1gxdt")}</p>
                   <ul className="timeline">
                     {item.guidance.checklist.map((check) => (
                       <li key={check.key}>
@@ -183,7 +178,7 @@ export function OpsProviderVerificationQueue() {
                     ))}
                   </ul>
                 </div>
-                {provider.verificationNotes ? <p>Latest ops note: {provider.verificationNotes}</p> : null}
+                {provider.verificationNotes ? <p>{i18n.t("ops_auto.ops_provider_verification_queue.latest_ops_note_oht28v")} {provider.verificationNotes}</p> : null}
               </div>
               <div className="cta-row">
                 <button
@@ -200,14 +195,13 @@ export function OpsProviderVerificationQueue() {
                   onClick={() => void reviewProvider(item, "reject")}
                   type="button"
                 >
-                  Send back for updates
-                </button>
+                  {i18n.t("ops_auto.ops_provider_verification_queue.send_back_for_updates_lz4ysy")} </button>
               </div>
             </article>
           );
           })
         ) : (
-          <p>No providers are waiting on verification right now.</p>
+          <p>{i18n.t("ops_auto.ops_provider_verification_queue.no_providers_are_waiting_on_verification_right_now_nrb6e4")}</p>
         )}
       </div>
     </section>

@@ -12,6 +12,7 @@ import {
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useI18n } from "@yardmatch/i18n/react";
 
 const statusOptions: LaunchLeadStatus[] = ["new", "contacted", "qualified", "converted", "closed-lost"];
 const sourceChannelOptions: LaunchLeadSourceChannel[] = [
@@ -79,6 +80,7 @@ function getContactMethodOptions(sourceChannel: LaunchLeadSourceChannel): Launch
 }
 
 export function OpsLaunchLeadBoard() {
+  const i18n = useI18n();
   const [leads, setLeads] = useState<OpsLaunchLead[]>([]);
   const [newLeadDraft, setNewLeadDraft] = useState<{
     sourceChannel: LaunchLeadSourceChannel;
@@ -214,17 +216,17 @@ export function OpsLaunchLeadBoard() {
   return (
     <section className="stack-lg">
       <div className="section-header">
-        <h2>Launch lead queue</h2>
-        <p>Website, email, phone, referral, GBP, and customer-service follow-up requests with owners, due times, and a closed-loop outcome.</p>
+        <h2>{i18n.t("ops_auto.ops_launch_lead_board.launch_lead_queue_nauy0q")}</h2>
+        <p>{i18n.t("ops_auto.ops_launch_lead_board.website_email_phone_referral_gbp_and_customer_service_jxwh9k")}</p>
       </div>
       {statusMessage ? <p>{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       <article className="card">
-        <h3>Create a manual lead</h3>
-        <p>Use this for contact-us emails, phone calls, texts, referrals, Google Business Profile messages, and customer-service issue help requests that still need pre-booking follow-up.</p>
+        <h3>{i18n.t("ops_auto.ops_launch_lead_board.create_a_manual_lead_xelmb7")}</h3>
+        <p>{i18n.t("ops_auto.ops_launch_lead_board.use_this_for_contact_us_emails_phone_calls_2f9kdb")}</p>
         <div className="form-grid">
           <label className="form-field">
-            <span>Source</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.source_tz74xx")}</span>
             <select
               onChange={(event) =>
                 setNewLeadDraft((current) => {
@@ -249,7 +251,7 @@ export function OpsLaunchLeadBoard() {
             </select>
           </label>
           <label className="form-field">
-            <span>Request source label</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.request_source_label_wdx0ao")}</span>
             <input
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -261,7 +263,7 @@ export function OpsLaunchLeadBoard() {
             />
           </label>
           <label className="form-field">
-            <span>Name</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.name_1fvl7")}</span>
             <input
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -273,7 +275,7 @@ export function OpsLaunchLeadBoard() {
             />
           </label>
           <label className="form-field">
-            <span>Email</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.email_13xh18")}</span>
             <input
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -286,7 +288,7 @@ export function OpsLaunchLeadBoard() {
             />
           </label>
           <label className="form-field">
-            <span>Phone</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.phone_19wb4e")}</span>
             <input
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -299,7 +301,7 @@ export function OpsLaunchLeadBoard() {
             />
           </label>
           <label className="form-field">
-            <span>Preferred follow-up</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.preferred_follow_up_o2a6rs")}</span>
             <select
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -317,7 +319,7 @@ export function OpsLaunchLeadBoard() {
             </select>
           </label>
           <label className="form-field">
-            <span>Owner</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.owner_19m2dv")}</span>
             <input
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -329,7 +331,7 @@ export function OpsLaunchLeadBoard() {
             />
           </label>
           <label className="form-field">
-            <span>Town or area</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.town_or_area_2mbvb0")}</span>
             <input
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -341,7 +343,7 @@ export function OpsLaunchLeadBoard() {
             />
           </label>
           <label className="form-field">
-            <span>Service</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.service_aopgtn")}</span>
             <select
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -351,7 +353,7 @@ export function OpsLaunchLeadBoard() {
               }
               value={newLeadDraft.serviceCategory}
             >
-              <option value="">Not sure yet</option>
+              <option value="">{i18n.t("ops_auto.ops_launch_lead_board.not_sure_yet_hkqwuu")}</option>
               {serviceOptions.map((option) => (
                 <option key={option} value={option}>
                   {serviceCategoryLabels[option]}
@@ -360,7 +362,7 @@ export function OpsLaunchLeadBoard() {
             </select>
           </label>
           <label className="form-field form-field--full">
-            <span>Lead summary</span>
+            <span>{i18n.t("ops_auto.ops_launch_lead_board.lead_summary_45bsoy")}</span>
             <textarea
               onChange={(event) =>
                 setNewLeadDraft((current) => ({
@@ -382,7 +384,7 @@ export function OpsLaunchLeadBoard() {
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
         {leads.length === 0 ? (
           <article className="card">
-            <p>No launch leads yet.</p>
+            <p>{i18n.t("ops_auto.ops_launch_lead_board.no_launch_leads_yet_j3ei4d")}</p>
           </article>
         ) : (
           leads.map((item) => {
@@ -405,8 +407,8 @@ export function OpsLaunchLeadBoard() {
                     </p>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <p>Created {formatDateTime(item.lead.createdAt)}</p>
-                    <p>{item.hoursSinceCreated} hours old</p>
+                    <p>{i18n.t("ops_auto.ops_launch_lead_board.created_qhn9ko")} {formatDateTime(item.lead.createdAt)}</p>
+                    <p>{item.hoursSinceCreated} {i18n.t("ops_auto.ops_launch_lead_board.hours_old_gt6652")}</p>
                     <p>
                       {item.isFirstResponseOverdue
                         ? "First response overdue"
@@ -424,7 +426,7 @@ export function OpsLaunchLeadBoard() {
                 </p>
                 <p>{item.lead.message}</p>
                 <p>
-                  Source: {item.lead.sourceChannel}
+                  {i18n.t("ops_auto.ops_launch_lead_board.source_5wojhd")} {item.lead.sourceChannel}
                   {item.lead.attribution?.source ? ` • ${item.lead.attribution.source}` : ""}
                   {item.lead.attribution?.medium ? ` / ${item.lead.attribution.medium}` : ""}
                   {item.lead.attribution?.campaign ? ` • ${item.lead.attribution.campaign}` : ""}
@@ -455,7 +457,7 @@ export function OpsLaunchLeadBoard() {
                 ) : null}
                 {item.lead.channelMetadata?.referrerName ? (
                   <p>
-                    Referral from {item.lead.channelMetadata.referrerName}
+                    {i18n.t("ops_auto.ops_launch_lead_board.referral_from_dp906l")} {item.lead.channelMetadata.referrerName}
                     {item.lead.channelMetadata.referrerEmail
                       ? ` • ${item.lead.channelMetadata.referrerEmail}`
                       : ""}
@@ -469,7 +471,7 @@ export function OpsLaunchLeadBoard() {
                 ) : null}
                 {item.lead.channelMetadata?.intakeNotes?.length ? (
                   <div className="stack-sm">
-                    <p>Intake notes</p>
+                    <p>{i18n.t("ops_auto.ops_launch_lead_board.intake_notes_uj9vkj")}</p>
                     <ul className="timeline">
                       {item.lead.channelMetadata.intakeNotes.map((note) => (
                         <li key={`${item.lead.id}-${note}`}>
@@ -481,7 +483,7 @@ export function OpsLaunchLeadBoard() {
                   </div>
                 ) : null}
                 <p>
-                  Linked bookings: {linkedBookingCount}
+                  {i18n.t("ops_auto.ops_launch_lead_board.linked_bookings_gbendz")} {linkedBookingCount}
                   {repeatBookingCount ? ` • repeat bookings: ${repeatBookingCount}` : ""}
                   {linkedReviewCount ? ` • reviews: ${linkedReviewCount}` : ""}
                   {item.lead.lastConvertedBookingAt
@@ -493,11 +495,11 @@ export function OpsLaunchLeadBoard() {
                 </p>
                 <div className="stack-sm">
                   <p>
-                    <strong>Recommended next step:</strong> {item.responseGuidance.recommendedAction}
+                    <strong>{i18n.t("ops_auto.ops_launch_lead_board.recommended_next_step_gfb5ve")}</strong> {item.responseGuidance.recommendedAction}
                   </p>
                   {item.responseGuidance.warnings.length > 0 ? (
                     <div className="stack-sm">
-                      <p>Watchouts</p>
+                      <p>{i18n.t("ops_auto.ops_launch_lead_board.watchouts_sii2ok")}</p>
                       <ul className="timeline">
                         {item.responseGuidance.warnings.map((warning) => (
                           <li key={warning}>
@@ -510,7 +512,7 @@ export function OpsLaunchLeadBoard() {
                   ) : null}
                   {item.responseGuidance.templates.length > 0 ? (
                     <div className="stack-sm">
-                      <p>Suggested drafts</p>
+                      <p>{i18n.t("ops_auto.ops_launch_lead_board.suggested_drafts_2chsj3")}</p>
                       <div className="stack-sm">
                         {(["customer", "provider", "partner"] as const).map((audience) => {
                           const audienceTemplates = item.responseGuidance.templates.filter(
@@ -537,12 +539,12 @@ export function OpsLaunchLeadBoard() {
                                     </div>
                                     {template.subject ? (
                                       <label className="form-field">
-                                        <span>Subject</span>
+                                        <span>{i18n.t("ops_auto.ops_launch_lead_board.subject_3czyt0")}</span>
                                         <input readOnly value={template.subject} />
                                       </label>
                                     ) : null}
                                     <label className="form-field">
-                                      <span>Copy-ready draft</span>
+                                      <span>{i18n.t("ops_auto.ops_launch_lead_board.copy_ready_draft_tvbbdg")}</span>
                                       <textarea
                                         readOnly
                                         rows={Math.min(10, Math.max(4, template.body.split("\n").length + 1))}
@@ -561,7 +563,7 @@ export function OpsLaunchLeadBoard() {
                 </div>
                 {item.suggestedBookingMatches.length > 0 ? (
                   <div className="stack-sm">
-                    <p>Possible booking matches</p>
+                    <p>{i18n.t("ops_auto.ops_launch_lead_board.possible_booking_matches_x52cdf")}</p>
                     <div className="cta-row" style={{ flexWrap: "wrap" }}>
                       {item.suggestedBookingMatches.map((match) => (
                         <button
@@ -591,7 +593,7 @@ export function OpsLaunchLeadBoard() {
 
                 <div className="form-grid">
                   <label className="form-field">
-                    <span>Owner</span>
+                    <span>{i18n.t("ops_auto.ops_launch_lead_board.owner_19m2dv")}</span>
                     <input
                       onChange={(event) =>
                         setDrafts((current) => ({
@@ -606,7 +608,7 @@ export function OpsLaunchLeadBoard() {
                     />
                   </label>
                   <label className="form-field">
-                    <span>Status</span>
+                    <span>{i18n.t("ops_auto.ops_launch_lead_board.status_twsvse")}</span>
                     <select
                       onChange={(event) =>
                         setDrafts((current) => ({
@@ -628,7 +630,7 @@ export function OpsLaunchLeadBoard() {
                   </label>
                   {!isClosed ? (
                     <label className="form-field">
-                      <span>Next follow-up</span>
+                      <span>{i18n.t("ops_auto.ops_launch_lead_board.next_follow_up_kt5xna")}</span>
                       <input
                         onChange={(event) =>
                           setDrafts((current) => ({
@@ -645,7 +647,7 @@ export function OpsLaunchLeadBoard() {
                     </label>
                   ) : null}
                   <label className="form-field">
-                    <span>Link booking ID</span>
+                    <span>{i18n.t("ops_auto.ops_launch_lead_board.link_booking_id_m07hu0")}</span>
                     <input
                       onChange={(event) =>
                         setDrafts((current) => ({
@@ -663,7 +665,7 @@ export function OpsLaunchLeadBoard() {
                   </label>
                   {draft.status === "closed-lost" ? (
                     <label className="form-field">
-                      <span>Loss reason</span>
+                      <span>{i18n.t("ops_auto.ops_launch_lead_board.loss_reason_f2josf")}</span>
                       <select
                         onChange={(event) =>
                           setDrafts((current) => ({
@@ -676,7 +678,7 @@ export function OpsLaunchLeadBoard() {
                         }
                         value={draft.lossReason}
                       >
-                        <option value="">Choose a reason</option>
+                        <option value="">{i18n.t("ops_auto.ops_launch_lead_board.choose_a_reason_tosims")}</option>
                         {lossReasonOptions.map((option) => (
                           <option key={option} value={option}>
                             {option.replaceAll("-", " ")}
@@ -686,7 +688,7 @@ export function OpsLaunchLeadBoard() {
                     </label>
                   ) : null}
                   <label className="form-field form-field--full">
-                    <span>Outcome or follow-up note</span>
+                    <span>{i18n.t("ops_auto.ops_launch_lead_board.outcome_or_follow_up_note_ulymvq")}</span>
                     <textarea
                       onChange={(event) =>
                         setDrafts((current) => ({

@@ -6,15 +6,17 @@ import {
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse
 } from "@yardmatch/contracts";
+import { I18nInstance } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 
-function formatDateTime(iso?: string) {
+function formatDateTime(i18n: I18nInstance, iso?: string) {
   if (!iso) {
-    return "Not attempted yet";
+    return i18n.t("notification_ops.not_attempted");
   }
 
-  return new Date(iso).toLocaleString(undefined, {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
@@ -43,6 +45,7 @@ function maskDestination(delivery: NotificationDeliveryRecord) {
 }
 
 export function NotificationOpsBoard() {
+  const i18n = useI18n();
   const [health, setHealth] = useState<NotificationOpsHealthResponse | undefined>();
   const [retryResult, setRetryResult] = useState<NotificationOpsRetrySweepResponse | undefined>();
   const [escalationResult, setEscalationResult] = useState<NotificationOpsEscalationResponse | undefined>();
@@ -63,7 +66,7 @@ export function NotificationOpsBoard() {
         setErrorMessage(undefined);
         await loadHealth();
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to load notification health.");
+        setErrorMessage(error instanceof Error ? error.message : i18n.t("notification_ops.error.load"));
       } finally {
         setIsLoading(false);
       }
@@ -79,7 +82,7 @@ export function NotificationOpsBoard() {
       setRetryResult(response);
       await loadHealth();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to retry overdue deliveries.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("notification_ops.error.retry"));
     } finally {
       setIsRetrying(false);
     }
@@ -94,7 +97,7 @@ export function NotificationOpsBoard() {
       setEscalationResult(response);
       await loadHealth();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send external ops escalation.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("notification_ops.error.escalate"));
     } finally {
       setIsEscalating(false);
     }
@@ -102,25 +105,29 @@ export function NotificationOpsBoard() {
 
   return (
     <section className="card">
-      <span className="eyebrow">Notification health</span>
-      <h2>Watch delivery failures before customers miss important updates.</h2>
-      <p>
-        This view tracks overdue retries, exhausted failures, and noisy providers across push, email,
-        and SMS so ops can catch broken delivery paths early.
-      </p>
+      <span className="eyebrow">{i18n.t("notification_ops.eyebrow")}</span>
+      <h2>{i18n.t("notification_ops.title")}</h2>
+      <p>{i18n.t("notification_ops.body")}</p>
 
-      {isLoading ? <p>Checking notification delivery health.</p> : null}
+      {isLoading ? <p>{i18n.t("notification_ops.loading")}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       {retryResult ? (
         <p>
-          Retry sweep: retried {retryResult.retriedCount}, recovered {retryResult.sentCount}, still failing{" "}
-          {retryResult.failedCount}, overdue now {retryResult.remainingOverdueCount}.
+          {i18n.t("notification_ops.retry_result", {
+            retried: retryResult.retriedCount,
+            recovered: retryResult.sentCount,
+            failed: retryResult.failedCount,
+            overdue: retryResult.remainingOverdueCount
+          })}
         </p>
       ) : null}
       {escalationResult ? (
         <p>
-          External ops alert: {escalationResult.reason} Sent {escalationResult.sentCount} of{" "}
-          {escalationResult.targetCount} target{escalationResult.targetCount === 1 ? "" : "s"}.
+          {i18n.t("notification_ops.escalation_result", {
+            reason: escalationResult.reason,
+            sent: escalationResult.sentCount,
+            targets: escalationResult.targetCount
+          })}
         </p>
       ) : null}
 
@@ -129,15 +136,15 @@ export function NotificationOpsBoard() {
           <div className="grid-three">
             <article className="card">
               <h2>{health.deliveriesLast24Hours}</h2>
-              <p>Deliveries created in the last 24 hours</p>
+              <p>{i18n.t("notification_ops.metric.deliveries_24h")}</p>
             </article>
             <article className="card">
               <h2>{health.overdueRetryCount}</h2>
-              <p>Retries overdue right now</p>
+              <p>{i18n.t("notification_ops.metric.overdue_retries")}</p>
             </article>
             <article className="card">
               <h2>{health.exhaustedFailureCount}</h2>
-              <p>Failures with no retry remaining</p>
+              <p>{i18n.t("notification_ops.metric.exhausted_failures")}</p>
             </article>
           </div>
 
@@ -148,7 +155,7 @@ export function NotificationOpsBoard() {
               onClick={() => void handleRetrySweep()}
               type="button"
             >
-              {isRetrying ? "Retrying..." : "Run retry sweep"}
+              {isRetrying ? i18n.t("notification_ops.retrying") : i18n.t("notification_ops.run_retry_sweep")}
             </button>
             <button
               className="button-secondary"
@@ -159,9 +166,9 @@ export function NotificationOpsBoard() {
               onClick={() => void handleEscalate()}
               type="button"
             >
-              {isEscalating ? "Escalating..." : "Send external ops alert"}
+              {isEscalating ? i18n.t("notification_ops.escalating") : i18n.t("notification_ops.send_external_alert")}
             </button>
-            <span>Last refreshed {formatDateTime(health.generatedAt)}</span>
+            <span>{i18n.t("notification_ops.last_refreshed", { date: formatDateTime(i18n, health.generatedAt) })}</span>
           </div>
 
           <div className="stack-md">
@@ -180,7 +187,7 @@ export function NotificationOpsBoard() {
 
           <div className="grid-two">
             <article className="list-panel">
-              <h3>Channel and provider breakdown</h3>
+              <h3>{i18n.t("notification_ops.breakdown.title")}</h3>
               <div className="stack-md" style={{ paddingBottom: 0 }}>
                 {health.channels.length > 0 ? (
                   health.channels.map((channel) => (
@@ -191,25 +198,33 @@ export function NotificationOpsBoard() {
                             {channel.provider} • {channel.channel.toUpperCase()}
                           </h3>
                           <p>
-                            {channel.failedCount} failed • {channel.sentCount} sent • {channel.pendingRetryCount} retryable
+                            {i18n.t("notification_ops.breakdown.channel_counts", {
+                              failed: channel.failedCount,
+                              sent: channel.sentCount,
+                              retryable: channel.pendingRetryCount
+                            })}
                           </p>
                         </div>
-                        <span className="result-badge">{channel.deliveriesLast24Hours} / 24h</span>
+                        <span className="result-badge">{i18n.t("notification_ops.breakdown.last_24h", { count: channel.deliveriesLast24Hours })}</span>
                       </div>
                       <p>
-                        Total {channel.totalDeliveries} • queued {channel.queuedCount} • overdue{" "}
-                        {channel.overdueRetryCount} • last attempt {formatDateTime(channel.lastAttemptAt)}
+                        {i18n.t("notification_ops.breakdown.channel_total", {
+                          total: channel.totalDeliveries,
+                          queued: channel.queuedCount,
+                          overdue: channel.overdueRetryCount,
+                          lastAttempt: formatDateTime(i18n, channel.lastAttemptAt)
+                        })}
                       </p>
                     </article>
                   ))
                 ) : (
-                  <p>No delivery records yet.</p>
+                  <p>{i18n.t("notification_ops.breakdown.empty")}</p>
                 )}
               </div>
             </article>
 
             <article className="list-panel">
-              <h3>Recent failed deliveries</h3>
+              <h3>{i18n.t("notification_ops.failures.title")}</h3>
               <div className="stack-md" style={{ paddingBottom: 0 }}>
                 {health.recentFailures.length > 0 ? (
                   health.recentFailures.map((delivery) => (
@@ -220,21 +235,29 @@ export function NotificationOpsBoard() {
                             {delivery.provider} • {delivery.channel.toUpperCase()}
                           </h3>
                           <p>
-                            {maskDestination(delivery)} • {delivery.recipientRole} • attempt {delivery.attemptCount}
+                            {i18n.t("notification_ops.failures.delivery_summary", {
+                              destination: maskDestination(delivery),
+                              role: delivery.recipientRole,
+                              attempt: delivery.attemptCount
+                            })}
                           </p>
                         </div>
                         <span className="result-badge">{delivery.status}</span>
                       </div>
                       <p>{delivery.title}</p>
-                      <p>{delivery.errorMessage ?? "Delivery failed without an error message."}</p>
+                      <p>{delivery.errorMessage ?? i18n.t("notification_ops.failures.no_error_message")}</p>
                       <p>
-                        Last attempt {formatDateTime(delivery.lastAttemptAt ?? delivery.createdAt)}
-                        {delivery.nextRetryAt ? ` • next retry ${formatDateTime(delivery.nextRetryAt)}` : " • no retry scheduled"}
+                        {i18n.t("notification_ops.failures.last_attempt", {
+                          date: formatDateTime(i18n, delivery.lastAttemptAt ?? delivery.createdAt)
+                        })}
+                        {delivery.nextRetryAt
+                          ? ` • ${i18n.t("notification_ops.failures.next_retry", { date: formatDateTime(i18n, delivery.nextRetryAt) })}`
+                          : ` • ${i18n.t("notification_ops.failures.no_retry")}`}
                       </p>
                     </article>
                   ))
                 ) : (
-                  <p>No failed deliveries right now.</p>
+                  <p>{i18n.t("notification_ops.failures.empty")}</p>
                 )}
               </div>
             </article>

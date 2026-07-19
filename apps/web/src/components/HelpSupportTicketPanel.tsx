@@ -6,25 +6,34 @@ import {
   SupportIssueType,
   SupportTicket
 } from "@yardmatch/contracts";
+import { addLocalePrefix, type I18nInstance, type TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 
 const issueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
+const issueLabelKeys: Record<SupportIssueType, TranslationKey> = {
+  account: "support.issue.account",
+  billing: "support.issue.billing",
+  general: "support.issue.general",
+  "service-quality": "support.issue.service_quality"
+};
 
 type BookingOption = {
   id: string;
   label: string;
 };
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+function formatDate(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
 }
 
 export function HelpSupportTicketPanel() {
+  const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [isLoadingSupport, setIsLoadingSupport] = useState(false);
   const [isWorking, setIsWorking] = useState(false);
@@ -67,7 +76,7 @@ export function HelpSupportTicketPanel() {
           const bookings = await api.getBookings();
           return bookings.map((booking: Booking) => ({
             id: booking.id,
-            label: `${booking.category.replaceAll("-", " ")} • ${formatDate(booking.scheduledStartIso)}`
+            label: `${booking.category.replaceAll("-", " ")} • ${formatDate(i18n, booking.scheduledStartIso)}`
           }));
         })()
       ]);
@@ -75,7 +84,7 @@ export function HelpSupportTicketPanel() {
       setTickets(nextTickets);
       setBookingOptions(options);
     } catch (error) {
-      setSupportLoadError(error instanceof Error ? error.message : "We couldn't load support right now.");
+      setSupportLoadError(error instanceof Error ? error.message : i18n.t("support.error.load"));
     } finally {
       setIsLoadingSupport(false);
     }
@@ -125,14 +134,14 @@ export function HelpSupportTicketPanel() {
         subject: subject.trim(),
         description: description.trim()
       } satisfies CreateSupportTicketRequest);
-      setStatusMessage("Support ticket submitted.");
+      setStatusMessage(i18n.t("support.status.submitted"));
       setShowComposer(false);
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
       await loadSupportView();
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "We couldn't open your support ticket.");
+      setSubmitError(error instanceof Error ? error.message : i18n.t("support.error.submit"));
     } finally {
       setIsWorking(false);
     }
@@ -141,8 +150,8 @@ export function HelpSupportTicketPanel() {
   if (!sessionReady || (session && isLoadingSupport && tickets.length === 0 && bookingOptions.length === 0 && !supportLoadError)) {
     return (
       <article className="card">
-        <h2>Open a support ticket</h2>
-        <p>Loading support options…</p>
+        <h2>{i18n.t("support.open_ticket")}</h2>
+        <p>{i18n.t("support.loading")}</p>
       </article>
     );
   }
@@ -150,14 +159,14 @@ export function HelpSupportTicketPanel() {
   if (!session) {
     return (
       <article className="card">
-        <h2>Open a support ticket</h2>
-        <p>Log in for booking, billing, or account help.</p>
+        <h2>{i18n.t("support.open_ticket")}</h2>
+        <p>{i18n.t("support.login_body")}</p>
         <div className="cta-row" style={{ marginTop: "1rem" }}>
-          <a className="button" href="/login">
-            Log in
+          <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
+            {i18n.t("nav.log_in")}
           </a>
           <a className="button-secondary" href="#contact-us">
-            Pre-booking help
+            {i18n.t("support.prebooking_help")}
           </a>
         </div>
       </article>
@@ -166,34 +175,34 @@ export function HelpSupportTicketPanel() {
 
   return (
     <article className="card">
-      <h2>Open a support ticket</h2>
-      <p>Use this for booking, billing, or account help.</p>
+      <h2>{i18n.t("support.open_ticket")}</h2>
+      <p>{i18n.t("support.body")}</p>
       <div className="cta-row" style={{ marginTop: "1rem" }}>
         <button
           className={showComposer ? "button-secondary" : "button"}
           onClick={() => setShowComposer((current) => !current)}
           type="button"
         >
-          {showComposer ? "Hide ticket form" : "Open support ticket"}
+          {showComposer ? i18n.t("support.hide_form") : i18n.t("support.open_ticket")}
         </button>
       </div>
       {showComposer ? (
         <>
           <div className="form-grid" style={{ marginTop: "1rem" }}>
             <label className="form-field">
-              <span>Issue type</span>
+              <span>{i18n.t("support.issue_type")}</span>
               <select onChange={(event) => setIssueType(event.target.value as SupportIssueType)} value={issueType}>
                 {issueOptions.map((option) => (
                   <option key={option} value={option}>
-                    {option.replaceAll("-", " ")}
+                    {i18n.t(issueLabelKeys[option])}
                   </option>
                 ))}
               </select>
             </label>
             <label className="form-field">
-              <span>Booking</span>
+              <span>{i18n.t("support.booking")}</span>
               <select onChange={(event) => setSelectedBookingId(event.target.value)} value={selectedBookingId}>
-                <option value="">No booking</option>
+                <option value="">{i18n.t("support.no_booking")}</option>
                 {bookingOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
@@ -202,22 +211,22 @@ export function HelpSupportTicketPanel() {
               </select>
             </label>
             <label className="form-field form-field--full">
-              <span>Subject</span>
-              <input onChange={(event) => setSubject(event.target.value)} placeholder="Short subject" value={subject} />
+              <span>{i18n.t("support.subject")}</span>
+              <input onChange={(event) => setSubject(event.target.value)} placeholder={i18n.t("support.subject_placeholder")} value={subject} />
             </label>
             <label className="form-field form-field--full">
-              <span>Describe the issue</span>
+              <span>{i18n.t("support.description")}</span>
               <textarea
                 onChange={(event) => setDescription(event.target.value)}
                 rows={5}
-                placeholder="Tell us what went wrong and what outcome you need."
+                placeholder={i18n.t("support.description_placeholder")}
                 value={description}
               />
             </label>
           </div>
           <div className="cta-row" style={{ marginTop: "1rem" }}>
             <button className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
-              {isWorking ? "Submitting..." : "Submit ticket"}
+              {isWorking ? i18n.t("support.submitting") : i18n.t("support.submit_ticket")}
             </button>
           </div>
         </>
@@ -234,7 +243,7 @@ export function HelpSupportTicketPanel() {
               onClick={() => void loadSupportView()}
               type="button"
             >
-              {isLoadingSupport ? "Trying again..." : "Try again"}
+              {isLoadingSupport ? i18n.t("common.actions.trying_again") : i18n.t("common.actions.try_again")}
             </button>
           </div>
         </div>
@@ -242,13 +251,13 @@ export function HelpSupportTicketPanel() {
       {tickets.length > 0 ? (
         <div className="stack-lg" style={{ marginTop: "1.5rem", paddingBottom: 0 }}>
           <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-            <h3>Recent tickets</h3>
+            <h3>{i18n.t("support.recent_tickets")}</h3>
             <button
               className="button-secondary"
               onClick={() => setShowRecentTickets((current) => !current)}
               type="button"
             >
-              {showRecentTickets ? "Hide recent tickets" : "Recent tickets"}
+              {showRecentTickets ? i18n.t("support.hide_recent_tickets") : i18n.t("support.recent_tickets")}
             </button>
           </div>
           {showRecentTickets ? (
@@ -256,16 +265,18 @@ export function HelpSupportTicketPanel() {
               <article className="list-panel" key={ticket.id}>
                 <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                   <h3>{ticket.subject}</h3>
-                  <span>{new Date(ticket.createdAt).toLocaleDateString()}</span>
+                  <span>{i18n.formatDate(ticket.createdAt)}</span>
                 </div>
                 <p>
-                  {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
-                  {ticket.bookingId ? ` • ${bookingLabelById[ticket.bookingId] ?? "Related booking"}` : ""}
+                  {i18n.t(issueLabelKeys[ticket.issueType])} • {ticket.status}
+                  {ticket.bookingId
+                    ? ` • ${bookingLabelById[ticket.bookingId] ?? i18n.t("support.related_booking")}`
+                    : ""}
                 </p>
                 <p>{ticket.description}</p>
                 {ticket.resolutionNotes ? (
                   <p>
-                    Resolution: {ticket.resolutionNotes}
+                    {i18n.t("support.resolution_label")} {ticket.resolutionNotes}
                     {ticket.resolutionAction ? ` • ${ticket.resolutionAction.replaceAll("-", " ")}` : ""}
                   </p>
                 ) : null}

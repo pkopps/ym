@@ -11,6 +11,7 @@ import {
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useI18n } from "@yardmatch/i18n/react";
 
 function formatDateTime(iso: string) {
   return new Date(iso).toLocaleString(undefined, {
@@ -54,6 +55,7 @@ function isDetailedManualRationale(
 }
 
 export function OpsSupportQueue() {
+  const i18n = useI18n();
   const [tickets, setTickets] = useState<SupportOpsTicket[]>([]);
   const [refundOverrideDrafts, setRefundOverrideDrafts] = useState<Record<string, string>>({});
   const [interventionDrafts, setInterventionDrafts] = useState<
@@ -116,7 +118,7 @@ export function OpsSupportQueue() {
   async function openRefundOverride(ticketId: string, paymentId: string) {
     const reason = (refundOverrideDrafts[ticketId] ?? "").trim();
     if (!reason) {
-      setErrorMessage("A refund reason is required before customer service opens a refund review.");
+      setErrorMessage(i18n.t("ops_auto.ops_support_queue.a_refund_reason_is_required_before_customer_service_46unxq"));
       return;
     }
 
@@ -179,14 +181,14 @@ export function OpsSupportQueue() {
     action: CreateOpsBookingInterventionRequest["action"]
   ) {
     if (!ticket.booking) {
-      setErrorMessage("This support ticket is not tied to a booking.");
+      setErrorMessage(i18n.t("ops_auto.ops_support_queue.this_support_ticket_is_not_tied_to_a_rlzu7j"));
       return;
     }
 
     const draft = getInterventionDraft(ticket);
     const note = draft.note.trim();
     if (!note) {
-      setErrorMessage("An ops intervention note is required.");
+      setErrorMessage(i18n.t("ops_auto.ops_support_queue.an_ops_intervention_note_is_required_mbr2nz"));
       return;
     }
 
@@ -236,7 +238,7 @@ export function OpsSupportQueue() {
     evidenceId: string
   ) {
     if (!ticket.booking) {
-      setErrorMessage("This support ticket is not tied to a booking.");
+      setErrorMessage(i18n.t("ops_auto.ops_support_queue.this_support_ticket_is_not_tied_to_a_rlzu7j"));
       return;
     }
 
@@ -265,12 +267,10 @@ export function OpsSupportQueue() {
 
   return (
     <section className="card">
-      <span className="eyebrow">Support queue</span>
-      <h2>Resolve disputes and field issues.</h2>
+      <span className="eyebrow">{i18n.t("ops_auto.ops_support_queue.support_queue_r58hb4")}</span>
+      <h2>{i18n.t("ops_auto.ops_support_queue.resolve_disputes_and_field_issues_mis84o")}</h2>
       <p>
-        Triage live incidents, then resolve them with an explicit booking outcome so customers and
-        providers land in a clean state.
-      </p>
+        {i18n.t("ops_auto.ops_support_queue.triage_live_incidents_then_resolve_them_with_an_e7b7ep")} </p>
       {statusMessage ? <p>{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -354,7 +354,7 @@ export function OpsSupportQueue() {
                 <div>
                   <h3>{ticket.subject}</h3>
                   <p>
-                    {ticket.issueType.replaceAll("-", " ")} • {ticket.status} • opened{" "}
+                    {ticket.issueType.replaceAll("-", " ")} • {ticket.status} {i18n.t("ops_auto.ops_support_queue.opened_mrnt47")}{" "}
                     {formatDateTime(ticket.createdAt)}
                   </p>
                 </div>
@@ -364,42 +364,42 @@ export function OpsSupportQueue() {
               {booking ? (
                 <div className="stack-md">
                   <p>
-                    Booking: {booking.category.replaceAll("-", " ")} • {formatDateTime(booking.scheduledStartIso)}
+                    {i18n.t("ops_auto.ops_support_queue.booking_y8dgyp")} {booking.category.replaceAll("-", " ")} • {formatDateTime(booking.scheduledStartIso)}
                   </p>
                   <p>
-                    Customer: {customerName ?? booking.customerId} • Provider:{" "}
+                    {i18n.t("ops_auto.ops_support_queue.customer_b8ip6s")} {customerName ?? booking.customerId} {i18n.t("ops_auto.ops_support_queue.provider_gudo7f")}{" "}
                     {providerName ?? booking.providerId}
                   </p>
                   <p>
-                    Booking state: {booking.status}
+                    {i18n.t("ops_auto.ops_support_queue.booking_state_mu7vyo")} {booking.status}
                     {booking.disputeReason ? ` • dispute: ${booking.disputeReason}` : ""}
                     {booking.activeExceptionType ? ` • issue: ${booking.activeExceptionType}` : ""}
                   </p>
                   {evidenceSummary ? (
                     <div className="list-panel" style={{ padding: "0.9rem" }}>
-                      <strong>Evidence signal</strong>
+                      <strong>{i18n.t("ops_auto.ops_support_queue.evidence_signal_sp19jj")}</strong>
                       <p>
-                        {evidenceSummary.photoCount} photos • {evidenceSummary.noteCount} notes •{" "}
+                        {evidenceSummary.photoCount} {i18n.t("ops_auto.ops_support_queue.photos_l2nhrx")} {evidenceSummary.noteCount} {i18n.t("ops_auto.ops_support_queue.notes_z7p7r7")}{" "}
                         {evidenceSummary.checklistCount} checklists
                       </p>
                       <p>
-                        Reviewed {evidenceSummary.reviewedCount} • supports provider{" "}
-                        {evidenceSummary.supportsProviderCount} • supports customer{" "}
-                        {evidenceSummary.supportsCustomerCount} • inconclusive{" "}
-                        {evidenceSummary.inconclusiveCount} • unreviewed {evidenceSummary.unreviewedCount}
+                        {i18n.t("ops_auto.ops_support_queue.reviewed_390nvt")} {evidenceSummary.reviewedCount} {i18n.t("ops_auto.ops_support_queue.supports_provider_gsvw1")}{" "}
+                        {evidenceSummary.supportsProviderCount} {i18n.t("ops_auto.ops_support_queue.supports_customer_pw0zuk")}{" "}
+                        {evidenceSummary.supportsCustomerCount} {i18n.t("ops_auto.ops_support_queue.inconclusive_iv07iq")}{" "}
+                        {evidenceSummary.inconclusiveCount} {i18n.t("ops_auto.ops_support_queue.unreviewed_9i5opa")} {evidenceSummary.unreviewedCount}
                       </p>
                       {resolutionGuidance ? (
                         <p className="warning-copy" style={{ marginBottom: 0 }}>
-                          Guidance:{" "}
+                          {i18n.t("ops_auto.ops_support_queue.guidance_18vw3i")}{" "}
                           {resolutionGuidance.recommendedAction
                             ? `${resolutionGuidance.recommendedAction.replaceAll("-", " ")}`
                             : "manual review"}{" "}
-                          • {resolutionGuidance.confidence} confidence • {resolutionGuidance.rationale}
+                          • {resolutionGuidance.confidence} {i18n.t("ops_auto.ops_support_queue.confidence_wb26es")} {resolutionGuidance.rationale}
                         </p>
                       ) : null}
                       {resolutionPolicy ? (
                         <p style={{ marginBottom: 0 }}>
-                          Policy: {resolutionPolicy.evidenceSignal.replaceAll("-", " ")} •{" "}
+                          {i18n.t("ops_auto.ops_support_queue.policy_ky4s2w")} {resolutionPolicy.evidenceSignal.replaceAll("-", " ")} •{" "}
                           {resolutionPolicy.confidence} confidence
                         </p>
                       ) : null}
@@ -410,7 +410,7 @@ export function OpsSupportQueue() {
                       ))}
                       {resolutionGuidance?.templates.length ? (
                         <div className="stack-sm" style={{ marginTop: "0.75rem" }}>
-                          <p>Suggested customer updates</p>
+                          <p>{i18n.t("ops_auto.ops_support_queue.suggested_customer_updates_9otdkr")}</p>
                           <div className="stack-sm">
                             {resolutionGuidance.templates.map((template) => (
                               <article className="card" key={`${ticket.id}-${template.key}`}>
@@ -425,12 +425,12 @@ export function OpsSupportQueue() {
                                 </div>
                                 {template.subject ? (
                                   <label className="form-field">
-                                    <span>Subject</span>
+                                    <span>{i18n.t("ops_auto.ops_support_queue.subject_3czyt0")}</span>
                                     <input readOnly value={template.subject} />
                                   </label>
                                 ) : null}
                                 <label className="form-field">
-                                  <span>Copy-ready draft</span>
+                                  <span>{i18n.t("ops_auto.ops_support_queue.copy_ready_draft_tvbbdg")}</span>
                                   <textarea
                                     readOnly
                                     rows={Math.min(10, Math.max(4, template.body.split("\n").length + 1))}
@@ -445,21 +445,20 @@ export function OpsSupportQueue() {
                     </div>
                   ) : null}
                   <p>
-                    Evidence: before photos{" "}
+                    {i18n.t("ops_auto.ops_support_queue.evidence_before_photos_12wryd")}{" "}
                     {
                       booking.serviceEvidence.filter(
                         (evidence) => evidence.phase === "before" && evidence.evidenceType === "photo"
                       ).length
                     }{" "}
-                    • after photos{" "}
+                    {i18n.t("ops_auto.ops_support_queue.after_photos_s2dbi5")}{" "}
                     {
                       booking.serviceEvidence.filter(
                         (evidence) => evidence.phase === "after" && evidence.evidenceType === "photo"
                       ).length
                     }{" "}
-                    • notes{" "}
-                    {booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "note").length} •
-                    checklists{" "}
+                    {i18n.t("ops_auto.ops_support_queue.notes_30da9v")}{" "}
+                    {booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "note").length} {i18n.t("ops_auto.ops_support_queue.checklists_jsndth")}{" "}
                     {
                       booking.serviceEvidence.filter((evidence) => evidence.evidenceType === "checklist").length
                     }
@@ -500,13 +499,13 @@ export function OpsSupportQueue() {
                                   ) : null}
                                   {evidence.evidenceType === "note" ? (
                                     <div className="list-panel" style={{ padding: "0.75rem" }}>
-                                      <strong>Onsite note</strong>
+                                      <strong>{i18n.t("ops_auto.ops_support_queue.onsite_note_fuonas")}</strong>
                                       <p style={{ margin: "0.35rem 0 0 0" }}>{evidence.note}</p>
                                     </div>
                                   ) : null}
                                   {evidence.evidenceType === "checklist" ? (
                                     <div className="list-panel" style={{ padding: "0.75rem" }}>
-                                      <strong>Checklist</strong>
+                                      <strong>{i18n.t("ops_auto.ops_support_queue.checklist_va9pbu")}</strong>
                                       <div style={{ display: "grid", gap: "0.25rem", marginTop: "0.35rem" }}>
                                         {(evidence.checklistItems ?? []).map((item) => (
                                           <p key={item.label} style={{ margin: 0 }}>
@@ -524,13 +523,12 @@ export function OpsSupportQueue() {
                                   ) : null}
                                   {evidence.reviewStatus ? (
                                     <p className="warning-copy" style={{ margin: 0 }}>
-                                      Ops review: {evidence.reviewStatus.replaceAll("-", " ")}
+                                      {i18n.t("ops_auto.ops_support_queue.ops_review_njh6ss")} {evidence.reviewStatus.replaceAll("-", " ")}
                                       {evidence.reviewNotes ? ` • ${evidence.reviewNotes}` : ""}
                                     </p>
                                   ) : null}
                                   <label>
-                                    Evidence review
-                                    <select
+                                    {i18n.t("ops_auto.ops_support_queue.evidence_review_t80l3z")} <select
                                       onChange={(event) =>
                                         setEvidenceReviewDrafts((current) => ({
                                           ...current,
@@ -542,14 +540,13 @@ export function OpsSupportQueue() {
                                       }
                                       value={getEvidenceReviewDraft(ticket.id, evidence.id).reviewStatus}
                                     >
-                                      <option value="supports-provider">Supports provider</option>
-                                      <option value="supports-customer">Supports customer</option>
-                                      <option value="inconclusive">Inconclusive</option>
+                                      <option value="supports-provider">{i18n.t("ops_auto.ops_support_queue.supports_provider_jf785v")}</option>
+                                      <option value="supports-customer">{i18n.t("ops_auto.ops_support_queue.supports_customer_6xmnkq")}</option>
+                                      <option value="inconclusive">{i18n.t("ops_auto.ops_support_queue.inconclusive_gfzi8c")}</option>
                                     </select>
                                   </label>
                                   <label>
-                                    Ops evidence notes
-                                    <textarea
+                                    {i18n.t("ops_auto.ops_support_queue.ops_evidence_notes_hmoykm")} <textarea
                                       onChange={(event) =>
                                         setEvidenceReviewDrafts((current) => ({
                                           ...current,
@@ -574,8 +571,7 @@ export function OpsSupportQueue() {
                                     }
                                     type="button"
                                   >
-                                    Save evidence review
-                                  </button>
+                                    {i18n.t("ops_auto.ops_support_queue.save_evidence_review_xqxi9q")} </button>
                                 </div>
                               ))}
                             </div>
@@ -586,17 +582,17 @@ export function OpsSupportQueue() {
                   ) : null}
                   {payment ? (
                     <p>
-                      Payment: {payment.status}
+                      {i18n.t("ops_auto.ops_support_queue.payment_nxp89g")} {payment.status}
                       {payment.refundReviewStatus ? ` • refund review ${payment.refundReviewStatus}` : ""}
                       {payment.refundReason ? ` • reason: ${payment.refundReason}` : ""}
                     </p>
                   ) : null}
                 </div>
               ) : null}
-              {ticket.resolutionNotes ? <p>Resolution: {ticket.resolutionNotes}</p> : null}
+              {ticket.resolutionNotes ? <p>{i18n.t("ops_auto.ops_support_queue.resolution_bdvm6q")} {ticket.resolutionNotes}</p> : null}
               {timeline.length > 0 ? (
                 <div className="stack-md">
-                  <p>Support timeline</p>
+                  <p>{i18n.t("ops_auto.ops_support_queue.support_timeline_hsrn8u")}</p>
                   {timeline.map((entry) => (
                     <article className="list-panel" key={entry.id}>
                       <h3>{entry.title}</h3>
@@ -612,8 +608,7 @@ export function OpsSupportQueue() {
                 <div className="stack-md">
                   {ticket.status !== "resolved" ? (
                     <label>
-                      Final resolution rationale
-                      <textarea
+                      {i18n.t("ops_auto.ops_support_queue.final_resolution_rationale_ongnpp")} <textarea
                         onChange={(event) =>
                           setResolutionNoteDrafts((current) => ({
                             ...current,
@@ -631,8 +626,7 @@ export function OpsSupportQueue() {
                     </label>
                   ) : null}
                   <label>
-                    Ops intervention note
-                      <textarea
+                    {i18n.t("ops_auto.ops_support_queue.ops_intervention_note_2sjl9v")} <textarea
                         onChange={(event) =>
                           setInterventionDrafts((current) => ({
                             ...current,
@@ -653,8 +647,7 @@ export function OpsSupportQueue() {
                   </label>
                   <div className="grid-two">
                     <label>
-                      New start
-                      <input
+                      {i18n.t("ops_auto.ops_support_queue.new_start_vdgzi")} <input
                         onChange={(event) =>
                           setInterventionDrafts((current) => ({
                             ...current,
@@ -669,8 +662,7 @@ export function OpsSupportQueue() {
                       />
                     </label>
                     <label>
-                      New end
-                      <input
+                      {i18n.t("ops_auto.ops_support_queue.new_end_d0cukl")} <input
                         onChange={(event) =>
                           setInterventionDrafts((current) => ({
                             ...current,
@@ -692,8 +684,7 @@ export function OpsSupportQueue() {
                       onClick={() => void applyIntervention(supportTicket, "add-note")}
                       type="button"
                     >
-                      Save note
-                    </button>
+                      {i18n.t("ops_auto.ops_support_queue.save_note_z7zwyd")} </button>
                     <button
                       className="button-secondary"
                       disabled={isWorking}
@@ -705,8 +696,7 @@ export function OpsSupportQueue() {
                       }
                       type="button"
                     >
-                      Reschedule
-                    </button>
+                      {i18n.t("ops_auto.ops_support_queue.reschedule_tpjswm")} </button>
                     <button
                       className="button-secondary"
                       disabled={
@@ -742,8 +732,7 @@ export function OpsSupportQueue() {
                         }
                         type="button"
                       >
-                        Complete booking
-                      </button>
+                        {i18n.t("ops_auto.ops_support_queue.complete_booking_lrvyi6")} </button>
                     ) : null}
                     <button
                       className="button-secondary"
@@ -761,12 +750,11 @@ export function OpsSupportQueue() {
                       }
                       type="button"
                     >
-                      Cancel booking
-                    </button>
+                      {i18n.t("ops_auto.ops_support_queue.cancel_booking_lg9u4z")} </button>
                   </div>
                   {booking.interventions.length > 0 ? (
                     <div className="stack-md">
-                      <p>Intervention history</p>
+                      <p>{i18n.t("ops_auto.ops_support_queue.intervention_history_c0pfu3")}</p>
                       {booking.interventions
                         .slice()
                         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
@@ -777,7 +765,7 @@ export function OpsSupportQueue() {
                             <p>{intervention.note}</p>
                             {intervention.nextScheduledStartIso ? (
                               <p>
-                                New window: {formatDateTime(intervention.nextScheduledStartIso)}
+                                {i18n.t("ops_auto.ops_support_queue.new_window_2he6ae")} {formatDateTime(intervention.nextScheduledStartIso)}
                                 {intervention.nextScheduledEndIso
                                   ? ` to ${formatDateTime(intervention.nextScheduledEndIso)}`
                                   : ""}
@@ -797,8 +785,7 @@ export function OpsSupportQueue() {
                     onClick={() => void updateTicket(ticket.id, "triaged")}
                     type="button"
                   >
-                    Mark triaged
-                  </button>
+                    {i18n.t("ops_auto.ops_support_queue.mark_triaged_fwxbnh")} </button>
                 ) : null}
                 {ticket.status !== "resolved" && ticket.issueType === "billing" && payment?.refundReviewStatus === "requested" ? (
                   <>
@@ -820,8 +807,7 @@ export function OpsSupportQueue() {
                       }
                       type="button"
                     >
-                      Approve refund
-                    </button>
+                      {i18n.t("ops_auto.ops_support_queue.approve_refund_otmmj")} </button>
                   <button
                     className="button-secondary"
                     disabled={
@@ -840,8 +826,7 @@ export function OpsSupportQueue() {
                       }
                       type="button"
                     >
-                      Deny refund
-                    </button>
+                      {i18n.t("ops_auto.ops_support_queue.deny_refund_9bsycs")} </button>
                   </>
                 ) : null}
                 {ticket.status !== "resolved" &&
@@ -850,8 +835,7 @@ export function OpsSupportQueue() {
                 payment.refundReviewStatus !== "requested" ? (
                   <div className="stack-md">
                     <label>
-                      Customer service refund note
-                      <textarea
+                      {i18n.t("ops_auto.ops_support_queue.customer_service_refund_note_d4sznx")} <textarea
                         onChange={(event) =>
                           setRefundOverrideDrafts((current) => ({
                             ...current,
@@ -868,8 +852,7 @@ export function OpsSupportQueue() {
                       onClick={() => void openRefundOverride(ticket.id, payment.id)}
                       type="button"
                     >
-                      Open refund review
-                    </button>
+                      {i18n.t("ops_auto.ops_support_queue.open_refund_review_m2htme")} </button>
                   </div>
                 ) : null}
                 {ticket.status !== "resolved" && ticket.issueType !== "billing" ? (
@@ -912,8 +895,7 @@ export function OpsSupportQueue() {
                       }
                       type="button"
                     >
-                      Resolve and cancel
-                    </button>
+                      {i18n.t("ops_auto.ops_support_queue.resolve_and_cancel_6sncmv")} </button>
                     {!keepCompletedBooking ? (
                       <button
                         className="button-secondary"
@@ -933,8 +915,7 @@ export function OpsSupportQueue() {
                         }
                         type="button"
                       >
-                        Resolve and complete
-                      </button>
+                        {i18n.t("ops_auto.ops_support_queue.resolve_and_complete_bykudm")} </button>
                     ) : null}
                   </>
                 ) : null}
@@ -943,7 +924,7 @@ export function OpsSupportQueue() {
           );
           })
         ) : (
-          <p>No support tickets yet.</p>
+          <p>{i18n.t("ops_auto.ops_support_queue.no_support_tickets_yet_vs9imp")}</p>
         )}
       </div>
     </section>

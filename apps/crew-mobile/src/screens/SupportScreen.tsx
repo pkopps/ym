@@ -6,11 +6,16 @@ import {
   CrewPayoutLedgerResponse,
   CreateSupportTicketRequest,
   CrewMatchesResponse,
+  NotificationChannel,
+  NotificationDeliveryStatus,
   NotificationDeliveryRecord,
   NotificationPreferences,
   SupportIssueType,
-  SupportTicket
+  SupportTicket,
+  SupportTicketStatus
 } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
@@ -18,43 +23,85 @@ import { useCrewSession } from "../session/CrewSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
-type CrewAccountSection = "payouts" | "profile" | "alerts" | "security" | "help";
+type CrewAccountSection = "payouts" | "profile" | "alerts" | "language" | "security" | "help";
+type LanguageSettings = {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+};
 
-const crewAccountSectionOptions: Array<{ value: CrewAccountSection; label: string }> = [
-  { value: "payouts", label: "Payouts" },
-  { value: "profile", label: "Profile" },
-  { value: "alerts", label: "Alerts" },
-  { value: "security", label: "Security" },
-  { value: "help", label: "Help" }
+const crewAccountSectionOptions: Array<{ value: CrewAccountSection; labelKey: TranslationKey }> = [
+  { value: "payouts", labelKey: "provider_mobile.dashboard.payouts" },
+  { value: "profile", labelKey: "crew_mobile.support.section.profile" },
+  { value: "alerts", labelKey: "mobile.support.section.alerts" },
+  { value: "language", labelKey: "common.language.label" },
+  { value: "security", labelKey: "mobile.support.section.security" },
+  { value: "help", labelKey: "mobile.support.section.help" }
 ];
 
 type CrewPayoutEntry = CrewPayoutLedgerResponse["entries"][number];
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
+const supportIssueLabelKeys: Record<SupportIssueType, TranslationKey> = {
+  account: "mobile.support.issue.account",
+  billing: "mobile.support.issue.billing",
+  general: "mobile.support.issue.general",
+  "service-quality": "mobile.support.issue.service_quality"
+};
+
+const notificationChannelLabelKeys: Record<NotificationChannel, TranslationKey> = {
+  email: "mobile.support.preference.email",
+  "in-app": "provider_mobile.support.notification.channel.in_app",
+  push: "mobile.support.preference.push",
+  sms: "mobile.support.preference.sms"
+};
+
+const notificationDeliveryStatusLabelKeys: Record<NotificationDeliveryStatus, TranslationKey> = {
+  failed: "provider_mobile.support.notification.delivery.failed",
+  queued: "provider_mobile.support.notification.delivery.queued",
+  sent: "provider_mobile.support.notification.delivery.sent",
+  skipped: "provider_mobile.support.notification.delivery.skipped"
+};
+
+const supportTicketStatusLabelKeys: Record<SupportTicketStatus, TranslationKey> = {
+  open: "provider_mobile.support.ticket.status.open",
+  resolved: "provider_mobile.support.ticket.status.resolved",
+  triaged: "provider_mobile.support.ticket.status.triaged"
+};
+
+function formatCurrency(i18n: I18nInstance, cents: number) {
+  return i18n.formatCurrency(cents);
 }
 
-function formatPayoutStatus(status: CrewPayoutEntry["status"]) {
+function formatPayoutStatus(i18n: I18nInstance, status: CrewPayoutEntry["status"]) {
   switch (status) {
     case "awaiting-customer-payment":
-      return "Awaiting payment";
+      return i18n.t("provider_mobile.dashboard.payout.awaiting_payment");
     case "on-hold":
-      return "On hold";
+      return i18n.t("provider_mobile.dashboard.payout.on_hold");
     case "scheduled":
-      return "Scheduled";
+      return i18n.t("provider_mobile.dashboard.payout.scheduled");
     case "ready":
-      return "Ready";
+      return i18n.t("provider_mobile.dashboard.payout.ready");
     case "paid":
-      return "Paid";
+      return i18n.t("provider_mobile.dashboard.payout.paid");
     case "reversed":
-      return "Reversed";
+      return i18n.t("provider_mobile.dashboard.payout.reversed");
   }
 }
 
-export function SupportScreen() {
+function formatNotificationChannelLabel(i18n: I18nInstance, channel: NotificationChannel) {
+  return i18n.t(notificationChannelLabelKeys[channel]);
+}
+
+function formatNotificationDeliveryStatus(i18n: I18nInstance, status: NotificationDeliveryStatus) {
+  return i18n.t(notificationDeliveryStatusLabelKeys[status]);
+}
+
+function formatSupportTicketStatus(i18n: I18nInstance, status: SupportTicketStatus) {
+  return i18n.t(supportTicketStatusLabelKeys[status]);
+}
+
+export function SupportScreen({ languageSettings }: { languageSettings: LanguageSettings }) {
+  const i18n = useI18n();
   const { biometricAvailable, biometricEnabled, biometricLabel, envelope, setBiometricEnabled, signOut } =
     useCrewSession();
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
@@ -81,24 +128,36 @@ export function SupportScreen() {
     heldPayoutEntries.reduce((sum, entry) => sum + entry.amountCents, 0);
   const payoutStateLabel =
     blockedPayoutCents > 0
-      ? "Needs attention"
+      ? i18n.t("common.state.needs_attention")
       : (payoutLedger?.totalReadyCents ?? 0) > 0
-        ? "Ready now"
-        : "On track";
+        ? i18n.t("provider_mobile.support.payout.ready_now")
+        : i18n.t("provider_mobile.support.payout.on_track");
   const enabledAlertCount = [
     preferences?.pushEnabled ?? true,
     preferences?.emailEnabled ?? true,
     preferences?.smsEnabled ?? true
   ].filter(Boolean).length;
+  const currentLanguageLabel =
+    languageSettings.locale === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english");
   const sectionSummaries: Record<CrewAccountSection, string> = {
     payouts: payoutStateLabel,
-    profile: `${matchesResponse?.crewMember.willingToTravelMiles ?? 0} mi radius`,
-    alerts: `${unreadCount} unread • ${enabledAlertCount}/3 on`,
-    security: !biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`,
+    profile: i18n.t("crew_mobile.support.summary.radius", {
+      count: matchesResponse?.crewMember.willingToTravelMiles ?? 0
+    }),
+    alerts: i18n.t("provider_mobile.support.summary.alerts", {
+      unread: unreadCount,
+      enabled: enabledAlertCount
+    }),
+    language: i18n.t("mobile.settings.language.summary", { language: currentLanguageLabel }),
+    security: !biometricAvailable
+      ? i18n.t("mobile.support.summary.unavailable")
+      : biometricEnabled
+        ? i18n.t("mobile.support.summary.biometric_on", { biometric: biometricLabel })
+        : i18n.t("mobile.support.summary.biometric_off", { biometric: biometricLabel }),
     help:
       supportTickets.length > 0
-        ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}`
-        : "Open a ticket"
+        ? i18n.t("mobile.support.summary.recent_tickets", { count: supportTickets.length })
+        : i18n.t("provider_mobile.support.summary.open_ticket")
   };
 
   async function loadMatches() {
@@ -125,7 +184,7 @@ export function SupportScreen() {
       setDeliveries(nextDeliveries.deliveries);
       setPayoutLedger(nextPayoutLedger);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load account.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.load_account"));
     }
   }
 
@@ -149,14 +208,14 @@ export function SupportScreen() {
         subject: subject.trim(),
         description: description.trim()
       } satisfies CreateSupportTicketRequest);
-      setStatusMessage("Support ticket submitted.");
+      setStatusMessage(i18n.t("mobile.support.message.support_ticket_submitted"));
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
       setShowSupportComposer(false);
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.open_support_ticket"));
     } finally {
       setIsWorking(false);
     }
@@ -175,9 +234,9 @@ export function SupportScreen() {
       const response = await api.markNotificationsRead({});
       setNotifications(response.notifications);
       setUnreadCount(response.unreadCount);
-      setStatusMessage("Notifications marked read.");
+      setStatusMessage(i18n.t("mobile.support.message.notifications_marked_read"));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update notifications.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("notifications.error.update"));
     } finally {
       setIsWorking(false);
     }
@@ -197,11 +256,11 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       const nextPreferences = await api.updateNotificationPreferences(updates);
       setPreferences(nextPreferences);
-      setStatusMessage("Delivery preferences updated.");
+      setStatusMessage(i18n.t("mobile.support.message.delivery_preferences_updated"));
       const nextDeliveries = await api.getNotificationDeliveries();
       setDeliveries(nextDeliveries.deliveries);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update delivery preferences.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.update_notification_preferences"));
     } finally {
       setIsWorking(false);
     }
@@ -212,27 +271,27 @@ export function SupportScreen() {
     if (updated) {
       setStatusMessage(
         nextValue
-          ? `${biometricLabel} will be used when you reopen the crew app.`
-          : "Biometric unlock turned off for this app."
+          ? i18n.t("crew_mobile.support.message.biometric_enabled", { biometric: biometricLabel })
+          : i18n.t("mobile.support.message.biometric_disabled")
       );
       return;
     }
 
     if (nextValue) {
-      setErrorMessage(`Unable to enable ${biometricLabel} right now.`);
+      setErrorMessage(i18n.t("mobile.support.error.enable_biometric", { biometric: biometricLabel }));
     }
   }
 
   return (
     <ScreenShell
-      eyebrow="Account"
-      title="Account"
-      description="Payouts, alerts, security, and support."
+      eyebrow={i18n.t("mobile.support.eyebrow")}
+      title={i18n.t("mobile.support.title")}
+      description={i18n.t("crew_mobile.support.description")}
     >
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
-      <InfoCard title="Account tools" description={sectionSummaries[activeSection]}>
+      <InfoCard title={i18n.t("mobile.support.account_tools")} description={sectionSummaries[activeSection]}>
         <View style={styles.issueRow}>
           {crewAccountSectionOptions.map((option) => {
             const isActive = option.value === activeSection;
@@ -242,7 +301,7 @@ export function SupportScreen() {
                 onPress={() => setActiveSection(option.value)}
                 style={[styles.chip, isActive && styles.chipActive]}
               >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{i18n.t(option.labelKey)}</Text>
               </Pressable>
             );
           })}
@@ -250,34 +309,37 @@ export function SupportScreen() {
       </InfoCard>
 
       {activeSection === "payouts" ? (
-      <InfoCard title="Payouts" description={payoutStateLabel}>
+      <InfoCard title={i18n.t("provider_mobile.dashboard.payouts")} description={payoutStateLabel}>
         <View style={styles.payoutSummaryGrid}>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Ready</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalReadyCents ?? 0)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.ready")}</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, payoutLedger?.totalReadyCents ?? 0)}</Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Next</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.next")}</Text>
             <Text style={styles.payoutSummaryValue}>
               {payoutLedger?.nextWeeklyPayoutDateIso
-                ? new Date(payoutLedger.nextWeeklyPayoutDateIso).toLocaleDateString(undefined, {
+                ? i18n.formatDate(payoutLedger.nextWeeklyPayoutDateIso, {
                     month: "short",
                     day: "numeric"
                   })
-                : "Pending"}
+                : i18n.t("provider_mobile.dashboard.pending")}
             </Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Blocked</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(blockedPayoutCents)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.support.payout.blocked")}</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, blockedPayoutCents)}</Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>Paid</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(payoutLedger?.totalPaidCents ?? 0)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.paid")}</Text>
+            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, payoutLedger?.totalPaidCents ?? 0)}</Text>
           </View>
         </View>
         <Text style={styles.meta}>
-          {payoutLedger?.holdPeriodHours ?? 0}h hold • {formatCurrency(payoutLedger?.totalScheduledCents ?? 0)} scheduled
+          {i18n.t("crew_mobile.support.payout.schedule_summary", {
+            hold: i18n.t("provider_mobile.dashboard.hold_hours", { count: payoutLedger?.holdPeriodHours ?? 0 }),
+            scheduled: formatCurrency(i18n, payoutLedger?.totalScheduledCents ?? 0)
+          })}
         </Text>
         {(payoutLedger?.entries ?? []).length > 0 ? (
           <View style={styles.ticketStack}>
@@ -286,7 +348,10 @@ export function SupportScreen() {
                 <View style={styles.ticketCopy}>
                   <Text style={styles.title}>{entry.providerCompanyName}</Text>
                   <Text style={styles.meta}>
-                    {entry.serviceLabel} • {formatCurrency(entry.amountCents)}
+                    {i18n.t("provider_mobile.support.payout.entry_summary", {
+                      service: entry.serviceLabel,
+                      amount: formatCurrency(i18n, entry.amountCents)
+                    })}
                   </Text>
                   <Text style={styles.meta}>{entry.note}</Text>
                 </View>
@@ -300,36 +365,61 @@ export function SupportScreen() {
                       styles.payoutStatusBadgeWarning
                   ]}
                 >
-                  {formatPayoutStatus(entry.status)}
+                  {formatPayoutStatus(i18n, entry.status)}
                 </Text>
               </View>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>Completed shifts will show payout entries here.</Text>
+          <Text style={styles.meta}>{i18n.t("crew_mobile.support.payout.empty")}</Text>
         )}
       </InfoCard>
       ) : null}
 
       {activeSection === "profile" ? (
-      <InfoCard title="Account basics" description="Keep details up to date">
-        <Text style={styles.title}>{matchesResponse?.crewMember.fullName ?? "Crew member profile"}</Text>
+      <InfoCard title={i18n.t("crew_mobile.support.account_basics")} description={i18n.t("crew_mobile.support.account_basics_description")}>
+        <Text style={styles.title}>{matchesResponse?.crewMember.fullName ?? i18n.t("crew_mobile.support.crew_member_profile")}</Text>
         <Text style={styles.meta}>
-          {(matchesResponse?.crewMember.availableWeekdays ?? []).join(", ")} •{" "}
-          {matchesResponse?.crewMember.willingToTravelMiles ?? 0} mile travel radius
+          {i18n.t("crew_mobile.support.profile_summary", {
+            days: (matchesResponse?.crewMember.availableWeekdays ?? [])
+              .map((weekday) => i18n.t(`provider_mobile.support.weekday.${weekday.toLowerCase()}` as TranslationKey))
+              .join(", "),
+            count: matchesResponse?.crewMember.willingToTravelMiles ?? 0
+          })}
         </Text>
       </InfoCard>
       ) : null}
 
+      {activeSection === "language" ? (
+      <InfoCard title={i18n.t("mobile.settings.language.title")} description={i18n.t("mobile.settings.language.description")}>
+        <View style={styles.issueRow}>
+          {(["en", "es"] as SupportedLocale[]).map((option) => {
+            const isActive = languageSettings.locale === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => languageSettings.onLocaleChange(option)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                  {option === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english")}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </InfoCard>
+      ) : null}
+
       {activeSection === "security" ? (
-      <InfoCard title="Security" description="Protect this device without slowing down daily work">
+      <InfoCard title={i18n.t("mobile.support.section.security")} description={i18n.t("crew_mobile.support.security_description")}>
         <View style={styles.switchRow}>
           <View style={styles.ticketCopy}>
-            <Text style={styles.title}>Use {biometricLabel}</Text>
+            <Text style={styles.title}>{i18n.t("mobile.support.use_biometric", { biometric: biometricLabel })}</Text>
             <Text style={styles.meta}>
               {biometricAvailable
-                ? "Ask for biometric unlock after the app has been away for about a minute."
-                : "Face ID or another enrolled biometric method is not available on this device yet."}
+                ? i18n.t("crew_mobile.support.biometric_description")
+                : i18n.t("crew_mobile.support.biometric_unavailable")}
             </Text>
           </View>
           <Switch
@@ -341,13 +431,13 @@ export function SupportScreen() {
           />
         </View>
         <Pressable onPress={signOut} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonLabel}>Log out</Text>
+          <Text style={styles.logoutButtonLabel}>{i18n.t("mobile.support.log_out")}</Text>
         </Pressable>
       </InfoCard>
       ) : null}
 
       {activeSection === "alerts" ? (
-      <InfoCard title="Updates" description={`${unreadCount} unread`}>
+      <InfoCard title={i18n.t("provider_mobile.support.updates.title")} description={i18n.t("mobile.support.unread_count", { count: unreadCount })}>
         {notifications.length > 0 ? (
           <View style={styles.ticketStack}>
             {notifications.slice(0, 4).map((notification) => (
@@ -356,12 +446,14 @@ export function SupportScreen() {
                   <Text style={styles.title}>{notification.title}</Text>
                   <Text style={styles.meta}>{notification.body}</Text>
                 </View>
-                <Text style={styles.meta}>{notification.isRead ? "Read" : "New"}</Text>
+                <Text style={styles.meta}>
+                  {notification.isRead ? i18n.t("mobile.support.notification.read") : i18n.t("common.state.new")}
+                </Text>
               </View>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>You're all caught up.</Text>
+          <Text style={styles.meta}>{i18n.t("mobile.support.all_caught_up")}</Text>
         )}
         {unreadCount > 0 ? (
           <Pressable
@@ -369,7 +461,7 @@ export function SupportScreen() {
             onPress={() => void handleMarkNotificationsRead()}
             style={styles.linkButton}
           >
-            <Text style={styles.linkButtonLabel}>Mark updates read</Text>
+            <Text style={styles.linkButtonLabel}>{i18n.t("mobile.support.mark_read")}</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -377,7 +469,7 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAlertPreferences ? "Close" : "Preferences"}
+            {showAlertPreferences ? i18n.t("common.actions.close") : i18n.t("mobile.support.preferences")}
           </Text>
         </Pressable>
         {showAlertPreferences ? (
@@ -388,7 +480,12 @@ export function SupportScreen() {
               style={[styles.chip, (preferences?.pushEnabled ?? true) && styles.chipActive]}
             >
               <Text style={[styles.chipLabel, (preferences?.pushEnabled ?? true) && styles.chipLabelActive]}>
-                Push {(preferences?.pushEnabled ?? true) ? "on" : "off"}
+                {i18n.t("provider_mobile.support.preference_state", {
+                  label: i18n.t("mobile.support.preference.push"),
+                  state: (preferences?.pushEnabled ?? true)
+                    ? i18n.t("provider_mobile.support.state.on")
+                    : i18n.t("provider_mobile.support.state.off")
+                })}
               </Text>
             </Pressable>
             <Pressable
@@ -397,7 +494,12 @@ export function SupportScreen() {
               style={[styles.chip, (preferences?.emailEnabled ?? true) && styles.chipActive]}
             >
               <Text style={[styles.chipLabel, (preferences?.emailEnabled ?? true) && styles.chipLabelActive]}>
-                Email {(preferences?.emailEnabled ?? true) ? "on" : "off"}
+                {i18n.t("provider_mobile.support.preference_state", {
+                  label: i18n.t("mobile.support.preference.email"),
+                  state: (preferences?.emailEnabled ?? true)
+                    ? i18n.t("provider_mobile.support.state.on")
+                    : i18n.t("provider_mobile.support.state.off")
+                })}
               </Text>
             </Pressable>
             <Pressable
@@ -406,7 +508,12 @@ export function SupportScreen() {
               style={[styles.chip, (preferences?.smsEnabled ?? true) && styles.chipActive]}
             >
               <Text style={[styles.chipLabel, (preferences?.smsEnabled ?? true) && styles.chipLabelActive]}>
-                SMS {(preferences?.smsEnabled ?? true) ? "on" : "off"}
+                {i18n.t("provider_mobile.support.preference_state", {
+                  label: i18n.t("mobile.support.preference.sms"),
+                  state: (preferences?.smsEnabled ?? true)
+                    ? i18n.t("provider_mobile.support.state.on")
+                    : i18n.t("provider_mobile.support.state.off")
+                })}
               </Text>
             </Pressable>
           </View>
@@ -415,33 +522,38 @@ export function SupportScreen() {
       ) : null}
 
       {activeSection === "alerts" ? (
-      <InfoCard title="Delivery activity" description="Recent push, email, and SMS sends">
+      <InfoCard title={i18n.t("provider_mobile.support.delivery.title")} description={i18n.t("provider_mobile.support.delivery.description")}>
         {deliveries.length > 0 ? (
           <View style={styles.ticketStack}>
             {deliveries.slice(0, 4).map((delivery) => (
               <View key={delivery.id} style={styles.ticketRow}>
                 <View style={styles.ticketCopy}>
-                  <Text style={styles.title}>{delivery.channel.toUpperCase()} • {delivery.title}</Text>
+                  <Text style={styles.title}>
+                    {i18n.t("provider_mobile.support.delivery.item_title", {
+                      channel: formatNotificationChannelLabel(i18n, delivery.channel),
+                      title: delivery.title
+                    })}
+                  </Text>
                   <Text style={styles.meta}>{delivery.destination}</Text>
                 </View>
-                <Text style={styles.meta}>{delivery.status}</Text>
+                <Text style={styles.meta}>{formatNotificationDeliveryStatus(i18n, delivery.status)}</Text>
               </View>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>No delivery records yet.</Text>
+          <Text style={styles.meta}>{i18n.t("mobile.support.no_delivery_records")}</Text>
         )}
       </InfoCard>
       ) : null}
 
       {activeSection === "help" ? (
-      <InfoCard title="Help" description={sectionSummaries.help}>
+      <InfoCard title={i18n.t("mobile.support.section.help")} description={sectionSummaries.help}>
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
           style={showSupportComposer ? styles.linkButton : styles.primaryButton}
         >
           <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
-            {showSupportComposer ? "Close" : "New ticket"}
+            {showSupportComposer ? i18n.t("common.actions.close") : i18n.t("mobile.support.new_ticket")}
           </Text>
         </Pressable>
         {showSupportComposer ? (
@@ -456,7 +568,7 @@ export function SupportScreen() {
                     style={[styles.chip, isActive && styles.chipActive]}
                   >
                     <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                      {issueType.replaceAll("-", " ")}
+                      {i18n.t(supportIssueLabelKeys[issueType])}
                     </Text>
                   </Pressable>
                 );
@@ -467,7 +579,7 @@ export function SupportScreen() {
                 onPress={() => setSelectedBookingId("")}
                 style={[styles.chip, !selectedBookingId && styles.chipActive]}
               >
-                <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No booking</Text>
+                <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>{i18n.t("provider_mobile.support.no_booking")}</Text>
               </Pressable>
               {(matchesResponse?.matches ?? []).slice(0, 4).map((match) => {
                 const isActive = selectedBookingId === match.bookingId;
@@ -486,7 +598,7 @@ export function SupportScreen() {
             </View>
             <TextInput
               onChangeText={setSubject}
-              placeholder="Subject"
+              placeholder={i18n.t("mobile.support.subject")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={styles.input}
               value={subject}
@@ -494,7 +606,7 @@ export function SupportScreen() {
             <TextInput
               multiline
               onChangeText={setDescription}
-              placeholder="What happened?"
+              placeholder={i18n.t("mobile.support.what_happened")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.textarea]}
               value={description}
@@ -504,7 +616,9 @@ export function SupportScreen() {
               onPress={() => void handleCreateSupportTicket()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send"}</Text>
+              <Text style={styles.primaryButtonLabel}>
+                {isWorking ? i18n.t("mobile.support.sending") : i18n.t("mobile.support.send")}
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -515,7 +629,7 @@ export function SupportScreen() {
               style={styles.linkButton}
             >
               <Text style={styles.linkButtonLabel}>
-                {showSupportHistory ? "Close" : "Recent tickets"}
+                {showSupportHistory ? i18n.t("common.actions.close") : i18n.t("mobile.support.recent_tickets")}
               </Text>
             </Pressable>
             {showSupportHistory ? (
@@ -525,10 +639,13 @@ export function SupportScreen() {
                   <View style={styles.ticketCopy}>
                     <Text style={styles.title}>{ticket.subject}</Text>
                     <Text style={styles.meta}>
-                      {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                      {i18n.t("provider_mobile.support.ticket.summary", {
+                        issue: i18n.t(supportIssueLabelKeys[ticket.issueType]),
+                        status: formatSupportTicketStatus(i18n, ticket.status)
+                      })}
                     </Text>
                   </View>
-                  <Text style={styles.meta}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+                  <Text style={styles.meta}>{i18n.formatDate(ticket.createdAt)}</Text>
                 </View>
               ))}
             </View>

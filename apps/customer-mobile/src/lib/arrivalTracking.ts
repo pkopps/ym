@@ -1,4 +1,5 @@
 import { Booking, BookingArrivalTracking } from "@yardmatch/contracts";
+import { I18nInstance } from "@yardmatch/i18n";
 
 export function findTrackableBooking(bookings: Booking[]) {
   return bookings
@@ -19,54 +20,54 @@ export function parseTrackingBookingId(actionHref?: string) {
   return match ? decodeURIComponent(match[1]) : undefined;
 }
 
-export function buildTrackingSummary(tracking: BookingArrivalTracking) {
+export function buildTrackingSummary(i18n: I18nInstance, tracking: BookingArrivalTracking) {
   if (tracking.status === "arrived" || tracking.status === "completed") {
-    return "At the property";
+    return i18n.t("mobile.tracking.summary.at_property");
   }
 
   if (typeof tracking.etaMinutes === "number" && tracking.etaMinutes > 0) {
-    return `${tracking.etaMinutes} min away`;
+    return i18n.t("mobile.tracking.summary.minutes_away", { count: tracking.etaMinutes });
   }
 
-  return "Crew on the way";
+  return i18n.t("mobile.tracking.summary.crew_on_way");
 }
 
-export function buildTrackingDetail(tracking: BookingArrivalTracking) {
+export function buildTrackingDetail(i18n: I18nInstance, tracking: BookingArrivalTracking) {
   const pieces: string[] = [];
 
   if (typeof tracking.remainingDistanceMiles === "number" && tracking.remainingDistanceMiles > 0) {
-    pieces.push(`${tracking.remainingDistanceMiles.toFixed(1)} miles left`);
+    pieces.push(i18n.t("mobile.tracking.detail.miles_left", { count: tracking.remainingDistanceMiles }));
   }
 
   if (tracking.status === "on-route") {
-    pieces.push(`${tracking.progressPercent}% of route covered`);
+    pieces.push(i18n.t("mobile.tracking.detail.route_covered", { percent: tracking.progressPercent }));
   }
 
   if (tracking.source === "provider-device") {
     pieces.push(
       tracking.isLiveLocationStale
-        ? "Live provider location paused"
+        ? i18n.t("mobile.tracking.detail.provider_paused")
         : tracking.liveUpdatedAt
-          ? `Live provider location updated ${new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, {
-              timeStyle: "short"
-            })}`
-          : "Live provider location"
+          ? i18n.t("mobile.tracking.detail.provider_updated", {
+              time: i18n.formatDate(tracking.liveUpdatedAt, { timeStyle: "short" })
+            })
+          : i18n.t("mobile.tracking.detail.provider_live")
     );
   } else if (tracking.source === "crew-device") {
     pieces.push(
       tracking.isLiveLocationStale
-        ? "Live crew location paused"
+        ? i18n.t("mobile.tracking.detail.crew_paused")
         : tracking.liveUpdatedAt
-          ? `Live crew location updated ${new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, {
-              timeStyle: "short"
-            })}`
-          : "Live crew location"
+          ? i18n.t("mobile.tracking.detail.crew_updated", {
+              time: i18n.formatDate(tracking.liveUpdatedAt, { timeStyle: "short" })
+            })
+          : i18n.t("mobile.tracking.detail.crew_live")
     );
   } else {
-    pieces.push("Estimated from the scheduled route");
+    pieces.push(i18n.t("mobile.tracking.detail.estimated_route"));
   }
 
-  return pieces.join(" • ");
+  return pieces.join(i18n.t("mobile.tracking.detail_separator"));
 }
 
 export function buildTrackingMapImageUrl(tracking: BookingArrivalTracking) {

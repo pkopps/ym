@@ -2,6 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { Address, ServiceCategory, formatBookingWindowSummary } from "@yardmatch/contracts";
+import { addLocalePrefix } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../lib/api";
@@ -80,6 +83,7 @@ function formatCarriedSlotLabel(value: string) {
 }
 
 export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
+  const i18n = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const carriedService = role === "customer" ? parseServiceCategory(searchParams.get("service")) : undefined;
@@ -110,7 +114,8 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const shouldShowCustomerIntent = role === "customer" && (carriedService || carriedTiming || carriedArea || carriedProviderName);
   const postSignupRedirectPath = buildPostSignupRedirectPath();
-  const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: postSignupRedirectPath });
+  const localizedPostSignupRedirectPath = addLocalePrefix(postSignupRedirectPath, i18n.locale);
+  const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: localizedPostSignupRedirectPath });
 
   function buildPostSignupRedirectPath() {
     if (role === "provider") {
@@ -149,17 +154,17 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
     setErrorMessage(undefined);
 
     if (password !== confirmPassword) {
-      setErrorMessage("Passwords do not match.");
+      setErrorMessage(i18n.t("auth_signup.error.passwords_mismatch"));
       return;
     }
 
     if (!fullName.trim() || !email.trim() || !phone.trim() || !line1.trim() || !city.trim() || !state.trim() || !postalCode.trim()) {
-      setErrorMessage("Add your contact and address details to create the account.");
+      setErrorMessage(i18n.t("auth_signup.error.contact_address_required"));
       return;
     }
 
     if (role === "provider" && !companyName.trim()) {
-      setErrorMessage("Add your business name to create a provider account.");
+      setErrorMessage(i18n.t("auth_signup.error.business_name_required"));
       return;
     }
 
@@ -178,7 +183,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
 
     try {
       setIsSubmitting(true);
-      const api = createWebApiClient();
+      const api = createWebApiClient(i18n.locale);
       const envelope = await api.registerUser({
         fullName: fullName.trim(),
         email: email.trim(),
@@ -193,12 +198,17 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
               categories: defaultProviderCategories
             }
           : {
-              propertyLabel: "Primary property"
+              propertyLabel: i18n.t("auth_signup.default_property_label")
             })
       });
 
       if (envelope.user.role !== role) {
-        throw new Error(`This account was created as ${envelope.user.role}, not ${role}.`);
+        throw new Error(
+          i18n.t("auth_signup.error.role_mismatch", {
+            actualRole: envelope.user.role,
+            expectedRole: role
+          })
+        );
       }
 
       saveStoredSession({
@@ -210,10 +220,10 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
         expiresAtIso: envelope.session.expiresAtIso
       });
 
-      router.push(postSignupRedirectPath);
+      router.push(localizedPostSignupRedirectPath);
       router.refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to create this account right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("auth_signup.error.create_failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -226,104 +236,108 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
           <div className="auth-intent-panel">
             <div className="auth-intent-panel__header">
               <div>
-                <span className="eyebrow">Selected request</span>
-                <h2>{carriedProviderName || "YardMatch request"}</h2>
+                <span className="eyebrow">{i18n.t("auth_signup.intent.eyebrow")}</span>
+                <h2>{carriedProviderName || i18n.t("auth_signup.intent.default_title")}</h2>
               </div>
-              {carriedProviderRank ? <span className="result-badge">Match {carriedProviderRank}</span> : null}
+              {carriedProviderRank ? (
+                <span className="result-badge">
+                  {i18n.t("auth_signup.intent.match_rank", { rank: carriedProviderRank })}
+                </span>
+              ) : null}
             </div>
-            <div className="auth-intent-panel__grid" aria-label="Signup request summary">
+            <div className="auth-intent-panel__grid" aria-label={i18n.t("auth_signup.intent.summary_aria")}>
               {carriedService ? (
                 <div>
-                  <span>Service</span>
-                  <strong>{serviceCategoryLabels[carriedService]}</strong>
+                  <span>{i18n.t("auth_signup.intent.service")}</span>
+                  <strong>{i18n.t(serviceCategoryToI18nKey(carriedService))}</strong>
                 </div>
               ) : null}
               {carriedTiming ? (
                 <div>
-                  <span>When</span>
-                  <strong>{getCustomerTimingLabel(carriedTiming, carriedCustomDate, carriedCustomWindow)}</strong>
+                  <span>{i18n.t("auth_signup.intent.when")}</span>
+                  <strong>{getCustomerTimingLabel(carriedTiming, carriedCustomDate, carriedCustomWindow, i18n)}</strong>
                 </div>
               ) : null}
               {carriedSlotLabel ? (
                 <div>
-                  <span>Opening</span>
+                  <span>{i18n.t("auth_signup.intent.opening")}</span>
                   <strong>{carriedSlotLabel}</strong>
                 </div>
               ) : null}
               {carriedArea ? (
                 <div>
-                  <span>Area</span>
+                  <span>{i18n.t("auth_signup.intent.area")}</span>
                   <strong>{carriedArea}</strong>
                 </div>
               ) : null}
             </div>
-            <p className="auth-intent-panel__note">Create your account to save the property and continue the request. No payment yet.</p>
+            <p className="auth-intent-panel__note">{i18n.t("auth_signup.intent.note")}</p>
           </div>
         ) : null}
         <div className="form-grid">
           <label className="form-field form-field--full">
-            <span>Full name</span>
-            <input onChange={(event) => setFullName(event.target.value)} placeholder="Maya Brooks" value={fullName} />
+            <span>{i18n.t("auth_signup.field.full_name")}</span>
+            <input onChange={(event) => setFullName(event.target.value)} placeholder={i18n.t("auth_signup.placeholder.full_name")} value={fullName} />
           </label>
           {role === "provider" ? (
             <label className="form-field form-field--full">
-              <span>Business name</span>
+              <span>{i18n.t("auth_signup.field.business_name")}</span>
               <input
                 onChange={(event) => setCompanyName(event.target.value)}
-                placeholder="GreenStride Lawn Care"
+                placeholder={i18n.t("auth_signup.placeholder.business_name_example")}
                 value={companyName}
               />
             </label>
           ) : null}
           <label className="form-field">
-            <span>Email</span>
-            <input onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" value={email} />
+            <span>{i18n.t("auth_signup.field.email")}</span>
+            <input onChange={(event) => setEmail(event.target.value)} placeholder={i18n.t("auth_signup.placeholder.email")} value={email} />
           </label>
           <label className="form-field">
-            <span>Phone</span>
+            <span>{i18n.t("auth_signup.field.phone")}</span>
             <input onChange={(event) => setPhone(event.target.value)} placeholder="555-0300" value={phone} />
           </label>
           <label className="form-field">
-            <span>Password</span>
+            <span>{i18n.t("auth_signup.field.password")}</span>
             <input
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Create a password"
+              placeholder={i18n.t("auth_signup.placeholder.password")}
               type="password"
               value={password}
             />
           </label>
           <label className="form-field">
-            <span>Confirm password</span>
+            <span>{i18n.t("auth_signup.field.confirm_password")}</span>
             <input
               onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder="Re-enter password"
+              placeholder={i18n.t("auth_signup.placeholder.confirm_password")}
               type="password"
               value={confirmPassword}
             />
           </label>
           <label className="form-field form-field--full">
-            <span>{role === "provider" ? "Business address" : "Service address"}</span>
-            <input onChange={(event) => setLine1(event.target.value)} placeholder="170 5th Ave" value={line1} />
+            <span>{i18n.t(role === "provider" ? "auth_signup.field.business_address" : "auth_signup.field.service_address")}</span>
+            <input onChange={(event) => setLine1(event.target.value)} placeholder={i18n.t("auth_signup.placeholder.street")} value={line1} />
           </label>
           <label className="form-field form-field--full">
-            <span>Address line 2</span>
-            <input onChange={(event) => setLine2(event.target.value)} placeholder="Optional" value={line2} />
+            <span>{i18n.t("auth_signup.field.address_line_2")}</span>
+            <input onChange={(event) => setLine2(event.target.value)} placeholder={i18n.t("auth_signup.placeholder.optional")} value={line2} />
           </label>
           <label className="form-field">
-            <span>City</span>
-            <input onChange={(event) => setCity(event.target.value)} placeholder="Barnegat" value={city} />
+            <span>{i18n.t("auth_signup.field.city")}</span>
+            <input onChange={(event) => setCity(event.target.value)} placeholder={i18n.t("auth_signup.placeholder.city")} value={city} />
           </label>
           <label className="form-field">
-            <span>State</span>
+            <span>{i18n.t("auth_signup.field.state")}</span>
             <input onChange={(event) => setState(event.target.value)} placeholder="NJ" value={state} />
           </label>
           <label className="form-field">
-            <span>ZIP</span>
+            <span>{i18n.t("auth_signup.field.zip")}</span>
             <input onChange={(event) => setPostalCode(event.target.value)} placeholder="08005" value={postalCode} />
           </label>
           {role === "provider" ? (
             <label className="form-field">
-              <span>Service radius</span>
+              <span>{i18n.t("auth_signup.field.service_radius")}</span>
               <input
                 max={60}
                 min={5}
@@ -336,22 +350,22 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
         </div>
 
         <p className="auth-helper">
-          Passwords must be at least 8 characters and include uppercase, lowercase, and a number.
+          {i18n.t("auth_signup.password_helper")}
         </p>
 
         {errorMessage ? (
           <div className="list-panel" role="alert">
-            <strong>Signup failed</strong>
+            <strong>{i18n.t("auth_signup.error_title")}</strong>
             <p>{errorMessage}</p>
           </div>
         ) : null}
 
         <div className="cta-row">
           <button className="button" disabled={isSubmitting} type="submit">
-            {isSubmitting ? "Creating account..." : "Create account"}
+            {isSubmitting ? i18n.t("auth_signup.creating") : i18n.t("auth_signup.create_account")}
           </button>
-          <a className="button-secondary" href={role === "provider" ? "/provider" : "/auth"}>
-            Back
+          <a className="button-secondary" href={addLocalePrefix(role === "provider" ? "/provider" : "/auth", i18n.locale)}>
+            {i18n.t("common.actions.back")}
           </a>
         </div>
 

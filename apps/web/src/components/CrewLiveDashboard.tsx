@@ -7,6 +7,9 @@ import {
   CrewMatchesResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { addLocalePrefix, type I18nInstance, type TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient, createWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
@@ -26,20 +29,21 @@ const skillOptions: ServiceCategory[] = [
   "snow-blowing"
 ];
 const dayByDateIndex: CrewAvailabilityDay[] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const categoryLabels: Record<ServiceCategory, string> = {
-  "lawn-mowing": "lawn mowing",
-  "hedge-trimming": "hedge trimming",
-  "mulch-installation": "mulch installation",
-  "seasonal-cleanup": "seasonal cleanup",
-  "weed-control": "weed control",
-  "irrigation-check": "irrigation checks",
-  "leaf-blowing": "leaf blowing",
-  "aeration": "aeration",
-  "fertilization": "fertilization",
-  "gutter-cleaning": "gutter cleaning",
-  "snow-shoveling": "snow shoveling",
-  "ice-melt-salting": "ice melt salting",
-  "snow-blowing": "snow blowing"
+const dayLabelKeys: Record<CrewAvailabilityDay, TranslationKey> = {
+  Mon: "crew_day.mon",
+  Tue: "crew_day.tue",
+  Wed: "crew_day.wed",
+  Thu: "crew_day.thu",
+  Fri: "crew_day.fri",
+  Sat: "crew_day.sat",
+  Sun: "crew_day.sun"
+};
+
+const schedulePreferenceKeys: Record<CrewMemberSchedulePreference, TranslationKey> = {
+  flex: "crew_signup.schedule.flex",
+  "full-time": "crew_signup.schedule.full_time",
+  "part-time": "crew_signup.schedule.part_time",
+  seasonal: "crew_signup.schedule.seasonal"
 };
 
 type PublicCrewPreferenceDraft = {
@@ -54,7 +58,7 @@ type PublicCrewPreferenceDraft = {
 type PublicCrewRecommendation = {
   opportunity: CrewOpportunity;
   score: number;
-  label: "Best fit" | "Good fit" | "Backup fit";
+  labelKey: TranslationKey;
   reasons: string[];
 };
 
@@ -67,26 +71,23 @@ const defaultPublicPreferences: PublicCrewPreferenceDraft = {
   winterWorkEnabled: true
 };
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
-}
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+function formatDateTime(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
 }
 
-function formatCategory(category: ServiceCategory) {
-  return categoryLabels[category];
+function formatCategory(i18n: I18nInstance, category: ServiceCategory) {
+  return i18n.t(serviceCategoryToI18nKey(category));
 }
 
-function formatSchedulePreference(preference: CrewMemberSchedulePreference) {
-  return preference.replaceAll("-", " ");
+function formatSchedulePreference(i18n: I18nInstance, preference: CrewMemberSchedulePreference) {
+  return i18n.t(schedulePreferenceKeys[preference]);
+}
+
+function formatDay(i18n: I18nInstance, day: CrewAvailabilityDay) {
+  return i18n.t(dayLabelKeys[day]);
 }
 
 function getAvailabilityDay(iso: string): CrewAvailabilityDay {
@@ -106,6 +107,7 @@ function toggleRequiredValue<T extends string>(current: T[], value: T) {
 }
 
 function buildPublicCrewRecommendation(
+  i18n: I18nInstance,
   opportunity: CrewOpportunity,
   preferences: PublicCrewPreferenceDraft
 ): PublicCrewRecommendation {
@@ -119,43 +121,43 @@ function buildPublicCrewRecommendation(
 
   if (matchingCategory) {
     score += 34;
-    reasons.push(`Matches ${formatCategory(matchingCategory)} skills`);
+    reasons.push(i18n.t("crew_live.reason.matches_skill", { skill: formatCategory(i18n, matchingCategory) }));
   } else if (opportunity.trainingProvided) {
     score += 8;
-    reasons.push("Training is available");
+    reasons.push(i18n.t("crew_live.reason.training_available"));
   } else {
     score -= 18;
-    reasons.push("Outside your selected skills");
+    reasons.push(i18n.t("crew_live.reason.outside_skills"));
   }
 
   if (weekdayMatches) {
     score += 24;
-    reasons.push(`${opportunityDay} fits your availability`);
+    reasons.push(i18n.t("crew_live.reason.day_fits", { day: formatDay(i18n, opportunityDay) }));
   } else {
     score -= 20;
-    reasons.push(`${opportunityDay} is not in your selected days`);
+    reasons.push(i18n.t("crew_live.reason.day_not_selected", { day: formatDay(i18n, opportunityDay) }));
   }
 
   if (opportunity.requiresEquipmentOwnership) {
     if (preferences.hasOwnEquipment) {
       score += 12;
-      reasons.push("Your equipment helps here");
+      reasons.push(i18n.t("crew_live.reason.equipment_helps"));
     } else {
       score -= 24;
-      reasons.push("Requires your own equipment");
+      reasons.push(i18n.t("crew_live.reason.requires_equipment"));
     }
   } else if (opportunity.equipmentProvided) {
     score += 8;
-    reasons.push("Equipment provided");
+    reasons.push(i18n.t("crew_live.equipment_provided"));
   }
 
   if (winterCategory) {
     if (preferences.winterWorkEnabled) {
       score += 10;
-      reasons.push("Winter work is on");
+      reasons.push(i18n.t("crew_live.reason.winter_on"));
     } else {
       score -= 30;
-      reasons.push("Winter work is off");
+      reasons.push(i18n.t("crew_live.reason.winter_off"));
     }
   }
 
@@ -175,12 +177,18 @@ function buildPublicCrewRecommendation(
   return {
     opportunity,
     score: normalizedScore,
-    label: normalizedScore >= 68 ? "Best fit" : normalizedScore >= 46 ? "Good fit" : "Backup fit",
+    labelKey:
+      normalizedScore >= 68
+        ? "crew_live.recommendation.best_fit"
+        : normalizedScore >= 46
+          ? "crew_live.recommendation.good_fit"
+          : "crew_live.recommendation.backup_fit",
     reasons: Array.from(new Set(reasons)).slice(0, 3)
   };
 }
 
 export function CrewLiveDashboard() {
+  const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
@@ -202,7 +210,7 @@ export function CrewLiveDashboard() {
   const recommendedPublicOpportunities = useMemo(
     () =>
       publicOpportunities
-        .map((opportunity) => buildPublicCrewRecommendation(opportunity, publicPreferences))
+        .map((opportunity) => buildPublicCrewRecommendation(i18n, opportunity, publicPreferences))
         .sort((left, right) => {
           const scoreDelta = right.score - left.score;
           if (scoreDelta !== 0) {
@@ -212,7 +220,7 @@ export function CrewLiveDashboard() {
           return left.opportunity.neededByStartIso.localeCompare(right.opportunity.neededByStartIso);
         })
         .slice(0, 6),
-    [publicOpportunities, publicPreferences]
+    [i18n, publicOpportunities, publicPreferences]
   );
   const selectedPublicRecommendation = useMemo(
     () =>
@@ -238,8 +246,8 @@ export function CrewLiveDashboard() {
     params.set("willingToTravelMiles", String(publicPreferences.willingToTravelMiles));
     params.set("hasOwnEquipment", String(publicPreferences.hasOwnEquipment));
     params.set("winterWorkEnabled", String(publicPreferences.winterWorkEnabled));
-    return `/auth/crew?${params.toString()}`;
-  }, [publicPreferences, selectedPublicOpportunity]);
+    return addLocalePrefix(`/auth/crew?${params.toString()}`, i18n.locale);
+  }, [i18n.locale, publicPreferences, selectedPublicOpportunity]);
 
   async function loadPublicPreview() {
     const api = createWebApiClient();
@@ -269,16 +277,16 @@ export function CrewLiveDashboard() {
       setAccessDenied(true);
       void loadPublicPreview().catch((error) => {
         setErrorMessage(
-          error instanceof Error ? error.message : "Unable to load live crew openings right now."
+          error instanceof Error ? error.message : i18n.t("crew_live.error.load_openings")
         );
       });
       return;
     }
 
     void loadCrewView().catch((error) => {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load the crew dashboard.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.load_dashboard"));
     });
-  }, [sessionReady, session?.token, session?.role]);
+  }, [i18n, sessionReady, session?.token, session?.role]);
 
   async function handleSavePreferences(next: {
     availableWeekdays?: CrewAvailabilityDay[];
@@ -304,10 +312,10 @@ export function CrewLiveDashboard() {
         hasOwnEquipment: crewMember.hasOwnEquipment,
         winterWorkEnabled: next.winterWorkEnabled ?? crewMember.winterWorkEnabled
       });
-      setStatusMessage("Availability updated.");
+      setStatusMessage(i18n.t("crew_live.status.availability_updated"));
       await loadCrewView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update preferences.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.update_preferences"));
     } finally {
       setIsWorking(false);
     }
@@ -321,10 +329,10 @@ export function CrewLiveDashboard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.startBooking({ bookingId });
-      setStatusMessage("Work started. The business owner can now treat this booking as in progress.");
+      setStatusMessage(i18n.t("crew_live.status.work_started"));
       await loadCrewView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start this booking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.start_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -338,10 +346,10 @@ export function CrewLiveDashboard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.markBookingOnRoute({ bookingId });
-      setStatusMessage("Route started. The customer can now track the arrival.");
+      setStatusMessage(i18n.t("crew_live.status.route_started"));
       await loadCrewView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start this route.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.start_route"));
     } finally {
       setIsWorking(false);
     }
@@ -356,12 +364,12 @@ export function CrewLiveDashboard() {
       const api = createAuthenticatedWebApiClient();
       await api.cancelCrewMatch({
         crewMatchId: matchId,
-        reason: "Crew member cancelled from the web dashboard."
+        reason: i18n.t("crew_live.cancel.reason")
       });
-      setStatusMessage("Assignment cancelled. The business owner was notified.");
+      setStatusMessage(i18n.t("crew_live.status.assignment_cancelled"));
       await loadCrewView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel this assignment.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.cancel_assignment"));
     } finally {
       setIsWorking(false);
     }
@@ -369,9 +377,7 @@ export function CrewLiveDashboard() {
 
   function confirmCancelCrewMatch(matchId: string) {
     if (
-      !window.confirm(
-        "Backing out of an accepted shift can negatively affect your reliability score and reduce your chances of being selected for future crews. Cancel this assignment?"
-      )
+      !window.confirm(i18n.t("crew_live.cancel.confirm"))
     ) {
       return;
     }
@@ -390,14 +396,14 @@ export function CrewLiveDashboard() {
       const selection = await api.selectPublicCrewOpportunity({ opportunityId });
       setStatusMessage(
         selection.staffingMode === "auto-accept"
-          ? `YardMatch notified ${selection.providerCompanyName} that you want this recommended opening. Create a profile so the assignment details can be confirmed.`
-          : `YardMatch notified ${selection.providerCompanyName} that this recommended opening needs review. Create a profile so they can review your fit.`
+          ? i18n.t("crew_live.status.provider_notified_auto", { provider: selection.providerCompanyName })
+          : i18n.t("crew_live.status.provider_notified_review", { provider: selection.providerCompanyName })
       );
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Unable to request this recommended opening."
+          : i18n.t("crew_live.error.request_opening")
       );
     } finally {
       setNotifyingOpportunityId(undefined);
@@ -413,7 +419,7 @@ export function CrewLiveDashboard() {
   if (!sessionReady) {
     return (
       <section className="card">
-        <h2>Loading your crew dashboard...</h2>
+        <h2>{i18n.t("crew_live.loading")}</h2>
       </section>
     );
   }
@@ -424,14 +430,14 @@ export function CrewLiveDashboard() {
         <section className="card crew-fit-panel">
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">Crew fit</span>
-              <h2>Recommended openings</h2>
-              <p>Pick the work you can do and the days you want routes.</p>
+              <span className="eyebrow">{i18n.t("crew_live.fit.eyebrow")}</span>
+              <h2>{i18n.t("crew_live.fit.title")}</h2>
+              <p>{i18n.t("crew_live.fit.body")}</p>
             </div>
-            <strong>{recommendedPublicOpportunities.length} fit{recommendedPublicOpportunities.length === 1 ? "" : "s"}</strong>
+            <strong>{i18n.t("crew_live.fit.count", { count: recommendedPublicOpportunities.length })}</strong>
           </div>
           <div className="crew-fit-panel__group">
-            <h3>Skills</h3>
+            <h3>{i18n.t("crew_signup.skills")}</h3>
             <div className="chip-row">
               {skillOptions.map((skill) => {
                 const active = publicPreferences.categories.includes(skill);
@@ -447,14 +453,14 @@ export function CrewLiveDashboard() {
                     }
                     type="button"
                   >
-                    {formatCategory(skill)}
+                    {formatCategory(i18n, skill)}
                   </button>
                 );
               })}
             </div>
           </div>
           <div className="crew-fit-panel__group">
-            <h3>Days</h3>
+            <h3>{i18n.t("crew_signup.days")}</h3>
             <div className="chip-row">
               {allDays.map((day) => {
                 const active = publicPreferences.availableWeekdays.includes(day);
@@ -470,14 +476,14 @@ export function CrewLiveDashboard() {
                     }
                     type="button"
                   >
-                    {day}
+                    {formatDay(i18n, day)}
                   </button>
                 );
               })}
             </div>
           </div>
           <div className="crew-fit-panel__group">
-            <h3>Preferences</h3>
+            <h3>{i18n.t("crew_signup.preferences")}</h3>
             <div className="chip-row">
               {(["flex", "full-time", "part-time", "seasonal"] as CrewMemberSchedulePreference[]).map(
                 (preference) => (
@@ -496,7 +502,7 @@ export function CrewLiveDashboard() {
                     }
                     type="button"
                   >
-                    {formatSchedulePreference(preference)}
+                    {formatSchedulePreference(i18n, preference)}
                   </button>
                 )
               )}
@@ -510,7 +516,7 @@ export function CrewLiveDashboard() {
                 }
                 type="button"
               >
-                Own equipment
+                {i18n.t("crew_signup.own_equipment")}
               </button>
               <button
                 className={publicPreferences.winterWorkEnabled ? "button crew-fit-chip" : "button-secondary crew-fit-chip"}
@@ -522,7 +528,7 @@ export function CrewLiveDashboard() {
                 }
                 type="button"
               >
-                Winter work
+                {i18n.t("crew_signup.winter_work")}
               </button>
             </div>
             <div className="crew-fit-radius">
@@ -536,9 +542,9 @@ export function CrewLiveDashboard() {
                 }
                 type="button"
               >
-                -5 miles
+                {i18n.t("crew_signup.minus_miles")}
               </button>
-              <strong>{publicPreferences.willingToTravelMiles} miles</strong>
+              <strong>{i18n.t("crew_live.travel_miles", { distance: publicPreferences.willingToTravelMiles })}</strong>
               <button
                 className="button-secondary"
                 onClick={() =>
@@ -549,7 +555,7 @@ export function CrewLiveDashboard() {
                 }
                 type="button"
               >
-                +5 miles
+                {i18n.t("crew_signup.plus_miles")}
               </button>
             </div>
           </div>
@@ -558,7 +564,7 @@ export function CrewLiveDashboard() {
         {recommendedPublicOpportunities.length > 0 ? (
           <section className="stack-lg">
             <div className="section-header">
-              <h2>Best fits for you</h2>
+              <h2>{i18n.t("crew_live.best_fits")}</h2>
             </div>
             <div className="grid-three">
               {recommendedPublicOpportunities.map((recommendation) => {
@@ -569,25 +575,31 @@ export function CrewLiveDashboard() {
                     <div>
                       <div className="search-result-title">
                         <h3>{opportunity.providerCompanyName}</h3>
-                        <span className="result-badge">{recommendation.label}</span>
+                        <span className="result-badge">{i18n.t(recommendation.labelKey)}</span>
                       </div>
                       <p>{opportunity.title}</p>
                     </div>
-                    <strong>{formatCurrency(opportunity.hourlyRateCents)}/hr</strong>
+                    <strong>
+                      {i18n.t("crew_live.hour_rate_short", { rate: i18n.formatCurrency(opportunity.hourlyRateCents) })}
+                    </strong>
                   </div>
 
                   <div className="crew-opportunity-card__grid">
                     <div>
-                      <h4>When</h4>
-                      <p>{formatDateTime(opportunity.neededByStartIso)}</p>
-                      <p>{formatDateTime(opportunity.neededByEndIso)}</p>
+                      <h4>{i18n.t("crew_live.when")}</h4>
+                      <p>{formatDateTime(i18n, opportunity.neededByStartIso)}</p>
+                      <p>{formatDateTime(i18n, opportunity.neededByEndIso)}</p>
                     </div>
                     <div>
-                      <h4>Where</h4>
+                      <h4>{i18n.t("crew_live.where")}</h4>
                       <p>
                         {opportunity.city}, {opportunity.state}
                       </p>
-                      <p>{opportunity.preferredSchedule} schedule</p>
+                      <p>
+                        {i18n.t("crew_live.schedule_label", {
+                          preference: formatSchedulePreference(i18n, opportunity.preferredSchedule)
+                        })}
+                      </p>
                     </div>
                   </div>
 
@@ -601,10 +613,10 @@ export function CrewLiveDashboard() {
 
                   <div className="chip-row">
                     {opportunity.categories.map((category) => (
-                      <span key={`${opportunity.id}-${category}`}>{formatCategory(category)}</span>
+                      <span key={`${opportunity.id}-${category}`}>{formatCategory(i18n, category)}</span>
                     ))}
-                    {opportunity.equipmentProvided ? <span>Equipment provided</span> : null}
-                    {opportunity.trainingProvided ? <span>Training provided</span> : null}
+                    {opportunity.equipmentProvided ? <span>{i18n.t("crew_live.equipment_provided")}</span> : null}
+                    {opportunity.trainingProvided ? <span>{i18n.t("crew_hiring.training_provided")}</span> : null}
                   </div>
 
                   <div className="cta-row">
@@ -615,10 +627,10 @@ export function CrewLiveDashboard() {
                       type="button"
                     >
                       {notifyingOpportunityId === opportunity.id
-                        ? "Selecting..."
+                        ? i18n.t("crew_live.action.selecting")
                         : selectedPublicOpportunityId === opportunity.id
-                          ? "Selected"
-                          : "Request this fit"}
+                          ? i18n.t("crew_live.action.selected")
+                          : i18n.t("crew_live.action.request_fit")}
                     </button>
                   </div>
                 </article>
@@ -628,15 +640,12 @@ export function CrewLiveDashboard() {
           </section>
         ) : (
           <section className="card">
-            <span className="eyebrow">Crew openings</span>
-            <h2>No crews hiring in your area right now.</h2>
-            <p>
-              We do not have any open crew listings to show currently. Sign up or log in and
-              YardMatch can show new openings as soon as local providers post them.
-            </p>
+            <span className="eyebrow">{i18n.t("crew_live.openings.eyebrow")}</span>
+            <h2>{i18n.t("crew_live.openings.empty.title")}</h2>
+            <p>{i18n.t("crew_live.openings.empty.body")}</p>
             {errorMessage ? (
               <p className="warning-copy">
-                The live crew list could not be refreshed, so this may be temporary.
+                {i18n.t("crew_live.openings.empty.warning")}
               </p>
             ) : null}
           </section>
@@ -645,24 +654,27 @@ export function CrewLiveDashboard() {
         <section className="card" id="crew-signup-cta" tabIndex={-1}>
           {statusMessage ? (
             <div className="list-panel">
-              <strong>Provider notified</strong>
+              <strong>{i18n.t("crew_live.provider_notified")}</strong>
               <p>{statusMessage}</p>
             </div>
           ) : null}
           {errorMessage ? (
             <div className="list-panel" role="alert">
-              <strong>Provider notification failed</strong>
+              <strong>{i18n.t("crew_live.provider_notification_failed")}</strong>
               <p>{errorMessage}</p>
             </div>
           ) : null}
           {selectedPublicOpportunity ? (
             <div className="list-panel">
-              <span className="eyebrow">Selected opening</span>
+              <span className="eyebrow">{i18n.t("crew_live.selected_opening")}</span>
               <h3>{selectedPublicOpportunity.providerCompanyName}</h3>
               <p>
-                {selectedPublicOpportunity.title} in {selectedPublicOpportunity.city},{" "}
-                {selectedPublicOpportunity.state} at{" "}
-                {formatCurrency(selectedPublicOpportunity.hourlyRateCents)}/hr.
+                {i18n.t("crew_live.selected_opening_summary", {
+                  title: selectedPublicOpportunity.title,
+                  city: selectedPublicOpportunity.city,
+                  state: selectedPublicOpportunity.state,
+                  rate: i18n.formatCurrency(selectedPublicOpportunity.hourlyRateCents)
+                })}
               </p>
               {selectedPublicRecommendation ? (
                 <p>{selectedPublicRecommendation.reasons.join(" • ")}</p>
@@ -671,20 +683,20 @@ export function CrewLiveDashboard() {
           ) : null}
           <h2>
             {selectedPublicOpportunity
-              ? "Sign up to request this crew opening"
-              : "Log in or sign up for crew work"}
+              ? i18n.t("crew_live.signup.title_selected")
+              : i18n.t("crew_live.signup.title_default")}
           </h2>
           <p>
             {selectedPublicOpportunity
-              ? "Create a crew profile so the business owner can review your skills, availability, and contact details."
-              : "Create an account or log in to unlock acceptance, schedule details, and crew chat."}
+              ? i18n.t("crew_live.signup.body_selected")
+              : i18n.t("crew_live.signup.body_default")}
           </p>
           <div className="cta-row">
-            <a className="button" href="/login/crew">
-              Crew login
+            <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+              {i18n.t("crew_live.crew_login")}
             </a>
             <a className="button-secondary" href={crewSignupHref}>
-              {selectedPublicOpportunity ? "Sign up for this opening" : "Crew sign up"}
+              {selectedPublicOpportunity ? i18n.t("crew_live.signup.cta_selected") : i18n.t("crew_live.signup.cta_default")}
             </a>
           </div>
         </section>
@@ -696,14 +708,14 @@ export function CrewLiveDashboard() {
     <div className="stack-lg">
       {statusMessage ? (
         <section className="card">
-          <h2>Updated</h2>
+          <h2>{i18n.t("crew_live.updated")}</h2>
           <p>{statusMessage}</p>
         </section>
       ) : null}
 
       {errorMessage ? (
         <section className="card">
-          <h2>Something needs attention</h2>
+          <h2>{i18n.t("common.state.needs_attention")}</h2>
           <p>{errorMessage}</p>
         </section>
       ) : null}
@@ -711,15 +723,15 @@ export function CrewLiveDashboard() {
       <section className="grid-three">
         <article className="card">
           <h2>{matches.length}</h2>
-          <p>Matched jobs</p>
+          <p>{i18n.t("crew_live.metric.matched_jobs")}</p>
         </article>
         <article className="card">
           <h2>{acceptedMatches.length}</h2>
-          <p>Accepted jobs</p>
+          <p>{i18n.t("crew_live.metric.accepted_jobs")}</p>
         </article>
         <article className="card">
           <h2>{crewMember?.cancellationCount ?? 0}</h2>
-          <p>Call-offs on record</p>
+          <p>{i18n.t("crew_live.metric.calloffs")}</p>
         </article>
       </section>
 
@@ -727,7 +739,7 @@ export function CrewLiveDashboard() {
         <div className="search-result-title">
           <div>
             <h2>{crewMember?.fullName}</h2>
-            <p>Keep skills and availability current so providers match you automatically.</p>
+            <p>{i18n.t("crew_live.profile_help")}</p>
           </div>
         </div>
         <div className="chip-row">
@@ -747,7 +759,7 @@ export function CrewLiveDashboard() {
                 }
                 type="button"
               >
-                {skill.replaceAll("-", " ")}
+                {formatCategory(i18n, skill)}
               </button>
             );
           })}
@@ -769,7 +781,7 @@ export function CrewLiveDashboard() {
                 }
                 type="button"
               >
-                {day}
+                {formatDay(i18n, day)}
               </button>
             );
           })}
@@ -785,9 +797,9 @@ export function CrewLiveDashboard() {
             }
             type="button"
           >
-            -5 miles
+            {i18n.t("crew_signup.minus_miles")}
           </button>
-          <span>{crewMember?.willingToTravelMiles ?? 0} miles</span>
+          <span>{i18n.t("crew_live.travel_miles", { distance: crewMember?.willingToTravelMiles ?? 0 })}</span>
           <button
             className="button-secondary"
             disabled={isWorking || !crewMember}
@@ -798,7 +810,7 @@ export function CrewLiveDashboard() {
             }
             type="button"
           >
-            +5 miles
+            {i18n.t("crew_signup.plus_miles")}
           </button>
           <button
             className={crewMember?.winterWorkEnabled ? "button" : "button-secondary"}
@@ -810,12 +822,10 @@ export function CrewLiveDashboard() {
             }
             type="button"
           >
-            {crewMember?.winterWorkEnabled ? "Winter work on" : "Winter work off"}
+            {crewMember?.winterWorkEnabled ? i18n.t("crew_live.winter_on") : i18n.t("crew_live.winter_off")}
           </button>
         </div>
-        <p className="muted-copy">
-          Reliability matters. Cancelling accepted assignments can lower your future staffing priority with providers.
-        </p>
+        <p className="muted-copy">{i18n.t("crew_live.reliability_warning")}</p>
       </section>
 
       <section className="stack-lg">
@@ -830,17 +840,17 @@ export function CrewLiveDashboard() {
                   </div>
                   <p>{match.category.replaceAll("-", " ")}</p>
                 </div>
-                <strong>{formatCurrency(match.hourlyRateCents)}/hr</strong>
+                <strong>{i18n.t("crew_live.hour_rate_short", { rate: i18n.formatCurrency(match.hourlyRateCents) })}</strong>
               </div>
 
               <div className="crew-opportunity-card__grid">
                 <div>
-                  <h4>When</h4>
-                  <p>{formatDateTime(match.scheduledStartIso)}</p>
-                  <p>{formatDateTime(match.scheduledEndIso)}</p>
+                  <h4>{i18n.t("crew_live.when")}</h4>
+                  <p>{formatDateTime(i18n, match.scheduledStartIso)}</p>
+                  <p>{formatDateTime(i18n, match.scheduledEndIso)}</p>
                 </div>
                 <div>
-                  <h4>Where</h4>
+                  <h4>{i18n.t("crew_live.where")}</h4>
                   <p>{match.serviceAddress.line1}</p>
                   <p>
                     {match.serviceAddress.city}, {match.serviceAddress.state} {match.serviceAddress.postalCode}
@@ -856,7 +866,7 @@ export function CrewLiveDashboard() {
               {match.status === "accepted" ? (
                 <div className="cta-row">
                   {match.bookingStatus === "requested" ? (
-                    <span className="result-badge">Waiting on business confirmation</span>
+                    <span className="result-badge">{i18n.t("crew_live.status.waiting_confirmation")}</span>
                   ) : null}
                   {match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt && match.isAssignedRouteLeader ? (
                     <button
@@ -865,11 +875,11 @@ export function CrewLiveDashboard() {
                       onClick={() => void startRoute(match.bookingId)}
                       type="button"
                     >
-                      Start route
+                      {i18n.t("crew_live.action.start_route")}
                     </button>
                   ) : null}
                   {match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt && !match.isAssignedRouteLeader ? (
-                    <span className="result-badge">Business owner starts the route</span>
+                    <span className="result-badge">{i18n.t("crew_live.status.business_starts_route")}</span>
                   ) : null}
                   {match.bookingStatus === "confirmed" && match.onRouteConfirmedAt ? (
                     <button
@@ -878,20 +888,23 @@ export function CrewLiveDashboard() {
                       onClick={() => void startWork(match.bookingId)}
                       type="button"
                     >
-                      Start work
+                      {i18n.t("crew_live.action.start_work")}
                     </button>
                   ) : null}
                   {match.bookingStatus === "in-progress" ? (
-                    <span className="result-badge">Job in progress</span>
+                    <span className="result-badge">{i18n.t("crew_live.status.job_in_progress")}</span>
                   ) : null}
                   <a className="button-secondary" href={`tel:${match.providerPhone}`}>
-                    Call business
+                    {i18n.t("crew_live.action.call_business")}
                   </a>
                   <a
                     className="button-secondary"
-                    href={`/help?bookingId=${encodeURIComponent(match.bookingId)}&issueType=general&subject=${encodeURIComponent("Crew assignment support")}`}
+                    href={addLocalePrefix(
+                      `/help?bookingId=${encodeURIComponent(match.bookingId)}&issueType=general&subject=${encodeURIComponent(i18n.t("crew_live.support_subject"))}`,
+                      i18n.locale
+                    )}
                   >
-                    Get help
+                    {i18n.t("crew_live.action.get_help")}
                   </a>
                   {(match.bookingStatus === "requested" ||
                     (match.bookingStatus === "confirmed" && !match.onRouteConfirmedAt)) ? (
@@ -901,7 +914,7 @@ export function CrewLiveDashboard() {
                       onClick={() => confirmCancelCrewMatch(match.id)}
                       type="button"
                     >
-                      Cancel assignment
+                      {i18n.t("crew_live.action.cancel_assignment")}
                     </button>
                   ) : null}
                 </div>

@@ -1,4 +1,7 @@
+"use client";
+
 import { AuthFlowMode, MarketplaceApiClient, MarketplaceRole } from "@yardmatch/contracts";
+import { useI18n } from "@yardmatch/i18n/react";
 import { getWebApiBaseUrl } from "../lib/api";
 
 function GoogleLogo() {
@@ -44,6 +47,7 @@ export function AuthIdentityOptions({
   redirectUri?: string;
   role: MarketplaceRole;
 }) {
+  const i18n = useI18n();
   const api = new MarketplaceApiClient(getWebApiBaseUrl());
 
   return (
@@ -57,7 +61,7 @@ export function AuthIdentityOptions({
         })}
       >
         <GoogleLogo />
-        <span>Continue with Google</span>
+        <span>{i18n.t("mobile.auth.continue_google")}</span>
       </a>
       <a
         className="auth-provider-button"
@@ -68,7 +72,7 @@ export function AuthIdentityOptions({
         })}
       >
         <AppleLogo />
-        <span>Continue with Apple</span>
+        <span>{i18n.t("mobile.auth.continue_apple")}</span>
       </a>
     </div>
   );

@@ -1,25 +1,14 @@
 "use client";
 
 import { CrewPayoutLedgerEntry } from "@yardmatch/contracts";
+import { addLocalePrefix } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
-}
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short"
-  });
-}
-
 export function CrewHistoryBoard() {
+  const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -47,10 +36,10 @@ export function CrewHistoryBoard() {
             .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))
         );
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Unable to load crew history right now.");
+        setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_history.load_error"));
       }
     })();
-  }, [sessionReady, session?.role, session?.token]);
+  }, [i18n, sessionReady, session?.role, session?.token]);
 
   const paidEntries = useMemo(
     () => entries.filter((entry) => entry.status === "paid"),
@@ -64,7 +53,7 @@ export function CrewHistoryBoard() {
   if (!sessionReady) {
     return (
       <section className="card">
-        <h2>Loading crew history...</h2>
+        <h2>{i18n.t("crew_history.loading")}</h2>
       </section>
     );
   }
@@ -72,11 +61,11 @@ export function CrewHistoryBoard() {
   if (accessDenied) {
     return (
       <section className="card">
-        <h2>Crew member login required</h2>
-        <p>Log in to see completed work, payout status, and exportable earnings history.</p>
+        <h2>{i18n.t("crew_history.login_required")}</h2>
+        <p>{i18n.t("crew_history.login_body")}</p>
         <div className="cta-row">
-          <a className="button" href="/login/crew">
-            Go to crew login
+          <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+            {i18n.t("crew_history.login_cta")}
           </a>
         </div>
       </section>
@@ -87,7 +76,7 @@ export function CrewHistoryBoard() {
     <div className="stack-lg">
       {errorMessage ? (
         <section className="card">
-          <h2>Something needs attention</h2>
+          <h2>{i18n.t("common.state.needs_attention")}</h2>
           <p>{errorMessage}</p>
         </section>
       ) : null}
@@ -95,22 +84,22 @@ export function CrewHistoryBoard() {
       <section className="grid-three">
         <article className="card">
           <h2>{entries.length}</h2>
-          <p>Payout records</p>
+          <p>{i18n.t("crew_history.metric.payout_records")}</p>
         </article>
         <article className="card">
           <h2>{paidEntries.length}</h2>
-          <p>Paid shifts</p>
+          <p>{i18n.t("crew_history.metric.paid_shifts")}</p>
         </article>
         <article className="card">
-          <h2>{formatCurrency(totalPaidCents)}</h2>
-          <p>Total paid</p>
+          <h2>{i18n.formatCurrency(totalPaidCents)}</h2>
+          <p>{i18n.t("crew_history.metric.total_paid")}</p>
         </article>
       </section>
 
       {entries.length === 0 ? (
         <section className="card">
-          <h2>No completed work yet</h2>
-          <p>Completed shifts and payout records will show up here once jobs close out.</p>
+          <h2>{i18n.t("crew_history.empty.title")}</h2>
+          <p>{i18n.t("crew_history.empty.body")}</p>
         </section>
       ) : (
         <section className="stack-lg">
@@ -121,20 +110,20 @@ export function CrewHistoryBoard() {
                   <span className="eyebrow">{entry.serviceLabel}</span>
                   <h2>{entry.providerCompanyName}</h2>
                 </div>
-                <strong>{formatCurrency(entry.amountCents)}</strong>
+                <strong>{i18n.formatCurrency(entry.amountCents)}</strong>
               </div>
               <div className="history-card__grid">
                 <div>
-                  <h3>Service date</h3>
-                  <p>{formatDateTime(entry.serviceDateIso)}</p>
+                  <h3>{i18n.t("crew_history.service_date")}</h3>
+                  <p>{i18n.formatDate(entry.serviceDateIso, { dateStyle: "medium", timeStyle: "short" })}</p>
                   <p>{entry.bookingId}</p>
                 </div>
                 <div>
-                  <h3>Address</h3>
+                  <h3>{i18n.t("common.label.address")}</h3>
                   <p>{entry.addressLine}</p>
                 </div>
                 <div>
-                  <h3>Payout</h3>
+                  <h3>{i18n.t("crew_history.payout")}</h3>
                   <p>{entry.status.replaceAll("-", " ")}</p>
                   <p>{entry.note}</p>
                 </div>

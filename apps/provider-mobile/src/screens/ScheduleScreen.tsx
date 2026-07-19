@@ -4,15 +4,23 @@ import * as ImagePicker from "expo-image-picker";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  BookingExceptionType,
   BookingArrivalTracking,
+  BookingServiceWindowKey,
+  BookingStatus,
   CustomerProviderConversationThread,
-  formatBookingWindowSummary,
-  getExternalCalendarBlockLabel,
-  getBookingExceptionLabel,
+  CrewMatchStatus,
+  ExternalCalendarBlockType,
+  getBookingServiceWindow,
+  ProviderAssistantActionType,
   ProviderAssistantCommandResponse,
   ProviderCalendarOverviewResponse,
-  ProviderStaffingOverview
+  ProviderStaffingOverview,
+  ServiceCategory
 } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
@@ -21,41 +29,110 @@ import { useProviderSession } from "../session/ProviderSessionContext";
 type ViewMode = "calendar" | "list";
 type RouteStepStatus = "complete" | "current" | "pending";
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
+const bookingWindowLabelKeys: Record<BookingServiceWindowKey, TranslationKey> = {
+  morning: "booking.window.morning.label",
+  afternoon: "booking.window.afternoon.label",
+  "late-afternoon-night": "booking.window.late_afternoon_night.label"
+};
+
+const bookingWindowRangeKeys: Record<BookingServiceWindowKey, TranslationKey> = {
+  morning: "booking.window.morning.range",
+  afternoon: "booking.window.afternoon.range",
+  "late-afternoon-night": "booking.window.late_afternoon_night.range"
+};
+
+const bookingExceptionLabelKeys: Record<BookingExceptionType, TranslationKey> = {
+  "customer-no-show": "booking.exception.customer_no_show",
+  "customer-not-ready": "booking.exception.customer_not_ready",
+  "service-could-not-be-completed": "booking.exception.service_could_not_be_completed",
+  "unable-to-access-property": "booking.exception.unable_to_access_property"
+};
+
+const externalCalendarBlockLabelKeys: Record<ExternalCalendarBlockType, TranslationKey> = {
+  "equipment-maintenance": "provider_mobile.support.calendar.block_type.equipment_maintenance",
+  "off-platform-client": "provider_mobile.support.calendar.block_type.off_platform_client",
+  "personal-time": "provider_mobile.support.calendar.block_type.personal_time",
+  "travel-buffer": "provider_mobile.support.calendar.block_type.travel_buffer"
+};
+
+const providerJobStatusLabelKeys: Record<BookingStatus, TranslationKey> = {
+  cancelled: "provider_mobile.schedule.status.cancelled",
+  completed: "provider_mobile.schedule.status.completed",
+  confirmed: "provider_mobile.schedule.status.confirmed",
+  disputed: "provider_mobile.schedule.status.disputed",
+  "in-progress": "provider_mobile.schedule.status.in_progress",
+  refunded: "provider_mobile.schedule.status.refunded",
+  requested: "provider_mobile.schedule.status.requested"
+};
+
+const crewMatchStatusLabelKeys: Record<CrewMatchStatus, TranslationKey> = {
+  accepted: "provider_mobile.schedule.crew.status.accepted",
+  "cancelled-by-crew": "provider_mobile.schedule.crew.status.cancelled_by_crew",
+  denied: "provider_mobile.schedule.crew.status.denied",
+  "pending-provider-review": "provider_mobile.schedule.crew.status.pending_provider_review"
+};
+
+const routeToolPresets: Array<{
+  command: string;
+  detailKey: TranslationKey;
+  labelKey: TranslationKey;
+}> = [
+  {
+    command: "What needs attention tomorrow?",
+    detailKey: "provider_mobile.schedule.assistant.preset.tomorrow.detail",
+    labelKey: "provider_mobile.schedule.assistant.preset.tomorrow.label"
+  },
+  {
+    command: "Do I need more crew tomorrow?",
+    detailKey: "provider_mobile.schedule.assistant.preset.crew_gaps.detail",
+    labelKey: "provider_mobile.schedule.assistant.preset.crew_gaps.label"
+  },
+  {
+    command: "Tell my afternoon customer I am 30 minutes late.",
+    detailKey: "provider_mobile.schedule.assistant.preset.send_delay.detail",
+    labelKey: "provider_mobile.schedule.assistant.preset.send_delay.label"
+  },
+  {
+    command: "Move my afternoon job to evening and notify the customer.",
+    detailKey: "provider_mobile.schedule.assistant.preset.move_later.detail",
+    labelKey: "provider_mobile.schedule.assistant.preset.move_later.label"
+  }
+];
+
+function formatCurrency(i18n: I18nInstance, cents: number) {
+  return i18n.formatCurrency(cents);
 }
 
-function formatMinutesAsHours(minutes: number) {
+function formatMinutesAsHours(i18n: I18nInstance, minutes: number) {
   if (minutes < 60) {
-    return `${minutes} min`;
+    return i18n.t("provider_mobile.support.minutes", { count: minutes });
   }
 
   const hours = minutes / 60;
-  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hrs`;
+  return i18n.t("provider_mobile.schedule.hours_short", {
+    count: Number.isInteger(hours) ? hours : Number(hours.toFixed(1))
+  });
 }
 
-function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") {
+function formatRouteStatusLabel(i18n: I18nInstance, status: "comfortable" | "watch" | "overloaded") {
   switch (status) {
     case "comfortable":
-      return "Balanced";
+      return i18n.t("provider_mobile.schedule.route_status.balanced");
     case "watch":
-      return "Watch closely";
+      return i18n.t("provider_mobile.schedule.route_status.watch");
     case "overloaded":
-      return "Overloaded";
+      return i18n.t("provider_mobile.schedule.route_status.overloaded");
   }
 }
 
-function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup") {
+function formatCrewRecommendationLabel(i18n: I18nInstance, label?: "best-fit" | "good-fit" | "backup") {
   switch (label) {
     case "best-fit":
-      return "Best fit";
+      return i18n.t("common.state.best_fit");
     case "good-fit":
-      return "Good fit";
+      return i18n.t("provider_mobile.clients.good_fit");
     case "backup":
-      return "Backup";
+      return i18n.t("provider_mobile.clients.backup");
     default:
       return "";
   }
@@ -64,35 +141,32 @@ function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup
 type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
 type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
 
-const routeToolPresets: Array<{ command: string; detail: string; label: string }> = [
-  {
-    command: "What needs attention tomorrow?",
-    detail: "Catch route, staffing, and timing risks.",
-    label: "Tomorrow"
-  },
-  {
-    command: "Do I need more crew tomorrow?",
-    detail: "Find jobs that need another person.",
-    label: "Crew gaps"
-  },
-  {
-    command: "Tell my afternoon customer I am 30 minutes late.",
-    detail: "Draft the customer update before sending.",
-    label: "Send delay"
-  },
-  {
-    command: "Move my afternoon job to evening and notify the customer.",
-    detail: "Review the schedule impact first.",
-    label: "Move later"
-  }
-];
-
-function formatServiceCategoryLabel(category: string) {
-  return category.replaceAll("-", " ");
+function formatServiceCategoryLabel(i18n: I18nInstance, category: ServiceCategory) {
+  return i18n.t(serviceCategoryToI18nKey(category));
 }
 
-function formatAssistantActionType(actionType: string) {
-  return actionType.replaceAll("-", " ");
+function formatAssistantActionType(i18n: I18nInstance, actionType: ProviderAssistantActionType) {
+  const keys: Record<ProviderAssistantActionType, TranslationKey> = {
+    "accept-best-crew-match": "provider_mobile.schedule.assistant.action.accept_best_crew_match",
+    "accept-crew-match": "provider_mobile.schedule.assistant.action.accept_crew_match",
+    "assign-route-leader": "provider_mobile.schedule.assistant.action.assign_route_leader",
+    "clear-route-leader": "provider_mobile.schedule.assistant.action.clear_route_leader",
+    "clear-route-stop": "provider_mobile.schedule.assistant.action.clear_route_stop",
+    "complete-booking": "provider_mobile.schedule.assistant.action.complete_booking",
+    "confirm-booking": "provider_mobile.schedule.assistant.action.confirm_booking",
+    "deny-crew-match": "provider_mobile.schedule.assistant.action.deny_crew_match",
+    "mark-booking-late": "provider_mobile.schedule.assistant.action.mark_booking_late",
+    "message-crew": "provider_mobile.schedule.assistant.action.message_crew",
+    "recommend-dispatch-adjustment": "provider_mobile.schedule.assistant.action.recommend_dispatch_adjustment",
+    "recommend-staffing-adjustment": "provider_mobile.schedule.assistant.action.recommend_staffing_adjustment",
+    "report-booking-exception": "provider_mobile.schedule.assistant.action.report_booking_exception",
+    "reschedule-booking": "provider_mobile.schedule.assistant.action.reschedule_booking",
+    "set-route-stop": "provider_mobile.schedule.assistant.action.set_route_stop",
+    "start-route": "provider_mobile.schedule.assistant.action.start_route",
+    "start-work": "provider_mobile.schedule.assistant.action.start_work",
+    "summarize-dispatch": "provider_mobile.schedule.assistant.action.summarize_dispatch"
+  };
+  return i18n.t(keys[actionType]);
 }
 
 function getRouteStepStatus(stepIndex: number, activeStepIndex: number): RouteStepStatus {
@@ -103,28 +177,32 @@ function getRouteStepStatus(stepIndex: number, activeStepIndex: number): RouteSt
   return stepIndex === activeStepIndex ? "current" : "pending";
 }
 
-function getProviderJobStatusLabel(job: ProviderJobSummary) {
+function formatBookingWindowSummaryI18n(i18n: I18nInstance, startIso: string) {
+  const window = getBookingServiceWindow(startIso);
+  return i18n.t("booking.window.summary", {
+    label: i18n.t(bookingWindowLabelKeys[window.key]),
+    range: i18n.t(bookingWindowRangeKeys[window.key])
+  });
+}
+
+function formatBookingExceptionLabel(i18n: I18nInstance, exceptionType: BookingExceptionType) {
+  return i18n.t(bookingExceptionLabelKeys[exceptionType]);
+}
+
+function formatExternalCalendarBlockLabel(i18n: I18nInstance, blockType: ExternalCalendarBlockType) {
+  return i18n.t(externalCalendarBlockLabelKeys[blockType]);
+}
+
+function getProviderJobStatusLabel(i18n: I18nInstance, job: ProviderJobSummary) {
   if (job.status === "requested") {
-    return "Requested";
+    return i18n.t("provider_mobile.schedule.status.requested");
   }
 
   if (job.status === "confirmed" && job.onRouteConfirmedAt) {
-    return "On route";
+    return i18n.t("provider_mobile.schedule.status.on_route");
   }
 
-  if (job.status === "confirmed") {
-    return "Confirmed";
-  }
-
-  if (job.status === "in-progress") {
-    return "In progress";
-  }
-
-  if (job.status === "disputed") {
-    return "Disputed";
-  }
-
-  return job.status.replaceAll("-", " ");
+  return i18n.t(providerJobStatusLabelKeys[job.status]);
 }
 
 function getProviderJobPrimaryAction(job: ProviderJobSummary): ProviderJobPrimaryAction | undefined {
@@ -155,65 +233,75 @@ function hasCrewDecisionPending(job: ProviderJobSummary) {
   );
 }
 
-function getProviderJobActionLabel(job: ProviderJobSummary) {
+function getProviderJobActionLabel(i18n: I18nInstance, job: ProviderJobSummary) {
   const primaryAction = getProviderJobPrimaryAction(job);
 
   if (primaryAction === "confirm") {
-    return "Confirm";
+    return i18n.t("provider_mobile.schedule.action.confirm");
   }
 
   if (hasCrewDecisionPending(job)) {
-    return "Staff";
+    return i18n.t("provider_mobile.schedule.action.staff");
   }
 
   if (primaryAction === "start-route") {
-    return "Start route";
+    return i18n.t("provider_mobile.dashboard.action.start_route");
   }
 
   if (primaryAction === "start-work") {
-    return "Start work";
+    return i18n.t("provider_mobile.schedule.action.start_work");
   }
 
   if (primaryAction === "complete") {
-    return job.afterEvidenceCount > 0 ? "Complete" : "Add proof";
+    return job.afterEvidenceCount > 0
+      ? i18n.t("provider_mobile.schedule.action.complete")
+      : i18n.t("provider_mobile.schedule.action.add_proof");
   }
 
-  return "Review";
+  return i18n.t("provider_mobile.clients.review");
 }
 
-function getProviderJobIssueLabel(job: ProviderJobSummary) {
+function getProviderJobIssueLabel(i18n: I18nInstance, job: ProviderJobSummary) {
   if (job.status === "confirmed" && !job.onRouteConfirmedAt) {
-    return "Delay";
+    return i18n.t("provider_mobile.schedule.issue.delay");
   }
 
-  return "Issue";
+  return i18n.t("provider_mobile.schedule.issue.generic");
 }
 
-function getProviderJobProofSummary(job: ProviderJobSummary) {
+function getProviderJobProofSummary(i18n: I18nInstance, job: ProviderJobSummary) {
   if (job.status === "requested") {
     return {
-      label: "Next",
-      value: "Confirm first"
+      label: i18n.t("provider_mobile.schedule.summary.next"),
+      value: i18n.t("provider_mobile.schedule.proof.confirm_first")
     };
   }
 
   if (job.status === "confirmed") {
     return {
-      label: "Arrival",
-      value: job.beforeEvidenceCount > 0 ? `${job.beforeEvidenceCount} saved` : "Needed"
+      label: i18n.t("provider_mobile.schedule.proof.arrival"),
+      value:
+        job.beforeEvidenceCount > 0
+          ? i18n.t("mobile.support.property.measurements_saved", { count: job.beforeEvidenceCount })
+          : i18n.t("provider_mobile.schedule.proof.needed")
     };
   }
 
   if (job.status === "in-progress") {
     return {
-      label: "Completion",
-      value: job.afterEvidenceCount > 0 ? `${job.afterEvidenceCount} saved` : "Needed"
+      label: i18n.t("provider_mobile.schedule.proof.completion"),
+      value:
+        job.afterEvidenceCount > 0
+          ? i18n.t("mobile.support.property.measurements_saved", { count: job.afterEvidenceCount })
+          : i18n.t("provider_mobile.schedule.proof.needed")
     };
   }
 
   return {
-    label: "Proof",
-    value: `${job.beforeEvidenceCount + job.afterEvidenceCount} saved`
+    label: i18n.t("provider_mobile.schedule.proof.title"),
+    value: i18n.t("mobile.support.property.measurements_saved", {
+      count: job.beforeEvidenceCount + job.afterEvidenceCount
+    })
   };
 }
 
@@ -234,6 +322,7 @@ function getProviderJobActiveStepIndex(job: ProviderJobSummary) {
 }
 
 export function ScheduleScreen() {
+  const i18n = useI18n();
   const { envelope } = useProviderSession();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
@@ -275,7 +364,7 @@ export function ScheduleScreen() {
       setOverview(nextOverview);
       setCalendarOverview(nextCalendarOverview);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load schedule.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.load"));
     }
   }
 
@@ -306,30 +395,35 @@ export function ScheduleScreen() {
   const priorityJobSteps = priorityJob
     ? [
         {
-          label: "Confirm",
-          value: priorityJob.status === "requested" ? "Needed" : "Done"
+          label: i18n.t("provider_mobile.schedule.action.confirm"),
+          value:
+            priorityJob.status === "requested"
+              ? i18n.t("provider_mobile.schedule.proof.needed")
+              : i18n.t("provider_mobile.schedule.state.done")
         },
         {
-          label: "Crew",
+          label: i18n.t("provider_mobile.dashboard.crew"),
           value:
             priorityJob.crewGap > 0
-              ? `${priorityJob.crewGap} gap`
+              ? i18n.t("provider_mobile.dashboard.gap_count", { count: priorityJob.crewGap }).trim()
               : priorityJob.requiresRouteLeaderAssignment
-                ? "Lead"
-                : "Ready"
+                ? i18n.t("provider_mobile.schedule.route_leader.short")
+                : i18n.t("provider_mobile.schedule.state.ready")
         },
         {
-          label: "Route",
-          value: priorityJob.onRouteConfirmedAt ? "Live" : formatBookingWindowSummary(priorityJob.scheduledStartIso)
+          label: i18n.t("provider_mobile.schedule.summary.route"),
+          value: priorityJob.onRouteConfirmedAt
+            ? i18n.t("provider_mobile.schedule.state.live")
+            : formatBookingWindowSummaryI18n(i18n, priorityJob.scheduledStartIso)
         },
         {
-          label: "Finish",
+          label: i18n.t("provider_mobile.schedule.summary.finish"),
           value:
             priorityJob.status === "in-progress"
               ? priorityJob.afterEvidenceCount > 0
-                ? "Complete"
-                : "Proof"
-              : `${priorityJob.afterEvidenceCount} proof`
+                ? i18n.t("provider_mobile.schedule.action.complete")
+                : i18n.t("provider_mobile.schedule.proof.title")
+              : i18n.t("provider_mobile.schedule.proof.count", { count: priorityJob.afterEvidenceCount })
         }
       ].map((step, index) => ({
         ...step,
@@ -343,9 +437,15 @@ export function ScheduleScreen() {
     ? assistantResult?.bookingCandidates.find((candidate) => candidate.bookingId === selectedAssistantBookingId)
     : undefined;
   const selectedAssistantBookingLabel = selectedAssistantJob
-    ? `${selectedAssistantJob.customerName} • ${formatBookingWindowSummary(selectedAssistantJob.scheduledStartIso)}`
+    ? i18n.t("provider_mobile.schedule.assistant.booking_label", {
+        customer: selectedAssistantJob.customerName,
+        window: formatBookingWindowSummaryI18n(i18n, selectedAssistantJob.scheduledStartIso)
+      })
     : selectedAssistantCandidate
-      ? `${selectedAssistantCandidate.customerName} • ${selectedAssistantCandidate.currentWindowLabel}`
+      ? i18n.t("provider_mobile.schedule.assistant.booking_label", {
+          customer: selectedAssistantCandidate.customerName,
+          window: selectedAssistantCandidate.currentWindowLabel
+        })
       : undefined;
 
   useEffect(() => {
@@ -389,7 +489,7 @@ export function ScheduleScreen() {
         setTracking(nextTracking);
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to share live route location.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.share_location"));
     }
   }
 
@@ -409,13 +509,13 @@ export function ScheduleScreen() {
       if (permission.status !== "granted") {
         routeSharingBookingIdRef.current = bookingId;
         setStatusMessage(
-          "Route is live. Turn on location access for live customer map updates, or YardMatch will keep using estimated tracking."
+          i18n.t("provider_mobile.schedule.message.route_live_location_needed")
         );
         return;
       }
 
       routeSharingBookingIdRef.current = bookingId;
-      setStatusMessage("Sharing your live route with the customer now.");
+      setStatusMessage(i18n.t("provider_mobile.schedule.message.sharing_route"));
 
       const currentPosition = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced
@@ -439,9 +539,9 @@ export function ScheduleScreen() {
       );
     } catch (error) {
       setStatusMessage(
-        "Route is live, but we could not start live location sharing. Customers will still see estimated tracking."
+        i18n.t("provider_mobile.schedule.message.route_live_estimated")
       );
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start live route sharing.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.start_route_sharing"));
     }
   }
 
@@ -471,12 +571,12 @@ export function ScheduleScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.completeBooking({ bookingId });
-      setStatusMessage("Job marked complete.");
+      setStatusMessage(i18n.t("provider_mobile.schedule.message.job_complete"));
       setActiveBookingId(undefined);
       setChatThread(undefined);
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to complete that job.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.complete_job"));
     } finally {
       setIsWorking(false);
     }
@@ -493,10 +593,14 @@ export function ScheduleScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.reviewCrewMatch({ crewMatchId, action });
-      setStatusMessage(action === "accept" ? "Crew member accepted." : "Crew member declined.");
+      setStatusMessage(
+        action === "accept"
+          ? i18n.t("provider_mobile.clients.message.accepted")
+          : i18n.t("provider_mobile.clients.message.declined")
+      );
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update that crew match.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.clients.error.update_match"));
     } finally {
       setIsWorking(false);
     }
@@ -514,11 +618,13 @@ export function ScheduleScreen() {
       api.setAuthToken(envelope.session.token);
       await api.assignBookingRouteLeader({ bookingId, crewMemberId });
       setStatusMessage(
-        crewMemberId ? "Crew route leader assigned." : "Explicit crew route leader cleared."
+        crewMemberId
+          ? i18n.t("provider_mobile.schedule.message.route_leader_assigned")
+          : i18n.t("provider_mobile.schedule.message.route_leader_cleared")
       );
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update that route leader.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.update_route_leader"));
     } finally {
       setIsWorking(false);
     }
@@ -535,10 +641,10 @@ export function ScheduleScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.confirmBooking({ bookingId });
-      setStatusMessage("Booking confirmed.");
+      setStatusMessage(i18n.t("provider_mobile.dashboard.message.booking_confirmed"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm that booking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.confirm_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -555,10 +661,10 @@ export function ScheduleScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.declineBooking({ bookingId });
-      setStatusMessage("Booking declined. The customer can choose another provider.");
+      setStatusMessage(i18n.t("provider_mobile.schedule.message.booking_declined"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to decline that booking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.decline_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -580,7 +686,7 @@ export function ScheduleScreen() {
         setChatThread(undefined);
         return;
       }
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open customer chat.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.open_chat"));
     }
   }
 
@@ -602,7 +708,7 @@ export function ScheduleScreen() {
       );
       setChatDraft("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send customer message.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.send_message"));
     } finally {
       setIsWorking(false);
     }
@@ -619,7 +725,7 @@ export function ScheduleScreen() {
       setTracking(await api.getBookingTracking(bookingId));
       setActiveTrackingBookingId(bookingId);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open arrival tracking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.open_arrival_tracking"));
     }
   }
 
@@ -634,10 +740,10 @@ export function ScheduleScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.markBookingOnRoute({ bookingId });
-      setStatusMessage("Route started. Asking for live location so the customer can track your arrival.");
+      setStatusMessage(i18n.t("provider_mobile.schedule.message.route_started_location"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.start_route"));
     } finally {
       setIsWorking(false);
     }
@@ -654,10 +760,10 @@ export function ScheduleScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.startBooking({ bookingId });
-      setStatusMessage("Work started.");
+      setStatusMessage(i18n.t("provider_mobile.schedule.message.work_started"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start work.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.start_work"));
     } finally {
       setIsWorking(false);
     }
@@ -678,10 +784,10 @@ export function ScheduleScreen() {
         lateEtaIso,
         reason
       });
-      setStatusMessage("Customer updated about the delay.");
+      setStatusMessage(i18n.t("provider_mobile.schedule.message.delay_sent"));
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send the delay update.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.send_delay"));
     } finally {
       setIsWorking(false);
     }
@@ -711,7 +817,7 @@ export function ScheduleScreen() {
         await loadOverview();
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to run the provider assistant.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.run_assistant"));
     } finally {
       setIsWorking(false);
     }
@@ -740,10 +846,14 @@ export function ScheduleScreen() {
         exceptionType,
         notes
       });
-      setStatusMessage(`${getBookingExceptionLabel(exceptionType)} shared with the customer.`);
+      setStatusMessage(
+        i18n.t("provider_mobile.schedule.message.issue_shared", {
+          issue: formatBookingExceptionLabel(i18n, exceptionType)
+        })
+      );
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to log that issue.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.log_issue"));
     } finally {
       setIsWorking(false);
     }
@@ -759,7 +869,7 @@ export function ScheduleScreen() {
       setErrorMessage("");
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        setErrorMessage("Camera access is required to capture service photos.");
+        setErrorMessage(i18n.t("provider_mobile.schedule.error.camera_required"));
         return;
       }
 
@@ -784,11 +894,13 @@ export function ScheduleScreen() {
         imageDataUrl: `data:${mimeType};base64,${asset.base64}`
       });
       setStatusMessage(
-        phase === "before" ? "Before photo saved to the job record." : "After photo saved to the job record."
+        phase === "before"
+          ? i18n.t("provider_mobile.schedule.message.before_photo_saved")
+          : i18n.t("provider_mobile.schedule.message.after_photo_saved")
       );
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to capture that service photo.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.capture_photo"));
     } finally {
       setIsWorking(false);
     }
@@ -802,7 +914,7 @@ export function ScheduleScreen() {
     const draftKey = `${bookingId}:${phase}`;
     const draft = (evidenceNoteDrafts[draftKey] ?? "").trim();
     if (!draft) {
-      setErrorMessage("Add a short onsite note before saving it.");
+      setErrorMessage(i18n.t("provider_mobile.schedule.error.note_required"));
       return;
     }
 
@@ -818,10 +930,14 @@ export function ScheduleScreen() {
         note: draft
       });
       setEvidenceNoteDrafts((current) => ({ ...current, [draftKey]: "" }));
-      setStatusMessage(phase === "before" ? "Before-work note saved." : "After-work note saved.");
+      setStatusMessage(
+        phase === "before"
+          ? i18n.t("provider_mobile.schedule.message.before_note_saved")
+          : i18n.t("provider_mobile.schedule.message.after_note_saved")
+      );
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to save that onsite note.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.save_note"));
     } finally {
       setIsWorking(false);
     }
@@ -835,14 +951,14 @@ export function ScheduleScreen() {
     const checklistItems =
       phase === "before"
         ? [
-            { label: "Access path confirmed", completed: true },
-            { label: "Equipment staged", completed: true },
-            { label: "Service scope reviewed", completed: true }
+            { label: i18n.t("provider_mobile.schedule.checklist.access_path"), completed: true },
+            { label: i18n.t("provider_mobile.schedule.checklist.equipment_staged"), completed: true },
+            { label: i18n.t("provider_mobile.schedule.checklist.scope_reviewed"), completed: true }
           ]
         : [
-            { label: "Primary service completed", completed: true },
-            { label: "Debris cleared", completed: true },
-            { label: "Property secured", completed: true }
+            { label: i18n.t("provider_mobile.schedule.checklist.service_completed"), completed: true },
+            { label: i18n.t("provider_mobile.schedule.checklist.debris_cleared"), completed: true },
+            { label: i18n.t("provider_mobile.schedule.checklist.property_secured"), completed: true }
           ];
 
     try {
@@ -856,10 +972,14 @@ export function ScheduleScreen() {
         evidenceType: "checklist",
         checklistItems
       });
-      setStatusMessage(phase === "before" ? "Arrival checklist saved." : "Completion checklist saved.");
+      setStatusMessage(
+        phase === "before"
+          ? i18n.t("provider_mobile.schedule.message.arrival_checklist_saved")
+          : i18n.t("provider_mobile.schedule.message.completion_checklist_saved")
+      );
       await loadOverview();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to save that checklist.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.schedule.error.save_checklist"));
     } finally {
       setIsWorking(false);
     }
@@ -878,25 +998,29 @@ export function ScheduleScreen() {
   }
 
   return (
-    <ScreenShell eyebrow="Schedule" title="Schedule" description="Open the next job or make a route change.">
+    <ScreenShell
+      eyebrow={i18n.t("provider_mobile.schedule.eyebrow")}
+      title={i18n.t("provider_mobile.schedule.title")}
+      description={i18n.t("provider_mobile.schedule.description")}
+    >
       <View style={styles.modeRow}>
-        <ModeButton active={viewMode === "calendar"} label="Calendar" onPress={() => setViewMode("calendar")} />
-        <ModeButton active={viewMode === "list"} label="List" onPress={() => setViewMode("list")} />
+        <ModeButton active={viewMode === "calendar"} label={i18n.t("provider_mobile.schedule.view.calendar")} onPress={() => setViewMode("calendar")} />
+        <ModeButton active={viewMode === "list"} label={i18n.t("provider_mobile.schedule.view.list")} onPress={() => setViewMode("list")} />
       </View>
 
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       {priorityJob ? (
-        <InfoCard title="Today path" description={getProviderJobActionLabel(priorityJob)}>
+        <InfoCard title={i18n.t("provider_mobile.schedule.today_path")} description={getProviderJobActionLabel(i18n, priorityJob)}>
           <View style={styles.routeFocusHeader}>
             <View style={styles.routeFocusCopy}>
               <Text style={styles.clientLabel}>{priorityJob.customerName}</Text>
               <Text style={styles.metaLine}>{priorityJob.serviceAddress.line1}</Text>
             </View>
-            <Text style={styles.routeFocusPill}>{getProviderJobStatusLabel(priorityJob)}</Text>
+            <Text style={styles.routeFocusPill}>{getProviderJobStatusLabel(i18n, priorityJob)}</Text>
           </View>
-          <View style={styles.routePath} accessibilityLabel="Route progress">
+          <View style={styles.routePath} accessibilityLabel={i18n.t("provider_mobile.schedule.route_progress")}>
             {priorityJobSteps.map((step, index) => (
               <View key={step.label} style={[styles.routePathStep, styles[`routePathStep_${step.status}`]]}>
                 <View style={[styles.routePathIndex, styles[`routePathIndex_${step.status}`]]}>
@@ -915,23 +1039,23 @@ export function ScheduleScreen() {
           </View>
           <View style={styles.routeFocusGrid}>
             <View style={styles.routeFocusItem}>
-              <Text style={styles.jobSummaryLabel}>Window</Text>
-              <Text style={styles.jobSummaryValue}>{formatBookingWindowSummary(priorityJob.scheduledStartIso)}</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.schedule.summary.window")}</Text>
+              <Text style={styles.jobSummaryValue}>{formatBookingWindowSummaryI18n(i18n, priorityJob.scheduledStartIso)}</Text>
             </View>
             <View style={styles.routeFocusItem}>
-              <Text style={styles.jobSummaryLabel}>Crew</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew")}</Text>
               <Text style={styles.jobSummaryValue}>
                 {priorityJob.assignedCrewMembers}/{priorityJob.requiredCrewMembers}
-                {priorityJob.crewGap ? ` • gap ${priorityJob.crewGap}` : ""}
+                {priorityJob.crewGap ? i18n.t("provider_mobile.schedule.crew.gap_suffix", { count: priorityJob.crewGap }) : ""}
               </Text>
             </View>
             <View style={styles.routeFocusItem}>
-              <Text style={styles.jobSummaryLabel}>Service</Text>
-              <Text style={styles.jobSummaryValue}>{formatServiceCategoryLabel(priorityJob.category)}</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.schedule.summary.service")}</Text>
+              <Text style={styles.jobSummaryValue}>{formatServiceCategoryLabel(i18n, priorityJob.category)}</Text>
             </View>
             <View style={styles.routeFocusItem}>
-              <Text style={styles.jobSummaryLabel}>Next</Text>
-              <Text style={styles.jobSummaryValue}>{getProviderJobActionLabel(priorityJob)}</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.schedule.summary.next")}</Text>
+              <Text style={styles.jobSummaryValue}>{getProviderJobActionLabel(i18n, priorityJob)}</Text>
             </View>
           </View>
           <View style={styles.routeFocusActions}>
@@ -942,7 +1066,7 @@ export function ScheduleScreen() {
                 style={styles.routeFocusPrimaryButton}
               >
                 <Text style={styles.routeFocusPrimaryButtonLabel}>
-                  {isWorking ? "Working..." : "Confirm booking"}
+                  {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.confirm_booking")}
                 </Text>
               </Pressable>
             ) : null}
@@ -961,7 +1085,7 @@ export function ScheduleScreen() {
                 }}
                 style={styles.routeFocusPrimaryButton}
               >
-                <Text style={styles.routeFocusPrimaryButtonLabel}>Manage staffing</Text>
+                <Text style={styles.routeFocusPrimaryButtonLabel}>{i18n.t("provider_mobile.schedule.action.manage_staffing")}</Text>
               </Pressable>
             ) : null}
             {!priorityJobNeedsStaffing && priorityJobPrimaryAction === "start-route" ? (
@@ -970,7 +1094,9 @@ export function ScheduleScreen() {
                 onPress={() => void startRoute(priorityJob.bookingId)}
                 style={styles.routeFocusPrimaryButton}
               >
-                <Text style={styles.routeFocusPrimaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                <Text style={styles.routeFocusPrimaryButtonLabel}>
+                  {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.start_route")}
+                </Text>
               </Pressable>
             ) : null}
             {!priorityJobNeedsStaffing && priorityJobPrimaryAction === "start-work" ? (
@@ -979,7 +1105,9 @@ export function ScheduleScreen() {
                 onPress={() => void startWork(priorityJob.bookingId)}
                 style={styles.routeFocusPrimaryButton}
               >
-                <Text style={styles.routeFocusPrimaryButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+                <Text style={styles.routeFocusPrimaryButtonLabel}>
+                  {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.schedule.action.start_work")}
+                </Text>
               </Pressable>
             ) : null}
             {!priorityJobNeedsStaffing && priorityJobPrimaryAction === "complete" ? (
@@ -993,22 +1121,33 @@ export function ScheduleScreen() {
                 style={styles.routeFocusPrimaryButton}
               >
                 <Text style={styles.routeFocusPrimaryButtonLabel}>
-                  {isWorking ? "Working..." : priorityJob.afterEvidenceCount > 0 ? "Complete job" : "Add proof"}
+                  {isWorking
+                    ? i18n.t("provider_mobile.dashboard.loading.working")
+                    : priorityJob.afterEvidenceCount > 0
+                      ? i18n.t("provider_mobile.dashboard.action.complete_job")
+                      : i18n.t("provider_mobile.schedule.action.add_proof")}
                 </Text>
               </Pressable>
             ) : null}
           </View>
         </InfoCard>
       ) : (
-        <InfoCard title="Today path" description="No scheduled jobs">
-          <Text style={styles.metaLine}>Booked visits will appear here with route and staffing details.</Text>
+        <InfoCard title={i18n.t("provider_mobile.schedule.today_path")} description={i18n.t("provider_mobile.schedule.empty.title")}>
+          <Text style={styles.metaLine}>{i18n.t("provider_mobile.schedule.empty.description")}</Text>
         </InfoCard>
       )}
 
-      <InfoCard title="Plan change" description={showAssistantTools ? "Review before applying." : "Move jobs, check staffing, or update customers."}>
+      <InfoCard
+        title={i18n.t("provider_mobile.schedule.assistant.title")}
+        description={
+          showAssistantTools
+            ? i18n.t("provider_mobile.schedule.assistant.review_description")
+            : i18n.t("provider_mobile.schedule.assistant.description")
+        }
+      >
         <Pressable onPress={() => setShowAssistantTools((current) => !current)} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonLabel}>
-            {showAssistantTools ? "Close" : "Open"}
+            {showAssistantTools ? i18n.t("common.actions.close") : i18n.t("provider_mobile.schedule.action.open")}
           </Text>
         </Pressable>
         {showAssistantTools ? (
@@ -1018,33 +1157,37 @@ export function ScheduleScreen() {
                 const isActive = assistantCommand === preset.command;
                 return (
                   <Pressable
-                    key={preset.label}
+                    key={preset.labelKey}
                     onPress={() => {
                       setAssistantCommand(preset.command);
                       setAssistantResult(undefined);
                     }}
                     style={[styles.presetButton, isActive && styles.presetButtonActive]}
                   >
-                    <Text style={[styles.presetLabel, isActive && styles.presetLabelActive]}>{preset.label}</Text>
-                    <Text style={[styles.presetDetail, isActive && styles.presetDetailActive]}>{preset.detail}</Text>
+                    <Text style={[styles.presetLabel, isActive && styles.presetLabelActive]}>{i18n.t(preset.labelKey)}</Text>
+                    <Text style={[styles.presetDetail, isActive && styles.presetDetailActive]}>{i18n.t(preset.detailKey)}</Text>
                   </Pressable>
                 );
               })}
             </View>
-            <Text style={styles.sectionLabel}>Custom change</Text>
+            <Text style={styles.sectionLabel}>{i18n.t("provider_mobile.schedule.assistant.custom_change")}</Text>
             <TextInput
               value={assistantCommand}
               onChangeText={(text) => {
                 setAssistantCommand(text);
                 setAssistantResult(undefined);
               }}
-              placeholder="Describe the change"
+              placeholder={i18n.t("provider_mobile.schedule.assistant.placeholder")}
               placeholderTextColor={BrandTokens.colors.inkSoft}
               style={[styles.input, styles.multilineInput]}
               multiline
             />
             {selectedAssistantBookingLabel ? (
-              <Text style={styles.metaLine}>Selected: {selectedAssistantBookingLabel}</Text>
+              <Text style={styles.metaLine}>
+                {i18n.t("provider_mobile.schedule.assistant.selected", {
+                  booking: selectedAssistantBookingLabel
+                })}
+              </Text>
             ) : null}
             <View style={styles.stepRow}>
               <Pressable
@@ -1052,14 +1195,14 @@ export function ScheduleScreen() {
                 onPress={() => void runProviderAssistant(false)}
                 style={[styles.secondaryButton, assistantCommand.trim().length === 0 && styles.secondaryButtonDisabled]}
               >
-                <Text style={styles.secondaryButtonLabel}>Review plan</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.schedule.assistant.review_plan")}</Text>
               </Pressable>
               <Pressable
                 disabled={isWorking || !assistantResult?.requiresConfirmation}
                 onPress={() => void runProviderAssistant(true)}
                 style={[styles.secondaryButton, !assistantResult?.requiresConfirmation && styles.secondaryButtonDisabled]}
               >
-                <Text style={styles.secondaryButtonLabel}>Apply</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.schedule.assistant.apply")}</Text>
               </Pressable>
             </View>
             {assistantResult ? (
@@ -1068,39 +1211,53 @@ export function ScheduleScreen() {
                 <Text style={styles.meta}>{assistantResult.previewMessage}</Text>
                 {assistantResult.actionTypes && assistantResult.actionTypes.length > 1 ? (
                   <Text style={styles.meta}>
-                    Steps: {assistantResult.actionTypes.map(formatAssistantActionType).join(" • ")}
+                    {i18n.t("provider_mobile.schedule.assistant.steps", {
+                      steps: assistantResult.actionTypes.map((actionType) => formatAssistantActionType(i18n, actionType)).join(" • ")
+                    })}
                   </Text>
                 ) : null}
                 {assistantResult.targetWindowLabel ? (
-                  <Text style={styles.meta}>Target window: {assistantResult.targetWindowLabel}</Text>
+                  <Text style={styles.meta}>
+                    {i18n.t("provider_mobile.schedule.assistant.target_window", {
+                      window: assistantResult.targetWindowLabel
+                    })}
+                  </Text>
                 ) : null}
                 {assistantResult.lateEtaIso ? (
                   <Text style={styles.meta}>
-                    New ETA: {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
+                    {i18n.t("provider_mobile.schedule.assistant.new_eta", {
+                      time: i18n.formatDate(assistantResult.lateEtaIso, { timeStyle: "short" })
+                    })}
                   </Text>
                 ) : null}
                 {assistantResult.dispatchDaySummary ? (
                   <Text style={styles.meta}>
-                    Route: {assistantResult.dispatchDaySummary.routeStatus} • Jobs:{" "}
-                    {assistantResult.dispatchDaySummary.yardmatchJobCount} • Crew gap:{" "}
-                    {assistantResult.dispatchDaySummary.crewGap} • Drive miles:{" "}
-                    {assistantResult.dispatchDaySummary.estimatedDriveMiles.toFixed(1)}
+                    {i18n.t("provider_mobile.schedule.assistant.day_summary", {
+                      route: formatRouteStatusLabel(i18n, assistantResult.dispatchDaySummary.routeStatus),
+                      jobs: assistantResult.dispatchDaySummary.yardmatchJobCount,
+                      crewGap: assistantResult.dispatchDaySummary.crewGap,
+                      miles: assistantResult.dispatchDaySummary.estimatedDriveMiles
+                    })}
                   </Text>
                 ) : null}
                 {assistantResult.dispatchRangeSummary ? (
                   <Text style={styles.meta}>
-                    Active days: {assistantResult.dispatchRangeSummary.activeDayCount} • Watch:{" "}
-                    {assistantResult.dispatchRangeSummary.watchDayCount} • Overloaded:{" "}
-                    {assistantResult.dispatchRangeSummary.overloadedDayCount} • Total crew gap:{" "}
-                    {assistantResult.dispatchRangeSummary.totalCrewGap}
+                    {i18n.t("provider_mobile.schedule.assistant.range_summary", {
+                      active: assistantResult.dispatchRangeSummary.activeDayCount,
+                      watch: assistantResult.dispatchRangeSummary.watchDayCount,
+                      overloaded: assistantResult.dispatchRangeSummary.overloadedDayCount,
+                      crewGap: assistantResult.dispatchRangeSummary.totalCrewGap
+                    })}
                   </Text>
                 ) : null}
                 {assistantResult.dispatchWindowSummary ? (
                   <Text style={styles.meta}>
-                    Focus window: {assistantResult.dispatchWindowSummary.label} • Jobs:{" "}
-                    {assistantResult.dispatchWindowSummary.yardmatchJobCount} • Crew gap:{" "}
-                    {assistantResult.dispatchWindowSummary.crewGap} • Blocked minutes:{" "}
-                    {assistantResult.dispatchWindowSummary.blockedMinutes}
+                    {i18n.t("provider_mobile.schedule.assistant.window_summary", {
+                      window: assistantResult.dispatchWindowSummary.label,
+                      jobs: assistantResult.dispatchWindowSummary.yardmatchJobCount,
+                      crewGap: assistantResult.dispatchWindowSummary.crewGap,
+                      minutes: assistantResult.dispatchWindowSummary.blockedMinutes
+                    })}
                   </Text>
                 ) : null}
                 {assistantResult.customerNotificationPreview ? (
@@ -1109,12 +1266,12 @@ export function ScheduleScreen() {
                 {assistantResult.bookingCandidates.length > 0 ? (
                   <Text style={styles.meta}>
                     {assistantResult.actionType === "summarize-dispatch"
-                      ? "Appointments in that focus area:"
+                      ? i18n.t("provider_mobile.schedule.assistant.candidates.focus_area")
                       : assistantResult.actionType === "recommend-dispatch-adjustment"
-                        ? "Appointments in the pressured window:"
+                        ? i18n.t("provider_mobile.schedule.assistant.candidates.pressured_window")
                         : assistantResult.actionType === "recommend-staffing-adjustment"
-                          ? "Bookings that need more crew:"
-                          : "Matching appointments:"}
+                          ? i18n.t("provider_mobile.schedule.assistant.candidates.need_crew")
+                          : i18n.t("provider_mobile.schedule.assistant.candidates.matching")}
                   </Text>
                 ) : null}
                 {assistantResult.bookingCandidates.map((candidate) => (
@@ -1122,7 +1279,13 @@ export function ScheduleScreen() {
                     <View style={styles.ticketCopy}>
                       <Text style={styles.valueText}>{candidate.customerName}</Text>
                       <Text style={styles.meta}>
-                        {candidate.currentWindowLabel} • {new Date(candidate.scheduledStartIso).toLocaleString()}
+                        {i18n.t("provider_mobile.schedule.assistant.candidate_time", {
+                          window: candidate.currentWindowLabel,
+                          date: i18n.formatDate(candidate.scheduledStartIso, {
+                            dateStyle: "medium",
+                            timeStyle: "short"
+                          })
+                        })}
                       </Text>
                       <Text style={styles.meta}>{candidate.addressLine}</Text>
                     </View>
@@ -1131,7 +1294,7 @@ export function ScheduleScreen() {
                       onPress={() => setSelectedAssistantBookingId(candidate.bookingId)}
                       style={styles.secondaryButton}
                     >
-                      <Text style={styles.secondaryButtonLabel}>Select</Text>
+                      <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.schedule.action.select")}</Text>
                     </Pressable>
                   </View>
                 ))}
@@ -1143,44 +1306,80 @@ export function ScheduleScreen() {
 
       {viewMode === "calendar" ? (
         <InfoCard
-          title="Week view"
-          description={`${calendarOverview?.yardmatchJobCount ?? jobs.length} YardMatch jobs • ${calendarOverview?.externalBlockCount ?? 0} outside blocks`}
+          title={i18n.t("provider_mobile.schedule.week_view")}
+          description={i18n.t("provider_mobile.schedule.week_summary", {
+            jobs: calendarOverview?.yardmatchJobCount ?? jobs.length,
+            blocks: calendarOverview?.externalBlockCount ?? 0
+          })}
         >
           <View style={styles.list}>
             {calendarOverview?.dispatchDays?.map((day) => (
               <View key={day.dateIso} style={styles.dispatchCard}>
                 <View style={styles.dispatchHeader}>
                   <Text style={styles.clientLabel}>{day.dayLabel}</Text>
-                  <Text style={styles.dispatchStatus}>{formatRouteStatusLabel(day.routeStatus)}</Text>
+                  <Text style={styles.dispatchStatus}>{formatRouteStatusLabel(i18n, day.routeStatus)}</Text>
                 </View>
                 <Text style={styles.metaLine}>
-                  {day.yardmatchJobCount} jobs • {day.totalCrewAssigned}/{day.totalCrewRequired} crew •{" "}
-                  {day.estimatedDriveMiles} mi
+                  {i18n.t("provider_mobile.schedule.dispatch.day_summary", {
+                    jobs: day.yardmatchJobCount,
+                    assigned: day.totalCrewAssigned,
+                    required: day.totalCrewRequired,
+                    miles: day.estimatedDriveMiles
+                  })}
                 </Text>
                 <Text style={styles.metaLine}>
-                  Longest leg {day.longestDriveLegMiles} mi
-                  {day.largestIdleGapMinutes ? ` • Longest idle gap ${formatMinutesAsHours(day.largestIdleGapMinutes)}` : ""}
-                  {day.outlierStopCount ? ` • ${day.outlierStopCount} outlier stop${day.outlierStopCount === 1 ? "" : "s"}` : ""}
+                  {i18n.t("provider_mobile.schedule.dispatch.longest_leg", {
+                    miles: day.longestDriveLegMiles
+                  })}
+                  {day.largestIdleGapMinutes
+                    ? i18n.t("provider_mobile.schedule.dispatch.idle_gap_suffix", {
+                        duration: formatMinutesAsHours(i18n, day.largestIdleGapMinutes)
+                      })
+                    : ""}
+                  {day.outlierStopCount
+                    ? i18n.t("provider_mobile.schedule.dispatch.outlier_suffix", {
+                        count: day.outlierStopCount
+                      })
+                    : ""}
                 </Text>
                 <Text style={styles.metaLine}>
-                  {formatMinutesAsHours(day.bookedMinutes)} booked
-                  {day.externalBlockCount ? ` • ${formatMinutesAsHours(day.blockedMinutes)} outside blocks` : ""}
+                  {i18n.t("provider_mobile.schedule.dispatch.booked_minutes", {
+                    duration: formatMinutesAsHours(i18n, day.bookedMinutes)
+                  })}
+                  {day.externalBlockCount
+                    ? i18n.t("provider_mobile.schedule.dispatch.outside_blocks_suffix", {
+                        duration: formatMinutesAsHours(i18n, day.blockedMinutes)
+                      })
+                    : ""}
                 </Text>
                 {day.firstStopAddressLine ? (
-                  <Text style={styles.metaLine}>First stop: {day.firstStopAddressLine}</Text>
+                  <Text style={styles.metaLine}>
+                    {i18n.t("provider_mobile.schedule.dispatch.first_stop", {
+                      address: day.firstStopAddressLine
+                    })}
+                  </Text>
                 ) : null}
                 <View style={styles.windowList}>
                   {day.windowSummaries.map((window) => (
                     <View key={`${day.dateIso}-${window.windowKey}`} style={styles.windowCard}>
                       <Text style={styles.timeLabel}>{window.label}</Text>
                       <Text style={styles.metaLine}>
-                        {window.yardmatchJobCount} jobs • {window.totalCrewAssigned}/{window.totalCrewRequired} crew
-                        {window.crewGap ? ` • gap ${window.crewGap}` : ""}
+                        {i18n.t("provider_mobile.schedule.dispatch.window_summary", {
+                          jobs: window.yardmatchJobCount,
+                          assigned: window.totalCrewAssigned,
+                          required: window.totalCrewRequired
+                        })}
+                        {window.crewGap ? i18n.t("provider_mobile.schedule.crew.gap_suffix", { count: window.crewGap }) : ""}
                       </Text>
                       <Text style={styles.metaLine}>
                         {window.externalBlockCount
-                          ? `${window.externalBlockCount} outside blocks • ${formatMinutesAsHours(window.blockedMinutes)}`
-                          : `${formatMinutesAsHours(window.bookedMinutes)} booked`}
+                          ? i18n.t("provider_mobile.schedule.dispatch.window_blocks", {
+                              blocks: window.externalBlockCount,
+                              duration: formatMinutesAsHours(i18n, window.blockedMinutes)
+                            })
+                          : i18n.t("provider_mobile.schedule.dispatch.booked_minutes", {
+                              duration: formatMinutesAsHours(i18n, window.bookedMinutes)
+                            })}
                       </Text>
                     </View>
                   ))}
@@ -1195,16 +1394,21 @@ export function ScheduleScreen() {
             {calendarEvents.map((event) => (
               <View key={event.id} style={styles.dayCard}>
                 <Text style={styles.dayLabel}>
-                  {new Date(event.startIso).toLocaleDateString(undefined, { weekday: "short" })}
+                  {i18n.formatDate(event.startIso, { weekday: "short" })}
                 </Text>
                 <Text style={styles.timeLabel}>
-                  {formatBookingWindowSummary(event.startIso)}
+                  {formatBookingWindowSummaryI18n(i18n, event.startIso)}
                 </Text>
                 <Text style={styles.clientLabel}>{event.title}</Text>
                 <Text style={styles.metaLine}>
                   {event.source === "yardmatch-booking"
-                    ? `${event.customerName ?? "Customer"} • ${event.status?.replaceAll("-", " ")}`
-                    : `${getExternalCalendarBlockLabel(event.blockType ?? "off-platform-client")} • Outside block`}
+                    ? i18n.t("provider_mobile.schedule.calendar.yardmatch_event", {
+                        customer: event.customerName ?? i18n.t("provider_mobile.schedule.customer_fallback"),
+                        status: event.status ? i18n.t(providerJobStatusLabelKeys[event.status]) : i18n.t("mobile.support.not_set")
+                      })
+                    : i18n.t("provider_mobile.schedule.calendar.outside_event", {
+                        type: formatExternalCalendarBlockLabel(i18n, event.blockType ?? "off-platform-client")
+                      })}
                 </Text>
                 {event.addressLine ? <Text style={styles.metaLine}>{event.addressLine}</Text> : null}
                 {event.notes ? <Text style={styles.metaLine}>{event.notes}</Text> : null}
@@ -1213,14 +1417,14 @@ export function ScheduleScreen() {
           </View>
         </InfoCard>
       ) : (
-        <InfoCard title="Job list" description={`${jobs.length} scheduled`}>
+        <InfoCard title={i18n.t("provider_mobile.schedule.job_list")} description={i18n.t("provider_mobile.schedule.scheduled_count", { count: jobs.length })}>
           <View style={styles.list}>
             {jobs.map((job) => {
               const isManageOpen = expandedManageSections[job.bookingId];
               const primaryAction = getProviderJobPrimaryAction(job);
-              const statusLabel = getProviderJobStatusLabel(job);
-              const issueLabel = getProviderJobIssueLabel(job);
-              const proofSummary = getProviderJobProofSummary(job);
+              const statusLabel = getProviderJobStatusLabel(i18n, job);
+              const issueLabel = getProviderJobIssueLabel(i18n, job);
+              const proofSummary = getProviderJobProofSummary(i18n, job);
               const shouldShowArrivalProof = job.status === "confirmed";
               const shouldShowCompletionProof = job.status === "in-progress";
               const canDeclineJob = job.status === "requested";
@@ -1254,14 +1458,14 @@ export function ScheduleScreen() {
                   <Text style={styles.statusLine}>{statusLabel}</Text>
                   <View style={styles.jobSummaryGrid}>
                     <View style={styles.jobSummaryItem}>
-                      <Text style={styles.jobSummaryLabel}>Window</Text>
-                      <Text style={styles.jobSummaryValue}>{formatBookingWindowSummary(job.scheduledStartIso)}</Text>
+                      <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.schedule.summary.window")}</Text>
+                      <Text style={styles.jobSummaryValue}>{formatBookingWindowSummaryI18n(i18n, job.scheduledStartIso)}</Text>
                     </View>
                     <View style={styles.jobSummaryItem}>
-                      <Text style={styles.jobSummaryLabel}>Crew</Text>
+                      <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew")}</Text>
                       <Text style={styles.jobSummaryValue}>
                         {job.assignedCrewMembers}/{job.requiredCrewMembers}
-                        {job.crewGap ? ` • gap ${job.crewGap}` : ""}
+                        {job.crewGap ? i18n.t("provider_mobile.schedule.crew.gap_suffix", { count: job.crewGap }) : ""}
                       </Text>
                     </View>
                     <View style={styles.jobSummaryItem}>
@@ -1269,35 +1473,39 @@ export function ScheduleScreen() {
                       <Text style={styles.jobSummaryValue}>{proofSummary.value}</Text>
                     </View>
                     <View style={styles.jobSummaryItem}>
-                      <Text style={styles.jobSummaryLabel}>Total</Text>
-                      <Text style={styles.jobSummaryValue}>{formatCurrency(job.totalCents)}</Text>
+                      <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.total")}</Text>
+                      <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, job.totalCents)}</Text>
                     </View>
                   </View>
-                  <Text style={styles.metaLine}>{formatServiceCategoryLabel(job.category)}</Text>
+                  <Text style={styles.metaLine}>{formatServiceCategoryLabel(i18n, job.category)}</Text>
                   {overview?.provider.routeLeaderMode === "accepted-crew-fallback" ? (
                     <Text style={styles.metaLine}>
-                      Route leader: {job.assignedRouteLeaderCrewMemberName ?? "Provider"}
-                      {job.requiresRouteLeaderAssignment ? " • pick one accepted crew member before delegating" : ""}
+                      {i18n.t("provider_mobile.schedule.route_leader.summary", {
+                        leader: job.assignedRouteLeaderCrewMemberName ?? i18n.t("provider_mobile.schedule.route_leader.provider")
+                      })}
+                      {job.requiresRouteLeaderAssignment ? i18n.t("provider_mobile.schedule.route_leader.pick_suffix") : ""}
                     </Text>
                   ) : null}
                   {job.onRouteConfirmedAt ? (
-                    <Text style={styles.metaLine}>Route is live. Customer chat is open.</Text>
+                    <Text style={styles.metaLine}>{i18n.t("provider_mobile.schedule.message.route_chat_open")}</Text>
                   ) : null}
                   {job.lateEtaIso && !job.onRouteConfirmedAt ? (
                     <Text style={styles.metaLine}>
-                      Delay notice sent for{" "}
-                      {new Date(job.lateEtaIso).toLocaleTimeString(undefined, { timeStyle: "short" })}.
+                      {i18n.t("provider_mobile.schedule.message.delay_notice_sent", {
+                        time: i18n.formatDate(job.lateEtaIso, { timeStyle: "short" })
+                      })}
                     </Text>
                   ) : null}
                   {job.activeExceptionType ? (
                     <Text style={styles.metaLine}>
-                      {getBookingExceptionLabel(job.activeExceptionType)}
-                      {job.activeExceptionNotes ? ` • ${job.activeExceptionNotes}` : ""}
+                      {formatBookingExceptionLabel(i18n, job.activeExceptionType)}
+                      {job.activeExceptionNotes ? i18n.t("provider_mobile.schedule.note_suffix", { note: job.activeExceptionNotes }) : ""}
                     </Text>
                   ) : null}
                   {job.status === "disputed" ? (
                     <Text style={styles.metaLine}>
-                      Disputed{job.disputeReason ? ` • ${job.disputeReason}` : ""}
+                      {i18n.t("provider_mobile.schedule.status.disputed")}
+                      {job.disputeReason ? i18n.t("provider_mobile.schedule.note_suffix", { note: job.disputeReason }) : ""}
                     </Text>
                   ) : null}
                   <View style={styles.actionRow}>
@@ -1307,7 +1515,9 @@ export function ScheduleScreen() {
                         onPress={() => void confirmJob(job.bookingId)}
                         style={styles.completeButton}
                       >
-                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Confirm booking"}</Text>
+                        <Text style={styles.completeButtonLabel}>
+                          {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.confirm_booking")}
+                        </Text>
                       </Pressable>
                     ) : null}
                     {primaryAction === "start-route" ? (
@@ -1316,7 +1526,9 @@ export function ScheduleScreen() {
                         onPress={() => void startRoute(job.bookingId)}
                         style={styles.completeButton}
                       >
-                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                        <Text style={styles.completeButtonLabel}>
+                          {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.start_route")}
+                        </Text>
                       </Pressable>
                     ) : null}
                     {primaryAction === "start-work" ? (
@@ -1325,7 +1537,9 @@ export function ScheduleScreen() {
                         onPress={() => void startWork(job.bookingId)}
                         style={styles.completeButton}
                       >
-                        <Text style={styles.completeButtonLabel}>{isWorking ? "Working..." : "Start work"}</Text>
+                        <Text style={styles.completeButtonLabel}>
+                          {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.schedule.action.start_work")}
+                        </Text>
                       </Pressable>
                     ) : null}
                     {primaryAction === "complete" ? (
@@ -1337,7 +1551,11 @@ export function ScheduleScreen() {
                         style={styles.completeButton}
                       >
                         <Text style={styles.completeButtonLabel}>
-                          {isWorking ? "Working..." : job.afterEvidenceCount > 0 ? "Complete job" : "Add proof"}
+                          {isWorking
+                            ? i18n.t("provider_mobile.dashboard.loading.working")
+                            : job.afterEvidenceCount > 0
+                              ? i18n.t("provider_mobile.dashboard.action.complete_job")
+                              : i18n.t("provider_mobile.schedule.action.add_proof")}
                         </Text>
                       </Pressable>
                     ) : null}
@@ -1352,7 +1570,9 @@ export function ScheduleScreen() {
                       }
                       style={styles.chatButton}
                     >
-                      <Text style={styles.chatButtonLabel}>{isManageOpen ? "Close" : "Options"}</Text>
+                      <Text style={styles.chatButtonLabel}>
+                        {isManageOpen ? i18n.t("common.actions.close") : i18n.t("provider_mobile.schedule.action.options")}
+                      </Text>
                     </Pressable>
                   ) : null}
                   {isManageOpen && canShowJobTools ? (
@@ -1364,7 +1584,9 @@ export function ScheduleScreen() {
                             onPress={() => void declineJob(job.bookingId)}
                             style={styles.chatButton}
                           >
-                            <Text style={styles.chatButtonLabel}>{isWorking ? "Working..." : "Decline request"}</Text>
+                            <Text style={styles.chatButtonLabel}>
+                              {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_live.action.decline_request")}
+                            </Text>
                           </Pressable>
                         ) : null}
                         {canShowStaffingTools ? (
@@ -1378,7 +1600,9 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedStaffingSections[job.bookingId] ? "Close" : "Staffing"}
+                              {expandedStaffingSections[job.bookingId]
+                                ? i18n.t("common.actions.close")
+                                : i18n.t("provider_mobile.schedule.action.staffing")}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -1393,7 +1617,9 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedProofSections[job.bookingId] ? "Close" : "Proof"}
+                              {expandedProofSections[job.bookingId]
+                                ? i18n.t("common.actions.close")
+                                : i18n.t("provider_mobile.schedule.proof.title")}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -1408,7 +1634,7 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedIssueSections[job.bookingId] ? "Close" : issueLabel}
+                              {expandedIssueSections[job.bookingId] ? i18n.t("common.actions.close") : issueLabel}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -1423,7 +1649,9 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {expandedCustomerSections[job.bookingId] ? "Close" : "Live updates"}
+                              {expandedCustomerSections[job.bookingId]
+                                ? i18n.t("common.actions.close")
+                                : i18n.t("provider_mobile.schedule.live_updates")}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -1434,17 +1662,17 @@ export function ScheduleScreen() {
                   <View style={styles.matchList}>
                     {job.requiresRouteLeaderAssignment ? (
                       <View style={styles.windowCard}>
-                        <Text style={styles.clientLabel}>Route leader still needs assignment</Text>
+                        <Text style={styles.clientLabel}>{i18n.t("provider_mobile.schedule.route_leader.needs_assignment")}</Text>
                         <Text style={styles.metaLine}>
-                          More than one accepted crew member is on this job. Pick who should start and share the route, or keep the route under provider control.
+                          {i18n.t("provider_mobile.schedule.route_leader.needs_assignment_description")}
                         </Text>
                       </View>
                     ) : null}
                     {job.matches.length === 0 ? (
                       <View style={styles.windowCard}>
-                        <Text style={styles.clientLabel}>No matched crew yet</Text>
+                        <Text style={styles.clientLabel}>{i18n.t("provider_mobile.schedule.crew.no_matches_title")}</Text>
                         <Text style={styles.metaLine}>
-                          As more crew availability comes in, matched candidates will appear here.
+                          {i18n.t("provider_mobile.schedule.crew.no_matches_description")}
                         </Text>
                       </View>
                     ) : (
@@ -1452,14 +1680,19 @@ export function ScheduleScreen() {
                         <View key={match.id} style={styles.windowCard}>
                           <Text style={styles.clientLabel}>{match.crewMemberName}</Text>
                           <Text style={styles.metaLine}>
-                            {match.distanceMiles} miles away • {match.preferredSchedule} •{" "}
-                            {match.availableWeekdays.join(", ")}
+                            {i18n.t("provider_mobile.schedule.crew.match_summary", {
+                              miles: match.distanceMiles,
+                              schedule: i18n.t(`crew_signup.schedule.${match.preferredSchedule.replace("-", "_")}` as TranslationKey),
+                              days: match.availableWeekdays
+                                .map((weekday) => i18n.t(`provider_mobile.support.weekday.${weekday.toLowerCase()}` as TranslationKey))
+                                .join(", ")
+                            })}
                           </Text>
                           {match.recommendationLabel ? (
                             <Text style={styles.metaLine}>
-                              {formatCrewRecommendationLabel(match.recommendationLabel)}
+                              {formatCrewRecommendationLabel(i18n, match.recommendationLabel)}
                               {typeof match.recommendationScore === "number"
-                                ? ` • score ${match.recommendationScore}`
+                                ? i18n.t("provider_mobile.schedule.crew.score_suffix", { score: match.recommendationScore })
                                 : ""}
                             </Text>
                           ) : null}
@@ -1467,13 +1700,19 @@ export function ScheduleScreen() {
                             <Text style={styles.metaLine}>{match.recommendationReasons.join(" • ")}</Text>
                           ) : null}
                           {match.status === "cancelled-by-crew" && match.cancellationReason ? (
-                            <Text style={styles.warningLine}>Crew note: {match.cancellationReason}</Text>
+                            <Text style={styles.warningLine}>
+                              {i18n.t("provider_mobile.schedule.crew.note", { note: match.cancellationReason })}
+                            </Text>
                           ) : null}
                           {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
-                            <Text style={styles.metaLine}>Assigned route leader for this job.</Text>
+                            <Text style={styles.metaLine}>{i18n.t("provider_mobile.schedule.route_leader.assigned_for_job")}</Text>
                           ) : null}
-                          <Text style={styles.metaLine}>{match.status.replaceAll("-", " ")}</Text>
-                          <Text style={styles.metaLine}>{formatCurrency(match.hourlyRateCents)}/hr</Text>
+                          <Text style={styles.metaLine}>{i18n.t(crewMatchStatusLabelKeys[match.status])}</Text>
+                          <Text style={styles.metaLine}>
+                            {i18n.t("provider_mobile.clients.hourly_rate", {
+                              rate: formatCurrency(i18n, match.hourlyRateCents)
+                            })}
+                          </Text>
                           {match.status === "pending-provider-review" ? (
                             <View style={styles.actionRow}>
                               <Pressable
@@ -1482,15 +1721,15 @@ export function ScheduleScreen() {
                                 style={styles.completeButton}
                               >
                                 <Text style={styles.completeButtonLabel}>
-                                  {isWorking ? "Working..." : "Accept"}
+                                  {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("common.actions.accept")}
                                 </Text>
                               </Pressable>
                               <Pressable
                                 disabled={isWorking}
                                 onPress={() => void handleReviewMatch(match.id, "deny")}
                                 style={styles.chatButton}
-                              >
-                                <Text style={styles.chatButtonLabel}>Deny</Text>
+                            >
+                                <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.action.deny")}</Text>
                               </Pressable>
                             </View>
                           ) : null}
@@ -1514,8 +1753,8 @@ export function ScheduleScreen() {
                                 }
                               >
                                 {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
-                                  ? "Assigned route leader"
-                                  : "Lead this route"}
+                                  ? i18n.t("provider_mobile.schedule.route_leader.assigned")
+                                  : i18n.t("provider_mobile.schedule.route_leader.lead_this_route")}
                               </Text>
                             </Pressable>
                           ) : null}
@@ -1535,14 +1774,14 @@ export function ScheduleScreen() {
                       onPress={() => void assignRouteLeader(job.bookingId)}
                       style={styles.chatButton}
                     >
-                      <Text style={styles.chatButtonLabel}>Clear explicit route leader</Text>
+                      <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.route_leader.clear")}</Text>
                     </Pressable>
                   ) : null}
                   {isManageOpen && canShowProofTools && expandedProofSections[job.bookingId] ? (
                     <View style={styles.ticketStack}>
                       {shouldShowArrivalProof ? (
                         <>
-                          <Text style={styles.proofTitle}>Arrival proof</Text>
+                          <Text style={styles.proofTitle}>{i18n.t("provider_mobile.schedule.proof.arrival_title")}</Text>
                           <TextInput
                             multiline
                             onChangeText={(value) =>
@@ -1551,7 +1790,7 @@ export function ScheduleScreen() {
                                 [`${job.bookingId}:before`]: value
                               }))
                             }
-                            placeholder="Arrival note"
+                            placeholder={i18n.t("provider_mobile.schedule.proof.arrival_note")}
                             placeholderTextColor={BrandTokens.colors.muted}
                             style={styles.input}
                             value={evidenceNoteDrafts[`${job.bookingId}:before`] ?? ""}
@@ -1563,7 +1802,9 @@ export function ScheduleScreen() {
                               style={styles.chatButton}
                             >
                               <Text style={styles.chatButtonLabel}>
-                                {job.beforeEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                                {job.beforeEvidenceCount > 0
+                                  ? i18n.t("provider_mobile.schedule.proof.add_photo")
+                                  : i18n.t("provider_mobile.schedule.proof.take_photo")}
                               </Text>
                             </Pressable>
                             <Pressable
@@ -1571,21 +1812,21 @@ export function ScheduleScreen() {
                               onPress={() => void saveEvidenceNote(job.bookingId, "before")}
                               style={styles.chatButton}
                             >
-                              <Text style={styles.chatButtonLabel}>Save note</Text>
+                              <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.proof.save_note")}</Text>
                             </Pressable>
                             <Pressable
                               disabled={isWorking}
                               onPress={() => void saveEvidenceChecklist(job.bookingId, "before")}
                               style={styles.chatButton}
                             >
-                              <Text style={styles.chatButtonLabel}>Checklist</Text>
+                              <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.proof.checklist")}</Text>
                             </Pressable>
                           </View>
                         </>
                       ) : null}
                       {shouldShowCompletionProof ? (
                         <>
-                          <Text style={styles.proofTitle}>Completion proof</Text>
+                          <Text style={styles.proofTitle}>{i18n.t("provider_mobile.schedule.proof.completion_title")}</Text>
                           <TextInput
                             multiline
                             onChangeText={(value) =>
@@ -1594,7 +1835,7 @@ export function ScheduleScreen() {
                                 [`${job.bookingId}:after`]: value
                               }))
                             }
-                            placeholder="Completion note"
+                            placeholder={i18n.t("provider_mobile.schedule.proof.completion_note")}
                             placeholderTextColor={BrandTokens.colors.muted}
                             style={styles.input}
                             value={evidenceNoteDrafts[`${job.bookingId}:after`] ?? ""}
@@ -1606,7 +1847,9 @@ export function ScheduleScreen() {
                               style={styles.chatButton}
                             >
                               <Text style={styles.chatButtonLabel}>
-                                {job.afterEvidenceCount > 0 ? "Add photo" : "Take photo"}
+                                {job.afterEvidenceCount > 0
+                                  ? i18n.t("provider_mobile.schedule.proof.add_photo")
+                                  : i18n.t("provider_mobile.schedule.proof.take_photo")}
                               </Text>
                             </Pressable>
                             <Pressable
@@ -1614,14 +1857,14 @@ export function ScheduleScreen() {
                               onPress={() => void saveEvidenceNote(job.bookingId, "after")}
                               style={styles.chatButton}
                             >
-                              <Text style={styles.chatButtonLabel}>Save note</Text>
+                              <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.proof.save_note")}</Text>
                             </Pressable>
                             <Pressable
                               disabled={isWorking}
                               onPress={() => void saveEvidenceChecklist(job.bookingId, "after")}
                               style={styles.chatButton}
                             >
-                              <Text style={styles.chatButtonLabel}>Checklist</Text>
+                              <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.proof.checklist")}</Text>
                             </Pressable>
                           </View>
                         </>
@@ -1639,12 +1882,12 @@ export function ScheduleScreen() {
                               void markLate(
                                 job.bookingId,
                                 buildLateEta(job.scheduledStartIso, 15),
-                                "Running about 15 minutes behind the route."
+                                i18n.t("provider_mobile.schedule.issue.reason_15")
                               )
                             }
                             style={styles.chatButton}
                           >
-                            <Text style={styles.chatButtonLabel}>+15 min</Text>
+                            <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.issue.plus_15")}</Text>
                           </Pressable>
                         ) : null}
                         {canShowDelayActions ? (
@@ -1654,12 +1897,12 @@ export function ScheduleScreen() {
                               void markLate(
                                 job.bookingId,
                                 buildLateEta(job.scheduledStartIso, 30),
-                                "Running about 30 minutes behind the route."
+                                i18n.t("provider_mobile.schedule.issue.reason_30")
                               )
                             }
                             style={styles.chatButton}
                           >
-                            <Text style={styles.chatButtonLabel}>+30 min</Text>
+                            <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.issue.plus_30")}</Text>
                           </Pressable>
                         ) : null}
                         {canShowArrivalIssueActions ? (
@@ -1669,12 +1912,12 @@ export function ScheduleScreen() {
                               void reportIssue(
                                 job.bookingId,
                                 "customer-no-show",
-                                "The customer did not appear for the scheduled service window."
+                                i18n.t("provider_mobile.schedule.issue.reason_no_show")
                               )
                             }
                             style={styles.chatButton}
                           >
-                            <Text style={styles.chatButtonLabel}>Customer no-show</Text>
+                            <Text style={styles.chatButtonLabel}>{i18n.t("booking.exception.customer_no_show")}</Text>
                           </Pressable>
                         ) : null}
                         {canShowOnsiteIssueActions ? (
@@ -1684,12 +1927,12 @@ export function ScheduleScreen() {
                               void reportIssue(
                                 job.bookingId,
                                 "customer-not-ready",
-                                "The property owner is not ready for the scheduled service."
+                                i18n.t("provider_mobile.schedule.issue.reason_not_ready")
                               )
                             }
                             style={styles.chatButton}
                           >
-                            <Text style={styles.chatButtonLabel}>Customer not ready</Text>
+                            <Text style={styles.chatButtonLabel}>{i18n.t("booking.exception.customer_not_ready")}</Text>
                           </Pressable>
                         ) : null}
                         {canShowOnsiteIssueActions ? (
@@ -1699,12 +1942,12 @@ export function ScheduleScreen() {
                               void reportIssue(
                                 job.bookingId,
                                 "unable-to-access-property",
-                                "The crew could not safely access the property as scheduled."
+                                i18n.t("provider_mobile.schedule.issue.reason_no_access")
                               )
                             }
                             style={styles.chatButton}
                           >
-                            <Text style={styles.chatButtonLabel}>No access</Text>
+                            <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.issue.no_access")}</Text>
                           </Pressable>
                         ) : null}
                         {job.status === "in-progress" ? (
@@ -1714,12 +1957,12 @@ export function ScheduleScreen() {
                               void reportIssue(
                                 job.bookingId,
                                 "service-could-not-be-completed",
-                                "The service could not be completed during this visit."
+                                i18n.t("provider_mobile.schedule.issue.reason_could_not_complete")
                               )
                             }
                             style={styles.chatButton}
                           >
-                            <Text style={styles.chatButtonLabel}>Could not complete</Text>
+                            <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.issue.could_not_complete")}</Text>
                           </Pressable>
                         ) : null}
                       </View>
@@ -1727,21 +1970,21 @@ export function ScheduleScreen() {
                   ) : null}
                   {isManageOpen && canShowCustomerTools && expandedCustomerSections[job.bookingId] ? (
                     <View style={styles.chatStack}>
-                      <Text style={styles.proofTitle}>Live updates</Text>
+                      <Text style={styles.proofTitle}>{i18n.t("provider_mobile.schedule.live_updates")}</Text>
                       <View style={styles.actionRow}>
                         <Pressable
                           disabled={isWorking}
                           onPress={() => void openCustomerChat(job.bookingId)}
                           style={styles.chatButton}
                         >
-                          <Text style={styles.chatButtonLabel}>Message</Text>
+                          <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.action.message")}</Text>
                         </Pressable>
                         <Pressable
                           disabled={isWorking}
                           onPress={() => void openArrivalTracking(job.bookingId)}
                           style={styles.chatButton}
                         >
-                          <Text style={styles.chatButtonLabel}>Live map</Text>
+                          <Text style={styles.chatButtonLabel}>{i18n.t("provider_mobile.schedule.action.live_map")}</Text>
                         </Pressable>
                       </View>
                       {job.onRouteConfirmedAt &&
@@ -1749,33 +1992,41 @@ export function ScheduleScreen() {
                       tracking ? (
                         <View style={styles.trackingCard}>
                           <Text style={styles.clientLabel}>
-                            {tracking.etaMinutes ? `${tracking.etaMinutes} min away` : "At the property"}
+                            {tracking.etaMinutes
+                              ? i18n.t("provider_mobile.schedule.tracking.eta", { count: tracking.etaMinutes })
+                              : i18n.t("provider_mobile.schedule.tracking.at_property")}
                           </Text>
                           <Text style={styles.metaLine}>{tracking.message}</Text>
                           <Text style={styles.metaLine}>
-                            {tracking.progressPercent}% complete •{" "}
+                            {i18n.t("provider_mobile.schedule.tracking.progress", {
+                              percent: tracking.progressPercent
+                            })}
                             {tracking.remainingDistanceMiles !== undefined
-                              ? `${tracking.remainingDistanceMiles.toFixed(1)} miles left`
-                              : "Waiting for route"}
+                              ? i18n.t("provider_mobile.schedule.tracking.distance_left", {
+                                  miles: tracking.remainingDistanceMiles
+                                })
+                              : i18n.t("provider_mobile.schedule.tracking.waiting_for_route")}
                           </Text>
                           <Text style={styles.metaLine}>
                             {tracking.source === "provider-device"
                               ? tracking.isLiveLocationStale
-                                ? "Live location paused a few minutes ago."
-                                : `Live provider location${
-                                    tracking.liveUpdatedAt
-                                      ? ` • updated ${new Date(tracking.liveUpdatedAt).toLocaleTimeString(undefined, {
-                                          timeStyle: "short"
-                                        })}`
-                                      : ""
-                                  }`
-                              : "Estimated route from provider base"}
+                                ? i18n.t("provider_mobile.schedule.tracking.location_paused")
+                                : tracking.liveUpdatedAt
+                                  ? i18n.t("provider_mobile.schedule.tracking.live_updated", {
+                                      time: i18n.formatDate(tracking.liveUpdatedAt, { timeStyle: "short" })
+                                    })
+                                  : i18n.t("provider_mobile.schedule.tracking.live_location")
+                              : i18n.t("provider_mobile.schedule.tracking.estimated")}
                           </Text>
                           {tracking.activeRouteStop ? (
                             <Text style={styles.metaLine}>
-                              Interim stop: {tracking.activeRouteStop.label}
+                              {i18n.t("provider_mobile.schedule.tracking.interim_stop", {
+                                stop: tracking.activeRouteStop.label
+                              })}
                               {tracking.etaToCurrentLegMinutes
-                                ? ` • ${tracking.etaToCurrentLegMinutes} min to stop`
+                                ? i18n.t("provider_mobile.schedule.tracking.eta_to_stop_suffix", {
+                                    count: tracking.etaToCurrentLegMinutes
+                                  })
                                 : ""}
                             </Text>
                           ) : null}
@@ -1786,7 +2037,7 @@ export function ScheduleScreen() {
                           {(chatThread?.messages ?? []).map((message) => (
                             <View key={message.id} style={styles.chatBubble}>
                               <Text style={styles.clientLabel}>
-                                {message.senderRole === "provider" ? "You" : job.customerName}
+                                {message.senderRole === "provider" ? i18n.t("provider_mobile.schedule.chat.you") : job.customerName}
                               </Text>
                               <Text style={styles.metaLine}>{message.body}</Text>
                             </View>
@@ -1794,7 +2045,7 @@ export function ScheduleScreen() {
                           <TextInput
                             multiline
                             onChangeText={setChatDraft}
-                            placeholder="Message the property owner."
+                            placeholder={i18n.t("provider_mobile.schedule.chat.placeholder")}
                             placeholderTextColor={BrandTokens.colors.muted}
                             style={styles.input}
                             value={chatDraft}
@@ -1804,7 +2055,9 @@ export function ScheduleScreen() {
                             onPress={() => void sendCustomerChat(job.bookingId)}
                             style={styles.submitButton}
                           >
-                            <Text style={styles.submitButtonLabel}>{isWorking ? "Sending..." : "Send message"}</Text>
+                            <Text style={styles.submitButtonLabel}>
+                              {isWorking ? i18n.t("mobile.support.sending") : i18n.t("provider_mobile.schedule.chat.send_message")}
+                            </Text>
                           </Pressable>
                         </View>
                       ) : null}

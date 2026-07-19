@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { MarketplaceRole } from "@yardmatch/contracts";
+import { addLocalePrefix, stripLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { saveStoredSession } from "../lib/api";
 import { createWebApiClient } from "../lib/api";
@@ -12,29 +14,24 @@ import { AuthIdentityOptions } from "./SignupIdentityOptions";
 const roleCopy: Record<
   MarketplaceRole,
   {
-    title: string;
-    helper: string;
+    helperKey: TranslationKey;
     redirectPath: string;
   }
 > = {
   customer: {
-    title: "Sign in",
-    helper: "Jump back into bookings, recurring care, route tracking, and support updates.",
+    helperKey: "login_card.customer.helper",
     redirectPath: "/customer/dashboard"
   },
   provider: {
-    title: "Sign in",
-    helper: "Open the management board for routes, staffing, payouts, and calendar sync.",
+    helperKey: "login_card.provider.helper",
     redirectPath: "/provider/management"
   },
   ops: {
-    title: "Sign in",
-    helper: "Open the internal operations workspace for support, launch leads, reviews, and observability.",
+    helperKey: "login_card.ops.helper",
     redirectPath: "/ops"
   },
   "crew-member": {
-    title: "Sign in",
-    helper: "See upcoming assignments, directions, and your work schedule in one place.",
+    helperKey: "login_card.crew.helper",
     redirectPath: "/crew"
   }
 };
@@ -44,10 +41,14 @@ export function RoleLoginCard({
 }: {
   role: MarketplaceRole;
 }) {
+  const i18n = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectPath = getRoleRedirectPath(role, searchParams.get("returnTo"), roleCopy[role].redirectPath);
-  const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: redirectPath });
+  const localizedRedirectPath = stripLocalePrefix(redirectPath).locale
+    ? redirectPath
+    : addLocalePrefix(redirectPath, i18n.locale);
+  const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: localizedRedirectPath });
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
@@ -66,14 +67,19 @@ export function RoleLoginCard({
     setErrorMessage(undefined);
 
     try {
-      const api = createWebApiClient();
+      const api = createWebApiClient(i18n.locale);
       const envelope = await api.login({
         email: email.trim(),
         password
       });
 
       if (envelope.user.role !== role) {
-        throw new Error(`This account is for ${envelope.user.role}, not ${role}.`);
+        throw new Error(
+          i18n.t("login_card.error.role_mismatch", {
+            actualRole: envelope.user.role,
+            expectedRole: role
+          })
+        );
       }
 
       saveStoredSession({
@@ -86,10 +92,10 @@ export function RoleLoginCard({
         expiresAtIso: envelope.session.expiresAtIso
       });
 
-      router.push(redirectPath);
+      router.push(localizedRedirectPath);
       router.refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to log in right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("login_card.error.login_failed"));
     } finally {
       setIsSubmitting(false);
     }
@@ -101,7 +107,7 @@ export function RoleLoginCard({
     setRecoveryMessage(undefined);
 
     try {
-      const api = createWebApiClient();
+      const api = createWebApiClient(i18n.locale);
       const result = await api.requestPasswordReset({
         email: email.trim()
       });
@@ -109,7 +115,7 @@ export function RoleLoginCard({
       setResetCodePreview(result.resetCodePreview);
       setRecoveryMessage(result.message);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start password reset right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("login_card.error.reset_start_failed"));
     } finally {
       setIsRequestingReset(false);
     }
@@ -122,7 +128,7 @@ export function RoleLoginCard({
     setRecoveryMessage(undefined);
 
     try {
-      const api = createWebApiClient();
+      const api = createWebApiClient(i18n.locale);
       const envelope = await api.confirmPasswordReset({
         email: email.trim(),
         resetCode: recoveryCode.trim(),
@@ -139,10 +145,10 @@ export function RoleLoginCard({
         expiresAtIso: envelope.session.expiresAtIso
       });
 
-      router.push(redirectPath);
+      router.push(localizedRedirectPath);
       router.refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to reset the password right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("login_card.error.reset_failed"));
     } finally {
       setIsResettingPassword(false);
     }
@@ -152,23 +158,23 @@ export function RoleLoginCard({
     <section className="card auth-form-card">
       <form className="auth-form-stack" onSubmit={handleSubmit}>
         <div className="auth-form-card__header">
-          <h3>{roleCopy[role].title}</h3>
-          <p>{roleCopy[role].helper}</p>
+          <h3>{i18n.t("login_card.title")}</h3>
+          <p>{i18n.t(roleCopy[role].helperKey)}</p>
         </div>
         <div className="form-grid">
           <label className="form-field">
-            <span>Email</span>
+            <span>{i18n.t("auth_signup.field.email")}</span>
             <input
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
+              placeholder={i18n.t("auth_signup.placeholder.email")}
               value={email}
             />
           </label>
           <label className="form-field">
-            <span>Password</span>
+            <span>{i18n.t("auth_signup.field.password")}</span>
             <input
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Enter your password"
+              placeholder={i18n.t("login_card.password_placeholder")}
               type="password"
               value={password}
             />
@@ -177,14 +183,14 @@ export function RoleLoginCard({
 
         {errorMessage ? (
           <div className="list-panel" role="alert">
-            <strong>Login failed</strong>
+            <strong>{i18n.t("login_card.error_title")}</strong>
             <p>{errorMessage}</p>
           </div>
         ) : null}
 
         <div className="cta-row">
           <button className="button" disabled={isSubmitting} type="submit">
-            {isSubmitting ? "Logging in..." : "Log in"}
+            {isSubmitting ? i18n.t("login_card.logging_in") : i18n.t("login_card.submit")}
           </button>
           <button
             className="button-secondary"
@@ -192,10 +198,10 @@ export function RoleLoginCard({
             onClick={() => void handleRequestReset()}
             type="button"
           >
-            {isRequestingReset ? "Sending code..." : "Forgot password?"}
+            {isRequestingReset ? i18n.t("login_card.sending_code") : i18n.t("login_card.forgot_password")}
           </button>
-          <a className="button-secondary" href="/login">
-            Back
+          <a className="button-secondary" href={addLocalePrefix("/login", i18n.locale)}>
+            {i18n.t("common.actions.back")}
           </a>
         </div>
 
@@ -205,25 +211,25 @@ export function RoleLoginCard({
       {showRecovery ? (
         <form className="auth-form-stack" onSubmit={handleConfirmReset}>
           <div className="list-panel">
-            <strong>Reset your password</strong>
-            <p>Enter the latest reset code for {email.trim() || "your account"} and choose a new password.</p>
+            <strong>{i18n.t("login_card.reset.title")}</strong>
+            <p>{i18n.t("login_card.reset.body", { email: email.trim() || i18n.t("login_card.reset.your_account") })}</p>
           </div>
 
           {recoveryMessage ? (
             <div className="list-panel">
-              <strong>Reset started</strong>
+              <strong>{i18n.t("login_card.reset.started")}</strong>
               <p>{recoveryMessage}</p>
-              {resetCodePreview ? <p>Local reset code: {resetCodePreview}</p> : null}
+              {resetCodePreview ? <p>{i18n.t("login_card.reset.local_code", { code: resetCodePreview })}</p> : null}
             </div>
           ) : null}
 
           <div className="form-grid">
             <label className="form-field">
-              <span>Reset code</span>
+              <span>{i18n.t("login_card.reset.code")}</span>
               <input onChange={(event) => setRecoveryCode(event.target.value)} value={recoveryCode} />
             </label>
             <label className="form-field">
-              <span>New password</span>
+              <span>{i18n.t("login_card.reset.new_password")}</span>
               <input
                 onChange={(event) => setNewPassword(event.target.value)}
                 type="password"
@@ -234,7 +240,7 @@ export function RoleLoginCard({
 
           <div className="cta-row">
             <button className="button" disabled={isResettingPassword} type="submit">
-              {isResettingPassword ? "Updating..." : "Reset password"}
+              {isResettingPassword ? i18n.t("login_card.reset.updating") : i18n.t("login_card.reset.submit")}
             </button>
             <button
               className="button-secondary"
@@ -247,7 +253,7 @@ export function RoleLoginCard({
               }}
               type="button"
             >
-              Close
+              {i18n.t("common.actions.close")}
             </button>
           </div>
         </form>

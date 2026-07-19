@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { BookingArrivalTracking } from "@yardmatch/contracts";
+import { useI18n } from "@yardmatch/i18n/react";
 import {
   buildTrackingDetail,
   buildTrackingDirectionsUrl,
@@ -31,6 +32,8 @@ export function ArrivalTrackingModal({
   onClose: () => void;
   onRefresh?: () => void;
 }) {
+  const i18n = useI18n();
+
   useEffect(() => {
     if (!visible || !onRefresh) {
       return;
@@ -45,23 +48,27 @@ export function ArrivalTrackingModal({
     return null;
   }
 
-  const summary = buildTrackingSummary(tracking);
-  const detail = buildTrackingDetail(tracking);
+  const summary = buildTrackingSummary(i18n, tracking);
+  const detail = buildTrackingDetail(i18n, tracking);
 
   return (
     <Modal animationType="slide" presentationStyle="pageSheet" transparent={false} visible={visible}>
       <View style={styles.shell}>
         <View style={styles.header}>
           <View style={styles.headerCopy}>
-            <Text style={styles.eyebrow}>Arrival tracking</Text>
+            <Text style={styles.eyebrow}>{i18n.t("mobile.tracking.eyebrow")}</Text>
             <Text style={styles.title}>{summary}</Text>
             <Text style={styles.description}>
-              {providerName ?? "Landscaping business"}{providerName ? " crew" : ""} heading to{" "}
-              {tracking.destination.line1}
+              {providerName
+                ? i18n.t("mobile.tracking.heading_provider", {
+                    provider: providerName,
+                    address: tracking.destination.line1
+                  })
+                : i18n.t("mobile.tracking.heading_generic", { address: tracking.destination.line1 })}
             </Text>
           </View>
           <Pressable onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonLabel}>Done</Text>
+            <Text style={styles.closeButtonLabel}>{i18n.t("mobile.tracking.done")}</Text>
           </Pressable>
         </View>
 
@@ -71,43 +78,45 @@ export function ArrivalTrackingModal({
           <View style={styles.statRow}>
             <View style={styles.statCard}>
               <Text style={styles.statValue}>
-                {tracking.etaMinutes && tracking.etaMinutes > 0 ? `${tracking.etaMinutes} min` : "Now"}
+                {tracking.etaMinutes && tracking.etaMinutes > 0
+                  ? i18n.t("mobile.tracking.stat.minutes", { count: tracking.etaMinutes })
+                  : i18n.t("mobile.tracking.stat.now")}
               </Text>
-              <Text style={styles.statLabel}>ETA</Text>
+              <Text style={styles.statLabel}>{i18n.t("mobile.tracking.eta")}</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statValue}>
                 {typeof tracking.remainingDistanceMiles === "number"
-                  ? `${tracking.remainingDistanceMiles.toFixed(1)} mi`
+                  ? i18n.t("common.format.miles", { count: tracking.remainingDistanceMiles })
                   : "--"}
               </Text>
-              <Text style={styles.statLabel}>Remaining</Text>
+              <Text style={styles.statLabel}>{i18n.t("mobile.tracking.remaining")}</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statValue}>{tracking.progressPercent}%</Text>
-              <Text style={styles.statLabel}>Route</Text>
+              <Text style={styles.statLabel}>{i18n.t("mobile.tracking.route")}</Text>
             </View>
           </View>
 
           <View style={styles.panel}>
-            <Text style={styles.panelTitle}>{tracking.crewMemberName ?? "Assigned crew member"}</Text>
+            <Text style={styles.panelTitle}>{tracking.crewMemberName ?? i18n.t("mobile.tracking.assigned_crew")}</Text>
             <Text style={styles.panelText}>{tracking.message}</Text>
             {detail ? <Text style={styles.panelMeta}>{detail}</Text> : null}
             <Text style={styles.panelMeta}>
               {tracking.source === "provider-device"
                 ? tracking.isLiveLocationStale
-                  ? "Live provider location has not refreshed in a few minutes."
-                  : "This map is using the provider's live phone location."
+                  ? i18n.t("mobile.tracking.source.provider_stale")
+                  : i18n.t("mobile.tracking.source.provider_live")
                 : tracking.source === "crew-device"
                   ? tracking.isLiveLocationStale
-                    ? "Live crew location has not refreshed in a few minutes."
-                    : "This map is using a crew member's live phone location."
-                  : "This map is using YardMatch's estimated route until live location is available."}
+                    ? i18n.t("mobile.tracking.source.crew_stale")
+                    : i18n.t("mobile.tracking.source.crew_live")
+                  : i18n.t("mobile.tracking.source.estimated")}
             </Text>
           </View>
 
           <View style={styles.panel}>
-            <Text style={styles.panelTitle}>Service address</Text>
+            <Text style={styles.panelTitle}>{i18n.t("mobile.tracking.service_address")}</Text>
             <Text style={styles.panelText}>{tracking.destination.line1}</Text>
             <Text style={styles.panelMeta}>
               {tracking.destination.city}, {tracking.destination.state} {tracking.destination.postalCode}
@@ -117,14 +126,14 @@ export function ArrivalTrackingModal({
           <View style={styles.actionRow}>
             {onRefresh ? (
               <Pressable onPress={onRefresh} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonLabel}>Refresh</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("mobile.tracking.refresh")}</Text>
               </Pressable>
             ) : null}
             <Pressable
               onPress={() => void Linking.openURL(buildTrackingDirectionsUrl(tracking))}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>Open in Maps</Text>
+              <Text style={styles.primaryButtonLabel}>{i18n.t("mobile.tracking.open_maps")}</Text>
             </Pressable>
           </View>
         </ScrollView>

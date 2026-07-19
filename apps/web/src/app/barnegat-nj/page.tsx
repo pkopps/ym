@@ -1,99 +1,124 @@
 import Link from "next/link";
 import type { Metadata } from "next";
+import { addLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
 import { LaunchLeadCaptureCard } from "../../components/LaunchLeadCaptureCard";
 import { LaunchMarketplaceProofSection } from "../../components/LaunchMarketplaceProofSection";
+import { getLocalizedPageMetadata, getRequestI18n } from "../../lib/i18n-server";
 import {
-  buildLaunchMetadata,
   launchAreaLabel,
   launchAreaShortLabel,
-  launchTownPageLinks
+  launchServiceContent
 } from "../../lib/launchLandingContent";
 
-export const metadata: Metadata = buildLaunchMetadata({
-  title: `${launchAreaLabel} Lawn Care and Landscaping`,
-  description:
-    `Book recommendation-first lawn care and landscaping in ${launchAreaLabel} with fast booking, limited backup options, and clearer support when jobs need follow-through.`,
-  path: "/barnegat-nj"
-});
+export function generateMetadata(): Promise<Metadata> {
+  return getLocalizedPageMetadata({
+    titleKey: "launch_town.metadata.title",
+    descriptionKey: "launch_town.metadata.description",
+    path: "/barnegat-nj",
+    values: {
+      area: launchAreaLabel
+    }
+  });
+}
 
-const trustPoints = [
-  "one recommended provider first instead of a scrolling directory",
-  "limited backup options if you want more trust before confirming",
-  "support, refund, and booking-expectation language tied to the actual marketplace flow"
-] as const;
+const trustPointKeys = [
+  "launch_town.trust.point.recommendation",
+  "launch_town.trust.point.backups",
+  "launch_town.trust.point.support"
+] satisfies TranslationKey[];
 
 const localFaqs = [
   {
-    question: `What services is YardMatch prioritizing first in ${launchAreaShortLabel}?`,
-    answer:
-      "The launch focus is the practical yard work homeowners buy most often and can understand quickly: routine mowing, yard cleanup, and closely related curb-appeal work."
+    questionKey: "launch_town.faq.services.question",
+    answerKey: "launch_town.faq.services.answer"
   },
   {
-    question: "What happens if no provider is available for my request?",
-    answer:
-      "The managed-marketplace model should make that clear instead of hiding it. If a launch request cannot be covered cleanly, the ops team can step in instead of letting a lead vanish."
+    questionKey: "launch_town.faq.unavailable.question",
+    answerKey: "launch_town.faq.unavailable.answer"
   },
   {
-    question: `Why start with ${launchAreaShortLabel} instead of a wider directory footprint?`,
-    answer:
-      "Dense local coverage builds better routes, faster follow-through, and better trust than spreading thin across too many towns at launch."
+    questionKey: "launch_town.faq.why_local.question",
+    answerKey: "launch_town.faq.why_local.answer"
   }
-] as const;
+] satisfies Array<{ questionKey: TranslationKey; answerKey: TranslationKey }>;
 
-export default function BarnegatTownPage() {
+const launchTownPageLinks = [
+  {
+    href: launchServiceContent["lawn-mowing"].townPath,
+    titleKey: "launch_town.service.lawn_mowing.title",
+    bodyKey: "launch_town.service.lawn_mowing.body"
+  },
+  {
+    href: launchServiceContent["yard-cleanup"].townPath,
+    titleKey: "launch_town.service.yard_cleanup.title",
+    bodyKey: "launch_town.service.yard_cleanup.body"
+  },
+  {
+    href: launchServiceContent["lawn-mowing"].path,
+    titleKey: "launch_town.service.general_lawn.title",
+    bodyKey: "launch_town.service.general_lawn.body"
+  },
+  {
+    href: launchServiceContent["yard-cleanup"].path,
+    titleKey: "launch_town.service.general_cleanup.title",
+    bodyKey: "launch_town.service.general_cleanup.body"
+  }
+] satisfies Array<{ href: string; titleKey: TranslationKey; bodyKey: TranslationKey }>;
+
+export default async function BarnegatTownPage() {
+  const i18n = await getRequestI18n();
+  const values = {
+    area: launchAreaLabel,
+    shortArea: launchAreaShortLabel
+  };
+  const href = (path: string) => addLocalePrefix(path, i18n.locale);
+
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">Local launch page</span>
-        <h1>{launchAreaLabel} lawn care and landscaping</h1>
-        <p>
-          YardMatch is launching with a recommendation-first booking flow for homeowners who want
-          reliable yard work without the usual directory browsing and callback chase.
-        </p>
+        <span className="eyebrow">{i18n.t("launch_town.hero.eyebrow")}</span>
+        <h1>{i18n.t("launch_town.hero.title", values)}</h1>
+        <p>{i18n.t("launch_town.hero.body")}</p>
         <div className="cta-row">
-          <Link className="button" href={`/customer?area=${encodeURIComponent(launchAreaLabel)}`}>
-            Find my provider
+          <Link className="button" href={href(`/customer?area=${encodeURIComponent(launchAreaLabel)}`)}>
+            {i18n.t("launch_town.hero.primary_cta")}
           </Link>
-          <Link className="button-secondary" href="/about">
-            Why YardMatch works this way
+          <Link className="button-secondary" href={href("/about")}>
+            {i18n.t("launch_town.hero.secondary_cta")}
           </Link>
         </div>
       </section>
 
       <section className="grid-two">
         <article className="card">
-          <h2>What makes the launch flow different</h2>
+          <h2>{i18n.t("launch_town.trust.title")}</h2>
           <ul className="timeline">
-            {trustPoints.map((item) => (
-              <li key={item}>
+            {trustPointKeys.map((key) => (
+              <li key={key}>
                 <strong>•</strong>
-                <span>{item}</span>
+                <span>{i18n.t(key)}</span>
               </li>
             ))}
           </ul>
         </article>
         <article className="card">
-          <h2>What YardMatch is optimizing for</h2>
-          <p>
-            The goal is not to become another huge directory. The goal is to help homeowners in
-            {` ${launchAreaShortLabel}`} book faster while preserving trust around who is arriving,
-            what was booked, and how support works if the job goes sideways.
-          </p>
+          <h2>{i18n.t("launch_town.optimizing.title")}</h2>
+          <p>{i18n.t("launch_town.optimizing.body", values)}</p>
         </article>
       </section>
 
       <section className="stack-lg">
         <div className="section-header">
-          <h2>Launch-priority services in {launchAreaShortLabel}</h2>
-          <p>Start with the highest-intent pages first, then expand the service footprint deliberately.</p>
+          <h2>{i18n.t("launch_town.services.title", values)}</h2>
+          <p>{i18n.t("launch_town.services.body")}</p>
         </div>
         <div className="grid-two">
           {launchTownPageLinks.map((item) => (
             <article className="card" key={item.href}>
-              <h3>{item.title}</h3>
-              <p>{item.body}</p>
-              <Link className="button-secondary" href={item.href}>
-                View page
+              <h3>{i18n.t(item.titleKey, values)}</h3>
+              <p>{i18n.t(item.bodyKey)}</p>
+              <Link className="button-secondary" href={href(item.href)}>
+                {i18n.t("launch_town.services.view_page")}
               </Link>
             </article>
           ))}
@@ -101,51 +126,40 @@ export default function BarnegatTownPage() {
       </section>
 
       <LaunchMarketplaceProofSection
-        description={`Use real verified-provider and rating signals from the live ${launchAreaShortLabel} launch overview to understand what backs the recommendation-first flow.`}
+        description={i18n.t("launch_town.proof.body", values)}
         preferredAreaLabel={launchAreaLabel}
-        title={`Current proof in ${launchAreaShortLabel}`}
+        title={i18n.t("launch_town.proof.title", values)}
       />
 
       <section className="grid-two">
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
-          description="Use this if you want YardMatch to confirm local coverage, timing, or the right launch service before you start the booking flow."
+          description={i18n.t("launch_town.lead.body")}
           requestSource="launch-town-page-lead-form"
-          title={`Need follow-up for ${launchAreaShortLabel}?`}
+          title={i18n.t("launch_town.lead.title", values)}
         />
         <article className="card">
-          <h2>Why this matters at launch</h2>
-          <p>
-            Early demand should not vanish into a generic inbox. The launch queue gives every
-            follow-up request an owner, a response deadline, and a documented end state instead of
-            leaving homeowners to wonder whether anyone saw it.
-          </p>
+          <h2>{i18n.t("launch_town.launch_matter.title")}</h2>
+          <p>{i18n.t("launch_town.launch_matter.body")}</p>
         </article>
       </section>
 
       <section className="grid-two">
         <article className="card">
-          <h2>How YardMatch is trying to earn trust locally</h2>
-          <p>
-            The goal is not to flood the launch with unreviewed supply. The public marketplace
-            overview is intended to highlight verified providers first, then let real ratings,
-            punctuality, and support follow-through build from there.
-          </p>
+          <h2>{i18n.t("launch_town.local_trust.title")}</h2>
+          <p>{i18n.t("launch_town.local_trust.body")}</p>
           <div className="cta-row" style={{ marginTop: "1rem" }}>
-            <Link className="button-secondary" href="/provider-verification">
-              See provider verification
+            <Link className="button-secondary" href={href("/provider-verification")}>
+              {i18n.t("launch_town.local_trust.cta")}
             </Link>
           </div>
         </article>
         <article className="card">
-          <h2>What happens if something goes wrong</h2>
-          <p>
-            YardMatch is trying to be a managed marketplace, so support, cancellation, refund, and
-            booking-expectation language should already be visible before you commit.
-          </p>
+          <h2>{i18n.t("launch_town.support.title")}</h2>
+          <p>{i18n.t("launch_town.support.body")}</p>
           <div className="cta-row" style={{ marginTop: "1rem" }}>
-            <Link className="button-secondary" href="/help">
-              Read trust and support pages
+            <Link className="button-secondary" href={href("/help")}>
+              {i18n.t("launch_town.support.cta")}
             </Link>
           </div>
         </article>
@@ -153,14 +167,14 @@ export default function BarnegatTownPage() {
 
       <section className="stack-lg">
         <div className="section-header">
-          <h2>Common launch questions</h2>
-          <p>Trust assets should answer the questions that block booking.</p>
+          <h2>{i18n.t("launch_town.faq.title")}</h2>
+          <p>{i18n.t("launch_town.faq.body")}</p>
         </div>
         <div className="grid-two">
           {localFaqs.map((item) => (
-            <article className="card" key={item.question}>
-              <h3>{item.question}</h3>
-              <p>{item.answer}</p>
+            <article className="card" key={item.questionKey}>
+              <h3>{i18n.t(item.questionKey, values)}</h3>
+              <p>{i18n.t(item.answerKey)}</p>
             </article>
           ))}
         </div>

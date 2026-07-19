@@ -41,6 +41,18 @@ test.describe("YardMatch web smoke", () => {
     await expect(page.getByRole("button", { name: "Find my match" }).first()).toBeVisible();
   });
 
+  test("spanish public marketplace route renders localized shell", async ({ page }) => {
+    await page.goto("/es");
+
+    await expect(page.locator("html")).toHaveAttribute("lang", "es");
+    await expect(page.getByRole("heading", { name: "Una recomendacion local para cuidar tu jardin." })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Necesito" })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /Donde/ })).toHaveValue(/Barnegat, NJ/i);
+    await expect(page.getByRole("button", { name: "Encontrar mi recomendacion" }).first()).toBeVisible();
+    await expect(page.getByLabel("Idioma")).toHaveValue("es");
+    await expect(page.locator("body")).not.toContainText("market.home.");
+  });
+
   test("public listings can request a seeded provider match with carried intent", async ({ page }) => {
     const params = new URLSearchParams({
       service: "lawn-mowing",

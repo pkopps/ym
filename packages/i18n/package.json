@@ -1,0 +1,25 @@
+{
+  "name": "@yardmatch/i18n",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "dependencies": {
+    "@formatjs/icu-messageformat-parser": "2.11.4",
+    "intl-messageformat": "^10.7.18"
+  },
+  "peerDependencies": {
+    "react": "*"
+  },
+  "scripts": {
+    "test": "node --test --import tsx test/**/*.test.ts",
+    "validate": "node scripts/validate-locales.mjs",
+    "export:tms": "node scripts/export-tms.mjs",
+    "audit:literals": "node scripts/audit-literals.mjs"
+  },
+  "files": [
+    "src",
+    "locales"
+  ]
+}

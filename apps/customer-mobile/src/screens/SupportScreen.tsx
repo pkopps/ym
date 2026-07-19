@@ -13,6 +13,9 @@ import {
   SupportIssueType,
   SupportTicket
 } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
@@ -23,14 +26,26 @@ import { useCustomerSession } from "../session/CustomerSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
-type CustomerAccountSection = "properties" | "alerts" | "security" | "help";
+type CustomerAccountSection = "properties" | "alerts" | "language" | "security" | "help";
+type LanguageSettings = {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+};
 
-const accountSectionOptions: Array<{ value: CustomerAccountSection; label: string }> = [
-  { value: "properties", label: "Properties" },
-  { value: "alerts", label: "Alerts" },
-  { value: "security", label: "Security" },
-  { value: "help", label: "Help" }
+const accountSectionOptions: Array<{ value: CustomerAccountSection; labelKey: TranslationKey }> = [
+  { value: "properties", labelKey: "mobile.support.section.properties" },
+  { value: "alerts", labelKey: "mobile.support.section.alerts" },
+  { value: "language", labelKey: "common.language.label" },
+  { value: "security", labelKey: "mobile.support.section.security" },
+  { value: "help", labelKey: "mobile.support.section.help" }
 ];
+
+const supportIssueLabelKeys: Record<SupportIssueType, TranslationKey> = {
+  billing: "mobile.support.issue.billing",
+  "service-quality": "mobile.support.issue.service_quality",
+  account: "mobile.support.issue.account",
+  general: "mobile.support.issue.general"
+};
 
 function getEnabledAlertCount(preferences?: NotificationPreferences) {
   if (!preferences) {
@@ -45,35 +60,35 @@ function getEnabledAlertCount(preferences?: NotificationPreferences) {
   ].filter(Boolean).length;
 }
 
-function formatPropertyArea(value?: number) {
+function formatPropertyArea(i18n: I18nInstance, value?: number) {
   if (!value) {
-    return "Not set";
+    return i18n.t("mobile.support.not_set");
   }
 
-  return `${new Intl.NumberFormat("en-US").format(value)} sq ft`;
+  return i18n.t("mobile.support.property.area_sq_ft", { count: value });
 }
 
 function formatPropertyLocation(property: CustomerProperty) {
   return `${property.address.city}, ${property.address.state} ${property.address.postalCode}`;
 }
 
-function getPropertyAccessLabel(property: CustomerProperty) {
+function getPropertyAccessLabel(i18n: I18nInstance, property: CustomerProperty) {
   if (property.gateCode && property.accessNotes) {
-    return "Gate + notes";
+    return i18n.t("mobile.support.property.gate_notes");
   }
 
   if (property.gateCode) {
-    return "Gate saved";
+    return i18n.t("mobile.support.property.gate_saved");
   }
 
   if (property.accessNotes) {
-    return "Notes saved";
+    return i18n.t("mobile.support.property.notes_saved");
   }
 
-  return "Not set";
+  return i18n.t("mobile.support.not_set");
 }
 
-function getPropertyMeasurementLabel(property: CustomerProperty) {
+function getPropertyMeasurementLabel(i18n: I18nInstance, property: CustomerProperty) {
   const savedMeasurements = [
     property.lawnSizeSqFt,
     property.shrubBedSqFt,
@@ -82,13 +97,14 @@ function getPropertyMeasurementLabel(property: CustomerProperty) {
   ].filter(Boolean).length;
 
   if (savedMeasurements === 0) {
-    return "Not set";
+    return i18n.t("mobile.support.not_set");
   }
 
-  return `${savedMeasurements} saved`;
+  return i18n.t("mobile.support.property.measurements_saved", { count: savedMeasurements });
 }
 
-export function SupportScreen() {
+export function SupportScreen({ languageSettings }: { languageSettings: LanguageSettings }) {
+  const i18n = useI18n();
   const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -114,14 +130,25 @@ export function SupportScreen() {
     useCustomerSession();
   const defaultProperty = properties.find((property) => property.isDefault) ?? properties[0];
   const enabledAlertCount = getEnabledAlertCount(preferences);
+  const currentLanguageLabel =
+    languageSettings.locale === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english");
   const sectionSummaries: Record<CustomerAccountSection, string> = {
-    properties: defaultProperty ? `${defaultProperty.label} default` : `${properties.length} saved`,
-    alerts: enabledAlertCount === undefined ? "Loading" : `${enabledAlertCount}/4 on`,
-    security: !biometricAvailable ? "Unavailable" : biometricEnabled ? `${biometricLabel} on` : `${biometricLabel} off`,
+    properties: defaultProperty
+      ? i18n.t("mobile.support.summary.default_property", { property: defaultProperty.label })
+      : i18n.t("mobile.support.summary.saved_properties", { count: properties.length }),
+    alerts: enabledAlertCount === undefined
+      ? i18n.t("mobile.support.summary.loading")
+      : i18n.t("mobile.support.summary.alerts_on", { count: enabledAlertCount }),
+    security: !biometricAvailable
+      ? i18n.t("mobile.support.summary.unavailable")
+      : biometricEnabled
+        ? i18n.t("mobile.support.summary.biometric_on", { biometric: biometricLabel })
+        : i18n.t("mobile.support.summary.biometric_off", { biometric: biometricLabel }),
+    language: i18n.t("mobile.settings.language.summary", { language: currentLanguageLabel }),
     help:
       supportTickets.length > 0
-        ? `${supportTickets.length} recent ticket${supportTickets.length === 1 ? "" : "s"}`
-        : "Start a ticket"
+        ? i18n.t("mobile.support.summary.recent_tickets", { count: supportTickets.length })
+        : i18n.t("mobile.support.summary.start_ticket")
   };
 
   async function loadAccount() {
@@ -148,7 +175,7 @@ export function SupportScreen() {
       setPreferences(nextPreferences);
       setDeliveries(nextDeliveries.deliveries);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load your account.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.load_account"));
     }
   }
 
@@ -166,11 +193,11 @@ export function SupportScreen() {
       api.setAuthToken(envelope.session.token);
       const nextPreferences = await api.updateNotificationPreferences(updates);
       setPreferences(nextPreferences);
-      setStatusMessage("Delivery preferences updated.");
+      setStatusMessage(i18n.t("mobile.support.message.delivery_preferences_updated"));
       const nextDeliveries = await api.getNotificationDeliveries();
       setDeliveries(nextDeliveries.deliveries);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update notification preferences.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.update_notification_preferences"));
     } finally {
       setIsWorking(false);
     }
@@ -188,9 +215,9 @@ export function SupportScreen() {
       const response = await api.markNotificationsRead({});
       setNotifications(response.notifications);
       setUnreadCount(response.unreadCount);
-      setStatusMessage("Notifications marked read.");
+      setStatusMessage(i18n.t("mobile.support.message.notifications_marked_read"));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update notifications.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("notifications.error.update"));
     } finally {
       setIsWorking(false);
     }
@@ -207,11 +234,11 @@ export function SupportScreen() {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
       const property = await api.createCustomerProperty(payload);
-      setStatusMessage(`${property.label} added.`);
+      setStatusMessage(i18n.t("mobile.support.message.property_added", { property: property.label }));
       setShowAddPropertyForm(false);
       await loadAccount();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to save your property.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.book.error.save_property"));
     } finally {
       setIsWorking(false);
     }
@@ -239,7 +266,7 @@ export function SupportScreen() {
       setTracking(await api.getBookingTracking(bookingId));
       setActiveTrackingBookingId(bookingId);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open arrival tracking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.open_arrival_tracking"));
     } finally {
       setIsWorking(false);
     }
@@ -266,10 +293,10 @@ export function SupportScreen() {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.setDefaultCustomerProperty({ propertyId });
-      setStatusMessage("Default property updated.");
+      setStatusMessage(i18n.t("mobile.support.message.default_property_updated"));
       await loadAccount();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update your default property.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.update_default_property"));
     } finally {
       setIsWorking(false);
     }
@@ -291,14 +318,14 @@ export function SupportScreen() {
         subject: subject.trim(),
         description: description.trim()
       } satisfies CreateSupportTicketRequest);
-      setStatusMessage("Support ticket submitted.");
+      setStatusMessage(i18n.t("mobile.support.message.support_ticket_submitted"));
       setSubject("");
       setDescription("");
       setSelectedBookingId("");
       setShowSupportComposer(false);
       await loadAccount();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open a support ticket.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.open_support_ticket"));
     } finally {
       setIsWorking(false);
     }
@@ -313,27 +340,27 @@ export function SupportScreen() {
     if (updated) {
       setStatusMessage(
         nextValue
-          ? `${biometricLabel} will be used when you reopen the customer app.`
-          : "Biometric unlock turned off for this app."
+          ? i18n.t("mobile.support.message.biometric_enabled", { biometric: biometricLabel })
+          : i18n.t("mobile.support.message.biometric_disabled")
       );
       return;
     }
 
     if (nextValue) {
-      setErrorMessage(`Unable to enable ${biometricLabel} right now.`);
+      setErrorMessage(i18n.t("mobile.support.error.enable_biometric", { biometric: biometricLabel }));
     }
   }
 
   return (
     <ScreenShell
-      eyebrow="Account"
-      title="Account"
-      description="Properties, alerts, security, and help."
+      eyebrow={i18n.t("mobile.support.eyebrow")}
+      title={i18n.t("mobile.support.title")}
+      description={i18n.t("mobile.support.description")}
     >
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
-      <InfoCard title="Account tools" description={sectionSummaries[activeSection]}>
+      <InfoCard title={i18n.t("mobile.support.account_tools")} description={sectionSummaries[activeSection]}>
         <View style={styles.chipWrap}>
           {accountSectionOptions.map((option) => {
             const isActive = option.value === activeSection;
@@ -343,7 +370,7 @@ export function SupportScreen() {
                 onPress={() => setActiveSection(option.value)}
                 style={[styles.chip, isActive && styles.chipActive]}
               >
-                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{option.label}</Text>
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>{i18n.t(option.labelKey)}</Text>
               </Pressable>
             );
           })}
@@ -352,8 +379,8 @@ export function SupportScreen() {
 
       {activeSection === "properties" ? (
       <InfoCard
-        title={defaultProperty ? "Default property" : "Saved properties"}
-        description={defaultProperty ? "Used for pricing and matching." : "Add one property to book faster."}
+        title={defaultProperty ? i18n.t("mobile.support.default_property") : i18n.t("mobile.support.saved_properties")}
+        description={defaultProperty ? i18n.t("mobile.support.default_property_description") : i18n.t("mobile.support.add_property_description")}
       >
         {defaultProperty ? (
           <View style={styles.propertySummary}>
@@ -363,24 +390,24 @@ export function SupportScreen() {
                 <Text style={styles.meta}>{defaultProperty.address.line1}</Text>
                 <Text style={styles.meta}>{formatPropertyLocation(defaultProperty)}</Text>
               </View>
-              <Text style={styles.badge}>Default</Text>
+              <Text style={styles.badge}>{i18n.t("mobile.book.default_property")}</Text>
             </View>
             <View style={styles.propertyFactGrid}>
               <View style={styles.propertyFact}>
-                <Text style={styles.propertyFactLabel}>Lawn</Text>
-                <Text style={styles.propertyFactValue}>{formatPropertyArea(defaultProperty.lawnSizeSqFt)}</Text>
+                <Text style={styles.propertyFactLabel}>{i18n.t("mobile.support.property.lawn")}</Text>
+                <Text style={styles.propertyFactValue}>{formatPropertyArea(i18n, defaultProperty.lawnSizeSqFt)}</Text>
               </View>
               <View style={styles.propertyFact}>
-                <Text style={styles.propertyFactLabel}>Access</Text>
-                <Text style={styles.propertyFactValue}>{getPropertyAccessLabel(defaultProperty)}</Text>
+                <Text style={styles.propertyFactLabel}>{i18n.t("mobile.support.property.access")}</Text>
+                <Text style={styles.propertyFactValue}>{getPropertyAccessLabel(i18n, defaultProperty)}</Text>
               </View>
               <View style={styles.propertyFact}>
-                <Text style={styles.propertyFactLabel}>Beds</Text>
-                <Text style={styles.propertyFactValue}>{formatPropertyArea(defaultProperty.shrubBedSqFt)}</Text>
+                <Text style={styles.propertyFactLabel}>{i18n.t("mobile.support.property.beds")}</Text>
+                <Text style={styles.propertyFactValue}>{formatPropertyArea(i18n, defaultProperty.shrubBedSqFt)}</Text>
               </View>
               <View style={styles.propertyFact}>
-                <Text style={styles.propertyFactLabel}>Details</Text>
-                <Text style={styles.propertyFactValue}>{getPropertyMeasurementLabel(defaultProperty)}</Text>
+                <Text style={styles.propertyFactLabel}>{i18n.t("mobile.support.property.details")}</Text>
+                <Text style={styles.propertyFactValue}>{getPropertyMeasurementLabel(i18n, defaultProperty)}</Text>
               </View>
             </View>
           </View>
@@ -395,21 +422,21 @@ export function SupportScreen() {
                   <Text style={styles.meta}>{formatPropertyLocation(property)}</Text>
                 </View>
                 {property.isDefault ? (
-                  <Text style={styles.badge}>Default</Text>
+                  <Text style={styles.badge}>{i18n.t("mobile.book.default_property")}</Text>
                 ) : (
                   <Pressable
                     disabled={isWorking}
                     onPress={() => void handleSetDefault(property.id)}
                     style={styles.linkButton}
                   >
-                    <Text style={styles.linkButtonLabel}>Set default</Text>
+                    <Text style={styles.linkButtonLabel}>{i18n.t("mobile.support.set_default")}</Text>
                   </Pressable>
                 )}
               </View>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>No properties saved yet.</Text>
+          <Text style={styles.meta}>{i18n.t("mobile.support.no_properties_saved")}</Text>
         )}
         <Pressable
           disabled={isWorking}
@@ -417,24 +444,45 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAddPropertyForm ? "Close" : "Add property"}
+            {showAddPropertyForm ? i18n.t("common.actions.close") : i18n.t("mobile.book.add_property")}
           </Text>
         </Pressable>
         {showAddPropertyForm ? (
-          <CustomerPropertyForm isWorking={isWorking} onSubmit={handleCreateProperty} submitLabel="Add property" />
+          <CustomerPropertyForm isWorking={isWorking} onSubmit={handleCreateProperty} submitLabel={i18n.t("mobile.book.add_property")} />
         ) : null}
       </InfoCard>
       ) : null}
 
+      {activeSection === "language" ? (
+      <InfoCard title={i18n.t("mobile.settings.language.title")} description={i18n.t("mobile.settings.language.description")}>
+        <View style={styles.chipWrap}>
+          {(["en", "es"] as SupportedLocale[]).map((option) => {
+            const isActive = languageSettings.locale === option;
+            return (
+              <Pressable
+                key={option}
+                onPress={() => languageSettings.onLocaleChange(option)}
+                style={[styles.chip, isActive && styles.chipActive]}
+              >
+                <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
+                  {option === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english")}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </InfoCard>
+      ) : null}
+
       {activeSection === "security" ? (
-      <InfoCard title="Security" description={sectionSummaries.security}>
+      <InfoCard title={i18n.t("mobile.support.section.security")} description={sectionSummaries.security}>
         <View style={styles.switchRow}>
           <View style={styles.copy}>
-            <Text style={styles.title}>Use {biometricLabel}</Text>
+            <Text style={styles.title}>{i18n.t("mobile.support.use_biometric", { biometric: biometricLabel })}</Text>
             <Text style={styles.meta}>
               {biometricAvailable
-                ? "Use device unlock after a short pause."
-                : "Not available on this device."}
+                ? i18n.t("mobile.support.use_biometric_description")
+                : i18n.t("mobile.support.biometric_unavailable")}
             </Text>
           </View>
           <Switch
@@ -446,13 +494,13 @@ export function SupportScreen() {
           />
         </View>
         <Pressable onPress={signOut} style={styles.logoutButton}>
-          <Text style={styles.logoutButtonLabel}>Log out</Text>
+          <Text style={styles.logoutButtonLabel}>{i18n.t("mobile.support.log_out")}</Text>
         </Pressable>
       </InfoCard>
       ) : null}
 
       {activeSection === "alerts" ? (
-      <InfoCard title="Notifications" description={`${unreadCount} unread`}>
+      <InfoCard title={i18n.t("notifications.updates")} description={i18n.t("mobile.support.unread_count", { count: unreadCount })}>
         {notifications.length > 0 ? (
           <View style={styles.list}>
             {notifications.slice(0, 4).map((notification) => (
@@ -466,15 +514,15 @@ export function SupportScreen() {
                   <Text style={styles.meta}>{notification.body}</Text>
                   {parseTrackingBookingId(notification.actionHref) ||
                   notification.title.toLowerCase().includes("on the way") ? (
-                    <Text style={styles.notificationLink}>Open live map</Text>
+                    <Text style={styles.notificationLink}>{i18n.t("mobile.support.open_live_map")}</Text>
                   ) : null}
                 </View>
-                <Text style={styles.badge}>{notification.isRead ? "Read" : "New"}</Text>
+                <Text style={styles.badge}>{notification.isRead ? i18n.t("mobile.support.notification.read") : i18n.t("common.state.new")}</Text>
               </Pressable>
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>You're all caught up.</Text>
+          <Text style={styles.meta}>{i18n.t("mobile.support.all_caught_up")}</Text>
         )}
         {unreadCount > 0 ? (
           <Pressable
@@ -482,7 +530,7 @@ export function SupportScreen() {
             onPress={() => void handleMarkNotificationsRead()}
             style={styles.linkButton}
           >
-            <Text style={styles.linkButtonLabel}>Mark read</Text>
+            <Text style={styles.linkButtonLabel}>{i18n.t("mobile.support.mark_read")}</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -491,28 +539,28 @@ export function SupportScreen() {
           style={styles.linkButton}
         >
           <Text style={styles.linkButtonLabel}>
-            {showAlertPreferences ? "Close" : "Preferences"}
+            {showAlertPreferences ? i18n.t("common.actions.close") : i18n.t("mobile.support.preferences")}
           </Text>
         </Pressable>
         {showAlertPreferences ? (
           <View style={styles.list}>
             <PreferenceRow
-              label="Push"
+              label={i18n.t("mobile.support.preference.push")}
               value={preferences?.pushEnabled ?? true}
               onValueChange={(value) => void handleUpdatePreferences({ pushEnabled: value })}
             />
             <PreferenceRow
-              label="Email"
+              label={i18n.t("mobile.support.preference.email")}
               value={preferences?.emailEnabled ?? true}
               onValueChange={(value) => void handleUpdatePreferences({ emailEnabled: value })}
             />
             <PreferenceRow
-              label="SMS"
+              label={i18n.t("mobile.support.preference.sms")}
               value={preferences?.smsEnabled ?? true}
               onValueChange={(value) => void handleUpdatePreferences({ smsEnabled: value })}
             />
             <PreferenceRow
-              label="Review reminders"
+              label={i18n.t("mobile.support.preference.review_reminders")}
               value={preferences?.reviewRemindersEnabled ?? true}
               onValueChange={(value) => void handleUpdatePreferences({ reviewRemindersEnabled: value })}
             />
@@ -520,7 +568,7 @@ export function SupportScreen() {
         ) : null}
 
         <View style={styles.sectionDivider} />
-        <Text style={styles.sectionHeading}>Sent alerts</Text>
+        <Text style={styles.sectionHeading}>{i18n.t("mobile.support.sent_alerts")}</Text>
         {deliveries.length > 0 ? (
           <View style={styles.list}>
             {deliveries.slice(0, 4).map((delivery) => (
@@ -537,19 +585,19 @@ export function SupportScreen() {
             ))}
           </View>
         ) : (
-          <Text style={styles.meta}>No delivery records yet.</Text>
+          <Text style={styles.meta}>{i18n.t("mobile.support.no_delivery_records")}</Text>
         )}
       </InfoCard>
       ) : null}
 
       {activeSection === "help" ? (
-      <InfoCard title="Help" description={sectionSummaries.help}>
+      <InfoCard title={i18n.t("mobile.support.section.help")} description={sectionSummaries.help}>
         <Pressable
           onPress={() => setShowSupportComposer((current) => !current)}
           style={showSupportComposer ? styles.linkButton : styles.primaryButton}
         >
           <Text style={showSupportComposer ? styles.linkButtonLabel : styles.primaryButtonLabel}>
-            {showSupportComposer ? "Close" : "New ticket"}
+            {showSupportComposer ? i18n.t("common.actions.close") : i18n.t("mobile.support.new_ticket")}
           </Text>
         </Pressable>
         {showSupportComposer ? (
@@ -564,20 +612,22 @@ export function SupportScreen() {
                     style={[styles.chip, isActive && styles.chipActive]}
                   >
                     <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                      {issueType.replaceAll("-", " ")}
+                      {i18n.t(supportIssueLabelKeys[issueType])}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
             <View style={styles.list}>
-              <Text style={styles.meta}>Visit (optional)</Text>
+              <Text style={styles.meta}>{i18n.t("mobile.support.visit_optional")}</Text>
               <View style={styles.chipWrap}>
                 <Pressable
                   onPress={() => setSelectedBookingId("")}
                   style={[styles.chip, !selectedBookingId && styles.chipActive]}
                 >
-                  <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>No visit</Text>
+                  <Text style={[styles.chipLabel, !selectedBookingId && styles.chipLabelActive]}>
+                    {i18n.t("mobile.support.no_visit")}
+                  </Text>
                 </Pressable>
                 {bookings.slice(0, 4).map((booking) => {
                   const isActive = selectedBookingId === booking.id;
@@ -588,7 +638,7 @@ export function SupportScreen() {
                       style={[styles.chip, isActive && styles.chipActive]}
                     >
                       <Text style={[styles.chipLabel, isActive && styles.chipLabelActive]}>
-                        {booking.category.replaceAll("-", " ")}
+                        {i18n.t(serviceCategoryToI18nKey(booking.category))}
                       </Text>
                     </Pressable>
                   );
@@ -597,7 +647,7 @@ export function SupportScreen() {
             </View>
             <TextInput
               onChangeText={setSubject}
-              placeholder="Subject"
+              placeholder={i18n.t("mobile.support.subject")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={styles.input}
               value={subject}
@@ -605,7 +655,7 @@ export function SupportScreen() {
             <TextInput
               multiline
               onChangeText={setDescription}
-              placeholder="What happened?"
+              placeholder={i18n.t("mobile.support.what_happened")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.textarea]}
               value={description}
@@ -615,7 +665,9 @@ export function SupportScreen() {
               onPress={() => void handleCreateSupportTicket()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonLabel}>{isWorking ? "Sending..." : "Send"}</Text>
+              <Text style={styles.primaryButtonLabel}>
+                {isWorking ? i18n.t("mobile.support.sending") : i18n.t("mobile.support.send")}
+              </Text>
             </Pressable>
           </View>
         ) : null}
@@ -626,7 +678,7 @@ export function SupportScreen() {
               style={styles.linkButton}
             >
               <Text style={styles.linkButtonLabel}>
-                {showSupportHistory ? "Close" : "Recent tickets"}
+                {showSupportHistory ? i18n.t("common.actions.close") : i18n.t("mobile.support.recent_tickets")}
               </Text>
             </Pressable>
             {showSupportHistory ? (
@@ -636,10 +688,10 @@ export function SupportScreen() {
                     <View style={styles.copy}>
                       <Text style={styles.title}>{ticket.subject}</Text>
                       <Text style={styles.meta}>
-                        {ticket.issueType.replaceAll("-", " ")} • {ticket.status}
+                        {i18n.t(supportIssueLabelKeys[ticket.issueType])} • {ticket.status}
                       </Text>
                     </View>
-                    <Text style={styles.badge}>{new Date(ticket.createdAt).toLocaleDateString()}</Text>
+                    <Text style={styles.badge}>{i18n.formatDate(ticket.createdAt)}</Text>
                   </View>
                 ))}
               </View>

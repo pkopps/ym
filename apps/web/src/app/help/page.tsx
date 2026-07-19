@@ -1,33 +1,38 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { addLocalePrefix } from "@yardmatch/i18n";
 import { helpCollections } from "@yardmatch/help-center";
 import { HelpSupportTicketPanel } from "../../components/HelpSupportTicketPanel";
 import { LaunchLeadCaptureCard } from "../../components/LaunchLeadCaptureCard";
-import { trustPolicyPages } from "../../lib/trustPolicyContent";
+import { getLocalizedPageMetadata, getRequestI18n } from "../../lib/i18n-server";
+import { localizeTrustPolicyPage, trustPolicyPages } from "../../lib/trustPolicyContent";
 
-export const metadata: Metadata = {
-  title: "Help center for customers, providers, and crew members",
-  description:
-    "Shared YardMatch help documentation for customers, landscaping businesses, and crew members across booking, staffing, scheduling, billing, payouts, and support."
-};
+export function generateMetadata(): Promise<Metadata> {
+  return getLocalizedPageMetadata({
+    path: "/help",
+    titleKey: "help.metadata.title",
+    descriptionKey: "help.metadata.description"
+  });
+}
 
-export default function HelpPage() {
+export default async function HelpPage() {
+  const i18n = await getRequestI18n();
   const collections = Object.values(helpCollections);
   const helpPolicyPages = trustPolicyPages.filter((page) => page.surfaces.includes("help"));
 
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <h1>Help</h1>
-        <p>Answers for customers, businesses, and crews.</p>
+        <h1>{i18n.t("help.hero.title")}</h1>
+        <p>{i18n.t("help.hero.body")}</p>
       </section>
 
       <section id="contact-us">
         <LaunchLeadCaptureCard
           defaultAreaLabel="Barnegat, NJ"
-          description="Use this for pre-booking questions, coverage checks, and pricing before you have a booking."
+          description={i18n.t("help.contact.body")}
           requestSource="help-contact-email-form"
-          title="Contact us"
+          title={i18n.t("help.contact.title")}
         />
       </section>
 
@@ -37,17 +42,21 @@ export default function HelpPage() {
 
       <section className="card">
         <div className="page-hero" style={{ paddingBottom: "1.5rem" }}>
-          <h2>Support, refunds, and booking rules</h2>
-          <p>Plain-language support, refund, cancellation, and provider rules.</p>
+          <h2>{i18n.t("help.policies.title")}</h2>
+          <p>{i18n.t("help.policies.body")}</p>
         </div>
         <div className="grid-two">
-          {helpPolicyPages.map((page) => (
-            <Link className="list-panel" href={page.href} key={page.id}>
-              <span className="eyebrow">{page.eyebrow}</span>
-              <h3>{page.title}</h3>
-              <p>{page.summary}</p>
-            </Link>
-          ))}
+          {helpPolicyPages.map((page) => {
+            const localizedPage = localizeTrustPolicyPage(i18n, page);
+
+            return (
+              <Link className="list-panel" href={addLocalePrefix(localizedPage.href, i18n.locale)} key={localizedPage.id}>
+                <span className="eyebrow">{localizedPage.eyebrow}</span>
+                <h3>{localizedPage.title}</h3>
+                <p>{localizedPage.summary}</p>
+              </Link>
+            );
+          })}
         </div>
       </section>
 

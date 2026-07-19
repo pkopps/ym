@@ -7,10 +7,12 @@ import {
   PublicMarketplaceOverviewResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { addLocalePrefix } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createWebApiClient } from "../lib/api";
-import { serviceCategoryLabels } from "@yardmatch/ui";
 
 function getProviderInitials(provider: PublicMarketplaceFeaturedProvider) {
   return provider.companyName
@@ -55,6 +57,7 @@ export function LaunchMarketplaceProofSection({
   preferredCategory?: ServiceCategory;
   preferredAreaLabel?: string;
 }) {
+  const i18n = useI18n();
   const api = useMemo(() => createWebApiClient(), []);
   const [overview, setOverview] = useState<PublicMarketplaceOverviewResponse | undefined>();
 
@@ -104,16 +107,16 @@ export function LaunchMarketplaceProofSection({
 
   const proofStats = [
     {
-      label: "Verified providers currently surfaced",
-      value: overview?.verifiedProviderCount ? String(overview.verifiedProviderCount) : "Growing"
+      label: i18n.t("launch_proof.stat.verified_providers.label"),
+      value: overview?.verifiedProviderCount ? i18n.formatNumber(overview.verifiedProviderCount) : i18n.t("common.state.growing")
     },
     {
-      label: "Average rating across verified providers",
-      value: overview?.averageRating ? `${overview.averageRating.toFixed(1)}★` : "New"
+      label: i18n.t("launch_proof.stat.average_rating.label"),
+      value: overview?.averageRating ? `${i18n.formatNumber(overview.averageRating, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}★` : i18n.t("common.state.new")
     },
     {
-      label: "Active launch-service categories",
-      value: overview?.activeCategoryCount ? String(overview.activeCategoryCount) : "Focused"
+      label: i18n.t("launch_proof.stat.active_categories.label"),
+      value: overview?.activeCategoryCount ? i18n.formatNumber(overview.activeCategoryCount) : i18n.t("common.state.focused")
     }
   ] as const;
 
@@ -133,22 +136,19 @@ export function LaunchMarketplaceProofSection({
       </div>
       <div className="grid-two">
         <article className="card">
-          <h3>Why YardMatch keeps this tight</h3>
-          <p>
-            The launch marketplace is trying to prioritize verified local supply, route reality,
-            and operational follow-through over broad but thin directory coverage.
-          </p>
+          <h3>{i18n.t("launch_proof.tight.title")}</h3>
+          <p>{i18n.t("launch_proof.tight.body")}</p>
           <div className="cta-row" style={{ marginTop: "1rem" }}>
-            <Link className="button-secondary" href="/provider-verification">
-              See provider verification
+            <Link className="button-secondary" href={addLocalePrefix("/provider-verification", i18n.locale)}>
+              {i18n.t("launch_proof.tight.provider_verification_cta")}
             </Link>
-            <Link className="button-secondary" href="/booking-expectations">
-              Read booking expectations
+            <Link className="button-secondary" href={addLocalePrefix("/booking-expectations", i18n.locale)}>
+              {i18n.t("launch_proof.tight.booking_expectations_cta")}
             </Link>
           </div>
         </article>
         <article className="card">
-          <h3>Current launch proof</h3>
+          <h3>{i18n.t("launch_proof.current.title")}</h3>
           {highlightedProviders.length > 0 ? (
             <div className="stack-lg" style={{ paddingBottom: 0 }}>
               {highlightedProviders.map((provider) => (
@@ -163,25 +163,31 @@ export function LaunchMarketplaceProofSection({
                         <p>
                           {provider.city}, {provider.state}
                           {provider.primaryCategory
-                            ? ` • ${serviceCategoryLabels[provider.primaryCategory]}`
+                            ? ` • ${i18n.t(serviceCategoryToI18nKey(provider.primaryCategory))}`
                             : ""}
                         </p>
                       </div>
                     </div>
-                    <span>{provider.rating.toFixed(1)}★</span>
+                    <span>{i18n.formatNumber(provider.rating, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}★</span>
                   </div>
                   <p>
-                    {provider.reviewCount} reviews
-                    {provider.timelinessRating ? ` • ${provider.timelinessRating.toFixed(1)} punctuality` : ""}
-                    {provider.yearsExperience ? ` • ${provider.yearsExperience}+ years experience` : ""}
+                    {i18n.t("launch_proof.provider.reviews", { count: provider.reviewCount })}
+                    {provider.timelinessRating
+                      ? ` • ${i18n.t("launch_proof.provider.punctuality", {
+                          rating: provider.timelinessRating
+                        })}`
+                      : ""}
+                    {provider.yearsExperience
+                      ? ` • ${i18n.t("launch_proof.provider.experience", { years: provider.yearsExperience })}`
+                      : ""}
                   </p>
                 </article>
               ))}
               {highlightedReviews.length > 0 ? (
                 <div className="stack-lg" style={{ paddingBottom: 0 }}>
                   <div>
-                    <span className="eyebrow">Recent verified customer feedback</span>
-                    <p>These snippets come from completed-booking reviews tied to verified providers.</p>
+                    <span className="eyebrow">{i18n.t("launch_proof.feedback.title")}</span>
+                    <p>{i18n.t("launch_proof.feedback.body")}</p>
                   </div>
                   {highlightedReviews.map((review) => (
                     <article className="list-panel" key={review.reviewId}>
@@ -191,11 +197,11 @@ export function LaunchMarketplaceProofSection({
                           <p>
                             {review.city}, {review.state}
                             {review.primaryCategory
-                              ? ` • ${serviceCategoryLabels[review.primaryCategory]}`
+                              ? ` • ${i18n.t(serviceCategoryToI18nKey(review.primaryCategory))}`
                               : ""}
                           </p>
                         </div>
-                        <span>{review.overallRating.toFixed(1)}★</span>
+                        <span>{i18n.formatNumber(review.overallRating, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}★</span>
                       </div>
                       <p>"{formatHighlightedReviewText(review)}"</p>
                     </article>
@@ -205,25 +211,27 @@ export function LaunchMarketplaceProofSection({
               {highlightedCoverageAreas.length > 0 ? (
                 <div className="stack-lg" style={{ paddingBottom: 0 }}>
                   <div>
-                    <span className="eyebrow">Current coverage pockets</span>
-                    <p>These areas already have verified supply or completed-job proof in the live marketplace overview.</p>
+                    <span className="eyebrow">{i18n.t("launch_proof.coverage.title")}</span>
+                    <p>{i18n.t("launch_proof.coverage.body")}</p>
                   </div>
                   {highlightedCoverageAreas.map((area) => (
                     <article className="list-panel" key={`${area.city}-${area.state}`}>
                       <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                         <strong>{formatCoverageAreaLabel(area)}</strong>
-                        <span>{area.verifiedProviderCount} verified</span>
+                        <span>{i18n.t("launch_proof.coverage.verified", { count: area.verifiedProviderCount })}</span>
                       </div>
                       <p>
-                        {area.completedBookingCount} completed jobs tracked
+                        {i18n.t("launch_proof.coverage.completed", { count: area.completedBookingCount })}
                         {area.recentCompletedBookingCount > 0
-                          ? ` • ${area.recentCompletedBookingCount} recent completions`
+                          ? ` • ${i18n.t("launch_proof.coverage.recent", {
+                              count: area.recentCompletedBookingCount
+                            })}`
                           : ""}
                       </p>
                       <p>
                         {area.supportedCategories
                           .slice(0, 3)
-                          .map((category) => serviceCategoryLabels[category])
+                          .map((category) => i18n.t(serviceCategoryToI18nKey(category)))
                           .join(" • ")}
                       </p>
                     </article>
@@ -232,10 +240,7 @@ export function LaunchMarketplaceProofSection({
               ) : null}
             </div>
           ) : (
-            <p>
-              Launch proof is still building. YardMatch is intentionally keeping the public supply
-              set tighter while verified providers, reviews, and punctuality history grow.
-            </p>
+            <p>{i18n.t("launch_proof.empty")}</p>
           )}
         </article>
       </div>

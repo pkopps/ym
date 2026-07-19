@@ -1,72 +1,80 @@
-const footerColumns = [
+"use client";
+
+import { addLocalePrefix, TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
+
+const footerColumns: Array<{
+  titleKey: TranslationKey;
+  links: Array<{ href: string; labelKey: TranslationKey }>;
+}> = [
   {
-    title: "YardMatch",
+    titleKey: "footer.brand_title",
     links: [
-      { href: "/", label: "Home" },
-      { href: "/about", label: "About Us" },
-      { href: "/barnegat-nj", label: "Barnegat launch page" },
-      { href: "/customer", label: "Book a service" },
-      { href: "/help", label: "Help" }
+      { href: "/", labelKey: "nav.home" },
+      { href: "/about", labelKey: "nav.about" },
+      { href: "/barnegat-nj", labelKey: "nav.launch_area_overview" },
+      { href: "/customer", labelKey: "nav.book_service" },
+      { href: "/help", labelKey: "nav.help" }
     ]
   },
   {
-    title: "Discover",
+    titleKey: "footer.column.discover",
     links: [
-      { href: "/services/lawn-mowing", label: "Lawn mowing" },
-      { href: "/services/yard-cleanup", label: "Yard cleanup" },
-      { href: "/barnegat-nj/lawn-mowing", label: "Barnegat lawn mowing" },
-      { href: "/barnegat-nj/yard-cleanup", label: "Barnegat yard cleanup" },
-      { href: "/provider", label: "Business Resources for landscaping owners" },
-      { href: "/crew", label: "Crew hiring" }
+      { href: "/services/lawn-mowing", labelKey: "service.category.lawn_mowing" },
+      { href: "/services/yard-cleanup", labelKey: "service.category.seasonal_cleanup" },
+      { href: "/barnegat-nj/lawn-mowing", labelKey: "nav.core_recurring_service" },
+      { href: "/barnegat-nj/yard-cleanup", labelKey: "nav.core_reset_service" },
+      { href: "/provider", labelKey: "nav.business_resources" },
+      { href: "/crew", labelKey: "nav.crew_hiring" }
     ]
   },
   {
-    title: "Grow with YardMatch",
+    titleKey: "footer.column.grow",
     links: [
-      { href: "/provider", label: "Are you a top landscaper or outdoor service?" },
-      { href: "/auth/provider/create", label: "List your business on YardMatch" },
-      { href: "/crew", label: "Find crew members for growing demand" },
-      { href: "/provider", label: "Provider growth tools" },
-      { href: "/about", label: "How the marketplace works" },
-      { href: "/help", label: "Support and help center" }
+      { href: "/provider", labelKey: "nav.for_providers" },
+      { href: "/auth/provider/create", labelKey: "nav.list_business" },
+      { href: "/crew", labelKey: "nav.find_crew_members" },
+      { href: "/provider", labelKey: "nav.provider_growth_tools" },
+      { href: "/about", labelKey: "nav.how_marketplace_works" },
+      { href: "/help", labelKey: "nav.support_help_center" }
     ]
   },
   {
-    title: "Launch focus",
+    titleKey: "footer.column.launch",
     links: [
-      { href: "/barnegat-nj", label: "Launch area overview" },
-      { href: "/services/lawn-mowing", label: "Core recurring service" },
-      { href: "/services/yard-cleanup", label: "Core reset service" },
-      { href: "/customer", label: "Recommendation-first booking" },
-      { href: "/about", label: "Why YardMatch is managed" },
-      { href: "/provider", label: "Provider-side marketplace story" }
+      { href: "/barnegat-nj", labelKey: "nav.launch_area_overview" },
+      { href: "/services/lawn-mowing", labelKey: "nav.core_recurring_service" },
+      { href: "/services/yard-cleanup", labelKey: "nav.core_reset_service" },
+      { href: "/customer", labelKey: "nav.recommendation_first_booking" },
+      { href: "/about", labelKey: "nav.managed_marketplace" },
+      { href: "/provider", labelKey: "nav.provider_marketplace_story" }
     ]
   },
   {
-    title: "Trust and policies",
+    titleKey: "footer.column.trust",
     links: [
-      { href: "/support", label: "Support expectations" },
-      { href: "/cancellation-policy", label: "Cancellation policy" },
-      { href: "/refund-policy", label: "Refund policy" },
-      { href: "/booking-expectations", label: "Booking expectations" },
-      { href: "/provider-verification", label: "Provider verification" },
-      { href: "/privacy-policy", label: "Privacy policy" },
-      { href: "/terms-of-service", label: "Terms of service" },
-      { href: "/provider-standards", label: "Provider standards" },
-      { href: "/help", label: "Help center" }
+      { href: "/support", labelKey: "nav.trust.support_expectations" },
+      { href: "/cancellation-policy", labelKey: "nav.trust.cancellation_policy" },
+      { href: "/refund-policy", labelKey: "nav.trust.refund_policy" },
+      { href: "/booking-expectations", labelKey: "nav.trust.booking_expectations" },
+      { href: "/provider-verification", labelKey: "nav.trust.provider_verification" },
+      { href: "/privacy-policy", labelKey: "footer.legal.privacy" },
+      { href: "/terms-of-service", labelKey: "footer.legal.terms" },
+      { href: "/provider-standards", labelKey: "nav.trust.provider_standards" },
+      { href: "/help", labelKey: "nav.help_center" }
     ]
   }
-] as const;
+];
 
 const socialLinks = [
-  { href: "https://instagram.com", label: "Instagram" },
-  { href: "https://linkedin.com", label: "LinkedIn" },
-  { href: "https://facebook.com", label: "Facebook" },
-  { href: "https://x.com", label: "X" }
+  { href: "https://instagram.com", icon: "instagram", labelKey: "footer.social.instagram" },
+  { href: "https://linkedin.com", icon: "linkedin", labelKey: "footer.social.linkedin" },
+  { href: "https://facebook.com", icon: "facebook", labelKey: "footer.social.facebook" },
+  { href: "https://x.com", icon: "x", labelKey: "footer.social.x" }
 ] as const;
 
-function SocialIcon({ label }: { label: (typeof socialLinks)[number]["label"] }) {
-  if (label === "Instagram") {
+function SocialIcon({ icon }: { icon: (typeof socialLinks)[number]["icon"] }) {
+  if (icon === "instagram") {
     return (
       <svg aria-hidden="true" className="site-footer__social-icon" viewBox="0 0 24 24">
         <rect x="3.25" y="3.25" width="17.5" height="17.5" rx="5.25" stroke="currentColor" strokeWidth="2" />
@@ -76,7 +84,7 @@ function SocialIcon({ label }: { label: (typeof socialLinks)[number]["label"] })
     );
   }
 
-  if (label === "LinkedIn") {
+  if (icon === "linkedin") {
     return (
       <svg aria-hidden="true" className="site-footer__social-icon" viewBox="0 0 24 24">
         <path
@@ -87,7 +95,7 @@ function SocialIcon({ label }: { label: (typeof socialLinks)[number]["label"] })
     );
   }
 
-  if (label === "Facebook") {
+  if (icon === "facebook") {
     return (
       <svg aria-hidden="true" className="site-footer__social-icon" viewBox="0 0 24 24">
         <path
@@ -109,17 +117,20 @@ function SocialIcon({ label }: { label: (typeof socialLinks)[number]["label"] })
 }
 
 export function SiteFooter() {
+  const i18n = useI18n();
+  const localizedHref = (href: string) => addLocalePrefix(href, i18n.locale);
+
   return (
     <footer className="site-footer">
       <div className="container site-footer__inner">
         <div className="site-footer__grid">
           {footerColumns.map((column) => (
-            <section className="site-footer__column" key={column.title}>
-              <h2>{column.title}</h2>
+            <section className="site-footer__column" key={column.titleKey}>
+              <h2>{i18n.t(column.titleKey)}</h2>
               <ul>
                 {column.links.map((link) => (
-                  <li key={link.label}>
-                    <a href={link.href}>{link.label}</a>
+                  <li key={`${link.href}-${link.labelKey}`}>
+                    <a href={localizedHref(link.href)}>{i18n.t(link.labelKey)}</a>
                   </li>
                 ))}
               </ul>
@@ -130,36 +141,32 @@ export function SiteFooter() {
         <div className="site-footer__bottom">
           <div className="site-footer__legal">
             <p>
-              The content provided on the YardMatch website and mobile experiences is for general
-              informational purposes only. It is not intended as, and YardMatch does not provide,
-              legal, financial, tax, arborist, irrigation, safety, or landscaping trade advice.
-              Always confirm service details, site conditions, pricing, licensing, and any
-              property-specific requirements directly with your chosen landscaping business.
+              {i18n.t("footer.disclaimer")}
             </p>
             <div className="site-footer__meta">
-              <span>&copy; 2026 YardMatch, Inc.</span>
-              <a href="/about">About</a>
-              <a href="/help">Help</a>
-              <a href="/support">Support</a>
-              <a href="/refund-policy">Refunds</a>
-              <a href="/privacy-policy">Privacy</a>
-              <a href="/terms-of-service">Terms</a>
-              <a href="/barnegat-nj">Launch area</a>
-              <a href="/provider">For providers</a>
+              <span>{i18n.t("footer.copyright", { year: "2026" })}</span>
+              <a href={localizedHref("/about")}>{i18n.t("footer.legal.about")}</a>
+              <a href={localizedHref("/help")}>{i18n.t("footer.legal.help")}</a>
+              <a href={localizedHref("/support")}>{i18n.t("footer.legal.support")}</a>
+              <a href={localizedHref("/refund-policy")}>{i18n.t("footer.legal.refunds")}</a>
+              <a href={localizedHref("/privacy-policy")}>{i18n.t("footer.legal.privacy")}</a>
+              <a href={localizedHref("/terms-of-service")}>{i18n.t("footer.legal.terms")}</a>
+              <a href={localizedHref("/barnegat-nj")}>{i18n.t("footer.legal.launch_area")}</a>
+              <a href={localizedHref("/provider")}>{i18n.t("footer.legal.for_providers")}</a>
             </div>
           </div>
 
-          <div className="site-footer__social" aria-label="Social media">
+          <div className="site-footer__social" aria-label={i18n.t("footer.social_label")}>
             {socialLinks.map((link) => (
               <a
-                aria-label={link.label}
+                aria-label={i18n.t(link.labelKey)}
                 className="site-footer__social-badge"
                 href={link.href}
-                key={link.label}
+                key={link.icon}
                 rel="noreferrer"
                 target="_blank"
               >
-                <SocialIcon label={link.label} />
+                <SocialIcon icon={link.icon} />
               </a>
             ))}
           </div>

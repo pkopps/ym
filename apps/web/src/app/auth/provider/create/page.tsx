@@ -2,21 +2,27 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AccountSignupForm } from "../../../../components/AccountSignupForm";
 import { LoadingScreen } from "../../../../components/LoadingScreen";
+import { getLocalizedPageMetadata, getRequestI18n } from "../../../../lib/i18n-server";
 
-export const metadata: Metadata = {
-  title: "Create your business account"
-};
+export function generateMetadata(): Promise<Metadata> {
+  return getLocalizedPageMetadata({
+    path: "/auth/provider/create",
+    titleKey: "auth_provider.metadata.title"
+  });
+}
 
-export default function ProviderSignupCreatePage() {
+export default async function ProviderSignupCreatePage() {
+  const i18n = await getRequestI18n();
+
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">Business owner sign up</span>
-        <h1>Create your business account.</h1>
-        <p>Add your company, address, and service radius so YardMatch can create your provider profile.</p>
+        <span className="eyebrow">{i18n.t("auth_provider.eyebrow")}</span>
+        <h1>{i18n.t("auth_provider.title")}</h1>
+        <p>{i18n.t("auth_provider.body")}</p>
       </section>
 
-      <Suspense fallback={<LoadingScreen label="Loading signup..." />}>
+      <Suspense fallback={<LoadingScreen label={i18n.t("auth_signup.loading")} />}>
         <AccountSignupForm role="provider" />
       </Suspense>
     </main>

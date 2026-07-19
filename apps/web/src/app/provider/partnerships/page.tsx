@@ -1,59 +1,66 @@
 import type { Metadata } from "next";
+import { addLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
+import { getLocalizedPageMetadata, getRequestI18n } from "../../../lib/i18n-server";
 
-export const metadata: Metadata = {
-  title: "Business partnerships",
-  description: "Illustrative YardMatch business partnership and affiliate deal concepts."
-};
+export function generateMetadata(): Promise<Metadata> {
+  return getLocalizedPageMetadata({
+    path: "/provider/partnerships",
+    titleKey: "provider_partnerships.metadata.title",
+    descriptionKey: "provider_partnerships.metadata.description"
+  });
+}
 
 const partnerDeals = [
   {
     brand: "Ford",
-    title: "Work truck pricing",
-    body: "Preferred pricing ideas for new trucks, fleet upgrades, and service packages for growing landscaping teams."
+    titleKey: "provider_partnerships.deal.truck.title",
+    bodyKey: "provider_partnerships.deal.truck.body"
   },
   {
     brand: "Home Depot",
-    title: "Equipment and supply savings",
-    body: "Illustrative discounts on mowers, trimmers, hand tools, seasonal supplies, and replacement parts."
+    titleKey: "provider_partnerships.deal.equipment.title",
+    bodyKey: "provider_partnerships.deal.equipment.body"
   },
   {
     brand: "YardMatch financing partners",
-    title: "Flexible purchase support",
-    body: "Simple financing concepts for higher-ticket equipment so crews can expand without one large upfront hit."
+    titleKey: "provider_partnerships.deal.financing.title",
+    bodyKey: "provider_partnerships.deal.financing.body"
   }
-] as const;
+] satisfies Array<{ brand: string; titleKey: TranslationKey; bodyKey: TranslationKey }>;
 
-export default function ProviderPartnershipsPage() {
+export default async function ProviderPartnershipsPage() {
+  const i18n = await getRequestI18n();
+
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">Business partnerships</span>
-        <h1>Equipment and truck deals for YardMatch businesses.</h1>
-        <p>Short, simple, and theoretical for now. Think preferred partner savings that help your crew stay equipped as demand grows.</p>
+        <span className="eyebrow">{i18n.t("provider_partnerships.eyebrow")}</span>
+        <h1>{i18n.t("provider_partnerships.hero.title")}</h1>
+        <p>{i18n.t("provider_partnerships.hero.body")}</p>
       </section>
 
       <section className="grid-three">
         {partnerDeals.map((deal) => (
-          <article className="card" key={deal.title}>
+          <article className="card" key={deal.titleKey}>
             <span className="eyebrow">{deal.brand}</span>
-            <h2>{deal.title}</h2>
-            <p>{deal.body}</p>
+            <h2>{i18n.t(deal.titleKey)}</h2>
+            <p>{i18n.t(deal.bodyKey)}</p>
           </article>
         ))}
       </section>
 
       <section className="provider-final-cta panel">
         <div>
-          <span className="eyebrow">Illustrative only</span>
-          <h2>These partnership examples show the kind of savings YardMatch could surface for business owners.</h2>
-          <p>Exact terms, brands, and discounts would depend on real partner agreements.</p>
+          <span className="eyebrow">{i18n.t("provider_partnerships.final.eyebrow")}</span>
+          <h2>{i18n.t("provider_partnerships.final.title")}</h2>
+          <p>{i18n.t("provider_partnerships.final.body")}</p>
         </div>
         <div className="cta-row">
-          <a className="button" href="/auth/provider/create">
-            Get Started
+          <a className="button" href={addLocalePrefix("/auth/provider/create", i18n.locale)}>
+            {i18n.t("provider_partnerships.get_started")}
           </a>
-          <a className="button-secondary" href="/provider">
-            Back to business overview
+          <a className="button-secondary" href={addLocalePrefix("/provider", i18n.locale)}>
+            {i18n.t("provider_partnerships.back")}
           </a>
         </div>
       </section>

@@ -1,68 +1,70 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { addLocalePrefix, TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { clearStoredSession, getWebApiBaseUrl } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { NotificationMenu } from "./NotificationMenu";
 
 const productColumns = [
   {
-    title: "Marketplace",
+    titleKey: "provider_header.menu.marketplace" as TranslationKey,
     items: [
       {
         href: "/auth/provider/create",
-        title: "List your business",
-        body: "Reach new property owners looking for recurring service."
+        titleKey: "provider_header.product.list_business.title" as TranslationKey,
+        bodyKey: "provider_header.product.list_business.body" as TranslationKey
       },
       {
         href: "/customer/listings",
-        title: "Sponsored placement",
-        body: "Promote your business in relevant local search results."
+        titleKey: "provider_header.product.sponsored.title" as TranslationKey,
+        bodyKey: "provider_header.product.sponsored.body" as TranslationKey
       },
       {
         href: "/provider",
-        title: "Instant quote engine",
-        body: "Use mapped property sizing to support faster quoting and better booking conversion."
+        titleKey: "provider_header.product.quote.title" as TranslationKey,
+        bodyKey: "provider_header.product.quote.body" as TranslationKey
       }
     ]
   },
   {
-    title: "Operations",
+    titleKey: "provider_header.menu.operations" as TranslationKey,
     items: [
       {
         href: "/provider/management",
-        title: "Schedule management",
-        body: "Keep routes, calendars, and service areas aligned."
+        titleKey: "provider_header.product.schedule.title" as TranslationKey,
+        bodyKey: "provider_header.product.schedule.body" as TranslationKey
       },
       {
         href: "/provider/payments",
-        title: "Crew payouts",
-        body: "Pay crew members post-service and manage funding cards."
+        titleKey: "provider_header.product.payouts.title" as TranslationKey,
+        bodyKey: "provider_header.product.payouts.body" as TranslationKey
       },
       {
         href: "/crew",
-        title: "Crew hiring",
-        body: "Find workers when demand outgrows your current team."
+        titleKey: "provider_header.product.crew.title" as TranslationKey,
+        bodyKey: "provider_header.product.crew.body" as TranslationKey
       },
     ]
   },
   {
-    title: "Growth",
+    titleKey: "provider_header.menu.growth" as TranslationKey,
     items: [
       {
         href: "/provider",
-        title: "Google lead capture",
-        body: "Turn search demand into booked work on YardMatch."
+        titleKey: "provider_header.product.google.title" as TranslationKey,
+        bodyKey: "provider_header.product.google.body" as TranslationKey
       },
       {
         href: "/provider",
-        title: "Route efficiency",
-        body: "Stack nearby work and reduce wasted drive time."
+        titleKey: "provider_header.product.routes.title" as TranslationKey,
+        bodyKey: "provider_header.product.routes.body" as TranslationKey
       },
       {
         href: "/provider/management",
-        title: "Map-based property sizing",
-        body: "Estimate property size from address context to help price jobs faster."
+        titleKey: "provider_header.product.sizing.title" as TranslationKey,
+        bodyKey: "provider_header.product.sizing.body" as TranslationKey
       }
     ]
   }
@@ -71,41 +73,43 @@ const productColumns = [
 const marketplaceLinks = [
   {
     href: "/auth/provider/create",
-    title: "Find new clients",
-    body: "Show up where property owners are already looking for lawn care."
+    titleKey: "provider_header.marketplace.clients.title" as TranslationKey,
+    bodyKey: "provider_header.marketplace.clients.body" as TranslationKey
   },
   {
     href: "/crew",
-    title: "Find employees",
-    body: "Bring in crew members through the same marketplace."
+    titleKey: "provider_header.marketplace.employees.title" as TranslationKey,
+    bodyKey: "provider_header.marketplace.employees.body" as TranslationKey
   },
   {
     href: "/provider/management",
-    title: "Manage booked work",
-    body: "Handle schedules, crews, and follow-through from one place."
+    titleKey: "provider_header.marketplace.work.title" as TranslationKey,
+    bodyKey: "provider_header.marketplace.work.body" as TranslationKey
   },
   {
     href: "/provider/payments",
-    title: "Pay your crew",
-    body: "Fund completed jobs and control default cards for payout runs."
+    titleKey: "provider_header.marketplace.pay.title" as TranslationKey,
+    bodyKey: "provider_header.marketplace.pay.body" as TranslationKey
   },
   {
     href: "/provider",
-    title: "Quote faster",
-    body: "Use map-driven property sizing and instant quotes to move leads into booked work."
+    titleKey: "provider_header.marketplace.quote.title" as TranslationKey,
+    bodyKey: "provider_header.marketplace.quote.body" as TranslationKey
   }
 ] as const;
 
 const learnLinks = [
-  { href: "/help", label: "Help center" },
-  { href: `${getWebApiBaseUrl()}/api/docs`, label: "Developer docs" },
-  { href: "/provider", label: "Business resources" }
+  { href: "/help", labelKey: "nav.help_center" as TranslationKey },
+  { href: `${getWebApiBaseUrl()}/api/docs`, labelKey: "provider_header.learn.developer_docs" as TranslationKey },
+  { href: "/provider", labelKey: "nav.business_resources" as TranslationKey }
 ] as const;
 
 export function ProviderSiteHeader() {
+  const i18n = useI18n();
   const [openMenu, setOpenMenu] = useState<null | "learn" | "marketplace" | "products">(null);
   const { session } = useStoredWebSession();
   const navRef = useRef<HTMLElement | null>(null);
+  const localHref = (href: string) => (href.startsWith("http") ? href : addLocalePrefix(href, i18n.locale));
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -139,21 +143,21 @@ export function ProviderSiteHeader() {
 
   function handleSignOut() {
     clearStoredSession();
-    window.location.href = "/login/provider";
+    window.location.href = localHref("/login/provider");
   }
 
   return (
     <header className="site-header provider-site-header">
       <div className="container site-header__inner provider-site-header__inner">
-        <a href="/provider" className="brand-lockup">
+        <a href={localHref("/provider")} className="brand-lockup">
           <span className="brand-lockup__mark-frame brand-lockup__mark-text">YM</span>
           <span className="brand-lockup__wordmark">
-            <strong>YardMatch for Businesses</strong>
-            <small>Clients, crews, and schedules in one place</small>
+            <strong>{i18n.t("provider_header.brand")}</strong>
+            <small>{i18n.t("provider_header.tagline")}</small>
           </span>
         </a>
 
-        <nav aria-label="Business navigation" ref={navRef}>
+        <nav aria-label={i18n.t("provider_header.nav_aria")} ref={navRef}>
           <ul className="inline-nav provider-inline-nav">
             <li>
               <div className={`provider-menu ${openMenu === "products" ? "provider-menu--open" : ""}`}>
@@ -163,7 +167,7 @@ export function ProviderSiteHeader() {
                   onClick={() => toggleMenu("products")}
                   type="button"
                 >
-                  <span>Products</span>
+                  <span>{i18n.t("provider_header.menu.products")}</span>
                   <span className="provider-menu__chevron" aria-hidden="true">
                     ˅
                   </span>
@@ -172,13 +176,13 @@ export function ProviderSiteHeader() {
                   <div className="provider-menu__panel provider-menu__panel--wide">
                     <div className="provider-menu__grid">
                       {productColumns.map((column) => (
-                        <section key={column.title}>
-                          <h2>{column.title}</h2>
+                        <section key={column.titleKey}>
+                          <h2>{i18n.t(column.titleKey)}</h2>
                           <div className="provider-menu__stack">
                             {column.items.map((item) => (
-                              <a className="provider-menu__card" href={item.href} key={item.title} onClick={closeMenu}>
-                                <strong>{item.title}</strong>
-                                <span>{item.body}</span>
+                              <a className="provider-menu__card" href={localHref(item.href)} key={item.titleKey} onClick={closeMenu}>
+                                <strong>{i18n.t(item.titleKey)}</strong>
+                                <span>{i18n.t(item.bodyKey)}</span>
                               </a>
                             ))}
                           </div>
@@ -199,7 +203,7 @@ export function ProviderSiteHeader() {
                   onClick={() => toggleMenu("marketplace")}
                   type="button"
                 >
-                  <span>Marketplace</span>
+                  <span>{i18n.t("provider_header.menu.marketplace")}</span>
                   <span className="provider-menu__chevron" aria-hidden="true">
                     ˅
                   </span>
@@ -208,9 +212,9 @@ export function ProviderSiteHeader() {
                   <div className="provider-menu__panel">
                     <div className="provider-menu__stack">
                       {marketplaceLinks.map((item) => (
-                        <a className="provider-menu__card" href={item.href} key={item.title} onClick={closeMenu}>
-                          <strong>{item.title}</strong>
-                          <span>{item.body}</span>
+                        <a className="provider-menu__card" href={localHref(item.href)} key={item.titleKey} onClick={closeMenu}>
+                          <strong>{i18n.t(item.titleKey)}</strong>
+                          <span>{i18n.t(item.bodyKey)}</span>
                         </a>
                       ))}
                     </div>
@@ -226,7 +230,7 @@ export function ProviderSiteHeader() {
                   onClick={() => toggleMenu("learn")}
                   type="button"
                 >
-                  <span>Learn</span>
+                  <span>{i18n.t("provider_header.menu.learn")}</span>
                   <span className="provider-menu__chevron" aria-hidden="true">
                     ˅
                   </span>
@@ -235,8 +239,8 @@ export function ProviderSiteHeader() {
                   <div className="provider-menu__panel">
                     <div className="provider-menu__stack">
                       {learnLinks.map((item) => (
-                        <a className="provider-menu__link" href={item.href} key={item.label} onClick={closeMenu}>
-                          {item.label}
+                        <a className="provider-menu__link" href={localHref(item.href)} key={item.labelKey} onClick={closeMenu}>
+                          {i18n.t(item.labelKey)}
                         </a>
                       ))}
                     </div>
@@ -245,7 +249,7 @@ export function ProviderSiteHeader() {
               </div>
             </li>
             <li>
-              <a href="/customer">For property owners</a>
+              <a href={localHref("/customer")}>{i18n.t("provider_header.property_owners")}</a>
             </li>
           </ul>
         </nav>
@@ -254,23 +258,23 @@ export function ProviderSiteHeader() {
           {session?.role === "provider" ? (
             <>
               <NotificationMenu session={session} />
-              <a className="button-secondary" href="/provider/management">
-                Management
+              <a className="button-secondary" href={localHref("/provider/management")}>
+                {i18n.t("nav.user.management")}
               </a>
-              <a className="button-secondary" href="/provider/payments">
-                Payments
+              <a className="button-secondary" href={localHref("/provider/payments")}>
+                {i18n.t("nav.user.payments")}
               </a>
               <button className="button" onClick={handleSignOut} type="button">
-                Sign out
+                {i18n.t("nav.sign_out")}
               </button>
             </>
           ) : (
             <>
-              <a className="button-secondary" href="/login/provider">
-                Log in
+              <a className="button-secondary" href={localHref("/login/provider")}>
+                {i18n.t("nav.log_in")}
               </a>
-              <a className="button" href="/auth/provider/create">
-                Sign up
+              <a className="button" href={localHref("/auth/provider/create")}>
+                {i18n.t("nav.sign_up")}
               </a>
             </>
           )}

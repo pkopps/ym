@@ -5,6 +5,9 @@ import {
   PlaceSuggestion,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { I18nInstance, sourceMessages, TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryLabelKeys, servicePickerLabelKeys } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -79,43 +82,35 @@ export type CustomerQuickServiceChip = {
   description?: string;
 };
 
-export const customerTimingOptions: Array<{ value: CustomerTimingPreference; label: string }> = [
-  { value: "tomorrow-morning", label: "Tomorrow morning" },
-  { value: "tomorrow-afternoon", label: "Tomorrow afternoon" },
-  { value: "tomorrow-evening", label: "Tomorrow evening" },
-  { value: "day-after-morning", label: "Day after morning" },
-  { value: "day-after-afternoon", label: "Day after afternoon" }
+export const customerTimingOptions: Array<{
+  value: CustomerTimingPreference;
+  labelKey:
+    | "customer.timing.tomorrow_morning"
+    | "customer.timing.tomorrow_afternoon"
+    | "customer.timing.tomorrow_evening"
+    | "customer.timing.day_after_morning"
+    | "customer.timing.day_after_afternoon";
+}> = [
+  { value: "tomorrow-morning", labelKey: "customer.timing.tomorrow_morning" },
+  { value: "tomorrow-afternoon", labelKey: "customer.timing.tomorrow_afternoon" },
+  { value: "tomorrow-evening", labelKey: "customer.timing.tomorrow_evening" },
+  { value: "day-after-morning", labelKey: "customer.timing.day_after_morning" },
+  { value: "day-after-afternoon", labelKey: "customer.timing.day_after_afternoon" }
 ];
 
-const customerSearchTimingOptions: Array<{ value: CustomerTimingPreference; label: string }> = [
+const customerSearchTimingOptions: Array<{ value: CustomerTimingPreference; labelKey: TranslationKey }> = [
   ...customerTimingOptions,
-  { value: "custom-range", label: "Choose dates" }
+  { value: "custom-range", labelKey: "customer.timing.custom_range" }
 ];
 
 export const customerCustomTimingWindowOptions: Array<{
   value: CustomerCustomTimingWindow;
-  label: string;
+  labelKey: "customer.window.morning" | "customer.window.afternoon" | "customer.window.evening";
 }> = [
-  { value: "morning", label: "Morning" },
-  { value: "afternoon", label: "Afternoon" },
-  { value: "evening", label: "Evening" }
+  { value: "morning", labelKey: "customer.window.morning" },
+  { value: "afternoon", labelKey: "customer.window.afternoon" },
+  { value: "evening", labelKey: "customer.window.evening" }
 ];
-
-const customerServicePickerLabels: Record<ServiceCategory, string> = {
-  "lawn-mowing": "Lawn mowing",
-  "hedge-trimming": "Hedges",
-  "mulch-installation": "Mulch",
-  "seasonal-cleanup": "Cleanup",
-  "weed-control": "Weeds",
-  "irrigation-check": "Irrigation",
-  "leaf-blowing": "Leaf blowing",
-  "aeration": "Aeration",
-  "fertilization": "Fertilization",
-  "gutter-cleaning": "Gutter clean",
-  "snow-shoveling": "Snow shoveling",
-  "ice-melt-salting": "Ice melt",
-  "snow-blowing": "Snow blowing"
-};
 
 export function getDefaultCustomerCustomDateString() {
   const date = new Date();
@@ -142,6 +137,10 @@ function formatDateInputValue(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function getSourceMessage(key: TranslationKey) {
+  return sourceMessages[key] ?? String(key);
+}
+
 function buildCustomTimingDate(customDate?: string) {
   const [year, month, day] = (customDate ?? getDefaultCustomerCustomDateString())
     .split("-")
@@ -157,19 +156,35 @@ function buildCustomTimingDate(customDate?: string) {
 export function getCustomerTimingLabel(
   timing: CustomerTimingPreference,
   customDate?: string,
-  customWindow: CustomerCustomTimingWindow = "morning"
+  customWindow: CustomerCustomTimingWindow = "morning",
+  i18n?: I18nInstance
 ) {
   if (timing === "custom-date" || timing === "custom-range") {
     const date = buildCustomTimingDate(customDate);
-    const dateLabel = new Intl.DateTimeFormat("en-US", {
+    const dateLabel = i18n?.formatDate(date, {
+      month: "short",
+      day: "numeric"
+    }) ?? new Intl.DateTimeFormat("en-US", {
       month: "short",
       day: "numeric"
     }).format(date);
-    return `${dateLabel} ${customWindow}`;
+    const windowLabel =
+      i18n?.t(
+        customWindow === "morning"
+          ? "customer.window.morning"
+          : customWindow === "afternoon"
+            ? "customer.window.afternoon"
+            : "customer.window.evening"
+      ) ?? customWindow;
+    return `${dateLabel} ${windowLabel}`;
   }
 
   return (
-    customerTimingOptions.find((option) => option.value === timing)?.label ?? "Tomorrow morning"
+    customerTimingOptions.find((option) => option.value === timing)?.labelKey
+      ? i18n
+        ? i18n.t(customerTimingOptions.find((option) => option.value === timing)!.labelKey)
+        : getSourceMessage(customerTimingOptions.find((option) => option.value === timing)!.labelKey)
+      : getSourceMessage("customer.timing.tomorrow_morning")
   );
 }
 
@@ -252,6 +267,7 @@ export function PublicMarketplaceSearchShell({
   selectedSuggestion?: PlaceSuggestion;
   selectedTiming: CustomerTimingPreference;
 }) {
+  const i18n = useI18n();
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
   const searchFieldRef = useRef<HTMLLabelElement | null>(null);
@@ -291,7 +307,7 @@ export function PublicMarketplaceSearchShell({
     setLocationGuidance(undefined);
 
     if (!navigator.geolocation) {
-      setLocationGuidance("This browser does not support location lookup. Try typing your city, ZIP, or address.");
+      setLocationGuidance(i18n.t("api.places.location_lookup_unsupported"));
       return;
     }
 
@@ -321,7 +337,7 @@ export function PublicMarketplaceSearchShell({
         onAreaQueryChange(autoSelectedSuggestion.label);
         onSelectedSuggestionChange(autoSelectedSuggestion);
         setSuggestions([]);
-        setLocationGuidance(`Using ${autoSelectedSuggestion.label}.`);
+        setLocationGuidance(i18n.t("customer.search.using_area", { area: autoSelectedSuggestion.label }));
         return;
       }
 
@@ -329,15 +345,15 @@ export function PublicMarketplaceSearchShell({
       setIsSuggestionMenuOpen(response.suggestions.length > 0);
       setLocationGuidance(
         response.suggestions.length > 0
-          ? "Choose the closest suggested service area so YardMatch does not guess."
-          : response.searchMessage ?? "We could not resolve this location. Try typing your city, ZIP, or address."
+          ? i18n.t("api.places.choose_suggestion")
+          : response.searchMessage ?? i18n.t("api.places.no_resolution")
       );
     } catch (error) {
       const code = typeof error === "object" && error && "code" in error ? Number(error.code) : undefined;
       setLocationGuidance(
         code === 1
-          ? "Location permission was blocked. You can allow it in the browser or type your city, ZIP, or address."
-          : "We could not get your browser location. Try typing your city, ZIP, or address."
+          ? i18n.t("api.places.permission_blocked")
+          : i18n.t("api.places.browser_location_failed")
       );
     } finally {
       setIsResolvingLocation(false);
@@ -400,7 +416,7 @@ export function PublicMarketplaceSearchShell({
 
     if (!selectedSuggestion && suggestions.length > 0 && !suggestion) {
       setSubmitGuidance(
-        "Choose one of the suggested areas before searching so YardMatch does not guess the wrong location."
+        i18n.t("customer.search.choose_area_guidance")
       );
       setIsSuggestionMenuOpen(true);
       return;
@@ -431,20 +447,20 @@ export function PublicMarketplaceSearchShell({
     <div className="customer-search-shell">
       <div className="customer-search-shell__grid">
         <label className="customer-search-shell__field">
-          <span>Need</span>
+          <span>{i18n.t("customer.search.need")}</span>
           <select
             onChange={(event) => onSelectedServiceChange(event.target.value as ServiceCategory)}
             value={selectedService}
           >
             {Object.entries(serviceCategoryLabels).map(([value, label]) => (
               <option key={value} value={value}>
-                {customerServicePickerLabels[value as ServiceCategory] ?? label}
+                {i18n.t(servicePickerLabelKeys[value as ServiceCategory] ?? serviceCategoryLabelKeys[value as ServiceCategory]) ?? label}
               </option>
             ))}
           </select>
         </label>
         <label className="customer-search-shell__field">
-          <span>When</span>
+          <span>{i18n.t("customer.search.when")}</span>
           <select
             onChange={(event) => {
               const nextTiming = event.target.value as CustomerTimingPreference;
@@ -457,13 +473,13 @@ export function PublicMarketplaceSearchShell({
           >
             {customerSearchTimingOptions.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {i18n.t(option.labelKey)}
               </option>
             ))}
           </select>
         </label>
         <label className="customer-search-shell__field customer-search-shell__field--search" ref={searchFieldRef}>
-          <span>Where</span>
+          <span>{i18n.t("customer.search.where")}</span>
           <input
             onChange={(event) => {
               onAreaQueryChange(event.target.value);
@@ -481,7 +497,7 @@ export function PublicMarketplaceSearchShell({
                 setIsSuggestionMenuOpen(false);
               }
             }}
-            placeholder="City, ZIP, or address"
+            placeholder={i18n.t("customer.search.area_placeholder")}
             value={areaQuery}
           />
           <button
@@ -490,7 +506,7 @@ export function PublicMarketplaceSearchShell({
             onClick={handleUseCurrentLocation}
             type="button"
           >
-            {isResolvingLocation ? "Finding your area..." : "Use my location"}
+            {isResolvingLocation ? i18n.t("common.loading.finding_area") : i18n.t("common.actions.use_my_location")}
           </button>
           {isSuggestionMenuOpen && suggestions.length > 0 ? (
             <div className="customer-search-shell__suggestions">
@@ -513,8 +529,8 @@ export function PublicMarketplaceSearchShell({
                     <strong>{suggestion.label}</strong>
                     <span>
                       {suggestion.source === "google-geocoding"
-                        ? suggestion.matchReason ?? "Google-verified area"
-                        : suggestion.matchReason ?? "Suggested area"}
+                        ? suggestion.matchReason ?? i18n.t("customer.search.google_verified_area")
+                        : suggestion.matchReason ?? i18n.t("customer.search.suggested_area")}
                     </span>
                   </button>
                 );
@@ -523,25 +539,25 @@ export function PublicMarketplaceSearchShell({
           ) : isSuggestionMenuOpen && areaQuery.trim().length >= 3 && hasFinishedSearch ? (
             <div className="customer-search-shell__suggestions">
               <div className="customer-search-shell__suggestion customer-search-shell__suggestion--static">
-                <strong>No suggested area yet.</strong>
-                <span>{searchMessage ?? "Try a nearby city, ZIP, or fuller address."}</span>
+                <strong>{i18n.t("customer.search.no_suggested_area")}</strong>
+                <span>{searchMessage ?? i18n.t("customer.search.try_nearby")}</span>
               </div>
             </div>
           ) : isSuggestionMenuOpen && areaQuery.trim().length >= 2 && isSearching ? (
             <div className="customer-search-shell__suggestions">
               <div className="customer-search-shell__suggestion customer-search-shell__suggestion--static">
-                <strong>Searching areas…</strong>
+                <strong>{i18n.t("customer.search.searching_areas")}</strong>
               </div>
             </div>
           ) : null}
         </label>
         <button className="button customer-search-shell__action" onClick={() => handleSubmit()} type="button">
-          {isSearching ? "Checking area..." : "Find my match"}
+          {isSearching ? i18n.t("common.loading.checking_area") : i18n.t("common.actions.find_my_match")}
         </button>
       </div>
       {!isCustomRange ? (
-        <div className="customer-search-shell__backup-windows" aria-label="Backup times">
-          <span>Also works</span>
+        <div className="customer-search-shell__backup-windows" aria-label={i18n.t("customer.search.backup_times")}>
+          <span>{i18n.t("customer.search.also_works")}</span>
           <div className="customer-search-shell__backup-options">
             {customerTimingOptions
               .filter((option) => option.value !== selectedTiming)
@@ -554,7 +570,7 @@ export function PublicMarketplaceSearchShell({
                     onClick={() => toggleAdditionalTiming(option.value)}
                     type="button"
                   >
-                    {option.label}
+                    {i18n.t(option.labelKey)}
                   </button>
                 );
               })}
@@ -564,7 +580,7 @@ export function PublicMarketplaceSearchShell({
       {isCustomRange ? (
         <div className="customer-search-shell__custom-date">
           <label className="customer-search-shell__field">
-            <span>Start</span>
+            <span>{i18n.t("customer.search.start")}</span>
             <input
               min={getMinimumCustomerCustomDateString()}
               onChange={(event) => {
@@ -579,7 +595,7 @@ export function PublicMarketplaceSearchShell({
             />
           </label>
           <label className="customer-search-shell__field">
-            <span>End</span>
+            <span>{i18n.t("customer.search.end")}</span>
             <input
               min={resolvedCustomDate}
               onChange={(event) => onSelectedCustomEndDateChange?.(event.target.value)}
@@ -588,7 +604,7 @@ export function PublicMarketplaceSearchShell({
             />
           </label>
           <div className="customer-search-shell__window-picks">
-            <span>Preferred windows</span>
+            <span>{i18n.t("customer.search.preferred_windows")}</span>
             <div className="customer-search-shell__backup-options">
               {customerCustomTimingWindowOptions.map((option) => (
                 <button
@@ -602,7 +618,7 @@ export function PublicMarketplaceSearchShell({
                   }}
                   type="button"
                 >
-                  {option.label}
+                  {i18n.t(option.labelKey)}
                 </button>
               ))}
             </div>

@@ -4,6 +4,7 @@ const nextConfig = {
     "@yardmatch/branding",
     "@yardmatch/contracts",
     "@yardmatch/domain",
+    "@yardmatch/i18n",
     "@yardmatch/ui",
     "@yardmatch/analytics",
     "@yardmatch/observability"

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { addLocalePrefix } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { bookedBusinessSearchContext, bookedBusinessShowcase } from "@yardmatch/ui";
 
 export function BookedBusinessResults({
@@ -14,7 +16,9 @@ export function BookedBusinessResults({
   searchAreaLabel?: string;
   serviceLabel?: string;
 }) {
+  const i18n = useI18n();
   const [mapExpanded, setMapExpanded] = useState(true);
+  const addressLabel = searchAreaLabel ?? bookedBusinessSearchContext.userAddressLabel;
 
   return (
     <div className={`results-shell${!mapExpanded ? " results-shell--map-collapsed" : ""}`}>
@@ -24,13 +28,13 @@ export function BookedBusinessResults({
             <strong>{bookedBusinessSearchContext.resultCountLabel}</strong>
             <span>
               {serviceLabel
-                ? `${serviceLabel} near ${searchAreaLabel ?? bookedBusinessSearchContext.userAddressLabel}`
+                ? i18n.t("booked_results.service_near_area", {
+                    serviceLabel,
+                    area: addressLabel
+                  })
                 : bookedBusinessSearchContext.dateRangeLabel}
             </span>
-            <small>
-              These businesses already have packed calendars, but they help set expectations for
-              pricing, route density, and who is active in the area.
-            </small>
+            <small>{i18n.t("booked_results.summary_note")}</small>
           </div>
           <div className="results-summary__actions">
             {allowMapToggle ? (
@@ -39,12 +43,12 @@ export function BookedBusinessResults({
                 onClick={() => setMapExpanded((current) => !current)}
                 type="button"
               >
-                {mapExpanded ? "Collapse map" : "Expand map"}
+                {i18n.t(mapExpanded ? "booked_results.map.collapse" : "booked_results.map.expand")}
               </button>
             ) : null}
             {showOpenListingsLink ? (
-              <a className="button-secondary" href="/customer/listings">
-                Open full listing view
+              <a className="button-secondary" href={addLocalePrefix("/customer/listings", i18n.locale)}>
+                {i18n.t("booked_results.open_full_listing")}
               </a>
             ) : null}
           </div>
@@ -58,7 +62,10 @@ export function BookedBusinessResults({
               <div className="calendar-card__header">
                 <div className="calendar-card__identity">
                   <img
-                    alt={`${business.ownerName} from ${business.name}`}
+                    alt={i18n.t("booked_results.business_avatar_alt", {
+                      ownerName: business.ownerName,
+                      businessName: business.name
+                    })}
                     className="calendar-card__avatar"
                     height={72}
                     src={business.avatarUrl}
@@ -69,21 +76,26 @@ export function BookedBusinessResults({
                     <h3>{business.name}</h3>
                     {business.sponsored ? (
                       <div className="sponsored-cluster">
-                        <span className="result-badge">Sponsored</span>
+                        <span className="result-badge">{i18n.t("booked_results.sponsored")}</span>
                         <details className="sponsored-explainer">
-                          <summary className="sponsored-explainer__summary">Why am I seeing this?</summary>
-                          <div className="sponsored-explainer__body">
-                            Sponsored businesses can get stronger placement, but they still need to
-                            fit the customer address, service type, and route radius.
-                          </div>
+                          <summary className="sponsored-explainer__summary">
+                            {i18n.t("booked_results.sponsored_summary")}
+                          </summary>
+                          <div className="sponsored-explainer__body">{i18n.t("booked_results.sponsored_body")}</div>
                         </details>
                       </div>
                     ) : null}
                     <p>
-                      {business.ownerName} • {business.rating} stars
+                      {i18n.t("booked_results.owner_rating", {
+                        ownerName: business.ownerName,
+                        rating: business.rating
+                      })}
                     </p>
                     <p>
-                      {business.distanceMiles} mi away • {business.addressLine}
+                      {i18n.t("booked_results.distance_address", {
+                        distance: business.distanceMiles,
+                        address: business.addressLine
+                      })}
                     </p>
                   </div>
                 </div>
@@ -95,19 +107,21 @@ export function BookedBusinessResults({
                 ))}
               </div>
               <div className="calendar-card__metric-row">
-                <span>{business.rating} stars</span>
-                <span>{business.distanceMiles} mi away</span>
+                <span>{i18n.t("booked_results.rating", { rating: business.rating })}</span>
+                <span>{i18n.t("booked_results.distance_away", { distance: business.distanceMiles })}</span>
                 <span>{business.crewSizeLabel}</span>
               </div>
               <p className="calendar-card__note">
-                Best known for {business.specialties.slice(0, 2).join(" and ").toLowerCase()} jobs in{" "}
-                {business.city}.
+                {i18n.t("booked_results.best_known_for", {
+                  specialties: business.specialties.slice(0, 2).join(" and ").toLowerCase(),
+                  city: business.city
+                })}
               </p>
               <div className="calendar-slots calendar-slots--inline">
                 {visibleSlots.map((slot) => (
                   <div className="calendar-slot calendar-slot--booked" key={`${business.name}-${slot.windowLabel}`}>
                     <span>{slot.windowLabel}</span>
-                    <strong>Booked</strong>
+                    <strong>{i18n.t("booked_results.booked")}</strong>
                   </div>
                 ))}
               </div>
@@ -121,24 +135,21 @@ export function BookedBusinessResults({
         <aside className="results-shell__map">
           <div className="map-panel">
             <div className="map-panel__toolbar">
-              <span className="eyebrow">Requested address</span>
-              <strong>{searchAreaLabel ?? bookedBusinessSearchContext.userAddressLabel}</strong>
-              <p>
-                Distances are measured from the customer property to each booked landscaping
-                business.
-              </p>
+              <span className="eyebrow">{i18n.t("booked_results.map.requested_address")}</span>
+              <strong>{addressLabel}</strong>
+              <p>{i18n.t("booked_results.map.distance_note")}</p>
             </div>
-            <div className="map-viewport" aria-label="Customer address and nearby business distance map">
+            <div className="map-viewport" aria-label={i18n.t("booked_results.map.aria")}>
               <iframe
                 className="map-viewport__frame"
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
                 src={bookedBusinessSearchContext.mapEmbedUrl}
-                title="Nearby landscaping businesses map"
+                title={i18n.t("booked_results.map.title")}
               />
               <div className="map-viewport__overlay" />
               <div className="map-user-marker" style={{ left: "56%", top: "44%" }}>
-                <span>Home</span>
+                <span>{i18n.t("booked_results.map.home")}</span>
               </div>
               {bookedBusinessShowcase.map((business, index) => (
                 <div
@@ -147,7 +158,7 @@ export function BookedBusinessResults({
                   style={{ left: `${business.mapX}%`, top: `${business.mapY}%` }}
                 >
                   <strong>{index + 1}</strong>
-                  <span>{business.distanceMiles} mi</span>
+                  <span>{i18n.t("common.format.miles", { count: business.distanceMiles })}</span>
                 </div>
               ))}
             </div>
@@ -163,7 +174,7 @@ export function BookedBusinessResults({
                       </p>
                     </div>
                   </div>
-                  <span>{business.distanceMiles} mi</span>
+                  <span>{i18n.t("common.format.miles", { count: business.distanceMiles })}</span>
                 </article>
               ))}
             </div>

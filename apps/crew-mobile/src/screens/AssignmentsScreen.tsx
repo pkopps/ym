@@ -1,7 +1,10 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CrewMatchesResponse } from "@yardmatch/contracts";
+import { BookingStatus, CrewMatchStatus, CrewMatchesResponse, ServiceCategory } from "@yardmatch/contracts";
+import { I18nInstance, TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCrewMobileApiClient } from "../lib/api";
@@ -17,70 +20,99 @@ interface AssignmentNextStep {
   label: string;
 }
 
-function formatAssignmentStatus(status: string) {
-  return status.replaceAll("-", " ");
+const bookingStatusLabelKeys: Record<BookingStatus, TranslationKey> = {
+  cancelled: "provider_mobile.schedule.status.cancelled",
+  completed: "provider_mobile.schedule.status.completed",
+  confirmed: "provider_mobile.schedule.status.confirmed",
+  disputed: "provider_mobile.schedule.status.disputed",
+  "in-progress": "provider_mobile.schedule.status.in_progress",
+  refunded: "provider_mobile.schedule.status.refunded",
+  requested: "provider_mobile.schedule.status.requested"
+};
+
+const crewMatchStatusLabelKeys: Record<CrewMatchStatus, TranslationKey> = {
+  accepted: "provider_mobile.schedule.crew.status.accepted",
+  "cancelled-by-crew": "provider_mobile.schedule.crew.status.cancelled_by_crew",
+  denied: "provider_mobile.schedule.crew.status.denied",
+  "pending-provider-review": "provider_mobile.schedule.crew.status.pending_provider_review"
+};
+
+function formatAssignmentStatus(i18n: I18nInstance, status: BookingStatus | CrewMatchStatus) {
+  if (status in bookingStatusLabelKeys) {
+    return i18n.t(bookingStatusLabelKeys[status as BookingStatus]);
+  }
+
+  return i18n.t(crewMatchStatusLabelKeys[status as CrewMatchStatus]);
 }
 
-function formatAssignmentDay(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+function formatAssignmentDay(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, { weekday: "short", month: "short", day: "numeric" });
 }
 
-function formatAssignmentTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+function formatAssignmentTime(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, { hour: "numeric", minute: "2-digit" });
 }
 
-function formatHourlyPay(cents: number) {
-  return `${new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(cents / 100)}/hr`;
+function formatHourlyPay(i18n: I18nInstance, cents: number) {
+  return i18n.t("provider_mobile.clients.hourly_rate", {
+    rate: i18n.formatCurrency(cents)
+  });
 }
 
-function getAssignmentRoleLabel(assignment: CrewAssignment) {
+function formatServiceCategory(i18n: I18nInstance, category: ServiceCategory) {
+  return i18n.t(serviceCategoryToI18nKey(category));
+}
+
+function getAssignmentRoleLabel(i18n: I18nInstance, assignment: CrewAssignment) {
   if (assignment.isAssignedRouteLeader) {
-    return "Route lead";
+    return i18n.t("crew_mobile.dashboard.role.route_lead");
   }
 
   if (assignment.requiresRouteLeaderAssignment) {
-    return "Lead pending";
+    return i18n.t("crew_mobile.dashboard.role.lead_pending");
   }
 
-  return "Crew";
+  return i18n.t("provider_mobile.dashboard.crew");
 }
 
-function getAssignmentSummary(assignment: CrewAssignment) {
+function getAssignmentSummary(i18n: I18nInstance, assignment: CrewAssignment) {
   if (assignment.onRouteConfirmedAt) {
-    return assignment.isAssignedRouteLeader ? "Route is live. You lead this crew." : "Route is live.";
+    return assignment.isAssignedRouteLeader
+      ? i18n.t("crew_mobile.assignments.summary.route_live_lead")
+      : i18n.t("crew_mobile.assignments.summary.route_live");
   }
 
   if (assignment.lateEtaIso) {
-    return `Delay sent for ${formatAssignmentTime(assignment.lateEtaIso)}.`;
+    return i18n.t("provider_mobile.schedule.message.delay_notice_sent", {
+      time: formatAssignmentTime(i18n, assignment.lateEtaIso)
+    });
   }
 
   if (assignment.bookingStatus === "requested") {
-    return "Waiting on the business to confirm.";
+    return i18n.t("crew_mobile.assignments.summary.wait_business");
   }
 
   if (assignment.bookingStatus === "confirmed") {
-    return assignment.isAssignedRouteLeader ? "You are leading this route." : "Confirmed and ready.";
+    return assignment.isAssignedRouteLeader
+      ? i18n.t("crew_mobile.assignments.summary.leading_route")
+      : i18n.t("crew_mobile.assignments.summary.confirmed_ready");
   }
 
-  return formatAssignmentStatus(assignment.bookingStatus);
+  return formatAssignmentStatus(i18n, assignment.bookingStatus);
 }
 
-function getAssignmentNextStep(assignment: CrewAssignment): AssignmentNextStep {
+function getAssignmentNextStep(i18n: I18nInstance, assignment: CrewAssignment): AssignmentNextStep {
   if (assignment.status === "pending-provider-review") {
     return {
-      detail: "The business owner reviews the crew before the shift is final.",
-      label: "Wait for review"
+      detail: i18n.t("crew_mobile.assignments.next.wait_review_detail"),
+      label: i18n.t("crew_mobile.assignments.next.wait_review")
     };
   }
 
   if (assignment.bookingStatus === "requested") {
     return {
-      detail: "The business owner still needs to confirm the customer visit.",
-      label: "Wait for confirmation"
+      detail: i18n.t("crew_mobile.assignments.next.wait_confirmation_detail"),
+      label: i18n.t("crew_mobile.dashboard.next_step.wait_confirmation")
     };
   }
 
@@ -88,20 +120,20 @@ function getAssignmentNextStep(assignment: CrewAssignment): AssignmentNextStep {
     return assignment.isAssignedRouteLeader
       ? {
           action: "start-route",
-          detail: "Start arrival tracking when you are heading to the property.",
-          label: "Start route"
+          detail: i18n.t("crew_mobile.assignments.next.start_route_detail"),
+          label: i18n.t("provider_mobile.dashboard.action.start_route")
         }
       : {
-          detail: "The route lead starts tracking before the crew heads out.",
-          label: "Wait for route"
+          detail: i18n.t("crew_mobile.assignments.next.wait_route_detail"),
+          label: i18n.t("crew_mobile.dashboard.next_step.wait_route")
         };
   }
 
   if (assignment.bookingStatus === "confirmed" && assignment.onRouteConfirmedAt) {
     return {
       action: "today",
-      detail: "Open Today when you arrive to start work and capture proof.",
-      label: "Start work"
+      detail: i18n.t("crew_mobile.assignments.next.start_work_detail"),
+      label: i18n.t("provider_mobile.schedule.action.start_work")
     };
   }
 
@@ -109,58 +141,58 @@ function getAssignmentNextStep(assignment: CrewAssignment): AssignmentNextStep {
     if (assignment.afterEvidenceCount > 0) {
       return {
         action: "today",
-        detail: "Proof is saved. Today has the latest job tools and notes.",
-        label: "Proof saved"
+        detail: i18n.t("crew_mobile.assignments.next.proof_saved_detail"),
+        label: i18n.t("crew_mobile.dashboard.next_step.proof_saved")
       };
     }
 
     return {
       action: "today",
-      detail: "Add after-work proof so the business can close the job.",
-      label: "Add proof"
+      detail: i18n.t("crew_mobile.dashboard.next_step.add_proof_detail"),
+      label: i18n.t("provider_mobile.schedule.action.add_proof")
     };
   }
 
   if (assignment.bookingStatus === "completed") {
     return {
-      detail: "Payout status appears after customer payment clears.",
-      label: "Payout processing"
+      detail: i18n.t("crew_mobile.assignments.next.payout_processing_detail"),
+      label: i18n.t("crew_mobile.dashboard.next_step.payout_processing")
     };
   }
 
   return {
-    detail: formatAssignmentStatus(assignment.bookingStatus),
-    label: "Review status"
+    detail: formatAssignmentStatus(i18n, assignment.bookingStatus),
+    label: i18n.t("crew_mobile.assignments.next.review_status")
   };
 }
 
-function AssignmentSummaryGrid({ assignment }: { assignment: CrewAssignment }) {
+function AssignmentSummaryGrid({ assignment, i18n }: { assignment: CrewAssignment; i18n: I18nInstance }) {
   return (
     <View style={styles.assignmentSummaryGrid}>
       <View style={styles.assignmentSummaryItem}>
-        <Text style={styles.assignmentSummaryLabel}>Day</Text>
-        <Text style={styles.assignmentSummaryValue}>{formatAssignmentDay(assignment.scheduledStartIso)}</Text>
+        <Text style={styles.assignmentSummaryLabel}>{i18n.t("crew_mobile.assignments.day")}</Text>
+        <Text style={styles.assignmentSummaryValue}>{formatAssignmentDay(i18n, assignment.scheduledStartIso)}</Text>
       </View>
       <View style={styles.assignmentSummaryItem}>
-        <Text style={styles.assignmentSummaryLabel}>Time</Text>
-        <Text style={styles.assignmentSummaryValue}>{formatAssignmentTime(assignment.scheduledStartIso)}</Text>
+        <Text style={styles.assignmentSummaryLabel}>{i18n.t("crew_mobile.assignments.time")}</Text>
+        <Text style={styles.assignmentSummaryValue}>{formatAssignmentTime(i18n, assignment.scheduledStartIso)}</Text>
       </View>
       <View style={styles.assignmentSummaryItem}>
-        <Text style={styles.assignmentSummaryLabel}>Pay</Text>
-        <Text style={styles.assignmentSummaryValue}>{formatHourlyPay(assignment.hourlyRateCents)}</Text>
+        <Text style={styles.assignmentSummaryLabel}>{i18n.t("crew_mobile.dashboard.pay")}</Text>
+        <Text style={styles.assignmentSummaryValue}>{formatHourlyPay(i18n, assignment.hourlyRateCents)}</Text>
       </View>
       <View style={styles.assignmentSummaryItem}>
-        <Text style={styles.assignmentSummaryLabel}>Role</Text>
-        <Text style={styles.assignmentSummaryValue}>{getAssignmentRoleLabel(assignment)}</Text>
+        <Text style={styles.assignmentSummaryLabel}>{i18n.t("crew_mobile.dashboard.role.label")}</Text>
+        <Text style={styles.assignmentSummaryValue}>{getAssignmentRoleLabel(i18n, assignment)}</Text>
       </View>
     </View>
   );
 }
 
-function AssignmentNextPanel({ children, step }: { children?: ReactNode; step: AssignmentNextStep }) {
+function AssignmentNextPanel({ children, i18n, step }: { children?: ReactNode; i18n: I18nInstance; step: AssignmentNextStep }) {
   return (
     <View style={styles.nextPanel}>
-      <Text style={styles.nextEyebrow}>Next</Text>
+      <Text style={styles.nextEyebrow}>{i18n.t("provider_mobile.schedule.summary.next")}</Text>
       <Text style={styles.nextTitle}>{step.label}</Text>
       <Text style={styles.nextDetail}>{step.detail}</Text>
       {children}
@@ -169,6 +201,7 @@ function AssignmentNextPanel({ children, step }: { children?: ReactNode; step: A
 }
 
 export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void }) {
+  const i18n = useI18n();
   const { envelope } = useCrewSession();
   const [viewMode, setViewMode] = useState<ViewMode>("upcoming");
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
@@ -186,7 +219,7 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
       api.setAuthToken(envelope.session.token);
       setMatchesResponse(await api.getCrewMatches());
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load assignments.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_mobile.assignments.error.load"));
     }
   }
 
@@ -206,12 +239,12 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
       setErrorMessage("");
       await api.cancelCrewMatch({
         crewMatchId,
-        reason: "Crew member cancelled from the assignments screen."
+        reason: i18n.t("crew_mobile.assignments.cancel.reason")
       });
-      setStatusMessage("Assignment cancelled. The business owner was notified.");
+      setStatusMessage(i18n.t("crew_mobile.dashboard.cancel.message"));
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to cancel assignment.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_mobile.dashboard.cancel.error"));
     } finally {
       setIsWorking(false);
     }
@@ -228,10 +261,10 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
       setIsWorking(true);
       setErrorMessage("");
       await api.markBookingOnRoute({ bookingId: assignment.bookingId });
-      setStatusMessage("Route started. The customer can now track the arrival.");
+      setStatusMessage(i18n.t("crew_mobile.dashboard.message.route_started"));
       await loadMatches();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start the route.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.dashboard.error.start_route"));
     } finally {
       setIsWorking(false);
     }
@@ -239,12 +272,12 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
 
   function confirmCancelAssignment(crewMatchId: string) {
     Alert.alert(
-      "Cancel accepted assignment?",
-      "Backing out of an accepted shift can negatively affect your reliability score, which may reduce your chances of being selected for future crews.",
+      i18n.t("crew_mobile.dashboard.cancel.confirm_title"),
+      i18n.t("crew_mobile.dashboard.cancel.confirm_body"),
       [
-        { text: "Keep assignment", style: "cancel" },
+        { text: i18n.t("crew_mobile.dashboard.cancel.keep_assignment"), style: "cancel" },
         {
-          text: "Cancel assignment",
+          text: i18n.t("crew_mobile.dashboard.cancel.cancel_assignment"),
           style: "destructive",
           onPress: () => void cancelAssignment(crewMatchId)
         }
@@ -269,38 +302,42 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
   );
 
   return (
-    <ScreenShell eyebrow="Schedule" title="Assignments" description="Upcoming work and history.">
+    <ScreenShell
+      eyebrow={i18n.t("provider_mobile.schedule.eyebrow")}
+      title={i18n.t("crew_mobile.assignments.title")}
+      description={i18n.t("crew_mobile.assignments.description")}
+    >
       <View style={styles.modeRow}>
-        <ModeButton active={viewMode === "upcoming"} label="Upcoming" onPress={() => setViewMode("upcoming")} />
-        <ModeButton active={viewMode === "history"} label="History" onPress={() => setViewMode("history")} />
+        <ModeButton active={viewMode === "upcoming"} label={i18n.t("crew_mobile.assignments.view.upcoming")} onPress={() => setViewMode("upcoming")} />
+        <ModeButton active={viewMode === "history"} label={i18n.t("crew_mobile.assignments.view.history")} onPress={() => setViewMode("history")} />
       </View>
 
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       {viewMode === "upcoming" ? (
         <>
           {acceptedAssignments.length > 0 ? (
-            <InfoCard title="Accepted shifts" description={`${acceptedAssignments.length} upcoming`}>
+            <InfoCard title={i18n.t("crew_mobile.assignments.accepted_shifts")} description={i18n.t("crew_mobile.assignments.upcoming_count", { count: acceptedAssignments.length })}>
               <View style={styles.list}>
                 {acceptedAssignments.map((assignment) => {
-                  const nextStep = getAssignmentNextStep(assignment);
+                  const nextStep = getAssignmentNextStep(i18n, assignment);
 
                   return (
                     <View key={assignment.id} style={styles.assignmentCard}>
                       <View style={styles.assignmentHeader}>
                         <View style={styles.copy}>
                           <Text style={styles.title}>{assignment.providerCompanyName}</Text>
-                          <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                          <Text style={styles.meta}>{formatServiceCategory(i18n, assignment.category)}</Text>
                         </View>
-                        <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.bookingStatus)}</Text>
+                        <Text style={styles.statusPill}>{formatAssignmentStatus(i18n, assignment.bookingStatus)}</Text>
                       </View>
-                      <AssignmentSummaryGrid assignment={assignment} />
+                      <AssignmentSummaryGrid assignment={assignment} i18n={i18n} />
                       <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
-                      <AssignmentNextPanel step={nextStep}>
+                      <AssignmentNextPanel step={nextStep} i18n={i18n}>
                         {nextStep.action === "today" && onOpenToday ? (
                           <Pressable disabled={isWorking} onPress={onOpenToday} style={styles.nextPrimaryButton}>
-                            <Text style={styles.nextPrimaryButtonLabel}>Open Today</Text>
+                            <Text style={styles.nextPrimaryButtonLabel}>{i18n.t("crew_mobile.assignments.open_today")}</Text>
                           </Pressable>
                         ) : null}
                         {nextStep.action === "start-route" ? (
@@ -309,11 +346,13 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
                             onPress={() => void startRoute(assignment)}
                             style={styles.nextPrimaryButton}
                           >
-                            <Text style={styles.nextPrimaryButtonLabel}>{isWorking ? "Working..." : "Start route"}</Text>
+                            <Text style={styles.nextPrimaryButtonLabel}>
+                              {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_mobile.dashboard.action.start_route")}
+                            </Text>
                           </Pressable>
                         ) : null}
                       </AssignmentNextPanel>
-                      <Text style={styles.summary}>{getAssignmentSummary(assignment)}</Text>
+                      <Text style={styles.summary}>{getAssignmentSummary(i18n, assignment)}</Text>
                       <View style={styles.actionStack}>
                         {(assignment.bookingStatus === "requested" ||
                           (assignment.bookingStatus === "confirmed" && !assignment.onRouteConfirmedAt)) ? (
@@ -322,7 +361,7 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
                             onPress={() => confirmCancelAssignment(assignment.id)}
                             style={styles.cancelButton}
                           >
-                            <Text style={styles.cancelButtonLabel}>Cancel assignment</Text>
+                            <Text style={styles.cancelButtonLabel}>{i18n.t("crew_mobile.dashboard.cancel.cancel_assignment")}</Text>
                           </Pressable>
                         ) : null}
                       </View>
@@ -334,20 +373,20 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
           ) : null}
 
           {pendingAssignments.length > 0 ? (
-            <InfoCard title="Awaiting review" description={`${pendingAssignments.length} pending`}>
+            <InfoCard title={i18n.t("crew_mobile.assignments.awaiting_review")} description={i18n.t("crew_mobile.assignments.pending_count", { count: pendingAssignments.length })}>
               <View style={styles.list}>
                 {pendingAssignments.map((assignment) => (
                   <View key={assignment.id} style={styles.assignmentCard}>
                     <View style={styles.assignmentHeader}>
                       <View style={styles.copy}>
                         <Text style={styles.title}>{assignment.providerCompanyName}</Text>
-                        <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                        <Text style={styles.meta}>{formatServiceCategory(i18n, assignment.category)}</Text>
                       </View>
-                      <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.status)}</Text>
+                      <Text style={styles.statusPill}>{formatAssignmentStatus(i18n, assignment.status)}</Text>
                     </View>
-                    <AssignmentSummaryGrid assignment={assignment} />
+                    <AssignmentSummaryGrid assignment={assignment} i18n={i18n} />
                     <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
-                    <AssignmentNextPanel step={getAssignmentNextStep(assignment)} />
+                    <AssignmentNextPanel step={getAssignmentNextStep(i18n, assignment)} i18n={i18n} />
                   </View>
                 ))}
               </View>
@@ -355,27 +394,31 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
           ) : null}
 
           {acceptedAssignments.length === 0 && pendingAssignments.length === 0 ? (
-            <InfoCard title="No upcoming work" description="Accepted shifts will show here.">
-              <Text style={styles.meta}>Keep your availability current so new work can find you.</Text>
+            <InfoCard title={i18n.t("crew_mobile.assignments.empty.title")} description={i18n.t("crew_mobile.assignments.empty.description")}>
+              <Text style={styles.meta}>{i18n.t("crew_mobile.assignments.empty.body")}</Text>
             </InfoCard>
           ) : null}
         </>
       ) : (
-        <InfoCard title="Past decisions" description={`${pastAssignments.length} items`}>
+        <InfoCard title={i18n.t("crew_mobile.assignments.past_decisions")} description={i18n.t("crew_mobile.assignments.item_count", { count: pastAssignments.length })}>
           <View style={styles.list}>
             {pastAssignments.map((assignment) => (
               <View key={assignment.id} style={styles.assignmentCard}>
                 <View style={styles.assignmentHeader}>
                   <View style={styles.copy}>
                     <Text style={styles.title}>{assignment.providerCompanyName}</Text>
-                    <Text style={styles.meta}>{assignment.category.replaceAll("-", " ")}</Text>
+                    <Text style={styles.meta}>{formatServiceCategory(i18n, assignment.category)}</Text>
                   </View>
-                  <Text style={styles.statusPill}>{formatAssignmentStatus(assignment.status)}</Text>
+                  <Text style={styles.statusPill}>{formatAssignmentStatus(i18n, assignment.status)}</Text>
                 </View>
-                <AssignmentSummaryGrid assignment={assignment} />
+                <AssignmentSummaryGrid assignment={assignment} i18n={i18n} />
                 <Text style={styles.meta}>{assignment.serviceAddress.line1}</Text>
                 {assignment.status === "cancelled-by-crew" && assignment.cancellationReason ? (
-                  <Text style={styles.warning}>You cancelled this job: {assignment.cancellationReason}</Text>
+                  <Text style={styles.warning}>
+                    {i18n.t("crew_mobile.assignments.cancelled_note", {
+                      reason: assignment.cancellationReason
+                    })}
+                  </Text>
                 ) : null}
               </View>
             ))}

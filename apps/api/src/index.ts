@@ -7,6 +7,7 @@ import { MarketplaceController } from "./controllers/MarketplaceController";
 import { ObservabilityController } from "./controllers/ObservabilityController";
 import { SupportController } from "./controllers/SupportController";
 import { ApiController, HttpError, applyCorsHeaders, parseRequest, sendJson } from "./http";
+import { localizeApiErrorMessage } from "./i18n";
 import { InMemoryMarketplaceRepository } from "./repositories/InMemoryMarketplaceRepository";
 import { PrismaMarketplaceRepository } from "./repositories/PrismaMarketplaceRepository";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
@@ -14,7 +15,7 @@ import { MarketplacePlatformService } from "./services/MarketplacePlatformServic
 const repository = process.env.DATABASE_URL
   ? new PrismaMarketplaceRepository(new PrismaClient())
   : new InMemoryMarketplaceRepository();
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(process.env.PORT ?? 4001);
 const repositoryMode = process.env.DATABASE_URL ? "prisma-postgres" : "in-memory";
 const analytics = new DataEngineeringLogger();
 const platform = new MarketplacePlatformService(repository, analytics);
@@ -27,6 +28,8 @@ const controllers: ApiController[] = [
 ];
 
 const server = createServer(async (request, response) => {
+  let context: Awaited<ReturnType<typeof parseRequest>> | undefined;
+
   try {
     applyCorsHeaders(response);
 
@@ -36,27 +39,29 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    const context = await parseRequest(request);
-    const controller = controllers.find((item) => item.canHandle(context));
+    const parsedContext = await parseRequest(request);
+    context = parsedContext;
+    const controller = controllers.find((item) => item.canHandle(parsedContext));
 
     if (!controller) {
       sendJson(response, 404, {
-        message: "Route not found"
+        message: await localizeApiErrorMessage("Route not found", parsedContext.headers)
       });
       return;
     }
 
-    await controller.handle(context, response);
+    await controller.handle(parsedContext, response);
   } catch (error) {
     if (error instanceof HttpError) {
       sendJson(response, error.statusCode, {
-        message: error.message
+        message: await localizeApiErrorMessage(error.message, context?.headers ?? request.headers)
       });
       return;
     }
 
+    const fallbackMessage = error instanceof Error ? error.message : "Unknown server error";
     sendJson(response, 500, {
-      message: error instanceof Error ? error.message : "Unknown server error"
+      message: await localizeApiErrorMessage(fallbackMessage, context?.headers ?? request.headers)
     });
   }
 });

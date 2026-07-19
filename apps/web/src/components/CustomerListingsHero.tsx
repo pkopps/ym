@@ -1,7 +1,8 @@
 "use client";
 
 import { PlaceSuggestion, ServiceCategory } from "@yardmatch/contracts";
-import { serviceCategoryLabels } from "@yardmatch/ui";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useState } from "react";
 import {
   CustomerCustomTimingWindow,
@@ -77,6 +78,7 @@ export function CustomerListingsHero({
   selectedTiming?: CustomerTimingPreference;
   metrics?: Array<{ value: string; label: string }>;
 }) {
+  const i18n = useI18n();
   const [localAreaQuery, setLocalAreaQuery] = useState(initialAreaLabel ?? launchAreaLabel);
   const [localSelectedService, setLocalSelectedService] = useState<ServiceCategory>(initialService ?? "lawn-mowing");
   const [localSelectedSuggestion, setLocalSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
@@ -106,11 +108,12 @@ export function CustomerListingsHero({
   const resolvedSelectedCustomWindow = selectedCustomWindow ?? localSelectedCustomWindow;
   const resolvedSelectedCustomWindows = selectedCustomWindows ?? localSelectedCustomWindows;
   const resolvedSelectedAdditionalTimings = selectedAdditionalTimings ?? localSelectedAdditionalTimings;
-  const serviceLabel = serviceCategoryLabels[resolvedSelectedService];
+  const serviceLabel = i18n.t(serviceCategoryToI18nKey(resolvedSelectedService));
   const timingLabel = getCustomerTimingLabel(
     resolvedSelectedTiming,
     resolvedSelectedCustomDate,
-    resolvedSelectedCustomWindow
+    resolvedSelectedCustomWindow,
+    i18n
   );
   const metricItems = metrics ?? [];
   const resolvedAreaLabel = resolvedSelectedSuggestion?.label ?? resolvedAreaQuery;
@@ -120,10 +123,10 @@ export function CustomerListingsHero({
       <div className="page-hero__copy">
         <div className="listings-query">
           <div className="listings-query__title">
-            <span>Current request</span>
+            <span>{i18n.t("customer_listings_hero.current_request")}</span>
             <h1>{serviceLabel}</h1>
           </div>
-          <div className="listings-query__chips" aria-label="Current search">
+          <div className="listings-query__chips" aria-label={i18n.t("customer_listings_hero.current_search_aria")}>
             <span>{resolvedAreaLabel}</span>
             <span>{timingLabel}</span>
           </div>
@@ -140,7 +143,7 @@ export function CustomerListingsHero({
         ) : null}
       </div>
 
-      <div className="page-hero__search-card" aria-label="Update current search">
+      <div className="page-hero__search-card" aria-label={i18n.t("customer_listings_hero.update_search_aria")}>
         <PublicMarketplaceSearchShell
           areaQuery={resolvedAreaQuery}
           onAreaQueryChange={(value) => {

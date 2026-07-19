@@ -1,42 +1,46 @@
 "use client";
 
+import { TranslationKey } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useState } from "react";
 
 const radiusPresets = [10, 15, 20, 30, 45];
 
-function getRadiusGuidance(serviceRadiusMiles: number): string {
+function getRadiusGuidanceKey(serviceRadiusMiles: number): TranslationKey {
   if (serviceRadiusMiles <= 12) {
-    return "Best for dense urban routes, lower drive time, and tighter same-day scheduling.";
+    return "provider_radius.guidance.dense";
   }
 
   if (serviceRadiusMiles <= 25) {
-    return "Balanced for most suburban landscaping businesses that want room to grow without overextending crews.";
+    return "provider_radius.guidance.balanced";
   }
 
-  return "Useful for larger territories, but expect more windshield time and wider crew scheduling gaps.";
+  return "provider_radius.guidance.wide";
 }
 
 export function ProviderRadiusSettingsCard() {
+  const i18n = useI18n();
   const [serviceRadiusMiles, setServiceRadiusMiles] = useState(18);
 
   return (
     <section className="radius-settings" aria-labelledby="provider-radius-heading">
       <div className="radius-settings__header">
         <div>
-          <p className="eyebrow">Service area settings</p>
+          <p className="eyebrow">{i18n.t("provider_radius.eyebrow")}</p>
           <h3 id="provider-radius-heading">
-            Choose how far your business will travel from each customer property.
+            {i18n.t("provider_radius.title")}
           </h3>
         </div>
-        <strong className="radius-settings__value">{serviceRadiusMiles} miles</strong>
+        <strong className="radius-settings__value">
+          {i18n.t("provider_radius.value_miles", { count: serviceRadiusMiles })}
+        </strong>
       </div>
 
       <p className="radius-settings__copy">
-        YardMatch matches your business against the property address selected on each booking.
-        Customers outside this radius will not appear in your serviceable lead pool.
+        {i18n.t("provider_radius.copy")}
       </p>
 
-      <div className="radius-settings__presets" aria-label="Radius presets">
+      <div className="radius-settings__presets" aria-label={i18n.t("provider_radius.presets_aria")}>
         {radiusPresets.map((preset) => {
           const isActive = preset === serviceRadiusMiles;
           return (
@@ -46,7 +50,7 @@ export function ProviderRadiusSettingsCard() {
               onClick={() => setServiceRadiusMiles(preset)}
               type="button"
             >
-              {preset} mi
+              {i18n.t("provider_radius.preset_miles", { count: preset })}
             </button>
           );
         })}
@@ -54,7 +58,7 @@ export function ProviderRadiusSettingsCard() {
 
       <div className="radius-settings__controls">
         <label className="form-field">
-          <span>Drive radius</span>
+          <span>{i18n.t("provider_radius.drive_radius")}</span>
           <input
             max={60}
             min={5}
@@ -64,7 +68,7 @@ export function ProviderRadiusSettingsCard() {
           />
         </label>
         <label className="form-field">
-          <span>Exact miles</span>
+          <span>{i18n.t("provider_radius.exact_miles")}</span>
           <input
             max={60}
             min={5}
@@ -77,12 +81,12 @@ export function ProviderRadiusSettingsCard() {
 
       <div className="radius-settings__summary">
         <div>
-          <strong>Match rule</strong>
-          <p>Use the booked property address, not the customer account's default home base.</p>
+          <strong>{i18n.t("provider_radius.match_rule.title")}</strong>
+          <p>{i18n.t("provider_radius.match_rule.body")}</p>
         </div>
         <div>
-          <strong>Operational effect</strong>
-          <p>{getRadiusGuidance(serviceRadiusMiles)}</p>
+          <strong>{i18n.t("provider_radius.operational_effect.title")}</strong>
+          <p>{i18n.t(getRadiusGuidanceKey(serviceRadiusMiles))}</p>
         </div>
       </div>
     </section>

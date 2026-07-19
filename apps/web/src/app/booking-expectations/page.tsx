@@ -1,22 +1,17 @@
 import type { Metadata } from "next";
 import { TrustPolicyPage } from "../../components/TrustPolicyPage";
-import { buildSiteUrl } from "../../lib/site";
-import { trustPolicyPageById } from "../../lib/trustPolicyContent";
+import { getLocalizedPageMetadata } from "../../lib/i18n-server";
+import { getTrustPolicyPageKey, trustPolicyPageById } from "../../lib/trustPolicyContent";
 
 const page = trustPolicyPageById["booking-expectations"];
 
-export const metadata: Metadata = {
-  title: `${page.title} | YardMatch`,
-  description: page.description,
-  alternates: {
-    canonical: buildSiteUrl(page.href)
-  },
-  openGraph: {
-    title: `${page.title} | YardMatch`,
-    description: page.summary,
-    url: buildSiteUrl(page.href)
-  }
-};
+export function generateMetadata(): Promise<Metadata> {
+  return getLocalizedPageMetadata({
+    path: page.href,
+    titleKey: getTrustPolicyPageKey(page, "title"),
+    descriptionKey: getTrustPolicyPageKey(page, "description")
+  });
+}
 
 export default function BookingExpectationsPage() {
   return <TrustPolicyPage page={page} />;

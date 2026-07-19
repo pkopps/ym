@@ -2,21 +2,28 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
+import { TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import { BookServiceScreen } from "../screens/BookServiceScreen";
 import { BookingsScreen } from "../screens/BookingsScreen";
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { SupportScreen } from "../screens/SupportScreen";
 
 type TabKey = "dashboard" | "book" | "bookings" | "account";
+type LanguageSettings = {
+  locale: SupportedLocale;
+  onLocaleChange: (locale: SupportedLocale) => void;
+};
 
-const tabs: Array<{ key: TabKey; label: string; icon: React.ComponentProps<typeof Feather>["name"] }> = [
-  { key: "dashboard", label: "Home", icon: "home" },
-  { key: "book", label: "Book", icon: "search" },
-  { key: "bookings", label: "Visits", icon: "file-text" },
-  { key: "account", label: "Account", icon: "user" }
+const tabs: Array<{ key: TabKey; labelKey: TranslationKey; icon: React.ComponentProps<typeof Feather>["name"] }> = [
+  { key: "dashboard", labelKey: "mobile.nav.home", icon: "home" },
+  { key: "book", labelKey: "mobile.nav.book", icon: "search" },
+  { key: "bookings", labelKey: "mobile.nav.visits", icon: "file-text" },
+  { key: "account", labelKey: "mobile.nav.account", icon: "user" }
 ];
 
-export function CustomerAppNavigator() {
+export function CustomerAppNavigator({ languageSettings }: { languageSettings: LanguageSettings }) {
+  const i18n = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
 
   const screen = {
@@ -28,7 +35,7 @@ export function CustomerAppNavigator() {
     ),
     book: <BookServiceScreen onOpenBookings={() => setActiveTab("bookings")} />,
     bookings: <BookingsScreen onOpenAccount={() => setActiveTab("account")} />,
-    account: <SupportScreen />
+    account: <SupportScreen languageSettings={languageSettings} />
   }[activeTab];
 
   return (
@@ -49,7 +56,7 @@ export function CustomerAppNavigator() {
                 name={tab.icon}
                 size={18}
               />
-              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{tab.label}</Text>
+              <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>{i18n.t(tab.labelKey)}</Text>
             </Pressable>
           );
         })}

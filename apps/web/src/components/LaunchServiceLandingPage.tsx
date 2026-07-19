@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
-import { ServiceCategory } from "@yardmatch/contracts";
+import { addLocalePrefix } from "@yardmatch/i18n";
+import { useI18n } from "@yardmatch/i18n/react";
 import type { LaunchLandingServiceKey } from "../lib/launchLandingContent";
 import { LaunchLeadCaptureCard } from "./LaunchLeadCaptureCard";
 import { LaunchMarketplaceProofSection } from "./LaunchMarketplaceProofSection";
@@ -16,25 +19,38 @@ export function LaunchServiceLandingPage({
   serviceKey: LaunchLandingServiceKey;
   variant: "service" | "town-service";
 }) {
+  const i18n = useI18n();
   const service = launchServiceContent[serviceKey];
-  const pageTitle =
-    variant === "town-service" ? `${service.name} in ${launchAreaLabel}` : `${service.name} Services`;
-  const eyebrow =
-    variant === "town-service"
-      ? `${launchAreaShortLabel} launch service`
-      : "Launch service";
+  const serviceName = i18n.t(service.nameKey);
+  const shortServiceName = i18n.t(service.shortNameKey);
+  const values = {
+    area: launchAreaLabel,
+    service: serviceName,
+    shortArea: launchAreaShortLabel,
+    shortService: shortServiceName
+  };
+  const pageTitle = i18n.t(
+    variant === "town-service" ? "launch_service.title.town_service" : "launch_service.title.service",
+    values
+  );
+  const eyebrow = i18n.t(
+    variant === "town-service" ? "launch_service.eyebrow.town_service" : "launch_service.eyebrow.service",
+    values
+  );
   const summary =
     variant === "town-service"
-      ? service.description
-      : `${service.name} through YardMatch keeps the launch booking flow recommendation-first while still giving homeowners a limited backup option if they want more trust before confirming.`;
-  const preferredCategory: ServiceCategory =
-    serviceKey === "yard-cleanup" ? "seasonal-cleanup" : serviceKey;
-  const ctaHref = `/customer?service=${service.key}&area=${encodeURIComponent(launchAreaLabel)}`;
-  const counterpartHref = variant === "town-service" ? service.path : service.townPath;
+      ? i18n.t(service.metadataDescriptionKey, values)
+      : i18n.t("launch_service.summary.service", values);
+  const preferredCategory = service.category;
+  const ctaHref = addLocalePrefix(
+    `/customer?service=${service.key}&area=${encodeURIComponent(launchAreaLabel)}`,
+    i18n.locale
+  );
+  const counterpartHref = addLocalePrefix(variant === "town-service" ? service.path : service.townPath, i18n.locale);
   const counterpartLabel =
     variant === "town-service"
-      ? `View the general ${service.name.toLowerCase()} page`
-      : `See this service in ${launchAreaShortLabel}`;
+      ? i18n.t("launch_service.cta.general_page", values)
+      : i18n.t("launch_service.cta.town_page", values);
 
   return (
     <main className="container stack-lg">
@@ -44,7 +60,7 @@ export function LaunchServiceLandingPage({
         <p>{summary}</p>
         <div className="cta-row">
           <Link className="button" href={ctaHref}>
-            Book {service.shortName} near {launchAreaShortLabel}
+            {i18n.t("launch_service.cta.book", values)}
           </Link>
           <Link className="button-secondary" href={counterpartHref}>
             {counterpartLabel}
@@ -54,25 +70,25 @@ export function LaunchServiceLandingPage({
 
       <section className="grid-two">
         <article className="card">
-          <h2>What this page is for</h2>
-          <p>{service.intro}</p>
+          <h2>{i18n.t("launch_service.section.what_for")}</h2>
+          <p>{i18n.t(service.introKey, values)}</p>
           <ul className="timeline">
-            {service.includes.map((item) => (
-              <li key={item}>
+            {service.includeKeys.map((key) => (
+              <li key={key}>
                 <strong>•</strong>
-                <span>{item}</span>
+                <span>{i18n.t(key, values)}</span>
               </li>
             ))}
           </ul>
         </article>
 
         <article className="card">
-          <h2>Best fit for launch</h2>
+          <h2>{i18n.t("launch_service.section.best_fit")}</h2>
           <ul className="timeline">
-            {service.bestFor.map((item) => (
-              <li key={item}>
+            {service.bestForKeys.map((key) => (
+              <li key={key}>
                 <strong>•</strong>
-                <span>{item}</span>
+                <span>{i18n.t(key, values)}</span>
               </li>
             ))}
           </ul>
@@ -81,73 +97,70 @@ export function LaunchServiceLandingPage({
 
       <section className="grid-two">
         <article className="card">
-          <h2>What affects pricing</h2>
-          <p>
-            YardMatch keeps customer-facing pricing under the managed marketplace while still
-            respecting provider economics.
-          </p>
+          <h2>{i18n.t("launch_service.section.pricing")}</h2>
+          <p>{i18n.t("launch_service.pricing.body")}</p>
           <ul className="timeline">
-            {service.pricingFactors.map((item) => (
-              <li key={item}>
+            {service.pricingFactorKeys.map((key) => (
+              <li key={key}>
                 <strong>•</strong>
-                <span>{item}</span>
+                <span>{i18n.t(key, values)}</span>
               </li>
             ))}
           </ul>
         </article>
 
         <article className="card">
-          <h2>How booking works</h2>
+          <h2>{i18n.t("launch_service.section.booking")}</h2>
           <ol className="timeline">
             <li>
               <strong>1.</strong>
-              <span>Tell YardMatch the service, timing, and area.</span>
+              <span>{i18n.t("launch_service.booking.step.service_timing_area")}</span>
             </li>
             <li>
               <strong>2.</strong>
-              <span>YardMatch recommends the best provider first.</span>
+              <span>{i18n.t("launch_service.booking.step.recommendation")}</span>
             </li>
             <li>
               <strong>3.</strong>
-              <span>Book quickly or reveal a short backup list if you want another option.</span>
+              <span>{i18n.t("launch_service.booking.step.backup_list")}</span>
             </li>
             <li>
               <strong>4.</strong>
-              <span>Track the job, support, and follow-through in one place.</span>
+              <span>{i18n.t("launch_service.booking.step.track")}</span>
             </li>
           </ol>
         </article>
       </section>
 
       <LaunchMarketplaceProofSection
-        description={`Show live verified-provider proof for ${service.shortName.toLowerCase()} instead of relying on generic marketplace claims alone.`}
+        description={i18n.t("launch_service.proof.body", values)}
         preferredAreaLabel={variant === "town-service" ? launchAreaLabel : undefined}
         preferredCategory={preferredCategory}
-        title={`Launch proof for ${service.shortName.toLowerCase()}`}
+        title={i18n.t("launch_service.proof.title", values)}
       />
 
       <section className="grid-two">
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
           defaultServiceCategory={preferredCategory}
-          description={`If you want YardMatch to confirm launch coverage, timing, or fit for ${service.shortName.toLowerCase()}, request a follow-up instead of guessing from a generic form.`}
+          description={i18n.t("launch_service.lead.body", values)}
           requestSource={variant === "town-service" ? "launch-town-service-lead-form" : "launch-service-lead-form"}
-          title={`Need help with ${service.shortName.toLowerCase()}?`}
+          title={i18n.t("launch_service.lead.title", values)}
         />
         <article className="card">
-          <h2>What happens after you ask for help</h2>
+          <h2>{i18n.t("launch_service.after_help.title")}</h2>
           <ol className="timeline">
             <li>
               <strong>1.</strong>
-              <span>YardMatch routes the request into the launch follow-up queue with its source and landing-page context attached.</span>
+              <span>{i18n.t("launch_service.after_help.step.queue")}</span>
             </li>
             <li>
               <strong>2.</strong>
-              <span>An owner picks it up, responds inside the launch response window, and sets the next follow-up instead of letting it disappear.</span>
+              <span>{i18n.t("launch_service.after_help.step.owner_response")}</span>
             </li>
             <li>
               <strong>3.</strong>
-              <span>The inquiry stays open until it books cleanly or closes with a documented reason.</span>
+              <span>{i18n.t("launch_service.after_help.step.closed_loop")}</span>
             </li>
           </ol>
         </article>
@@ -155,14 +168,14 @@ export function LaunchServiceLandingPage({
 
       <section className="stack-lg">
         <div className="section-header">
-          <h2>Questions homeowners ask before booking</h2>
-          <p>Trust-building content should remove friction, not add fluff.</p>
+          <h2>{i18n.t("launch_service.faq.title")}</h2>
+          <p>{i18n.t("launch_service.faq.body")}</p>
         </div>
         <div className="grid-two">
-          {service.faqs.map((item) => (
-            <article className="card" key={item.question}>
-              <h3>{item.question}</h3>
-              <p>{item.answer}</p>
+          {service.faqKeys.map((item) => (
+            <article className="card" key={item.questionKey}>
+              <h3>{i18n.t(item.questionKey, values)}</h3>
+              <p>{i18n.t(item.answerKey, values)}</p>
             </article>
           ))}
         </div>

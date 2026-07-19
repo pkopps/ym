@@ -9,7 +9,10 @@ import {
   PublicMarketplaceOverviewResponse,
   ServiceCategory
 } from "@yardmatch/contracts";
-import { faqItems, serviceCategoryLabels } from "@yardmatch/ui";
+import { addLocalePrefix, TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryLabelKeys } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
+import { faqItems } from "@yardmatch/ui";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LaunchLeadCaptureCard } from "./LaunchLeadCaptureCard";
@@ -24,7 +27,7 @@ import {
 } from "./PublicMarketplaceSearchShell";
 import { createWebApiClient } from "../lib/api";
 import { buildSiteUrl, launchAreaLabel } from "../lib/site";
-import { trustPolicyPages } from "../lib/trustPolicyContent";
+import { localizeTrustPolicyPage, trustPolicyPages } from "../lib/trustPolicyContent";
 import { StructuredData } from "./StructuredData";
 
 const showCoveragePockets = false;
@@ -64,6 +67,7 @@ function MarketplaceProviderRail({
   title: string;
   variant: "top-rated" | "most-on-time";
 }) {
+  const i18n = useI18n();
   const railRef = useRef<HTMLDivElement | null>(null);
 
   function scrollRail(direction: -1 | 1) {
@@ -100,19 +104,22 @@ function MarketplaceProviderRail({
           const displayTimeliness = provider.timelinessRating ?? provider.rating ?? 0;
           const emphasisLine =
             variant === "top-rated"
-              ? `${displayRating.toFixed(1)} overall • ${provider.reviewCount} reviews`
-              : `${displayTimeliness.toFixed(1)} punctuality • ${provider.reviewCount} reviews`;
+              ? i18n.t("market.home.provider.rating_line", { rating: displayRating, count: provider.reviewCount })
+              : i18n.t("market.home.provider.punctuality_line", {
+                  rating: displayTimeliness,
+                  count: provider.reviewCount
+                });
           const detailLine =
             variant === "top-rated"
               ? provider.yearsExperience
-                ? `${provider.yearsExperience}+ years of repeat local work`
-                : "Verified local provider with active customer reviews"
+                ? i18n.t("market.home.provider.years_detail", { years: provider.yearsExperience })
+                : i18n.t("market.home.provider.local_reviews")
               : provider.serviceRadiusMiles
-                ? `${provider.serviceRadiusMiles}-mile route with strong on-time history`
-                : "Verified local provider with steady arrival history";
+                ? i18n.t("market.home.provider.route_detail", { miles: provider.serviceRadiusMiles })
+                : i18n.t("market.home.provider.local_arrival");
           const availabilityLine = provider.ownerName
-            ? `Owned by ${provider.ownerName} • Verified local coverage`
-            : "Verified local coverage";
+            ? i18n.t("market.home.provider.availability_owned", { ownerName: provider.ownerName })
+            : i18n.t("market.home.provider.availability_verified");
 
           return (
             <article className="market-home__provider-rail-card" key={`${variant}-${provider.id}`}>
@@ -124,8 +131,8 @@ function MarketplaceProviderRail({
                   <strong>{provider.companyName}</strong>
                   <span>
                     {provider.primaryCategory
-                      ? serviceCategoryLabels[provider.primaryCategory]
-                      : "Landscaping business"}
+                      ? i18n.t(serviceCategoryLabelKeys[provider.primaryCategory])
+                      : i18n.t("market.home.provider.landscaping_business")}
                   </span>
                 </div>
               </div>
@@ -136,7 +143,7 @@ function MarketplaceProviderRail({
               <p className="market-home__provider-detail">{detailLine}</p>
               <p className="market-home__provider-availability">{availabilityLine}</p>
               <button className="button market-home__provider-cta" onClick={onCta} type="button">
-                Find my match
+                {i18n.t("market.home.provider.cta")}
               </button>
             </article>
           );
@@ -148,38 +155,39 @@ function MarketplaceProviderRail({
 
 const quickServiceChips: CustomerQuickServiceChip[] = [
   {
-    label: "Lawn mowing",
+    label: "market.home.quick.lawn_mowing.label",
     service: "lawn-mowing",
     imageSrc: "/media/landscaping-tools/lawn-mower.png",
-    description: "Routine weekly or biweekly cuts"
+    description: "market.home.quick.lawn_mowing.description"
   },
   {
-    label: "Mulch refresh",
+    label: "market.home.quick.mulch_refresh.label",
     service: "mulch-installation",
     imageSrc: "/media/landscaping-tools/mulch-refresh.png",
-    description: "Freshen beds and sharpen edges"
+    description: "market.home.quick.mulch_refresh.description"
   },
   {
-    label: "Gutter cleaning",
+    label: "market.home.quick.gutter_cleaning.label",
     service: "gutter-cleaning",
     imageSrc: "/media/landscaping-tools/gutter-cleaning.png",
-    description: "Clear overflow before it backs up"
+    description: "market.home.quick.gutter_cleaning.description"
   },
   {
-    label: "Seasonal cleanup",
+    label: "market.home.quick.seasonal_cleanup.label",
     service: "seasonal-cleanup",
     imageSrc: "/media/landscaping-tools/leaf-blower.png",
-    description: "Leaves, debris, and reset work"
+    description: "market.home.quick.seasonal_cleanup.description"
   },
   {
-    label: "Hedge trimming",
+    label: "market.home.quick.hedge_trimming.label",
     service: "hedge-trimming",
     imageSrc: "/media/landscaping-tools/hedge-trimmer.png",
-    description: "Shape shrubs and tidy lines"
+    description: "market.home.quick.hedge_trimming.description"
   }
 ];
 
 export function PublicCustomerMarketplacePage() {
+  const i18n = useI18n();
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
   const homeTrustPages = useMemo(
@@ -223,7 +231,7 @@ export function PublicCustomerMarketplacePage() {
       selectedAdditionalTimings
     });
 
-    router.push(`/customer/listings?${params.toString()}`);
+    router.push(addLocalePrefix(`/customer/listings?${params.toString()}`, i18n.locale));
   }
 
   function handleBrowseRecommendedProviders() {
@@ -246,16 +254,16 @@ export function PublicCustomerMarketplacePage() {
   }, [overview, selectedService]);
   const proofStats = [
     {
-      label: "Verified providers in the live overview",
-      value: overview?.verifiedProviderCount ? String(overview.verifiedProviderCount) : "Growing"
+      labelKey: "market.home.proof.verified_providers.label",
+      value: overview?.verifiedProviderCount ? String(overview.verifiedProviderCount) : i18n.t("common.state.growing")
     },
     {
-      label: "Average rating across verified providers",
-      value: overview?.averageRating ? `${overview.averageRating.toFixed(1)}★` : "New"
+      labelKey: "market.home.proof.average_rating.label",
+      value: overview?.averageRating ? `${overview.averageRating.toFixed(1)}★` : i18n.t("common.state.new")
     },
     {
-      label: "Active service categories in the launch mix",
-      value: overview?.activeCategoryCount ? String(overview.activeCategoryCount) : "Focused"
+      labelKey: "market.home.proof.active_categories.label",
+      value: overview?.activeCategoryCount ? String(overview.activeCategoryCount) : i18n.t("market.home.proof.active_categories.value")
     }
   ] as const;
 
@@ -266,12 +274,11 @@ export function PublicCustomerMarketplacePage() {
           "@context": "https://schema.org",
           "@type": "WebSite",
           name: "YardMatch",
-          description:
-            "Marketplace for lawn care bookings, landscaping business operations, and crew-member staffing.",
+          description: i18n.t("structured.home.description"),
           potentialAction: {
             "@type": "SearchAction",
-            target: buildSiteUrl("/customer?query={search_term_string}"),
-            "query-input": "required name=search_term_string"
+            target: buildSiteUrl(addLocalePrefix("/customer?query={search_term_string}", i18n.locale)),
+            "query-input": i18n.t("structured.home.query_input")
           }
         }}
       />
@@ -279,8 +286,8 @@ export function PublicCustomerMarketplacePage() {
       <section className="container hero home-hero customer-public-hero">
         <div className="home-hero__content">
           <div className="home-hero__header">
-            <span className="eyebrow">YardMatch in {launchAreaLabel}</span>
-            <h1 className="home-hero__headline">One local match for yard care.</h1>
+            <span className="eyebrow">{i18n.t("market.home.eyebrow", { area: launchAreaLabel })}</span>
+            <h1 className="home-hero__headline">{i18n.t("market.home.headline")}</h1>
           </div>
           <PublicMarketplaceSearchShell
             areaQuery={areaQuery}
@@ -303,17 +310,17 @@ export function PublicCustomerMarketplacePage() {
             selectedSuggestion={selectedSuggestion}
             selectedTiming={selectedTiming}
           />
-          <div className="home-hero__trust-strip" aria-label="Request basics">
-            <span>Verified local providers</span>
-            <span>Request first</span>
-            <span>Pay after confirmation</span>
+          <div className="home-hero__trust-strip" aria-label={i18n.t("market.home.request_basics_aria")}>
+            <span>{i18n.t("common.state.verified_local_providers")}</span>
+            <span>{i18n.t("common.state.request_first")}</span>
+            <span>{i18n.t("common.state.pay_after_confirmation")}</span>
           </div>
           <div className="cta-row">
-            <a className="button-secondary" href="/provider">
-              I run a landscaping business
+            <a className="button-secondary" href={addLocalePrefix("/provider", i18n.locale)}>
+              {i18n.t("market.home.business_cta")}
             </a>
-            <a className="button-secondary" href="/auth/crew">
-              I am looking to join a crew
+            <a className="button-secondary" href={addLocalePrefix("/auth/crew", i18n.locale)}>
+              {i18n.t("market.home.crew_cta")}
             </a>
           </div>
         </div>
@@ -321,94 +328,84 @@ export function PublicCustomerMarketplacePage() {
 
       {topRatedProviders.length ? (
         <MarketplaceProviderRail
-          ctaLabel="See all matches"
-          description="Highly reviewed local providers customers keep choosing again."
+          ctaLabel={i18n.t("market.home.provider.see_all")}
+          description={i18n.t("market.home.provider.top_rated.body")}
           onCta={handleBrowseRecommendedProviders}
           providers={topRatedProviders}
-          title="Top-rated providers"
+          title={i18n.t("market.home.provider.top_rated.title")}
           variant="top-rated"
         />
       ) : null}
 
       {mostOnTimeProviders.length ? (
         <MarketplaceProviderRail
-          ctaLabel="See all matches"
-          description="Providers with the strongest punctuality track record in the live marketplace."
+          ctaLabel={i18n.t("market.home.provider.see_all")}
+          description={i18n.t("market.home.provider.most_on_time.body")}
           onCta={handleBrowseRecommendedProviders}
           providers={mostOnTimeProviders}
-          title="Most on-time providers"
+          title={i18n.t("market.home.provider.most_on_time.title")}
           variant="most-on-time"
         />
       ) : null}
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>How YardMatch works</h2>
-          <p>Three quick steps. No directory rabbit hole.</p>
+          <h2>{i18n.t("market.home.works.title")}</h2>
+          <p>{i18n.t("market.home.works.body")}</p>
         </div>
         <div className="grid-three market-home__steps">
           <article className="card market-home__step">
-            <strong>1. Tell us the job</strong>
-            <p>Pick the service, when you want it, and where it needs to happen.</p>
+            <strong>{i18n.t("market.home.works.job.title")}</strong>
+            <p>{i18n.t("market.home.works.job.body")}</p>
           </article>
           <article className="card market-home__step">
-            <strong>2. Review the best fit</strong>
-            <p>See one recommended provider first, plus why they were picked.</p>
+            <strong>{i18n.t("market.home.works.review.title")}</strong>
+            <p>{i18n.t("market.home.works.review.body")}</p>
           </article>
           <article className="card market-home__step">
-            <strong>3. Request and track</strong>
-            <p>Send the request, pay after confirmation, and track arrival without chasing texts.</p>
+            <strong>{i18n.t("market.home.works.request.title")}</strong>
+            <p>{i18n.t("market.home.works.request.body")}</p>
           </article>
         </div>
       </section>
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>What backs the recommendation</h2>
-          <p>Verification, real marketplace signals, and a tighter launch footprint matter more than a giant directory at this stage.</p>
+          <h2>{i18n.t("market.home.proof.section_title")}</h2>
+          <p>{i18n.t("market.home.proof.section_body")}</p>
         </div>
         <div className="grid-three">
           {proofStats.map((item) => (
-            <article className="card" key={item.label}>
+            <article className="card" key={item.labelKey}>
               <strong>{item.value}</strong>
-              <p>{item.label}</p>
+              <p>{i18n.t(item.labelKey)}</p>
             </article>
           ))}
         </div>
         <div className="grid-two">
           <article className="card">
-            <h3>Why verified supply matters</h3>
-            <p>
-              YardMatch is trying to show verified providers in the public marketplace overview, so
-              the launch trust layer starts with screened local supply instead of open-ended listing
-              volume.
-            </p>
+            <h3>{i18n.t("market.home.proof.supply.title")}</h3>
+            <p>{i18n.t("market.home.proof.supply.body")}</p>
             <div className="cta-row" style={{ marginTop: "1rem" }}>
-              <Link className="button-secondary" href="/provider-verification">
-                See how provider verification works
+              <Link className="button-secondary" href={addLocalePrefix("/provider-verification", i18n.locale)}>
+                {i18n.t("market.home.proof.supply.cta")}
               </Link>
             </div>
           </article>
           <article className="card">
-            <h3>Why the launch radius stays tight</h3>
-            <p>
-              Better trust comes from denser routes, fewer impossible windows, and clearer support
-              follow-through, not from pretending every nearby town is fully covered on day one.
-            </p>
+            <h3>{i18n.t("market.home.proof.radius.title")}</h3>
+            <p>{i18n.t("market.home.proof.radius.body")}</p>
             <div className="cta-row" style={{ marginTop: "1rem" }}>
-              <Link className="button-secondary" href="/barnegat-nj">
-                See launch-area context
+              <Link className="button-secondary" href={addLocalePrefix("/barnegat-nj", i18n.locale)}>
+                {i18n.t("market.home.proof.radius.cta")}
               </Link>
             </div>
           </article>
         </div>
         {highlightedReviews.length > 0 ? (
           <article className="card">
-            <h3>Recent verified customer feedback</h3>
-            <p>
-              These quotes come from completed-booking reviews tied to verified providers in the
-              live marketplace overview.
-            </p>
+            <h3>{i18n.t("market.home.proof.reviews.title")}</h3>
+            <p>{i18n.t("market.home.proof.reviews.body")}</p>
             <div className="grid-two" style={{ marginTop: "1rem" }}>
               {highlightedReviews.map((review) => (
                 <article className="list-panel" key={review.reviewId}>
@@ -418,7 +415,7 @@ export function PublicCustomerMarketplacePage() {
                       <p>
                         {review.city}, {review.state}
                         {review.primaryCategory
-                          ? ` • ${serviceCategoryLabels[review.primaryCategory]}`
+                          ? ` • ${i18n.t(serviceCategoryLabelKeys[review.primaryCategory])}`
                           : ""}
                       </p>
                     </div>
@@ -432,26 +429,23 @@ export function PublicCustomerMarketplacePage() {
         ) : null}
         {showCoveragePockets && highlightedCoverageAreas.length > 0 ? (
           <article className="card">
-            <h3>Current coverage pockets</h3>
-            <p>
-              These are the areas where the live marketplace overview already shows verified supply
-              or completed-job proof for the selected service.
-            </p>
+            <h3>{i18n.t("market.home.proof.coverage_pockets.title")}</h3>
+            <p>{i18n.t("market.home.proof.coverage_pockets.body")}</p>
             <div className="grid-three" style={{ marginTop: "1rem" }}>
               {highlightedCoverageAreas.map((area) => (
                 <article className="list-panel" key={`${area.city}-${area.state}`}>
                   <strong>{formatCoverageAreaLabel(area)}</strong>
-                  <p>{area.verifiedProviderCount} verified providers</p>
+                  <p>{i18n.t("market.home.proof.verified_provider_count", { count: area.verifiedProviderCount })}</p>
                   <p>
-                    {area.completedBookingCount} completed jobs tracked
+                    {i18n.t("market.home.proof.completed_jobs", { count: area.completedBookingCount })}
                     {area.recentCompletedBookingCount > 0
-                      ? ` • ${area.recentCompletedBookingCount} recent`
+                      ? ` • ${i18n.t("market.home.proof.recent", { count: area.recentCompletedBookingCount })}`
                       : ""}
                   </p>
                   <p>
                     {area.supportedCategories
                       .slice(0, 3)
-                      .map((category) => serviceCategoryLabels[category])
+                      .map((category) => i18n.t(serviceCategoryLabelKeys[category]))
                       .join(" • ")}
                   </p>
                 </article>
@@ -463,17 +457,21 @@ export function PublicCustomerMarketplacePage() {
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>Know the support rules before you book</h2>
-          <p>Clear launch-era expectations around help, cancellations, refunds, and what YardMatch manages after booking.</p>
+          <h2>{i18n.t("market.home.support.title")}</h2>
+          <p>{i18n.t("market.home.support.body")}</p>
         </div>
         <div className="grid-two">
-          {homeTrustPages.map((page) => (
-            <Link className="list-panel" href={page.href} key={page.id}>
-              <span className="eyebrow">{page.eyebrow}</span>
-              <h3>{page.title}</h3>
-              <p>{page.summary}</p>
-            </Link>
-          ))}
+          {homeTrustPages.map((page) => {
+            const localizedPage = localizeTrustPolicyPage(i18n, page);
+
+            return (
+              <Link className="list-panel" href={addLocalePrefix(localizedPage.href, i18n.locale)} key={localizedPage.id}>
+                <span className="eyebrow">{localizedPage.eyebrow}</span>
+                <h3>{localizedPage.title}</h3>
+                <p>{localizedPage.summary}</p>
+              </Link>
+            );
+          })}
         </div>
       </section>
 
@@ -481,16 +479,16 @@ export function PublicCustomerMarketplacePage() {
         <LaunchLeadCaptureCard
           defaultAreaLabel={areaQuery}
           defaultServiceCategory={selectedService}
-          description="Ask YardMatch to confirm coverage, timing, or the right service."
+          description={i18n.t("market.home.lead.description")}
           requestSource="public-homepage-lead-form"
-          title="Need help choosing?"
+          title={i18n.t("market.home.lead.title")}
         />
       </section>
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>Popular Services</h2>
-          <p>Choose the type of work first and jump straight into matching.</p>
+          <h2>{i18n.t("market.home.popular.title")}</h2>
+          <p>{i18n.t("market.home.popular.body")}</p>
         </div>
         <div className="service-tile-grid">
           {quickServiceChips.map((item) => (
@@ -511,8 +509,8 @@ export function PublicCustomerMarketplacePage() {
                   width={128}
                 />
               </span>
-              <strong>{item.label}</strong>
-              <span>{item.description}</span>
+              <strong>{i18n.t(item.label as TranslationKey)}</strong>
+              <span>{i18n.t(item.description as TranslationKey)}</span>
             </button>
           ))}
         </div>
@@ -520,28 +518,28 @@ export function PublicCustomerMarketplacePage() {
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>Built to every side of the landscaping equation</h2>
-          <p>One system for homeowners, businesses, and crews.</p>
+          <h2>{i18n.t("market.home.equation.title")}</h2>
+          <p>{i18n.t("market.home.equation.body")}</p>
         </div>
         <div className="grid-three">
           <article className="card">
-            <span className="eyebrow">Customers</span>
-            <p>Get matched fast, keep recurring care simple, and track the route when someone is on the way.</p>
+            <span className="eyebrow">{i18n.t("market.home.equation.customer.title")}</span>
+            <p>{i18n.t("market.home.equation.customer.body")}</p>
           </article>
           <article className="card">
-            <span className="eyebrow">Business owners</span>
-            <p>Run bookings, crews, payouts, and dispatch decisions in one management flow.</p>
+            <span className="eyebrow">{i18n.t("market.home.equation.business.title")}</span>
+            <p>{i18n.t("market.home.equation.business.body")}</p>
           </article>
           <article className="card">
-            <span className="eyebrow">Crew members</span>
-            <p>See assignments, directions, availability, and payout status in one place.</p>
+            <span className="eyebrow">{i18n.t("market.home.equation.crew.title")}</span>
+            <p>{i18n.t("market.home.equation.crew.body")}</p>
           </article>
         </div>
       </section>
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>Frequently asked questions</h2>
+          <h2>{i18n.t("market.home.faq.title")}</h2>
         </div>
         <div className="grid-three">
           {faqItems.map((item) => (

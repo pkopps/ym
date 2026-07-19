@@ -8,6 +8,7 @@ import {
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useI18n } from "@yardmatch/i18n/react";
 
 function formatPriority(priority: "urgent" | "watch" | "routine") {
   return priority === "urgent" ? "Reply today" : priority === "watch" ? "Reply soon" : "Healthy habit";
@@ -49,6 +50,7 @@ function formatChannelMetadata(item: OpsReviewResponseItem) {
 }
 
 export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsReviewResponseItem[] }) {
+  const i18n = useI18n();
   const [items, setItems] = useState(initialItems);
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -178,11 +180,11 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
 
   return (
     <section className="card">
-      <h2>Public review response queue</h2>
+      <h2>{i18n.t("ops_auto.ops_review_response_board.public_review_response_queue_dowgm5")}</h2>
       {statusMessage ? <p>{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       {items.length === 0 ? (
-        <p>No submitted reviews need response triage yet.</p>
+        <p>{i18n.t("ops_auto.ops_review_response_board.no_submitted_reviews_need_response_triage_yet_5ezies")}</p>
       ) : (
         <div className="stack-lg" style={{ paddingBottom: 0 }}>
           {items.map((item) => {
@@ -213,9 +215,9 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                   </p>
                 ) : null}
                 <p>
-                  <strong>Recommended action:</strong> {item.recommendedAction}
+                  <strong>{i18n.t("ops_auto.ops_review_response_board.recommended_action_v1n6xr")}</strong> {item.recommendedAction}
                 </p>
-                {item.issueSignals.length > 0 ? <p>Signals: {item.issueSignals.join(" • ")}</p> : null}
+                {item.issueSignals.length > 0 ? <p>{i18n.t("ops_auto.ops_review_response_board.signals_682rcf")} {item.issueSignals.join(" • ")}</p> : null}
                 {item.watchouts.length > 0 ? (
                   <ul className="timeline">
                     {item.watchouts.map((watchout) => (
@@ -228,14 +230,14 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                 ) : null}
                 {item.responseHandledAt ? (
                   <p>
-                    Last handled {new Date(item.responseHandledAt).toLocaleString()}
+                    {i18n.t("ops_auto.ops_review_response_board.last_handled_gez6zy")} {new Date(item.responseHandledAt).toLocaleString()}
                     {item.responseHandledBy ? ` • by ${item.responseHandledBy}` : ""}
                   </p>
                 ) : null}
                 {item.responseStatus === "posted" ? (
                   <>
                     <p>
-                      Posted via {formatResponseChannel(item.responseChannel)}
+                      {i18n.t("ops_auto.ops_review_response_board.posted_via_31p9o3")} {formatResponseChannel(item.responseChannel)}
                       {item.externalResponseId ? ` • ref ${item.externalResponseId}` : ""}
                       {item.publicResponseUrl ? ` • ${item.publicResponseUrl}` : ""}
                     </p>
@@ -254,19 +256,18 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                 ) : null}
                 {item.supportTicketId ? (
                   <p>
-                    Linked support follow-up: {item.supportTicketSubject ?? "Service-quality follow-up"} •{" "}
+                    {i18n.t("ops_auto.ops_review_response_board.linked_support_follow_up_de4ov9")} {item.supportTicketSubject ?? "Service-quality follow-up"} •{" "}
                     {item.supportTicketStatus?.replaceAll("-", " ") ?? "open"}
                     {item.escalatedAt ? ` • escalated ${new Date(item.escalatedAt).toLocaleString()}` : ""}
                     {item.escalatedBy ? ` by ${item.escalatedBy}` : ""}
                   </p>
                 ) : item.supportFollowUpRecommended ? (
                   <p>
-                    Support follow-up recommended before this review fades into a public-reply-only workflow.
-                  </p>
+                    {i18n.t("ops_auto.ops_review_response_board.support_follow_up_recommended_before_this_review_fades_pz01f8")} </p>
                 ) : null}
                 <div className="form-grid">
                   <label className="form-field">
-                    <span>Status</span>
+                    <span>{i18n.t("ops_auto.ops_review_response_board.status_twsvse")}</span>
                     <select
                       onChange={(event) =>
                         setDrafts((current) => ({
@@ -279,13 +280,13 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                       }
                       value={draft.responseStatus}
                     >
-                      <option value="pending">Pending</option>
-                      <option value="posted">Posted publicly</option>
-                      <option value="skipped">Skipped</option>
+                      <option value="pending">{i18n.t("ops_auto.ops_review_response_board.pending_g8p2lz")}</option>
+                      <option value="posted">{i18n.t("ops_auto.ops_review_response_board.posted_publicly_p2cgix")}</option>
+                      <option value="skipped">{i18n.t("ops_auto.ops_review_response_board.skipped_7zhkhc")}</option>
                     </select>
                   </label>
                   <label className="form-field">
-                    <span>Handled by</span>
+                    <span>{i18n.t("ops_auto.ops_review_response_board.handled_by_56pelh")}</span>
                     <input
                       onChange={(event) =>
                         setDrafts((current) => ({
@@ -303,7 +304,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                 {item.supportFollowUpRecommended || item.supportTicketId ? (
                   <div className="form-grid">
                     <label className="form-field">
-                      <span>Escalated by</span>
+                      <span>{i18n.t("ops_auto.ops_review_response_board.escalated_by_jdv2ed")}</span>
                       <input
                         onChange={(event) =>
                           setDrafts((current) => ({
@@ -318,7 +319,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                       />
                     </label>
                     <label className="form-field">
-                      <span>Support follow-up note</span>
+                      <span>{i18n.t("ops_auto.ops_review_response_board.support_follow_up_note_exkzsk")}</span>
                       <textarea
                         onChange={(event) =>
                           setDrafts((current) => ({
@@ -354,7 +355,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                 {draft.responseStatus === "posted" ? (
                   <div className="form-grid">
                     <label className="form-field">
-                      <span>Posted via</span>
+                      <span>{i18n.t("ops_auto.ops_review_response_board.posted_via_31p9o3")}</span>
                       <select
                         onChange={(event) =>
                           setDrafts((current) => ({
@@ -375,7 +376,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                       </select>
                     </label>
                     <label className="form-field">
-                      <span>External response id</span>
+                      <span>{i18n.t("ops_auto.ops_review_response_board.external_response_id_rlp5et")}</span>
                       <input
                         onChange={(event) =>
                           setDrafts((current) => ({
@@ -390,7 +391,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                       />
                     </label>
                     <label className="form-field">
-                      <span>Public reply link</span>
+                      <span>{i18n.t("ops_auto.ops_review_response_board.public_reply_link_ich5d3")}</span>
                       <input
                         onChange={(event) =>
                           setDrafts((current) => ({
@@ -407,7 +408,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                   </div>
                 ) : null}
                 <label className="form-field">
-                  <span>Ops notes</span>
+                  <span>{i18n.t("ops_auto.ops_review_response_board.ops_notes_eemmyb")}</span>
                   <textarea
                     onChange={(event) =>
                       setDrafts((current) => ({
@@ -435,8 +436,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
                     </button>
                   ) : null}
                   <button className="button secondary" disabled={isWorking} onClick={() => void save(item)} type="button">
-                    Save response state
-                  </button>
+                    {i18n.t("ops_auto.ops_review_response_board.save_response_state_hw6a51")} </button>
                 </div>
               </article>
             );

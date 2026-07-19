@@ -2,18 +2,28 @@ import type { Metadata } from "next";
 import { PublicCustomerListingsExperience } from "../../../components/PublicCustomerListingsExperience";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { ServiceCategory } from "@yardmatch/contracts";
+import { addLocalePrefix } from "@yardmatch/i18n";
 import {
   CustomerCustomTimingWindow,
   CustomerTimingPreference
 } from "../../../components/PublicMarketplaceSearchShell";
+import { getRequestI18n } from "../../../lib/i18n-server";
 import { launchAreaLabel, noIndexRobots } from "../../../lib/site";
 
-export const metadata: Metadata = {
-  title: `Recommended landscaping match in ${launchAreaLabel}`,
-  description:
-    "Pick the job and timing, then review one recommended provider first with a short backup list if needed.",
-  robots: noIndexRobots
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const i18n = await getRequestI18n();
+  return {
+    title: i18n.t("metadata.listings.title", { area: launchAreaLabel }),
+    description: i18n.t("metadata.listings.description"),
+    alternates: {
+      languages: {
+        en: "/customer/listings",
+        es: addLocalePrefix("/customer/listings", "es")
+      }
+    },
+    robots: noIndexRobots
+  };
+}
 
 export default async function CustomerListingsPage({
   searchParams

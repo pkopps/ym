@@ -1,20 +1,32 @@
 import type { Metadata } from "next";
 import { PublicCustomerMarketplacePage } from "../components/PublicCustomerMarketplacePage";
+import { addLocalePrefix } from "@yardmatch/i18n";
+import { getRequestI18n } from "../lib/i18n-server";
 import { buildSiteUrl, launchAreaLabel } from "../lib/site";
 
-export const metadata: Metadata = {
-  title: `Lawn care in ${launchAreaLabel}`,
-  description: `Book lawn mowing, yard cleanup, hedge trimming, mulch refresh, and other vetted yard services in ${launchAreaLabel} through YardMatch's recommendation-first marketplace.`,
-  alternates: {
-    canonical: buildSiteUrl("/")
-  },
-  openGraph: {
-    title: `Lawn care in ${launchAreaLabel} | YardMatch`,
-    description:
-      `Book vetted yard services in ${launchAreaLabel} with one recommended provider first and a short backup list if you want it.`,
-    url: buildSiteUrl("/")
-  }
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const i18n = await getRequestI18n();
+  const localizedPath = addLocalePrefix("/", i18n.locale);
+  const title = i18n.t("metadata.home.title", { area: launchAreaLabel });
+  const description = i18n.t("metadata.home.description", { area: launchAreaLabel });
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: buildSiteUrl(localizedPath),
+      languages: {
+        en: buildSiteUrl("/"),
+        es: buildSiteUrl("/es")
+      }
+    },
+    openGraph: {
+      title: `${title} | YardMatch`,
+      description: i18n.t("metadata.home.og_description", { area: launchAreaLabel }),
+      url: buildSiteUrl(localizedPath)
+    }
+  };
+}
 
 export default function HomePage() {
   return <PublicCustomerMarketplacePage />;

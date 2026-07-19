@@ -817,20 +817,22 @@ test("ops users can create, update, and rotate other ops accounts", async () => 
   assert.match(rotated.authHistory.at(-1)?.notes ?? "", /password replaced/i);
 
   const staleSessionResponse = createMockResponse();
-  await authController.handle(
-    {
-      method: "GET",
-      path: "/api/ops/accounts",
-      body: undefined,
-      query: new URLSearchParams(),
-      headers: {
-        authorization: `Bearer ${createdLogin.session.token}`
-      }
-    },
-    staleSessionResponse as never
-  ).catch((error: Error) => {
-    staleSessionResponse.writeHead(401);
-    staleSessionResponse.end(JSON.stringify({ message: error.message }));
+  await withMockedNow(Date.parse("2026-06-24T09:35:00.000Z"), async () => {
+    await authController.handle(
+      {
+        method: "GET",
+        path: "/api/ops/accounts",
+        body: undefined,
+        query: new URLSearchParams(),
+        headers: {
+          authorization: `Bearer ${createdLogin.session.token}`
+        }
+      },
+      staleSessionResponse as never
+    ).catch((error: Error) => {
+      staleSessionResponse.writeHead(401);
+      staleSessionResponse.end(JSON.stringify({ message: error.message }));
+    });
   });
 
   assert.equal(staleSessionResponse.getStatusCode(), 401);

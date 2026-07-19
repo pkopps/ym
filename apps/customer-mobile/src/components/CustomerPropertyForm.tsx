@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { CreateCustomerPropertyRequest, PlaceSuggestion } from "@yardmatch/contracts";
+import { useI18n } from "@yardmatch/i18n/react";
 import { createCustomerMobileApiClient } from "../lib/api";
 
 function buildEstimatedPoint(state: string, postalCode: string) {
@@ -19,12 +20,13 @@ function buildEstimatedPoint(state: string, postalCode: string) {
 export function CustomerPropertyForm({
   isWorking,
   onSubmit,
-  submitLabel = "Save property"
+  submitLabel
 }: {
   isWorking?: boolean;
   onSubmit: (payload: CreateCustomerPropertyRequest) => Promise<void>;
   submitLabel?: string;
 }) {
+  const i18n = useI18n();
   const [label, setLabel] = useState("");
   const [line1, setLine1] = useState("");
   const [city, setCity] = useState("");
@@ -111,12 +113,24 @@ export function CustomerPropertyForm({
     <View style={styles.stack}>
       <View style={styles.stepPath}>
         <View style={[styles.stepItem, step === "address" && styles.stepItemActive]}>
-          <Text style={[styles.stepLabel, step === "address" && styles.stepLabelActive]}>Address</Text>
-          <Text style={styles.stepMeta}>{canContinueAddress ? "Ready" : "Now"}</Text>
+          <Text style={[styles.stepLabel, step === "address" && styles.stepLabelActive]}>
+            {i18n.t("mobile.property.step.address")}
+          </Text>
+          <Text style={styles.stepMeta}>
+            {canContinueAddress ? i18n.t("mobile.property.step.ready") : i18n.t("mobile.property.step.now")}
+          </Text>
         </View>
         <View style={[styles.stepItem, step === "details" && styles.stepItemActive]}>
-          <Text style={[styles.stepLabel, step === "details" && styles.stepLabelActive]}>Details</Text>
-          <Text style={styles.stepMeta}>{step === "details" ? (canSubmit ? "Ready" : "Now") : "Next"}</Text>
+          <Text style={[styles.stepLabel, step === "details" && styles.stepLabelActive]}>
+            {i18n.t("mobile.property.step.details")}
+          </Text>
+          <Text style={styles.stepMeta}>
+            {step === "details"
+              ? canSubmit
+                ? i18n.t("mobile.property.step.ready")
+                : i18n.t("mobile.property.step.now")
+              : i18n.t("mobile.property.step.next")}
+          </Text>
         </View>
       </View>
 
@@ -128,7 +142,7 @@ export function CustomerPropertyForm({
               setLocationQuery(value);
               setSelectedSuggestion(undefined);
             }}
-            placeholder="Search city or town"
+            placeholder={i18n.t("mobile.property.search_city")}
             placeholderTextColor={BrandTokens.colors.muted}
             style={styles.input}
             value={locationQuery}
@@ -151,20 +165,22 @@ export function CustomerPropertyForm({
                   <Text style={styles.suggestionTitle}>{suggestion.label}</Text>
                   <Text style={styles.suggestionMeta}>
                     {suggestion.matchReason ??
-                      (suggestion.source === "google-geocoding" ? "Google-verified area" : "Suggested area")}
+                      (suggestion.source === "google-geocoding"
+                        ? i18n.t("mobile.property.google_verified_area")
+                        : i18n.t("mobile.property.suggested_area"))}
                   </Text>
                 </Pressable>
               ))}
             </View>
           ) : locationQuery.trim().length >= 2 && isSearching ? (
-            <Text style={styles.searchingLabel}>Searching areas...</Text>
+            <Text style={styles.searchingLabel}>{i18n.t("mobile.property.searching_areas")}</Text>
           ) : locationQuery.trim().length >= 2 && searchMessage ? (
             <Text style={styles.searchingLabel}>{searchMessage}</Text>
           ) : null}
           <TextInput
             autoCapitalize="words"
             onChangeText={setLine1}
-            placeholder="Street address"
+            placeholder={i18n.t("mobile.property.street_address")}
             placeholderTextColor={BrandTokens.colors.muted}
             style={styles.input}
             value={line1}
@@ -173,7 +189,7 @@ export function CustomerPropertyForm({
             <TextInput
               autoCapitalize="words"
               onChangeText={setCity}
-              placeholder="City"
+              placeholder={i18n.t("mobile.property.city")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.inlineInput]}
               value={city}
@@ -182,7 +198,7 @@ export function CustomerPropertyForm({
               autoCapitalize="characters"
               maxLength={2}
               onChangeText={setState}
-              placeholder="ST"
+              placeholder={i18n.t("mobile.property.state_abbr")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.stateInput]}
               value={state}
@@ -191,7 +207,7 @@ export function CustomerPropertyForm({
               keyboardType="number-pad"
               maxLength={10}
               onChangeText={setPostalCode}
-              placeholder="ZIP"
+              placeholder={i18n.t("mobile.property.zip")}
               placeholderTextColor={BrandTokens.colors.muted}
               style={[styles.input, styles.zipInput]}
               value={postalCode}
@@ -202,7 +218,7 @@ export function CustomerPropertyForm({
             onPress={() => setStep("details")}
             style={[styles.submitButton, !canContinueAddress && styles.submitButtonDisabled]}
           >
-            <Text style={styles.submitButtonLabel}>Continue</Text>
+            <Text style={styles.submitButtonLabel}>{i18n.t("mobile.property.continue")}</Text>
           </Pressable>
         </>
       ) : (
@@ -215,13 +231,13 @@ export function CustomerPropertyForm({
               </Text>
             </View>
             <Pressable onPress={() => setStep("address")} style={styles.linkButton}>
-              <Text style={styles.linkButtonLabel}>Edit</Text>
+              <Text style={styles.linkButtonLabel}>{i18n.t("common.actions.edit")}</Text>
             </Pressable>
           </View>
           <TextInput
             autoCapitalize="words"
             onChangeText={setLabel}
-            placeholder="Home, rental, or office"
+            placeholder={i18n.t("mobile.property.label_placeholder")}
             placeholderTextColor={BrandTokens.colors.muted}
             style={styles.input}
             value={label}
@@ -231,7 +247,7 @@ export function CustomerPropertyForm({
             style={[styles.toggleButton, setAsDefault && styles.toggleButtonActive]}
           >
             <Text style={[styles.toggleButtonLabel, setAsDefault && styles.toggleButtonLabelActive]}>
-              {setAsDefault ? "Default property" : "Keep current default"}
+              {setAsDefault ? i18n.t("mobile.property.default_property") : i18n.t("mobile.property.keep_current_default")}
             </Text>
           </Pressable>
           <Pressable
@@ -239,7 +255,9 @@ export function CustomerPropertyForm({
             onPress={() => void handleSubmit()}
             style={[styles.submitButton, (!canSubmit || isWorking) && styles.submitButtonDisabled]}
           >
-            <Text style={styles.submitButtonLabel}>{isWorking ? "Saving..." : submitLabel}</Text>
+            <Text style={styles.submitButtonLabel}>
+              {isWorking ? i18n.t("common.loading.saving") : submitLabel ?? i18n.t("mobile.book.save_property")}
+            </Text>
           </Pressable>
         </>
       )}

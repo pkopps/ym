@@ -7,6 +7,7 @@ import {
 } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useI18n } from "@yardmatch/i18n/react";
 
 function formatDateTime(iso?: string) {
   if (!iso) {
@@ -36,6 +37,7 @@ function formatAuthenticationEventKind(kind: string) {
 }
 
 export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUserId?: string }) {
+  const i18n = useI18n();
   const [accounts, setAccounts] = useState<OpsAccountSummary[]>([]);
   const [createDraft, setCreateDraft] = useState<CreateOpsAccountRequest>({
     fullName: "",
@@ -238,57 +240,57 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
   return (
     <section className="stack-lg">
       <div className="section-header">
-        <h2>Ops account management</h2>
-        <p>Manage internal staff logins from the authenticated ops dashboard instead of relying only on the seed account or CLI.</p>
+        <h2>{i18n.t("ops_auto.ops_account_management_board.ops_account_management_3dg678")}</h2>
+        <p>{i18n.t("ops_auto.ops_account_management_board.manage_internal_staff_logins_from_the_authenticated_ops_79h89g")}</p>
       </div>
       {statusMessage ? <p>{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       {passwordResetPreview ? (
         <article className="card">
-          <h3>Password reset preview</h3>
+          <h3>{i18n.t("ops_auto.ops_account_management_board.password_reset_preview_i7jxq")}</h3>
           <p>
-            Prepared for {passwordResetPreview.accountName}. In production, this should flow through the normal email delivery path. In local development, the preview below keeps the staff-access workflow testable end to end.
+            {i18n.t("ops_auto.ops_account_management_board.prepared_for_useuey")} {passwordResetPreview.accountName}. In production, this should flow through the normal email delivery path. In local development, the preview below keeps the staff-access workflow testable end to end.
           </p>
           <p>{passwordResetPreview.details.message}</p>
           {passwordResetPreview.details.expiresAtIso ? (
-            <p>Expires {formatDateTime(passwordResetPreview.details.expiresAtIso)}</p>
+            <p>{i18n.t("ops_auto.ops_account_management_board.expires_5vlu6s")} {formatDateTime(passwordResetPreview.details.expiresAtIso)}</p>
           ) : null}
           {passwordResetPreview.details.resetCodePreview ? (
-            <p>Reset code preview: {passwordResetPreview.details.resetCodePreview}</p>
+            <p>{i18n.t("ops_auto.ops_account_management_board.reset_code_preview_2u6fos")} {passwordResetPreview.details.resetCodePreview}</p>
           ) : null}
           {passwordResetPreview.details.resetUrlPreview ? (
-            <p>Reset URL preview: {passwordResetPreview.details.resetUrlPreview}</p>
+            <p>{i18n.t("ops_auto.ops_account_management_board.reset_url_preview_irdci4")} {passwordResetPreview.details.resetUrlPreview}</p>
           ) : null}
         </article>
       ) : null}
 
       <article className="card">
-        <h3>Create an ops account</h3>
-        <p>Create a real internal staff login. The default internal office address is applied automatically for these non-customer accounts, and the preferred path is to prepare a reset invite instead of sharing a password manually.</p>
+        <h3>{i18n.t("ops_auto.ops_account_management_board.create_an_ops_account_qlyypc")}</h3>
+        <p>{i18n.t("ops_auto.ops_account_management_board.create_a_real_internal_staff_login_the_default_syz517")}</p>
         <div className="form-grid">
           <label className="form-field">
-            <span>Full name</span>
+            <span>{i18n.t("ops_auto.ops_account_management_board.full_name_4fx8po")}</span>
             <input
               className="input"
               disabled={isWorking}
               onChange={(event) => setCreateDraft((current) => ({ ...current, fullName: event.target.value }))}
-              placeholder="Casey Ops"
+              placeholder={i18n.t("ops_auto.ops_account_management_board.casey_ops_qfnqw5")}
               value={createDraft.fullName}
             />
           </label>
           <label className="form-field">
-            <span>Email</span>
+            <span>{i18n.t("ops_auto.ops_account_management_board.email_13xh18")}</span>
             <input
               className="input"
               disabled={isWorking}
               onChange={(event) => setCreateDraft((current) => ({ ...current, email: event.target.value }))}
-              placeholder="ops@example.com"
+              placeholder={i18n.t("ops_auto.ops_account_management_board.ops_example_com_rwjfqn")}
               type="email"
               value={createDraft.email}
             />
           </label>
           <label className="form-field">
-            <span>Phone</span>
+            <span>{i18n.t("ops_auto.ops_account_management_board.phone_19wb4e")}</span>
             <input
               className="input"
               disabled={isWorking}
@@ -298,7 +300,7 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
             />
           </label>
           <label className="form-field">
-            <span>Temporary password</span>
+            <span>{i18n.t("ops_auto.ops_account_management_board.temporary_password_n5n6wa")}</span>
             <input
               className="input"
               disabled={isWorking}
@@ -309,7 +311,7 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
             />
           </label>
           <label className="form-field">
-            <span>Provisioning mode</span>
+            <span>{i18n.t("ops_auto.ops_account_management_board.provisioning_mode_ib5ulm")}</span>
             <select
               className="input"
               disabled={isWorking}
@@ -321,12 +323,12 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
               }
               value={createDraft.sendPasswordResetInvite ? "invite" : "password"}
             >
-              <option value="invite">Prepare password reset invite</option>
-              <option value="password">Set password directly</option>
+              <option value="invite">{i18n.t("ops_auto.ops_account_management_board.prepare_password_reset_invite_7jw7om")}</option>
+              <option value="password">{i18n.t("ops_auto.ops_account_management_board.set_password_directly_osgszh")}</option>
             </select>
           </label>
           <label className="form-field">
-            <span>Ops scope</span>
+            <span>{i18n.t("ops_auto.ops_account_management_board.ops_scope_eh5ume")}</span>
             <select
               className="input"
               disabled={isWorking}
@@ -338,8 +340,8 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
               }
               value={createDraft.internalScope ?? "operations"}
             >
-              <option value="operations">Operations staff</option>
-              <option value="admin">Admin</option>
+              <option value="operations">{i18n.t("ops_auto.ops_account_management_board.operations_staff_hs329g")}</option>
+              <option value="admin">{i18n.t("ops_auto.ops_account_management_board.admin_11ksof")}</option>
             </select>
           </label>
         </div>
@@ -351,9 +353,9 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
       </article>
 
       <section className="card">
-        <h3>Current ops accounts</h3>
+        <h3>{i18n.t("ops_auto.ops_account_management_board.current_ops_accounts_6bk1rv")}</h3>
         {accounts.length === 0 ? (
-          <p>No ops accounts are available right now.</p>
+          <p>{i18n.t("ops_auto.ops_account_management_board.no_ops_accounts_are_available_right_now_sydo6k")}</p>
         ) : (
           <div className="stack-lg" style={{ paddingBottom: 0 }}>
             {accounts.map((account) => {
@@ -375,46 +377,46 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                     <span className="result-badge">{account.isActive ? "ops active" : "ops disabled"}</span>
                   </div>
                   <p>
-                    Created {formatDateTime(account.profile.createdAt)} • Session version {account.sessionVersion} •{" "}
+                    {i18n.t("ops_auto.ops_account_management_board.created_qhn9ko")} {formatDateTime(account.profile.createdAt)} {i18n.t("ops_auto.ops_account_management_board.session_version_hh9ya8")} {account.sessionVersion} •{" "}
                     {account.hasPassword ? "Password set" : "No password set"}
                   </p>
                   <p>
-                    Access state: {account.isActive ? "Active" : "Disabled"}
+                    {i18n.t("ops_auto.ops_account_management_board.access_state_bw4t0l")} {account.isActive ? "Active" : "Disabled"}
                     {account.accessDisabledAt ? ` • disabled ${formatDateTime(account.accessDisabledAt)}` : ""}
                     {account.accessDisabledBy ? ` by ${getActorLabel(account.accessDisabledBy)}` : ""}
                   </p>
                   {account.isAuthenticationLocked ? (
-                    <p>Temporary login lock until {formatDateTime(account.authenticationLockExpiresAt)}</p>
+                    <p>{i18n.t("ops_auto.ops_account_management_board.temporary_login_lock_until_tepjyn")} {formatDateTime(account.authenticationLockExpiresAt)}</p>
                   ) : null}
-                  <p>Ops scope: {account.profile.internalScope === "admin" ? "Admin" : "Operations staff"}</p>
+                  <p>{i18n.t("ops_auto.ops_account_management_board.ops_scope_mld1h0")} {account.profile.internalScope === "admin" ? "Admin" : "Operations staff"}</p>
                   <p>
-                    Last sign-in: {formatDateTime(account.lastAuthenticatedAt)} • via{" "}
+                    {i18n.t("ops_auto.ops_account_management_board.last_sign_in_6l319t")} {formatDateTime(account.lastAuthenticatedAt)} {i18n.t("ops_auto.ops_account_management_board.via_gell9s")}{" "}
                     {formatAuthenticationMethod(account.lastAuthenticatedMethod)}
                   </p>
                   <p>
-                    Failed sign-ins: {account.failedAuthenticationCount}
+                    {i18n.t("ops_auto.ops_account_management_board.failed_sign_ins_2s3y7b")} {account.failedAuthenticationCount}
                     {account.lastFailedAuthenticationAt
                       ? ` • last ${formatFailedAuthenticationReason(account.lastFailedAuthenticationReason)} ${formatDateTime(account.lastFailedAuthenticationAt)}`
                       : ""}
                   </p>
                   {account.lastAccessChangeKind ? (
                     <p>
-                      Last access change: {formatAccessChangeKind(account.lastAccessChangeKind)}
+                      {i18n.t("ops_auto.ops_account_management_board.last_access_change_i3qj5k")} {formatAccessChangeKind(account.lastAccessChangeKind)}
                       {account.lastAccessChangeAt ? ` • ${formatDateTime(account.lastAccessChangeAt)}` : ""}
                       {account.lastAccessChangeBy ? ` • by ${getActorLabel(account.lastAccessChangeBy)}` : ""}
                     </p>
                   ) : null}
-                  {account.accessChangeNotes ? <p>Access note: {account.accessChangeNotes}</p> : null}
+                  {account.accessChangeNotes ? <p>{i18n.t("ops_auto.ops_account_management_board.access_note_brf5kc")} {account.accessChangeNotes}</p> : null}
                   {account.passwordResetRequestedAt ? (
                     <p>
-                      Password reset requested {formatDateTime(account.passwordResetRequestedAt)}
+                      {i18n.t("ops_auto.ops_account_management_board.password_reset_requested_yo3atk")} {formatDateTime(account.passwordResetRequestedAt)}
                       {account.passwordResetExpiresAt ? ` • expires ${formatDateTime(account.passwordResetExpiresAt)}` : ""}
                     </p>
                   ) : null}
                   <div className="stack-sm">
-                    <h4>Authentication history</h4>
+                    <h4>{i18n.t("ops_auto.ops_account_management_board.authentication_history_dhdw50")}</h4>
                     {account.authHistory.length === 0 ? (
-                      <p>No authentication events have been recorded for this account yet.</p>
+                      <p>{i18n.t("ops_auto.ops_account_management_board.no_authentication_events_have_been_recorded_for_this_hfblle")}</p>
                     ) : (
                       <div className="stack-sm">
                         {account.authHistory
@@ -425,31 +427,31 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                               <p>
                                 {formatAuthenticationEventKind(entry.kind)} • {formatDateTime(entry.occurredAt)}
                               </p>
-                              {entry.recordedBy ? <p>Recorded by {getActorLabel(entry.recordedBy)}</p> : null}
-                              {entry.method ? <p>Method: {formatAuthenticationMethod(entry.method)}</p> : null}
+                              {entry.recordedBy ? <p>{i18n.t("ops_auto.ops_account_management_board.recorded_by_lkrbdl")} {getActorLabel(entry.recordedBy)}</p> : null}
+                              {entry.method ? <p>{i18n.t("ops_auto.ops_account_management_board.method_rp4cdj")} {formatAuthenticationMethod(entry.method)}</p> : null}
                               {entry.reason ? (
                                 <p>
-                                  Failure reason: {formatFailedAuthenticationReason(entry.reason)}
+                                  {i18n.t("ops_auto.ops_account_management_board.failure_reason_eu8k74")} {formatFailedAuthenticationReason(entry.reason)}
                                   {entry.failedCount !== undefined
                                     ? ` • count ${entry.failedCount}`
                                     : ""}
                                 </p>
                               ) : entry.failedCount !== undefined ? (
-                                <p>Failed-attempt count: {entry.failedCount}</p>
+                                <p>{i18n.t("ops_auto.ops_account_management_board.failed_attempt_count_pohwz2")} {entry.failedCount}</p>
                               ) : null}
                               {entry.lockExpiresAt ? (
-                                <p>Lock expires {formatDateTime(entry.lockExpiresAt)}</p>
+                                <p>{i18n.t("ops_auto.ops_account_management_board.lock_expires_2hqpwh")} {formatDateTime(entry.lockExpiresAt)}</p>
                               ) : null}
-                              {entry.notes ? <p>Note: {entry.notes}</p> : null}
+                              {entry.notes ? <p>{i18n.t("ops_auto.ops_account_management_board.note_18xaaw")} {entry.notes}</p> : null}
                             </article>
                           ))}
                       </div>
                     )}
                   </div>
                   <div className="stack-sm">
-                    <h4>Access history</h4>
+                    <h4>{i18n.t("ops_auto.ops_account_management_board.access_history_at5loo")}</h4>
                     {account.accessHistory.length === 0 ? (
-                      <p>No access changes have been recorded for this account yet.</p>
+                      <p>{i18n.t("ops_auto.ops_account_management_board.no_access_changes_have_been_recorded_for_this_osu2uu")}</p>
                     ) : (
                       <div className="stack-sm">
                         {account.accessHistory
@@ -460,8 +462,8 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                               <p>
                                 {formatAccessChangeKind(entry.kind)} • {formatDateTime(entry.changedAt)}
                               </p>
-                              <p>Changed by {getActorLabel(entry.changedBy)}</p>
-                              {entry.notes ? <p>Note: {entry.notes}</p> : null}
+                              <p>{i18n.t("ops_auto.ops_account_management_board.changed_by_2a6tul")} {getActorLabel(entry.changedBy)}</p>
+                              {entry.notes ? <p>{i18n.t("ops_auto.ops_account_management_board.note_18xaaw")} {entry.notes}</p> : null}
                             </article>
                           ))}
                       </div>
@@ -469,7 +471,7 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                   </div>
                   <div className="form-grid">
                     <label className="form-field">
-                      <span>Full name</span>
+                      <span>{i18n.t("ops_auto.ops_account_management_board.full_name_4fx8po")}</span>
                       <input
                         className="input"
                         disabled={isWorking}
@@ -486,7 +488,7 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                       />
                     </label>
                     <label className="form-field">
-                      <span>Phone</span>
+                      <span>{i18n.t("ops_auto.ops_account_management_board.phone_19wb4e")}</span>
                       <input
                         className="input"
                         disabled={isWorking}
@@ -503,7 +505,7 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                       />
                     </label>
                     <label className="form-field">
-                      <span>Ops scope</span>
+                      <span>{i18n.t("ops_auto.ops_account_management_board.ops_scope_eh5ume")}</span>
                       <select
                         className="input"
                         disabled={isWorking || isCurrentAccount}
@@ -518,12 +520,12 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                         }
                         value={draft.internalScope}
                       >
-                        <option value="operations">Operations staff</option>
-                        <option value="admin">Admin</option>
+                        <option value="operations">{i18n.t("ops_auto.ops_account_management_board.operations_staff_hs329g")}</option>
+                        <option value="admin">{i18n.t("ops_auto.ops_account_management_board.admin_11ksof")}</option>
                       </select>
                     </label>
                     <label className="form-field">
-                      <span>Replacement password</span>
+                      <span>{i18n.t("ops_auto.ops_account_management_board.replacement_password_g6hxpz")}</span>
                       <input
                         className="input"
                         disabled={isWorking || isCurrentAccount}
@@ -539,7 +541,7 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                       />
                     </label>
                     <label className="form-field">
-                      <span>Access change note</span>
+                      <span>{i18n.t("ops_auto.ops_account_management_board.access_change_note_2yrupm")}</span>
                       <textarea
                         className="input"
                         disabled={isWorking || isCurrentAccount}
@@ -568,48 +570,42 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                       onClick={() => void requestPasswordReset(account)}
                       type="button"
                     >
-                      Prepare reset link
-                    </button>
+                      {i18n.t("ops_auto.ops_account_management_board.prepare_reset_link_lstjb0")} </button>
                     <button
                       className="button-secondary"
                       disabled={isWorking}
                       onClick={() => void saveProfile(account)}
                       type="button"
                     >
-                      Save details
-                    </button>
+                      {i18n.t("ops_auto.ops_account_management_board.save_details_p9xxvj")} </button>
                     <button
                       className="button-secondary"
                       disabled={isWorking || isCurrentAccount}
                       onClick={() => void rotateSessions(account, false)}
                       type="button"
                     >
-                      Force sign-out everywhere
-                    </button>
+                      {i18n.t("ops_auto.ops_account_management_board.force_sign_out_everywhere_juld6v")} </button>
                     <button
                       className="button-secondary"
                       disabled={isWorking || isCurrentAccount || passwordDraft.trim().length === 0}
                       onClick={() => void rotateSessions(account, true)}
                       type="button"
                     >
-                      Replace password and revoke sessions
-                    </button>
+                      {i18n.t("ops_auto.ops_account_management_board.replace_password_and_revoke_sessions_7yd22d")} </button>
                     <button
                       className="button-secondary"
                       disabled={isWorking || isCurrentAccount || !account.isActive}
                       onClick={() => void updateAccess(account, "deactivate")}
                       type="button"
                     >
-                      Deactivate account
-                    </button>
+                      {i18n.t("ops_auto.ops_account_management_board.deactivate_account_ksc1i9")} </button>
                     <button
                       className="button-secondary"
                       disabled={isWorking || isCurrentAccount || account.isActive}
                       onClick={() => void updateAccess(account, "reactivate")}
                       type="button"
                     >
-                      Reactivate account
-                    </button>
+                      {i18n.t("ops_auto.ops_account_management_board.reactivate_account_30u443")} </button>
                     <button
                       className="button-secondary"
                       disabled={
@@ -620,11 +616,10 @@ export function OpsAccountManagementBoard({ currentOpsUserId }: { currentOpsUser
                       onClick={() => void updateAccess(account, "clear-auth-lock")}
                       type="button"
                     >
-                      Clear auth lock
-                    </button>
+                      {i18n.t("ops_auto.ops_account_management_board.clear_auth_lock_xtw9c")} </button>
                   </div>
                   {isCurrentAccount ? (
-                    <p>For safety, the dashboard does not let you revoke or deactivate your own active ops session from this board.</p>
+                    <p>{i18n.t("ops_auto.ops_account_management_board.for_safety_the_dashboard_does_not_let_you_qta7qe")}</p>
                   ) : null}
                 </article>
               );

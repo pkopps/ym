@@ -4,3 +4,13 @@ dist
 .expo
 .DS_Store
 *.tsbuildinfo
+test-results
+playwright-report
+
+# Generated agent review evidence; keep directory anchors versioned.
+reports/progress/**
+!reports/progress/
+!reports/progress/.gitkeep
+reports/agent-checkpoints/*/latest/**
+!reports/agent-checkpoints/*/latest/
+!reports/agent-checkpoints/*/latest/.gitkeep

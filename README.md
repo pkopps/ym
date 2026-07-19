@@ -43,6 +43,13 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - Machine-readable spec: `GET /api/docs/openapi.json`
 - The docs page is served directly by the monolith so other developers can inspect routes and example payloads without extra tooling.
 
+## Local development
+
+- Canonical local web URL: `http://localhost:3000`
+- Canonical local API URL: `http://localhost:4001`
+- Practical local setup and smoke-test runbook: [LOCAL_DEVELOPMENT.md](/Users/patrickkopps/Documents/app/LOCAL_DEVELOPMENT.md)
+- Agent/project working rules: [AGENTS.md](/Users/patrickkopps/Documents/app/AGENTS.md)
+
 ## Product roadmap
 
 - Active roadmap and backlog: [ROADMAP.md](/Users/patrickkopps/Documents/app/ROADMAP.md)
@@ -197,6 +204,15 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 npm run prisma:generate
 npm run prisma:migrate
 npm run prisma:seed
+```
+
+### Verification commands
+
+```bash
+npm run typecheck
+npm run test:api
+npm run test:api:smoke
+npm run test:web:smoke
 ```
 
 ### Current backend test coverage

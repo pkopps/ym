@@ -34,6 +34,15 @@
       "@yardmatch/help-center": [
         "packages/help-center/src"
       ],
+      "@yardmatch/i18n": [
+        "packages/i18n/src"
+      ],
+      "@yardmatch/i18n/react": [
+        "packages/i18n/src/react"
+      ],
+      "@yardmatch/i18n/service-labels": [
+        "packages/i18n/src/service-labels"
+      ],
       "@yardmatch/observability": [
         "packages/observability/src"
       ],

@@ -10,7 +10,7 @@ export const apiSpec = {
   },
   servers: [
     {
-      url: "http://localhost:4000"
+      url: "http://localhost:4001"
     }
   ],
   tags: [

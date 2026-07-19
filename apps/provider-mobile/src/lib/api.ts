@@ -1,4 +1,5 @@
 import { MarketplaceApiClient } from "@yardmatch/contracts";
+import { getProviderMobileLocale } from "./i18n";
 
 export function getProviderMobileApiBaseUrl() {
   const runtimeEnv = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
@@ -6,5 +7,7 @@ export function getProviderMobileApiBaseUrl() {
 }
 
 export function createProviderMobileApiClient() {
-  return new MarketplaceApiClient(getProviderMobileApiBaseUrl());
+  const api = new MarketplaceApiClient(getProviderMobileApiBaseUrl());
+  api.setLocale(getProviderMobileLocale());
+  return api;
 }

@@ -2,36 +2,38 @@ import { useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import { ProviderStaffingOverview } from "@yardmatch/contracts";
+import { I18nInstance } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
-function formatHourlyPay(cents: number) {
-  return `${new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0
-  }).format(cents / 100)}/hr`;
+function formatHourlyPay(i18n: I18nInstance, cents: number) {
+  return i18n.t("provider_mobile.clients.hourly_rate", {
+    rate: i18n.formatCurrency(cents)
+  });
 }
 
-function formatRecommendationLabel(label?: "best-fit" | "good-fit" | "backup") {
+function formatRecommendationLabel(i18n: I18nInstance, label?: "best-fit" | "good-fit" | "backup") {
   if (label === "best-fit") {
-    return "Best fit";
+    return i18n.t("common.state.best_fit");
   }
 
   if (label === "good-fit") {
-    return "Good fit";
+    return i18n.t("provider_mobile.clients.good_fit");
   }
 
   if (label === "backup") {
-    return "Backup";
+    return i18n.t("provider_mobile.clients.backup");
   }
 
-  return "Crew match";
+  return i18n.t("provider_mobile.clients.crew_match");
 }
 
 export function ClientsScreen() {
+  const i18n = useI18n();
   const { envelope } = useProviderSession();
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
   const [errorMessage, setErrorMessage] = useState("");
@@ -51,7 +53,7 @@ export function ClientsScreen() {
       api.setAuthToken(envelope.session.token);
       setOverview(await api.getProviderStaffingOverview());
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load crew matches.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.clients.error.load_matches"));
     }
   }
 
@@ -70,10 +72,14 @@ export function ClientsScreen() {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
       await api.reviewCrewMatch({ crewMatchId, action });
-      setStatusMessage(action === "accept" ? "Crew member accepted." : "Crew member declined.");
+      setStatusMessage(
+        action === "accept"
+          ? i18n.t("provider_mobile.clients.message.accepted")
+          : i18n.t("provider_mobile.clients.message.declined")
+      );
       await loadData();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update that match.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.clients.error.update_match"));
     } finally {
       setIsWorking(false);
     }
@@ -102,20 +108,20 @@ export function ClientsScreen() {
     const isPending = match.status === "pending-provider-review";
     const facts = [
       {
-        label: "Rate",
-        value: formatHourlyPay(match.hourlyRateCents)
+        label: i18n.t("provider_mobile.clients.fact.rate"),
+        value: formatHourlyPay(i18n, match.hourlyRateCents)
       },
       {
-        label: "Distance",
-        value: `${match.distanceMiles} mi`
+        label: i18n.t("provider_mobile.clients.fact.distance"),
+        value: i18n.t("common.format.miles", { count: match.distanceMiles })
       },
       {
-        label: "Travel",
-        value: `${match.willingToTravelMiles} mi`
+        label: i18n.t("provider_mobile.clients.fact.travel"),
+        value: i18n.t("common.format.miles", { count: match.willingToTravelMiles })
       },
       {
-        label: "Equipment",
-        value: match.hasOwnEquipment ? "Owns" : "Needs"
+        label: i18n.t("provider_mobile.clients.fact.equipment"),
+        value: match.hasOwnEquipment ? i18n.t("provider_mobile.clients.equipment.owns") : i18n.t("provider_mobile.clients.equipment.needs")
       }
     ];
 
@@ -123,14 +129,14 @@ export function ClientsScreen() {
       <View key={match.id} style={styles.matchRow}>
         <View style={styles.matchHeader}>
           <View style={styles.copy}>
-            <Text style={styles.matchBadge}>{formatRecommendationLabel(match.recommendationLabel)}</Text>
+            <Text style={styles.matchBadge}>{formatRecommendationLabel(i18n, match.recommendationLabel)}</Text>
             <Text style={styles.title}>{match.crewMemberName}</Text>
             <Text style={styles.meta}>
-              {match.categories.map((category) => category.replaceAll("-", " ")).join(" • ")}
+              {match.categories.map((category) => i18n.t(serviceCategoryToI18nKey(category))).join(" • ")}
             </Text>
           </View>
           <Text style={isPending ? styles.warningBadge : styles.successBadge}>
-            {isPending ? "Review" : match.status.replaceAll("-", " ")}
+            {isPending ? i18n.t("provider_mobile.clients.review") : match.status.replaceAll("-", " ")}
           </Text>
         </View>
         <View style={styles.matchFactGrid}>
@@ -155,14 +161,14 @@ export function ClientsScreen() {
                 onPress={() => void reviewMatch(match.id, "accept")}
                 style={styles.primaryButton}
               >
-                <Text style={styles.primaryButtonLabel}>Add crew</Text>
+                <Text style={styles.primaryButtonLabel}>{i18n.t("provider_mobile.clients.add_crew")}</Text>
               </Pressable>
               <Pressable
                 disabled={isWorking}
                 onPress={() => void reviewMatch(match.id, "deny")}
                 style={styles.secondaryButton}
               >
-                <Text style={styles.secondaryButtonLabel}>Pass</Text>
+                <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.clients.pass")}</Text>
               </Pressable>
             </>
           ) : null}
@@ -170,7 +176,7 @@ export function ClientsScreen() {
             onPress={() => void Linking.openURL(`tel:${match.crewMemberPhone}`)}
             style={styles.secondaryButton}
           >
-            <Text style={styles.secondaryButtonLabel}>Call</Text>
+            <Text style={styles.secondaryButtonLabel}>{i18n.t("provider_mobile.clients.call")}</Text>
           </Pressable>
         </View>
       </View>
@@ -189,17 +195,19 @@ export function ClientsScreen() {
         <View style={styles.copy}>
           <Text style={styles.title}>{job.customerName}</Text>
           <Text style={styles.meta}>
-            {job.category.replaceAll("-", " ")} • {job.crewGap} open spot{job.crewGap === 1 ? "" : "s"}
+            {i18n.t(serviceCategoryToI18nKey(job.category))} • {i18n.t("provider_mobile.clients.open_spots", { count: job.crewGap })}
           </Text>
           <Text style={styles.meta}>
-            {pendingMatches.length} waiting for review • {job.matches.length} total match
-            {job.matches.length === 1 ? "" : "es"}
+            {i18n.t("provider_mobile.clients.match_summary", {
+              pending: pendingMatches.length,
+              total: job.matches.length
+            })}
           </Text>
         </View>
         <View style={styles.buttonRow}>
           <Pressable onPress={() => toggleJobMatches(job.bookingId)} style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonLabel}>
-              {hasExpandedMatches ? "Close" : "Review matches"}
+              {hasExpandedMatches ? i18n.t("common.actions.close") : i18n.t("provider_mobile.clients.review_matches")}
             </Text>
           </Pressable>
         </View>
@@ -208,18 +216,22 @@ export function ClientsScreen() {
             {primaryMatch ? (
               <View style={styles.matchFocusCard}>
                 <Text style={styles.matchSectionLabel}>
-                  {primaryMatch.status === "pending-provider-review" ? "Next match" : "Latest match"}
+                  {primaryMatch.status === "pending-provider-review"
+                    ? i18n.t("provider_mobile.clients.next_match")
+                    : i18n.t("provider_mobile.clients.latest_match")}
                 </Text>
                 {renderMatchRow(primaryMatch)}
               </View>
             ) : (
-              <Text style={styles.meta}>No crew matches are ready yet.</Text>
+              <Text style={styles.meta}>{i18n.t("provider_mobile.clients.no_matches_ready")}</Text>
             )}
             {otherMatches.length > 0 ? (
               <>
                 <Pressable onPress={() => toggleOtherMatches(job.bookingId)} style={styles.secondaryButtonInline}>
                   <Text style={styles.secondaryButtonInlineLabel}>
-                    {showOtherMatches ? "Close" : `Other matches (${otherMatches.length})`}
+                    {showOtherMatches
+                      ? i18n.t("common.actions.close")
+                      : i18n.t("provider_mobile.clients.other_matches", { count: otherMatches.length })}
                   </Text>
                 </Pressable>
                 {showOtherMatches ? <View style={styles.list}>{otherMatches.map((match) => renderMatchRow(match))}</View> : null}
@@ -232,14 +244,18 @@ export function ClientsScreen() {
   }
 
   return (
-    <ScreenShell eyebrow="Crew" title="Crew coverage" description="Fill the next open spot.">
-      {statusMessage ? <InfoCard title="Updated" description={statusMessage} /> : null}
-      {errorMessage ? <InfoCard title="Needs attention" description={errorMessage} /> : null}
+    <ScreenShell
+      eyebrow={i18n.t("provider_mobile.clients.eyebrow")}
+      title={i18n.t("provider_mobile.clients.title")}
+      description={i18n.t("provider_mobile.clients.description")}
+    >
+      {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
+      {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
       {primaryJobNeedingAttention ? (
         <InfoCard
-          title="Needs coverage"
-          description={`${jobsNeedingAttention.length} job${jobsNeedingAttention.length === 1 ? "" : "s"} need more help`}
+          title={i18n.t("provider_mobile.clients.needs_coverage")}
+          description={i18n.t("provider_mobile.clients.jobs_need_help", { count: jobsNeedingAttention.length })}
         >
           {renderJobCard(primaryJobNeedingAttention)}
           {otherJobsNeedingAttention.length > 0 ? (
@@ -249,7 +265,9 @@ export function ClientsScreen() {
                 style={styles.secondaryButton}
               >
                 <Text style={styles.secondaryButtonLabel}>
-                  {showOtherJobs ? "Close" : `Other staffing needs (${otherJobsNeedingAttention.length})`}
+                  {showOtherJobs
+                    ? i18n.t("common.actions.close")
+                    : i18n.t("provider_mobile.clients.other_staffing_needs", { count: otherJobsNeedingAttention.length })}
                 </Text>
               </Pressable>
               {showOtherJobs ? (
@@ -261,7 +279,7 @@ export function ClientsScreen() {
           ) : null}
         </InfoCard>
       ) : (
-        <InfoCard title="Coverage is set" description="No jobs need more crew right now." />
+        <InfoCard title={i18n.t("provider_mobile.clients.coverage_set")} description={i18n.t("provider_mobile.clients.no_jobs_need_crew")} />
       )}
     </ScreenShell>
   );

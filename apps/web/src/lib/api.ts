@@ -1,5 +1,7 @@
 import type { OpsInternalScope } from "@yardmatch/contracts";
 import { MarketplaceApiClient } from "@yardmatch/contracts";
+import { resolveLocale, SupportedLocale } from "@yardmatch/i18n";
+import { localeCookieName } from "./i18n-client";
 
 const authStorageKey = "yardmatch-web-session";
 const sessionChangeEventName = "yardmatch-web-session-change";
@@ -28,8 +30,37 @@ export function getWebApiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4001";
 }
 
-export function createWebApiClient(): MarketplaceApiClient {
-  return new MarketplaceApiClient(getWebApiBaseUrl());
+function readLocaleCookie(): string | undefined {
+  if (typeof document === "undefined") {
+    return undefined;
+  }
+
+  return document.cookie
+    .split(";")
+    .map((segment) => segment.trim())
+    .find((segment) => segment.startsWith(`${localeCookieName}=`))
+    ?.split("=")[1];
+}
+
+function resolveWebClientLocale(explicitLocale?: SupportedLocale): SupportedLocale {
+  if (explicitLocale) {
+    return explicitLocale;
+  }
+
+  if (typeof window === "undefined") {
+    return "en";
+  }
+
+  return resolveLocale({
+    persistedLocale: window.localStorage.getItem(localeCookieName) ?? readLocaleCookie(),
+    navigatorLanguages: window.navigator.languages
+  });
+}
+
+export function createWebApiClient(locale?: SupportedLocale): MarketplaceApiClient {
+  const api = new MarketplaceApiClient(getWebApiBaseUrl());
+  api.setLocale(resolveWebClientLocale(locale));
+  return api;
 }
 
 export function loadStoredSession(): StoredWebSession | undefined {

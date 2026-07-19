@@ -18,21 +18,17 @@ import {
   ProviderStaffingOverview,
   ServiceCategory
 } from "@yardmatch/contracts";
+import { addLocalePrefix, I18nInstance } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD"
-  }).format(cents / 100);
-}
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString(undefined, {
+function formatDateTime(i18n: I18nInstance, iso: string) {
+  return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
   });
@@ -47,80 +43,82 @@ function formatLocalInputValue(date: Date) {
   return offsetDate.toISOString().slice(0, 16);
 }
 
-function formatMinutesAsHours(minutes: number) {
+function formatMinutesAsHours(i18n: I18nInstance, minutes: number) {
   if (minutes < 60) {
-    return `${minutes} min`;
+    return i18n.t("provider_live.duration.minutes", { count: minutes });
   }
 
   const hours = minutes / 60;
-  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hrs`;
+  return i18n.t("provider_live.duration.hours", {
+    count: Number.isInteger(hours) ? hours : Number(hours.toFixed(1))
+  });
 }
 
-function formatWeekdayLabel(weekday: ProviderProfile["weeklyPayoutDay"]) {
-  const map: Record<ProviderProfile["weeklyPayoutDay"], string> = {
-    Mon: "Monday",
-    Tue: "Tuesday",
-    Wed: "Wednesday",
-    Thu: "Thursday",
-    Fri: "Friday",
-    Sat: "Saturday",
-    Sun: "Sunday"
+function formatWeekdayLabel(i18n: I18nInstance, weekday: ProviderProfile["weeklyPayoutDay"]) {
+  const map: Record<ProviderProfile["weeklyPayoutDay"], Parameters<I18nInstance["t"]>[0]> = {
+    Mon: "provider_live.weekday.mon",
+    Tue: "provider_live.weekday.tue",
+    Wed: "provider_live.weekday.wed",
+    Thu: "provider_live.weekday.thu",
+    Fri: "provider_live.weekday.fri",
+    Sat: "provider_live.weekday.sat",
+    Sun: "provider_live.weekday.sun"
   };
 
-  return map[weekday];
+  return i18n.t(map[weekday]);
 }
 
-function formatMinimumLeadHoursLabel(hours: number) {
+function formatMinimumLeadHoursLabel(i18n: I18nInstance, hours: number) {
   if (hours <= 0) {
-    return "No minimum";
+    return i18n.t("provider_live.lead_time.no_minimum");
   }
 
-  return hours === 1 ? "1 hour" : `${hours} hours`;
+  return i18n.t("provider_live.duration.hours", { count: hours });
 }
 
-function formatRouteStatusLabel(status: "comfortable" | "watch" | "overloaded") {
+function formatRouteStatusLabel(i18n: I18nInstance, status: "comfortable" | "watch" | "overloaded") {
   switch (status) {
     case "comfortable":
-      return "Balanced";
+      return i18n.t("provider_live.route_status.balanced");
     case "watch":
-      return "Watch closely";
+      return i18n.t("provider_live.route_status.watch");
     case "overloaded":
-      return "Overloaded";
+      return i18n.t("provider_live.route_status.overloaded");
   }
 }
 
-function formatCalendarHealthLabel(status: "healthy" | "attention" | "at-risk") {
+function formatCalendarHealthLabel(i18n: I18nInstance, status: "healthy" | "attention" | "at-risk") {
   switch (status) {
     case "healthy":
-      return "Healthy";
+      return i18n.t("provider_live.calendar_health.healthy");
     case "attention":
-      return "Needs attention";
+      return i18n.t("provider_live.calendar_health.attention");
     case "at-risk":
-      return "At risk";
+      return i18n.t("provider_live.calendar_health.at_risk");
   }
 }
 
-function formatCrewRecommendationLabel(label?: "best-fit" | "good-fit" | "backup") {
+function formatCrewRecommendationLabel(i18n: I18nInstance, label?: "best-fit" | "good-fit" | "backup") {
   switch (label) {
     case "best-fit":
-      return "Best fit";
+      return i18n.t("common.state.best_fit");
     case "good-fit":
-      return "Good fit";
+      return i18n.t("provider_live.crew.good_fit");
     case "backup":
-      return "Backup";
+      return i18n.t("provider_live.crew.backup");
     default:
       return undefined;
   }
 }
 
-function formatVerificationChecklistStatus(status: "ready" | "review" | "missing") {
+function formatVerificationChecklistStatus(i18n: I18nInstance, status: "ready" | "review" | "missing") {
   switch (status) {
     case "ready":
-      return "Ready";
+      return i18n.t("provider_live.verification.ready");
     case "review":
-      return "Review";
+      return i18n.t("provider_live.verification.review");
     case "missing":
-      return "Needs update";
+      return i18n.t("provider_live.verification.needs_update");
   }
 }
 
@@ -128,29 +126,33 @@ type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
 type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
 type ProviderRouteStepStatus = "complete" | "current" | "pending";
 
-function formatServiceCategoryLabel(category: string) {
+function formatServiceCategoryLabel(i18n: I18nInstance, category: ServiceCategory | string) {
+  if (category === "lawn-mowing" || category === "hedge-trimming" || category === "mulch-installation" || category === "seasonal-cleanup" || category === "weed-control" || category === "irrigation-check" || category === "leaf-blowing" || category === "gutter-cleaning") {
+    return i18n.t(serviceCategoryToI18nKey(category));
+  }
+
   return category.replaceAll("-", " ");
 }
 
-function getProviderJobStatusLabel(job: ProviderJobSummary) {
+function getProviderJobStatusLabel(i18n: I18nInstance, job: ProviderJobSummary) {
   if (job.status === "requested") {
-    return "Requested";
+    return i18n.t("provider_live.job_status.requested");
   }
 
   if (job.status === "confirmed" && job.onRouteConfirmedAt) {
-    return "On route";
+    return i18n.t("provider_live.job_status.on_route");
   }
 
   if (job.status === "confirmed") {
-    return "Confirmed";
+    return i18n.t("provider_live.job_status.confirmed");
   }
 
   if (job.status === "in-progress") {
-    return "In progress";
+    return i18n.t("provider_live.job_status.in_progress");
   }
 
   if (job.status === "disputed") {
-    return "Disputed";
+    return i18n.t("provider_live.job_status.disputed");
   }
 
   return job.status.replaceAll("-", " ");
@@ -184,30 +186,30 @@ function hasCrewDecisionPending(job: ProviderJobSummary) {
   );
 }
 
-function getProviderJobActionLabel(job: ProviderJobSummary) {
+function getProviderJobActionLabel(i18n: I18nInstance, job: ProviderJobSummary) {
   const primaryAction = getProviderJobPrimaryAction(job);
 
   if (primaryAction === "confirm") {
-    return "Confirm";
+    return i18n.t("provider_live.action.confirm");
   }
 
   if (hasCrewDecisionPending(job)) {
-    return "Staff";
+    return i18n.t("provider_live.action.staff");
   }
 
   if (primaryAction === "start-route") {
-    return "Start route";
+    return i18n.t("provider_live.action.start_route");
   }
 
   if (primaryAction === "start-work") {
-    return "Start work";
+    return i18n.t("provider_live.action.start_work");
   }
 
   if (primaryAction === "complete") {
-    return "Complete";
+    return i18n.t("provider_live.action.complete");
   }
 
-  return "Review";
+  return i18n.t("provider_live.action.review");
 }
 
 function getProviderRouteStepStatus(stepIndex: number, activeStepIndex: number): ProviderRouteStepStatus {
@@ -241,17 +243,18 @@ const externalCalendarBlockOptions: ExternalCalendarBlockType[] = [
   "equipment-maintenance"
 ];
 const externalCalendarImportProviders: ExternalCalendarProvider[] = ["google", "apple", "ical"];
-const providerCategoryOptions: Array<{ value: ServiceCategory; label: string }> = [
-  { value: "lawn-mowing", label: "Lawn mowing" },
-  { value: "hedge-trimming", label: "Hedge trimming" },
-  { value: "mulch-installation", label: "Mulch installation" },
-  { value: "seasonal-cleanup", label: "Seasonal cleanup" },
-  { value: "weed-control", label: "Weed control" },
-  { value: "irrigation-check", label: "Irrigation check" },
-  { value: "leaf-blowing", label: "Leaf blowing" }
+const providerCategoryOptions: ServiceCategory[] = [
+  "lawn-mowing",
+  "hedge-trimming",
+  "mulch-installation",
+  "seasonal-cleanup",
+  "weed-control",
+  "irrigation-check",
+  "leaf-blowing"
 ];
 
 export function ProviderLiveManagementBoard() {
+  const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [overview, setOverview] = useState<ProviderStaffingOverview | undefined>();
@@ -266,9 +269,9 @@ export function ProviderLiveManagementBoard() {
     ProviderCalendarSubscriptionResponse | undefined
   >();
   const [calendarImports, setCalendarImports] = useState<ProviderCalendarImportsResponse | undefined>();
-  const [blockTitle, setBlockTitle] = useState("Off-platform client");
+  const [blockTitle, setBlockTitle] = useState(() => i18n.t("provider_live.calendar.default_block_title"));
   const [blockType, setBlockType] = useState<ExternalCalendarBlockType>("off-platform-client");
-  const [importTitle, setImportTitle] = useState("Google Calendar - Outside work");
+  const [importTitle, setImportTitle] = useState(() => i18n.t("provider_live.calendar.default_import_title"));
   const [importProvider, setImportProvider] = useState<ExternalCalendarProvider>("google");
   const [importFeedUrl, setImportFeedUrl] = useState("");
   const [blockStartLocal, setBlockStartLocal] = useState(() =>
@@ -280,7 +283,7 @@ export function ProviderLiveManagementBoard() {
   const [blockNotes, setBlockNotes] = useState("");
   const [chatDraft, setChatDraft] = useState("");
   const [assistantCommand, setAssistantCommand] = useState(
-    "Change my afternoon appointment to evening and notify the customer"
+    () => i18n.t("provider_live.assistant.default_command")
   );
   const [assistantResult, setAssistantResult] = useState<ProviderAssistantCommandResponse | undefined>();
   const [selectedAssistantBookingId, setSelectedAssistantBookingId] = useState<string | undefined>();
@@ -312,25 +315,25 @@ export function ProviderLiveManagementBoard() {
   const priorityJobSteps = priorityJob
     ? [
         {
-          label: "Confirm",
-          value: priorityJob.status === "requested" ? "Needed" : "Done"
+          label: i18n.t("provider_live.step.confirm"),
+          value: priorityJob.status === "requested" ? i18n.t("provider_live.step.needed") : i18n.t("provider_live.step.done")
         },
         {
-          label: "Crew",
+          label: i18n.t("provider_live.step.crew"),
           value:
             priorityJob.crewGap > 0
-              ? `${priorityJob.crewGap} gap`
+              ? i18n.t("provider_live.step.crew_gap", { count: priorityJob.crewGap })
               : priorityJob.requiresRouteLeaderAssignment
-                ? "Lead"
-                : "Ready"
+                ? i18n.t("provider_live.step.lead")
+                : i18n.t("provider_live.step.ready")
         },
         {
-          label: "Route",
-          value: priorityJob.onRouteConfirmedAt ? "Live" : formatBookingWindowSummary(priorityJob.scheduledStartIso)
+          label: i18n.t("provider_live.step.route"),
+          value: priorityJob.onRouteConfirmedAt ? i18n.t("provider_live.step.live") : formatBookingWindowSummary(priorityJob.scheduledStartIso)
         },
         {
-          label: "Finish",
-          value: priorityJob.status === "in-progress" ? "Now" : `${priorityJob.afterEvidenceCount} proof`
+          label: i18n.t("provider_live.step.finish"),
+          value: priorityJob.status === "in-progress" ? i18n.t("provider_live.step.now") : i18n.t("provider_live.step.proof_count", { count: priorityJob.afterEvidenceCount })
         }
       ].map((step, index) => ({
         ...step,
@@ -381,7 +384,7 @@ export function ProviderLiveManagementBoard() {
     }
 
     void loadProviderView().catch((error) => {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load the provider portal.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.load_portal"));
     });
   }, [sessionReady, session?.token, session?.role]);
 
@@ -393,10 +396,10 @@ export function ProviderLiveManagementBoard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.reviewCrewMatch({ crewMatchId, action });
-      setStatusMessage(action === "accept" ? "Crew member accepted." : "Crew member declined.");
+      setStatusMessage(action === "accept" ? i18n.t("provider_live.message.crew_accepted") : i18n.t("provider_live.message.crew_declined"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update this crew match right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.update_crew_match"));
     } finally {
       setIsWorking(false);
     }
@@ -412,12 +415,12 @@ export function ProviderLiveManagementBoard() {
       await api.assignBookingRouteLeader({ bookingId, crewMemberId });
       setStatusMessage(
         crewMemberId
-          ? "Crew route leader assigned for this job."
-          : "Explicit crew route leader cleared for this job."
+          ? i18n.t("provider_live.message.route_leader_assigned")
+          : i18n.t("provider_live.message.route_leader_cleared")
       );
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update the route leader right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.update_route_leader"));
     } finally {
       setIsWorking(false);
     }
@@ -441,14 +444,14 @@ export function ProviderLiveManagementBoard() {
       });
       setStatusMessage(
         provider.verificationStatus === "rejected" && updatedProvider.verificationStatus === "pending-review"
-          ? "Staffing settings updated and the business is back in verification review."
+          ? i18n.t("provider_live.message.staffing_review_updated")
           : staffingMode === "auto-accept"
-            ? "Auto-accept is on for future crew matches."
-            : "Provider review is now required before crew is added."
+            ? i18n.t("provider_live.message.auto_accept_on")
+            : i18n.t("provider_live.message.review_first_on")
       );
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update staffing mode right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.update_staffing_mode"));
     } finally {
       setIsWorking(false);
     }
@@ -472,7 +475,7 @@ export function ProviderLiveManagementBoard() {
       profileCategories.length === 0 ||
       !Number.isFinite(parsedYearsExperience)
     ) {
-      setErrorMessage("Add a company name, business description, and at least one service category.");
+      setErrorMessage(i18n.t("provider_live.error.profile_required"));
       return;
     }
 
@@ -490,12 +493,12 @@ export function ProviderLiveManagementBoard() {
       });
       setStatusMessage(
         provider.verificationStatus === "rejected" && updatedProvider.verificationStatus === "pending-review"
-          ? "Profile updated and automatically sent back into verification review."
-          : "Business profile updated."
+          ? i18n.t("provider_live.message.profile_back_to_review")
+          : i18n.t("provider_live.message.profile_updated")
       );
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update the business profile right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.update_profile"));
     } finally {
       setIsWorking(false);
     }
@@ -548,12 +551,12 @@ export function ProviderLiveManagementBoard() {
       });
       setStatusMessage(
         provider.verificationStatus === "rejected" && updatedProvider.verificationStatus === "pending-review"
-          ? `${successMessage} The business is also back in verification review.`
+          ? i18n.t("provider_live.message.settings_back_to_review", { message: successMessage })
           : successMessage
       );
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update provider controls right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.update_controls"));
     } finally {
       setIsWorking(false);
     }
@@ -561,7 +564,7 @@ export function ProviderLiveManagementBoard() {
 
   async function handleProviderAssistant(execute: boolean) {
     if (!assistantCommand.trim()) {
-      setErrorMessage("Enter a provider assistant command first.");
+      setErrorMessage(i18n.t("provider_live.error.assistant_command_required"));
       return;
     }
 
@@ -585,7 +588,7 @@ export function ProviderLiveManagementBoard() {
         await loadProviderView();
       }
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to run the provider assistant right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.run_assistant"));
     } finally {
       setIsWorking(false);
     }
@@ -611,15 +614,15 @@ export function ProviderLiveManagementBoard() {
       });
       setStatusMessage(
         enabled
-          ? "Outside calendar blocks are now affecting YardMatch availability."
-          : "Outside calendar blocks are saved, but they are not affecting YardMatch availability yet."
+          ? i18n.t("provider_live.message.calendar_blocks_enabled")
+          : i18n.t("provider_live.message.calendar_blocks_saved")
       );
       await loadProviderView();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Unable to update outside calendar blocking right now."
+          : i18n.t("provider_live.error.update_calendar_blocking")
       );
     } finally {
       setIsWorking(false);
@@ -634,7 +637,7 @@ export function ProviderLiveManagementBoard() {
     const start = new Date(blockStartLocal);
     const end = new Date(blockEndLocal);
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      setErrorMessage("Choose a valid start and end time for the outside block.");
+      setErrorMessage(i18n.t("provider_live.error.calendar_block_time"));
       return;
     }
 
@@ -643,7 +646,7 @@ export function ProviderLiveManagementBoard() {
         ...calendarBlocks,
         {
           id: `manual-block-${Date.now()}`,
-          title: blockTitle.trim() || getExternalCalendarBlockLabel(blockType),
+          title: blockTitle.trim() || i18n.t("provider_live.calendar.default_block_title"),
           blockType,
           startIso: start.toISOString(),
           endIso: end.toISOString(),
@@ -655,7 +658,7 @@ export function ProviderLiveManagementBoard() {
       true
     );
 
-    setBlockTitle("Off-platform client");
+    setBlockTitle(i18n.t("provider_live.calendar.default_block_title"));
     setBlockType("off-platform-client");
     setBlockNotes("");
   }
@@ -670,7 +673,7 @@ export function ProviderLiveManagementBoard() {
 
   async function handleCreateCalendarImport() {
     if (!importTitle.trim() || !importFeedUrl.trim()) {
-      setErrorMessage("Add a calendar title and feed URL first.");
+      setErrorMessage(i18n.t("provider_live.error.calendar_import_required"));
       return;
     }
 
@@ -686,11 +689,11 @@ export function ProviderLiveManagementBoard() {
         feedUrl: importFeedUrl.trim()
       } satisfies CreateExternalCalendarImportRequest);
       setCalendarImports(nextImports);
-      setStatusMessage("Outside calendar synced into YardMatch.");
+      setStatusMessage(i18n.t("provider_live.message.calendar_synced"));
       setImportFeedUrl("");
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to import that calendar right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.import_calendar"));
     } finally {
       setIsWorking(false);
     }
@@ -705,10 +708,10 @@ export function ProviderLiveManagementBoard() {
       const api = createAuthenticatedWebApiClient();
       const nextImports = await api.syncProviderCalendarImport({ subscriptionId });
       setCalendarImports(nextImports);
-      setStatusMessage("Outside calendar import refreshed.");
+      setStatusMessage(i18n.t("provider_live.message.calendar_refreshed"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh that calendar right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.refresh_calendar"));
     } finally {
       setIsWorking(false);
     }
@@ -725,12 +728,15 @@ export function ProviderLiveManagementBoard() {
       setCalendarImports(nextImports);
       setStatusMessage(
         nextImports.attemptedSubscriptionCount === 0
-          ? "No stale or errored calendar feeds needed a refresh."
-          : `Refreshed ${nextImports.syncedSubscriptionCount} feed${nextImports.syncedSubscriptionCount === 1 ? "" : "s"} and ${nextImports.failedSubscriptionCount} still need attention.`
+          ? i18n.t("provider_live.message.no_stale_feeds")
+          : i18n.t("provider_live.message.stale_feeds_refreshed", {
+              synced: nextImports.syncedSubscriptionCount,
+              failed: nextImports.failedSubscriptionCount
+            })
       );
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to refresh stale calendar feeds right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.refresh_stale_calendars"));
     } finally {
       setIsWorking(false);
     }
@@ -745,10 +751,10 @@ export function ProviderLiveManagementBoard() {
       const api = createAuthenticatedWebApiClient();
       const nextImports = await api.removeProviderCalendarImport({ subscriptionId });
       setCalendarImports(nextImports);
-      setStatusMessage("Outside calendar removed.");
+      setStatusMessage(i18n.t("provider_live.message.calendar_removed"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to remove that calendar right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.remove_calendar"));
     } finally {
       setIsWorking(false);
     }
@@ -763,7 +769,7 @@ export function ProviderLiveManagementBoard() {
       setActiveBookingId(bookingId);
       setActiveCustomerThread(thread);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open this conversation.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.open_conversation"));
     }
   }
 
@@ -776,7 +782,7 @@ export function ProviderLiveManagementBoard() {
       setActiveTrackingBookingId(bookingId);
       setActiveTracking(tracking);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to open arrival tracking.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.open_tracking"));
     }
   }
 
@@ -788,10 +794,10 @@ export function ProviderLiveManagementBoard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.confirmBooking({ bookingId });
-      setStatusMessage("Booking confirmed. Your crew can now head out when ready.");
+      setStatusMessage(i18n.t("provider_live.message.booking_confirmed"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to confirm this booking right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.confirm_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -805,10 +811,10 @@ export function ProviderLiveManagementBoard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.declineBooking({ bookingId });
-      setStatusMessage("Booking declined. The customer can choose another qualified provider.");
+      setStatusMessage(i18n.t("provider_live.message.booking_declined"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to decline this booking right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.decline_booking"));
     } finally {
       setIsWorking(false);
     }
@@ -822,10 +828,10 @@ export function ProviderLiveManagementBoard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.markBookingOnRoute({ bookingId });
-      setStatusMessage("Route started. Customer tracking and chat are now live.");
+      setStatusMessage(i18n.t("provider_live.message.route_started"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start this route right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.start_route"));
     } finally {
       setIsWorking(false);
     }
@@ -839,10 +845,10 @@ export function ProviderLiveManagementBoard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.startBooking({ bookingId });
-      setStatusMessage("Work started.");
+      setStatusMessage(i18n.t("provider_live.message.work_started"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to start work right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.start_work"));
     } finally {
       setIsWorking(false);
     }
@@ -860,10 +866,10 @@ export function ProviderLiveManagementBoard() {
         lateEtaIso,
         reason
       });
-      setStatusMessage("Customer updated about the delay.");
+      setStatusMessage(i18n.t("provider_live.message.delay_sent"));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send the delay update right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.send_delay"));
     } finally {
       setIsWorking(false);
     }
@@ -889,10 +895,10 @@ export function ProviderLiveManagementBoard() {
         exceptionType,
         notes
       });
-      setStatusMessage(`${getBookingExceptionLabel(exceptionType)} shared with the customer.`);
+      setStatusMessage(i18n.t("provider_live.message.issue_shared", { issue: getBookingExceptionLabel(exceptionType) }));
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to log that issue right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.log_issue"));
     } finally {
       setIsWorking(false);
     }
@@ -906,12 +912,12 @@ export function ProviderLiveManagementBoard() {
     try {
       const api = createAuthenticatedWebApiClient();
       await api.completeBooking({ bookingId });
-      setStatusMessage("Job marked complete.");
+      setStatusMessage(i18n.t("provider_live.message.job_complete"));
       setActiveBookingId(undefined);
       setActiveCustomerThread(undefined);
       await loadProviderView();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to complete this job right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.complete_job"));
     } finally {
       setIsWorking(false);
     }
@@ -936,7 +942,7 @@ export function ProviderLiveManagementBoard() {
       setActiveCustomerThread(nextThread);
       setChatDraft("");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to send this message right now.");
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.send_message"));
     } finally {
       setIsWorking(false);
     }
@@ -945,7 +951,7 @@ export function ProviderLiveManagementBoard() {
   if (!sessionReady) {
     return (
       <section className="card">
-        <h2>Loading your management portal...</h2>
+        <h2>{i18n.t("provider_live.loading")}</h2>
       </section>
     );
   }
@@ -953,11 +959,11 @@ export function ProviderLiveManagementBoard() {
   if (accessDenied) {
     return (
       <section className="card">
-        <h2>Business owner login required</h2>
-        <p>Log in to manage live jobs, staffing review, calendar pressure, and chat.</p>
+        <h2>{i18n.t("provider_live.login_required.title")}</h2>
+        <p>{i18n.t("provider_live.login_required.body")}</p>
         <div className="cta-row">
-          <a className="button" href="/login/provider">
-            Go to provider login
+          <a className="button" href={addLocalePrefix("/login/provider", i18n.locale)}>
+            {i18n.t("provider_live.login_required.cta")}
           </a>
         </div>
       </section>
@@ -968,29 +974,29 @@ export function ProviderLiveManagementBoard() {
     <div className="stack-lg">
       {statusMessage ? (
         <section className="card">
-          <h2>Updated</h2>
+          <h2>{i18n.t("provider_live.updated")}</h2>
           <p>{statusMessage}</p>
         </section>
       ) : null}
 
       {errorMessage ? (
         <section className="card">
-          <h2>Something needs attention</h2>
+          <h2>{i18n.t("common.state.needs_attention")}</h2>
           <p>{errorMessage}</p>
         </section>
       ) : null}
 
       {priorityJob ? (
-        <section className="provider-route-focus" aria-label="Today path">
+        <section className="provider-route-focus" aria-label={i18n.t("provider_live.today_path")}>
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">Today path</span>
-              <h2>{getProviderJobActionLabel(priorityJob)}</h2>
+              <span className="eyebrow">{i18n.t("provider_live.today_path")}</span>
+              <h2>{getProviderJobActionLabel(i18n, priorityJob)}</h2>
               <p>
                 {priorityJob.customerName} • {priorityJob.serviceAddress.line1}
               </p>
             </div>
-            <span className="result-badge result-badge--neutral">{getProviderJobStatusLabel(priorityJob)}</span>
+            <span className="result-badge result-badge--neutral">{getProviderJobStatusLabel(i18n, priorityJob)}</span>
           </div>
           <ol className="provider-route-spine">
             {priorityJobSteps.map((step, index) => (
@@ -1007,31 +1013,31 @@ export function ProviderLiveManagementBoard() {
               </li>
             ))}
           </ol>
-          <div className="provider-route-summary" aria-label="Priority job summary">
+          <div className="provider-route-summary" aria-label={i18n.t("provider_live.priority_summary_aria")}>
             <div>
-              <span>Window</span>
+              <span>{i18n.t("customer_live.label.window")}</span>
               <strong>{formatBookingWindowSummary(priorityJob.scheduledStartIso)}</strong>
             </div>
             <div>
-              <span>Crew</span>
+              <span>{i18n.t("provider_live.step.crew")}</span>
               <strong>
                 {priorityJob.assignedCrewMembers}/{priorityJob.requiredCrewMembers}
-                {priorityJob.crewGap ? ` • gap ${priorityJob.crewGap}` : ""}
+                {priorityJob.crewGap ? ` • ${i18n.t("provider_live.step.crew_gap", { count: priorityJob.crewGap })}` : ""}
               </strong>
             </div>
             <div>
-              <span>Service</span>
-              <strong>{formatServiceCategoryLabel(priorityJob.category)}</strong>
+              <span>{i18n.t("customer_live.label.service")}</span>
+              <strong>{formatServiceCategoryLabel(i18n, priorityJob.category)}</strong>
             </div>
             <div>
-              <span>Total</span>
-              <strong>{formatCurrency(priorityJob.totalCents)}</strong>
+              <span>{i18n.t("provider_live.total")}</span>
+              <strong>{i18n.formatCurrency(priorityJob.totalCents)}</strong>
             </div>
           </div>
           <div className="cta-row">
             {hasCrewDecisionPending(priorityJob) && priorityJobPrimaryAction !== "confirm" ? (
               <a className="button" href="#provider-jobs">
-                Review staffing
+                {i18n.t("provider_live.action.review_staffing")}
               </a>
             ) : null}
             {priorityJobPrimaryAction === "confirm" ? (
@@ -1041,7 +1047,7 @@ export function ProviderLiveManagementBoard() {
                 onClick={() => void handleConfirmBooking(priorityJob.bookingId)}
                 type="button"
               >
-                Confirm booking
+                {i18n.t("provider_live.action.confirm_booking")}
               </button>
             ) : null}
             {priorityJobPrimaryAction === "start-route" && !hasCrewDecisionPending(priorityJob) ? (
@@ -1051,7 +1057,7 @@ export function ProviderLiveManagementBoard() {
                 onClick={() => void handleStartRoute(priorityJob.bookingId)}
                 type="button"
               >
-                Start route
+                {i18n.t("provider_live.action.start_route")}
               </button>
             ) : null}
             {priorityJobPrimaryAction === "start-work" ? (
@@ -1061,7 +1067,7 @@ export function ProviderLiveManagementBoard() {
                 onClick={() => void handleStartWork(priorityJob.bookingId)}
                 type="button"
               >
-                Start work
+                {i18n.t("provider_live.action.start_work")}
               </button>
             ) : null}
             {priorityJobPrimaryAction === "complete" ? (
@@ -1071,59 +1077,60 @@ export function ProviderLiveManagementBoard() {
                 onClick={() => void completeJob(priorityJob.bookingId)}
                 type="button"
               >
-                Complete job
+                {i18n.t("provider_live.action.complete_job")}
               </button>
             ) : null}
             <a className="button-secondary" href="#provider-jobs">
-              Job details
+              {i18n.t("provider_live.action.job_details")}
             </a>
           </div>
         </section>
       ) : (
-        <section className="provider-route-focus" aria-label="Today path">
-          <span className="eyebrow">Today path</span>
-          <h2>No scheduled jobs.</h2>
-          <p>Calendar, staffing, and assistant tools are ready when work is booked.</p>
+        <section className="provider-route-focus" aria-label={i18n.t("provider_live.today_path")}>
+          <span className="eyebrow">{i18n.t("provider_live.today_path")}</span>
+          <h2>{i18n.t("provider_live.no_jobs.title")}</h2>
+          <p>{i18n.t("provider_live.no_jobs.body")}</p>
         </section>
       )}
 
       {provider ? (
         <section className="card">
-          <span className="eyebrow">Business verification</span>
+          <span className="eyebrow">{i18n.t("provider_live.verification.eyebrow")}</span>
           <h2>
             {provider.verificationSummary?.headline ??
               (provider.verificationStatus === "verified"
-                ? "Your business is verified and visible in search."
+                ? i18n.t("provider_live.verification.verified_title")
                 : provider.verificationStatus === "rejected"
-                  ? "Your business needs a quick profile update before going live."
-                  : "Your business is pending review before it appears in search.")}
+                  ? i18n.t("provider_live.verification.rejected_title")
+                  : i18n.t("provider_live.verification.pending_title"))}
           </h2>
           <p>
             {provider.verificationSummary?.summary ??
               (provider.verificationStatus === "verified"
-                ? "Customers can now discover this business in public YardMatch search results."
+                ? i18n.t("provider_live.verification.verified_body")
                 : provider.verificationStatus === "rejected"
                   ? provider.verificationNotes ??
-                    "Ops left review notes for this business before it can be shown to customers."
-                  : "Ops will review the business profile, service area, and marketplace details before customers can book.")}
+                    i18n.t("provider_live.verification.rejected_body")
+                  : i18n.t("provider_live.verification.pending_body"))}
           </p>
           <div className="chip-row">
-            <span>Status: {provider.verificationStatus.replaceAll("-", " ")}</span>
+            <span>{i18n.t("provider_live.verification.status", { status: provider.verificationStatus.replaceAll("-", " ") })}</span>
             <span>
-              Submitted:{" "}
-              {formatDateTime(provider.verificationSubmittedAt ?? provider.createdAt)}
+              {i18n.t("provider_live.verification.submitted", {
+                date: formatDateTime(i18n, provider.verificationSubmittedAt ?? provider.createdAt)
+              })}
             </span>
             {provider.verificationReviewedAt ? (
-              <span>Last review: {formatDateTime(provider.verificationReviewedAt)}</span>
+              <span>{i18n.t("provider_live.verification.last_review", { date: formatDateTime(i18n, provider.verificationReviewedAt) })}</span>
             ) : null}
           </div>
           {provider.verificationSummary?.nextSteps.length ? (
             <div className="stack-sm">
-              <p>Next steps</p>
+              <p>{i18n.t("provider_live.verification.next_steps")}</p>
               <ul className="timeline">
                 {provider.verificationSummary.nextSteps.map((step) => (
                   <li key={step}>
-                    <strong>Next</strong>
+                    <strong>{i18n.t("provider_live.verification.next")}</strong>
                     <span>{step}</span>
                   </li>
                 ))}
@@ -1132,11 +1139,11 @@ export function ProviderLiveManagementBoard() {
           ) : null}
           {provider.verificationSummary?.checklist.length ? (
             <div className="stack-sm">
-              <p>Launch checklist</p>
+              <p>{i18n.t("provider_live.verification.checklist")}</p>
               <ul className="timeline">
                 {provider.verificationSummary.checklist.map((item) => (
                   <li key={item.key}>
-                    <strong>{formatVerificationChecklistStatus(item.status)}</strong>
+                    <strong>{formatVerificationChecklistStatus(i18n, item.status)}</strong>
                     <span>
                       {item.label} • {item.detail}
                     </span>
@@ -1150,15 +1157,12 @@ export function ProviderLiveManagementBoard() {
 
       {provider ? (
         <section className="card">
-          <span className="eyebrow">Verification profile</span>
-          <h2>Keep the public business profile ready for launch review.</h2>
-          <p>
-            Update the customer-facing business details ops checks before this company goes live in
-            recommendation-first search.
-          </p>
+          <span className="eyebrow">{i18n.t("provider_live.profile.eyebrow")}</span>
+          <h2>{i18n.t("provider_live.profile.title")}</h2>
+          <p>{i18n.t("provider_live.profile.body")}</p>
           <div className="stack-md">
             <label className="form-field form-field--full">
-              <span>Company name</span>
+              <span>{i18n.t("provider_live.profile.company_name")}</span>
               <input
                 type="text"
                 value={profileCompanyName}
@@ -1166,7 +1170,7 @@ export function ProviderLiveManagementBoard() {
               />
             </label>
             <label className="form-field form-field--full">
-              <span>Business description</span>
+              <span>{i18n.t("provider_live.profile.business_description")}</span>
               <textarea
                 rows={4}
                 value={profileBio}
@@ -1174,7 +1178,7 @@ export function ProviderLiveManagementBoard() {
               />
             </label>
             <label className="form-field">
-              <span>Years of experience</span>
+              <span>{i18n.t("provider_live.profile.years_experience")}</span>
               <input
                 min={0}
                 max={60}
@@ -1184,16 +1188,16 @@ export function ProviderLiveManagementBoard() {
               />
             </label>
             <div className="stack-sm">
-              <p>Services offered</p>
+              <p>{i18n.t("provider_live.profile.services_offered")}</p>
               <div className="chip-row">
                 {providerCategoryOptions.map((option) => (
-                  <label key={option.value} className="result-badge">
+                  <label key={option} className="result-badge">
                     <input
                       type="checkbox"
-                      checked={profileCategories.includes(option.value)}
-                      onChange={(event) => toggleProfileCategory(option.value, event.target.checked)}
+                      checked={profileCategories.includes(option)}
+                      onChange={(event) => toggleProfileCategory(option, event.target.checked)}
                     />{" "}
-                    {option.label}
+                    {i18n.t(serviceCategoryToI18nKey(option))}
                   </label>
                 ))}
               </div>
@@ -1201,52 +1205,52 @@ export function ProviderLiveManagementBoard() {
           </div>
           <div className="cta-row">
             <button className="button-secondary" disabled={isWorking} onClick={() => void handleProviderProfileUpdate()} type="button">
-              Save business profile
+              {i18n.t("provider_live.profile.save")}
             </button>
           </div>
         </section>
       ) : null}
 
       <section className="card">
-        <span className="eyebrow">Assistant</span>
-        <h2>Change bookings in plain language.</h2>
-        <p>Ask for a schedule summary, move a job, staff a route, or notify a customer.</p>
+        <span className="eyebrow">{i18n.t("provider_live.assistant.eyebrow")}</span>
+        <h2>{i18n.t("provider_live.assistant.title")}</h2>
+        <p>{i18n.t("provider_live.assistant.body")}</p>
         <details className="service-card-disclosure">
-          <summary className="service-card-disclosure__summary">Examples</summary>
+          <summary className="service-card-disclosure__summary">{i18n.t("provider_live.assistant.examples")}</summary>
           <div className="service-card-disclosure__body">
             <ul className="timeline">
               <li>
-                <strong>Review</strong>
-                <span>What needs attention tomorrow?</span>
+                <strong>{i18n.t("provider_live.action.review")}</strong>
+                <span>{i18n.t("provider_live.assistant.example.review")}</span>
               </li>
               <li>
-                <strong>Move</strong>
-                <span>Change my afternoon appointment to evening and notify the customer.</span>
+                <strong>{i18n.t("provider_live.assistant.example.move_label")}</strong>
+                <span>{i18n.t("provider_live.assistant.example.move")}</span>
               </li>
               <li>
-                <strong>Staff</strong>
-                <span>Accept the best crew for my afternoon appointment.</span>
+                <strong>{i18n.t("provider_live.action.staff")}</strong>
+                <span>{i18n.t("provider_live.assistant.example.staff")}</span>
               </li>
               <li>
-                <strong>Route</strong>
-                <span>Start route for my afternoon appointment.</span>
+                <strong>{i18n.t("provider_live.step.route")}</strong>
+                <span>{i18n.t("provider_live.assistant.example.route")}</span>
               </li>
               <li>
-                <strong>Issue</strong>
-                <span>Mark my afternoon appointment no access because the gate is locked.</span>
+                <strong>{i18n.t("provider_live.assistant.example.issue_label")}</strong>
+                <span>{i18n.t("provider_live.assistant.example.issue")}</span>
               </li>
             </ul>
           </div>
         </details>
         <label className="form-field form-field--full">
-          <span>Provider assistant command</span>
+          <span>{i18n.t("provider_live.assistant.command")}</span>
           <textarea
             rows={3}
             value={assistantCommand}
             onChange={(event) => setAssistantCommand(event.target.value)}
           />
         </label>
-        {selectedAssistantBookingId ? <p>Selected booking: {selectedAssistantBookingId}</p> : null}
+        {selectedAssistantBookingId ? <p>{i18n.t("provider_live.assistant.selected_booking", { bookingId: selectedAssistantBookingId })}</p> : null}
         <div className="cta-row">
           <button
             className="button-secondary"
@@ -1254,7 +1258,7 @@ export function ProviderLiveManagementBoard() {
             onClick={() => void handleProviderAssistant(false)}
             type="button"
           >
-            Preview command
+            {i18n.t("provider_live.assistant.preview_command")}
           </button>
           <button
             className="button"
@@ -1262,7 +1266,7 @@ export function ProviderLiveManagementBoard() {
             onClick={() => void handleProviderAssistant(true)}
             type="button"
           >
-            Run command
+            {i18n.t("provider_live.assistant.run_command")}
           </button>
         </div>
         {assistantResult ? (
@@ -1271,37 +1275,44 @@ export function ProviderLiveManagementBoard() {
               <strong>{assistantResult.previewLabel}</strong>
               <p>{assistantResult.previewMessage}</p>
               {assistantResult.actionTypes && assistantResult.actionTypes.length > 1 ? (
-                <p>Planned steps: {assistantResult.actionTypes.join(" -> ")}</p>
+                <p>{i18n.t("provider_live.assistant.planned_steps", { steps: assistantResult.actionTypes.join(" -> ") })}</p>
               ) : null}
-              {assistantResult.targetWindowLabel ? <p>Target window: {assistantResult.targetWindowLabel}</p> : null}
+              {assistantResult.targetWindowLabel ? <p>{i18n.t("provider_live.assistant.target_window", { window: assistantResult.targetWindowLabel })}</p> : null}
               {assistantResult.lateEtaIso ? (
                 <p>
-                  New ETA:{" "}
-                  {new Date(assistantResult.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })}
+                  {i18n.t("provider_live.assistant.new_eta", {
+                    eta: i18n.formatDate(assistantResult.lateEtaIso, { timeStyle: "short" })
+                  })}
                 </p>
               ) : null}
               {assistantResult.dispatchDaySummary ? (
                 <p>
-                  Route: {assistantResult.dispatchDaySummary.routeStatus} • Jobs:{" "}
-                  {assistantResult.dispatchDaySummary.yardmatchJobCount} • Crew gap:{" "}
-                  {assistantResult.dispatchDaySummary.crewGap} • Drive miles:{" "}
-                  {assistantResult.dispatchDaySummary.estimatedDriveMiles.toFixed(1)}
+                  {i18n.t("provider_live.assistant.dispatch_day", {
+                    routeStatus: assistantResult.dispatchDaySummary.routeStatus,
+                    jobs: assistantResult.dispatchDaySummary.yardmatchJobCount,
+                    crewGap: assistantResult.dispatchDaySummary.crewGap,
+                    miles: assistantResult.dispatchDaySummary.estimatedDriveMiles
+                  })}
                 </p>
               ) : null}
               {assistantResult.dispatchRangeSummary ? (
                 <p>
-                  Active days: {assistantResult.dispatchRangeSummary.activeDayCount} • Watch:{" "}
-                  {assistantResult.dispatchRangeSummary.watchDayCount} • Overloaded:{" "}
-                  {assistantResult.dispatchRangeSummary.overloadedDayCount} • Total crew gap:{" "}
-                  {assistantResult.dispatchRangeSummary.totalCrewGap}
+                  {i18n.t("provider_live.assistant.dispatch_range", {
+                    activeDays: assistantResult.dispatchRangeSummary.activeDayCount,
+                    watchDays: assistantResult.dispatchRangeSummary.watchDayCount,
+                    overloadedDays: assistantResult.dispatchRangeSummary.overloadedDayCount,
+                    crewGap: assistantResult.dispatchRangeSummary.totalCrewGap
+                  })}
                 </p>
               ) : null}
               {assistantResult.dispatchWindowSummary ? (
                 <p>
-                  Focus window: {assistantResult.dispatchWindowSummary.label} • Jobs:{" "}
-                  {assistantResult.dispatchWindowSummary.yardmatchJobCount} • Crew gap:{" "}
-                  {assistantResult.dispatchWindowSummary.crewGap} • Blocked minutes:{" "}
-                  {assistantResult.dispatchWindowSummary.blockedMinutes}
+                  {i18n.t("provider_live.assistant.dispatch_window", {
+                    window: assistantResult.dispatchWindowSummary.label,
+                    jobs: assistantResult.dispatchWindowSummary.yardmatchJobCount,
+                    crewGap: assistantResult.dispatchWindowSummary.crewGap,
+                    blockedMinutes: assistantResult.dispatchWindowSummary.blockedMinutes
+                  })}
                 </p>
               ) : null}
               {assistantResult.customerNotificationPreview ? (
@@ -1312,18 +1323,18 @@ export function ProviderLiveManagementBoard() {
               <div className="stack-md">
                 <p>
                   {assistantResult.actionType === "summarize-dispatch"
-                    ? "Appointments in that focus area:"
+                    ? i18n.t("provider_live.assistant.matches.focus_area")
                     : assistantResult.actionType === "recommend-dispatch-adjustment"
-                      ? "Appointments in the pressured window:"
+                      ? i18n.t("provider_live.assistant.matches.pressured_window")
                       : assistantResult.actionType === "recommend-staffing-adjustment"
-                        ? "Bookings that need more crew:"
-                    : "Matching appointments:"}
+                        ? i18n.t("provider_live.assistant.matches.need_crew")
+                    : i18n.t("provider_live.assistant.matches.default")}
                 </p>
                 {assistantResult.bookingCandidates.map((candidate) => (
                   <article className="list-panel" key={candidate.bookingId}>
                     <strong>{candidate.customerName}</strong>
                     <p>
-                      {candidate.currentWindowLabel} • {formatDateTime(candidate.scheduledStartIso)}
+                      {candidate.currentWindowLabel} • {formatDateTime(i18n, candidate.scheduledStartIso)}
                     </p>
                     <p>{candidate.addressLine}</p>
                     <button
@@ -1331,7 +1342,7 @@ export function ProviderLiveManagementBoard() {
                       onClick={() => setSelectedAssistantBookingId(candidate.bookingId)}
                       type="button"
                     >
-                      Use this appointment
+                      {i18n.t("provider_live.assistant.use_appointment")}
                     </button>
                   </article>
                 ))}
@@ -1343,16 +1354,13 @@ export function ProviderLiveManagementBoard() {
 
       <section className={`provider-capacity-alert ${totalCrewGap > 0 ? "provider-capacity-alert--warning" : ""}`}>
         <div>
-          <span className="eyebrow">Live staffing</span>
+          <span className="eyebrow">{i18n.t("provider_live.staffing.eyebrow")}</span>
           <h2>
             {totalCrewGap > 0
-              ? `${totalCrewGap} crew slot${totalCrewGap === 1 ? "" : "s"} still need coverage.`
-              : "Your upcoming work is fully covered right now."}
+              ? i18n.t("provider_live.staffing.gap_title", { count: totalCrewGap })
+              : i18n.t("provider_live.staffing.covered_title")}
           </h2>
-          <p>
-            Crew members are auto-matched from their skills, availability, and travel radius. You
-            can auto-accept or review each match first.
-          </p>
+          <p>{i18n.t("provider_live.staffing.body")}</p>
         </div>
         <div className="cta-row">
           <button
@@ -1361,7 +1369,7 @@ export function ProviderLiveManagementBoard() {
             onClick={() => void handleStaffingModeChange("auto-accept")}
             type="button"
           >
-            Auto-accept
+            {i18n.t("provider_live.staffing.auto_accept")}
           </button>
           <button
             className={provider?.staffingMode === "review-first" ? "button" : "button-secondary"}
@@ -1369,16 +1377,16 @@ export function ProviderLiveManagementBoard() {
             onClick={() => void handleStaffingModeChange("review-first")}
             type="button"
           >
-            Review first
+            {i18n.t("provider_live.staffing.review_first")}
           </button>
         </div>
       </section>
 
       <section className="grid-three">
         <article className="card">
-          <span className="eyebrow">Service area</span>
-          <h2>{provider?.serviceRadiusMiles ?? 0} mi</h2>
-          <p>How far YardMatch should search around your base.</p>
+          <span className="eyebrow">{i18n.t("provider_live.settings.service_area")}</span>
+          <h2>{i18n.t("common.format.miles", { count: provider?.serviceRadiusMiles ?? 0 })}</h2>
+          <p>{i18n.t("provider_live.settings.service_area_body")}</p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -1386,12 +1394,12 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { serviceRadiusMiles: Math.max(5, (provider?.serviceRadiusMiles ?? 15) - 5) },
-                  "Service radius updated."
+                  i18n.t("provider_live.message.service_radius_updated")
                 )
               }
               type="button"
             >
-              -5 miles
+              {i18n.t("provider_live.settings.minus_5_miles")}
             </button>
             <button
               className="button-secondary"
@@ -1399,19 +1407,19 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { serviceRadiusMiles: Math.min(60, (provider?.serviceRadiusMiles ?? 15) + 5) },
-                  "Service radius updated."
+                  i18n.t("provider_live.message.service_radius_updated")
                 )
               }
               type="button"
             >
-              +5 miles
+              {i18n.t("provider_live.settings.plus_5_miles")}
             </button>
           </div>
         </article>
         <article className="card">
-          <span className="eyebrow">Reminder timing</span>
-          <h2>{provider?.departureReminderLeadMinutes ?? 0} min</h2>
-          <p>When YardMatch reminds you it is time to head out.</p>
+          <span className="eyebrow">{i18n.t("provider_live.settings.reminder_timing")}</span>
+          <h2>{i18n.t("provider_live.duration.minutes", { count: provider?.departureReminderLeadMinutes ?? 0 })}</h2>
+          <p>{i18n.t("provider_live.settings.reminder_timing_body")}</p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -1424,12 +1432,12 @@ export function ProviderLiveManagementBoard() {
                       (provider?.departureReminderLeadMinutes ?? 60) - 10
                     )
                   },
-                  "Departure reminder timing updated."
+                  i18n.t("provider_live.message.departure_reminder_updated")
                 )
               }
               type="button"
             >
-              -10 min
+              {i18n.t("provider_live.settings.minus_10_min")}
             </button>
             <button
               className="button-secondary"
@@ -1442,15 +1450,15 @@ export function ProviderLiveManagementBoard() {
                       (provider?.departureReminderLeadMinutes ?? 60) + 10
                     )
                   },
-                  "Departure reminder timing updated."
+                  i18n.t("provider_live.message.departure_reminder_updated")
                 )
               }
               type="button"
             >
-              +10 min
+              {i18n.t("provider_live.settings.plus_10_min")}
             </button>
           </div>
-          <p>Staffing review reminders: {provider?.crewReviewLeadHours ?? 0} hours before start.</p>
+          <p>{i18n.t("provider_live.settings.staffing_reminders", { count: provider?.crewReviewLeadHours ?? 0 })}</p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -1458,12 +1466,12 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { crewReviewLeadHours: Math.max(1, (provider?.crewReviewLeadHours ?? 24) - 1) },
-                  "Staffing review timing updated."
+                  i18n.t("provider_live.message.staffing_review_timing_updated")
                 )
               }
               type="button"
             >
-              -1 hour
+              {i18n.t("provider_live.settings.minus_1_hour")}
             </button>
             <button
               className="button-secondary"
@@ -1471,15 +1479,19 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { crewReviewLeadHours: Math.min(72, (provider?.crewReviewLeadHours ?? 24) + 1) },
-                  "Staffing review timing updated."
+                  i18n.t("provider_live.message.staffing_review_timing_updated")
                 )
               }
               type="button"
             >
-              +1 hour
+              {i18n.t("provider_live.settings.plus_1_hour")}
             </button>
           </div>
-          <p>New bookings must land at least {formatMinimumLeadHoursLabel(provider?.minimumBookingLeadHours ?? 0)} ahead.</p>
+          <p>
+            {i18n.t("provider_live.lead_time.booking_rule", {
+              leadTime: formatMinimumLeadHoursLabel(i18n, provider?.minimumBookingLeadHours ?? 0)
+            })}
+          </p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -1487,12 +1499,12 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { minimumBookingLeadHours: Math.max(0, (provider?.minimumBookingLeadHours ?? 0) - 1) },
-                  "Acceptance window updated."
+                  i18n.t("provider_live.message.acceptance_window_updated")
                 )
               }
               type="button"
             >
-              -1 hour
+              {i18n.t("provider_live.settings.minus_1_hour")}
             </button>
             <button
               className="button-secondary"
@@ -1500,19 +1512,19 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { minimumBookingLeadHours: Math.min(72, (provider?.minimumBookingLeadHours ?? 0) + 1) },
-                  "Acceptance window updated."
+                  i18n.t("provider_live.message.acceptance_window_updated")
                 )
               }
               type="button"
             >
-              +1 hour
+              {i18n.t("provider_live.settings.plus_1_hour")}
             </button>
           </div>
         </article>
         <article className="card">
-          <span className="eyebrow">Route leader</span>
-          <h2>{provider?.routeLeaderMode === "accepted-crew-fallback" ? "Provider or crew" : "Provider only"}</h2>
-          <p>Choose whether an accepted crew member can start the route and share live tracking.</p>
+          <span className="eyebrow">{i18n.t("provider_live.settings.route_leader")}</span>
+          <h2>{provider?.routeLeaderMode === "accepted-crew-fallback" ? i18n.t("provider_live.settings.provider_or_crew") : i18n.t("provider_live.settings.provider_only")}</h2>
+          <p>{i18n.t("provider_live.settings.route_leader_body")}</p>
           <div className="cta-row">
             <button
               className={provider?.routeLeaderMode === "provider-only" ? "button" : "button-secondary"}
@@ -1520,12 +1532,12 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { routeLeaderMode: "provider-only" },
-                  "Route leader mode updated."
+                  i18n.t("provider_live.message.route_leader_mode_updated")
                 )
               }
               type="button"
             >
-              Provider only
+              {i18n.t("provider_live.settings.provider_only")}
             </button>
             <button
               className={provider?.routeLeaderMode === "accepted-crew-fallback" ? "button" : "button-secondary"}
@@ -1533,20 +1545,20 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { routeLeaderMode: "accepted-crew-fallback" },
-                  "Route leader mode updated."
+                  i18n.t("provider_live.message.route_leader_mode_updated")
                 )
               }
               type="button"
             >
-              Allow crew fallback
+              {i18n.t("provider_live.settings.allow_crew_fallback")}
             </button>
           </div>
         </article>
         <article className="card">
-          <span className="eyebrow">Payout timing</span>
-          <h2>{provider ? formatWeekdayLabel(provider.weeklyPayoutDay) : "Thursday"}</h2>
-          <p>Choose the weekly day YardMatch groups provider payouts for this business.</p>
-          <p>YardMatch may ask for a fresh sign-in before changing payout controls.</p>
+          <span className="eyebrow">{i18n.t("provider_live.settings.payout_timing")}</span>
+          <h2>{provider ? formatWeekdayLabel(i18n, provider.weeklyPayoutDay) : formatWeekdayLabel(i18n, "Thu")}</h2>
+          <p>{i18n.t("provider_live.settings.payout_timing_body")}</p>
+          <p>{i18n.t("provider_live.settings.payout_security_body")}</p>
           <div className="cta-row">
             {(["Tue", "Thu", "Fri"] as const).map((weekday) => (
               <button
@@ -1556,18 +1568,19 @@ export function ProviderLiveManagementBoard() {
                 onClick={() =>
                   void handleDispatchSettingsUpdate(
                     { weeklyPayoutDay: weekday },
-                    "Weekly payout day updated."
+                    i18n.t("provider_live.message.weekly_payout_updated")
                   )
                 }
                 type="button"
               >
-                {formatWeekdayLabel(weekday)}
+                {formatWeekdayLabel(i18n, weekday)}
               </button>
             ))}
           </div>
           <p>
-            Instant payouts are {provider?.instantPayoutsEnabled ? "enabled" : "off"} for ready balances
-            above the platform minimum.
+            {i18n.t("provider_live.settings.instant_payouts", {
+              state: provider?.instantPayoutsEnabled ? i18n.t("provider_live.settings.enabled") : i18n.t("provider_live.settings.off")
+            })}
           </p>
           <div className="cta-row">
             <button
@@ -1576,12 +1589,12 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { instantPayoutsEnabled: true },
-                  "Instant payouts enabled."
+                  i18n.t("provider_live.message.instant_payouts_enabled")
                 )
               }
               type="button"
             >
-              Enable instant
+              {i18n.t("provider_live.settings.enable_instant")}
             </button>
             <button
               className={!provider?.instantPayoutsEnabled ? "button" : "button-secondary"}
@@ -1589,12 +1602,12 @@ export function ProviderLiveManagementBoard() {
               onClick={() =>
                 void handleDispatchSettingsUpdate(
                   { instantPayoutsEnabled: false },
-                  "Instant payouts turned off."
+                  i18n.t("provider_live.message.instant_payouts_off")
                 )
               }
               type="button"
             >
-              Weekly only
+              {i18n.t("provider_live.settings.weekly_only")}
             </button>
           </div>
         </article>
@@ -1603,25 +1616,22 @@ export function ProviderLiveManagementBoard() {
       <section className="grid-three">
         <article className="card">
           <h2>{jobs.length}</h2>
-          <p>Open jobs</p>
+          <p>{i18n.t("provider_live.metrics.open_jobs")}</p>
         </article>
         <article className="card">
           <h2>{totalAssignedCrew}</h2>
-          <p>Crew assigned</p>
+          <p>{i18n.t("provider_live.metrics.crew_assigned")}</p>
         </article>
         <article className="card">
           <h2>{totalCrewGap}</h2>
-          <p>Open crew slots</p>
+          <p>{i18n.t("provider_live.metrics.open_crew_slots")}</p>
         </article>
       </section>
 
       <section className="card">
-        <span className="eyebrow">Calendar sync</span>
-        <h2>Keep YardMatch jobs in your outside calendar.</h2>
-        <p>
-          Subscribe to your YardMatch schedule in Apple Calendar or Google Calendar so booked jobs stay
-          visible alongside direct clients and personal blocks.
-        </p>
+        <span className="eyebrow">{i18n.t("provider_live.calendar.eyebrow")}</span>
+        <h2>{i18n.t("provider_live.calendar.title")}</h2>
+        <p>{i18n.t("provider_live.calendar.body")}</p>
         {calendarSubscription ? (
           <>
             <div className="cta-row">
@@ -1651,14 +1661,22 @@ export function ProviderLiveManagementBoard() {
               <div className="stack-md" style={{ paddingTop: "1rem" }}>
                 {calendarHealth ? (
                   <article className="list-panel">
-                    <strong>Outside calendar health: {formatCalendarHealthLabel(calendarHealth.status)}</strong>
+                    <strong>{i18n.t("provider_live.calendar.health", { status: formatCalendarHealthLabel(i18n, calendarHealth.status) })}</strong>
                     <p>
-                      {calendarHealth.subscriptionCount} feeds • {calendarHealth.importedBlockCount} imported blocks •{" "}
-                      {calendarHealth.externalBlockingEnabled ? "blocking on" : "save only"}
+                      {i18n.t("provider_live.calendar.health_counts", {
+                        feeds: calendarHealth.subscriptionCount,
+                        importedBlocks: calendarHealth.importedBlockCount,
+                        mode: calendarHealth.externalBlockingEnabled
+                          ? i18n.t("provider_live.calendar.blocking_on")
+                          : i18n.t("provider_live.calendar.save_only")
+                      })}
                     </p>
                     <p>
-                      {calendarHealth.erroredSubscriptionCount} errors • {calendarHealth.staleSubscriptionCount} stale feeds •{" "}
-                      {calendarHealth.conflictingYardmatchJobCount} booking conflicts
+                      {i18n.t("provider_live.calendar.health_issues", {
+                        errors: calendarHealth.erroredSubscriptionCount,
+                        staleFeeds: calendarHealth.staleSubscriptionCount,
+                        conflicts: calendarHealth.conflictingYardmatchJobCount
+                      })}
                     </p>
                     <div className="stack-sm" style={{ paddingBottom: 0 }}>
                       {calendarHealth.notes.map((note) => (
@@ -1668,48 +1686,59 @@ export function ProviderLiveManagementBoard() {
                   </article>
                 ) : null}
                 <div className="chip-row">
-                  <span>{calendarOverview.yardmatchJobCount} YardMatch jobs</span>
-                  <span>{calendarOverview.externalBlockCount} outside blocks</span>
-                  <span>{calendarOverview.totalEvents} total events</span>
+                  <span>{i18n.t("provider_live.calendar.yardmatch_jobs", { count: calendarOverview.yardmatchJobCount })}</span>
+                  <span>{i18n.t("provider_live.calendar.outside_blocks", { count: calendarOverview.externalBlockCount })}</span>
+                  <span>{i18n.t("provider_live.calendar.total_events", { count: calendarOverview.totalEvents })}</span>
                 </div>
                 {dispatchDays.length ? (
                   <div className="stack-md">
-                    <h3>Dispatch plan</h3>
+                    <h3>{i18n.t("provider_live.calendar.dispatch_plan")}</h3>
                     <div className="grid-two">
                       {dispatchDays.map((day) => (
                         <article className="card" key={day.dateIso}>
                           <div className="chip-row" style={{ justifyContent: "space-between" }}>
                             <span>{day.dayLabel}</span>
-                            <span>{formatRouteStatusLabel(day.routeStatus)}</span>
+                            <span>{formatRouteStatusLabel(i18n, day.routeStatus)}</span>
                           </div>
                           <p>
-                            {day.yardmatchJobCount} jobs • {day.totalCrewAssigned}/{day.totalCrewRequired} crew •{" "}
-                            {day.estimatedDriveMiles} mi route
+                            {i18n.t("provider_live.calendar.day_summary", {
+                              jobs: day.yardmatchJobCount,
+                              assigned: day.totalCrewAssigned,
+                              required: day.totalCrewRequired,
+                              miles: day.estimatedDriveMiles
+                            })}
                           </p>
                           <p>
-                            Longest leg {day.longestDriveLegMiles} mi
-                            {day.largestIdleGapMinutes ? ` • Longest idle gap ${formatMinutesAsHours(day.largestIdleGapMinutes)}` : ""}
-                            {day.outlierStopCount ? ` • ${day.outlierStopCount} outlier stop${day.outlierStopCount === 1 ? "" : "s"}` : ""}
+                            {i18n.t("provider_live.calendar.longest_leg", { miles: day.longestDriveLegMiles })}
+                            {day.largestIdleGapMinutes ? ` • ${i18n.t("provider_live.calendar.longest_idle_gap", { duration: formatMinutesAsHours(i18n, day.largestIdleGapMinutes) })}` : ""}
+                            {day.outlierStopCount ? ` • ${i18n.t("provider_live.calendar.outlier_stops", { count: day.outlierStopCount })}` : ""}
                           </p>
                           <p>
-                            {formatMinutesAsHours(day.bookedMinutes)} booked
-                            {day.externalBlockCount ? ` • ${formatMinutesAsHours(day.blockedMinutes)} outside blocks` : ""}
+                            {i18n.t("provider_live.calendar.booked_duration", { duration: formatMinutesAsHours(i18n, day.bookedMinutes) })}
+                            {day.externalBlockCount ? ` • ${i18n.t("provider_live.calendar.outside_blocks_duration", { duration: formatMinutesAsHours(i18n, day.blockedMinutes) })}` : ""}
                           </p>
-                          {day.firstStopAddressLine ? <p>First stop: {day.firstStopAddressLine}</p> : null}
+                          {day.firstStopAddressLine ? <p>{i18n.t("provider_live.calendar.first_stop", { address: day.firstStopAddressLine })}</p> : null}
                           <div className="stack-md">
                             {day.windowSummaries.map((window) => (
                               <div className="list-panel" key={`${day.dateIso}-${window.windowKey}`}>
                                 <strong>{window.label}</strong>
                                 <p>
-                                  {window.yardmatchJobCount} jobs • {window.totalCrewAssigned}/{window.totalCrewRequired} crew
-                                  {window.crewGap ? ` • gap ${window.crewGap}` : ""}
+                                  {i18n.t("provider_live.calendar.window_summary", {
+                                    jobs: window.yardmatchJobCount,
+                                    assigned: window.totalCrewAssigned,
+                                    required: window.totalCrewRequired
+                                  })}
+                                  {window.crewGap ? ` • ${i18n.t("provider_live.step.crew_gap", { count: window.crewGap })}` : ""}
                                 </p>
                                 {window.externalBlockCount ? (
                                   <p>
-                                    {window.externalBlockCount} outside blocks • {formatMinutesAsHours(window.blockedMinutes)}
+                                    {i18n.t("provider_live.calendar.window_outside_blocks", {
+                                      count: window.externalBlockCount,
+                                      duration: formatMinutesAsHours(i18n, window.blockedMinutes)
+                                    })}
                                   </p>
                                 ) : (
-                                  <p>{formatMinutesAsHours(window.bookedMinutes)} booked</p>
+                                  <p>{i18n.t("provider_live.calendar.booked_duration", { duration: formatMinutesAsHours(i18n, window.bookedMinutes) })}</p>
                                 )}
                               </div>
                             ))}
@@ -1728,7 +1757,10 @@ export function ProviderLiveManagementBoard() {
                   <div className="list-panel" key={event.id}>
                     <strong>{event.title}</strong>
                     <p>
-                      {formatDateTime(event.startIso)} to {formatDateTime(event.endIso)}
+                      {i18n.t("provider_live.calendar.time_range", {
+                        start: formatDateTime(i18n, event.startIso),
+                        end: formatDateTime(i18n, event.endIso)
+                      })}
                     </p>
                     <p>
                       {event.source === "yardmatch-booking"
@@ -1752,21 +1784,21 @@ export function ProviderLiveManagementBoard() {
                 onClick={() => void handleSyncStaleCalendarImports()}
                 type="button"
               >
-                Sync stale feeds
+                {i18n.t("provider_live.calendar.sync_stale_feeds")}
               </button>
             </div>
           ) : null}
           <div className="grid-two">
             <label className="form-field">
-              <span>Imported calendar title</span>
+              <span>{i18n.t("provider_live.calendar.import_title")}</span>
               <input
                 value={importTitle}
                 onChange={(event) => setImportTitle(event.target.value)}
-                placeholder="Google Calendar - Outside work"
+                placeholder={i18n.t("provider_live.calendar.default_import_title")}
               />
             </label>
             <label className="form-field">
-              <span>Calendar type</span>
+              <span>{i18n.t("provider_live.calendar.import_type")}</span>
               <select
                 value={importProvider}
                 onChange={(event) => setImportProvider(event.target.value as ExternalCalendarProvider)}
@@ -1780,16 +1812,16 @@ export function ProviderLiveManagementBoard() {
             </label>
           </div>
           <label className="form-field form-field--full">
-            <span>External feed URL</span>
+            <span>{i18n.t("provider_live.calendar.external_feed_url")}</span>
             <input
               value={importFeedUrl}
               onChange={(event) => setImportFeedUrl(event.target.value)}
-              placeholder="Paste a Google, Apple, or generic iCal feed URL"
+              placeholder={i18n.t("provider_live.calendar.feed_url_placeholder")}
             />
           </label>
           <div className="cta-row">
             <button className="button-secondary" disabled={isWorking} onClick={() => void handleCreateCalendarImport()} type="button">
-              Import outside calendar
+              {i18n.t("provider_live.calendar.import_outside")}
             </button>
           </div>
           {calendarImports?.subscriptions.length ? (
@@ -1804,10 +1836,16 @@ export function ProviderLiveManagementBoard() {
                   <h3>{subscription.title}</h3>
                   <p>{subscription.feedUrl}</p>
                   <p>
-                    {subscription.importedEventCount} imported events
-                    {subscription.lastSyncedAt ? ` • synced ${formatDateTime(subscription.lastSyncedAt)}` : ""}
+                    {i18n.t("provider_live.calendar.imported_events", { count: subscription.importedEventCount })}
+                    {subscription.lastSyncedAt ? ` • ${i18n.t("provider_live.calendar.synced_at", { date: formatDateTime(i18n, subscription.lastSyncedAt) })}` : ""}
                   </p>
-                  <p>Status: {subscription.syncStatus === "active" ? "Active" : "Sync issue"}</p>
+                  <p>
+                    {i18n.t("provider_live.job.status", {
+                      status: subscription.syncStatus === "active"
+                        ? i18n.t("provider_live.calendar.sync_active")
+                        : i18n.t("provider_live.calendar.sync_issue")
+                    })}
+                  </p>
                   {subscription.lastError ? <p>{subscription.lastError}</p> : null}
                   <div className="cta-row">
                     <button
@@ -1816,7 +1854,7 @@ export function ProviderLiveManagementBoard() {
                       onClick={() => void handleSyncCalendarImport(subscription.id)}
                       type="button"
                     >
-                      Sync now
+                      {i18n.t("provider_live.calendar.sync_now")}
                     </button>
                     <button
                       className="button-secondary"
@@ -1824,7 +1862,7 @@ export function ProviderLiveManagementBoard() {
                       onClick={() => void handleRemoveCalendarImport(subscription.id)}
                       type="button"
                     >
-                      Remove feed
+                      {i18n.t("provider_live.calendar.remove_feed")}
                     </button>
                   </div>
                 </article>
@@ -1838,7 +1876,7 @@ export function ProviderLiveManagementBoard() {
               onClick={() => void handleToggleCalendarBlocking(true)}
               type="button"
             >
-              Outside blocks affect availability
+              {i18n.t("provider_live.calendar.blocks_affect_availability")}
             </button>
             <button
               className={!externalBlockingEnabled ? "button" : "button-secondary"}
@@ -1846,20 +1884,20 @@ export function ProviderLiveManagementBoard() {
               onClick={() => void handleToggleCalendarBlocking(false)}
               type="button"
             >
-              Save only, do not block yet
+              {i18n.t("provider_live.calendar.save_only_no_block")}
             </button>
           </div>
           <div className="grid-two">
             <label className="form-field">
-              <span>Block title</span>
+              <span>{i18n.t("provider_live.calendar.block_title")}</span>
               <input
                 value={blockTitle}
                 onChange={(event) => setBlockTitle(event.target.value)}
-                placeholder="Direct client, personal time, travel buffer"
+                placeholder={i18n.t("provider_live.calendar.block_title_placeholder")}
               />
             </label>
             <label className="form-field">
-              <span>Block type</span>
+              <span>{i18n.t("provider_live.calendar.block_type")}</span>
               <select value={blockType} onChange={(event) => setBlockType(event.target.value as ExternalCalendarBlockType)}>
                 {externalCalendarBlockOptions.map((option) => (
                   <option key={option} value={option}>
@@ -1869,26 +1907,26 @@ export function ProviderLiveManagementBoard() {
               </select>
             </label>
             <label className="form-field">
-              <span>Start</span>
+              <span>{i18n.t("customer.search.start")}</span>
               <input type="datetime-local" value={blockStartLocal} onChange={(event) => setBlockStartLocal(event.target.value)} />
             </label>
             <label className="form-field">
-              <span>End</span>
+              <span>{i18n.t("customer.search.end")}</span>
               <input type="datetime-local" value={blockEndLocal} onChange={(event) => setBlockEndLocal(event.target.value)} />
             </label>
           </div>
           <label className="form-field form-field--full">
-            <span>Notes</span>
+            <span>{i18n.t("customer_live.label.notes")}</span>
             <textarea
               rows={3}
               value={blockNotes}
               onChange={(event) => setBlockNotes(event.target.value)}
-              placeholder="Optional note for why this off-platform block should protect the calendar."
+              placeholder={i18n.t("provider_live.calendar.block_notes_placeholder")}
             />
           </label>
           <div className="cta-row">
             <button className="button-secondary" disabled={isWorking} onClick={() => void handleAddCalendarBlock()} type="button">
-              Add outside block
+              {i18n.t("provider_live.calendar.add_outside_block")}
             </button>
           </div>
           <div className="stack-md">
@@ -1898,7 +1936,10 @@ export function ProviderLiveManagementBoard() {
                   <span className="eyebrow">{getExternalCalendarBlockLabel(block.blockType)}</span>
                   <h3>{block.title}</h3>
                   <p>
-                    {formatDateTime(block.startIso)} to {formatDateTime(block.endIso)}
+                    {i18n.t("provider_live.calendar.time_range", {
+                      start: formatDateTime(i18n, block.startIso),
+                      end: formatDateTime(i18n, block.endIso)
+                    })}
                   </p>
                   {block.notes ? <p>{block.notes}</p> : null}
                   <div className="cta-row">
@@ -1908,13 +1949,13 @@ export function ProviderLiveManagementBoard() {
                       onClick={() => void handleRemoveCalendarBlock(block.id)}
                       type="button"
                     >
-                      Remove block
+                      {i18n.t("provider_live.calendar.remove_block")}
                     </button>
                   </div>
                 </article>
               ))
             ) : (
-              <p>No outside-client or personal blocks yet. Add one to keep YardMatch from opening that window.</p>
+              <p>{i18n.t("provider_live.calendar.no_outside_blocks")}</p>
             )}
           </div>
         </div>
@@ -1926,34 +1967,36 @@ export function ProviderLiveManagementBoard() {
           <article className="history-card" key={job.bookingId}>
             <div className="history-card__header">
               <div>
-                <span className="eyebrow">{formatServiceCategoryLabel(job.category)}</span>
+                <span className="eyebrow">{formatServiceCategoryLabel(i18n, job.category)}</span>
                 <h2>{job.customerName}</h2>
               </div>
-              <strong>{formatCurrency(job.totalCents)}</strong>
+              <strong>{i18n.formatCurrency(job.totalCents)}</strong>
             </div>
             <div className="history-card__grid">
               <div>
-                <h3>Schedule</h3>
+                <h3>{i18n.t("provider_live.job.schedule")}</h3>
                 <p>{formatBookingWindowSummary(job.scheduledStartIso)}</p>
-                <p>{formatDateTime(job.scheduledStartIso)}</p>
+                <p>{formatDateTime(i18n, job.scheduledStartIso)}</p>
               </div>
               <div>
-                <h3>Address</h3>
+                <h3>{i18n.t("provider_live.job.address")}</h3>
                 <p>{job.serviceAddress.line1}</p>
                 <p>
                   {job.serviceAddress.city}, {job.serviceAddress.state} {job.serviceAddress.postalCode}
                 </p>
               </div>
               <div>
-                <h3>Staffing</h3>
-                <p>{job.requiredCrewMembers} needed</p>
-                <p>{job.assignedCrewMembers} assigned</p>
-                <p>{job.crewGap} open</p>
-                <p>Status: {getProviderJobStatusLabel(job)}</p>
+                <h3>{i18n.t("provider_live.job.staffing")}</h3>
+                <p>{i18n.t("provider_live.job.required_crew", { count: job.requiredCrewMembers })}</p>
+                <p>{i18n.t("provider_live.job.assigned_crew", { count: job.assignedCrewMembers })}</p>
+                <p>{i18n.t("provider_live.job.open_crew", { count: job.crewGap })}</p>
+                <p>{i18n.t("provider_live.job.status", { status: getProviderJobStatusLabel(i18n, job) })}</p>
                 {provider?.routeLeaderMode === "accepted-crew-fallback" ? (
                   <p>
-                    Route leader: {job.assignedRouteLeaderCrewMemberName ?? "Provider"}
-                    {job.requiresRouteLeaderAssignment ? " • pick one accepted crew member before delegating" : ""}
+                    {i18n.t("provider_live.job.route_leader", {
+                      name: job.assignedRouteLeaderCrewMemberName ?? i18n.t("provider_live.job.provider")
+                    })}
+                    {job.requiresRouteLeaderAssignment ? ` • ${i18n.t("provider_live.job.route_leader_pick_hint")}` : ""}
                   </p>
                 ) : null}
               </div>
@@ -1968,7 +2011,7 @@ export function ProviderLiveManagementBoard() {
                     onClick={() => void handleConfirmBooking(job.bookingId)}
                     type="button"
                   >
-                    Confirm booking
+                    {i18n.t("provider_live.action.confirm_booking")}
                   </button>
                 </>
               ) : null}
@@ -1980,7 +2023,7 @@ export function ProviderLiveManagementBoard() {
                     onClick={() => void handleStartRoute(job.bookingId)}
                     type="button"
                   >
-                    Start route
+                    {i18n.t("provider_live.action.start_route")}
                   </button>
                 </>
               ) : null}
@@ -1991,7 +2034,7 @@ export function ProviderLiveManagementBoard() {
                   onClick={() => void handleStartWork(job.bookingId)}
                   type="button"
                 >
-                  Start work
+                  {i18n.t("provider_live.action.start_work")}
                 </button>
               ) : null}
               {job.status === "in-progress" ? (
@@ -2001,14 +2044,14 @@ export function ProviderLiveManagementBoard() {
                   onClick={() => void completeJob(job.bookingId)}
                   type="button"
                 >
-                  Complete job
+                  {i18n.t("provider_live.action.complete_job")}
                 </button>
               ) : null}
             </div>
 
             {job.status === "requested" ? (
               <details className="service-card-disclosure">
-                <summary className="service-card-disclosure__summary">More options</summary>
+                <summary className="service-card-disclosure__summary">{i18n.t("customer_live.more_options")}</summary>
                 <div className="service-card-disclosure__body">
                   <div className="cta-row">
                     <button
@@ -2017,7 +2060,7 @@ export function ProviderLiveManagementBoard() {
                       onClick={() => void handleDeclineBooking(job.bookingId)}
                       type="button"
                     >
-                      Decline request
+                      {i18n.t("provider_live.action.decline_request")}
                     </button>
                   </div>
                 </div>
@@ -2026,7 +2069,7 @@ export function ProviderLiveManagementBoard() {
 
             {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
               <details className="service-card-disclosure">
-                <summary className="service-card-disclosure__summary">Report issue</summary>
+                <summary className="service-card-disclosure__summary">{i18n.t("provider_live.action.report_issue")}</summary>
                 <div className="service-card-disclosure__body">
                   <div className="cta-row">
                     <button
@@ -2036,12 +2079,12 @@ export function ProviderLiveManagementBoard() {
                         void handleMarkLate(
                           job.bookingId,
                           buildLateEta(job.scheduledStartIso, 15),
-                          "Running about 15 minutes behind the route."
+                          i18n.t("provider_live.issue.late_15_reason")
                         )
                       }
                       type="button"
                     >
-                      Running 15 min late
+                      {i18n.t("provider_live.issue.late_15")}
                     </button>
                     <button
                       className="button-secondary"
@@ -2050,12 +2093,12 @@ export function ProviderLiveManagementBoard() {
                         void handleMarkLate(
                           job.bookingId,
                           buildLateEta(job.scheduledStartIso, 30),
-                          "Running about 30 minutes behind the route."
+                          i18n.t("provider_live.issue.late_30_reason")
                         )
                       }
                       type="button"
                     >
-                      Running 30 min late
+                      {i18n.t("provider_live.issue.late_30")}
                     </button>
                     <button
                       className="button-secondary"
@@ -2064,12 +2107,12 @@ export function ProviderLiveManagementBoard() {
                         void handleReportIssue(
                           job.bookingId,
                           "customer-no-show",
-                          "The customer did not appear for the scheduled service window."
+                          i18n.t("provider_live.issue.customer_no_show_reason")
                         )
                       }
                       type="button"
                     >
-                      Customer no-show
+                      {i18n.t("booking.exception.customer_no_show")}
                     </button>
                     <button
                       className="button-secondary"
@@ -2078,12 +2121,12 @@ export function ProviderLiveManagementBoard() {
                         void handleReportIssue(
                           job.bookingId,
                           "customer-not-ready",
-                          "The property owner is not ready for the scheduled service."
+                          i18n.t("provider_live.issue.customer_not_ready_reason")
                         )
                       }
                       type="button"
                     >
-                      Customer not ready
+                      {i18n.t("booking.exception.customer_not_ready")}
                     </button>
                     <button
                       className="button-secondary"
@@ -2092,12 +2135,12 @@ export function ProviderLiveManagementBoard() {
                         void handleReportIssue(
                           job.bookingId,
                           "unable-to-access-property",
-                          "The crew could not safely access the property as scheduled."
+                          i18n.t("provider_live.issue.no_access_reason")
                         )
                       }
                       type="button"
                     >
-                      No access
+                      {i18n.t("booking.exception.unable_to_access_property")}
                     </button>
                   </div>
                 </div>
@@ -2106,7 +2149,7 @@ export function ProviderLiveManagementBoard() {
 
             {job.status === "in-progress" ? (
               <details className="service-card-disclosure">
-                <summary className="service-card-disclosure__summary">Report issue</summary>
+                <summary className="service-card-disclosure__summary">{i18n.t("provider_live.action.report_issue")}</summary>
                 <div className="service-card-disclosure__body">
                   <div className="cta-row">
                     <button
@@ -2116,12 +2159,12 @@ export function ProviderLiveManagementBoard() {
                         void handleReportIssue(
                           job.bookingId,
                           "customer-no-show",
-                          "The customer did not appear for the scheduled service window."
+                          i18n.t("provider_live.issue.customer_no_show_reason")
                         )
                       }
                       type="button"
                     >
-                      Customer no-show
+                      {i18n.t("booking.exception.customer_no_show")}
                     </button>
                     <button
                       className="button-secondary"
@@ -2130,12 +2173,12 @@ export function ProviderLiveManagementBoard() {
                         void handleReportIssue(
                           job.bookingId,
                           "customer-not-ready",
-                          "The property owner is not ready for the scheduled service."
+                          i18n.t("provider_live.issue.customer_not_ready_reason")
                         )
                       }
                       type="button"
                     >
-                      Customer not ready
+                      {i18n.t("booking.exception.customer_not_ready")}
                     </button>
                     <button
                       className="button-secondary"
@@ -2144,12 +2187,12 @@ export function ProviderLiveManagementBoard() {
                         void handleReportIssue(
                           job.bookingId,
                           "unable-to-access-property",
-                          "The crew could not safely access the property as scheduled."
+                          i18n.t("provider_live.issue.no_access_reason")
                         )
                       }
                       type="button"
                     >
-                      No access
+                      {i18n.t("booking.exception.unable_to_access_property")}
                     </button>
                     <button
                       className="button-secondary"
@@ -2158,12 +2201,12 @@ export function ProviderLiveManagementBoard() {
                         void handleReportIssue(
                           job.bookingId,
                           "service-could-not-be-completed",
-                          "The service could not be completed during this visit."
+                          i18n.t("provider_live.issue.could_not_complete_reason")
                         )
                       }
                       type="button"
                     >
-                      Could not complete
+                      {i18n.t("provider_live.issue.could_not_complete")}
                     </button>
                   </div>
                 </div>
@@ -2172,9 +2215,9 @@ export function ProviderLiveManagementBoard() {
 
             {job.lateEtaIso && !job.onRouteConfirmedAt ? (
               <div className="list-panel">
-                <strong>Delay notice sent</strong>
+                <strong>{i18n.t("provider_live.job.delay_notice_sent")}</strong>
                 <p>
-                  Customer now expects the team around {formatDateTime(job.lateEtaIso)}.
+                  {i18n.t("provider_live.job.delay_expected", { date: formatDateTime(i18n, job.lateEtaIso) })}
                   {job.lateReason ? ` ${job.lateReason}` : ""}
                 </p>
               </div>
@@ -2184,7 +2227,11 @@ export function ProviderLiveManagementBoard() {
               <div className="list-panel">
                 <strong>{getBookingExceptionLabel(job.activeExceptionType)}</strong>
                 <p>
-                  Logged {job.activeExceptionReportedAt ? formatDateTime(job.activeExceptionReportedAt) : "just now"}.
+                  {i18n.t("provider_live.job.logged", {
+                    date: job.activeExceptionReportedAt
+                      ? formatDateTime(i18n, job.activeExceptionReportedAt)
+                      : i18n.t("provider_live.just_now")
+                  })}
                   {job.activeExceptionNotes ? ` ${job.activeExceptionNotes}` : ""}
                 </p>
                 <div className="cta-row">
@@ -2194,23 +2241,23 @@ export function ProviderLiveManagementBoard() {
                       getBookingExceptionLabel(job.activeExceptionType)
                     )}`}
                   >
-                    Open support
+                    {i18n.t("provider_live.job.open_support")}
                   </a>
                 </div>
               </div>
             ) : null}
             {job.status === "disputed" ? (
               <div className="list-panel">
-                <strong>Booking disputed</strong>
+                <strong>{i18n.t("provider_live.job.booking_disputed")}</strong>
                 <p>
-                  {job.disputeReason ?? "A dispute was opened on this job."}
+                  {job.disputeReason ?? i18n.t("provider_live.job.dispute_default")}
                 </p>
                 <div className="cta-row">
                   <a
                     className="button-secondary"
-                    href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent("Disputed booking support")}`}
+                    href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(i18n.t("provider_live.subject.disputed_booking_support"))}`, i18n.locale)}
                   >
-                    Open support
+                    {i18n.t("provider_live.job.open_support")}
                   </a>
                 </div>
               </div>
@@ -2218,29 +2265,29 @@ export function ProviderLiveManagementBoard() {
 
             {job.requiresRouteLeaderAssignment ? (
               <div className="list-panel">
-                <strong>Route leader still needs assignment</strong>
-                <p>More than one accepted crew member is on this job. Pick who should start and share the route, or keep the route under provider control.</p>
+                <strong>{i18n.t("provider_live.job.route_leader_needed_title")}</strong>
+                <p>{i18n.t("provider_live.job.route_leader_needed_body")}</p>
               </div>
             ) : null}
             {job.crewGap > 0 ? (
               <div className="list-panel">
-                <strong>{job.crewGap} crew slot{job.crewGap === 1 ? "" : "s"} still open</strong>
-                <p>Review staffing options before this route falls behind.</p>
+                <strong>{i18n.t("provider_live.job.crew_slots_open", { count: job.crewGap })}</strong>
+                <p>{i18n.t("provider_live.job.staffing_options_warning")}</p>
               </div>
             ) : null}
             <details className="service-card-disclosure">
               <summary className="service-card-disclosure__summary">
-                Staffing
+                {i18n.t("provider_live.job.staffing")}
                 {job.matches.length
-                  ? ` • ${job.matches.length} match${job.matches.length === 1 ? "" : "es"}`
+                  ? ` • ${i18n.t("provider_live.job.staffing_match_count", { count: job.matches.length })}`
                   : ""}
               </summary>
               <div className="service-card-disclosure__body">
                 <div className="stack-md">
                   {job.matches.length === 0 ? (
                     <div className="list-panel">
-                      <strong>No matched crew yet</strong>
-                      <p>As more crew availability comes in, matched candidates will appear here.</p>
+                      <strong>{i18n.t("provider_live.crew.no_matches_title")}</strong>
+                      <p>{i18n.t("provider_live.crew.no_matches_body")}</p>
                     </div>
                   ) : (
                     job.matches.map((match) => {
@@ -2250,20 +2297,23 @@ export function ProviderLiveManagementBoard() {
                             <div>
                               <h3>{match.crewMemberName}</h3>
                               <p>
-                                {match.categories.map((category) => category.replaceAll("-", " ")).join(" • ")}
+                                {match.categories.map((category) => formatServiceCategoryLabel(i18n, category)).join(" • ")}
                               </p>
                             </div>
                             <span className="result-badge">{match.status.replaceAll("-", " ")}</span>
                           </div>
                           <p>
-                            {match.distanceMiles} miles away • {match.preferredSchedule} •{" "}
-                            {match.availableWeekdays.join(", ")}
+                            {i18n.t("provider_live.crew.distance_schedule", {
+                              distance: match.distanceMiles,
+                              schedule: match.preferredSchedule,
+                              days: match.availableWeekdays.join(", ")
+                            })}
                           </p>
                           {match.recommendationLabel ? (
                             <p>
-                              {formatCrewRecommendationLabel(match.recommendationLabel)}
+                              {formatCrewRecommendationLabel(i18n, match.recommendationLabel)}
                               {typeof match.recommendationScore === "number"
-                                ? ` • score ${match.recommendationScore}`
+                                ? ` • ${i18n.t("provider_live.crew.score", { score: match.recommendationScore })}`
                                 : ""}
                             </p>
                           ) : null}
@@ -2271,12 +2321,12 @@ export function ProviderLiveManagementBoard() {
                             <p>{match.recommendationReasons.join(" • ")}</p>
                           ) : null}
                           {match.status === "cancelled-by-crew" && match.cancellationReason ? (
-                            <p className="warning-copy">Crew note: {match.cancellationReason}</p>
+                            <p className="warning-copy">{i18n.t("provider_live.crew.note", { note: match.cancellationReason })}</p>
                           ) : null}
                           {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
-                            <p>Assigned route leader for this job.</p>
+                            <p>{i18n.t("provider_live.crew.assigned_route_leader")}</p>
                           ) : null}
-                          <p>{formatCurrency(match.hourlyRateCents)}/hr</p>
+                          <p>{i18n.t("provider_live.crew.hourly_rate", { rate: i18n.formatCurrency(match.hourlyRateCents) })}</p>
                           <div className="cta-row">
                             {match.status === "pending-provider-review" ? (
                               <>
@@ -2286,7 +2336,7 @@ export function ProviderLiveManagementBoard() {
                                   onClick={() => void handleReviewMatch(match.id, "accept")}
                                   type="button"
                                 >
-                                  Accept
+                                  {i18n.t("provider_live.crew.accept")}
                                 </button>
                                 <button
                                   className="button-secondary"
@@ -2294,7 +2344,7 @@ export function ProviderLiveManagementBoard() {
                                   onClick={() => void handleReviewMatch(match.id, "deny")}
                                   type="button"
                                 >
-                                  Deny
+                                  {i18n.t("provider_live.crew.deny")}
                                 </button>
                               </>
                             ) : null}
@@ -2310,18 +2360,18 @@ export function ProviderLiveManagementBoard() {
                                 type="button"
                               >
                                 {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
-                                  ? "Assigned route leader"
-                                  : "Lead this route"}
+                                  ? i18n.t("provider_live.crew.assigned_route_leader_button")
+                                  : i18n.t("provider_live.crew.lead_this_route")}
                               </button>
                             ) : null}
                             <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
-                              Call crew
+                              {i18n.t("provider_live.crew.call")}
                             </a>
                             <a
                               className="button-secondary"
-                              href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=general&subject=${encodeURIComponent("Crew staffing support")}`}
+                              href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=general&subject=${encodeURIComponent(i18n.t("provider_live.subject.crew_staffing_support"))}`, i18n.locale)}
                             >
-                              Get help
+                              {i18n.t("crew_live.action.get_help")}
                             </a>
                           </div>
                         </div>
@@ -2338,7 +2388,7 @@ export function ProviderLiveManagementBoard() {
                         onClick={() => void handleAssignRouteLeader(job.bookingId)}
                         type="button"
                       >
-                        Clear explicit route leader
+                        {i18n.t("provider_live.crew.clear_route_leader")}
                       </button>
                     </div>
                   ) : null}
@@ -2350,8 +2400,8 @@ export function ProviderLiveManagementBoard() {
               <div className="list-panel">
                 <div className="search-result-title">
                   <div>
-                    <h3>Customer chat</h3>
-                    <p>The route is live. Chat is now open with the property owner.</p>
+                    <h3>{i18n.t("provider_live.chat.title")}</h3>
+                    <p>{i18n.t("provider_live.chat.body")}</p>
                   </div>
                 </div>
                 <div className="cta-row">
@@ -2360,27 +2410,27 @@ export function ProviderLiveManagementBoard() {
                     onClick={() => void openCustomerChat(job.bookingId)}
                     type="button"
                   >
-                    Message customer
+                    {i18n.t("provider_live.chat.message_customer")}
                   </button>
                   <button
                     className="button-secondary"
                     onClick={() => void openArrivalTracking(job.bookingId)}
                     type="button"
                   >
-                    Track crew
+                    {i18n.t("customer_live.action.track_crew")}
                   </button>
                   <a
                     className="button-secondary"
-                    href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent("Customer job support")}`}
+                    href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(i18n.t("provider_live.subject.customer_job_support"))}`, i18n.locale)}
                   >
-                    Get help
+                    {i18n.t("crew_live.action.get_help")}
                   </a>
                 </div>
                 {activeTrackingBookingId === job.bookingId && activeTracking ? (
                   <ArrivalTrackingPanel
                     showProviderRouteDetails
                     subtitle={job.customerName}
-                    title="Crew arrival route"
+                    title={i18n.t("provider_live.chat.arrival_route_title")}
                     tracking={activeTracking}
                   />
                 ) : null}
@@ -2394,15 +2444,15 @@ export function ProviderLiveManagementBoard() {
         <FloatingChatWindow
           busy={isWorking}
           draft={chatDraft}
-          inputPlaceholder="Send a quick update before arrival."
+          inputPlaceholder={i18n.t("provider_live.chat.input_placeholder")}
           isOpen={Boolean(activeBookingId)}
-          launcherLabel="Open customer chat"
+          launcherLabel={i18n.t("provider_live.chat.open_customer_chat")}
           messages={activeCustomerThread.messages.map((message) => ({
             id: message.id,
             body: message.body,
             createdAt: message.createdAt,
             senderLabel:
-              message.senderRole === "provider" ? "You" : activeCustomerThread.thread.customerName,
+              message.senderRole === "provider" ? i18n.t("customer_live.chat.you") : activeCustomerThread.thread.customerName,
             isCurrentUser: message.senderRole === "provider"
           }))}
           onClose={() => {
@@ -2414,7 +2464,7 @@ export function ProviderLiveManagementBoard() {
           onOpen={() => undefined}
           onSend={() => void handleSendCustomerChat()}
           subtitle={activeCustomerThread.thread.customerName}
-          title="Customer chat"
+          title={i18n.t("provider_live.chat.title")}
         />
       ) : null}
     </div>
