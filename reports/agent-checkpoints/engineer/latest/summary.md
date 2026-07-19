@@ -5,7 +5,7 @@
 - Branch: `main`
 - Commit: `b186d5dc995f9075a877bc4ab257a2b3a1d40ca7`
 - Worktree: `/Users/patrickkopps/Documents/app`
-- Updated: `2026-07-18 21:36 EDT`
+- Updated: `2026-07-19 19:43 EDT`
 
 ## Completed Work
 
@@ -18,6 +18,7 @@
 - Closed the strict source-code string audit. `npm run i18n:audit:literals` now passes with no likely hardcoded UI strings.
 - Cleaned the generated internal ops Spanish resources so only proper/sample values remain identical to English: `Casey Ops`, `ops@example.com`, `Google`, and `Apple`.
 - Reworked mobile language choice UX: customer/provider/crew apps now show language selection once after successful signup, remove the old always-visible root picker, and keep language switching in the signed-in account/settings tab. The web picker remains in the upper-right header.
+- Fixed the CI-only clean typecheck failure by generating Prisma Client in GitHub Actions before `npm run typecheck` and before web smoke starts the API.
 
 ## Validation Results
 
@@ -25,6 +26,7 @@
 - `npm run i18n:validate`: passed, 3,389 keys across `en`, `es`, and `pseudo`.
 - `npm --workspace @yardmatch/i18n run test`: passed, 4 tests.
 - `npm run typecheck`: passed.
+- Fresh clone CI reproduction: `npm ci` passed; `npm run typecheck` failed before Prisma generation with missing Prisma generated-client types; `npm run prisma:generate` passed; `npm run typecheck` passed afterward.
 - `npm run test:api`: passed, 189 tests.
 - `npm run test:web:smoke`: passed, 6 tests including `/es`.
 - `npx expo export --platform ios` from `apps/customer-mobile`: passed.

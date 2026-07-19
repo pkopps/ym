@@ -24,7 +24,7 @@ b186d5dc995f9075a877bc4ab257a2b3a1d40ca7
 
 ## Last Updated
 
-2026-07-18 21:36 EDT
+2026-07-19 19:43 EDT
 
 ## Completed Since Previous Checkpoint
 
@@ -38,6 +38,7 @@ b186d5dc995f9075a877bc4ab257a2b3a1d40ca7
 - Translated the generated internal ops Spanish entries; the only `ops_auto` Spanish values still identical to English are proper/sample literals: `Casey Ops`, `ops@example.com`, `Google`, and `Apple`.
 - Refreshed 1440x900 and 390x844 screenshots for English `/` and Spanish `/es`.
 - Adjusted the mobile language UX: removed the always-visible root picker from customer/provider/crew apps, added a one-time post-signup language choice screen, and moved persistent language switching into each app's account/settings surface. The website language picker remains in the upper-right header.
+- Fixed the clean CI typecheck failure by adding `npm run prisma:generate` after `npm ci` in both GitHub Actions jobs. A fresh clone reproduced the missing generated Prisma client error before the step and passed `npm run typecheck` after generation.
 
 ## Currently In Progress
 
@@ -91,6 +92,7 @@ b186d5dc995f9075a877bc4ab257a2b3a1d40ca7
 - `npm run i18n:validate`
 - `npm --workspace @yardmatch/i18n run test`
 - `npm run typecheck`
+- Fresh clone: `npm ci`, failed `npm run typecheck` before Prisma generation, then `npm run prisma:generate` and `npm run typecheck`
 - `npm run test:api`
 - `npm run test:web:smoke`
 - `npx expo export --platform ios` from `apps/customer-mobile`
@@ -104,6 +106,7 @@ b186d5dc995f9075a877bc4ab257a2b3a1d40ca7
 - `npm run i18n:validate`: passed, 3,389 keys across `en`, `es`, and `pseudo`.
 - `npm --workspace @yardmatch/i18n run test`: passed, 4 tests.
 - `npm run typecheck`: passed.
+- Fresh clone CI reproduction: `npm ci` passed; `npm run typecheck` failed before Prisma generation with missing `Prisma.InputJsonValue`/`Prisma.JsonNull`; `npm run prisma:generate` passed; `npm run typecheck` passed afterward.
 - `npm run test:api`: passed, 189 tests.
 - `npm run test:web:smoke`: passed, 6 tests.
 - Native iOS Expo exports: customer, provider, and crew passed.
