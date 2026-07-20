@@ -142,9 +142,11 @@ export const apiSpec = {
       get: {
         tags: ["Auth"],
         summary: "Fetch the current authenticated user",
+        description:
+          "Returns the authenticated profile plus a backend-authored sensitiveActionPolicy. The policy exposes which sensitive actions require a fresh session, the shared freshness window, whether the current bearer session is fresh enough, and which actions are already enforced versus contract-ready for future bank, payout-account, or payment-method routes.",
         security: [{ bearerAuth: [] }],
         responses: {
-          "200": { description: "Authenticated user profile" },
+          "200": { description: "Authenticated user profile and sensitive-action policy" },
           "401": { description: "Missing or invalid bearer token" }
         }
       }
@@ -403,7 +405,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Fetch a provider profile by id",
         description:
-          "Returns the provider business profile plus backend-authored verification summary guidance, including the current checklist and any next steps the provider can handle before or during launch review.",
+          "Returns the provider business profile plus backend-authored verification summary guidance, including the current checklist, onboarding automation plan, stable onboarding automation actions, provider businessControls, and any next steps the provider can handle before or during launch review. The business controls summary exposes owner-only team access, owner-managed profile/dispatch/payout controls, ops-managed visibility controls, fresh re-auth requirements, launch guardrails, and warnings.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -423,7 +425,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Update the authenticated provider's business profile",
         description:
-          "Lets a provider update verification-relevant business details such as company name, bio, years of experience, and service categories. If a previously rejected provider makes a meaningful change, the business automatically moves back into pending review.",
+          "Lets a provider update verification-relevant business details such as company name, bio, years of experience, and service categories. If a previously rejected provider makes a meaningful change, the business automatically moves back into pending review and ops users are notified to review the launch-fit queue.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -449,7 +451,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Fetch live public marketplace overview data",
         description:
-          "Returns live aggregate provider counts, featured providers, verified-review snippets, and current coverage-area signals for the public GreenRain surfaces so customer-facing marketing pages do not rely on hardcoded showcase records.",
+          "Returns live aggregate provider counts, featured providers, verified-review snippets, current coverage-area signals, and the backend-authored launch pricing policy for the public GreenRain surfaces so customer-facing marketing pages do not rely on hardcoded showcase records.",
         responses: {
           "200": { description: "Public marketplace overview" }
         }
@@ -460,7 +462,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "List providers waiting on verification review",
         description:
-          "Returns provider businesses that are still pending review or were sent back for updates before they can appear in public search, along with backend-authored launch-fit guidance and checklist items covering profile completeness, service scope, launch-area fit, service-quality expectations, and intervention readiness so ops can approve or return them consistently. When guidance does not recommend approval, the payload also includes the override-note requirements needed to make an auditable exception. This internal queue now requires an authenticated ops session instead of loading anonymously.",
+          "Returns provider businesses that are still pending review or were sent back for updates before they can appear in public search, along with backend-authored launch-fit guidance, onboarding automation plan, stable onboarding automation actions, and checklist items covering profile completeness, service scope, launch-area fit, service-quality expectations, incident history, and intervention readiness so ops can approve or return them consistently. When guidance does not recommend approval, the payload also includes the override-note requirements needed to make an auditable exception. This internal queue now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Provider verification queue" }
@@ -487,6 +489,30 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated provider verification status" }
+        }
+      }
+    },
+    "/api/providers/verification/onboarding-automation/sweep": {
+      post: {
+        tags: ["Providers"],
+        summary: "Process due provider onboarding automation actions",
+        description:
+          "Ops-authenticated sweep that evaluates backend-authored provider onboarding automation actions, sends due provider or ops notifications for actions with notification copy, and reports blocked, completed, not-due, dry-run, already-sent, and sent outcomes. The sweep is idempotent per provider/action notification marker and does not change provider verification status by itself.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              example: {
+                providerId: "provider_123",
+                asOfIso: "2026-07-19T22:14:00.000Z",
+                dryRun: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Provider onboarding automation sweep results" }
         }
       }
     },
@@ -866,7 +892,7 @@ export const apiSpec = {
         tags: ["Quotes"],
         summary: "Generate an instant quote with confidence scoring",
         description:
-          "Returns an automated price and duration estimate, plus normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. Lower-confidence jobs also surface complexity-aware follow-up questions so larger or more intricate properties can be clarified before checkout.",
+          "Returns an automated price and duration estimate, backend-authored launch pricing policy, normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. Lower-confidence jobs also surface complexity-aware follow-up questions so larger or more intricate properties can be clarified before checkout.",
         requestBody: {
           required: true,
           content: {
@@ -1018,7 +1044,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Run a provider scheduling assistant command",
         description:
-          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like reviewing named crew matches, accepting the best recommended crew, setting a provider-only interim route stop, rescheduling a job, messaging crew on a booking thread, or sending a late arrival update to the customer when confirmed. Dispatch-summary commands can also surface the specific appointments creating pressure on a day or service window. Commands can chain multiple same-booking actions together when each step is understood.",
+          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like reviewing named crew matches, accepting the best recommended crew, setting a provider-only interim route stop, rescheduling a job, messaging named crew, messaging the route leader, messaging accepted crew on booking threads, or sending a late arrival update to the customer when confirmed. Dispatch-summary commands can also surface the specific appointments creating pressure on a day or service window, and crew-gap recommendations include a structured staffingPlan across competing bookings. Commands can chain multiple same-booking actions together when each step is understood.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1412,7 +1438,7 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "Get notification delivery health for ops",
         description:
-          "Returns aggregate delivery counts, overdue retries, exhausted failures, recent failed notifications, and channel/provider breakdowns so the internal ops dashboard can spot delivery issues quickly.",
+          "Returns aggregate delivery counts, overdue retries, exhausted failures, recent failed notifications, channel/provider breakdowns, and a backend-authored delivery policy showing which production push, email, SMS, and external-alert configuration is still missing.",
         responses: {
           "200": { description: "Notification delivery health overview" }
         }
@@ -1675,6 +1701,8 @@ export const apiSpec = {
       get: {
         tags: ["Crew"],
         summary: "List auto-matched and accepted crew opportunities",
+        description:
+          "Returns the authenticated crew member's pending, accepted, denied, and cancelled staffing matches plus backend-authored availabilityConstraints and assignmentForecast summaries. The constraints summary explains available and unavailable weekdays, travel radius, schedule preference, equipment and winter-work limits, active accepted load, route-leader load, warnings, and guidance. The forecast summarizes upcoming accepted work, pending review pressure, active assignment count, route-leader assignments, next scheduled provider/category/status, workload band, warnings, and guidance.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Crew match list for the authenticated crew member" }
@@ -1848,7 +1876,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Get the crew payout ledger",
         description:
-          "Returns a crew-facing ledger built from accepted matches on completed jobs, including whether the payout is still waiting on customer payment, scheduled, ready, paid, or reversed by a refund.",
+          "Returns a crew-facing ledger built from accepted matches on completed jobs, including whether the payout is still waiting on customer payment, scheduled, ready, paid, on hold, or reversed by a refund. The response also includes backend-authored earnings, attendance, and performance summaries so crew members can see completed assignment count, ready/scheduled/on-hold earnings, call-off history, attendance rate, current reliability status, service follow-through, evidence contribution, route confirmation, and dispute/refund performance signals without recalculating those rules in the client.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Crew payout ledger returned" }
@@ -1860,9 +1888,29 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Preview upcoming provider and crew payout runs",
         description:
-          "Returns an internal operations view of payout-ready provider balances, crew-share balances, upcoming grouped provider payout runs, and payout entries that are still on hold or waiting on customer payment.",
+          "Returns an internal operations view of payout-ready provider balances, crew-share balances, upcoming grouped provider payout runs, payout entries that are still on hold or waiting on customer payment, backend-authored manual disbursement batch previews for provider and crew payouts, and the backend-authored payout policy that explains readiness, hold, instant-payout, audit, and manual-preview rules before external payout rails are enabled.",
         responses: {
           "200": { description: "Ops payout preview returned" }
+        }
+      }
+    },
+    "/api/payouts/ops/disbursement-runs": {
+      get: {
+        tags: ["Payments"],
+        summary: "List recorded manual payout disbursement runs",
+        description:
+          "Returns ops-authenticated audit records created from payout preview batches. These records preserve the preview batch id, entry fingerprint, booking/payment/recipient references, operator notes, and manual reconciliation instructions while external provider and crew payout rails are not yet enabled.",
+        responses: {
+          "200": { description: "Recorded payout disbursement runs returned" }
+        }
+      },
+      post: {
+        tags: ["Payments"],
+        summary: "Create a manual payout disbursement run from a preview batch",
+        description:
+          "Creates or reuses an ops-authenticated manual-review payout run for a current preview batch. The route is idempotent for the same preview batch and entry fingerprint, keeps stable payout entry ids unchanged, and does not initiate any external money movement.",
+        responses: {
+          "201": { description: "Payout disbursement run created or reused" }
         }
       }
     },
@@ -2209,10 +2257,36 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "List the internal support operations queue",
         description:
-          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, backend-authored resolution policy data, and copy-ready customer update drafts so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive guardrails or rewriting the next customer message in the client. This internal support queue now requires an authenticated ops session instead of loading anonymously.",
+          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, backend-authored resolution policy data, copy-ready customer update drafts, and provider coordination templates for active field exceptions or service-quality cases so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive guardrails or rewriting the next message in the client. This internal support queue now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Support operations queue" }
+        }
+      }
+    },
+    "/api/support/ops/tickets/escalate-stale": {
+      post: {
+        tags: ["Support"],
+        summary: "Escalate stale support tickets",
+        description:
+          "Runs an ops-authenticated SLA escalation sweep for unresolved support tickets. Active field exceptions escalate after two hours without an update, disputed bookings and open refund reviews after four hours, billing and service-quality tickets after eight hours, and account/general tickets after twenty-four hours. The sweep sends idempotent support-category notifications to ops users, reports sent/already-sent/dry-run/not-due/resolved/no-recipient outcomes, and preserves stable ticket ids, booking ids, issue types, statuses, and support route paths.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              example: {
+                ticketId: "support_123",
+                asOfIso: "2026-07-20T14:00:00.000Z",
+                dryRun: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Support SLA escalation sweep result" },
+          "403": { description: "Requires an authenticated ops session" },
+          "404": { description: "Support ticket not found" }
         }
       }
     },
@@ -2299,10 +2373,171 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "Fetch the live operational telemetry summary",
         description:
-          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, inbound automation health for lead and review forwarders with source-level activity plus stale-channel alerts, internal ops access-health reporting with temporary lock counts, dormant-or-never-used account counts, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, recent internal auth-event history, recent internal sign-ins, and failed-sign-in reporting, a backend-authored public review-response queue with persisted response state, channel-aware posting audit fields, linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint now requires an authenticated ops session instead of loading anonymously.",
+          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, retention prompt/source/provider metrics plus backend-authored retention insights, inbound automation health for lead and review forwarders with source-level activity plus stale-channel alerts, internal ops access-health reporting with temporary lock counts, dormant-or-never-used account counts, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, a backend-authored admin-and-operations access governance policy, a backend-authored launch operations policy with scenario rules, ZIP-level coverage pocket pressure summaries, coverage action recommendations, service-quality standards, intervention rules, escalation triggers, and live pressure warnings, recent internal auth-event history, recent internal sign-ins, and failed-sign-in reporting, a backend-authored public review-response queue with persisted response state, channel-aware posting audit fields, linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Operations overview" }
+        }
+      }
+    },
+    "/api/observability/ops-automation/run-due": {
+      post: {
+        tags: ["Observability"],
+        summary: "Run due backend operations automation sweeps",
+        description:
+          "Runs an ops-authenticated orchestration pass over dry-run capable backend automation sweeps: provider onboarding automation, stale support ticket SLA escalations, launch operations due-task notifications, and launch operations overdue-task escalations. Callers can request a subset of stable sweep keys, pass a shared asOfIso timestamp, and use dryRun to preview the same sweep payloads without creating notifications. The response includes a persisted run id, per-sweep nested results, and aggregate sent, already-sent, and skipped counts so an external scheduler or ops workspace can audit each run without reimplementing backend rules.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              example: {
+                sweepKeys: [
+                  "provider-onboarding",
+                  "support-ticket-escalations",
+                  "launch-operations-task-notifications",
+                  "launch-operations-task-escalations"
+                ],
+                asOfIso: "2026-07-20T14:00:00.000Z",
+                dryRun: true
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Backend ops automation run result" },
+          "400": { description: "Invalid timestamp or unsupported sweep key" },
+          "403": { description: "Requires an authenticated ops session" }
+        }
+      }
+    },
+    "/api/observability/ops-automation/runs": {
+      get: {
+        tags: ["Observability"],
+        summary: "List backend operations automation run history",
+        description:
+          "Returns ops-authenticated audit records for prior backend automation runner executions, including who ran the sweep, whether it was a dry run, requested sweep keys, aggregate notification counts, and the nested per-sweep payloads captured at execution time. This gives schedulers and ops workspaces a durable handoff trail without recomputing past sweep state.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Backend ops automation run history" },
+          "403": { description: "Requires an authenticated ops session" }
+        }
+      }
+    },
+    "/api/observability/launch-operations/tasks": {
+      get: {
+        tags: ["Observability"],
+        summary: "List launch operations workflow tasks",
+        description:
+          "Returns ops-authenticated task records created from backend-authored launch operations coverage action recommendations. These tasks preserve the original recommendation key, pocket key, priority, owner, scenario keys, due time, creator, assignee, status, and notes so launch coverage pressure can move from passive policy guidance into an auditable operations workflow.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Launch operations task list" },
+          "403": { description: "Requires an authenticated ops session" }
+        }
+      },
+      post: {
+        tags: ["Observability"],
+        summary: "Create a launch operations workflow task",
+        description:
+          "Creates or reuses an idempotent ops task from a current launch operations coverage action recommendation. The route validates the recommendation key and pocket key against the live backend-authored launch operations policy, fingerprints the stable recommendation fields, and does not allow clients to invent task payloads from arbitrary prose.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                recommendationKey: "hold-demand",
+                pocketKey: "TX:79843:marfa",
+                assignedToOpsUserId: "ops_123",
+                operatorNotes: "Pause new demand and verify supply."
+              }
+            }
+          }
+        },
+        responses: {
+          "201": { description: "Launch operations task created or reused" },
+          "403": { description: "Requires an authenticated ops session" },
+          "404": { description: "Matching current launch operations recommendation was not found" }
+        }
+      }
+    },
+    "/api/observability/launch-operations/tasks/update": {
+      post: {
+        tags: ["Observability"],
+        summary: "Update a launch operations workflow task",
+        description:
+          "Updates assignment, status, operator notes, or completion notes for an existing launch operations task. Completion records the authenticated ops user and timestamp while preserving the stable recommendation key and pocket references for audit.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                taskId: "launch_ops_task_123",
+                status: "completed",
+                completionNotes: "Demand held and provider-success follow-up opened."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Launch operations task updated" },
+          "403": { description: "Requires an authenticated ops session" },
+          "404": { description: "Launch operations task not found" }
+        }
+      }
+    },
+    "/api/observability/launch-operations/tasks/notify-due": {
+      post: {
+        tags: ["Observability"],
+        summary: "Notify ops about due launch operations tasks",
+        description:
+          "Runs an ops-authenticated notification sweep for launch operations task records. The sweep sends idempotent support-category notifications for due open, in-progress, or blocked tasks to the assigned ops user, or to all ops users when a task is unassigned. Completed and cancelled tasks are reported as skipped, and dry-run/includeFuture options mirror the existing provider onboarding automation sweep pattern.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              example: {
+                taskId: "launch_ops_task_123",
+                asOfIso: "2026-07-19T22:50:00.000Z",
+                dryRun: false,
+                includeFuture: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Launch operations task notification sweep result" },
+          "403": { description: "Requires an authenticated ops session" },
+          "404": { description: "Launch operations task not found" }
+        }
+      }
+    },
+    "/api/observability/launch-operations/tasks/escalate-overdue": {
+      post: {
+        tags: ["Observability"],
+        summary: "Escalate overdue launch operations tasks",
+        description:
+          "Runs an ops-authenticated escalation sweep for launch operations task records that have passed their priority-based overdue threshold. Urgent tasks escalate after two hours past due, high-priority tasks after twelve hours, and normal tasks after twenty-four hours. The sweep sends idempotent support-category notifications to ops users, reports dry-run/already-sent/not-overdue/completed/cancelled/no-recipient outcomes, and preserves the stable task recommendation keys, pocket keys, priorities, owners, statuses, and route paths.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              example: {
+                taskId: "launch_ops_task_123",
+                asOfIso: "2026-07-20T02:00:00.000Z",
+                dryRun: false
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Launch operations overdue escalation sweep result" },
+          "403": { description: "Requires an authenticated ops session" },
+          "404": { description: "Launch operations task not found" }
         }
       }
     },

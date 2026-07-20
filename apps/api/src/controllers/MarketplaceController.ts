@@ -33,8 +33,10 @@ import {
   UpdateNotificationPreferencesRequest,
   MarkBookingOnRouteRequest,
   CreatePaymentIntentRequest,
+  CreateOpsPayoutDisbursementRunRequest,
   FinalizeCheckoutSessionRequest,
   ProcessReviewInvitesRequest,
+  ProcessProviderOnboardingAutomationRequest,
   CreateRefundRequest,
   ReviewCrewMatchRequest,
   SelectPublicCrewOpportunityRequest,
@@ -64,8 +66,6 @@ import { localizeProviderCalendarOverview } from "../i18n";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
 export class MarketplaceController implements ApiController {
-  private static readonly providerPayoutSettingsReauthMaxAgeSeconds = 15 * 60;
-
   public constructor(private readonly platform: MarketplacePlatformService) {}
 
   public canHandle(context: RequestContext): boolean {
@@ -84,6 +84,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/profile") ||
       (context.method === "GET" && context.path === "/api/providers/verification/queue") ||
       (context.method === "POST" && context.path === "/api/providers/verification/review") ||
+      (context.method === "POST" && context.path === "/api/providers/verification/onboarding-automation/sweep") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities/public") ||
       (context.method === "POST" && context.path === "/api/crew/opportunities/public/select") ||
@@ -98,6 +99,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound") ||
       (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound/shared-inbox") ||
       (context.method === "POST" && context.path === "/api/providers/reviews/response/inbound/google-business-profile") ||
+      (context.method === "POST" && context.path === "/api/providers/reviews/escalate") ||
       (context.method === "GET" && context.path === "/api/notifications") ||
       (context.method === "POST" && context.path === "/api/notifications/read") ||
       (context.method === "GET" && context.path === "/api/notifications/preferences") ||
@@ -142,6 +144,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/payments") ||
       (context.method === "GET" && context.path === "/api/payouts/provider") ||
       (context.method === "GET" && context.path === "/api/payouts/crew") ||
+      (context.method === "GET" && context.path === "/api/payouts/ops/preview") ||
+      (context.method === "GET" && context.path === "/api/payouts/ops/disbursement-runs") ||
+      (context.method === "POST" && context.path === "/api/payouts/ops/disbursement-runs") ||
       (context.method === "POST" && context.path === "/api/payments/webhook") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") ||
@@ -274,6 +279,19 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "POST" && context.path === "/api/providers/verification/onboarding-automation/sweep") {
+      const identity = await requireOpsAccess(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.processProviderOnboardingAutomation(
+          identity,
+          context.body as ProcessProviderOnboardingAutomationRequest
+        )
+      );
+      return;
+    }
+
     if (context.method === "GET" && context.path === "/api/crew/opportunities") {
       await requireRole(context, this.platform, "crew-member");
       sendJson(response, 200, await this.platform.listCrewOpportunities());
@@ -323,7 +341,7 @@ export class MarketplaceController implements ApiController {
             context,
             this.platform,
             "provider",
-            MarketplaceController.providerPayoutSettingsReauthMaxAgeSeconds,
+            MarketplacePlatformService.sensitiveActionFreshSessionMaxAgeSeconds,
             "Re-authentication required for payout settings. Sign in again and retry within 15 minutes."
           )
         : await requireRole(context, this.platform, "provider");
@@ -740,6 +758,25 @@ export class MarketplaceController implements ApiController {
     if (context.method === "GET" && context.path === "/api/payouts/ops/preview") {
       await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.getOpsPayoutPreview());
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/payouts/ops/disbursement-runs") {
+      await requireOpsAccess(context, this.platform);
+      sendJson(response, 200, await this.platform.listOpsPayoutDisbursementRuns());
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/payouts/ops/disbursement-runs") {
+      const identity = await requireOpsAccess(context, this.platform);
+      sendJson(
+        response,
+        201,
+        await this.platform.createOpsPayoutDisbursementRun(
+          identity,
+          context.body as CreateOpsPayoutDisbursementRunRequest
+        )
+      );
       return;
     }
 

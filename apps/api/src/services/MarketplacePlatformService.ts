@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
@@ -16,7 +17,11 @@ import {
   ConfirmBookingRequest,
   CreateOpsAccountResponse,
   CreateOpsAccountRequest,
+  CreateLaunchOperationsTaskRequest,
+  CreateLaunchOperationsTaskResponse,
   CreateOpsBookingInterventionRequest,
+  CreateOpsPayoutDisbursementRunRequest,
+  CreateOpsPayoutDisbursementRunResponse,
   CrewAvailabilityDay,
   CrewMatchCandidate,
   CrewMatchesResponse,
@@ -35,6 +40,7 @@ import {
   NotificationDeliveryRecord,
   NotificationOpsAlert,
   NotificationOpsChannelHealth,
+  NotificationOpsDeliveryPolicy,
   NotificationOpsEscalationResponse,
   NotificationOpsHealthResponse,
   NotificationOpsRetrySweepResponse,
@@ -43,6 +49,7 @@ import {
   OpsAccessAuditItem,
   OpsAccessAlertItem,
   OpsAccessChangeKind,
+  OpsAccessGovernancePolicy,
   OpsAccessHistoryEntry,
   OpsAuthenticationAuditItem,
   OpsAuthenticationHistoryEntry,
@@ -52,6 +59,7 @@ import {
   OpsInternalScope,
   OpsFinancialExceptionSummaryResponse,
   OpsPayoutHoldSummaryItem,
+  OpsPayoutDisbursementRunsResponse,
   OpsPayoutRunPreviewResponse,
   OpsRefundSummaryItem,
   OpsSignInAuditItem,
@@ -80,6 +88,7 @@ import {
   CreateCheckoutSessionResponse,
   InstantQuoteRequest,
   InstantQuoteResponse,
+  LaunchPricingPolicy,
   InboundAutomationActivityItem,
   InboundAutomationEscalationResponse,
   InboundAutomationAlertItem,
@@ -93,6 +102,7 @@ import {
   FinalizeCheckoutSessionRequest,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
+  ProcessProviderOnboardingAutomationRequest,
   RequestPasswordResetRequest,
   RequestPasswordResetResponse,
   CreateRefundRequest,
@@ -107,9 +117,27 @@ import {
   CreateSupportTicketRequest,
   LaunchLeadReplyTemplate,
   LaunchLeadResponseGuidance,
+  LaunchOperationsCoverageActionRecommendation,
+  LaunchOperationsTask,
+  LaunchOperationsTaskEscalationSweepItem,
+  LaunchOperationsTaskEscalationSweepResponse,
+  LaunchOperationsTaskNotificationSweepItem,
+  LaunchOperationsTaskNotificationSweepResponse,
+  LaunchOperationsTasksResponse,
+  OpsAutomationRunRecord,
+  OpsAutomationRunResponse,
+  OpsAutomationRunsResponse,
+  OpsAutomationSweepKey,
+  OpsAutomationSweepRunItem,
+  ProcessLaunchOperationsTaskEscalationsRequest,
+  ProcessLaunchOperationsTaskNotificationsRequest,
+  ProcessOpsAutomationRunRequest,
   UpdateLaunchLeadRequest,
+  UpdateLaunchOperationsTaskRequest,
+  UpdateLaunchOperationsTaskResponse,
   UpdateSupportTicketRequest,
   Booking,
+  BookingStatus,
   BookingServiceWindowKey,
   BookingInterventionRecord,
   BookingRouteStop,
@@ -128,6 +156,10 @@ import {
   ProviderAssistantBookingCandidate,
   ProviderAssistantCommandRequest,
   ProviderAssistantCommandResponse,
+  ProviderAssistantStaffingPlanItem,
+  ProviderOnboardingAutomationAction,
+  ProviderOnboardingAutomationSweepResponse,
+  ProviderOnboardingAutomationSweepItem,
   PushDevice,
   RecurringServicePlan,
   RecurringServicePlanSummary,
@@ -185,12 +217,17 @@ import {
   UpdateProviderProfileRequest,
   RegisterPushDeviceRequest,
   RemovePushDeviceRequest,
+  ProcessSupportOpsTicketEscalationsRequest,
   UpdateProviderSettingsRequest,
   SupportTicket,
   LaunchAttributionContext,
+  SensitiveActionPolicy,
+  SensitiveActionPolicyItem,
   SupportTimelineActorRole,
   SupportTimelineEntry,
   SupportOpsTicket,
+  SupportOpsTicketEscalationSweepItem,
+  SupportOpsTicketEscalationSweepResponse,
   OpsLaunchLead,
   UpdateReviewResponseRequest,
   SyncExternalCalendarImportRequest,
@@ -241,6 +278,7 @@ type ParsedProviderAssistantAction = {
   crewMatchCrewNameQuery?: string;
   routeLeaderCrewNameQuery?: string;
   crewMessageCrewNameQuery?: string;
+  crewMessageTarget?: "named-crew" | "route-leader" | "accepted-crew";
   crewMessageBody?: string;
   routeStopKind?: SetBookingRouteStopRequest["kind"];
   lateMinutes?: number;
@@ -267,6 +305,13 @@ type ParsedProviderAssistantCommand = {
 };
 
 type LaunchLeadLinkMode = "explicit-id" | "email-match" | "phone-match";
+
+type ProviderVerificationOperationalHistory = {
+  totalBookingCount: number;
+  disputedBookingCount: number;
+  refundedBookingCount: number;
+  activeExceptionCount: number;
+};
 
 const MIN_DETAILED_SUPPORT_RATIONALE_LENGTH = 48;
 const MIN_PROVIDER_APPROVAL_OVERRIDE_NOTE_LENGTH = 56;
@@ -300,6 +345,7 @@ export class MarketplacePlatformService {
   private readonly payoutHoldHours = 48;
   private readonly instantPayoutMinimumCents = 10_000;
   private readonly crewPayoutWeekday: CrewAvailabilityDay = "Fri";
+  public static readonly sensitiveActionFreshSessionMaxAgeSeconds = 15 * 60;
   private readonly geoService = new GeoService();
   private readonly providerMatcher = new ProviderMatchService(this.geoService);
   private readonly schedulingService = new SchedulingService();
@@ -971,13 +1017,15 @@ export class MarketplacePlatformService {
       return Date.parse(failedAt) >= last24Hours;
     }).length;
     const channels = this.buildNotificationOpsChannelHealth(deliveries, now, last24Hours);
+    const deliveryPolicy = this.notificationDelivery.getOpsDeliveryPolicy();
     const alerts = this.buildNotificationOpsAlerts({
       deliveriesLast24Hours: deliveriesLast24Hours.length,
       failedLast24Hours,
       pendingRetryCount: pendingRetryDeliveries.length,
       overdueRetryCount: overdueRetryDeliveries.length,
       exhaustedFailureCount,
-      channels
+      channels,
+      deliveryPolicy
     });
 
     return {
@@ -992,7 +1040,8 @@ export class MarketplacePlatformService {
       exhaustedFailureCount,
       channels,
       recentFailures: failedDeliveries.slice(0, 8),
-      alerts
+      alerts,
+      deliveryPolicy
     };
   }
 
@@ -1531,11 +1580,51 @@ export class MarketplacePlatformService {
       verifiedProviderCount: providers.length,
       averageRating,
       activeCategoryCount,
+      launchPricingPolicy: this.buildLaunchPricingPolicy(),
       featuredProviders,
       topRatedProviders,
       mostOnTimeProviders,
       highlightedReviews,
       coverageAreas
+    };
+  }
+
+  private buildLaunchPricingPolicy(category?: Booking["category"]): LaunchPricingPolicy {
+    const launchServiceCategories: Booking["category"][] = [
+      "lawn-mowing",
+      "seasonal-cleanup",
+      "mulch-installation",
+      "hedge-trimming",
+      "leaf-blowing",
+      "fertilization",
+      "aeration"
+    ];
+
+    return {
+      pricingModel: "hybrid-managed-marketplace",
+      introductoryOffer: {
+        label: "First-service launch offer",
+        appliesTo: "first-completed-service",
+        customerMessage:
+          "Launch customers get a clear first-service price before checkout, with any introductory adjustment handled by YardMatch instead of asking providers to discount their work.",
+        opsNote:
+          "Apply launch incentives as a YardMatch-funded customer adjustment only after confirming the provider payout still meets the service and route economics."
+      },
+      launchServiceCategories: category
+        ? [category, ...launchServiceCategories.filter((item) => item !== category)]
+        : launchServiceCategories,
+      customerPricingPrinciples: [
+        "Show one clear managed-marketplace price before checkout.",
+        "Use follow-up questions when property measurements or layout confidence could materially change scope.",
+        "Keep backup provider choices curated instead of turning routine services into quote comparison."
+      ],
+      providerEconomicsPrinciples: [
+        "Do not fund customer acquisition by silently compressing provider net payouts.",
+        "Protect route density, service fit, and post-service payout holds before scaling launch demand.",
+        "Use YardMatch-funded launch adjustments when a first-customer offer is needed."
+      ],
+      providerFacingExplanation:
+        "YardMatch sets the customer-facing launch price from service scope, property signals, route fit, and marketplace reliability. Providers should see launch offers as YardMatch-funded demand generation, not as an expectation to underbid routine work."
     };
   }
 
@@ -1652,12 +1741,95 @@ export class MarketplacePlatformService {
       throw new Error("Provider not found");
     }
 
-    const openBookingCount = this.countOpenProviderBookings(provider.id, await this.repository.listBookings());
-    const guidance = this.buildProviderVerificationGuidance(provider, openBookingCount);
+    const bookings = await this.repository.listBookings();
+    const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
+    const guidance = this.buildProviderVerificationGuidance(
+      provider,
+      openBookingCount,
+      this.buildProviderVerificationOperationalHistory(provider.id, bookings)
+    );
+    const onboardingPlan = this.buildProviderOnboardingAutomationPlan(provider, guidance);
 
     return {
       ...provider,
-      verificationSummary: this.buildProviderVerificationStatusSummary(provider, guidance)
+      verificationSummary: this.buildProviderVerificationStatusSummary(provider, guidance, onboardingPlan),
+      businessControls: this.buildProviderBusinessControlsSummary(provider, openBookingCount)
+    };
+  }
+
+  private buildProviderBusinessControlsSummary(
+    provider: ProviderProfile,
+    openBookingCount: number
+  ): NonNullable<ProviderProfile["businessControls"]> {
+    const warnings: string[] = [];
+
+    if (provider.verificationStatus !== "verified") {
+      warnings.push("Public marketplace visibility remains gated until ops approves provider verification.");
+    }
+    if (openBookingCount > 0) {
+      warnings.push(
+        `${openBookingCount} open booking${openBookingCount === 1 ? "" : "s"} should be considered before shrinking radius, lead time, crew review, or calendar-blocking settings.`
+      );
+    }
+    if ((provider.staffingMode ?? "review-first") === "auto-accept") {
+      warnings.push("Auto-accept staffing should stay limited to providers with reliable crew fit and low exception risk.");
+    }
+
+    return {
+      teamAccessMode: "owner-only",
+      teamPermissionsStatus: "owner-only",
+      ownerManagedControls: [
+        "business profile",
+        "service categories",
+        "service radius",
+        "booking lead time",
+        "crew staffing mode",
+        "crew review timing",
+        "departure reminders",
+        "route leader delegation",
+        "outside-calendar blocking",
+        "weekly payout day",
+        "instant payout preference"
+      ],
+      profileControls: [
+        "company name",
+        "customer-facing bio",
+        "years of experience",
+        "service categories"
+      ],
+      dispatchControls: [
+        "service radius",
+        "minimum booking lead time",
+        "crew staffing mode",
+        "crew review lead time",
+        "departure reminder lead time",
+        "route leader delegation",
+        "outside-calendar blocking"
+      ],
+      payoutControls: [
+        "weekly payout day",
+        "instant payout preference"
+      ],
+      opsManagedControls: [
+        "provider verification",
+        "public marketplace visibility",
+        "review escalation",
+        "support interventions",
+        "refund and dispute outcome controls"
+      ],
+      freshReauthRequiredControls: [
+        "weekly payout day",
+        "instant payout preference",
+        "future bank account changes",
+        "future payout account changes"
+      ],
+      launchGuardrails: [
+        "Only the provider owner account can change business settings until team permissions are implemented.",
+        "Ops verification controls public marketplace visibility and launch readiness.",
+        "Payout-related settings require a fresh provider session.",
+        "Open bookings should be protected from surprise radius, lead-time, calendar-blocking, or staffing changes."
+      ],
+      warnings
     };
   }
 
@@ -1672,11 +1844,18 @@ export class MarketplacePlatformService {
       .map((provider) => {
         const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
 
+        const guidance = this.buildProviderVerificationGuidance(
+          provider,
+          openBookingCount,
+          this.buildProviderVerificationOperationalHistory(provider.id, bookings)
+        );
+
         return {
           provider,
           openBookingCount,
           reviewCount: provider.reviewCount,
-          guidance: this.buildProviderVerificationGuidance(provider, openBookingCount)
+          guidance,
+          onboardingPlan: this.buildProviderOnboardingAutomationPlan(provider, guidance)
         };
       })
       .sort((left, right) => {
@@ -1684,6 +1863,302 @@ export class MarketplacePlatformService {
         const leftSubmitted = left.provider.verificationSubmittedAt ?? left.provider.createdAt;
         return rightSubmitted.localeCompare(leftSubmitted);
       });
+  }
+
+  private getOpsAutomationSweepLabel(sweepKey: OpsAutomationSweepKey) {
+    switch (sweepKey) {
+      case "provider-onboarding":
+        return "Provider onboarding automation";
+      case "support-ticket-escalations":
+        return "Support ticket SLA escalations";
+      case "launch-operations-task-notifications":
+        return "Launch operations due-task notifications";
+      case "launch-operations-task-escalations":
+        return "Launch operations overdue-task escalations";
+    }
+  }
+
+  private summarizeOpsAutomationSweepResult(input: {
+    sweepKey: OpsAutomationSweepKey;
+    response:
+      | ProviderOnboardingAutomationSweepResponse
+      | SupportOpsTicketEscalationSweepResponse
+      | LaunchOperationsTaskNotificationSweepResponse
+      | LaunchOperationsTaskEscalationSweepResponse;
+  }) {
+    if (input.sweepKey === "provider-onboarding") {
+      const response = input.response as ProviderOnboardingAutomationSweepResponse;
+      return {
+        sentNotificationCount: response.sentNotificationCount,
+        alreadySentCount: response.alreadySentCount,
+        skippedCount: response.skippedActionCount
+      };
+    }
+    if (input.sweepKey === "support-ticket-escalations") {
+      const response = input.response as SupportOpsTicketEscalationSweepResponse;
+      return {
+        sentNotificationCount: response.sentNotificationCount,
+        alreadySentCount: response.alreadySentCount,
+        skippedCount: response.skippedEscalationCount
+      };
+    }
+    if (input.sweepKey === "launch-operations-task-notifications") {
+      const response = input.response as LaunchOperationsTaskNotificationSweepResponse;
+      return {
+        sentNotificationCount: response.sentNotificationCount,
+        alreadySentCount: response.alreadySentCount,
+        skippedCount: response.skippedNotificationCount
+      };
+    }
+    const response = input.response as LaunchOperationsTaskEscalationSweepResponse;
+    return {
+      sentNotificationCount: response.sentNotificationCount,
+      alreadySentCount: response.alreadySentCount,
+      skippedCount: response.skippedEscalationCount
+    };
+  }
+
+  public async runDueOpsAutomation(
+    actor: AuthIdentityRecord,
+    payload: ProcessOpsAutomationRunRequest = {}
+  ): Promise<OpsAutomationRunResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can run ops automation sweeps");
+    }
+
+    const asOfMs = payload.asOfIso ? Date.parse(payload.asOfIso) : Date.now();
+    if (!Number.isFinite(asOfMs)) {
+      throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
+    }
+    const asOfIso = new Date(asOfMs).toISOString();
+    const supportedSweepKeys: OpsAutomationSweepKey[] = [
+      "provider-onboarding",
+      "support-ticket-escalations",
+      "launch-operations-task-notifications",
+      "launch-operations-task-escalations"
+    ];
+    const requestedSweepKeys = payload.sweepKeys?.length
+      ? [...new Set(payload.sweepKeys)]
+      : supportedSweepKeys;
+    const unsupportedSweepKeys = requestedSweepKeys.filter(
+      (sweepKey) => !supportedSweepKeys.includes(sweepKey)
+    );
+    if (unsupportedSweepKeys.length > 0) {
+      throw new HttpError(400, `Unsupported ops automation sweep key: ${unsupportedSweepKeys.join(", ")}`);
+    }
+
+    const items: OpsAutomationSweepRunItem[] = [];
+    for (const sweepKey of requestedSweepKeys) {
+      const startedAt = new Date().toISOString();
+      try {
+        if (sweepKey === "provider-onboarding") {
+          const response = await this.processProviderOnboardingAutomation(actor, {
+            asOfIso,
+            dryRun: Boolean(payload.dryRun)
+          });
+          const summary = this.summarizeOpsAutomationSweepResult({ sweepKey, response });
+          items.push({
+            sweepKey,
+            label: this.getOpsAutomationSweepLabel(sweepKey),
+            status: "completed",
+            startedAt,
+            completedAt: new Date().toISOString(),
+            dryRun: Boolean(payload.dryRun),
+            ...summary,
+            providerOnboarding: response
+          });
+          continue;
+        }
+        if (sweepKey === "support-ticket-escalations") {
+          const response = await this.escalateStaleOpsSupportTickets(actor, {
+            asOfIso,
+            dryRun: Boolean(payload.dryRun)
+          });
+          const summary = this.summarizeOpsAutomationSweepResult({ sweepKey, response });
+          items.push({
+            sweepKey,
+            label: this.getOpsAutomationSweepLabel(sweepKey),
+            status: "completed",
+            startedAt,
+            completedAt: new Date().toISOString(),
+            dryRun: Boolean(payload.dryRun),
+            ...summary,
+            supportTicketEscalations: response
+          });
+          continue;
+        }
+        if (sweepKey === "launch-operations-task-notifications") {
+          const response = await this.notifyDueLaunchOperationsTasks(actor, {
+            asOfIso,
+            dryRun: Boolean(payload.dryRun)
+          });
+          const summary = this.summarizeOpsAutomationSweepResult({ sweepKey, response });
+          items.push({
+            sweepKey,
+            label: this.getOpsAutomationSweepLabel(sweepKey),
+            status: "completed",
+            startedAt,
+            completedAt: new Date().toISOString(),
+            dryRun: Boolean(payload.dryRun),
+            ...summary,
+            launchOperationsTaskNotifications: response
+          });
+          continue;
+        }
+
+        const response = await this.escalateOverdueLaunchOperationsTasks(actor, {
+          asOfIso,
+          dryRun: Boolean(payload.dryRun)
+        });
+        const summary = this.summarizeOpsAutomationSweepResult({ sweepKey, response });
+        items.push({
+          sweepKey,
+          label: this.getOpsAutomationSweepLabel(sweepKey),
+          status: "completed",
+          startedAt,
+          completedAt: new Date().toISOString(),
+          dryRun: Boolean(payload.dryRun),
+          ...summary,
+          launchOperationsTaskEscalations: response
+        });
+      } catch (error) {
+        items.push({
+          sweepKey,
+          label: this.getOpsAutomationSweepLabel(sweepKey),
+          status: "failed",
+          startedAt,
+          completedAt: new Date().toISOString(),
+          dryRun: Boolean(payload.dryRun),
+          sentNotificationCount: 0,
+          alreadySentCount: 0,
+          skippedCount: 0,
+          errorMessage: error instanceof Error ? error.message : "Unknown sweep failure"
+        });
+      }
+    }
+
+    const generatedAt = new Date().toISOString();
+    const runId = crypto.randomUUID();
+    const response: OpsAutomationRunResponse = {
+      runId,
+      generatedAt,
+      asOfIso,
+      dryRun: Boolean(payload.dryRun),
+      requestedSweepKeys,
+      requestedSweepCount: requestedSweepKeys.length,
+      completedSweepCount: items.filter((item) => item.status === "completed").length,
+      failedSweepCount: items.filter((item) => item.status === "failed").length,
+      sentNotificationCount: items.reduce((sum, item) => sum + item.sentNotificationCount, 0),
+      alreadySentCount: items.reduce((sum, item) => sum + item.alreadySentCount, 0),
+      skippedCount: items.reduce((sum, item) => sum + item.skippedCount, 0),
+      items
+    };
+    await this.repository.createOpsAutomationRun({
+      ...response,
+      id: runId,
+      createdAt: generatedAt,
+      createdByOpsUserId: actor.userId,
+      createdByOpsEmail: actor.email
+    });
+    return response;
+  }
+
+  public async listOpsAutomationRuns(): Promise<OpsAutomationRunsResponse> {
+    const runs = await this.repository.listOpsAutomationRuns();
+    return {
+      generatedAt: new Date().toISOString(),
+      runs
+    };
+  }
+
+  public async processProviderOnboardingAutomation(
+    actor: AuthIdentityRecord,
+    payload: ProcessProviderOnboardingAutomationRequest = {}
+  ): Promise<ProviderOnboardingAutomationSweepResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can process provider onboarding automation");
+    }
+
+    const asOfMs = payload.asOfIso ? Date.parse(payload.asOfIso) : Date.now();
+    if (!Number.isFinite(asOfMs)) {
+      throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
+    }
+    const asOfIso = new Date(asOfMs).toISOString();
+    const [allProviders, bookings, opsUsers] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listBookings(),
+      this.repository.listOpsUsers()
+    ]);
+    const providers = allProviders.filter(
+      (provider) =>
+        provider.verificationStatus !== "verified" &&
+        (!payload.providerId || provider.id === payload.providerId)
+    );
+
+    if (payload.providerId && providers.length === 0) {
+      const exists = allProviders.some((provider) => provider.id === payload.providerId);
+      if (!exists) {
+        throw new HttpError(404, "Provider not found");
+      }
+    }
+
+    const items: ProviderOnboardingAutomationSweepItem[] = [];
+
+    for (const provider of providers) {
+      const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
+      const guidance = this.buildProviderVerificationGuidance(
+        provider,
+        openBookingCount,
+        this.buildProviderVerificationOperationalHistory(provider.id, bookings)
+      );
+      const plan = this.buildProviderOnboardingAutomationPlan(provider, guidance);
+
+      for (const action of plan.automationActions) {
+        const recipients =
+          action.owner === "provider"
+            ? [{ recipientId: provider.id, recipientRole: "provider" as const }]
+            : action.owner === "ops"
+              ? opsUsers.map((opsUser) => ({
+                  recipientId: opsUser.id,
+                  recipientRole: "ops" as const
+                }))
+              : [{ recipientId: provider.id, recipientRole: "provider" as const }];
+
+        for (const recipient of recipients) {
+          items.push(
+            await this.processProviderOnboardingAutomationAction({
+              provider,
+              planStage: plan.stage,
+              action,
+              recipientId: recipient.recipientId,
+              recipientRole: recipient.recipientRole,
+              asOfMs,
+              dryRun: Boolean(payload.dryRun),
+              includeFuture: Boolean(payload.includeFuture)
+            })
+          );
+        }
+      }
+    }
+
+    const dueActionCount = items.filter((item) =>
+      ["sent", "already-sent", "dry-run", "no-notification"].includes(item.notificationStatus)
+    ).length;
+    const sentNotificationCount = items.filter((item) => item.notificationStatus === "sent").length;
+    const alreadySentCount = items.filter((item) => item.notificationStatus === "already-sent").length;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      asOfIso,
+      dryRun: Boolean(payload.dryRun),
+      providerCount: providers.length,
+      actionCount: items.length,
+      dueActionCount,
+      sentNotificationCount,
+      alreadySentCount,
+      skippedActionCount: items.length - dueActionCount,
+      items
+    };
   }
 
   public async updateProviderProfile(
@@ -1725,13 +2200,18 @@ export class MarketplacePlatformService {
       categories
     };
 
+    const resubmissionUpdates = this.buildRejectedProviderVerificationResubmissionUpdates(provider, profileUpdates);
     const updatedProvider = await this.repository.updateProvider(provider.id, {
       ...profileUpdates,
-      ...this.buildRejectedProviderVerificationResubmissionUpdates(provider, profileUpdates)
+      ...resubmissionUpdates
     });
 
     if (!updatedProvider) {
       throw new Error("Provider profile could not be updated");
+    }
+
+    if (resubmissionUpdates.verificationStatus === "pending-review") {
+      await this.notifyOpsProviderVerificationResubmitted(updatedProvider, "profile-fixes");
     }
 
     return this.getProviderProfile(provider.id);
@@ -1751,14 +2231,13 @@ export class MarketplacePlatformService {
     }
 
     if (payload.action === "approve") {
-      const openBookingCount = (await this.repository.listBookings()).filter(
-        (booking) =>
-          booking.providerId === provider.id &&
-          booking.status !== "completed" &&
-          booking.status !== "cancelled" &&
-          booking.status !== "refunded"
-      ).length;
-      const guidance = this.buildProviderVerificationGuidance(provider, openBookingCount);
+      const bookings = await this.repository.listBookings();
+      const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
+      const guidance = this.buildProviderVerificationGuidance(
+        provider,
+        openBookingCount,
+        this.buildProviderVerificationOperationalHistory(provider.id, bookings)
+      );
 
       if (guidance.requiresApprovalOverrideNotes && !this.isDetailedProviderApprovalOverrideNote(notes)) {
         throw new HttpError(
@@ -1804,7 +2283,8 @@ export class MarketplacePlatformService {
 
   private buildProviderVerificationGuidance(
     provider: ProviderProfile,
-    openBookingCount: number
+    openBookingCount: number,
+    operationalHistory: ProviderVerificationOperationalHistory
   ): ProviderVerificationQueueItem["guidance"] {
     const checklist: ProviderVerificationQueueItem["guidance"]["checklist"] = [];
 
@@ -1893,6 +2373,30 @@ export class MarketplacePlatformService {
             : "Service-quality expectations need an explicit ops review before this provider should be exposed publicly."
     });
 
+    const incidentCount =
+      operationalHistory.disputedBookingCount +
+      operationalHistory.refundedBookingCount +
+      operationalHistory.activeExceptionCount;
+    const issueRate = incidentCount / Math.max(operationalHistory.totalBookingCount, 1);
+    checklist.push({
+      key: "incident-history",
+      label: "Incident history",
+      status:
+        incidentCount === 0
+          ? "ready"
+          : operationalHistory.disputedBookingCount > 0 ||
+              operationalHistory.refundedBookingCount > 0 ||
+              issueRate >= 0.34
+            ? "missing"
+            : "review",
+      detail:
+        incidentCount === 0
+          ? "No disputes, refunds, or active field exceptions are attached to this provider's YardMatch history."
+          : operationalHistory.disputedBookingCount > 0 || operationalHistory.refundedBookingCount > 0
+            ? `${incidentCount} incident${incidentCount === 1 ? "" : "s"} are attached to this provider, including ${operationalHistory.disputedBookingCount} dispute${operationalHistory.disputedBookingCount === 1 ? "" : "s"} and ${operationalHistory.refundedBookingCount} refunded booking${operationalHistory.refundedBookingCount === 1 ? "" : "s"}. Ops should confirm the recovery story before public visibility.`
+            : `${operationalHistory.activeExceptionCount} active field exception${operationalHistory.activeExceptionCount === 1 ? "" : "s"} are attached to this provider. Ops should confirm those issues are resolved before launch traffic increases.`
+    });
+
     checklist.push({
       key: "intervention-readiness",
       label: "Intervention readiness",
@@ -1929,6 +2433,11 @@ export class MarketplacePlatformService {
     }
     if (provider.yearsExperience < 3) {
       warnings.push("Confirm the provider understands the launch service-quality bar before approving public visibility.");
+    }
+    if (operationalHistory.disputedBookingCount > 0 || operationalHistory.refundedBookingCount > 0) {
+      warnings.push("Review dispute and refund history before approving this provider for public launch visibility.");
+    } else if (operationalHistory.activeExceptionCount > 0) {
+      warnings.push("Resolve or document active field exceptions before scaling this provider's launch demand.");
     }
     if (provider.crewReviewLeadHours < 24 || provider.departureReminderLeadMinutes < 30) {
       warnings.push("Double-check late-update, exception, and staffing escalation readiness before go-live.");
@@ -1974,9 +2483,349 @@ export class MarketplacePlatformService {
     };
   }
 
-  private buildProviderVerificationStatusSummary(
+  private buildProviderOnboardingAutomationPlan(
     provider: ProviderProfile,
     guidance: ProviderVerificationQueueItem["guidance"]
+  ): ProviderVerificationQueueItem["onboardingPlan"] {
+    const hasMissing = guidance.checklist.some((item) => item.status === "missing");
+    const hasReview = guidance.checklist.some((item) => item.status === "review");
+    const stage: ProviderVerificationQueueItem["onboardingPlan"]["stage"] =
+      provider.verificationStatus === "verified"
+        ? "verified-monitoring"
+        : hasMissing || provider.verificationStatus === "rejected"
+          ? "fixes-needed"
+          : hasReview || guidance.recommendedAction === "manual-review"
+            ? "ops-review"
+            : "ready-for-approval";
+    const profileItems = this.getProviderVerificationChecklistItems(guidance, [
+      "profile-completeness",
+      "service-scope",
+      "experience-signal",
+      "service-quality-expectations"
+    ]);
+    const dispatchItems = this.getProviderVerificationChecklistItems(guidance, [
+      "launch-area-fit",
+      "operational-readiness",
+      "intervention-readiness"
+    ]);
+    const incidentItem = guidance.checklist.find((item) => item.key === "incident-history");
+    const profileStatus = this.toProviderOnboardingStepStatus(profileItems);
+    const dispatchStatus = this.toProviderOnboardingStepStatus(dispatchItems);
+    const incidentStatus = incidentItem
+      ? this.toProviderOnboardingStepStatus([incidentItem])
+      : "complete";
+    const opsReviewStatus =
+      provider.verificationStatus === "verified"
+        ? "complete"
+        : hasMissing
+          ? "blocked"
+          : "ready";
+    const launchPilotStatus =
+      provider.verificationStatus === "verified"
+        ? "complete"
+        : guidance.recommendedAction === "approve"
+          ? "ready"
+          : "blocked";
+    const monitoringStatus = provider.verificationStatus === "verified" ? "ready" : "blocked";
+    const readyCount = guidance.checklist.filter((item) => item.status === "ready").length;
+    const reviewCount = guidance.checklist.filter((item) => item.status === "review").length;
+    const missingCount = guidance.checklist.filter((item) => item.status === "missing").length;
+    const launchReadinessSignals = [
+      `${readyCount} checklist item${readyCount === 1 ? "" : "s"} ready`,
+      `${reviewCount} checklist item${reviewCount === 1 ? "" : "s"} need ops review`,
+      `${missingCount} checklist item${missingCount === 1 ? "" : "s"} blocked`,
+      `Recommended verification action: ${guidance.recommendedAction}`
+    ];
+
+    const steps: ProviderVerificationQueueItem["onboardingPlan"]["steps"] = [
+      {
+        key: "profile-fixes",
+        title: "Profile and service-scope fixes",
+        owner: "provider",
+        status: profileStatus,
+        detail:
+          profileStatus === "complete"
+            ? "Profile detail, service scope, experience, and service-quality expectations are launch-ready."
+            : "Provider should update profile detail, service categories, experience signal, or service-quality expectations before ops approval.",
+        automationTrigger:
+          profileStatus === "complete"
+            ? undefined
+            : "Saving provider profile changes automatically sends a rejected business back into pending review."
+      },
+      {
+        key: "dispatch-settings",
+        title: "Dispatch and intervention settings",
+        owner: "provider",
+        status: dispatchStatus,
+        detail:
+          dispatchStatus === "complete"
+            ? "Service radius, booking lead time, staffing review, and route reminders align with launch operations."
+            : "Provider should tighten radius, lead time, staffing review, or route reminder settings before scaling launch demand.",
+        automationTrigger:
+          dispatchStatus === "complete"
+            ? undefined
+            : "Saving dispatch settings automatically resubmits a rejected business when launch settings materially improve."
+      },
+      {
+        key: "incident-recovery",
+        title: "Incident recovery documentation",
+        owner: incidentStatus === "complete" ? "system" : "ops",
+        status: incidentStatus,
+        detail:
+          incidentStatus === "complete"
+            ? "No dispute, refund, or active field-exception history is blocking launch onboarding."
+            : "Ops should document the recovery story for disputes, refunds, or active field exceptions before public visibility.",
+        automationTrigger:
+          incidentStatus === "complete"
+            ? undefined
+            : "Provider verification approval requires a detailed override note while incident history is unresolved."
+      },
+      {
+        key: "ops-review",
+        title: "Ops verification review",
+        owner: "ops",
+        status: opsReviewStatus,
+        detail:
+          opsReviewStatus === "complete"
+            ? "Ops has already approved public marketplace visibility."
+            : opsReviewStatus === "ready"
+              ? "Ops can review checklist watchouts and choose approve or reject with a specific rationale."
+              : "Ops review should wait until provider-owned launch-readiness blockers are addressed.",
+        automationTrigger: "Provider verification queue ranks pending and rejected businesses by latest submitted update."
+      },
+      {
+        key: "launch-pilot",
+        title: "Narrow launch pilot",
+        owner: "ops",
+        status: launchPilotStatus,
+        detail:
+          launchPilotStatus === "complete"
+            ? "Provider is verified and eligible for recommendation-first customer search."
+            : launchPilotStatus === "ready"
+              ? "Provider can be approved for a narrow launch pilot with normal support and payout guardrails."
+              : "Launch pilot remains blocked until verification guidance no longer recommends rejection or manual review.",
+        automationTrigger:
+          launchPilotStatus === "ready"
+            ? "Approving verification makes the provider visible in recommendation-first public search."
+            : undefined
+      },
+      {
+        key: "first-booking-monitoring",
+        title: "First-booking monitoring",
+        owner: "system",
+        status: monitoringStatus,
+        detail:
+          monitoringStatus === "ready"
+            ? "Monitor first bookings for disputes, refunds, active exceptions, crew gaps, and payout holds after go-live."
+            : "Monitoring starts after verification approval and first launch bookings.",
+        automationTrigger:
+          monitoringStatus === "ready"
+            ? "Booking, support, notification, payout, and verification summaries surface launch reliability issues automatically."
+            : undefined
+      }
+    ];
+
+    return {
+      stage,
+      recommendedAutomation: this.getProviderOnboardingRecommendedAutomation(stage, provider.verificationStatus),
+      launchReadinessSignals,
+      steps,
+      automationActions: this.buildProviderOnboardingAutomationActions(provider, guidance, stage, steps)
+    };
+  }
+
+  private buildProviderOnboardingAutomationActions(
+    provider: ProviderProfile,
+    guidance: ProviderVerificationQueueItem["guidance"],
+    stage: ProviderVerificationQueueItem["onboardingPlan"]["stage"],
+    steps: ProviderVerificationQueueItem["onboardingPlan"]["steps"]
+  ): ProviderVerificationQueueItem["onboardingPlan"]["automationActions"] {
+    const stepStatus = (key: ProviderVerificationQueueItem["onboardingPlan"]["steps"][number]["key"]) =>
+      steps.find((step) => step.key === key)?.status ?? "blocked";
+    const submittedAt = provider.verificationSubmittedAt ?? provider.createdAt;
+    const dueAfter = (hours: number) => {
+      const submittedMs = Date.parse(submittedAt);
+      const baseMs = Number.isFinite(submittedMs) ? submittedMs : Date.parse(provider.createdAt);
+      return new Date(baseMs + hours * 60 * 60 * 1000).toISOString();
+    };
+    const profileNeedsWork = stepStatus("profile-fixes") !== "complete";
+    const dispatchNeedsWork = stepStatus("dispatch-settings") !== "complete";
+    const incidentNeedsWork = stepStatus("incident-recovery") !== "complete";
+    const profileBlocking = stepStatus("profile-fixes") === "blocked";
+    const dispatchBlocking = stepStatus("dispatch-settings") === "blocked";
+    const opsReady = stepStatus("ops-review") === "ready";
+    const pilotReady = stepStatus("launch-pilot") === "ready";
+    const profileChecklist = this.getProviderVerificationChecklistItems(guidance, [
+      "profile-completeness",
+      "service-scope",
+      "experience-signal",
+      "service-quality-expectations"
+    ]);
+    const dispatchChecklist = this.getProviderVerificationChecklistItems(guidance, [
+      "launch-area-fit",
+      "operational-readiness",
+      "intervention-readiness"
+    ]);
+
+    return [
+      {
+        key: "provider-complete-profile",
+        sourceStepKey: "profile-fixes",
+        owner: "provider",
+        status: profileNeedsWork ? "ready" : "completed",
+        priority: profileChecklist.some((item) => item.status === "missing") ? "high" : "normal",
+        title: "Complete launch profile fixes",
+        detail: profileNeedsWork
+          ? "Update customer-facing profile detail, service categories, experience, or service-quality commitments before ops approval."
+          : "Profile and service-scope fixes are complete.",
+        actionHref: "/provider/management",
+        dueAtIso: profileNeedsWork ? dueAfter(48) : undefined,
+        blockedByStepKeys: [],
+        notificationTitle: profileNeedsWork ? "Provider profile fixes are due" : undefined,
+        notificationBody: profileNeedsWork
+          ? "Update the business profile so ops can continue launch verification."
+          : undefined
+      },
+      {
+        key: "provider-tighten-dispatch",
+        sourceStepKey: "dispatch-settings",
+        owner: "provider",
+        status: dispatchNeedsWork ? "ready" : "completed",
+        priority: dispatchChecklist.some((item) => item.status === "missing") ? "high" : "normal",
+        title: "Tighten dispatch settings",
+        detail: dispatchNeedsWork
+          ? "Tighten launch radius, booking lead time, crew review, or route-reminder settings before customer demand scales."
+          : "Dispatch and intervention settings are launch-ready.",
+        actionHref: "/provider/management",
+        dueAtIso: dispatchNeedsWork ? dueAfter(48) : undefined,
+        blockedByStepKeys: [],
+        notificationTitle: dispatchNeedsWork ? "Dispatch settings need launch updates" : undefined,
+        notificationBody: dispatchNeedsWork
+          ? "Adjust launch radius, lead time, staffing review, or route reminders so ops can continue verification."
+          : undefined
+      },
+      {
+        key: "ops-document-incident-recovery",
+        sourceStepKey: "incident-recovery",
+        owner: "ops",
+        status: incidentNeedsWork ? "ready" : "completed",
+        priority: incidentNeedsWork ? "urgent" : "low",
+        title: "Document incident recovery",
+        detail: incidentNeedsWork
+          ? "Review disputes, refunds, or active field exceptions and document the recovery story before public visibility."
+          : "Incident history is not blocking onboarding.",
+        actionHref: "/ops/providers",
+        dueAtIso: incidentNeedsWork ? dueAfter(24) : undefined,
+        blockedByStepKeys: [],
+        notificationTitle: incidentNeedsWork ? "Provider incident recovery needs review" : undefined,
+        notificationBody: incidentNeedsWork
+          ? `${provider.companyName} needs incident recovery documentation before launch approval.`
+          : undefined
+      },
+      {
+        key: "ops-review-launch-fit",
+        sourceStepKey: "ops-review",
+        owner: "ops",
+        status: provider.verificationStatus === "verified" ? "completed" : opsReady ? "ready" : "blocked",
+        priority: guidance.recommendedAction === "approve" ? "normal" : "high",
+        title: "Review launch fit",
+        detail: opsReady
+          ? "Review checklist watchouts and approve or reject with an auditable rationale."
+          : provider.verificationStatus === "verified"
+            ? "Ops verification review is complete."
+            : "Ops review is blocked until provider-owned launch-readiness fixes are addressed.",
+        actionHref: "/ops/providers",
+        dueAtIso: opsReady ? dueAfter(stage === "ready-for-approval" ? 24 : 48) : undefined,
+        blockedByStepKeys: [
+          ...(profileBlocking ? (["profile-fixes"] as const) : []),
+          ...(dispatchBlocking ? (["dispatch-settings"] as const) : [])
+        ],
+        notificationTitle: opsReady ? "Provider verification is ready for review" : undefined,
+        notificationBody: opsReady
+          ? `${provider.companyName} is ready for launch-fit review in the provider verification queue.`
+          : undefined
+      },
+      {
+        key: "ops-approve-narrow-pilot",
+        sourceStepKey: "launch-pilot",
+        owner: "ops",
+        status: provider.verificationStatus === "verified" ? "completed" : pilotReady ? "ready" : "blocked",
+        priority: pilotReady ? "normal" : "low",
+        title: "Approve narrow launch pilot",
+        detail: pilotReady
+          ? "Approve verification to make the provider eligible for recommendation-first customer search with launch guardrails."
+          : provider.verificationStatus === "verified"
+            ? "Provider is already eligible for recommendation-first public search."
+            : "Narrow launch pilot waits until verification guidance no longer recommends rejection or manual review.",
+        actionHref: "/ops/providers",
+        dueAtIso: pilotReady ? dueAfter(24) : undefined,
+        blockedByStepKeys: pilotReady ? [] : ["ops-review"],
+        notificationTitle: pilotReady ? "Provider can enter a narrow launch pilot" : undefined,
+        notificationBody: pilotReady
+          ? `${provider.companyName} can be approved for a narrow launch pilot.`
+          : undefined
+      },
+      {
+        key: "system-monitor-first-bookings",
+        sourceStepKey: "first-booking-monitoring",
+        owner: "system",
+        status: provider.verificationStatus === "verified" ? "queued" : "blocked",
+        priority: provider.verificationStatus === "verified" ? "normal" : "low",
+        title: "Monitor first launch bookings",
+        detail:
+          provider.verificationStatus === "verified"
+            ? "Monitor early bookings for disputes, refunds, field exceptions, crew gaps, and payout holds."
+            : "Monitoring starts after verification approval and launch bookings.",
+        actionHref: "/ops/observability",
+        blockedByStepKeys: provider.verificationStatus === "verified" ? [] : ["launch-pilot"]
+      }
+    ];
+  }
+
+  private getProviderVerificationChecklistItems(
+    guidance: ProviderVerificationQueueItem["guidance"],
+    keys: Array<ProviderVerificationQueueItem["guidance"]["checklist"][number]["key"]>
+  ) {
+    const keySet = new Set(keys);
+    return guidance.checklist.filter((item) => keySet.has(item.key));
+  }
+
+  private toProviderOnboardingStepStatus(
+    items: ProviderVerificationQueueItem["guidance"]["checklist"]
+  ): ProviderVerificationQueueItem["onboardingPlan"]["steps"][number]["status"] {
+    if (items.some((item) => item.status === "missing")) {
+      return "blocked";
+    }
+
+    if (items.some((item) => item.status === "review")) {
+      return "pending";
+    }
+
+    return "complete";
+  }
+
+  private getProviderOnboardingRecommendedAutomation(
+    stage: ProviderVerificationQueueItem["onboardingPlan"]["stage"],
+    verificationStatus: ProviderProfile["verificationStatus"]
+  ) {
+    switch (stage) {
+      case "verified-monitoring":
+        return "Keep automated monitoring active for early disputes, refunds, field exceptions, crew gaps, and payout holds while this provider handles launch demand.";
+      case "ready-for-approval":
+        return "Ops can approve verification or reject with notes; approval automatically makes this provider eligible for recommendation-first public search.";
+      case "ops-review":
+        return "Ops should review checklist watchouts, then document the launch-fit rationale before approving public visibility.";
+      case "fixes-needed":
+        return verificationStatus === "rejected"
+          ? "Wait for provider profile or dispatch-setting changes; meaningful saves automatically move the business back into pending review."
+          : "Send the provider specific profile, launch-area, incident, or dispatch-setting fixes before public search visibility.";
+    }
+  }
+
+  private buildProviderVerificationStatusSummary(
+    provider: ProviderProfile,
+    guidance: ProviderVerificationQueueItem["guidance"],
+    onboardingPlan = this.buildProviderOnboardingAutomationPlan(provider, guidance)
   ): ProviderVerificationStatusSummary {
     const nextSteps = this.buildProviderVerificationNextSteps(
       guidance.checklist,
@@ -1991,7 +2840,8 @@ export class MarketplacePlatformService {
             ? "Customers can already discover this business in public YardMatch search results. Keep the flagged launch details current so the listing stays in good standing."
             : "Customers can now discover this business in public YardMatch search results.",
         nextSteps,
-        checklist: guidance.checklist
+        checklist: guidance.checklist,
+        onboardingPlan
       };
     }
 
@@ -2002,7 +2852,8 @@ export class MarketplacePlatformService {
           provider.verificationNotes?.trim() ??
           "Ops reviewed the business and needs the items below updated before it can be shown to customers.",
         nextSteps,
-        checklist: guidance.checklist
+        checklist: guidance.checklist,
+        onboardingPlan
       };
     }
 
@@ -2011,7 +2862,8 @@ export class MarketplacePlatformService {
         headline: "Your business is back in review after the latest updates.",
         summary: `Ops is re-reviewing the business. Last review note: ${provider.verificationNotes.trim()}`,
         nextSteps,
-        checklist: guidance.checklist
+        checklist: guidance.checklist,
+        onboardingPlan
       };
     }
 
@@ -2022,7 +2874,8 @@ export class MarketplacePlatformService {
           ? "Ops is checking route fit, service scope, and reliability details before this business goes live."
           : "Ops will review the business profile, service area, and marketplace details before customers can book.",
       nextSteps,
-      checklist: guidance.checklist
+      checklist: guidance.checklist,
+      onboardingPlan
     };
   }
 
@@ -2061,6 +2914,8 @@ export class MarketplacePlatformService {
         return "Lower the minimum booking lead time or clear enough workload headroom to keep launch booking promises realistic.";
       case "service-quality-expectations":
         return "Be ready to handle evidence requests, service recovery, and customer communication at the launch service standard.";
+      case "incident-history":
+        return "Work with ops to document recent disputes, refunds, or active field exceptions and confirm what changed before public launch visibility.";
       case "intervention-readiness":
         return "Set staffing mode, crew review timing, and departure reminders so late updates and field exceptions can be handled cleanly.";
     }
@@ -2091,6 +2946,20 @@ export class MarketplacePlatformService {
     ).length;
   }
 
+  private buildProviderVerificationOperationalHistory(
+    providerId: string,
+    bookings: Booking[]
+  ): ProviderVerificationOperationalHistory {
+    const providerBookings = bookings.filter((booking) => booking.providerId === providerId);
+
+    return {
+      totalBookingCount: providerBookings.length,
+      disputedBookingCount: providerBookings.filter((booking) => booking.status === "disputed").length,
+      refundedBookingCount: providerBookings.filter((booking) => booking.status === "refunded").length,
+      activeExceptionCount: providerBookings.filter((booking) => Boolean(booking.activeExceptionType)).length
+    };
+  }
+
   private buildRejectedProviderVerificationResubmissionUpdates(
     provider: ProviderProfile,
     updates: Partial<ProviderProfile>
@@ -2103,6 +2972,379 @@ export class MarketplacePlatformService {
       verificationStatus: "pending-review",
       verificationSubmittedAt: new Date().toISOString()
     };
+  }
+
+  private async notifyOpsProviderVerificationResubmitted(
+    provider: ProviderProfile,
+    sourceStepKey: "profile-fixes" | "dispatch-settings"
+  ): Promise<void> {
+    const opsUsers = await this.repository.listOpsUsers();
+    const fixedArea =
+      sourceStepKey === "profile-fixes" ? "profile and service-scope updates" : "dispatch-setting updates";
+
+    await Promise.all(
+      opsUsers.map((opsUser) =>
+        this.createNotification({
+          recipientId: opsUser.id,
+          recipientRole: "ops",
+          category: "account",
+          title: "Provider verification resubmitted",
+          body: `${provider.companyName} made ${fixedArea} and is back in the provider verification queue.`,
+          actionHref: "/ops/providers"
+        })
+      )
+    );
+  }
+
+  private async processProviderOnboardingAutomationAction(input: {
+    provider: ProviderProfile;
+    planStage: ProviderOnboardingAutomationSweepItem["stage"];
+    action: ProviderOnboardingAutomationAction;
+    recipientId: string;
+    recipientRole: AppNotification["recipientRole"];
+    asOfMs: number;
+    dryRun: boolean;
+    includeFuture: boolean;
+  }): Promise<ProviderOnboardingAutomationSweepItem> {
+    const baseItem = {
+      providerId: input.provider.id,
+      companyName: input.provider.companyName,
+      stage: input.planStage,
+      actionKey: input.action.key,
+      sourceStepKey: input.action.sourceStepKey,
+      owner: input.action.owner,
+      actionStatus: input.action.status,
+      priority: input.action.priority,
+      dueAtIso: input.action.dueAtIso,
+      actionHref: input.action.actionHref,
+      notificationTitle: input.action.notificationTitle,
+      notificationBody: input.action.notificationBody,
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole
+    } satisfies Omit<ProviderOnboardingAutomationSweepItem, "notificationStatus" | "reason" | "notificationId">;
+
+    if (input.action.status === "completed") {
+      return {
+        ...baseItem,
+        notificationStatus: "completed",
+        reason: "Action is already completed."
+      };
+    }
+    if (input.action.status === "blocked") {
+      return {
+        ...baseItem,
+        notificationStatus: "blocked",
+        reason: "Action is blocked by unfinished onboarding steps."
+      };
+    }
+
+    const dueMs = input.action.dueAtIso ? Date.parse(input.action.dueAtIso) : input.asOfMs;
+    const isDue = input.includeFuture || !Number.isFinite(dueMs) || dueMs <= input.asOfMs;
+    if (!isDue) {
+      return {
+        ...baseItem,
+        notificationStatus: "not-due",
+        reason: "Action has a future due date and includeFuture was not requested."
+      };
+    }
+
+    if (!input.action.notificationTitle || !input.action.notificationBody) {
+      return {
+        ...baseItem,
+        notificationStatus: "no-notification",
+        reason: "Action is due, but it has no notification copy to send."
+      };
+    }
+
+    const marker = this.buildProviderOnboardingAutomationNotificationMarker(
+      input.provider.id,
+      input.action.key
+    );
+    const existingNotification = (await this.repository.listNotificationsByRecipient(input.recipientId)).find(
+      (notification) =>
+        notification.category === "account" &&
+        notification.actionHref === input.action.actionHref &&
+        notification.body.includes(marker)
+    );
+    if (existingNotification) {
+      return {
+        ...baseItem,
+        notificationStatus: "already-sent",
+        notificationId: existingNotification.id,
+        reason: "A matching onboarding automation notification already exists."
+      };
+    }
+
+    if (input.dryRun) {
+      return {
+        ...baseItem,
+        notificationStatus: "dry-run",
+        reason: "Dry run requested; no notification was created."
+      };
+    }
+
+    const notification = await this.createNotification({
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole,
+      category: "account",
+      title: input.action.notificationTitle,
+      body: `${input.action.notificationBody}\n\n${marker}`,
+      actionHref: input.action.actionHref
+    });
+
+    return {
+      ...baseItem,
+      notificationStatus: "sent",
+      notificationId: notification.id,
+      reason: "Onboarding automation notification created."
+    };
+  }
+
+  private buildProviderOnboardingAutomationNotificationMarker(
+    providerId: string,
+    actionKey: ProviderOnboardingAutomationAction["key"]
+  ) {
+    return `Onboarding automation: ${providerId}/${actionKey}`;
+  }
+
+  private async processLaunchOperationsTaskNotification(input: {
+    task: LaunchOperationsTask;
+    recipientId?: string;
+    recipientRole?: AppNotification["recipientRole"];
+    asOfMs: number;
+    dryRun: boolean;
+    includeFuture: boolean;
+  }): Promise<LaunchOperationsTaskNotificationSweepItem> {
+    const notificationTitle = `Launch ops task: ${input.task.title}`;
+    const notificationBody =
+      `${input.task.detail} ${input.task.recommendedAction} ` +
+      `Due ${this.formatShortDate(input.task.dueAtIso)} for ${input.task.city}, ${input.task.state} ${input.task.postalCode}.`;
+    const baseItem = {
+      taskId: input.task.id,
+      recommendationKey: input.task.recommendationKey,
+      pocketKey: input.task.pocketKey,
+      city: input.task.city,
+      state: input.task.state,
+      postalCode: input.task.postalCode,
+      priority: input.task.priority,
+      owner: input.task.owner,
+      taskStatus: input.task.status,
+      dueAtIso: input.task.dueAtIso,
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole,
+      notificationTitle,
+      notificationBody
+    } satisfies Omit<
+      LaunchOperationsTaskNotificationSweepItem,
+      "notificationStatus" | "reason" | "notificationId"
+    >;
+
+    if (input.task.status === "completed") {
+      return {
+        ...baseItem,
+        notificationStatus: "completed",
+        reason: "Task is already completed."
+      };
+    }
+    if (input.task.status === "cancelled") {
+      return {
+        ...baseItem,
+        notificationStatus: "cancelled",
+        reason: "Task is cancelled."
+      };
+    }
+    if (!input.recipientId || !input.recipientRole) {
+      return {
+        ...baseItem,
+        notificationStatus: "no-recipient",
+        reason: "No ops recipient is available for this launch operations task."
+      };
+    }
+
+    const dueMs = Date.parse(input.task.dueAtIso);
+    const isDue = input.includeFuture || !Number.isFinite(dueMs) || dueMs <= input.asOfMs;
+    if (!isDue) {
+      return {
+        ...baseItem,
+        notificationStatus: "not-due",
+        reason: "Task has a future due date and includeFuture was not requested."
+      };
+    }
+
+    const marker = this.buildLaunchOperationsTaskNotificationMarker(input.task.id);
+    const existingNotification = (await this.repository.listNotificationsByRecipient(input.recipientId)).find(
+      (notification) =>
+        notification.category === "support" &&
+        notification.actionHref === "/ops" &&
+        notification.body.includes(marker)
+    );
+    if (existingNotification) {
+      return {
+        ...baseItem,
+        notificationStatus: "already-sent",
+        notificationId: existingNotification.id,
+        reason: "A matching launch operations task notification already exists."
+      };
+    }
+
+    if (input.dryRun) {
+      return {
+        ...baseItem,
+        notificationStatus: "dry-run",
+        reason: "Dry run requested; no notification was created."
+      };
+    }
+
+    const notification = await this.createNotification({
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole,
+      category: "support",
+      title: notificationTitle,
+      body: `${notificationBody}\n\n${marker}`,
+      actionHref: "/ops"
+    });
+
+    return {
+      ...baseItem,
+      notificationStatus: "sent",
+      notificationId: notification.id,
+      reason: "Launch operations task notification created."
+    };
+  }
+
+  private buildLaunchOperationsTaskNotificationMarker(taskId: string) {
+    return `Launch operations task: ${taskId}`;
+  }
+
+  private getLaunchOperationsTaskEscalationThresholdHours(priority: LaunchOperationsTask["priority"]) {
+    if (priority === "urgent") {
+      return 2;
+    }
+    if (priority === "high") {
+      return 12;
+    }
+    return 24;
+  }
+
+  private async processLaunchOperationsTaskEscalation(input: {
+    task: LaunchOperationsTask;
+    recipientId?: string;
+    recipientRole?: AppNotification["recipientRole"];
+    asOfMs: number;
+    dryRun: boolean;
+  }): Promise<LaunchOperationsTaskEscalationSweepItem> {
+    const thresholdHours = this.getLaunchOperationsTaskEscalationThresholdHours(input.task.priority);
+    const dueMs = Date.parse(input.task.dueAtIso);
+    const overdueHours = Number.isFinite(dueMs)
+      ? Number(Math.max(0, (input.asOfMs - dueMs) / (60 * 60 * 1000)).toFixed(2))
+      : 0;
+    const notificationTitle = `Launch ops escalation: ${input.task.title}`;
+    const notificationBody =
+      `${input.task.detail} ${input.task.recommendedAction} ` +
+      `This ${input.task.priority} task is ${overdueHours} hours past due for ` +
+      `${input.task.city}, ${input.task.state} ${input.task.postalCode}; ` +
+      `the escalation threshold is ${thresholdHours} hours.`;
+    const baseItem = {
+      taskId: input.task.id,
+      recommendationKey: input.task.recommendationKey,
+      pocketKey: input.task.pocketKey,
+      city: input.task.city,
+      state: input.task.state,
+      postalCode: input.task.postalCode,
+      priority: input.task.priority,
+      owner: input.task.owner,
+      taskStatus: input.task.status,
+      dueAtIso: input.task.dueAtIso,
+      overdueHours,
+      escalationThresholdHours: thresholdHours,
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole,
+      notificationTitle,
+      notificationBody
+    } satisfies Omit<
+      LaunchOperationsTaskEscalationSweepItem,
+      "escalationStatus" | "reason" | "notificationId"
+    >;
+
+    if (input.task.status === "completed") {
+      return {
+        ...baseItem,
+        escalationStatus: "completed",
+        reason: "Task is already completed."
+      };
+    }
+    if (input.task.status === "cancelled") {
+      return {
+        ...baseItem,
+        escalationStatus: "cancelled",
+        reason: "Task is cancelled."
+      };
+    }
+    if (!Number.isFinite(dueMs)) {
+      return {
+        ...baseItem,
+        escalationStatus: "not-overdue",
+        reason: "Task due date is not a valid ISO timestamp."
+      };
+    }
+    if (input.asOfMs < dueMs + thresholdHours * 60 * 60 * 1000) {
+      return {
+        ...baseItem,
+        escalationStatus: "not-overdue",
+        reason: "Task has not passed its escalation threshold."
+      };
+    }
+    if (!input.recipientId || !input.recipientRole) {
+      return {
+        ...baseItem,
+        escalationStatus: "no-recipient",
+        reason: "No ops recipient is available for this launch operations task escalation."
+      };
+    }
+
+    const marker = this.buildLaunchOperationsTaskEscalationMarker(input.task.id);
+    const existingNotification = (await this.repository.listNotificationsByRecipient(input.recipientId)).find(
+      (notification) =>
+        notification.category === "support" &&
+        notification.actionHref === "/ops" &&
+        notification.body.includes(marker)
+    );
+    if (existingNotification) {
+      return {
+        ...baseItem,
+        escalationStatus: "already-sent",
+        notificationId: existingNotification.id,
+        reason: "A matching launch operations task escalation notification already exists."
+      };
+    }
+
+    if (input.dryRun) {
+      return {
+        ...baseItem,
+        escalationStatus: "dry-run",
+        reason: "Dry run requested; no escalation notification was created."
+      };
+    }
+
+    const notification = await this.createNotification({
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole,
+      category: "support",
+      title: notificationTitle,
+      body: `${notificationBody}\n\n${marker}`,
+      actionHref: "/ops"
+    });
+
+    return {
+      ...baseItem,
+      escalationStatus: "sent",
+      notificationId: notification.id,
+      reason: "Launch operations task escalation notification created."
+    };
+  }
+
+  private buildLaunchOperationsTaskEscalationMarker(taskId: string) {
+    return `Launch operations task escalation: ${taskId}`;
   }
 
   private shouldResubmitRejectedProviderVerification(
@@ -2327,23 +3569,27 @@ export class MarketplacePlatformService {
       this.repository.listBookings()
     ]);
 
+    const crewMatches = matches
+      .filter((match) => match.crewMemberId === crewMemberId)
+      .flatMap((match) => {
+        const provider = providers.find((item) => item.id === match.providerId);
+        const booking = bookings.find((item) => item.id === match.bookingId);
+        if (!provider || !booking) {
+          return [];
+        }
+
+        const acceptedMatchCount = matches.filter(
+          (candidate) => candidate.bookingId === booking.id && candidate.status === "accepted"
+        ).length;
+        return [this.buildCrewMatchSummary(match, provider, booking, acceptedMatchCount)];
+      })
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
+
     return {
       crewMember,
-      matches: matches
-        .filter((match) => match.crewMemberId === crewMemberId)
-        .flatMap((match) => {
-          const provider = providers.find((item) => item.id === match.providerId);
-          const booking = bookings.find((item) => item.id === match.bookingId);
-          if (!provider || !booking) {
-            return [];
-          }
-
-          const acceptedMatchCount = matches.filter(
-            (candidate) => candidate.bookingId === booking.id && candidate.status === "accepted"
-          ).length;
-          return [this.buildCrewMatchSummary(match, provider, booking, acceptedMatchCount)];
-        })
-        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso))
+      availabilityConstraints: this.buildCrewAvailabilityConstraintsSummary(crewMember, crewMatches),
+      assignmentForecast: this.buildCrewAssignmentForecast(crewMember, crewMatches),
+      matches: crewMatches
     };
   }
 
@@ -2516,6 +3762,189 @@ export class MarketplacePlatformService {
     };
   }
 
+  private buildCrewAvailabilityConstraintsSummary(
+    crewMember: CrewMemberProfile,
+    matches: CrewMatchesResponse["matches"]
+  ): CrewMatchesResponse["availabilityConstraints"] {
+    const allWeekdays: CrewAvailabilityDay[] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const availableWeekdays = crewMember.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"];
+    const unavailableWeekdays = allWeekdays.filter((day) => !availableWeekdays.includes(day));
+    const nowMs = Date.now();
+    const acceptedUpcoming = matches.filter(
+      (match) =>
+        match.status === "accepted" &&
+        Date.parse(match.scheduledEndIso) >= nowMs &&
+        match.bookingStatus !== "completed" &&
+        match.bookingStatus !== "cancelled" &&
+        match.bookingStatus !== "refunded"
+    );
+    const activeAssignmentCount = acceptedUpcoming.filter((match) =>
+      ["confirmed", "in-progress", "disputed"].includes(match.bookingStatus)
+    ).length;
+    const routeLeaderAssignmentCount = acceptedUpcoming.filter((match) => match.isAssignedRouteLeader).length;
+    const constraints = [
+      `${availableWeekdays.length} available weekday${availableWeekdays.length === 1 ? "" : "s"} are configured.`,
+      `Travel radius is capped at ${crewMember.willingToTravelMiles} mile${crewMember.willingToTravelMiles === 1 ? "" : "s"}.`,
+      `Preferred schedule is ${crewMember.preferredSchedule}.`,
+      crewMember.hasOwnEquipment ? "Crew member has their own equipment." : "Crew member relies on provider-supplied equipment.",
+      crewMember.winterWorkEnabled ?? true
+        ? "Winter work categories are enabled."
+        : "Winter work categories are disabled."
+    ];
+    const warnings: string[] = [];
+    const guidance: string[] = [];
+
+    if (crewMember.status === "off-duty") {
+      warnings.push("Crew member is currently off duty and should not receive new staffing matches.");
+    }
+    if (availableWeekdays.length <= 2) {
+      warnings.push("Limited available weekdays may reduce match volume and route flexibility.");
+    }
+    if (crewMember.willingToTravelMiles < 10) {
+      warnings.push("Short travel radius may exclude otherwise good launch-area assignments.");
+    }
+    if (!crewMember.hasOwnEquipment) {
+      guidance.push("Prioritize providers that can supply equipment or jobs where provider-owned equipment is expected.");
+    }
+    if (!(crewMember.winterWorkEnabled ?? true)) {
+      guidance.push("Do not expect snow or ice-control matches unless winter work is re-enabled.");
+    }
+    if (activeAssignmentCount > 0) {
+      guidance.push(
+        `${activeAssignmentCount} active assignment${activeAssignmentCount === 1 ? "" : "s"} should be considered before adding more same-day work.`
+      );
+    }
+    if (routeLeaderAssignmentCount > 0) {
+      guidance.push(
+        `${routeLeaderAssignmentCount} accepted assignment${routeLeaderAssignmentCount === 1 ? "" : "s"} currently designate this crew member as route leader.`
+      );
+    }
+    if (guidance.length === 0) {
+      guidance.push("Current availability settings are broad enough for launch staffing recommendations.");
+    }
+
+    const availabilityStatus =
+      crewMember.status === "off-duty"
+        ? "off-duty"
+        : activeAssignmentCount >= 3
+          ? "busy"
+          : availableWeekdays.length <= 2 || crewMember.willingToTravelMiles < 10
+            ? "limited"
+            : "open";
+
+    return {
+      availableWeekdays,
+      unavailableWeekdays,
+      serviceCategoryCount: crewMember.categories.length,
+      willingToTravelMiles: crewMember.willingToTravelMiles,
+      preferredSchedule: crewMember.preferredSchedule,
+      hasOwnEquipment: crewMember.hasOwnEquipment,
+      winterWorkEnabled: crewMember.winterWorkEnabled ?? true,
+      acceptedUpcomingCount: acceptedUpcoming.length,
+      activeAssignmentCount,
+      routeLeaderAssignmentCount,
+      availabilityStatus,
+      constraints,
+      guidance,
+      warnings
+    };
+  }
+
+  private buildCrewAssignmentForecast(
+    crewMember: CrewMemberProfile,
+    matches: CrewMatchesResponse["matches"]
+  ): CrewMatchesResponse["assignmentForecast"] {
+    const nowMs = Date.now();
+    const nextSevenDaysMs = nowMs + 7 * 24 * 60 * 60 * 1000;
+    const activeBookingStatuses: BookingStatus[] = ["confirmed", "in-progress", "disputed"];
+    const upcomingMatches = matches.filter(
+      (match) =>
+        Date.parse(match.scheduledEndIso) >= nowMs &&
+        match.bookingStatus !== "completed" &&
+        match.bookingStatus !== "cancelled" &&
+        match.bookingStatus !== "refunded"
+    );
+    const acceptedUpcoming = upcomingMatches.filter((match) => match.status === "accepted");
+    const pendingReview = upcomingMatches.filter((match) => match.status === "pending-provider-review");
+    const activeAssignments = acceptedUpcoming.filter((match) => activeBookingStatuses.includes(match.bookingStatus));
+    const nextAssignment = [...acceptedUpcoming].sort(
+      (left, right) => Date.parse(left.scheduledStartIso) - Date.parse(right.scheduledStartIso)
+    )[0];
+    const acceptedNextSevenDays = acceptedUpcoming.filter((match) => Date.parse(match.scheduledStartIso) <= nextSevenDaysMs);
+    const routeLeaderAssignmentCount = acceptedUpcoming.filter((match) => match.isAssignedRouteLeader).length;
+    const warnings: string[] = [];
+    const guidance: string[] = [];
+
+    const riskyAcceptedMatches = acceptedUpcoming.filter(
+      (match) =>
+        match.requiresRouteLeaderAssignment ||
+        Boolean(match.activeExceptionType) ||
+        Boolean(match.lateNoticeSentAt) ||
+        Boolean(match.disputedAt)
+    );
+    if (riskyAcceptedMatches.length > 0) {
+      warnings.push(
+        `${riskyAcceptedMatches.length} accepted assignment${riskyAcceptedMatches.length === 1 ? "" : "s"} need attention for route leader, late update, exception, or dispute context.`
+      );
+    }
+    if ((crewMember.cancellationCount ?? 0) > 0) {
+      warnings.push(`${crewMember.cancellationCount} prior call-off${crewMember.cancellationCount === 1 ? "" : "s"} remain visible in staffing priority.`);
+    }
+    if (pendingReview.length > 0) {
+      guidance.push(
+        `${pendingReview.length} pending match${pendingReview.length === 1 ? "" : "es"} may become assignments if providers approve them.`
+      );
+    }
+    if (acceptedUpcoming.length > 0) {
+      guidance.push(
+        `${acceptedUpcoming.length} accepted upcoming assignment${acceptedUpcoming.length === 1 ? "" : "s"} are currently on the crew schedule.`
+      );
+    } else {
+      guidance.push("No accepted upcoming assignments are currently scheduled.");
+    }
+    if (routeLeaderAssignmentCount > 0) {
+      guidance.push(
+        `${routeLeaderAssignmentCount} upcoming assignment${routeLeaderAssignmentCount === 1 ? "" : "s"} designate this crew member as route leader.`
+      );
+    }
+
+    const workloadBand =
+      acceptedNextSevenDays.length >= 5
+        ? "full"
+        : acceptedNextSevenDays.length >= 3
+          ? "steady"
+          : acceptedNextSevenDays.length >= 1
+            ? "light"
+            : "open";
+    const forecastStatus =
+      riskyAcceptedMatches.length > 0
+        ? "attention"
+        : activeAssignments.length > 0
+          ? "active"
+          : acceptedUpcoming.length > 0
+            ? "scheduled"
+            : pendingReview.length > 0
+              ? "pending-review"
+              : "open";
+
+    return {
+      upcomingAssignmentCount: upcomingMatches.length,
+      acceptedUpcomingCount: acceptedUpcoming.length,
+      pendingReviewCount: pendingReview.length,
+      activeAssignmentCount: activeAssignments.length,
+      routeLeaderAssignmentCount,
+      nextAssignmentIso: nextAssignment?.scheduledStartIso,
+      nextProviderCompanyName: nextAssignment?.providerCompanyName,
+      nextServiceCategory: nextAssignment?.category,
+      nextAssignmentStatus: nextAssignment?.status,
+      nextBookingStatus: nextAssignment?.bookingStatus,
+      forecastStatus,
+      workloadBand,
+      guidance,
+      warnings
+    };
+  }
+
   private resolveDelegatedCrewRouteLeaderId(
     booking: Booking,
     acceptedMatches: CrewMatchCandidate[]
@@ -2559,6 +3988,88 @@ export class MarketplacePlatformService {
     });
 
     return partialMatches.length === 1 ? partialMatches[0] : undefined;
+  }
+
+  private async resolveProviderAssistantCrewMessageTargets(
+    booking: Booking,
+    action: ParsedProviderAssistantAction,
+    matches: CrewMatchCandidate[]
+  ): Promise<Array<CrewMatchCandidate & { crewMemberName: string }>> {
+    const acceptedMatches = matches.filter((match) => match.status === "accepted");
+
+    if (action.crewMessageTarget === "route-leader") {
+      const routeLeaderCrewMemberId = this.resolveDelegatedCrewRouteLeaderId(booking, acceptedMatches);
+      if (!routeLeaderCrewMemberId) {
+        return [];
+      }
+
+      const routeLeaderMatch = acceptedMatches.find((match) => match.crewMemberId === routeLeaderCrewMemberId);
+      const crewMember = routeLeaderMatch
+        ? await this.repository.findCrewMemberById(routeLeaderMatch.crewMemberId)
+        : undefined;
+      return routeLeaderMatch
+        ? [
+            {
+              ...routeLeaderMatch,
+              crewMemberName: crewMember?.fullName ?? "Crew member"
+            }
+          ]
+        : [];
+    }
+
+    if (action.crewMessageTarget === "accepted-crew") {
+      return Promise.all(
+        acceptedMatches.map(async (match) => ({
+          ...match,
+          crewMemberName: (await this.repository.findCrewMemberById(match.crewMemberId))?.fullName ?? "Crew member"
+        }))
+      );
+    }
+
+    const namedTarget = await this.resolveProviderAssistantCrewMatch(action.crewMessageCrewNameQuery, matches);
+    return namedTarget ? [namedTarget] : [];
+  }
+
+  private getProviderAssistantCrewMessageTargetFailure(action: ParsedProviderAssistantAction): {
+    previewLabel: string;
+    previewMessage: string;
+  } {
+    if (action.crewMessageTarget === "route-leader") {
+      return {
+        previewLabel: "Route leader not assigned",
+        previewMessage:
+          "Assign or accept a route leader on this job before sending a route-leader message from the provider assistant."
+      };
+    }
+
+    if (action.crewMessageTarget === "accepted-crew") {
+      return {
+        previewLabel: "No accepted crew to message",
+        previewMessage:
+          "Accept at least one crew member on this job before sending a whole-crew message from the provider assistant."
+      };
+    }
+
+    return {
+      previewLabel: "Crew message target not found",
+      previewMessage:
+        "The assistant could not match that crew name to a pending or accepted crew member on this job."
+    };
+  }
+
+  private formatProviderAssistantCrewMessageTarget(
+    action: ParsedProviderAssistantAction,
+    matches: Array<CrewMatchCandidate & { crewMemberName: string }>
+  ): string {
+    if (action.crewMessageTarget === "route-leader") {
+      return `route leader ${matches[0]?.crewMemberName ?? "crew member"}`;
+    }
+
+    if (action.crewMessageTarget === "accepted-crew") {
+      return `accepted crew (${matches.length})`;
+    }
+
+    return matches[0]?.crewMemberName ?? "crew member";
   }
 
   public async getProviderCrewConversationThread(
@@ -3907,13 +5418,18 @@ export class MarketplacePlatformService {
       calendarConnection: nextCalendarConnection
     };
 
+    const resubmissionUpdates = this.buildRejectedProviderVerificationResubmissionUpdates(provider, providerUpdates);
     const updatedProvider = await this.repository.updateProvider(provider.id, {
       ...providerUpdates,
-      ...this.buildRejectedProviderVerificationResubmissionUpdates(provider, providerUpdates)
+      ...resubmissionUpdates
     });
 
     if (!updatedProvider) {
       throw new Error("Provider settings could not be updated");
+    }
+
+    if (resubmissionUpdates.verificationStatus === "pending-review") {
+      await this.notifyOpsProviderVerificationResubmitted(updatedProvider, "dispatch-settings");
     }
 
     this.analytics.record({
@@ -4318,7 +5834,10 @@ export class MarketplacePlatformService {
       }
     });
 
-    return quote;
+    return {
+      ...quote,
+      launchPricingPolicy: this.buildLaunchPricingPolicy(payload.category)
+    };
   }
 
   public async createBooking(
@@ -5185,6 +6704,35 @@ export class MarketplacePlatformService {
       };
     }
 
+    if (this.isProviderAssistantStaffingPressureDominant(targetDay, focusWindow)) {
+      const staffing = await this.getProviderStaffingOverview(providerId);
+      const dayStartIso = targetDay.dateIso;
+      const dayEndIso = new Date(new Date(targetDay.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString();
+      const staffingPlan = this.buildProviderAssistantStaffingPlan(
+        this.getProviderAssistantStaffingJobsNeedingCrew(staffing, dayStartIso, dayEndIso, focusWindow.windowKey)
+      );
+      const staffingPlanPreview = this.buildProviderAssistantStaffingPlanPreview(staffingPlan);
+
+      return {
+        command: originalCommand,
+        understood: true,
+        actionType: "recommend-dispatch-adjustment",
+        actionTypes: ["recommend-dispatch-adjustment"],
+        requiresBookingSelection: false,
+        requiresConfirmation: false,
+        executed: false,
+        notifyCustomer: false,
+        dispatchDaySummary: targetDay,
+        dispatchWindowSummary: focusWindow,
+        previewLabel: `${scopeLabel} needs staffing first`,
+        previewMessage: `${targetDay.dayLabel} is pressured mainly because the ${focusWindow.label.toLowerCase()} window has ${focusWindow.crewGap} open crew slot${
+          focusWindow.crewGap === 1 ? "" : "s"
+        }. Source or approve crew before moving appointments; a reschedule will not fix the staffing gap by itself.${staffingPlanPreview}`,
+        bookingCandidates: this.buildProviderAssistantDispatchBookingCandidates(overview, targetDay, focusWindow),
+        staffingPlan
+      };
+    }
+
     const focusCandidates = this.buildProviderAssistantDispatchBookingCandidates(overview, targetDay, focusWindow);
     if (focusCandidates.length === 0) {
       return {
@@ -5347,26 +6895,7 @@ export class MarketplacePlatformService {
 
     const dayStartIso = targetDay.dateIso;
     const dayEndIso = new Date(new Date(targetDay.dateIso).getTime() + 24 * 60 * 60 * 1000).toISOString();
-    const jobsNeedingCrew = staffing.jobs
-      .filter(
-        (job) =>
-          job.crewGap > 0 &&
-          this.doIntervalsOverlap(job.scheduledStartIso, job.scheduledEndIso, dayStartIso, dayEndIso)
-      )
-      .sort((left, right) => {
-        const uncoveredGapDelta =
-          this.getProviderAssistantUncoveredCrewGap(right) - this.getProviderAssistantUncoveredCrewGap(left);
-        if (uncoveredGapDelta !== 0) {
-          return uncoveredGapDelta;
-        }
-
-        const gapDelta = right.crewGap - left.crewGap;
-        if (gapDelta !== 0) {
-          return gapDelta;
-        }
-
-        return new Date(left.scheduledStartIso).getTime() - new Date(right.scheduledStartIso).getTime();
-      });
+    const jobsNeedingCrew = this.getProviderAssistantStaffingJobsNeedingCrew(staffing, dayStartIso, dayEndIso);
 
     if (jobsNeedingCrew.length === 0) {
       return {
@@ -5387,6 +6916,8 @@ export class MarketplacePlatformService {
 
     const recommendedJob = jobsNeedingCrew[0]!;
     const bookingCandidates = jobsNeedingCrew.map((job) => this.toProviderAssistantBookingCandidateFromStaffingJob(job));
+    const staffingPlan = this.buildProviderAssistantStaffingPlan(jobsNeedingCrew);
+    const staffingPlanPreview = this.buildProviderAssistantStaffingPlanPreview(staffingPlan);
     const matchedBookingId = bookingCandidates[0]?.bookingId;
     const pendingMatchCount = this.getProviderAssistantPendingMatchCount(recommendedJob);
     const uncoveredCrewGap = this.getProviderAssistantUncoveredCrewGap(recommendedJob);
@@ -5431,8 +6962,9 @@ export class MarketplacePlatformService {
       previewLabel: `${scopeLabel} crew gap recommendation`,
       previewMessage: `${recommendationLead} ${recommendationDetail} ${targetDay.dayLabel} carries ${
         targetDay.crewGap
-      } total open crew slot${targetDay.crewGap === 1 ? "" : "s"} right now.`,
-      bookingCandidates
+      } total open crew slot${targetDay.crewGap === 1 ? "" : "s"} right now.${staffingPlanPreview}`,
+      bookingCandidates,
+      staffingPlan
     };
   }
 
@@ -5805,11 +7337,9 @@ export class MarketplacePlatformService {
         };
       }
 
-      const crewMatch = await this.resolveProviderAssistantCrewMatch(
-        action.crewMessageCrewNameQuery,
-        bookingMatches
-      );
-      if (!crewMatch || !action.crewMessageBody) {
+      const crewMatches = await this.resolveProviderAssistantCrewMessageTargets(booking, action, bookingMatches);
+      if (crewMatches.length === 0 || !action.crewMessageBody) {
+        const failure = this.getProviderAssistantCrewMessageTargetFailure(action);
         return {
           command: originalCommand,
           understood: true,
@@ -5822,13 +7352,13 @@ export class MarketplacePlatformService {
           matchedBookingId: booking.id,
           matchedCustomerName: booking.customerName,
           sourceWindowKey,
-          previewLabel: "Crew message target not found",
-          previewMessage:
-            "The assistant could not match that crew name to a pending or accepted crew member on this job.",
+          previewLabel: failure.previewLabel,
+          previewMessage: failure.previewMessage,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
         };
       }
 
+      const crewMessageTargetLabel = this.formatProviderAssistantCrewMessageTarget(action, crewMatches);
       if (!execute) {
         return {
           command: originalCommand,
@@ -5843,7 +7373,7 @@ export class MarketplacePlatformService {
           matchedCustomerName: booking.customerName,
           sourceWindowKey,
           previewLabel: "Ready to message crew",
-          previewMessage: `Send ${crewMatch.crewMemberName}: "${action.crewMessageBody}"`,
+          previewMessage: `Send ${crewMessageTargetLabel}: "${action.crewMessageBody}"`,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
         };
       }
@@ -5853,10 +7383,14 @@ export class MarketplacePlatformService {
         throw new HttpError(404, "Provider identity not found for this assistant command");
       }
 
-      await this.sendProviderCrewMessage(providerIdentity, {
-        crewMatchId: crewMatch.id,
-        body: action.crewMessageBody
-      });
+      const updatedCrewConversations = await Promise.all(
+        crewMatches.map((crewMatch) =>
+          this.sendProviderCrewMessage(providerIdentity, {
+            crewMatchId: crewMatch.id,
+            body: action.crewMessageBody!
+          })
+        )
+      );
 
       const now = new Date().toISOString();
       const intervention: BookingInterventionRecord = {
@@ -5886,8 +7420,11 @@ export class MarketplacePlatformService {
         matchedCustomerName: booking.customerName,
         sourceWindowKey,
         previewLabel: "Crew message sent",
-        previewMessage: `Sent ${crewMatch.crewMemberName}: "${action.crewMessageBody}"`,
+        previewMessage: `Sent ${crewMessageTargetLabel}: "${action.crewMessageBody}"`,
         bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? booking)],
+        updatedCrewConversation:
+          updatedCrewConversations.length === 1 ? updatedCrewConversations[0] : undefined,
+        updatedCrewConversations,
         updatedBooking: bookingWithIntervention ?? booking
       };
     }
@@ -8099,6 +9636,11 @@ export class MarketplacePlatformService {
       })
       .filter((entry): entry is CrewPayoutLedgerEntry => Boolean(entry))
       .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso));
+    const nextWeeklyPayoutDateIso = this.getNextPayoutRunIso(this.crewPayoutWeekday);
+    const crewMatches = matches.filter((match) => match.crewMemberId === crewMemberId);
+    const attendanceSummary = this.buildCrewAttendanceSummary(crewMember, crewMatches, bookings);
+    const earningsSummary = this.buildCrewEarningsSummary(entries, nextWeeklyPayoutDateIso);
+    const performanceSummary = this.buildCrewPerformanceSummary(crewMember, crewMatches, bookings, payments);
 
     return {
       crewMemberId,
@@ -8114,9 +9656,233 @@ export class MarketplacePlatformService {
       pendingCustomerPaymentCents: entries
         .filter((entry) => entry.status === "awaiting-customer-payment")
         .reduce((sum, entry) => sum + entry.amountCents, 0),
-      nextWeeklyPayoutDateIso: this.getNextPayoutRunIso(this.crewPayoutWeekday),
+      nextWeeklyPayoutDateIso,
       holdPeriodHours: this.payoutHoldHours,
+      earningsSummary,
+      attendanceSummary,
+      performanceSummary,
       entries
+    };
+  }
+
+  private buildCrewEarningsSummary(
+    entries: CrewPayoutLedgerEntry[],
+    nextWeeklyPayoutDateIso: string
+  ): CrewPayoutLedgerResponse["earningsSummary"] {
+    const readyCents = entries
+      .filter((entry) => entry.status === "ready")
+      .reduce((sum, entry) => sum + entry.amountCents, 0);
+    const scheduledCents = entries
+      .filter((entry) => entry.status === "scheduled")
+      .reduce((sum, entry) => sum + entry.amountCents, 0);
+    const pendingCustomerPaymentCents = entries
+      .filter((entry) => entry.status === "awaiting-customer-payment")
+      .reduce((sum, entry) => sum + entry.amountCents, 0);
+    const onHoldCents = entries
+      .filter((entry) => entry.status === "on-hold")
+      .reduce((sum, entry) => sum + entry.amountCents, 0);
+    const reversedCents = entries
+      .filter((entry) => entry.status === "reversed")
+      .reduce((sum, entry) => sum + entry.amountCents, 0);
+    const guidance = [
+      "Crew earnings appear after accepted assignments are tied to completed jobs.",
+      "Captured customer payments, refund reviews, and completed-job disputes control whether an earning is pending, scheduled, ready, on hold, or reversed.",
+      `The next crew weekly payout run is ${nextWeeklyPayoutDateIso}.`
+    ];
+
+    if (onHoldCents > 0) {
+      guidance.push("Some crew earnings are on hold until support resolves the related refund review or completed-job dispute.");
+    }
+    if (pendingCustomerPaymentCents > 0) {
+      guidance.push("Some crew earnings are still waiting on customer payment capture before they can enter the payout schedule.");
+    }
+    if (readyCents > 0) {
+      guidance.push("Ready crew earnings can be included in the next manual payout run while external disbursement rails are still off.");
+    }
+
+    return {
+      completedAssignmentCount: entries.filter((entry) => entry.status !== "reversed").length,
+      readyCents,
+      scheduledCents,
+      pendingCustomerPaymentCents,
+      onHoldCents,
+      reversedCents,
+      nextWeeklyPayoutDateIso,
+      holdPeriodHours: this.payoutHoldHours,
+      guidance
+    };
+  }
+
+  private buildCrewAttendanceSummary(
+    crewMember: CrewMemberProfile,
+    matches: CrewMatchCandidate[],
+    bookings: Booking[]
+  ): CrewPayoutLedgerResponse["attendanceSummary"] {
+    const acceptedMatches = matches.filter((match) => match.status === "accepted");
+    const cancelledMatches = matches.filter((match) => match.status === "cancelled-by-crew");
+    const acceptedBookingIds = new Set(acceptedMatches.map((match) => match.bookingId));
+    const activeAssignmentCount = bookings.filter(
+      (booking) =>
+        acceptedBookingIds.has(booking.id) &&
+        booking.status !== "completed" &&
+        booking.status !== "cancelled" &&
+        booking.status !== "refunded"
+    ).length;
+    const completedAssignmentCount = bookings.filter(
+      (booking) => acceptedBookingIds.has(booking.id) && this.isPayoutRelevantBooking(booking)
+    ).length;
+    const totalDecisionCount = acceptedMatches.length + cancelledMatches.length;
+    const attendanceRate = totalDecisionCount > 0 ? acceptedMatches.length / totalDecisionCount : 1;
+    const cancellationCount = crewMember.cancellationCount ?? cancelledMatches.length;
+    const reliabilityStatus =
+      cancellationCount >= 3 || (totalDecisionCount >= 3 && attendanceRate < 0.75)
+        ? "at-risk"
+        : cancellationCount > 0 || (totalDecisionCount >= 2 && attendanceRate < 0.9)
+          ? "watch"
+          : "strong";
+    const warnings: string[] = [];
+
+    if (cancelledMatches.length > 0) {
+      warnings.push(`${cancelledMatches.length} cancelled assignment${cancelledMatches.length === 1 ? "" : "s"} are recorded in attendance history.`);
+    }
+    if (cancellationCount >= 3) {
+      warnings.push("Repeated call-offs can reduce future staffing priority until the crew member rebuilds reliability.");
+    } else if (cancellationCount > 0) {
+      warnings.push("Recent call-offs can lower future match priority for tight launch routes.");
+    }
+    if (activeAssignmentCount > 0) {
+      warnings.push(`${activeAssignmentCount} accepted assignment${activeAssignmentCount === 1 ? "" : "s"} are still active and not yet reflected as completed earnings.`);
+    }
+
+    return {
+      acceptedAssignmentCount: acceptedMatches.length,
+      activeAssignmentCount,
+      completedAssignmentCount,
+      cancelledAssignmentCount: cancelledMatches.length,
+      cancellationCount,
+      lastCancellationAt: crewMember.lastCancellationAt,
+      attendanceRate,
+      reliabilityStatus,
+      warnings
+    };
+  }
+
+  private buildCrewPerformanceSummary(
+    crewMember: CrewMemberProfile,
+    matches: CrewMatchCandidate[],
+    bookings: Booking[],
+    payments: PaymentRecord[]
+  ): CrewPayoutLedgerResponse["performanceSummary"] {
+    const acceptedBookingIds = new Set(
+      matches.filter((match) => match.status === "accepted").map((match) => match.bookingId)
+    );
+    const completedBookings = bookings.filter(
+      (booking) => acceptedBookingIds.has(booking.id) && this.isPayoutRelevantBooking(booking)
+    );
+    const paymentByBookingId = new Map(payments.map((payment) => [payment.bookingId, payment]));
+    const crewEvidence = completedBookings.flatMap((booking) =>
+      booking.serviceEvidence.filter(
+        (evidence) => evidence.capturedByRole === "crew-member" && evidence.capturedByUserId === crewMember.id
+      )
+    );
+    const disputedAssignmentCount = completedBookings.filter(
+      (booking) => Boolean(booking.disputedAt) || booking.status === "disputed"
+    ).length;
+    const refundedAssignmentCount = completedBookings.filter((booking) => {
+      const payment = paymentByBookingId.get(booking.id);
+      return booking.status === "refunded" || payment?.status === "refunded";
+    }).length;
+    const completedWithoutIssueCount = completedBookings.filter((booking) => {
+      const payment = paymentByBookingId.get(booking.id);
+      return (
+        !booking.disputedAt &&
+        booking.status !== "disputed" &&
+        booking.status !== "refunded" &&
+        payment?.status !== "refunded"
+      );
+    }).length;
+    const routeConfirmationCount = completedBookings.filter((booking) => Boolean(booking.onRouteConfirmedAt)).length;
+    const beforeEvidenceCount = crewEvidence.filter((evidence) => evidence.phase === "before").length;
+    const afterEvidenceCount = crewEvidence.filter((evidence) => evidence.phase === "after").length;
+    const reviewedEvidenceCount = crewEvidence.filter((evidence) => Boolean(evidence.reviewStatus)).length;
+    const providerCount = new Set(completedBookings.map((booking) => booking.providerId)).size;
+    const serviceCategories = Array.from(new Set(completedBookings.map((booking) => booking.category))).sort();
+    const cancellationCount =
+      crewMember.cancellationCount ?? matches.filter((match) => match.status === "cancelled-by-crew").length;
+    const highlights: string[] = [];
+    const warnings: string[] = [];
+
+    if (completedBookings.length > 0) {
+      highlights.push(
+        `${completedBookings.length} completed assignment${completedBookings.length === 1 ? "" : "s"} are tied to this crew profile.`
+      );
+    } else {
+      warnings.push("No completed assignments are available yet, so performance is still in the launch baseline stage.");
+    }
+    if (completedWithoutIssueCount > 0) {
+      highlights.push(
+        `${completedWithoutIssueCount} completed assignment${completedWithoutIssueCount === 1 ? "" : "s"} closed without a dispute or refund reversal.`
+      );
+    }
+    if (routeConfirmationCount > 0) {
+      highlights.push(
+        `${routeConfirmationCount} completed assignment${routeConfirmationCount === 1 ? "" : "s"} include on-route confirmation.`
+      );
+    }
+    if (crewEvidence.length > 0) {
+      highlights.push(
+        `${crewEvidence.length} crew-captured evidence item${crewEvidence.length === 1 ? "" : "s"} support service follow-through.`
+      );
+    }
+    if (providerCount > 1) {
+      highlights.push(`Assignments span ${providerCount} providers, which can broaden launch staffing confidence.`);
+    }
+
+    if (disputedAssignmentCount > 0) {
+      warnings.push(
+        `${disputedAssignmentCount} completed assignment${disputedAssignmentCount === 1 ? "" : "s"} have dispute history and should be reviewed before assigning tight launch routes.`
+      );
+    }
+    if (refundedAssignmentCount > 0) {
+      warnings.push(
+        `${refundedAssignmentCount} assignment${refundedAssignmentCount === 1 ? "" : "s"} ended in a refund reversal, so ops should review context before raising priority.`
+      );
+    }
+    if (completedBookings.length > 0 && routeConfirmationCount === 0) {
+      warnings.push("Completed assignments do not yet show route confirmation history.");
+    }
+    if (completedBookings.length > 0 && crewEvidence.length === 0) {
+      warnings.push("Completed assignments do not yet include crew-captured evidence.");
+    }
+    if (cancellationCount > 0) {
+      warnings.push(`${cancellationCount} crew call-off${cancellationCount === 1 ? "" : "s"} remain part of the performance record.`);
+    }
+
+    const performanceStatus =
+      disputedAssignmentCount > 0 || refundedAssignmentCount > 0 || cancellationCount >= 3
+        ? "needs-review"
+        : completedBookings.length === 0 ||
+            cancellationCount > 0 ||
+            routeConfirmationCount === 0 ||
+            crewEvidence.length === 0
+          ? "building"
+          : "strong";
+
+    return {
+      completedAssignmentCount: completedBookings.length,
+      completedWithoutIssueCount,
+      disputedAssignmentCount,
+      refundedAssignmentCount,
+      routeConfirmationCount,
+      evidenceContributionCount: crewEvidence.length,
+      beforeEvidenceCount,
+      afterEvidenceCount,
+      reviewedEvidenceCount,
+      providerCount,
+      serviceCategories,
+      performanceStatus,
+      highlights,
+      warnings
     };
   }
 
@@ -8127,6 +9893,22 @@ export class MarketplacePlatformService {
       this.repository.listPayments(),
       this.repository.listCrewMatches()
     ]);
+    type DisbursementEntryRef = OpsPayoutRunPreviewResponse["disbursementBatches"][number]["entries"][number];
+    type MutableDisbursementBatch = {
+      id: string;
+      runDateIso: string;
+      recipientRole: OpsPayoutRunPreviewResponse["disbursementBatches"][number]["recipientRole"];
+      railMode: OpsPayoutRunPreviewResponse["disbursementBatches"][number]["railMode"];
+      actionStatus: OpsPayoutRunPreviewResponse["disbursementBatches"][number]["actionStatus"];
+      totalCents: number;
+      recipientIds: Set<string>;
+      bookingIds: Set<string>;
+      entryIds: string[];
+      entries: DisbursementEntryRef[];
+      blockerReasons: string[];
+      manualActionLabel: string;
+      auditInstructions: string[];
+    };
 
     const providerRuns = new Map<
       string,
@@ -8138,6 +9920,55 @@ export class MarketplacePlatformService {
         crewShareCents: number;
       }
     >();
+    const disbursementBatches = new Map<string, MutableDisbursementBatch>();
+    const crewNextWeeklyPayoutDateIso = this.getNextPayoutRunIso(this.crewPayoutWeekday);
+    const touchDisbursementBatch = (
+      id: string,
+      runDateIso: string,
+      recipientRole: MutableDisbursementBatch["recipientRole"]
+    ) => {
+      const existing = disbursementBatches.get(id);
+      if (existing) {
+        return existing;
+      }
+
+      const batch: MutableDisbursementBatch = {
+        id,
+        runDateIso,
+        recipientRole,
+        railMode: "manual-preview",
+        actionStatus: "ready-for-manual-review",
+        totalCents: 0,
+        recipientIds: new Set<string>(),
+        bookingIds: new Set<string>(),
+        entryIds: [],
+        entries: [],
+        blockerReasons: [
+          "External payout rails are not configured yet, so ops must execute and reconcile this batch manually."
+        ],
+        manualActionLabel:
+          recipientRole === "provider"
+            ? "Review provider payout batch"
+            : "Review crew payout batch",
+        auditInstructions: [
+          "Confirm every entry still has captured customer payment before disbursement.",
+          "Confirm no refund review, completed-job dispute, or support hold opened after this preview was generated.",
+          "Record the external transfer id, recipient, amount, and operator in the financial runbook until payout rails are integrated."
+        ]
+      };
+      disbursementBatches.set(id, batch);
+      return batch;
+    };
+    const addDisbursementEntry = (
+      batch: MutableDisbursementBatch,
+      entry: DisbursementEntryRef
+    ) => {
+      batch.totalCents += entry.amountCents;
+      batch.recipientIds.add(entry.recipientId);
+      batch.bookingIds.add(entry.bookingId);
+      batch.entryIds.push(entry.entryId);
+      batch.entries.push(entry);
+    };
 
     let totalProviderReadyCents = 0;
     let totalCrewReadyCents = 0;
@@ -8181,6 +10012,46 @@ export class MarketplacePlatformService {
           run.providerNetCents += providerNetAmountCents;
           run.crewShareCents += crewShareCents;
           providerRuns.set(nextRunIso, run);
+          if (providerNetAmountCents > 0) {
+            addDisbursementEntry(
+              touchDisbursementBatch(
+                `provider-manual-${nextRunIso.slice(0, 10)}`,
+                nextRunIso,
+                "provider"
+              ),
+              {
+                entryId: `provider-payout-${booking.id}`,
+                bookingId: booking.id,
+                recipientId: provider.id,
+                recipientRole: "provider",
+                amountCents: providerNetAmountCents,
+                paymentId: payment?.id,
+                availableAtIso: this.getPayoutAvailabilityIso(booking, payoutStatus)
+              }
+            );
+          }
+          for (const match of acceptedMatches) {
+            const amountCents = this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents);
+            if (amountCents <= 0) {
+              continue;
+            }
+            addDisbursementEntry(
+              touchDisbursementBatch(
+                `crew-manual-${crewNextWeeklyPayoutDateIso.slice(0, 10)}`,
+                crewNextWeeklyPayoutDateIso,
+                "crew-member"
+              ),
+              {
+                entryId: `crew-payout-${match.id}`,
+                bookingId: booking.id,
+                recipientId: match.crewMemberId,
+                recipientRole: "crew-member",
+                amountCents,
+                paymentId: payment?.id,
+                availableAtIso: this.getPayoutAvailabilityIso(booking, payoutStatus)
+              }
+            );
+          }
         } else if (payoutStatus === "awaiting-customer-payment") {
           totalAwaitingCustomerPaymentCents += booking.totalCents;
         } else if (payoutStatus === "on-hold") {
@@ -8203,7 +10074,8 @@ export class MarketplacePlatformService {
       totalAwaitingCustomerPaymentCents,
       onHoldEntryCount,
       providerInstantEligibleCount,
-      crewNextWeeklyPayoutDateIso: this.getNextPayoutRunIso(this.crewPayoutWeekday),
+      crewNextWeeklyPayoutDateIso,
+      payoutPolicy: this.buildOpsPayoutPolicySummary(),
       providerRuns: Array.from(providerRuns.values())
         .map((run) => ({
           runDateIso: run.runDateIso,
@@ -8213,7 +10085,400 @@ export class MarketplacePlatformService {
           crewShareCents: run.crewShareCents,
           providerIds: Array.from(run.providerIds)
         }))
-        .sort((left, right) => left.runDateIso.localeCompare(right.runDateIso))
+        .sort((left, right) => left.runDateIso.localeCompare(right.runDateIso)),
+      disbursementBatches: Array.from(disbursementBatches.values())
+        .map((batch) => ({
+          id: batch.id,
+          runDateIso: batch.runDateIso,
+          recipientRole: batch.recipientRole,
+          railMode: batch.railMode,
+          actionStatus: batch.actionStatus,
+          totalCents: batch.totalCents,
+          recipientCount: batch.recipientIds.size,
+          bookingCount: batch.bookingIds.size,
+          entryCount: batch.entryIds.length,
+          recipientIds: Array.from(batch.recipientIds),
+          entryIds: batch.entryIds,
+          entries: batch.entries,
+          blockerReasons: batch.blockerReasons,
+          manualActionLabel: batch.manualActionLabel,
+          auditInstructions: batch.auditInstructions
+        }))
+        .sort((left, right) => {
+          if (left.runDateIso !== right.runDateIso) {
+            return left.runDateIso.localeCompare(right.runDateIso);
+          }
+          return left.recipientRole.localeCompare(right.recipientRole);
+        })
+    };
+  }
+
+  public async listOpsPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRunsResponse> {
+    const runs = await this.repository.listPayoutDisbursementRuns();
+    return {
+      generatedAt: new Date().toISOString(),
+      runs: runs.sort((left, right) => {
+        if (left.runDateIso !== right.runDateIso) {
+          return right.runDateIso.localeCompare(left.runDateIso);
+        }
+        return right.createdAt.localeCompare(left.createdAt);
+      })
+    };
+  }
+
+  public async createOpsPayoutDisbursementRun(
+    actor: AuthIdentityRecord,
+    payload: CreateOpsPayoutDisbursementRunRequest
+  ): Promise<CreateOpsPayoutDisbursementRunResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can create payout disbursement runs");
+    }
+
+    const previewBatchId = payload.previewBatchId?.trim();
+    if (!previewBatchId) {
+      throw new HttpError(400, "previewBatchId is required");
+    }
+
+    const preview = await this.getOpsPayoutPreview();
+    const batch = preview.disbursementBatches.find((candidate) => candidate.id === previewBatchId);
+    if (!batch) {
+      throw new HttpError(404, "Payout disbursement preview batch not found");
+    }
+    if (batch.entryCount === 0 || batch.totalCents <= 0) {
+      throw new HttpError(400, "Payout disbursement batch has no payable entries");
+    }
+
+    const entryFingerprint = this.buildPayoutDisbursementEntryFingerprint(batch);
+    const existing = await this.repository.findPayoutDisbursementRunByBatchFingerprint(
+      batch.id,
+      entryFingerprint
+    );
+    if (existing) {
+      return {
+        run: existing,
+        created: false,
+        matchedPreviewBatch: batch
+      };
+    }
+
+    const now = new Date().toISOString();
+    const run = await this.repository.createPayoutDisbursementRun({
+      id: crypto.randomUUID(),
+      previewBatchId: batch.id,
+      entryFingerprint,
+      runDateIso: batch.runDateIso,
+      recipientRole: batch.recipientRole,
+      railMode: batch.railMode,
+      actionStatus: batch.actionStatus,
+      status: "manual-review",
+      totalCents: batch.totalCents,
+      recipientCount: batch.recipientCount,
+      bookingCount: batch.bookingCount,
+      entryCount: batch.entryCount,
+      recipientIds: [...batch.recipientIds],
+      entryIds: [...batch.entryIds],
+      entries: batch.entries.map((entry) => ({ ...entry })),
+      blockerReasons: [...batch.blockerReasons],
+      manualActionLabel: batch.manualActionLabel,
+      auditInstructions: [
+        ...batch.auditInstructions,
+        "Attach the external bank or payout-provider reference here after the manual run is reconciled."
+      ],
+      createdAt: now,
+      updatedAt: now,
+      createdByOpsUserId: actor.userId,
+      createdByOpsEmail: actor.email,
+      operatorNotes: payload.operatorNotes?.trim() || undefined
+    });
+
+    return {
+      run,
+      created: true,
+      matchedPreviewBatch: batch
+    };
+  }
+
+  public async listLaunchOperationsTasks(): Promise<LaunchOperationsTasksResponse> {
+    const tasks = await this.repository.listLaunchOperationsTasks();
+    return {
+      generatedAt: new Date().toISOString(),
+      tasks: this.sortLaunchOperationsTasks(tasks)
+    };
+  }
+
+  public async createLaunchOperationsTask(
+    actor: AuthIdentityRecord,
+    payload: CreateLaunchOperationsTaskRequest
+  ): Promise<CreateLaunchOperationsTaskResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can create launch operations tasks");
+    }
+
+    const recommendationKey = payload.recommendationKey;
+    const pocketKey = payload.pocketKey?.trim();
+    if (!recommendationKey) {
+      throw new HttpError(400, "recommendationKey is required");
+    }
+    if (!pocketKey) {
+      throw new HttpError(400, "pocketKey is required");
+    }
+
+    const overview = await this.getObservabilityOverview();
+    const recommendation = overview.launchOperationsPolicy.coverageActionRecommendations.find(
+      (candidate) => candidate.key === recommendationKey && candidate.pocketKey === pocketKey
+    );
+    if (!recommendation) {
+      throw new HttpError(404, "Launch operations recommendation not found");
+    }
+
+    const recommendationFingerprint = this.buildLaunchOperationsRecommendationFingerprint(recommendation);
+    const existing = await this.repository.findLaunchOperationsTaskByRecommendationFingerprint(
+      recommendationFingerprint
+    );
+    if (existing) {
+      return {
+        task: existing,
+        created: false,
+        matchedRecommendation: recommendation
+      };
+    }
+
+    const assignee = await this.resolveLaunchOperationsTaskAssignee(payload.assignedToOpsUserId);
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const dueAtIso = new Date(now.getTime() + recommendation.dueWithinHours * 60 * 60 * 1000).toISOString();
+    const task = await this.repository.createLaunchOperationsTask({
+      id: crypto.randomUUID(),
+      recommendationFingerprint,
+      recommendationKey: recommendation.key,
+      pocketKey: recommendation.pocketKey,
+      city: recommendation.city,
+      state: recommendation.state,
+      postalCode: recommendation.postalCode,
+      priority: recommendation.priority,
+      owner: recommendation.owner,
+      status: "open",
+      title: recommendation.title,
+      detail: recommendation.detail,
+      recommendedAction: recommendation.recommendedAction,
+      dueAtIso,
+      relatedScenarioKeys: [...recommendation.relatedScenarioKeys],
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      createdByOpsUserId: actor.userId,
+      createdByOpsEmail: actor.email,
+      assignedToOpsUserId: assignee?.id,
+      assignedToOpsEmail: assignee?.email,
+      operatorNotes: payload.operatorNotes?.trim() || undefined
+    });
+
+    return {
+      task,
+      created: true,
+      matchedRecommendation: recommendation
+    };
+  }
+
+  public async updateLaunchOperationsTask(
+    actor: AuthIdentityRecord,
+    payload: UpdateLaunchOperationsTaskRequest
+  ): Promise<UpdateLaunchOperationsTaskResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can update launch operations tasks");
+    }
+
+    const taskId = payload.taskId?.trim();
+    if (!taskId) {
+      throw new HttpError(400, "taskId is required");
+    }
+
+    const existing = (await this.repository.listLaunchOperationsTasks()).find((task) => task.id === taskId);
+    if (!existing) {
+      throw new HttpError(404, "Launch operations task not found");
+    }
+
+    const nowIso = new Date().toISOString();
+    const updates: Partial<LaunchOperationsTask> = {
+      updatedAt: nowIso
+    };
+
+    if (payload.status !== undefined) {
+      updates.status = payload.status;
+      if (payload.status === "completed") {
+        updates.completedAt = existing.completedAt ?? nowIso;
+        updates.completedByOpsUserId = existing.completedByOpsUserId ?? actor.userId;
+      } else if (existing.status === "completed") {
+        updates.completedAt = undefined;
+        updates.completedByOpsUserId = undefined;
+      }
+    }
+
+    if (payload.assignedToOpsUserId !== undefined) {
+      const assignee = await this.resolveLaunchOperationsTaskAssignee(payload.assignedToOpsUserId ?? undefined);
+      updates.assignedToOpsUserId = assignee?.id;
+      updates.assignedToOpsEmail = assignee?.email;
+    }
+
+    if (payload.operatorNotes !== undefined) {
+      updates.operatorNotes = payload.operatorNotes.trim() || undefined;
+    }
+    if (payload.completionNotes !== undefined) {
+      updates.completionNotes = payload.completionNotes.trim() || undefined;
+    }
+
+    const task = await this.repository.updateLaunchOperationsTask(taskId, updates);
+    if (!task) {
+      throw new HttpError(404, "Launch operations task not found");
+    }
+
+    return { task };
+  }
+
+  public async notifyDueLaunchOperationsTasks(
+    actor: AuthIdentityRecord,
+    payload: ProcessLaunchOperationsTaskNotificationsRequest = {}
+  ): Promise<LaunchOperationsTaskNotificationSweepResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can process launch operations task notifications");
+    }
+
+    const asOfMs = payload.asOfIso ? Date.parse(payload.asOfIso) : Date.now();
+    if (!Number.isFinite(asOfMs)) {
+      throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
+    }
+    const asOfIso = new Date(asOfMs).toISOString();
+    const [allTasks, opsUsers] = await Promise.all([
+      this.repository.listLaunchOperationsTasks(),
+      this.repository.listOpsUsers()
+    ]);
+    const tasks = allTasks.filter((task) => !payload.taskId || task.id === payload.taskId);
+    if (payload.taskId && tasks.length === 0) {
+      throw new HttpError(404, "Launch operations task not found");
+    }
+
+    const items: LaunchOperationsTaskNotificationSweepItem[] = [];
+    for (const task of tasks) {
+      const recipients = task.assignedToOpsUserId
+        ? opsUsers
+            .filter((opsUser) => opsUser.id === task.assignedToOpsUserId)
+            .map((opsUser) => ({ recipientId: opsUser.id, recipientRole: "ops" as const }))
+        : opsUsers.map((opsUser) => ({ recipientId: opsUser.id, recipientRole: "ops" as const }));
+
+      if (recipients.length === 0) {
+        items.push(
+          await this.processLaunchOperationsTaskNotification({
+            task,
+            asOfMs,
+            dryRun: Boolean(payload.dryRun),
+            includeFuture: Boolean(payload.includeFuture)
+          })
+        );
+        continue;
+      }
+
+      for (const recipient of recipients) {
+        items.push(
+          await this.processLaunchOperationsTaskNotification({
+            task,
+            recipientId: recipient.recipientId,
+            recipientRole: recipient.recipientRole,
+            asOfMs,
+            dryRun: Boolean(payload.dryRun),
+            includeFuture: Boolean(payload.includeFuture)
+          })
+        );
+      }
+    }
+
+    const dueNotificationCount = items.filter((item) =>
+      ["sent", "already-sent", "dry-run"].includes(item.notificationStatus)
+    ).length;
+    const sentNotificationCount = items.filter((item) => item.notificationStatus === "sent").length;
+    const alreadySentCount = items.filter((item) => item.notificationStatus === "already-sent").length;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      asOfIso,
+      dryRun: Boolean(payload.dryRun),
+      taskCount: tasks.length,
+      candidateNotificationCount: items.length,
+      dueNotificationCount,
+      sentNotificationCount,
+      alreadySentCount,
+      skippedNotificationCount: items.length - dueNotificationCount,
+      items
+    };
+  }
+
+  public async escalateOverdueLaunchOperationsTasks(
+    actor: AuthIdentityRecord,
+    payload: ProcessLaunchOperationsTaskEscalationsRequest = {}
+  ): Promise<LaunchOperationsTaskEscalationSweepResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can escalate launch operations tasks");
+    }
+
+    const asOfMs = payload.asOfIso ? Date.parse(payload.asOfIso) : Date.now();
+    if (!Number.isFinite(asOfMs)) {
+      throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
+    }
+    const asOfIso = new Date(asOfMs).toISOString();
+    const [allTasks, opsUsers] = await Promise.all([
+      this.repository.listLaunchOperationsTasks(),
+      this.repository.listOpsUsers()
+    ]);
+    const tasks = allTasks.filter((task) => !payload.taskId || task.id === payload.taskId);
+    if (payload.taskId && tasks.length === 0) {
+      throw new HttpError(404, "Launch operations task not found");
+    }
+
+    const recipients = opsUsers.map((opsUser) => ({
+      recipientId: opsUser.id,
+      recipientRole: "ops" as const
+    }));
+    const items: LaunchOperationsTaskEscalationSweepItem[] = [];
+    for (const task of tasks) {
+      if (recipients.length === 0) {
+        items.push(
+          await this.processLaunchOperationsTaskEscalation({
+            task,
+            asOfMs,
+            dryRun: Boolean(payload.dryRun)
+          })
+        );
+        continue;
+      }
+
+      for (const recipient of recipients) {
+        items.push(
+          await this.processLaunchOperationsTaskEscalation({
+            task,
+            recipientId: recipient.recipientId,
+            recipientRole: recipient.recipientRole,
+            asOfMs,
+            dryRun: Boolean(payload.dryRun)
+          })
+        );
+      }
+    }
+
+    const overdueEscalationCount = items.filter((item) =>
+      ["sent", "already-sent", "dry-run"].includes(item.escalationStatus)
+    ).length;
+    const sentNotificationCount = items.filter((item) => item.escalationStatus === "sent").length;
+    const alreadySentCount = items.filter((item) => item.escalationStatus === "already-sent").length;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      asOfIso,
+      dryRun: Boolean(payload.dryRun),
+      taskCount: tasks.length,
+      candidateEscalationCount: items.length,
+      overdueEscalationCount,
+      sentNotificationCount,
+      alreadySentCount,
+      skippedEscalationCount: items.length - overdueEscalationCount,
+      items
     };
   }
 
@@ -9544,6 +11809,9 @@ export class MarketplacePlatformService {
           evidenceSummary,
           resolutionGuidance,
           resolutionPolicy,
+          providerCoordinationTemplates: booking
+            ? this.buildSupportProviderCoordinationTemplates(ticket, booking, customer?.fullName, provider?.companyName)
+            : [],
           timeline: this.buildSupportTimeline(ticket, booking, payment, requesterRole)
         } satisfies SupportOpsTicket;
       })
@@ -9677,6 +11945,257 @@ export class MarketplacePlatformService {
       payoutHolds,
       refundReviews,
       activeExceptions
+    };
+  }
+
+  private getSupportOpsTicketEscalationProfile(input: {
+    ticket: SupportTicket;
+    booking?: Booking;
+    payment?: PaymentRecord;
+  }): {
+    priority: SupportOpsTicketEscalationSweepItem["priority"];
+    thresholdHours: number;
+    signal: string;
+  } {
+    const payoutHoldReason = input.booking
+      ? this.getPayoutHoldReason(input.booking, input.payment)
+      : undefined;
+
+    if (input.booking?.activeExceptionType) {
+      return {
+        priority: "urgent",
+        thresholdHours: 2,
+        signal: `active ${input.booking.activeExceptionType} field exception`
+      };
+    }
+    if (input.booking?.status === "disputed" || payoutHoldReason === "dispute") {
+      return {
+        priority: "urgent",
+        thresholdHours: 4,
+        signal: "disputed booking payout hold"
+      };
+    }
+    if (input.payment?.refundReviewStatus === "requested" || payoutHoldReason === "refund-review") {
+      return {
+        priority: "urgent",
+        thresholdHours: 4,
+        signal: "open refund review payout hold"
+      };
+    }
+    if (input.ticket.issueType === "billing") {
+      return {
+        priority: "high",
+        thresholdHours: 8,
+        signal: "billing support issue"
+      };
+    }
+    if (input.ticket.issueType === "service-quality") {
+      return {
+        priority: "high",
+        thresholdHours: 8,
+        signal: "service-quality support issue"
+      };
+    }
+    return {
+      priority: "normal",
+      thresholdHours: 24,
+      signal: `${input.ticket.issueType} support issue`
+    };
+  }
+
+  private async processSupportOpsTicketEscalation(input: {
+    ticket: SupportTicket;
+    booking?: Booking;
+    payment?: PaymentRecord;
+    recipientId?: string;
+    recipientRole?: AppNotification["recipientRole"];
+    asOfMs: number;
+    dryRun: boolean;
+  }): Promise<SupportOpsTicketEscalationSweepItem> {
+    const profile = this.getSupportOpsTicketEscalationProfile({
+      ticket: input.ticket,
+      booking: input.booking,
+      payment: input.payment
+    });
+    const openedMs = Date.parse(input.ticket.createdAt);
+    const updatedMs = Date.parse(input.ticket.updatedAt);
+    const safeOpenedMs = Number.isFinite(openedMs) ? openedMs : input.asOfMs;
+    const safeUpdatedMs = Number.isFinite(updatedMs) ? updatedMs : safeOpenedMs;
+    const ageHours = Number(Math.max(0, (input.asOfMs - safeOpenedMs) / (60 * 60 * 1000)).toFixed(2));
+    const hoursSinceUpdate = Number(
+      Math.max(0, (input.asOfMs - safeUpdatedMs) / (60 * 60 * 1000)).toFixed(2)
+    );
+    const notificationTitle = `Support SLA escalation: ${input.ticket.subject}`;
+    const notificationBody =
+      `${profile.signal} has been ${input.ticket.status} for ${hoursSinceUpdate} hours since the last update ` +
+      `(${ageHours} hours since opened). Review ticket ${input.ticket.id}` +
+      `${input.ticket.bookingId ? ` for booking ${input.ticket.bookingId}` : ""}.`;
+    const baseItem = {
+      ticketId: input.ticket.id,
+      bookingId: input.ticket.bookingId,
+      issueType: input.ticket.issueType,
+      ticketStatus: input.ticket.status,
+      priority: profile.priority,
+      openedAtIso: input.ticket.createdAt,
+      lastUpdatedAtIso: input.ticket.updatedAt,
+      ageHours,
+      hoursSinceUpdate,
+      escalationThresholdHours: profile.thresholdHours,
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole,
+      notificationTitle,
+      notificationBody
+    } satisfies Omit<
+      SupportOpsTicketEscalationSweepItem,
+      "escalationStatus" | "reason" | "notificationId"
+    >;
+
+    if (input.ticket.status === "resolved") {
+      return {
+        ...baseItem,
+        escalationStatus: "resolved",
+        reason: "Support ticket is already resolved."
+      };
+    }
+    if (hoursSinceUpdate < profile.thresholdHours) {
+      return {
+        ...baseItem,
+        escalationStatus: "not-due",
+        reason: `Ticket has not passed the ${profile.thresholdHours}-hour ${profile.priority} SLA threshold.`
+      };
+    }
+    if (!input.recipientId || !input.recipientRole) {
+      return {
+        ...baseItem,
+        escalationStatus: "no-recipient",
+        reason: "No ops recipient is available for this support escalation."
+      };
+    }
+
+    const marker = this.buildSupportOpsTicketEscalationMarker(input.ticket.id);
+    const existingNotification = (await this.repository.listNotificationsByRecipient(input.recipientId)).find(
+      (notification) =>
+        notification.category === "support" &&
+        notification.actionHref === "/ops/support" &&
+        notification.body.includes(marker)
+    );
+    if (existingNotification) {
+      return {
+        ...baseItem,
+        escalationStatus: "already-sent",
+        notificationId: existingNotification.id,
+        reason: "A matching support SLA escalation notification already exists."
+      };
+    }
+
+    if (input.dryRun) {
+      return {
+        ...baseItem,
+        escalationStatus: "dry-run",
+        reason: "Dry run requested; no support escalation notification was created."
+      };
+    }
+
+    const notification = await this.createNotification({
+      recipientId: input.recipientId,
+      recipientRole: input.recipientRole,
+      category: "support",
+      title: notificationTitle,
+      body: `${notificationBody}\n\n${marker}`,
+      actionHref: "/ops/support"
+    });
+
+    return {
+      ...baseItem,
+      escalationStatus: "sent",
+      notificationId: notification.id,
+      reason: "Support SLA escalation notification created."
+    };
+  }
+
+  private buildSupportOpsTicketEscalationMarker(ticketId: string) {
+    return `Support SLA escalation: ${ticketId}`;
+  }
+
+  public async escalateStaleOpsSupportTickets(
+    actor: AuthIdentityRecord,
+    payload: ProcessSupportOpsTicketEscalationsRequest = {}
+  ): Promise<SupportOpsTicketEscalationSweepResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can escalate support tickets");
+    }
+
+    const asOfMs = payload.asOfIso ? Date.parse(payload.asOfIso) : Date.now();
+    if (!Number.isFinite(asOfMs)) {
+      throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
+    }
+    const asOfIso = new Date(asOfMs).toISOString();
+    const [allTickets, bookings, payments, opsUsers] = await Promise.all([
+      this.repository.listSupportTickets(),
+      this.repository.listBookings(),
+      this.repository.listPayments(),
+      this.repository.listOpsUsers()
+    ]);
+    const tickets = allTickets.filter((ticket) => !payload.ticketId || ticket.id === payload.ticketId);
+    if (payload.ticketId && tickets.length === 0) {
+      throw new HttpError(404, "Support ticket not found");
+    }
+    const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
+    const paymentByBookingId = new Map(payments.map((payment) => [payment.bookingId, payment]));
+    const recipients = opsUsers.map((opsUser) => ({
+      recipientId: opsUser.id,
+      recipientRole: "ops" as const
+    }));
+    const items: SupportOpsTicketEscalationSweepItem[] = [];
+
+    for (const ticket of tickets) {
+      const booking = ticket.bookingId ? bookingById.get(ticket.bookingId) : undefined;
+      const payment = booking ? paymentByBookingId.get(booking.id) : undefined;
+      if (recipients.length === 0) {
+        items.push(
+          await this.processSupportOpsTicketEscalation({
+            ticket,
+            booking,
+            payment,
+            asOfMs,
+            dryRun: Boolean(payload.dryRun)
+          })
+        );
+        continue;
+      }
+
+      for (const recipient of recipients) {
+        items.push(
+          await this.processSupportOpsTicketEscalation({
+            ticket,
+            booking,
+            payment,
+            recipientId: recipient.recipientId,
+            recipientRole: recipient.recipientRole,
+            asOfMs,
+            dryRun: Boolean(payload.dryRun)
+          })
+        );
+      }
+    }
+
+    const dueEscalationCount = items.filter((item) =>
+      ["sent", "already-sent", "dry-run"].includes(item.escalationStatus)
+    ).length;
+    const sentNotificationCount = items.filter((item) => item.escalationStatus === "sent").length;
+    const alreadySentCount = items.filter((item) => item.escalationStatus === "already-sent").length;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      asOfIso,
+      dryRun: Boolean(payload.dryRun),
+      ticketCount: tickets.length,
+      candidateEscalationCount: items.length,
+      dueEscalationCount,
+      sentNotificationCount,
+      alreadySentCount,
+      skippedEscalationCount: items.length - dueEscalationCount,
+      items
     };
   }
 
@@ -10305,6 +12824,10 @@ export class MarketplacePlatformService {
     );
     const opsAccessAudit = this.buildOpsAccessAuditOverview(opsAccounts);
     const providersById = new Map(providers.map((provider) => [provider.id, provider.companyName]));
+    const retentionMetricsByProvider = overview.retentionMetricsByProvider.map((metric) => ({
+      ...metric,
+      providerName: providersById.get(metric.providerId) ?? metric.providerName
+    }));
 
     return {
       ...overview,
@@ -10331,16 +12854,531 @@ export class MarketplacePlatformService {
       neverSignedInOpsAccounts: opsAccessAudit.neverSignedInOpsAccounts,
       opsAccountsWithRecentFailures: opsAccessAudit.opsAccountsWithRecentFailures,
       pendingOpsPasswordResetInvites: opsAccessAudit.pendingOpsPasswordResetInvites,
+      opsAccessPolicy: opsAccessAudit.opsAccessPolicy,
+      launchOperationsPolicy: this.buildLaunchOperationsPolicy(bookings, supportTickets, providers),
       accessAlerts: opsAccessAudit.accessAlerts,
       recentOpsAccessChanges: opsAccessAudit.recentOpsAccessChanges,
       recentOpsAuthenticationEvents: opsAccessAudit.recentOpsAuthenticationEvents,
       recentOpsSignIns: opsAccessAudit.recentOpsSignIns,
       recentFailedOpsSignIns: opsAccessAudit.recentFailedOpsSignIns,
-      retentionMetricsByProvider: overview.retentionMetricsByProvider.map((metric) => ({
-        ...metric,
-        providerName: providersById.get(metric.providerId) ?? metric.providerName
-      }))
+      retentionMetricsByProvider,
+      retentionInsights: this.buildRetentionInsights({
+        promptViews: overview.retentionPromptViews,
+        promptAccepts: overview.retentionPromptAccepts,
+        strategyMetrics: overview.retentionMetricsByStrategy,
+        sourceMetrics: overview.retentionMetricsBySource,
+        providerMetrics: retentionMetricsByProvider
+      })
     };
+  }
+
+  private buildRetentionInsights(input: {
+    promptViews: number;
+    promptAccepts: number;
+    strategyMetrics: ObservabilityOverview["retentionMetricsByStrategy"];
+    sourceMetrics: ObservabilityOverview["retentionMetricsBySource"];
+    providerMetrics: ObservabilityOverview["retentionMetricsByProvider"];
+  }): ObservabilityOverview["retentionInsights"] {
+    const insights: ObservabilityOverview["retentionInsights"] = [];
+    const bookingRequests = input.sourceMetrics.reduce((sum, metric) => sum + metric.bookingRequests, 0);
+    const hasLowVolume = input.promptViews < 10 || bookingRequests < 3;
+
+    insights.push({
+      kind: "volume",
+      status: hasLowVolume ? "needs-volume" : "working",
+      title: hasLowVolume ? "Retention signal still needs volume" : "Retention signal has enough early volume",
+      detail: `${input.promptViews} retention prompt view${input.promptViews === 1 ? "" : "s"}, ${input.promptAccepts} accept${input.promptAccepts === 1 ? "" : "s"}, and ${bookingRequests} repeat booking request${bookingRequests === 1 ? "" : "s"} are currently attributed.`,
+      recommendedAction: hasLowVolume
+        ? "Keep the retention nudges live, but treat strategy, source, and provider comparisons as directional until at least 10 views and 3 repeat bookings exist."
+        : "Review strategy, source, and provider metrics weekly and prune prompts that create clicks without repeat bookings.",
+      promptViews: input.promptViews,
+      promptAccepts: input.promptAccepts,
+      bookingRequests,
+      rate: input.promptViews > 0 ? input.promptAccepts / input.promptViews : 0
+    });
+
+    const topStrategy = [...input.strategyMetrics].sort((left, right) => {
+      if (right.promptAccepts !== left.promptAccepts) {
+        return right.promptAccepts - left.promptAccepts;
+      }
+      if (right.acceptanceRate !== left.acceptanceRate) {
+        return right.acceptanceRate - left.acceptanceRate;
+      }
+      return right.promptViews - left.promptViews;
+    })[0];
+    if (topStrategy) {
+      insights.push({
+        kind: "strategy",
+        status:
+          topStrategy.promptViews < 5
+            ? "needs-volume"
+            : topStrategy.acceptanceRate >= 0.25
+              ? "working"
+              : "watch",
+        title: `${this.formatRetentionStrategyLabel(topStrategy.strategyKey)} is the leading retention prompt`,
+        detail: `${topStrategy.promptAccepts} of ${topStrategy.promptViews} prompt view${topStrategy.promptViews === 1 ? "" : "s"} accepted for ${this.titleCaseCategory(topStrategy.category).toLowerCase()}.`,
+        recommendedAction:
+          topStrategy.promptViews < 5
+            ? "Keep collecting impressions before changing this strategy; one or two customers can swing the rate too much."
+            : topStrategy.acceptanceRate >= 0.25
+              ? "Keep this prompt active and compare whether accepted clicks become repeat bookings from the same source."
+              : "Review the copy, timing, or category fit before expanding this prompt.",
+        strategyKey: topStrategy.strategyKey,
+        trigger: topStrategy.trigger,
+        category: topStrategy.category,
+        promptViews: topStrategy.promptViews,
+        promptAccepts: topStrategy.promptAccepts,
+        rate: topStrategy.acceptanceRate
+      });
+    }
+
+    const weakSource = input.sourceMetrics.find(
+      (metric) => metric.promptAccepts >= 2 && metric.clickToBookingRate < 0.5
+    );
+    if (weakSource) {
+      insights.push({
+        kind: "source",
+        status: "watch",
+        title: `${weakSource.requestSource} retention clicks need booking follow-through`,
+        detail: `${weakSource.promptAccepts} accepted prompt${weakSource.promptAccepts === 1 ? "" : "s"} produced ${weakSource.bookingRequests} repeat booking request${weakSource.bookingRequests === 1 ? "" : "s"}.`,
+        recommendedAction:
+          "Check whether the handoff from accepted prompt to fresh recommendation is creating friction before sending more traffic through this source.",
+        requestSource: weakSource.requestSource,
+        strategyKey: weakSource.strategyKey,
+        trigger: weakSource.trigger,
+        category: weakSource.category,
+        promptAccepts: weakSource.promptAccepts,
+        bookingRequests: weakSource.bookingRequests,
+        rate: weakSource.clickToBookingRate
+      });
+    } else {
+      const topSource = input.sourceMetrics[0];
+      if (topSource) {
+        insights.push({
+          kind: "source",
+          status: topSource.bookingRequests >= 3 ? "working" : "needs-volume",
+          title: `${topSource.requestSource} is the top repeat-booking source`,
+          detail: `${topSource.bookingRequests} repeat booking request${topSource.bookingRequests === 1 ? "" : "s"} came from ${topSource.promptAccepts} accepted prompt${topSource.promptAccepts === 1 ? "" : "s"}.`,
+          recommendedAction:
+            topSource.bookingRequests >= 3
+              ? "Keep this source active and compare one-time rebooks against recurring starts before scaling spend."
+              : "Keep attributing accepted prompts and bookings so source quality is visible before launch volume grows.",
+          requestSource: topSource.requestSource,
+          strategyKey: topSource.strategyKey,
+          trigger: topSource.trigger,
+          category: topSource.category,
+          promptAccepts: topSource.promptAccepts,
+          bookingRequests: topSource.bookingRequests,
+          rate: topSource.clickToBookingRate
+        });
+      }
+    }
+
+    const topProvider = input.providerMetrics[0];
+    if (topProvider) {
+      insights.push({
+        kind: "provider",
+        status: topProvider.bookingRequests >= 3 ? "working" : "needs-volume",
+        title: `${topProvider.providerName ?? "A provider"} is leading attributed repeat bookings`,
+        detail: `${topProvider.bookingRequests} repeat booking request${topProvider.bookingRequests === 1 ? "" : "s"} are attributed to ${this.formatRetentionStrategyLabel(topProvider.strategyKey).toLowerCase()}.`,
+        recommendedAction:
+          topProvider.bookingRequests >= 3
+            ? "Watch service quality, route density, and payout outcomes before increasing loyalty weighting for this provider."
+            : "Keep provider-level attribution visible, but avoid over-weighting loyalty until more repeat bookings land.",
+        providerId: topProvider.providerId,
+        providerName: topProvider.providerName,
+        strategyKey: topProvider.strategyKey,
+        trigger: topProvider.trigger,
+        category: topProvider.category,
+        bookingRequests: topProvider.bookingRequests
+      });
+    }
+
+    return insights.slice(0, 4);
+  }
+
+  private formatRetentionStrategyLabel(strategyKey: string): string {
+    return strategyKey
+      .split("-")
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(" ");
+  }
+
+  private buildLaunchOperationsPolicy(
+    bookings: Booking[],
+    supportTickets: SupportTicket[],
+    providers: ProviderProfile[]
+  ): ObservabilityOverview["launchOperationsPolicy"] {
+    const activeExceptions = bookings.filter((booking) => Boolean(booking.activeExceptionType));
+    const disputedCompletedBookings = bookings.filter(
+      (booking) => booking.status === "disputed" && Boolean(booking.completedAt)
+    );
+    const openServiceQualityTickets = supportTickets.filter(
+      (ticket) => ticket.issueType === "service-quality" && ticket.status !== "resolved"
+    );
+    const verifiedProviderCount = providers.filter((provider) => provider.verificationStatus === "verified").length;
+    const coveragePockets = this.buildLaunchOperationsCoveragePockets(
+      bookings,
+      supportTickets,
+      providers
+    );
+    const warnings: string[] = [];
+
+    if (verifiedProviderCount < 2) {
+      warnings.push("Verified provider coverage is thin; keep launch promises narrow and route overflow through support before expanding availability.");
+    }
+    const watchPockets = coveragePockets.filter((pocket) => pocket.pressureLevel !== "normal");
+    if (watchPockets.length > 0) {
+      warnings.push(
+        `${watchPockets.length} launch pocket${watchPockets.length === 1 ? "" : "s"} need ZIP-level supply or exception review before expanding demand.`
+      );
+    }
+    if (activeExceptions.length > 0) {
+      warnings.push(`${activeExceptions.length} active field exception${activeExceptions.length === 1 ? "" : "s"} need same-day owner follow-up.`);
+    }
+    if (disputedCompletedBookings.length > 0) {
+      warnings.push(`${disputedCompletedBookings.length} completed disputed booking${disputedCompletedBookings.length === 1 ? "" : "s"} are holding payout release until evidence-backed support resolution.`);
+    }
+    if (openServiceQualityTickets.length > 0) {
+      warnings.push(`${openServiceQualityTickets.length} open service-quality ticket${openServiceQualityTickets.length === 1 ? "" : "s"} should stay tied to provider evidence, customer updates, and the final booking intervention.`);
+    }
+
+    const pressureScore =
+      activeExceptions.length * 2 +
+      disputedCompletedBookings.length * 2 +
+      openServiceQualityTickets.length +
+      (verifiedProviderCount < 2 ? 2 : 0);
+
+    return {
+      policyVersion: "launch-ops-v1",
+      activePressureLevel: pressureScore >= 5 ? "critical" : pressureScore >= 2 ? "watch" : "normal",
+      coveragePockets,
+      coverageActionRecommendations: this.buildLaunchOperationsCoverageActionRecommendations(coveragePockets),
+      scenarioRules: [
+        {
+          key: "coverage-limit",
+          title: "Coverage limit",
+          trigger: "A customer asks for a service, town, or time window outside verified launch coverage.",
+          primaryOwner: "ops",
+          primaryAction: "Keep the recommendation-first promise narrow: confirm the area, explain the current coverage limit, and collect the request as a launch lead instead of showing unqualified providers.",
+          customerPromise: "Give a specific next follow-up window and do not imply guaranteed service until verified supply can cover the property.",
+          providerInstruction: "Do not ask providers to stretch radius or scope unless ops has verified staffing, travel time, and economics for that job.",
+          escalationRule: "Escalate when two or more qualified leads arrive from the same uncovered pocket in a week."
+        },
+        {
+          key: "low-supply",
+          title: "Low supply",
+          trigger: "Provider search has no verified provider with a trustworthy open window.",
+          primaryOwner: "ops",
+          primaryAction: "Hold the customer in a managed follow-up path, check provider availability directly, and keep backup choices curated instead of opening a broad directory.",
+          customerPromise: "Offer a human availability check or a clear alternative timing window.",
+          providerInstruction: "Ask only category-qualified providers for concrete capacity, travel fit, and earliest reliable arrival.",
+          escalationRule: "Escalate if low-supply searches or no-open-window searches repeat for the same category or launch pocket."
+        },
+        {
+          key: "weather-delay",
+          title: "Weather or route delay",
+          trigger: "Weather, route pressure, equipment, or staffing risk threatens the promised service window.",
+          primaryOwner: "support",
+          primaryAction: "Send the customer a delay update, ask the provider for a realistic completion plan, and reschedule only when the new window is more reliable than waiting.",
+          customerPromise: "Name the updated ETA or the exact decision time for the next update.",
+          providerInstruction: "Provider must confirm crew coverage, route leader, and whether the job can still be completed safely.",
+          recommendedInterventionAction: "reschedule-booking",
+          escalationRule: "Escalate when the ETA slips twice, the crew gap remains open, or the provider cannot confirm same-day completion."
+        },
+        {
+          key: "provider-no-show",
+          title: "Provider no-show",
+          trigger: "Provider or assigned crew has not confirmed route progress near the service window.",
+          primaryOwner: "support",
+          primaryAction: "Contact the provider immediately, protect the customer with an update, and cancel or reschedule through an audited intervention if the provider cannot recover quickly.",
+          customerPromise: "Acknowledge the missed expectation plainly and give the customer a concrete recovery option.",
+          providerInstruction: "Provider must explain what happened, whether a crew member can still arrive, and how customer communication will be fixed.",
+          recommendedInterventionAction: "cancel-booking",
+          escalationRule: "Escalate immediately for repeat provider no-shows or when customer trust cannot be recovered with same-day service."
+        },
+        {
+          key: "customer-no-show",
+          title: "Customer access issue",
+          trigger: "Crew cannot access the property, gate, driveway, pets, or required work area.",
+          primaryOwner: "support",
+          primaryAction: "Document the access issue, ask the customer for instructions, and keep the provider moving only if the delay will not damage later route commitments.",
+          customerPromise: "Explain what access detail is needed and how long the provider can reasonably wait.",
+          providerInstruction: "Provider should capture before evidence and notes before leaving or changing scope.",
+          recommendedInterventionAction: "reschedule-booking",
+          escalationRule: "Escalate when access cannot be resolved before the route window collapses or when the provider asks for a cancellation fee decision."
+        },
+        {
+          key: "service-quality",
+          title: "Service-quality issue",
+          trigger: "Customer, provider, review, or support evidence suggests the service may not meet launch standards.",
+          primaryOwner: "support",
+          primaryAction: "Keep the issue in support, review evidence before resolving, and coordinate with the provider before promising refund or rework outcomes.",
+          customerPromise: "Tell the customer support is reviewing photos, notes, checklist context, and provider response before closing the case.",
+          providerInstruction: "Provider should send before/after evidence, recovery timing, and any scope constraints before ops resolves the ticket.",
+          escalationRule: "Escalate when reviewed evidence supports the customer, evidence is mixed, or the provider lacks a credible recovery plan."
+        },
+        {
+          key: "completed-dispute",
+          title: "Completed-job dispute",
+          trigger: "A completed booking is disputed after payment capture and payout is on hold.",
+          primaryOwner: "support",
+          primaryAction: "Review evidence before closing the dispute, keep payout holds active while disputed, and only release the completed booking when the resolution supports the provider.",
+          customerPromise: "Explain whether support is keeping the booking complete, approving a refund, or documenting mixed evidence.",
+          providerInstruction: "Provider must supply completion evidence and recovery context before payout release.",
+          recommendedInterventionAction: "complete-booking",
+          escalationRule: "Escalate when evidence is mixed or inconclusive, because final resolution requires a specific written rationale."
+        }
+      ],
+      serviceQualityStandards: [
+        "Every launch job should have enough before/after evidence, notes, or checklist detail to explain the service outcome without relying on memory.",
+        "Provider updates must be specific about arrival, delay, access, completion, or recovery timing; vague reassurance is not enough for launch incidents.",
+        "Customer-facing updates should acknowledge the operational issue, name the next decision point, and avoid promising refunds or rework before evidence review.",
+        "Providers with active disputes, refunds, or field exceptions need documented recovery before broader recommendation visibility."
+      ],
+      interventionRules: [
+        "Outcome-changing interventions for disputes and service-quality cases must stay linked to the support ticket.",
+        "Submitted evidence must be reviewed before resolving dispute, service-quality, or refund-review cases.",
+        "Provider-favoring resolutions must not override customer-leaning reviewed evidence.",
+        "Mixed or inconclusive evidence requires a specific written rationale before ops finalizes the booking or refund outcome.",
+        "Completed-job disputes keep provider and crew payouts on hold until support resolves the booking out of disputed status."
+      ],
+      escalationTriggers: [
+        "two or more active field exceptions at the same time",
+        "any completed-job dispute with captured payment and payout hold",
+        "repeat no-show, delay, or service-quality tickets for the same provider",
+        "verified provider coverage below two active businesses in a launch pocket",
+        "any support decision where evidence direction conflicts with the requested customer or provider outcome"
+      ],
+      warnings
+    };
+  }
+
+  private buildLaunchOperationsCoverageActionRecommendations(
+    coveragePockets: ObservabilityOverview["launchOperationsPolicy"]["coveragePockets"]
+  ): ObservabilityOverview["launchOperationsPolicy"]["coverageActionRecommendations"] {
+    return coveragePockets.flatMap((pocket) => {
+      const recommendations: ObservabilityOverview["launchOperationsPolicy"]["coverageActionRecommendations"] = [];
+      const pocketLabel = `${pocket.city}, ${pocket.state} ${pocket.postalCode}`;
+
+      if (pocket.verifiedProviderCount === 0) {
+        recommendations.push({
+          key: "hold-demand",
+          pocketKey: pocket.pocketKey,
+          city: pocket.city,
+          state: pocket.state,
+          postalCode: pocket.postalCode,
+          priority: "urgent",
+          owner: "ops",
+          title: `Hold new demand in ${pocketLabel}`,
+          detail: "No verified provider is currently attached to this ZIP-level launch pocket.",
+          recommendedAction:
+            "Pause new launch promises here, collect requests as launch leads, and verify supply before opening recommendation-first booking.",
+          dueWithinHours: 4,
+          relatedScenarioKeys: ["coverage-limit", "low-supply"]
+        });
+      } else if (pocket.verifiedProviderCount < 2) {
+        recommendations.push({
+          key: "verify-supply",
+          pocketKey: pocket.pocketKey,
+          city: pocket.city,
+          state: pocket.state,
+          postalCode: pocket.postalCode,
+          priority: pocket.activeBookingCount > 0 ? "high" : "normal",
+          owner: "provider-success",
+          title: `Verify backup supply in ${pocketLabel}`,
+          detail: `${pocket.verifiedProviderCount} verified provider${pocket.verifiedProviderCount === 1 ? "" : "s"} currently cover this pocket.`,
+          recommendedAction:
+            "Confirm backup provider capacity, travel fit, and category coverage before increasing local demand or broadening windows.",
+          dueWithinHours: pocket.activeBookingCount > 0 ? 12 : 48,
+          relatedScenarioKeys: ["coverage-limit", "low-supply"]
+        });
+      }
+
+      if (pocket.activeExceptionCount > 0) {
+        recommendations.push({
+          key: "recover-field-exception",
+          pocketKey: pocket.pocketKey,
+          city: pocket.city,
+          state: pocket.state,
+          postalCode: pocket.postalCode,
+          priority: pocket.activeExceptionCount > 1 ? "urgent" : "high",
+          owner: "support",
+          title: `Recover active field exception in ${pocketLabel}`,
+          detail: `${pocket.activeExceptionCount} active field exception${pocket.activeExceptionCount === 1 ? "" : "s"} are open in this pocket.`,
+          recommendedAction:
+            "Coordinate customer and provider updates today, then decide whether the pocket should stay open, narrow windows, or pause new requests.",
+          dueWithinHours: pocket.activeExceptionCount > 1 ? 4 : 8,
+          relatedScenarioKeys: ["weather-delay", "provider-no-show", "customer-no-show", "service-quality"]
+        });
+      }
+
+      if (pocket.openServiceQualityTicketCount > 0) {
+        recommendations.push({
+          key: "resolve-service-quality",
+          pocketKey: pocket.pocketKey,
+          city: pocket.city,
+          state: pocket.state,
+          postalCode: pocket.postalCode,
+          priority: pocket.openServiceQualityTicketCount > 1 ? "urgent" : "high",
+          owner: "support",
+          title: `Resolve service quality before expansion in ${pocketLabel}`,
+          detail: `${pocket.openServiceQualityTicketCount} open service-quality ticket${pocket.openServiceQualityTicketCount === 1 ? "" : "s"} are tied to this pocket.`,
+          recommendedAction:
+            "Review evidence, coordinate provider recovery, and keep local demand narrow until the support outcome is documented.",
+          dueWithinHours: 24,
+          relatedScenarioKeys: ["service-quality", "completed-dispute"]
+        });
+      }
+
+      return recommendations;
+    }).slice(0, 12);
+  }
+
+  private buildLaunchOperationsCoveragePockets(
+    bookings: Booking[],
+    supportTickets: SupportTicket[],
+    providers: ProviderProfile[]
+  ): ObservabilityOverview["launchOperationsPolicy"]["coveragePockets"] {
+    type MutablePocket = {
+      pocketKey: string;
+      city: string;
+      state: string;
+      postalCode: string;
+      verifiedProviderIds: Set<string>;
+      activeBookingIds: Set<string>;
+      completedBookingIds: Set<string>;
+      activeExceptionCount: number;
+      openServiceQualityTicketCount: number;
+      supportedCategories: Set<Booking["category"]>;
+    };
+    const pockets = new Map<string, MutablePocket>();
+    const bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
+
+    const touchPocket = (address: Address): MutablePocket => {
+      const city = address.city.trim() || "Unknown city";
+      const state = address.state.trim().toUpperCase() || "NA";
+      const postalCode = address.postalCode.trim().slice(0, 5) || "unknown";
+      const pocketKey = `${state}:${postalCode}:${city.toLowerCase()}`;
+      const existing = pockets.get(pocketKey);
+      if (existing) {
+        return existing;
+      }
+      const pocket: MutablePocket = {
+        pocketKey,
+        city,
+        state,
+        postalCode,
+        verifiedProviderIds: new Set<string>(),
+        activeBookingIds: new Set<string>(),
+        completedBookingIds: new Set<string>(),
+        activeExceptionCount: 0,
+        openServiceQualityTicketCount: 0,
+        supportedCategories: new Set<Booking["category"]>()
+      };
+      pockets.set(pocketKey, pocket);
+      return pocket;
+    };
+
+    for (const provider of providers) {
+      if (provider.verificationStatus !== "verified") {
+        continue;
+      }
+      const pocket = touchPocket(provider.address);
+      pocket.verifiedProviderIds.add(provider.id);
+      for (const category of provider.categories) {
+        pocket.supportedCategories.add(category);
+      }
+    }
+
+    for (const booking of bookings) {
+      const pocket = touchPocket(booking.serviceAddress);
+      pocket.supportedCategories.add(booking.category);
+      if (booking.status === "completed" || booking.status === "refunded") {
+        pocket.completedBookingIds.add(booking.id);
+      } else if (booking.status !== "cancelled") {
+        pocket.activeBookingIds.add(booking.id);
+      }
+      if (booking.activeExceptionType) {
+        pocket.activeExceptionCount += 1;
+      }
+    }
+
+    for (const ticket of supportTickets) {
+      if (ticket.issueType !== "service-quality" || ticket.status === "resolved" || !ticket.bookingId) {
+        continue;
+      }
+      const booking = bookingMap.get(ticket.bookingId);
+      if (!booking) {
+        continue;
+      }
+      touchPocket(booking.serviceAddress).openServiceQualityTicketCount += 1;
+    }
+
+    return Array.from(pockets.values())
+      .map((pocket) => {
+        const warnings: string[] = [];
+        if (pocket.verifiedProviderIds.size < 2) {
+          warnings.push("Verified supply is thin for this ZIP-level launch pocket.");
+        }
+        if (pocket.activeBookingIds.size > Math.max(2, pocket.verifiedProviderIds.size * 3)) {
+          warnings.push("Active booking load is high relative to verified supply in this pocket.");
+        }
+        if (pocket.activeExceptionCount > 0) {
+          warnings.push("Active field exceptions need same-day support follow-up in this pocket.");
+        }
+        if (pocket.openServiceQualityTicketCount > 0) {
+          warnings.push("Open service-quality tickets should be resolved before increasing demand in this pocket.");
+        }
+
+        const pressureLevel: ObservabilityOverview["launchOperationsPolicy"]["coveragePockets"][number]["pressureLevel"] =
+          pocket.verifiedProviderIds.size === 0 ||
+          pocket.activeExceptionCount > 1 ||
+          pocket.openServiceQualityTicketCount > 1
+            ? "critical"
+            : warnings.length > 0
+              ? "watch"
+              : "normal";
+        const recommendedAction =
+          pressureLevel === "critical"
+            ? "Hold new demand in this pocket until ops confirms verified supply, exception recovery, or support resolution."
+            : pressureLevel === "watch"
+              ? "Keep demand narrow, monitor service-quality and route pressure, and verify provider capacity before expanding this pocket."
+              : "Keep this pocket active with normal launch monitoring.";
+
+        return {
+          pocketKey: pocket.pocketKey,
+          city: pocket.city,
+          state: pocket.state,
+          postalCode: pocket.postalCode,
+          verifiedProviderCount: pocket.verifiedProviderIds.size,
+          activeBookingCount: pocket.activeBookingIds.size,
+          completedBookingCount: pocket.completedBookingIds.size,
+          activeExceptionCount: pocket.activeExceptionCount,
+          openServiceQualityTicketCount: pocket.openServiceQualityTicketCount,
+          supportedCategories: Array.from(pocket.supportedCategories).sort(),
+          pressureLevel,
+          warnings,
+          recommendedAction
+        };
+      })
+      .sort((left, right) => {
+        const pressureRank: Record<typeof left.pressureLevel, number> = { critical: 2, watch: 1, normal: 0 };
+        if (pressureRank[right.pressureLevel] !== pressureRank[left.pressureLevel]) {
+          return pressureRank[right.pressureLevel] - pressureRank[left.pressureLevel];
+        }
+        if (right.activeExceptionCount !== left.activeExceptionCount) {
+          return right.activeExceptionCount - left.activeExceptionCount;
+        }
+        if (right.openServiceQualityTicketCount !== left.openServiceQualityTicketCount) {
+          return right.openServiceQualityTicketCount - left.openServiceQualityTicketCount;
+        }
+        if (right.activeBookingCount !== left.activeBookingCount) {
+          return right.activeBookingCount - left.activeBookingCount;
+        }
+        return left.pocketKey.localeCompare(right.pocketKey);
+      })
+      .slice(0, 8);
   }
 
   public async buildCalendarFeed(providerId: string): Promise<string> {
@@ -11291,7 +14329,7 @@ export class MarketplacePlatformService {
     const crewMessageDetails = this.parseProviderAssistantCrewMessage(command);
     const targetWindowKey = this.parseProviderAssistantWindowFromCommand(afterTarget, true);
     const sourceWindowKey =
-      crewMessageDetails?.crewNameQuery && crewMessageDetails?.body
+      crewMessageDetails?.body && (crewMessageDetails.crewNameQuery || crewMessageDetails.target)
         ? this.parseProviderAssistantWindowFromCommand(normalized, true)
         : this.parseProviderAssistantWindowFromCommand(beforeTarget, true);
     const crewMatchCrewNameQuery = this.parseProviderAssistantCrewMatchName(command);
@@ -11311,10 +14349,9 @@ export class MarketplacePlatformService {
       /\b(assign|make|set)\b/.test(normalized) &&
       /\broute leader\b/.test(normalized);
     const isCrewMessageCommand =
-      Boolean(crewMessageDetails?.crewNameQuery && crewMessageDetails?.body) &&
+      Boolean(crewMessageDetails?.body && (crewMessageDetails.crewNameQuery || crewMessageDetails.target)) &&
       /\b(?:tell|message|ask)\b/.test(normalized) &&
-      /\bcrew\b/.test(normalized) &&
-      !/\broute leader\b/.test(normalized);
+      (/\bcrew\b/.test(normalized) || /\broute leader\b/.test(normalized));
     const isClearRouteStopCommand =
       /\b(clear|remove|skip)\b/.test(normalized) &&
       /\b(route stop|equipment pickup|staging stop)\b/.test(normalized);
@@ -11416,6 +14453,7 @@ export class MarketplacePlatformService {
       crewMatchCrewNameQuery,
       routeLeaderCrewNameQuery,
       crewMessageCrewNameQuery: crewMessageDetails?.crewNameQuery,
+      crewMessageTarget: crewMessageDetails?.target,
       crewMessageBody: crewMessageDetails?.body,
       routeStopKind,
       notifyCustomer:
@@ -11512,7 +14550,31 @@ export class MarketplacePlatformService {
 
   private parseProviderAssistantCrewMessage(
     command: string
-  ): { crewNameQuery?: string; body?: string } | undefined {
+  ): {
+    crewNameQuery?: string;
+    target?: "named-crew" | "route-leader" | "accepted-crew";
+    body?: string;
+  } | undefined {
+    const routeLeaderMatch =
+      command.match(/\b(?:tell|ask|message)\s+(?:the\s+)?route leader\s+to\s+(.+)$/i) ??
+      command.match(/\b(?:tell|ask|message)\s+(?:the\s+)?route leader\s+(?:that|about)\s+(.+)$/i);
+    if (routeLeaderMatch?.[1]) {
+      return {
+        target: "route-leader",
+        body: this.toSentenceCase(this.stripProviderAssistantBookingSelector(routeLeaderMatch[1]))
+      };
+    }
+
+    const acceptedCrewMatch =
+      command.match(/\b(?:tell|ask|message)\s+(?:the\s+)?(?:accepted crew|assigned crew|crew team|whole crew|all crew|crew)\s+to\s+(.+)$/i) ??
+      command.match(/\b(?:tell|ask|message)\s+(?:the\s+)?(?:accepted crew|assigned crew|crew team|whole crew|all crew|crew)\s+(?:that|about)\s+(.+)$/i);
+    if (acceptedCrewMatch?.[1]) {
+      return {
+        target: "accepted-crew",
+        body: this.toSentenceCase(this.stripProviderAssistantBookingSelector(acceptedCrewMatch[1]))
+      };
+    }
+
     const match =
       command.match(/\b(?:tell|ask)\s+(.+?)\s+to\s+(.+)$/i) ??
       command.match(/\b(?:message|tell|ask)\s+(.+?)\s+(?:that|about)\s+(.+)$/i);
@@ -11528,6 +14590,7 @@ export class MarketplacePlatformService {
 
     return {
       crewNameQuery,
+      target: "named-crew",
       body: this.toSentenceCase(body)
     };
   }
@@ -11645,6 +14708,125 @@ export class MarketplacePlatformService {
     };
   }
 
+  private getProviderAssistantStaffingJobsNeedingCrew(
+    staffing: ProviderStaffingOverview,
+    dayStartIso: string,
+    dayEndIso: string,
+    windowKey?: BookingServiceWindowKey
+  ): ProviderStaffingJobSummary[] {
+    return staffing.jobs
+      .filter((job) => {
+        if (job.crewGap <= 0) {
+          return false;
+        }
+
+        if (!this.doIntervalsOverlap(job.scheduledStartIso, job.scheduledEndIso, dayStartIso, dayEndIso)) {
+          return false;
+        }
+
+        return windowKey ? getBookingServiceWindow(job.scheduledStartIso).key === windowKey : true;
+      })
+      .sort((left, right) => {
+        const uncoveredGapDelta =
+          this.getProviderAssistantUncoveredCrewGap(right) - this.getProviderAssistantUncoveredCrewGap(left);
+        if (uncoveredGapDelta !== 0) {
+          return uncoveredGapDelta;
+        }
+
+        const gapDelta = right.crewGap - left.crewGap;
+        if (gapDelta !== 0) {
+          return gapDelta;
+        }
+
+        return new Date(left.scheduledStartIso).getTime() - new Date(right.scheduledStartIso).getTime();
+      });
+  }
+
+  private buildProviderAssistantStaffingPlan(
+    jobsNeedingCrew: ProviderStaffingJobSummary[]
+  ): ProviderAssistantStaffingPlanItem[] {
+    return jobsNeedingCrew.map((job) => {
+      const pendingMatchCount = this.getProviderAssistantPendingMatchCount(job);
+      const uncoveredCrewGap = this.getProviderAssistantUncoveredCrewGap(job);
+      const acceptedCrewCount = job.matches.filter((match) => match.status === "accepted").length;
+      const window = getBookingServiceWindow(job.scheduledStartIso);
+      const recommendedAction =
+        job.crewGap <= 0
+          ? "covered"
+          : pendingMatchCount >= job.crewGap
+            ? "review-pending-matches"
+            : pendingMatchCount > 0
+              ? "review-pending-then-source"
+              : "source-more-crew";
+      const reasons = [
+        `${job.customerName}'s ${window.label.toLowerCase()} ${this.titleCaseCategory(
+          job.category
+        ).toLowerCase()} booking needs ${job.requiredCrewMembers} crew member${
+          job.requiredCrewMembers === 1 ? "" : "s"
+        }.`,
+        `${job.assignedCrewMembers} assigned, ${acceptedCrewCount} accepted, ${pendingMatchCount} pending review.`
+      ];
+
+      if (uncoveredCrewGap > 0) {
+        reasons.push(
+          `${uncoveredCrewGap} crew slot${uncoveredCrewGap === 1 ? "" : "s"} still need${
+            uncoveredCrewGap === 1 ? "s" : ""
+          } sourcing after pending matches.`
+        );
+      } else if (pendingMatchCount > 0) {
+        reasons.push("Pending matches can close the visible gap without sourcing new crew.");
+      } else {
+        reasons.push("Current accepted and assigned crew cover the planned requirement.");
+      }
+
+      return {
+        bookingId: job.bookingId,
+        customerName: job.customerName,
+        category: job.category,
+        scheduledStartIso: job.scheduledStartIso,
+        scheduledEndIso: job.scheduledEndIso,
+        currentWindowKey: window.key,
+        currentWindowLabel: window.label,
+        requiredCrewMembers: job.requiredCrewMembers,
+        assignedCrewMembers: job.assignedCrewMembers,
+        acceptedCrewCount,
+        pendingMatchCount,
+        crewGap: job.crewGap,
+        uncoveredCrewGap,
+        recommendedAction,
+        reasons
+      };
+    });
+  }
+
+  private buildProviderAssistantStaffingPlanPreview(plan: ProviderAssistantStaffingPlanItem[]): string {
+    if (plan.length <= 1) {
+      return "";
+    }
+
+    const sourceCount = plan.filter(
+      (item) => item.recommendedAction === "source-more-crew" || item.recommendedAction === "review-pending-then-source"
+    ).length;
+    const reviewCount = plan.filter(
+      (item) =>
+        item.recommendedAction === "review-pending-matches" || item.recommendedAction === "review-pending-then-source"
+    ).length;
+    const planParts = [
+      sourceCount > 0
+        ? `${sourceCount} job${sourceCount === 1 ? "" : "s"} still need${sourceCount === 1 ? "s" : ""} sourcing`
+        : undefined,
+      reviewCount > 0
+        ? `${reviewCount} job${reviewCount === 1 ? "" : "s"} should review pending matches`
+        : undefined
+    ].filter((part): part is string => Boolean(part));
+
+    if (planParts.length === 0) {
+      return ` Staffing plan covers ${plan.length} competing jobs.`;
+    }
+
+    return ` Staffing plan covers ${plan.length} competing jobs: ${planParts.join("; ")}.`;
+  }
+
   private getProviderAssistantPendingMatchCount(job: ProviderStaffingJobSummary): number {
     return job.matches.filter((match) => match.status === "pending-provider-review").length;
   }
@@ -11736,6 +14918,21 @@ export class MarketplacePlatformService {
     return bestPressure + 45 <= focusPressure ? bestWindow : undefined;
   }
 
+  private isProviderAssistantStaffingPressureDominant(
+    targetDay: ProviderCalendarOverviewResponse["dispatchDays"][number],
+    focusWindow: ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number]
+  ): boolean {
+    return (
+      focusWindow.crewGap > 0 &&
+      focusWindow.crewGap > focusWindow.yardmatchJobCount &&
+      targetDay.crewGap > 0 &&
+      focusWindow.blockedMinutes < 90 &&
+      targetDay.estimatedDriveMiles < 22 &&
+      targetDay.longestDriveLegMiles < 8 &&
+      targetDay.largestIdleGapMinutes < 90
+    );
+  }
+
   private calculateProviderAssistantDispatchWindowPressure(
     window: ProviderCalendarOverviewResponse["dispatchDays"][number]["windowSummaries"][number]
   ): number {
@@ -11775,11 +14972,53 @@ export class MarketplacePlatformService {
     );
     const candidateSlots = providerSlots.filter(
       (slot) =>
+        !slot.isBooked &&
         Date.parse(slot.startIso) >= Date.parse(afterIso) &&
-        this.isWithinProviderAcceptanceWindow(provider, slot.startIso)
+        this.isWithinProviderAcceptanceWindow(provider, slot.startIso) &&
+        Date.parse(slot.endIso) - Date.parse(slot.startIso) >= durationMinutes * 60_000
     );
 
-    return this.schedulingService.findFirstAvailableSlot(candidateSlots, durationMinutes);
+    if (candidateSlots.length === 0) {
+      return undefined;
+    }
+
+    const overview = await this.getProviderCalendarOverview(providerId, {
+      fromIso: afterIso,
+      toIso: new Date(Date.parse(afterIso) + 7 * 24 * 60 * 60 * 1000).toISOString()
+    });
+
+    return [...candidateSlots].sort((left, right) => {
+      const scoreDelta =
+        this.scoreProviderAssistantCrossDayReliefSlot(left, overview) -
+        this.scoreProviderAssistantCrossDayReliefSlot(right, overview);
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+
+      return Date.parse(left.startIso) - Date.parse(right.startIso);
+    })[0];
+  }
+
+  private scoreProviderAssistantCrossDayReliefSlot(
+    slot: AvailabilitySlot,
+    overview: ProviderCalendarOverviewResponse
+  ): number {
+    const slotDay = overview.dispatchDays.find(
+      (day) => day.dateIso.slice(0, 10) === this.localDateKey(slot.startIso)
+    );
+    if (!slotDay) {
+      return 0;
+    }
+
+    const slotWindowKey = getBookingServiceWindow(slot.startIso).key;
+    const slotWindow = slotDay.windowSummaries.find((window) => window.windowKey === slotWindowKey);
+
+    return (
+      this.providerDispatchRoutePriority(slotDay.routeStatus) * 1_000 +
+      slotDay.crewGap * 250 +
+      slotDay.estimatedDriveMiles * 8 +
+      (slotWindow ? this.calculateProviderAssistantDispatchWindowPressure(slotWindow) : 0)
+    );
   }
 
   private orderProviderAssistantDispatchAdjustmentCandidates(
@@ -11958,6 +15197,87 @@ export class MarketplacePlatformService {
     return this.repository.findCrewMemberById(identity.userId);
   }
 
+  public buildSensitiveActionPolicy(
+    identity: AuthIdentityRecord,
+    sessionIssuedAtSeconds?: number
+  ): SensitiveActionPolicy {
+    const now = Date.now();
+    const issuedAtMs = sessionIssuedAtSeconds ? sessionIssuedAtSeconds * 1000 : undefined;
+    const maxAgeSeconds = MarketplacePlatformService.sensitiveActionFreshSessionMaxAgeSeconds;
+    const sessionFreshUntilIso = issuedAtMs
+      ? new Date(issuedAtMs + maxAgeSeconds * 1000).toISOString()
+      : undefined;
+    const isCurrentSessionFresh =
+      issuedAtMs !== undefined ? now <= issuedAtMs + maxAgeSeconds * 1000 : false;
+    const buildAction = (
+      action: Omit<
+        SensitiveActionPolicyItem,
+        "maxSessionAgeSeconds" | "sessionFreshUntilIso" | "isCurrentSessionFresh"
+      >
+    ): SensitiveActionPolicyItem => ({
+      ...action,
+      maxSessionAgeSeconds: maxAgeSeconds,
+      sessionFreshUntilIso,
+      isCurrentSessionFresh
+    });
+    const providerActions: SensitiveActionPolicyItem[] =
+      identity.role === "provider"
+        ? [
+            buildAction({
+              key: "provider-payout-settings",
+              label: "Provider payout timing and instant payout settings",
+              ownerRole: "provider",
+              requiresFreshSession: true,
+              enforcementStatus: "enforced",
+              currentBackendSurface: "POST /api/providers/settings",
+              rationale:
+                "Weekly payout day and instant-payout preference affect settlement timing, so changes require a fresh provider session."
+            }),
+            buildAction({
+              key: "provider-bank-account",
+              label: "Provider bank account changes",
+              ownerRole: "provider",
+              requiresFreshSession: true,
+              enforcementStatus: "contract-ready",
+              futureBackendSurface: "future provider bank-account update route",
+              rationale:
+                "Bank account changes will control where provider funds land and must use the same fresh-session standard before external payout rails are enabled."
+            }),
+            buildAction({
+              key: "provider-payout-account",
+              label: "Provider external payout account changes",
+              ownerRole: "provider",
+              requiresFreshSession: true,
+              enforcementStatus: "contract-ready",
+              futureBackendSurface: "future payout-provider account link/update route",
+              rationale:
+                "External payout account linking can redirect provider settlement and should not be accepted from an old bearer session."
+            })
+          ]
+        : [];
+    const customerActions: SensitiveActionPolicyItem[] =
+      identity.role === "customer"
+        ? [
+            buildAction({
+              key: "customer-payment-method",
+              label: "Customer payment method changes",
+              ownerRole: "customer",
+              requiresFreshSession: true,
+              enforcementStatus: "contract-ready",
+              futureBackendSurface: "future customer payment-method update route",
+              rationale:
+                "Stored payment-method changes affect future checkout and refund flows and should require a fresh customer session once the backend stores payment methods."
+            })
+          ]
+        : [];
+
+    return {
+      generatedAt: new Date(now).toISOString(),
+      sessionIssuedAtIso: issuedAtMs ? new Date(issuedAtMs).toISOString() : undefined,
+      actions: [...providerActions, ...customerActions]
+    };
+  }
+
   public async findOpsUserById(opsUserId: string): Promise<OpsProfile | undefined> {
     return this.repository.findOpsUserById(opsUserId);
   }
@@ -12024,6 +15344,7 @@ export class MarketplacePlatformService {
     neverSignedInOpsAccounts: number;
     opsAccountsWithRecentFailures: number;
     pendingOpsPasswordResetInvites: number;
+    opsAccessPolicy: OpsAccessGovernancePolicy;
     accessAlerts: OpsAccessAlertItem[];
     recentOpsAccessChanges: OpsAccessAuditItem[];
     recentOpsAuthenticationEvents: OpsAuthenticationAuditItem[];
@@ -12116,15 +15437,23 @@ export class MarketplacePlatformService {
       .sort((left, right) => right.failedAt.localeCompare(left.failedAt))
       .slice(0, 12);
     const accessAlerts = this.buildOpsAccessAlerts(opsAccounts);
+    const activeOpsAdminAccounts = opsAccounts.filter(
+      (account) => account.isActive && account.profile.internalScope === "admin"
+    ).length;
+    const activeOpsStaffAccounts = opsAccounts.filter(
+      (account) => account.isActive && account.profile.internalScope === "operations"
+    ).length;
+    const opsAccessPolicy = this.buildOpsAccessGovernancePolicy({
+      activeOpsAdminAccounts,
+      activeOpsStaffAccounts,
+      disabledOpsAccounts: opsAccounts.filter((account) => !account.isActive).length,
+      lockedOpsAccounts: opsAccounts.filter((account) => account.isAuthenticationLocked).length
+    });
 
     return {
       totalOpsAccounts: opsAccounts.length,
-      activeOpsAdminAccounts: opsAccounts.filter(
-        (account) => account.isActive && account.profile.internalScope === "admin"
-      ).length,
-      activeOpsStaffAccounts: opsAccounts.filter(
-        (account) => account.isActive && account.profile.internalScope === "operations"
-      ).length,
+      activeOpsAdminAccounts,
+      activeOpsStaffAccounts,
       disabledOpsAccounts: opsAccounts.filter((account) => !account.isActive).length,
       lockedOpsAccounts: opsAccounts.filter((account) => account.isAuthenticationLocked).length,
       dormantOpsAccounts: opsAccounts.filter((account) => {
@@ -12154,11 +15483,66 @@ export class MarketplacePlatformService {
         const expiresAt = Date.parse(account.passwordResetExpiresAt);
         return !Number.isNaN(expiresAt) && expiresAt > now;
       }).length,
+      opsAccessPolicy,
       accessAlerts,
       recentOpsAccessChanges,
       recentOpsAuthenticationEvents,
       recentOpsSignIns,
       recentFailedOpsSignIns
+    };
+  }
+
+  private buildOpsAccessGovernancePolicy(input: {
+    activeOpsAdminAccounts: number;
+    activeOpsStaffAccounts: number;
+    disabledOpsAccounts: number;
+    lockedOpsAccounts: number;
+  }): OpsAccessGovernancePolicy {
+    const minimumActiveAdminAccounts = 1;
+    const warnings: string[] = [];
+
+    if (input.activeOpsAdminAccounts < minimumActiveAdminAccounts) {
+      warnings.push("At least one active ops-admin account is required before internal staff tooling is launch-ready.");
+    }
+    if (input.lockedOpsAccounts > 0) {
+      warnings.push("Review locked internal accounts before launch support hours begin.");
+    }
+    if (input.disabledOpsAccounts > 0) {
+      warnings.push("Disabled internal accounts should be reviewed during staff-access audits.");
+    }
+
+    return {
+      roleModel: "admin-and-operations",
+      minimumActiveAdminAccounts,
+      activeAdminAccountCount: input.activeOpsAdminAccounts,
+      hasRequiredAdminCoverage: input.activeOpsAdminAccounts >= minimumActiveAdminAccounts,
+      adminRequiredActions: [
+        "create internal ops accounts",
+        "change ops admin-vs-operations scope",
+        "rotate another ops user's sessions or password",
+        "prepare password reset or invite links for ops users",
+        "deactivate or reactivate ops accounts",
+        "clear temporary ops authentication locks"
+      ],
+      operationsAllowedActions: [
+        "review ops overview and launch metrics",
+        "work support, refund, dispute, review-response, launch-lead, payout-preview, notification-health, and provider-verification queues",
+        "run retry or escalation workflows that do not change staff account access"
+      ],
+      authenticationControls: [
+        "dedicated ops identities are required for internal tooling",
+        "provider and business-owner accounts cannot access internal ops surfaces",
+        "temporary lockouts trigger after repeated failed ops password attempts",
+        "ops authentication and access changes are retained in durable audit history"
+      ],
+      escalationTriggers: [
+        "no active ops-admin account",
+        "locked internal staff account",
+        "disabled account receiving login attempts",
+        "recent repeated failed staff sign-ins",
+        "pending reset invites or never-signed-in accounts before launch support hours"
+      ],
+      warnings
     };
   }
 
@@ -13490,6 +16874,86 @@ export class MarketplacePlatformService {
           `Hi ${firstName},\n\n` +
           `I reviewed the support case tied to your ${serviceLabel} booking for ${visitWindow}. ${outcomeText}\n\n` +
           `If there is one specific detail you still want considered, reply with that detail directly so support can attach it to the case without losing the current review trail.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    return templates.slice(0, 3);
+  }
+
+  private buildSupportProviderCoordinationTemplates(
+    ticket: SupportTicket,
+    booking: Booking,
+    customerName?: string,
+    providerName?: string
+  ): SupportOpsTicket["providerCoordinationTemplates"] {
+    const templates: SupportOpsTicket["providerCoordinationTemplates"] = [];
+    const providerLabel = providerName?.trim() || "Provider team";
+    const customerLabel = customerName?.trim() || "the customer";
+    const serviceLabel = this.titleCaseCategory(booking.category).toLowerCase();
+    const visitWindow = this.formatBookingWindowWithDate(booking.scheduledStartIso);
+    const exceptionLabel = booking.activeExceptionType
+      ? getBookingExceptionLabel(booking.activeExceptionType).toLowerCase()
+      : undefined;
+
+    if (booking.activeExceptionType) {
+      const notesText = booking.activeExceptionNotes?.trim()
+        ? ` Provider notes so far: ${booking.activeExceptionNotes.trim()}`
+        : "";
+      templates.push({
+        key: "field-exception-provider-update",
+        title: "Provider field-exception coordination",
+        channel: "email",
+        reason:
+          "Use this when ops needs the provider to confirm the active field exception, customer-safe next step, and whether the visit should continue, move, or close.",
+        subject: `GreenRain support follow-up for ${serviceLabel} field issue`,
+        body:
+          `Hi ${providerLabel},\n\n` +
+          `GreenRain support is reviewing the ${serviceLabel} booking for ${customerLabel} scheduled ${visitWindow}. ` +
+          `The active field issue is ${exceptionLabel}.${notesText}\n\n` +
+          `Please reply with:\n` +
+          `- whether your team can still complete the visit safely\n` +
+          `- the earliest realistic continuation or reschedule window\n` +
+          `- any customer action needed, such as gate access, pets, parked cars, or site cleanup\n` +
+          `- whether photos or notes should be attached before support updates the customer\n\n` +
+          `Please keep the reply factual so support can give the customer a clear next step without overpromising.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    if (
+      (ticket.issueType === "service-quality" || booking.status === "disputed") &&
+      booking.serviceEvidence.length === 0
+    ) {
+      templates.push({
+        key: "provider-evidence-request",
+        title: "Provider evidence request",
+        channel: "email",
+        reason:
+          "Use this when a service-quality or dispute case needs provider photos, notes, or checklist context before ops resolves it.",
+        subject: `GreenRain evidence request for ${serviceLabel} support case`,
+        body:
+          `Hi ${providerLabel},\n\n` +
+          `GreenRain support is reviewing the ${serviceLabel} booking for ${customerLabel} scheduled ${visitWindow}. ` +
+          `Before we resolve the customer-facing case, please send any before/after photos, crew notes, access notes, or checklist details that explain what happened.\n\n` +
+          `If there is no additional evidence, reply with that directly so support can document the gap before deciding the outcome.\n\n` +
+          `Thanks,\nGreenRain support`
+      });
+    }
+
+    if (ticket.status === "resolved" && (ticket.issueType === "service-quality" || booking.status === "disputed")) {
+      templates.push({
+        key: "provider-resolution-follow-up",
+        title: "Provider resolution follow-up",
+        channel: "email",
+        reason:
+          "Use this after ops closes a service-quality or dispute case so the provider sees the outcome and any launch-quality expectation.",
+        subject: `GreenRain support outcome for ${serviceLabel} booking`,
+        body:
+          `Hi ${providerLabel},\n\n` +
+          `GreenRain support closed the ${serviceLabel} case for ${customerLabel} scheduled ${visitWindow}. ` +
+          `Please review the outcome notes in your provider dashboard and make sure any crew, timing, or access lesson is reflected before the next launch booking.\n\n` +
+          `If you think support missed a material fact, reply with that specific point rather than reopening the whole case without new context.\n\n` +
           `Thanks,\nGreenRain support`
       });
     }
@@ -15952,7 +19416,7 @@ export class MarketplacePlatformService {
 
   private async createNotification(
     payload: Omit<AppNotification, "id" | "isRead" | "createdAt">
-  ): Promise<void> {
+  ): Promise<AppNotification> {
     const notification = await this.repository.createNotification({
       id: crypto.randomUUID(),
       recipientId: payload.recipientId,
@@ -15967,6 +19431,7 @@ export class MarketplacePlatformService {
     });
 
     await this.queueNotificationDeliveries(notification);
+    return notification;
   }
 
   private async ensureNotificationPreferences(
@@ -16247,6 +19712,7 @@ export class MarketplacePlatformService {
     overdueRetryCount: number;
     exhaustedFailureCount: number;
     channels: NotificationOpsChannelHealth[];
+    deliveryPolicy: NotificationOpsDeliveryPolicy;
   }): NotificationOpsAlert[] {
     const alerts: NotificationOpsAlert[] = [];
     const opsAlertTargets = this.notificationDelivery.getOpsAlertTargets();
@@ -16291,7 +19757,24 @@ export class MarketplacePlatformService {
       });
     }
 
-    if (opsAlertTargets.length === 0 && alerts.some((alert) => alert.severity === "warning" || alert.severity === "critical")) {
+    const mockFallbackChannels = input.deliveryPolicy.channelPolicies.filter(
+      (policy) => policy.readinessStatus === "mock-fallback"
+    );
+    if (mockFallbackChannels.length > 0) {
+      alerts.push({
+        severity: "warning",
+        title: "Production notification channels need configuration",
+        detail: mockFallbackChannels
+          .map((policy) => `${policy.channel}: ${policy.missingConfiguration.join(", ")}`)
+          .join(" • ")
+      });
+    }
+
+    if (
+      opsAlertTargets.length === 0 &&
+      (alerts.some((alert) => alert.severity === "warning" || alert.severity === "critical") ||
+        !input.deliveryPolicy.opsAlertTargetsConfigured)
+    ) {
       alerts.push({
         severity: "warning",
         title: "No external ops alert targets are configured",
@@ -16650,6 +20133,108 @@ export class MarketplacePlatformService {
       instantPayoutMinimumCents: this.instantPayoutMinimumCents,
       instantPayoutEligibleCents
     };
+  }
+
+  private buildOpsPayoutPolicySummary(): OpsPayoutRunPreviewResponse["payoutPolicy"] {
+    return {
+      disbursementRailStatus: "manual-preview-only",
+      providerHoldPeriodHours: this.payoutHoldHours,
+      crewHoldPeriodHours: this.payoutHoldHours,
+      providerWeeklyRunRule:
+        "Provider net payouts are grouped by each provider's configured weekly payout day after the post-service hold period.",
+      crewWeeklyPayoutDay: this.crewPayoutWeekday,
+      instantPayoutMinimumCents: this.instantPayoutMinimumCents,
+      readyRequirements: [
+        "booking completed or completed dispute resolved in the provider's favor",
+        "customer payment captured",
+        "post-service hold period elapsed",
+        "no open refund review",
+        "no active completed-job dispute",
+        "payment not refunded"
+      ],
+      holdReasons: [
+        "open refund review",
+        "completed booking dispute",
+        "customer payment still awaiting capture",
+        "refunded or reversed customer payment"
+      ]
+    };
+  }
+
+  private buildPayoutDisbursementEntryFingerprint(
+    batch: OpsPayoutRunPreviewResponse["disbursementBatches"][number]
+  ): string {
+    const stableEntries = batch.entries
+      .map((entry) => ({
+        entryId: entry.entryId,
+        bookingId: entry.bookingId,
+        recipientId: entry.recipientId,
+        recipientRole: entry.recipientRole,
+        amountCents: entry.amountCents,
+        paymentId: entry.paymentId ?? null
+      }))
+      .sort((left, right) => left.entryId.localeCompare(right.entryId));
+
+    return createHash("sha256").update(JSON.stringify(stableEntries)).digest("hex");
+  }
+
+  private buildLaunchOperationsRecommendationFingerprint(
+    recommendation: LaunchOperationsCoverageActionRecommendation
+  ): string {
+    return createHash("sha256")
+      .update(
+        JSON.stringify({
+          key: recommendation.key,
+          pocketKey: recommendation.pocketKey,
+          postalCode: recommendation.postalCode,
+          priority: recommendation.priority,
+          owner: recommendation.owner,
+          dueWithinHours: recommendation.dueWithinHours,
+          relatedScenarioKeys: [...recommendation.relatedScenarioKeys].sort()
+        })
+      )
+      .digest("hex");
+  }
+
+  private async resolveLaunchOperationsTaskAssignee(
+    opsUserId?: string | null
+  ): Promise<OpsProfile | undefined> {
+    const trimmedOpsUserId = opsUserId?.trim();
+    if (!trimmedOpsUserId) {
+      return undefined;
+    }
+    const assignee = await this.repository.findOpsUserById(trimmedOpsUserId);
+    if (!assignee) {
+      throw new HttpError(404, "Assigned ops user not found");
+    }
+    return assignee;
+  }
+
+  private sortLaunchOperationsTasks(tasks: LaunchOperationsTask[]): LaunchOperationsTask[] {
+    const statusRank: Record<LaunchOperationsTask["status"], number> = {
+      open: 0,
+      "in-progress": 1,
+      blocked: 2,
+      completed: 3,
+      cancelled: 4
+    };
+    const priorityRank: Record<LaunchOperationsTask["priority"], number> = {
+      urgent: 0,
+      high: 1,
+      normal: 2
+    };
+    return [...tasks].sort((left, right) => {
+      if (statusRank[left.status] !== statusRank[right.status]) {
+        return statusRank[left.status] - statusRank[right.status];
+      }
+      if (left.dueAtIso !== right.dueAtIso) {
+        return left.dueAtIso.localeCompare(right.dueAtIso);
+      }
+      if (priorityRank[left.priority] !== priorityRank[right.priority]) {
+        return priorityRank[left.priority] - priorityRank[right.priority];
+      }
+      return right.updatedAt.localeCompare(left.updatedAt);
+    });
   }
 
   private getPayoutLedgerStatus(

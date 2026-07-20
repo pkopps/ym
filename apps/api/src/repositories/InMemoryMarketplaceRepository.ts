@@ -12,9 +12,12 @@ import {
   CrewMemberProfile,
   CustomerProperty,
   CustomerProfile,
+  LaunchOperationsTask,
   OpsProfile,
+  OpsAutomationRunRecord,
   NotificationDeliveryRecord,
   NotificationPreferences,
+  OpsPayoutDisbursementRun,
   PaymentRecord,
   PushDevice,
   RecurringServicePlan,
@@ -36,6 +39,9 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly bookings: Booking[] = [];
   private readonly recurringServicePlans: RecurringServicePlan[] = [];
   private readonly payments: PaymentRecord[] = [];
+  private readonly payoutDisbursementRuns: OpsPayoutDisbursementRun[] = [];
+  private readonly launchOperationsTasks: LaunchOperationsTask[] = [];
+  private readonly opsAutomationRuns: OpsAutomationRunRecord[] = [];
   private readonly launchLeads: LaunchLead[] = [];
   private readonly providerReviews: ProviderReview[] = [];
   private readonly reviewInvites: ReviewInvite[] = [];
@@ -379,6 +385,81 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
     Object.assign(payment, updates);
     return payment;
+  }
+
+  public async createPayoutDisbursementRun(
+    run: OpsPayoutDisbursementRun
+  ): Promise<OpsPayoutDisbursementRun> {
+    this.payoutDisbursementRuns.push({ ...run });
+    return run;
+  }
+
+  public async listPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRun[]> {
+    return this.payoutDisbursementRuns.map((run) => ({ ...run, entries: [...run.entries] }));
+  }
+
+  public async findPayoutDisbursementRunByBatchFingerprint(
+    previewBatchId: string,
+    entryFingerprint: string
+  ): Promise<OpsPayoutDisbursementRun | undefined> {
+    const run = this.payoutDisbursementRuns.find(
+      (candidate) =>
+        candidate.previewBatchId === previewBatchId &&
+        candidate.entryFingerprint === entryFingerprint
+    );
+    return run ? { ...run, entries: [...run.entries] } : undefined;
+  }
+
+  public async createLaunchOperationsTask(task: LaunchOperationsTask): Promise<LaunchOperationsTask> {
+    this.launchOperationsTasks.push({ ...task, relatedScenarioKeys: [...task.relatedScenarioKeys] });
+    return task;
+  }
+
+  public async listLaunchOperationsTasks(): Promise<LaunchOperationsTask[]> {
+    return this.launchOperationsTasks.map((task) => ({
+      ...task,
+      relatedScenarioKeys: [...task.relatedScenarioKeys]
+    }));
+  }
+
+  public async findLaunchOperationsTaskByRecommendationFingerprint(
+    recommendationFingerprint: string
+  ): Promise<LaunchOperationsTask | undefined> {
+    const task = this.launchOperationsTasks.find(
+      (candidate) => candidate.recommendationFingerprint === recommendationFingerprint
+    );
+    return task ? { ...task, relatedScenarioKeys: [...task.relatedScenarioKeys] } : undefined;
+  }
+
+  public async updateLaunchOperationsTask(
+    taskId: string,
+    updates: Partial<LaunchOperationsTask>
+  ): Promise<LaunchOperationsTask | undefined> {
+    const task = this.launchOperationsTasks.find((candidate) => candidate.id === taskId);
+    if (!task) {
+      return undefined;
+    }
+    Object.assign(task, updates);
+    return { ...task, relatedScenarioKeys: [...task.relatedScenarioKeys] };
+  }
+
+  public async createOpsAutomationRun(run: OpsAutomationRunRecord): Promise<OpsAutomationRunRecord> {
+    this.opsAutomationRuns.push(run);
+    return {
+      ...run,
+      requestedSweepKeys: [...run.requestedSweepKeys],
+      items: run.items.map((item) => ({ ...item }))
+    };
+  }
+
+  public async listOpsAutomationRuns(): Promise<OpsAutomationRunRecord[]> {
+    return this.opsAutomationRuns
+      .map((run) => ({
+        ...run,
+        requestedSweepKeys: [...run.requestedSweepKeys],
+        items: run.items.map((item) => ({ ...item }))
+      }))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
   public async createLaunchLead(lead: LaunchLead): Promise<LaunchLead> {

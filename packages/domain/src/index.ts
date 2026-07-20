@@ -767,7 +767,7 @@ export class InstantQuoteEngine {
     request: InstantQuoteRequest;
     property?: CustomerProperty;
     normalizedAddress?: NormalizedAddressSummary;
-  }): InstantQuoteResponse {
+  }): Omit<InstantQuoteResponse, "launchPricingPolicy"> {
     const { measurements, measurementSources } = this.estimateMeasurements(
       input.request.address,
       input.property,

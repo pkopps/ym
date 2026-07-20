@@ -55,7 +55,22 @@ import {
   NotificationPreferences,
   OpsFinancialExceptionSummaryResponse,
   OpsAccountSummary,
+  CreateLaunchOperationsTaskRequest,
+  CreateLaunchOperationsTaskResponse,
+  CreateOpsPayoutDisbursementRunRequest,
+  CreateOpsPayoutDisbursementRunResponse,
+  LaunchOperationsTaskEscalationSweepResponse,
+  LaunchOperationsTaskNotificationSweepResponse,
+  LaunchOperationsTasksResponse,
+  OpsPayoutDisbursementRunsResponse,
   OpsPayoutRunPreviewResponse,
+  OpsAutomationRunResponse,
+  OpsAutomationRunsResponse,
+  ProcessLaunchOperationsTaskEscalationsRequest,
+  ProcessLaunchOperationsTaskNotificationsRequest,
+  ProcessOpsAutomationRunRequest,
+  ProcessProviderOnboardingAutomationRequest,
+  ProviderOnboardingAutomationSweepResponse,
   PushDevice,
   PaymentRecord,
   ProviderPayoutLedgerResponse,
@@ -66,6 +81,7 @@ import {
   PublicMarketplaceOverviewResponse,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
+  ProcessSupportOpsTicketEscalationsRequest,
   CreateProviderReviewRequest,
   EscalateReviewSupportRequest,
   OpsReviewResponseItem,
@@ -118,6 +134,7 @@ import {
   SelectPublicCrewOpportunityRequest,
   SelectPublicCrewOpportunityResponse,
   SupportOpsTicket,
+  SupportOpsTicketEscalationSweepResponse,
   SupportTicket,
   ProviderCrewConversationThread,
   SyncExternalCalendarImportRequest,
@@ -129,6 +146,8 @@ import {
   UpdateProviderProfileRequest,
   UpdateProviderSettingsRequest,
   UpdateLaunchLeadRequest,
+  UpdateLaunchOperationsTaskRequest,
+  UpdateLaunchOperationsTaskResponse,
   UpdateSupportTicketRequest,
   UpdateBookingAddressRequest,
   UpdateOpsAccountRequest,
@@ -331,6 +350,12 @@ export class MarketplaceApiClient {
 
   public reviewProviderVerification(payload: ReviewProviderVerificationRequest) {
     return this.postJson<ProviderProfile>(ApiRoutes.providerVerificationReview, payload);
+  }
+
+  public processProviderOnboardingAutomation(
+    payload: ProcessProviderOnboardingAutomationRequest = {}
+  ): Promise<ProviderOnboardingAutomationSweepResponse> {
+    return this.postJson(ApiRoutes.providerOnboardingAutomationSweep, payload);
   }
 
   public getCrewOpportunities(): Promise<CrewOpportunity[]> {
@@ -659,6 +684,16 @@ export class MarketplaceApiClient {
     return this.getJson(ApiRoutes.opsPayoutPreview);
   }
 
+  public getOpsPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRunsResponse> {
+    return this.getJson(ApiRoutes.opsPayoutDisbursementRuns);
+  }
+
+  public createOpsPayoutDisbursementRun(
+    payload: CreateOpsPayoutDisbursementRunRequest
+  ): Promise<CreateOpsPayoutDisbursementRunResponse> {
+    return this.postJson(ApiRoutes.opsPayoutDisbursementRuns, payload);
+  }
+
   public createCheckoutSession(
     payload: CreateCheckoutSessionRequest
   ): Promise<CreateCheckoutSessionResponse> {
@@ -741,6 +776,12 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.opsSupportTicketsUpdate, payload);
   }
 
+  public escalateStaleOpsSupportTickets(
+    payload: ProcessSupportOpsTicketEscalationsRequest = {}
+  ): Promise<SupportOpsTicketEscalationSweepResponse> {
+    return this.postJson(ApiRoutes.opsSupportTicketsEscalateStale, payload);
+  }
+
   public updateOpsLaunchLead(payload: UpdateLaunchLeadRequest) {
     return this.postJson(ApiRoutes.opsLaunchLeadsUpdate, payload);
   }
@@ -761,5 +802,43 @@ export class MarketplaceApiClient {
 
   public getObservabilityOverview(): Promise<ObservabilityOverview> {
     return this.getJson(ApiRoutes.getObservabilityOverview);
+  }
+
+  public getLaunchOperationsTasks(): Promise<LaunchOperationsTasksResponse> {
+    return this.getJson(ApiRoutes.launchOperationsTasks);
+  }
+
+  public createLaunchOperationsTask(
+    payload: CreateLaunchOperationsTaskRequest
+  ): Promise<CreateLaunchOperationsTaskResponse> {
+    return this.postJson(ApiRoutes.launchOperationsTasks, payload);
+  }
+
+  public updateLaunchOperationsTask(
+    payload: UpdateLaunchOperationsTaskRequest
+  ): Promise<UpdateLaunchOperationsTaskResponse> {
+    return this.postJson(ApiRoutes.launchOperationsTasksUpdate, payload);
+  }
+
+  public notifyDueLaunchOperationsTasks(
+    payload: ProcessLaunchOperationsTaskNotificationsRequest = {}
+  ): Promise<LaunchOperationsTaskNotificationSweepResponse> {
+    return this.postJson(ApiRoutes.launchOperationsTasksNotifyDue, payload);
+  }
+
+  public escalateOverdueLaunchOperationsTasks(
+    payload: ProcessLaunchOperationsTaskEscalationsRequest = {}
+  ): Promise<LaunchOperationsTaskEscalationSweepResponse> {
+    return this.postJson(ApiRoutes.launchOperationsTasksEscalateOverdue, payload);
+  }
+
+  public runDueOpsAutomation(
+    payload: ProcessOpsAutomationRunRequest = {}
+  ): Promise<OpsAutomationRunResponse> {
+    return this.postJson(ApiRoutes.opsAutomationRunDue, payload);
+  }
+
+  public getOpsAutomationRuns(): Promise<OpsAutomationRunsResponse> {
+    return this.getJson(ApiRoutes.opsAutomationRuns);
   }
 }

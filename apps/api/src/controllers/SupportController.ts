@@ -7,6 +7,7 @@ import {
   CreateLaunchLeadRequest,
   CreateOpsBookingInterventionRequest,
   CreateOpsRefundOverrideRequest,
+  ProcessSupportOpsTicketEscalationsRequest,
   ReviewBookingEvidenceForOpsRequest,
   CreateSupportTicketRequest,
   UpdateLaunchLeadRequest,
@@ -33,6 +34,7 @@ export class SupportController implements ApiController {
       (context.method === "GET" && context.path === "/api/support/ops/summary") ||
       (context.method === "GET" && context.path === "/api/support/ops/tickets") ||
       (context.method === "POST" && context.path === "/api/support/ops/tickets/update") ||
+      (context.method === "POST" && context.path === "/api/support/ops/tickets/escalate-stale") ||
       (context.method === "POST" && context.path === "/api/support/ops/refund-override") ||
       (context.method === "POST" && context.path === "/api/support/ops/bookings/intervene") ||
       (context.method === "POST" && context.path === "/api/support/ops/bookings/evidence/review") ||
@@ -154,6 +156,19 @@ export class SupportController implements ApiController {
         response,
         200,
         await this.platform.updateSupportTicketForOps(context.body as UpdateSupportTicketRequest)
+      );
+      return;
+    }
+
+    if (context.path === "/api/support/ops/tickets/escalate-stale") {
+      const identity = await requireOpsAccess(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.escalateStaleOpsSupportTickets(
+          identity,
+          context.body as ProcessSupportOpsTicketEscalationsRequest
+        )
       );
       return;
     }

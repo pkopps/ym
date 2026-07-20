@@ -354,6 +354,94 @@ model PaymentRecord {
   @@map("payment_records")
 }
 
+model PayoutDisbursementRun {
+  id                     String   @id
+  previewBatchId         String
+  entryFingerprint       String
+  runDateIso             DateTime
+  recipientRole          String
+  railMode               String
+  actionStatus           String
+  status                 String
+  totalCents             Int
+  recipientCount         Int
+  bookingCount           Int
+  entryCount             Int
+  recipientIds           String[]
+  entryIds               String[]
+  entries                Json
+  blockerReasons         String[]
+  manualActionLabel      String
+  auditInstructions      String[]
+  createdAt              DateTime
+  updatedAt              DateTime
+  createdByOpsUserId     String
+  createdByOpsEmail      String
+  operatorNotes          String?
+  reconciliationReference String?
+  reconciliationNotes    String?
+  reconciledAt           DateTime?
+  reconciledByOpsUserId  String?
+
+  @@index([previewBatchId, entryFingerprint])
+  @@map("payout_disbursement_runs")
+}
+
+model LaunchOperationsTask {
+  id                         String   @id
+  recommendationFingerprint  String   @unique
+  recommendationKey          String
+  pocketKey                  String
+  city                       String
+  state                      String
+  postalCode                 String
+  priority                   String
+  owner                      String
+  status                     String
+  title                      String
+  detail                     String
+  recommendedAction          String
+  dueAtIso                   DateTime
+  relatedScenarioKeys        String[]
+  createdAt                  DateTime
+  updatedAt                  DateTime
+  createdByOpsUserId         String
+  createdByOpsEmail          String
+  assignedToOpsUserId        String?
+  assignedToOpsEmail         String?
+  operatorNotes              String?
+  completionNotes            String?
+  completedAt                DateTime?
+  completedByOpsUserId       String?
+
+  @@index([status, priority])
+  @@index([pocketKey, recommendationKey])
+  @@map("launch_operations_tasks")
+}
+
+model OpsAutomationRun {
+  id                     String   @id
+  runId                  String   @unique
+  generatedAt            DateTime
+  asOfIso                DateTime
+  dryRun                 Boolean
+  requestedSweepKeys     String[]
+  requestedSweepCount    Int
+  completedSweepCount    Int
+  failedSweepCount       Int
+  sentNotificationCount  Int
+  alreadySentCount       Int
+  skippedCount           Int
+  items                  Json
+  createdAt              DateTime
+  createdByOpsUserId     String
+  createdByOpsEmail      String
+
+  @@index([createdAt])
+  @@index([dryRun, createdAt])
+  @@map("ops_automation_runs")
+}
+
 model SupportTicket {
   id          String   @id
   bookingId   String?

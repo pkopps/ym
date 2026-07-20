@@ -116,6 +116,16 @@ test("auth controller registers, logs in, and returns the current user", async (
   const currentUser = meResponse.readJson();
   assert.equal(currentUser.user.email, "jordan@example.com");
   assert.equal(currentUser.user.role, "customer");
+  assert.ok(currentUser.sensitiveActionPolicy);
+  assert.equal(currentUser.sensitiveActionPolicy.actions.length, 1);
+  const paymentMethodPolicy = currentUser.sensitiveActionPolicy.actions[0];
+  assert.equal(paymentMethodPolicy.key, "customer-payment-method");
+  assert.equal(paymentMethodPolicy.ownerRole, "customer");
+  assert.equal(paymentMethodPolicy.requiresFreshSession, true);
+  assert.equal(paymentMethodPolicy.maxSessionAgeSeconds, 15 * 60);
+  assert.equal(paymentMethodPolicy.enforcementStatus, "contract-ready");
+  assert.equal(paymentMethodPolicy.isCurrentSessionFresh, true);
+  assert.match(paymentMethodPolicy.rationale, /payment-method changes/i);
 });
 
 test("password reset rotates sessions and signs the user back in", async () => {

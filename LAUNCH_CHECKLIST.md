@@ -65,7 +65,13 @@ Current state:
 - support, cancellation, refund, and booking-expectation pages are now published and linked from the homepage, Help center, footer, and sitemap
 - privacy, terms, and provider standards pages are now published and linked from Help, the footer, the sitemap, and the provider marketing page
 - provider verification is now explained publicly, and the homepage, launch town page, and launch service landing pages now show real proof signals from the public marketplace overview
+- provider profiles now expose backend-authored business controls, so provider owners and ops can see owner-only team access, provider-managed controls, ops-managed visibility controls, payout-sensitive re-auth requirements, and launch guardrails before deeper team permissions ship
+- authenticated users now receive a backend-authored sensitive-action policy from `/api/auth/me`, including the current provider payout-settings re-auth guard and contract-ready future guards for provider bank-account, provider payout-account, and customer payment-method changes
 - those proof sections now include recent completed-booking review snippets tied to verified providers plus coverage-pocket cards based on verified supply and completed jobs, not just aggregate counts
+- crew payout history now includes backend-authored earnings, attendance, and performance summaries, so crew can see completed assignment count, ready/scheduled/on-hold earnings, call-off history, attendance rate, reliability status, service follow-through, evidence contribution, route confirmation, and dispute/refund performance signals before external payout rails are enabled
+- ops payout preview now includes manual provider and crew disbursement batches with recipient ids, ledger entry ids, amounts, blocker reasons, and audit instructions so launch payouts can be reviewed consistently before external payout rails are selected
+- ops can now create idempotent manual payout disbursement run records from preview batches, preserving entry fingerprints, booking/payment/recipient references, operator notes, and reconciliation instructions before external payout rails are selected
+- crew match history now includes backend-authored availability constraints and assignment forecasts, so crew can see available/unavailable weekdays, travel radius, equipment and winter-work limits, active accepted load, upcoming accepted work, pending review opportunities, route-leader assignments, next scheduled assignment details, and workload warnings before launch volume scales
 - remaining gap: wire the live GBP/referral forwarders and an actual direct inbox relay to the inbound endpoints so fewer leads depend on manual entry
 
 Checklist:
@@ -169,6 +175,12 @@ Minimum quality signals to watch:
 - review quality
 - repeat-booking rate
 
+Current state:
+
+- provider verification queue/profile responses now expose backend-authored onboarding automation actions with owners, priorities, due timestamps, route targets, blocking step keys, and notification copy
+- ops can now run an authenticated provider onboarding automation sweep that sends due provider/ops action notifications idempotently and reports sent, already-sent, blocked, completed, dry-run, and not-due outcomes
+- rejected providers who materially fix profile or dispatch blockers automatically re-enter pending review, and ops users receive an account notification pointing back to the provider verification queue
+
 ## 6. Customer Trust Assets
 
 Trust needs to exist before a stranger is willing to book.
@@ -243,8 +255,9 @@ Operational scenarios to rehearse:
 
 Current state:
 
-- the ops dashboard now includes a first structured launch playbook for coverage limits, low-supply recovery, weather and delay handling, no-shows, and provider go-live decisions
-- remaining gap: expand that guidance into deeper service-quality expectations, intervention rules, and any neighborhood-or-ZIP-level launch detail ops still needs
+- the ops overview now includes a backend-authored launch operations policy for coverage limits, low-supply recovery, weather and delay handling, no-shows, service-quality issues, completed-job disputes, evidence standards, intervention rules, escalation triggers, live pressure warnings, ZIP-level coverage pocket pressure summaries, and coverage action recommendations
+- ops can now create or reuse auditable launch-operations task records from current coverage recommendations, assign them, update status, record operator/completion notes, run an idempotent due-task notification sweep, escalate overdue tasks with priority-based thresholds, and include launch-task sweeps in the broader backend ops-automation runner with actor-stamped run history
+- remaining gap: wire the backend runner into the chosen recurring scheduler and external ops workspace once the launch task handoff model is chosen
 
 ## 9. Retention And Repeat-Service
 
@@ -256,11 +269,11 @@ Checklist:
 - the first timing rules are now live too: recent-completion mowing nudges, 30-day cleanup follow-up, 60-day hedge-trimming reminders, spring mulch-refresh and fertilization reminders, fall leaf-return and aeration reminders, and a broader 90-day rebook fallback
 - mowing retention now also distinguishes between weekly and every-2-weeks plans from recent booking history and calls out repeat-customer/provider-loyal context when the same property has already completed multiple visits
 - loyalty-backed retention rebooks can now softly prefer a proven prior provider when the same property has strong completed-job history, while still running a fresh recommendation flow with alternatives
-- the ops overview now tracks retention nudge views, clicks, acceptance rate, strategy-level performance, and actual repeat-service conversions by retention source and provider so repeat-service momentum is visible before volume gets large
+- the ops overview now tracks retention nudge views, clicks, acceptance rate, strategy-level performance, actual repeat-service conversions by retention source and provider, and backend-authored retention insights for low-volume caveats, leading strategies, weak click-to-booking handoffs, and provider-led repeat booking patterns so repeat-service momentum is visible before volume gets large
 - remaining gap: define which additional services should push toward recurring cadence beyond the first mowing loop
 - deepen seasonal reminder flows beyond the current mulch, fertilization, leaf-return, and aeration windows
 - broaden loyalty or repeat-customer messaging beyond the current in-product retention prompts
-- track repeat-service conversion by source and by provider
+- use retention insights during launch reviews to decide which source, provider, and strategy patterns deserve more volume
 
 Best early retention candidates:
 
@@ -288,7 +301,7 @@ Checklist:
 Important rule:
 
 - templates should save time without sounding robotic
-- the current ops lead queue now covers customer, provider, and referral-source drafts, the ops support queue covers delay, cancellation, refund, and issue-resolution customer updates, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, persisted posted/skipped state, channel-aware posting audit fields for GBP/shared-inbox/manual replies, structured mailbox/thread/location metadata for posted replies, a secret-protected generic inbound confirmation route plus source-specific shared-inbox and GBP forwarder routes for external reply automation, and an explicit path to open or link service-quality follow-up from negative reviews; remaining work is the real posting habit and deeper exception-handling scripts plus the broader local ops playbook
+- the current ops lead queue now covers customer, provider, and referral-source drafts, the ops support queue covers delay, cancellation, refund, issue-resolution customer updates, provider coordination templates, and stale-ticket SLA escalation notifications, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, persisted posted/skipped state, channel-aware posting audit fields for GBP/shared-inbox/manual replies, structured mailbox/thread/location metadata for posted replies, a secret-protected generic inbound confirmation route plus source-specific shared-inbox and GBP forwarder routes for external reply automation, and an explicit path to open or link service-quality follow-up from negative reviews; remaining work is the real posting habit and deeper exception-handling scripts plus the broader local ops playbook
 - the internal ops dashboard and its launch/support/review/payout/verification tools now require an authenticated `ops` session instead of loading anonymously in the browser; seeded local `ops-admin` access, the CLI provisioning path, a first in-dashboard ops-account management board, an admin-vs-staff scope split for internal account management, invite/reset flows that avoid manually sharing passwords, account deactivate/reactivate controls, explicit auth-lock clearing with audit notes, a persisted access-change history, a persisted auth-event history for sign-ins / failures / lock triggers / reset flows / session rotations / explicit lock clears, last successful sign-in tracking, failed-sign-in tracking, repeated-failure temporary login locks, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, and live overview reporting for internal access health now exist, and the remaining work is the deeper internal role lifecycle beyond that bootstrap path
 
 ## 11. Launch Dashboard

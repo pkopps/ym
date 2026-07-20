@@ -24,6 +24,8 @@ export class ApiRoutes {
   public static readonly updateProviderProfile = "/api/providers/profile";
   public static readonly providerVerificationQueue = "/api/providers/verification/queue";
   public static readonly providerVerificationReview = "/api/providers/verification/review";
+  public static readonly providerOnboardingAutomationSweep =
+    "/api/providers/verification/onboarding-automation/sweep";
   public static readonly crewOpportunities = "/api/crew/opportunities";
   public static readonly publicCrewOpportunities = "/api/crew/opportunities/public";
   public static readonly selectPublicCrewOpportunity = "/api/crew/opportunities/public/select";
@@ -82,6 +84,7 @@ export class ApiRoutes {
   public static readonly providerPayoutLedger = "/api/payouts/provider";
   public static readonly crewPayoutLedger = "/api/payouts/crew";
   public static readonly opsPayoutPreview = "/api/payouts/ops/preview";
+  public static readonly opsPayoutDisbursementRuns = "/api/payouts/ops/disbursement-runs";
   public static readonly paymentsWebhook = "/api/payments/webhook";
   public static readonly createCheckoutSession = "/api/payments/checkout-session";
   public static readonly finalizeCheckoutSession = "/api/payments/checkout-session/finalize";
@@ -99,6 +102,14 @@ export class ApiRoutes {
   public static readonly createAnalyticsEvent = "/api/analytics/events";
   public static readonly createSessionHeartbeat = "/api/observability/session-heartbeat";
   public static readonly getObservabilityOverview = "/api/observability/overview";
+  public static readonly launchOperationsTasks = "/api/observability/launch-operations/tasks";
+  public static readonly launchOperationsTasksUpdate = "/api/observability/launch-operations/tasks/update";
+  public static readonly launchOperationsTasksNotifyDue =
+    "/api/observability/launch-operations/tasks/notify-due";
+  public static readonly launchOperationsTasksEscalateOverdue =
+    "/api/observability/launch-operations/tasks/escalate-overdue";
+  public static readonly opsAutomationRunDue = "/api/observability/ops-automation/run-due";
+  public static readonly opsAutomationRuns = "/api/observability/ops-automation/runs";
   public static readonly observabilityInboundAutomationEscalate =
     "/api/observability/inbound-automation/escalate";
   public static readonly providerCalendar = "/api/calendar/feed";
@@ -110,6 +121,8 @@ export class ApiRoutes {
   public static readonly providerCalendarImportsRemove = "/api/calendar/imports/remove";
   public static readonly opsSupportTickets = "/api/support/ops/tickets";
   public static readonly opsSupportTicketsUpdate = "/api/support/ops/tickets/update";
+  public static readonly opsSupportTicketsEscalateStale =
+    "/api/support/ops/tickets/escalate-stale";
   public static readonly opsSupportSummary = "/api/support/ops/summary";
   public static readonly opsRefundOverride = "/api/support/ops/refund-override";
   public static readonly opsBookingIntervention = "/api/support/ops/bookings/intervene";

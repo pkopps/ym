@@ -410,7 +410,8 @@ export class AuthController implements ApiController {
       }
 
       const result: CurrentUserResponse = {
-        user
+        user,
+        sensitiveActionPolicy: this.platform.buildSensitiveActionPolicy(identity, session.issuedAt)
       };
       sendJson(response, 200, result);
       return;

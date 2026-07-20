@@ -30,6 +30,61 @@ function futureIso(hoursFromNow: number) {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
 }
 
+async function createLaunchOperationsPressureFixture(
+  platform: MarketplacePlatformService,
+  repository: InMemoryMarketplaceRepository,
+  emailSuffix: string
+) {
+  const customer = await platform.registerUser({
+    fullName: `Jordan Launch Ops ${emailSuffix}`,
+    email: `customer-launch-ops-${emailSuffix}@example.com`,
+    password: "Password123!",
+    phone: "555-1175",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(8),
+    scheduledEndIso: futureIso(10),
+    notes: "Launch operations policy pressure coverage",
+    totalCents: 6400
+  });
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.markBookingException(provider.id, {
+    bookingId: booking.id,
+    exceptionType: "unable-to-access-property",
+    notes: "The gate is locked and support needs to coordinate access."
+  });
+
+  const noSupplyAddress = {
+    ...createAddress("900 Remote Ridge", 30.3095, -104.0206),
+    city: "Marfa",
+    postalCode: "79843"
+  };
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: noSupplyAddress,
+    category: "seasonal-cleanup",
+    scheduledStartIso: futureIso(12),
+    scheduledEndIso: futureIso(14),
+    notes: "Launch operations no-supply pocket coverage",
+    totalCents: 9800
+  });
+
+  return {
+    customer,
+    provider
+  };
+}
+
 async function withMockedNow<T>(iso: string, callback: () => Promise<T> | T): Promise<T> {
   const originalNow = Date.now;
   Date.now = () => new Date(iso).getTime();
@@ -137,6 +192,14 @@ test("instant quotes normalize addresses and explain confidence sources", async 
   assert.ok(quote.normalizedAddress.normalizedFields.includes("postalCode"));
   assert.equal(quote.normalizedAddress.validationSource, "local-rules");
   assert.equal(quote.normalizedAddress.validationConfidence, "local-only");
+  assert.equal(quote.category, "lawn-mowing");
+  assert.equal(quote.launchPricingPolicy.pricingModel, "hybrid-managed-marketplace");
+  assert.equal(quote.launchPricingPolicy.introductoryOffer.appliesTo, "first-completed-service");
+  assert.equal(quote.launchPricingPolicy.launchServiceCategories[0], "lawn-mowing");
+  assert.ok(quote.launchPricingPolicy.customerPricingPrinciples.some((principle) => /one clear/i.test(principle)));
+  assert.ok(quote.launchPricingPolicy.providerEconomicsPrinciples.some((principle) => /provider net payouts/i.test(principle)));
+  assert.match(quote.launchPricingPolicy.providerFacingExplanation, /not as an expectation to underbid/i);
+  assert.ok(quote.estimatedPriceCents > 0);
   assert.equal(quote.measurementSources.turfSqFt, "customer-follow-up");
   assert.equal(quote.measurementSources.shrubBedSqFt, "customer-follow-up");
   assert.ok(quote.confidenceReasons.some((reason) => reason.label === "Your answers sharpened the quote"));
@@ -1023,6 +1086,23 @@ test("observability overview includes launch lead backlog and source metrics", a
   assert.equal(retentionProviderMetric?.providerName, seededProvider.companyName);
   assert.equal(retentionProviderMetric?.bookingRequests, 1);
   assert.equal(retentionProviderMetric?.recurringPlanStarts, 1);
+
+  const volumeInsight = overview.retentionInsights.find((insight) => insight.kind === "volume");
+  assert.equal(volumeInsight?.status, "needs-volume");
+  assert.equal(volumeInsight?.promptViews, 2);
+  assert.equal(volumeInsight?.bookingRequests, 1);
+  assert.match(volumeInsight?.recommendedAction ?? "", /10 views and 3 repeat bookings/i);
+
+  const strategyInsight = overview.retentionInsights.find((insight) => insight.kind === "strategy");
+  assert.equal(strategyInsight?.strategyKey, "lawn-mowing-recurring");
+  assert.equal(strategyInsight?.category, "lawn-mowing");
+  assert.equal(strategyInsight?.promptAccepts, 1);
+  assert.equal(strategyInsight?.rate, 0.5);
+
+  const providerInsight = overview.retentionInsights.find((insight) => insight.kind === "provider");
+  assert.equal(providerInsight?.providerId, seededProvider.id);
+  assert.equal(providerInsight?.providerName, seededProvider.companyName);
+  assert.equal(providerInsight?.bookingRequests, 1);
 });
 
 test("observability overview includes internal ops access health, recent access changes, and sign-in reporting", async () => {
@@ -1122,6 +1202,24 @@ test("observability overview includes internal ops access health, recent access 
   assert.equal(overview.neverSignedInOpsAccounts, 2);
   assert.equal(overview.opsAccountsWithRecentFailures, 3);
   assert.equal(overview.pendingOpsPasswordResetInvites, 0);
+  assert.equal(overview.opsAccessPolicy.roleModel, "admin-and-operations");
+  assert.equal(overview.opsAccessPolicy.activeAdminAccountCount, 2);
+  assert.equal(overview.opsAccessPolicy.hasRequiredAdminCoverage, true);
+  assert.ok(
+    overview.opsAccessPolicy.adminRequiredActions.some((action) => /deactivate/i.test(action))
+  );
+  assert.ok(
+    overview.opsAccessPolicy.operationsAllowedActions.some((action) => /support/i.test(action))
+  );
+  assert.ok(
+    overview.opsAccessPolicy.authenticationControls.some((control) => /dedicated ops identities/i.test(control))
+  );
+  assert.ok(
+    overview.opsAccessPolicy.escalationTriggers.some((trigger) => /locked internal staff account/i.test(trigger))
+  );
+  assert.ok(
+    overview.opsAccessPolicy.warnings.some((warning) => /locked internal accounts/i.test(warning))
+  );
   assert.equal(overview.accessAlerts.length, 3);
   assert.ok(overview.recentOpsAuthenticationEvents.length >= 6);
   const lockEvent = overview.recentOpsAuthenticationEvents.find(
@@ -1205,6 +1303,393 @@ test("observability overview includes internal ops access health, recent access 
     (item) => item.opsUserEmail === "taylor.admin@example.com"
   );
   assert.equal(disabledFailedSignIn?.reason, "disabled-account");
+});
+
+test("observability overview includes backend-authored launch operations policy and live pressure warnings", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  await createLaunchOperationsPressureFixture(platform, repository, "policy");
+
+  const overview = await platform.getObservabilityOverview();
+  assert.equal(overview.launchOperationsPolicy.policyVersion, "launch-ops-v1");
+  assert.equal(overview.launchOperationsPolicy.activePressureLevel, "watch");
+  assert.ok(
+    overview.launchOperationsPolicy.warnings.some((warning) => /active field exception/i.test(warning))
+  );
+  assert.ok(
+    overview.launchOperationsPolicy.warnings.some((warning) => /ZIP-level supply|launch pocket/i.test(warning))
+  );
+  const launchPocket = overview.launchOperationsPolicy.coveragePockets.find(
+    (pocket) => pocket.postalCode === "78704" && pocket.city === "Austin"
+  );
+  assert.ok(launchPocket);
+  assert.equal(launchPocket?.activeExceptionCount, 1);
+  assert.ok((launchPocket?.activeBookingCount ?? 0) >= 1);
+  assert.ok(launchPocket?.supportedCategories.includes("lawn-mowing"));
+  assert.notEqual(launchPocket?.pressureLevel, "normal");
+  assert.match(launchPocket?.recommendedAction ?? "", /demand|monitor|supply/i);
+  assert.ok(
+    overview.launchOperationsPolicy.coverageActionRecommendations.some(
+      (action) =>
+        action.pocketKey === launchPocket?.pocketKey &&
+        action.key === "recover-field-exception" &&
+        action.owner === "support" &&
+        action.priority === "high" &&
+        action.relatedScenarioKeys.includes("service-quality")
+    )
+  );
+  assert.ok(
+    overview.launchOperationsPolicy.coverageActionRecommendations.some(
+      (action) =>
+        action.postalCode === "79843" &&
+        action.key === "hold-demand" &&
+        action.owner === "ops" &&
+        action.priority === "urgent" &&
+        action.relatedScenarioKeys.includes("coverage-limit")
+    )
+  );
+  assert.deepEqual(
+    overview.launchOperationsPolicy.scenarioRules.map((rule) => rule.key),
+    [
+      "coverage-limit",
+      "low-supply",
+      "weather-delay",
+      "provider-no-show",
+      "customer-no-show",
+      "service-quality",
+      "completed-dispute"
+    ]
+  );
+  assert.equal(
+    overview.launchOperationsPolicy.scenarioRules.find((rule) => rule.key === "completed-dispute")
+      ?.recommendedInterventionAction,
+    "complete-booking"
+  );
+  assert.ok(
+    overview.launchOperationsPolicy.serviceQualityStandards.some((standard) =>
+      /before\/after evidence/i.test(standard)
+    )
+  );
+  assert.ok(
+    overview.launchOperationsPolicy.interventionRules.some((rule) =>
+      /Outcome-changing interventions/i.test(rule)
+    )
+  );
+});
+
+test("launch operations recommendations can become audited ops workflow tasks", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  await createLaunchOperationsPressureFixture(platform, repository, "tasks");
+  const overview = await platform.getObservabilityOverview();
+  const recommendation = overview.launchOperationsPolicy.coverageActionRecommendations.find(
+    (action) => action.key === "hold-demand" && action.postalCode === "79843"
+  );
+  assert.ok(recommendation);
+  const opsUser = (await repository.listOpsUsers())[0];
+  assert.ok(opsUser);
+  const opsActor = {
+    userId: opsUser.id,
+    email: opsUser.email,
+    role: "ops" as const,
+    sessionVersion: 1
+  };
+
+  const createdTask = await platform.createLaunchOperationsTask(opsActor, {
+    recommendationKey: recommendation.key,
+    pocketKey: recommendation.pocketKey,
+    assignedToOpsUserId: opsUser.id,
+    operatorNotes: "Coordinate supply check before expanding this pocket."
+  });
+
+  assert.equal(createdTask.created, true);
+  assert.equal(createdTask.matchedRecommendation.key, recommendation.key);
+  assert.equal(createdTask.task.recommendationKey, recommendation.key);
+  assert.equal(createdTask.task.pocketKey, recommendation.pocketKey);
+  assert.equal(createdTask.task.owner, "ops");
+  assert.equal(createdTask.task.priority, "urgent");
+  assert.equal(createdTask.task.status, "open");
+  assert.equal(createdTask.task.assignedToOpsUserId, opsUser.id);
+  assert.equal(createdTask.task.assignedToOpsEmail, opsUser.email);
+  assert.match(createdTask.task.recommendationFingerprint, /^[a-f0-9]{64}$/);
+  assert.deepEqual(createdTask.task.relatedScenarioKeys, recommendation.relatedScenarioKeys);
+  assert.ok(new Date(createdTask.task.dueAtIso).getTime() > new Date(createdTask.task.createdAt).getTime());
+
+  const dueSweep = await platform.notifyDueLaunchOperationsTasks(opsActor, {
+    taskId: createdTask.task.id,
+    asOfIso: new Date(new Date(createdTask.task.dueAtIso).getTime() + 60 * 1000).toISOString()
+  });
+  assert.equal(dueSweep.taskCount, 1);
+  assert.equal(dueSweep.candidateNotificationCount, 1);
+  assert.equal(dueSweep.sentNotificationCount, 1);
+  assert.equal(dueSweep.items[0]?.notificationStatus, "sent");
+  assert.equal(dueSweep.items[0]?.taskId, createdTask.task.id);
+  assert.equal(dueSweep.items[0]?.recommendationKey, recommendation.key);
+  const opsNotifications = await repository.listNotificationsByRecipient(opsUser.id);
+  assert.ok(
+    opsNotifications.some(
+      (notification) =>
+        notification.category === "support" &&
+        notification.actionHref === "/ops" &&
+        notification.body.includes(`Launch operations task: ${createdTask.task.id}`)
+    )
+  );
+
+  const repeatedDueSweep = await platform.notifyDueLaunchOperationsTasks(opsActor, {
+    taskId: createdTask.task.id,
+    asOfIso: new Date(new Date(createdTask.task.dueAtIso).getTime() + 60 * 1000).toISOString()
+  });
+  assert.equal(repeatedDueSweep.sentNotificationCount, 0);
+  assert.equal(repeatedDueSweep.alreadySentCount, 1);
+  assert.equal(repeatedDueSweep.items[0]?.notificationStatus, "already-sent");
+
+  const earlyEscalationSweep = await platform.escalateOverdueLaunchOperationsTasks(opsActor, {
+    taskId: createdTask.task.id,
+    asOfIso: new Date(new Date(createdTask.task.dueAtIso).getTime() + 60 * 60 * 1000).toISOString()
+  });
+  assert.equal(earlyEscalationSweep.taskCount, 1);
+  assert.equal(earlyEscalationSweep.candidateEscalationCount, 1);
+  assert.equal(earlyEscalationSweep.sentNotificationCount, 0);
+  assert.equal(earlyEscalationSweep.items[0]?.escalationStatus, "not-overdue");
+  assert.equal(earlyEscalationSweep.items[0]?.escalationThresholdHours, 2);
+
+  const escalationSweep = await platform.escalateOverdueLaunchOperationsTasks(opsActor, {
+    taskId: createdTask.task.id,
+    asOfIso: new Date(new Date(createdTask.task.dueAtIso).getTime() + 3 * 60 * 60 * 1000).toISOString()
+  });
+  assert.equal(escalationSweep.taskCount, 1);
+  assert.equal(escalationSweep.candidateEscalationCount, 1);
+  assert.equal(escalationSweep.overdueEscalationCount, 1);
+  assert.equal(escalationSweep.sentNotificationCount, 1);
+  assert.equal(escalationSweep.items[0]?.escalationStatus, "sent");
+  assert.equal(escalationSweep.items[0]?.taskId, createdTask.task.id);
+  assert.equal(escalationSweep.items[0]?.recommendationKey, recommendation.key);
+  assert.equal(escalationSweep.items[0]?.pocketKey, recommendation.pocketKey);
+  assert.equal(escalationSweep.items[0]?.priority, "urgent");
+  assert.equal(escalationSweep.items[0]?.owner, "ops");
+  assert.equal(escalationSweep.items[0]?.taskStatus, "open");
+  assert.equal(escalationSweep.items[0]?.dueAtIso, createdTask.task.dueAtIso);
+  assert.ok((escalationSweep.items[0]?.overdueHours ?? 0) >= 3);
+  const opsNotificationsAfterEscalation = await repository.listNotificationsByRecipient(opsUser.id);
+  assert.ok(
+    opsNotificationsAfterEscalation.some(
+      (notification) =>
+        notification.category === "support" &&
+        notification.actionHref === "/ops" &&
+        notification.body.includes(`Launch operations task escalation: ${createdTask.task.id}`)
+    )
+  );
+
+  const repeatedEscalationSweep = await platform.escalateOverdueLaunchOperationsTasks(opsActor, {
+    taskId: createdTask.task.id,
+    asOfIso: new Date(new Date(createdTask.task.dueAtIso).getTime() + 3 * 60 * 60 * 1000).toISOString()
+  });
+  assert.equal(repeatedEscalationSweep.sentNotificationCount, 0);
+  assert.equal(repeatedEscalationSweep.alreadySentCount, 1);
+  assert.equal(repeatedEscalationSweep.items[0]?.escalationStatus, "already-sent");
+
+  const duplicateTask = await platform.createLaunchOperationsTask(opsActor, {
+    recommendationKey: recommendation.key,
+    pocketKey: recommendation.pocketKey,
+    operatorNotes: "Duplicate task should reuse the open workflow record."
+  });
+  assert.equal(duplicateTask.created, false);
+  assert.equal(duplicateTask.task.id, createdTask.task.id);
+  assert.equal(duplicateTask.task.recommendationKey, recommendation.key);
+
+  const updatedTask = await platform.updateLaunchOperationsTask(opsActor, {
+    taskId: createdTask.task.id,
+    status: "completed",
+    assignedToOpsUserId: null,
+    completionNotes: "Paused demand and opened provider-success follow-up."
+  });
+  assert.equal(updatedTask.task.status, "completed");
+  assert.equal(updatedTask.task.assignedToOpsUserId, undefined);
+  assert.equal(updatedTask.task.assignedToOpsEmail, undefined);
+  assert.equal(updatedTask.task.completedByOpsUserId, opsUser.id);
+  assert.ok(updatedTask.task.completedAt);
+  assert.match(updatedTask.task.completionNotes ?? "", /provider-success/);
+  assert.equal(updatedTask.task.recommendationKey, recommendation.key);
+  assert.equal(updatedTask.task.pocketKey, recommendation.pocketKey);
+
+  const completedSweep = await platform.notifyDueLaunchOperationsTasks(opsActor, {
+    taskId: createdTask.task.id,
+    includeFuture: true
+  });
+  assert.equal(completedSweep.sentNotificationCount, 0);
+  assert.equal(completedSweep.skippedNotificationCount, 1);
+  assert.equal(completedSweep.items[0]?.notificationStatus, "completed");
+
+  const completedEscalationSweep = await platform.escalateOverdueLaunchOperationsTasks(opsActor, {
+    taskId: createdTask.task.id,
+    asOfIso: new Date(new Date(createdTask.task.dueAtIso).getTime() + 3 * 60 * 60 * 1000).toISOString()
+  });
+  assert.equal(completedEscalationSweep.sentNotificationCount, 0);
+  assert.equal(completedEscalationSweep.skippedEscalationCount, 1);
+  assert.equal(completedEscalationSweep.items[0]?.escalationStatus, "completed");
+
+  const taskList = await platform.listLaunchOperationsTasks();
+  assert.equal(taskList.tasks.length, 1);
+  assert.equal(taskList.tasks[0]?.id, createdTask.task.id);
+
+  await assert.rejects(
+    platform.createLaunchOperationsTask(
+      {
+        userId: "customer-actor",
+        email: "customer@example.com",
+        role: "customer",
+        sessionVersion: 1
+      },
+      {
+        recommendationKey: recommendation.key,
+        pocketKey: recommendation.pocketKey
+      }
+    ),
+    /Only operations can create launch operations tasks/
+  );
+  await assert.rejects(
+    platform.escalateOverdueLaunchOperationsTasks(
+      {
+        userId: "customer-actor",
+        email: "customer@example.com",
+        role: "customer",
+        sessionVersion: 1
+      },
+      { taskId: createdTask.task.id }
+    ),
+    /Only operations can escalate launch operations tasks/
+  );
+});
+
+test("ops automation runner orchestrates due backend sweeps in dry-run mode", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const { customer } = await createLaunchOperationsPressureFixture(platform, repository, "automation");
+  const overview = await platform.getObservabilityOverview();
+  const recommendation = overview.launchOperationsPolicy.coverageActionRecommendations.find(
+    (action) => action.key === "hold-demand" && action.postalCode === "79843"
+  );
+  assert.ok(recommendation);
+  const opsUser = (await repository.listOpsUsers())[0];
+  assert.ok(opsUser);
+  const opsActor = {
+    userId: opsUser.id,
+    email: opsUser.email,
+    role: "ops" as const,
+    sessionVersion: 1
+  };
+
+  const createdTask = await platform.createLaunchOperationsTask(opsActor, {
+    recommendationKey: recommendation.key,
+    pocketKey: recommendation.pocketKey,
+    assignedToOpsUserId: opsUser.id,
+    operatorNotes: "Automation runner dry-run coverage."
+  });
+  const asOfIso = new Date(new Date(createdTask.task.dueAtIso).getTime() + 3 * 60 * 60 * 1000).toISOString();
+  const staleSupportUpdatedAt = new Date(new Date(asOfIso).getTime() - 3 * 60 * 60 * 1000).toISOString();
+  const activeExceptionBooking = (await repository.listBookings()).find((booking) => booking.activeExceptionType);
+  assert.ok(activeExceptionBooking);
+  const supportTicket = await platform.createSupportTicket(
+    { userId: customer.id, role: "customer" },
+    {
+      bookingId: activeExceptionBooking.id,
+      subject: "Automation should catch stale access issue",
+      description: "Customer still needs a recovery update.",
+      issueType: "service-quality"
+    }
+  );
+  await repository.updateSupportTicket(supportTicket.id, {
+    createdAt: staleSupportUpdatedAt,
+    updatedAt: staleSupportUpdatedAt
+  });
+  const opsNotificationsBefore = await repository.listNotificationsByRecipient(opsUser.id);
+
+  const automationRun = await platform.runDueOpsAutomation(opsActor, {
+    sweepKeys: [
+      "support-ticket-escalations",
+      "launch-operations-task-notifications",
+      "launch-operations-task-escalations"
+    ],
+    asOfIso,
+    dryRun: true
+  });
+
+  assert.equal(automationRun.requestedSweepCount, 3);
+  assert.match(automationRun.runId, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(automationRun.requestedSweepKeys, [
+    "support-ticket-escalations",
+    "launch-operations-task-notifications",
+    "launch-operations-task-escalations"
+  ]);
+  assert.equal(automationRun.completedSweepCount, 3);
+  assert.equal(automationRun.failedSweepCount, 0);
+  assert.equal(automationRun.dryRun, true);
+  assert.equal(automationRun.sentNotificationCount, 0);
+  assert.equal(automationRun.items.map((item) => item.sweepKey).join(","), [
+    "support-ticket-escalations",
+    "launch-operations-task-notifications",
+    "launch-operations-task-escalations"
+  ].join(","));
+
+  const supportSweep = automationRun.items.find((item) => item.sweepKey === "support-ticket-escalations");
+  assert.equal(supportSweep?.status, "completed");
+  assert.equal(supportSweep?.supportTicketEscalations?.dryRun, true);
+  assert.ok(
+    supportSweep?.supportTicketEscalations?.items.some(
+      (item) => item.ticketId === supportTicket.id && item.escalationStatus === "dry-run"
+    )
+  );
+
+  const taskNotificationSweep = automationRun.items.find(
+    (item) => item.sweepKey === "launch-operations-task-notifications"
+  );
+  assert.equal(taskNotificationSweep?.launchOperationsTaskNotifications?.dryRun, true);
+  assert.ok(
+    taskNotificationSweep?.launchOperationsTaskNotifications?.items.some(
+      (item) => item.taskId === createdTask.task.id && item.notificationStatus === "dry-run"
+    )
+  );
+
+  const taskEscalationSweep = automationRun.items.find(
+    (item) => item.sweepKey === "launch-operations-task-escalations"
+  );
+  assert.equal(taskEscalationSweep?.launchOperationsTaskEscalations?.dryRun, true);
+  assert.ok(
+    taskEscalationSweep?.launchOperationsTaskEscalations?.items.some(
+      (item) => item.taskId === createdTask.task.id && item.escalationStatus === "dry-run"
+    )
+  );
+  const opsNotificationsAfter = await repository.listNotificationsByRecipient(opsUser.id);
+  assert.equal(opsNotificationsAfter.length, opsNotificationsBefore.length);
+
+  const automationHistory = await platform.listOpsAutomationRuns();
+  assert.equal(automationHistory.runs.length, 1);
+  const savedRun = automationHistory.runs[0];
+  assert.equal(savedRun?.id, automationRun.runId);
+  assert.equal(savedRun?.runId, automationRun.runId);
+  assert.equal(savedRun?.createdByOpsUserId, opsUser.id);
+  assert.equal(savedRun?.createdByOpsEmail, opsUser.email);
+  assert.deepEqual(savedRun?.requestedSweepKeys, automationRun.requestedSweepKeys);
+  assert.equal(savedRun?.dryRun, true);
+  assert.equal(savedRun?.requestedSweepCount, 3);
+  assert.equal(savedRun?.completedSweepCount, 3);
+  assert.equal(savedRun?.items.some((item) => item.sweepKey === "support-ticket-escalations"), true);
+
+  await assert.rejects(
+    platform.runDueOpsAutomation(
+      {
+        userId: "customer-actor",
+        email: "customer@example.com",
+        role: "customer",
+        sessionVersion: 1
+      },
+      { dryRun: true }
+    ),
+    /Only operations can run ops automation sweeps/
+  );
 });
 
 test("observability overview includes a public review response queue with urgency and drafts", async () => {
@@ -3952,6 +4437,151 @@ test("ops support queue includes delay-update drafts for active field exceptions
   assert.ok(delayTemplate);
   assert.match(delayTemplate?.body ?? "", /side gate is locked/i);
   assert.match(delayTemplate?.body ?? "", /unable to access property/i);
+  const providerTemplate = opsTicket?.providerCoordinationTemplates.find(
+    (template) => template.key === "field-exception-provider-update"
+  );
+  assert.ok(providerTemplate);
+  assert.equal(providerTemplate?.channel, "email");
+  assert.match(providerTemplate?.reason ?? "", /active field exception/i);
+  assert.match(providerTemplate?.subject ?? "", /field issue/i);
+  assert.match(providerTemplate?.body ?? "", /side gate is locked/i);
+  assert.match(providerTemplate?.body ?? "", /earliest realistic continuation or reschedule window/i);
+});
+
+test("ops can escalate stale support tickets without mutating stable ticket fields", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-stale-support@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(6),
+    scheduledEndIso: futureIso(8),
+    notes: "Support escalation stale ticket test",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.markBookingException(provider.id, {
+    bookingId: booking.id,
+    exceptionType: "unable-to-access-property",
+    notes: "The side gate is locked and there is no alternate entry."
+  });
+
+  const ticket = await platform.createSupportTicket(
+    { userId: customer.id, role: "customer" },
+    {
+      bookingId: booking.id,
+      subject: "Access issue needs owner",
+      description: "Customer has not heard whether the blocked visit will be recovered.",
+      issueType: "service-quality"
+    }
+  );
+  const openedAtIso = new Date("2026-07-20T10:00:00.000Z").toISOString();
+  await repository.updateSupportTicket(ticket.id, {
+    createdAt: openedAtIso,
+    updatedAt: openedAtIso
+  });
+
+  const opsUser = (await repository.listOpsUsers())[0];
+  assert.ok(opsUser);
+  const opsActor = {
+    userId: opsUser.id,
+    email: opsUser.email,
+    role: "ops" as const,
+    sessionVersion: 1
+  };
+
+  const earlySweep = await platform.escalateStaleOpsSupportTickets(opsActor, {
+    ticketId: ticket.id,
+    asOfIso: new Date("2026-07-20T11:00:00.000Z").toISOString()
+  });
+  assert.equal(earlySweep.ticketCount, 1);
+  assert.equal(earlySweep.candidateEscalationCount, 1);
+  assert.equal(earlySweep.sentNotificationCount, 0);
+  assert.equal(earlySweep.items[0]?.escalationStatus, "not-due");
+  assert.equal(earlySweep.items[0]?.escalationThresholdHours, 2);
+
+  const escalationSweep = await platform.escalateStaleOpsSupportTickets(opsActor, {
+    ticketId: ticket.id,
+    asOfIso: new Date("2026-07-20T13:00:00.000Z").toISOString()
+  });
+  assert.equal(escalationSweep.ticketCount, 1);
+  assert.equal(escalationSweep.candidateEscalationCount, 1);
+  assert.equal(escalationSweep.dueEscalationCount, 1);
+  assert.equal(escalationSweep.sentNotificationCount, 1);
+  assert.equal(escalationSweep.items[0]?.escalationStatus, "sent");
+  assert.equal(escalationSweep.items[0]?.ticketId, ticket.id);
+  assert.equal(escalationSweep.items[0]?.bookingId, booking.id);
+  assert.equal(escalationSweep.items[0]?.issueType, "service-quality");
+  assert.equal(escalationSweep.items[0]?.ticketStatus, "open");
+  assert.equal(escalationSweep.items[0]?.priority, "urgent");
+  assert.equal(escalationSweep.items[0]?.openedAtIso, openedAtIso);
+  assert.equal(escalationSweep.items[0]?.lastUpdatedAtIso, openedAtIso);
+  assert.ok((escalationSweep.items[0]?.hoursSinceUpdate ?? 0) >= 3);
+
+  const opsNotifications = await repository.listNotificationsByRecipient(opsUser.id);
+  assert.ok(
+    opsNotifications.some(
+      (notification) =>
+        notification.category === "support" &&
+        notification.actionHref === "/ops/support" &&
+        notification.body.includes(`Support SLA escalation: ${ticket.id}`)
+    )
+  );
+  const refreshedTicket = (await repository.listSupportTickets()).find((candidate) => candidate.id === ticket.id);
+  assert.equal(refreshedTicket?.id, ticket.id);
+  assert.equal(refreshedTicket?.bookingId, booking.id);
+  assert.equal(refreshedTicket?.issueType, "service-quality");
+  assert.equal(refreshedTicket?.status, "open");
+
+  const repeatedSweep = await platform.escalateStaleOpsSupportTickets(opsActor, {
+    ticketId: ticket.id,
+    asOfIso: new Date("2026-07-20T13:30:00.000Z").toISOString()
+  });
+  assert.equal(repeatedSweep.sentNotificationCount, 0);
+  assert.equal(repeatedSweep.alreadySentCount, 1);
+  assert.equal(repeatedSweep.items[0]?.escalationStatus, "already-sent");
+
+  await repository.updateSupportTicket(ticket.id, {
+    status: "resolved",
+    updatedAt: new Date("2026-07-20T14:00:00.000Z").toISOString(),
+    resolvedAt: new Date("2026-07-20T14:00:00.000Z").toISOString(),
+    resolutionNotes: "Customer and provider agreed on a recovery window."
+  });
+  const resolvedSweep = await platform.escalateStaleOpsSupportTickets(opsActor, {
+    ticketId: ticket.id,
+    asOfIso: new Date("2026-07-20T17:00:00.000Z").toISOString()
+  });
+  assert.equal(resolvedSweep.sentNotificationCount, 0);
+  assert.equal(resolvedSweep.skippedEscalationCount, 1);
+  assert.equal(resolvedSweep.items[0]?.escalationStatus, "resolved");
+
+  await assert.rejects(
+    platform.escalateStaleOpsSupportTickets(
+      {
+        userId: "customer-actor",
+        email: "customer@example.com",
+        role: "customer",
+        sessionVersion: 1
+      },
+      { ticketId: ticket.id }
+    ),
+    /Only operations can escalate support tickets/
+  );
 });
 
 test("customers can dispute a booking and automatically create support context", async () => {
@@ -4735,6 +5365,14 @@ test("captured disputed bookings hold provider and crew payouts until support re
   const crewEntry = crewLedger.entries.find((candidate) => candidate.bookingId === booking.id);
   assert.equal(crewEntry?.status, "on-hold");
   assert.match(crewEntry?.note ?? "", /booking dispute is open/i);
+  assert.equal(crewLedger.earningsSummary.onHoldCents, crewEntry?.amountCents);
+  assert.equal(crewLedger.earningsSummary.completedAssignmentCount, 1);
+  assert.ok(
+    crewLedger.earningsSummary.guidance.some((item) => /support resolves/i.test(item))
+  );
+  assert.equal(crewLedger.attendanceSummary.acceptedAssignmentCount, 1);
+  assert.equal(crewLedger.attendanceSummary.completedAssignmentCount, 1);
+  assert.equal(crewLedger.attendanceSummary.reliabilityStatus, "strong");
 
   const summary = await platform.getOpsFinancialExceptionSummary();
   assert.equal(summary.refundReviewOpenCount, 0);
@@ -4783,6 +5421,8 @@ test("captured disputed bookings hold provider and crew payouts until support re
     releasedCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
     "scheduled"
   );
+  assert.equal(releasedCrewLedger.earningsSummary.onHoldCents, 0);
+  assert.ok(releasedCrewLedger.earningsSummary.scheduledCents > 0);
 
   const resolvedSummary = await platform.getOpsFinancialExceptionSummary();
   assert.equal(resolvedSummary.payoutHoldCount, 0);
@@ -5403,10 +6043,26 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
   });
   const providers = await repository.listProviders();
   assert.ok(providers.length >= 2);
+  const firstBookingStartIso = futureIso(72);
+  const firstBookingDay = availabilityDayForIso(firstBookingStartIso);
+  const crewMember = await platform.registerUser({
+    fullName: "Casey Payout Crew",
+    email: "crew-ops-payout-preview@example.com",
+    password: "Password123!",
+    phone: "555-0201",
+    role: "crew-member",
+    address: createAddress("114 Garden Row", 30.2436, -97.7639),
+    categories: ["lawn-mowing"],
+    availableWeekdays: [firstBookingDay],
+    willingToTravelMiles: 20,
+    preferredSchedule: "part-time",
+    hasOwnEquipment: true
+  });
+  assert.equal(crewMember.role, "crew-member");
 
   await platform.updateProviderSettings(providers[0]!.id, {
     serviceRadiusMiles: providers[0]!.serviceRadiusMiles,
-    staffingMode: providers[0]!.staffingMode,
+    staffingMode: "auto-accept",
     crewReviewLeadHours: providers[0]!.crewReviewLeadHours,
     departureReminderLeadMinutes: providers[0]!.departureReminderLeadMinutes,
     routeLeaderMode: providers[0]!.routeLeaderMode,
@@ -5430,7 +6086,7 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
     category: "lawn-mowing",
-    scheduledStartIso: futureIso(72),
+    scheduledStartIso: firstBookingStartIso,
     scheduledEndIso: futureIso(73),
     notes: "Ops payout preview first provider",
     totalCents: 14200
@@ -5445,6 +6101,12 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
     notes: "Ops payout preview second provider",
     totalCents: 8600
   });
+  const firstStaffing = await platform.getProviderStaffingOverview(providers[0]!.id);
+  const firstJob = firstStaffing.jobs.find((job) => job.bookingId === firstBooking.id);
+  const acceptedCrewMatch = firstJob?.matches.find(
+    (match) => match.crewMemberId === crewMember.id && match.status === "accepted"
+  );
+  assert.ok(acceptedCrewMatch);
 
   for (const current of [
     { booking: firstBooking, provider: providers[0]! },
@@ -5470,11 +6132,130 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
   }
 
   const preview = await platform.getOpsPayoutPreview();
+  const expectedCrewPayoutCents = Math.round(
+    acceptedCrewMatch!.hourlyRateCents *
+      Math.max(
+        1,
+        (Date.parse(firstBooking.scheduledEndIso) - Date.parse(firstBooking.scheduledStartIso)) /
+          (60 * 60 * 1000)
+      )
+  );
+  const expectedProviderReadyCents =
+    Math.max(firstBooking.totalCents - expectedCrewPayoutCents, 0) + secondBooking.totalCents;
+  const crewDisbursementBatch = preview.disbursementBatches.find(
+    (batch) => batch.recipientRole === "crew-member"
+  );
+  const providerDisbursementBatches = preview.disbursementBatches.filter(
+    (batch) => batch.recipientRole === "provider"
+  );
 
   assert.equal(preview.providerRuns.length, 2);
   assert.equal(preview.providerInstantEligibleCount, 1);
-  assert.ok(preview.totalProviderReadyCents >= 22800);
-  assert.ok(preview.providerRuns.some((run) => run.providerCount === 1 && run.providerNetCents >= 14200));
+  assert.equal(preview.totalProviderReadyCents, expectedProviderReadyCents);
+  assert.equal(preview.totalCrewReadyCents, expectedCrewPayoutCents);
+  assert.ok(
+    preview.providerRuns.some(
+      (run) => run.providerCount === 1 && run.providerNetCents === firstBooking.totalCents - expectedCrewPayoutCents
+    )
+  );
+  assert.equal(preview.payoutPolicy.disbursementRailStatus, "manual-preview-only");
+  assert.equal(preview.payoutPolicy.providerHoldPeriodHours, 48);
+  assert.equal(preview.payoutPolicy.crewHoldPeriodHours, 48);
+  assert.equal(preview.payoutPolicy.instantPayoutMinimumCents, 10000);
+  assert.equal(preview.payoutPolicy.crewWeeklyPayoutDay, "Fri");
+  assert.ok(
+    preview.payoutPolicy.readyRequirements.some((requirement) => /customer payment captured/i.test(requirement))
+  );
+  assert.ok(
+    preview.payoutPolicy.holdReasons.some((reason) => /refund review/i.test(reason))
+  );
+  assert.ok(providerDisbursementBatches.length >= 2);
+  assert.ok(
+    providerDisbursementBatches.some(
+      (batch) =>
+        batch.railMode === "manual-preview" &&
+        batch.actionStatus === "ready-for-manual-review" &&
+        batch.entryIds.includes(`provider-payout-${firstBooking.id}`) &&
+        batch.recipientIds.includes(providers[0]!.id) &&
+        batch.blockerReasons.some((reason) => /external payout rails/i.test(reason))
+    )
+  );
+  assert.ok(crewDisbursementBatch);
+  assert.equal(crewDisbursementBatch?.railMode, "manual-preview");
+  assert.equal(crewDisbursementBatch?.actionStatus, "ready-for-manual-review");
+  assert.equal(crewDisbursementBatch?.totalCents, expectedCrewPayoutCents);
+  assert.equal(crewDisbursementBatch?.entryCount, 1);
+  assert.ok(crewDisbursementBatch?.recipientIds.includes(crewMember.id));
+  assert.ok(crewDisbursementBatch?.entryIds.includes(`crew-payout-${acceptedCrewMatch!.id}`));
+  assert.ok(
+    crewDisbursementBatch?.auditInstructions.some((instruction) =>
+      /external transfer id/i.test(instruction)
+    )
+  );
+  assert.ok(
+    crewDisbursementBatch?.entries.some(
+      (entry) =>
+        entry.entryId === `crew-payout-${acceptedCrewMatch!.id}` &&
+        entry.bookingId === firstBooking.id &&
+        entry.recipientRole === "crew-member" &&
+        entry.amountCents === expectedCrewPayoutCents
+    )
+  );
+
+  const opsActor = {
+    userId: "ops-payout-run-reviewer",
+    email: "ops-payout-run-reviewer@yardmatch.test",
+    role: "ops" as const,
+    sessionVersion: 1
+  };
+  const createdRun = await platform.createOpsPayoutDisbursementRun(opsActor, {
+    previewBatchId: crewDisbursementBatch!.id,
+    operatorNotes: "Prepared for manual payroll review."
+  });
+
+  assert.equal(createdRun.created, true);
+  assert.equal(createdRun.matchedPreviewBatch.id, crewDisbursementBatch?.id);
+  assert.equal(createdRun.run.previewBatchId, crewDisbursementBatch?.id);
+  assert.equal(createdRun.run.status, "manual-review");
+  assert.equal(createdRun.run.railMode, "manual-preview");
+  assert.equal(createdRun.run.recipientRole, "crew-member");
+  assert.equal(createdRun.run.totalCents, expectedCrewPayoutCents);
+  assert.equal(createdRun.run.entryIds[0], `crew-payout-${acceptedCrewMatch!.id}`);
+  assert.equal(createdRun.run.entries[0]?.bookingId, firstBooking.id);
+  assert.equal(createdRun.run.entries[0]?.paymentId, crewDisbursementBatch?.entries[0]?.paymentId);
+  assert.equal(createdRun.run.createdByOpsUserId, opsActor.userId);
+  assert.match(createdRun.run.entryFingerprint, /^[a-f0-9]{64}$/);
+  assert.ok(
+    createdRun.run.auditInstructions.some((instruction) =>
+      /external bank or payout-provider reference/i.test(instruction)
+    )
+  );
+
+  const duplicateRun = await platform.createOpsPayoutDisbursementRun(opsActor, {
+    previewBatchId: crewDisbursementBatch!.id,
+    operatorNotes: "Second click should reuse the same audit record."
+  });
+  assert.equal(duplicateRun.created, false);
+  assert.equal(duplicateRun.run.id, createdRun.run.id);
+  assert.equal(duplicateRun.run.operatorNotes, "Prepared for manual payroll review.");
+
+  const recordedRuns = await platform.listOpsPayoutDisbursementRuns();
+  assert.equal(recordedRuns.runs.length, 1);
+  assert.equal(recordedRuns.runs[0]?.id, createdRun.run.id);
+
+  await assert.rejects(
+    () =>
+      platform.createOpsPayoutDisbursementRun(
+        {
+          userId: customer.id,
+          email: customer.email,
+          role: "customer",
+          sessionVersion: 1
+        },
+        { previewBatchId: crewDisbursementBatch!.id }
+      ),
+    /Only operations can create payout disbursement runs/i
+  );
 });
 
 test("customer service can open a refund review override from a billing ticket", async () => {
@@ -5838,6 +6619,21 @@ test("review-first staffing creates pending crew matches that providers can appr
 
   const crewMatches = await platform.getCrewMatchesForCrew(crewMatch.id);
   assert.ok(crewMatches.matches.some((match) => match.id === acceptedMatch.id && match.status === "accepted"));
+  assert.equal(crewMatches.availabilityConstraints.availabilityStatus, "open");
+  assert.equal(crewMatches.availabilityConstraints.availableWeekdays.length, 7);
+  assert.equal(crewMatches.availabilityConstraints.unavailableWeekdays.length, 0);
+  assert.equal(crewMatches.availabilityConstraints.willingToTravelMiles, 25);
+  assert.equal(crewMatches.availabilityConstraints.winterWorkEnabled, true);
+  assert.equal(crewMatches.availabilityConstraints.acceptedUpcomingCount, 1);
+  assert.equal(crewMatches.assignmentForecast.forecastStatus, "scheduled");
+  assert.equal(crewMatches.assignmentForecast.workloadBand, "light");
+  assert.equal(crewMatches.assignmentForecast.acceptedUpcomingCount, 1);
+  assert.equal(crewMatches.assignmentForecast.pendingReviewCount, 0);
+  assert.equal(crewMatches.assignmentForecast.nextAssignmentIso, booking.scheduledStartIso);
+  assert.equal(crewMatches.assignmentForecast.nextProviderCompanyName, provider.companyName);
+  assert.equal(crewMatches.assignmentForecast.nextServiceCategory, "mulch-installation");
+  assert.equal(crewMatches.assignmentForecast.nextAssignmentStatus, "accepted");
+  assert.equal(crewMatches.assignmentForecast.nextBookingStatus, "requested");
 });
 
 test("crew members can cancel accepted assignments and future staffing penalizes repeat call-offs", async () => {
@@ -5963,6 +6759,47 @@ test("crew members can cancel accepted assignments and future staffing penalizes
   assert.ok(cancellingCrewMatch);
   assert.ok(
     cancellingCrewMatch!.recommendationReasons?.some((reason) => /call-offs lower future match priority/i.test(reason))
+  );
+
+  const crewLedger = await platform.getCrewPayoutLedger(cancellingCrew.id);
+  assert.equal(crewLedger.attendanceSummary.cancelledAssignmentCount, 1);
+  assert.equal(crewLedger.attendanceSummary.cancellationCount, 1);
+  assert.equal(crewLedger.attendanceSummary.reliabilityStatus, "watch");
+  assert.equal(crewLedger.attendanceSummary.attendanceRate, 0);
+  assert.ok(
+    crewLedger.attendanceSummary.warnings.some((warning) => /call-offs/i.test(warning))
+  );
+  assert.equal(crewLedger.earningsSummary.completedAssignmentCount, 0);
+  assert.ok(
+    crewLedger.earningsSummary.guidance.some((item) => /accepted assignments/i.test(item))
+  );
+  assert.equal(crewLedger.performanceSummary.completedAssignmentCount, 0);
+  assert.equal(crewLedger.performanceSummary.performanceStatus, "building");
+  assert.ok(
+    crewLedger.performanceSummary.warnings.some((warning) => /No completed assignments/i.test(warning))
+  );
+  assert.ok(
+    crewLedger.performanceSummary.warnings.some((warning) => /call-off/i.test(warning))
+  );
+
+  const crewMatches = await platform.getCrewMatchesForCrew(cancellingCrew.id);
+  assert.equal(crewMatches.availabilityConstraints.availabilityStatus, "limited");
+  assert.deepEqual(crewMatches.availabilityConstraints.availableWeekdays, [targetDay]);
+  assert.equal(crewMatches.availabilityConstraints.unavailableWeekdays.length, 6);
+  assert.equal(crewMatches.availabilityConstraints.acceptedUpcomingCount, 0);
+  assert.ok(
+    crewMatches.availabilityConstraints.warnings.some((warning) => /Limited available weekdays/i.test(warning))
+  );
+  assert.equal(crewMatches.assignmentForecast.forecastStatus, "pending-review");
+  assert.equal(crewMatches.assignmentForecast.acceptedUpcomingCount, 0);
+  assert.equal(crewMatches.assignmentForecast.pendingReviewCount, 1);
+  assert.equal(crewMatches.assignmentForecast.workloadBand, "open");
+  assert.equal(crewMatches.assignmentForecast.nextAssignmentIso, undefined);
+  assert.ok(
+    crewMatches.assignmentForecast.guidance.some((item) => /pending match/i.test(item))
+  );
+  assert.ok(
+    crewMatches.assignmentForecast.warnings.some((warning) => /call-off/i.test(warning))
   );
 });
 
@@ -7055,6 +7892,22 @@ test("before and after photos still gate booking start and completion while note
 
   const completedBooking = await platform.completeBooking(provider.id, { bookingId: booking.id });
   assert.equal(completedBooking.status, "completed");
+
+  const crewLedger = await platform.getCrewPayoutLedger(crewMember.id);
+  assert.equal(crewLedger.performanceSummary.completedAssignmentCount, 1);
+  assert.equal(crewLedger.performanceSummary.completedWithoutIssueCount, 1);
+  assert.equal(crewLedger.performanceSummary.disputedAssignmentCount, 0);
+  assert.equal(crewLedger.performanceSummary.refundedAssignmentCount, 0);
+  assert.equal(crewLedger.performanceSummary.routeConfirmationCount, 1);
+  assert.equal(crewLedger.performanceSummary.beforeEvidenceCount, 1);
+  assert.equal(crewLedger.performanceSummary.afterEvidenceCount, 3);
+  assert.equal(crewLedger.performanceSummary.evidenceContributionCount, 4);
+  assert.deepEqual(crewLedger.performanceSummary.serviceCategories, ["lawn-mowing"]);
+  assert.equal(crewLedger.performanceSummary.performanceStatus, "strong");
+  assert.ok(
+    crewLedger.performanceSummary.highlights.some((highlight) => /crew-captured evidence/i.test(highlight))
+  );
+  assert.equal(crewLedger.performanceSummary.warnings.length, 0);
 });
 
 test("ops can annotate booking evidence for disputes and refund reviews", async () => {
@@ -8537,6 +9390,106 @@ test("ops notification health surfaces overdue retries and can run a retry sweep
   );
 });
 
+test("ops notification health exposes production delivery policy and preserves channel counters", async () => {
+  const originalResendApiKey = process.env.RESEND_API_KEY;
+  const originalNotificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM;
+  const originalTwilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+  const originalTwilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+  const originalTwilioFromNumber = process.env.TWILIO_FROM_NUMBER;
+  const originalNotificationAlertEmails = process.env.NOTIFICATION_ALERT_EMAILS;
+  const originalNotificationAlertSmsNumbers = process.env.NOTIFICATION_ALERT_SMS_NUMBERS;
+  const restoreEnv = (key: string, value: string | undefined) => {
+    if (value === undefined) {
+      delete process.env[key];
+      return;
+    }
+
+    process.env[key] = value;
+  };
+
+  try {
+    delete process.env.RESEND_API_KEY;
+    delete process.env.NOTIFICATION_EMAIL_FROM;
+    delete process.env.TWILIO_ACCOUNT_SID;
+    delete process.env.TWILIO_AUTH_TOKEN;
+    delete process.env.TWILIO_FROM_NUMBER;
+    delete process.env.NOTIFICATION_ALERT_EMAILS;
+    delete process.env.NOTIFICATION_ALERT_SMS_NUMBERS;
+
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+    await repository.createNotificationDelivery({
+      id: "delivery_policy_mock_email",
+      notificationId: "notification_policy_mock_email",
+      recipientId: "customer-1",
+      recipientRole: "customer",
+      category: "booking",
+      channel: "email",
+      destination: "customer@example.com",
+      provider: "mock-email",
+      status: "sent",
+      title: "Your booking is confirmed",
+      bodyPreview: "Your booking is confirmed.",
+      errorMessage: undefined,
+      attemptCount: 1,
+      createdAt: new Date().toISOString(),
+      lastAttemptAt: new Date().toISOString(),
+      nextRetryAt: undefined,
+      sentAt: new Date().toISOString()
+    });
+
+    const health = await platform.getNotificationOpsHealth();
+    assert.equal(health.deliveryPolicy.productionReadinessStatus, "partially-configured");
+    assert.equal(health.deliveryPolicy.pushStrategy, "expo-push");
+    assert.equal(health.deliveryPolicy.opsAlertTargetsConfigured, false);
+    assert.ok(
+      health.channels.some((channel) => channel.channel === "email" && channel.provider === "mock-email")
+    );
+    const emailPolicy = health.deliveryPolicy.channelPolicies.find((policy) => policy.channel === "email");
+    const smsPolicy = health.deliveryPolicy.channelPolicies.find((policy) => policy.channel === "sms");
+    assert.equal(emailPolicy?.activeProvider, "mock-email");
+    assert.equal(emailPolicy?.readinessStatus, "mock-fallback");
+    assert.ok(emailPolicy?.missingConfiguration.includes("RESEND_API_KEY"));
+    assert.equal(smsPolicy?.activeProvider, "mock-sms");
+    assert.equal(smsPolicy?.readinessStatus, "mock-fallback");
+    assert.ok(smsPolicy?.missingConfiguration.includes("TWILIO_ACCOUNT_SID"));
+    assert.ok(
+      health.alerts.some((alert) => /production notification channels/i.test(alert.title))
+    );
+
+    process.env.RESEND_API_KEY = "resend_test_key";
+    process.env.NOTIFICATION_EMAIL_FROM = "YardMatch <ops@yardmatch.test>";
+    process.env.TWILIO_ACCOUNT_SID = "AC123";
+    process.env.TWILIO_AUTH_TOKEN = "twilio_secret";
+    process.env.TWILIO_FROM_NUMBER = "+15555550123";
+    process.env.NOTIFICATION_ALERT_EMAILS = "alerts@yardmatch.test";
+
+    const configuredPlatform = new MarketplacePlatformService(
+      new InMemoryMarketplaceRepository(),
+      new DataEngineeringLogger()
+    );
+    const configuredHealth = await configuredPlatform.getNotificationOpsHealth();
+    assert.equal(configuredHealth.deliveryPolicy.productionReadinessStatus, "production-ready");
+    assert.equal(configuredHealth.deliveryPolicy.opsAlertTargetsConfigured, true);
+    assert.equal(
+      configuredHealth.deliveryPolicy.channelPolicies.find((policy) => policy.channel === "email")?.activeProvider,
+      "resend"
+    );
+    assert.equal(
+      configuredHealth.deliveryPolicy.channelPolicies.find((policy) => policy.channel === "sms")?.activeProvider,
+      "twilio"
+    );
+  } finally {
+    restoreEnv("RESEND_API_KEY", originalResendApiKey);
+    restoreEnv("NOTIFICATION_EMAIL_FROM", originalNotificationEmailFrom);
+    restoreEnv("TWILIO_ACCOUNT_SID", originalTwilioAccountSid);
+    restoreEnv("TWILIO_AUTH_TOKEN", originalTwilioAuthToken);
+    restoreEnv("TWILIO_FROM_NUMBER", originalTwilioFromNumber);
+    restoreEnv("NOTIFICATION_ALERT_EMAILS", originalNotificationAlertEmails);
+    restoreEnv("NOTIFICATION_ALERT_SMS_NUMBERS", originalNotificationAlertSmsNumbers);
+  }
+});
+
 test("ops notification health can escalate external alerts to configured contacts", async () => {
   const originalFetch = globalThis.fetch;
   const originalResendApiKey = process.env.RESEND_API_KEY;
@@ -9748,6 +10701,133 @@ test("provider assistant can preview and send a provider-crew coordination messa
   assert.equal(providerThread.messages[0]?.body, "Head to the equipment pickup first");
 });
 
+test("provider assistant can message the route leader and accepted crew from plain language", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-crew-role-message@example.com",
+    password: "Password123!",
+    phone: "555-43831",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: provider.serviceRadiusMiles,
+    staffingMode: "auto-accept",
+    crewReviewLeadHours: provider.crewReviewLeadHours,
+    departureReminderLeadMinutes: provider.departureReminderLeadMinutes,
+    routeLeaderMode: "accepted-crew-fallback",
+    sponsoredListingEnabled: provider.sponsoredListingEnabled
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-crew-role-message@example.com",
+    password: "Password123!",
+    phone: "555-43832",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const availableDay = availabilityDayForIso(serviceDay.toISOString());
+
+  const crewMembers = [];
+  for (const [index, name] of ["Morgan Crew", "Terry Crew", "Alex Crew"].entries()) {
+    crewMembers.push(
+      await platform.registerUser({
+        fullName: name,
+        email: `crew-assistant-role-message-${index + 1}@example.com`,
+        password: "Password123!",
+        phone: `555-4383${index + 3}`,
+        role: "crew-member",
+        address: createAddress(`${113 + index} Garden Row`, 30.24355 + index * 0.00005, -97.76385),
+        categories: ["mulch-installation"],
+        availableWeekdays: [availableDay],
+        willingToTravelMiles: 20,
+        preferredSchedule: "full-time",
+        hasOwnEquipment: true
+      })
+    );
+  }
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant crew role message test",
+    totalCents: 9200
+  });
+
+  const staffing = await platform.getProviderStaffingOverview(provider.id);
+  const job = staffing.jobs.find((item) => item.bookingId === booking.id);
+  assert.ok(job);
+  const acceptedMatches = job.matches.filter((match) => match.status === "accepted");
+  assert.ok(acceptedMatches.length >= 2);
+  const routeLeaderMatch = acceptedMatches[0]!;
+  const routeLeader = crewMembers.find((crewMember) => crewMember.id === routeLeaderMatch.crewMemberId);
+  assert.ok(routeLeader);
+
+  const assigned = await platform.runProviderAssistantCommand(provider.id, {
+    command: `Make ${routeLeader.fullName} the route leader for my afternoon appointment`,
+    bookingId: booking.id,
+    execute: true
+  });
+  assert.equal(assigned.executed, true);
+  assert.equal(assigned.updatedBooking?.assignedRouteLeaderCrewMemberId, routeLeader.id);
+
+  const routeLeaderPreview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell the route leader to confirm the trailer is loaded for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(routeLeaderPreview.understood, true);
+  assert.equal(routeLeaderPreview.actionType, "message-crew");
+  assert.equal(routeLeaderPreview.requiresConfirmation, true);
+  assert.equal(routeLeaderPreview.matchedBookingId, booking.id);
+  assert.match(routeLeaderPreview.previewMessage, new RegExp(`Send route leader ${routeLeader.fullName}`, "i"));
+
+  const routeLeaderMessage = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell the route leader to confirm the trailer is loaded for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(routeLeaderMessage.executed, true);
+  assert.equal(routeLeaderMessage.actionType, "message-crew");
+  assert.equal(routeLeaderMessage.updatedCrewConversations?.length, 1);
+  assert.equal(routeLeaderMessage.updatedCrewConversation?.thread.crewMatchId, routeLeaderMatch.id);
+  assert.equal(routeLeaderMessage.updatedCrewConversation?.messages.at(-1)?.body, "Confirm the trailer is loaded");
+
+  const acceptedCrewMessage = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell the accepted crew to meet at the side gate for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(acceptedCrewMessage.executed, true);
+  assert.equal(acceptedCrewMessage.actionType, "message-crew");
+  assert.equal(acceptedCrewMessage.updatedCrewConversations?.length, acceptedMatches.length);
+  assert.equal(acceptedCrewMessage.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-message-crew");
+  assert.match(acceptedCrewMessage.previewMessage, new RegExp(`Sent accepted crew \\(${acceptedMatches.length}\\)`, "i"));
+  for (const thread of acceptedCrewMessage.updatedCrewConversations ?? []) {
+    assert.equal(thread.messages.at(-1)?.senderRole, "provider");
+    assert.equal(thread.messages.at(-1)?.body, "Meet at the side gate");
+  }
+});
+
 test("provider assistant can accept or deny crew matches from plain language", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -10167,6 +11247,70 @@ test("provider assistant can recommend which booking to move tomorrow", async ()
   );
 });
 
+test("provider assistant recommends staffing first when crew gap is the real dispatch pressure", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-staffing-first@example.com",
+    password: "Password123!",
+    phone: "555-439451",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["mulch-installation"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-staffing-first@example.com",
+    password: "Password123!",
+    phone: "555-439452",
+    role: "customer",
+    propertyLabel: "Primary home",
+    lawnSizeSqFt: 6400,
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const mulchJob = new Date();
+  mulchJob.setDate(mulchJob.getDate() + 1);
+  mulchJob.setHours(9, 0, 0, 0);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: mulchJob.toISOString(),
+    scheduledEndIso: new Date(mulchJob.getTime() + 3 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant staffing-first dispatch test",
+    totalCents: 9800
+  });
+
+  const recommendation = await platform.runProviderAssistantCommand(provider.id, {
+    command: "What should I move tomorrow?",
+    execute: false
+  });
+
+  assert.equal(recommendation.understood, true);
+  assert.equal(recommendation.actionType, "recommend-dispatch-adjustment");
+  assert.equal(recommendation.requiresBookingSelection, false);
+  assert.equal(recommendation.requiresConfirmation, false);
+  assert.equal(recommendation.executed, false);
+  assert.ok(recommendation.dispatchDaySummary);
+  assert.ok(recommendation.dispatchWindowSummary);
+  assert.equal(recommendation.dispatchWindowSummary?.crewGap, 3);
+  assert.equal(recommendation.bookingCandidates.length, 1);
+  assert.equal(recommendation.bookingCandidates[0]?.bookingId, booking.id);
+  assert.equal(recommendation.matchedBookingId, undefined);
+  assert.equal(recommendation.sourceWindowKey, undefined);
+  assert.equal(recommendation.targetWindowKey, undefined);
+  assert.equal(recommendation.suggestedStartIso, undefined);
+  assert.match(recommendation.previewLabel, /staffing first/i);
+  assert.match(recommendation.previewMessage, /Source or approve crew/i);
+});
+
 test("provider assistant can recommend a cross-day move when tomorrow stays tight", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -10199,10 +11343,14 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
   afternoonJob.setHours(13, 0, 0, 0);
   const eveningJob = new Date(morningJob);
   eveningJob.setHours(17, 0, 0, 0);
-  const crossDaySlotStart = new Date(morningJob);
-  crossDaySlotStart.setDate(crossDaySlotStart.getDate() + 1);
-  crossDaySlotStart.setHours(10, 0, 0, 0);
-  const crossDaySlotEnd = new Date(crossDaySlotStart.getTime() + 60 * 60 * 1000);
+  const pressuredCrossDaySlotStart = new Date(morningJob);
+  pressuredCrossDaySlotStart.setDate(pressuredCrossDaySlotStart.getDate() + 1);
+  pressuredCrossDaySlotStart.setHours(10, 0, 0, 0);
+  const pressuredCrossDaySlotEnd = new Date(pressuredCrossDaySlotStart.getTime() + 60 * 60 * 1000);
+  const cleanCrossDaySlotStart = new Date(morningJob);
+  cleanCrossDaySlotStart.setDate(cleanCrossDaySlotStart.getDate() + 2);
+  cleanCrossDaySlotStart.setHours(10, 0, 0, 0);
+  const cleanCrossDaySlotEnd = new Date(cleanCrossDaySlotStart.getTime() + 60 * 60 * 1000);
 
   (
     repository as unknown as {
@@ -10214,13 +11362,22 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
         isBooked: boolean;
       }>;
     }
-  ).slots.push({
-    id: crypto.randomUUID(),
-    providerId: provider.id,
-    startIso: crossDaySlotStart.toISOString(),
-    endIso: crossDaySlotEnd.toISOString(),
-    isBooked: false
-  });
+  ).slots.push(
+    {
+      id: crypto.randomUUID(),
+      providerId: provider.id,
+      startIso: pressuredCrossDaySlotStart.toISOString(),
+      endIso: pressuredCrossDaySlotEnd.toISOString(),
+      isBooked: false
+    },
+    {
+      id: crypto.randomUUID(),
+      providerId: provider.id,
+      startIso: cleanCrossDaySlotStart.toISOString(),
+      endIso: cleanCrossDaySlotEnd.toISOString(),
+      isBooked: false
+    }
+  );
 
   const morningBooking = await platform.createBooking(customer.id, {
     providerId: provider.id,
@@ -10255,6 +11412,17 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
     totalCents: 6200
   });
 
+  await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("130 Garden Row", 30.24395, -97.76412),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: new Date(pressuredCrossDaySlotStart.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+    scheduledEndIso: new Date(pressuredCrossDaySlotStart.getTime() - 60 * 60 * 1000).toISOString(),
+    notes: "Cross-day move test pressure on earlier slot",
+    totalCents: 9200
+  });
+
   const recommendation = await platform.runProviderAssistantCommand(provider.id, {
     command: "What should I move tomorrow?",
     execute: false
@@ -10265,7 +11433,7 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
   assert.ok(recommendation.targetWindowLabel);
   assert.ok(recommendation.suggestedStartIso);
   assert.ok(recommendation.suggestedEndIso);
-  assert.ok(new Date(recommendation.suggestedStartIso!).getTime() >= crossDaySlotStart.getTime());
+  assert.equal(recommendation.suggestedStartIso, cleanCrossDaySlotStart.toISOString());
   assert.match(recommendation.previewMessage, /next cleaner route opening|appointment to/i);
   assert.ok(
     [morningBooking.id, afternoonBooking.id].includes(recommendation.matchedBookingId ?? "")
@@ -10343,6 +11511,14 @@ test("provider assistant can recommend where more crew is needed tomorrow", asyn
   assert.ok(
     recommendation.bookingCandidates.some((candidate) => candidate.bookingId === smallerGapBooking.id)
   );
+  assert.equal(recommendation.staffingPlan?.length, 2);
+  assert.equal(recommendation.staffingPlan?.[0]?.bookingId, largerGapBooking.id);
+  assert.equal(recommendation.staffingPlan?.[0]?.category, "mulch-installation");
+  assert.equal(recommendation.staffingPlan?.[0]?.recommendedAction, "source-more-crew");
+  assert.equal(recommendation.staffingPlan?.[0]?.pendingMatchCount, 0);
+  assert.equal(recommendation.staffingPlan?.[0]?.uncoveredCrewGap, 3);
+  assert.ok(recommendation.staffingPlan?.some((item) => item.bookingId === smallerGapBooking.id));
+  assert.match(recommendation.previewMessage, /Staffing plan covers 2 competing jobs/i);
   assert.match(recommendation.previewLabel, /crew gap recommendation/i);
   assert.match(recommendation.previewMessage, /extra crew first|open crew slot/i);
 });
@@ -10418,6 +11594,11 @@ test("provider assistant can recommend reviewing pending crew matches before sou
   assert.equal(recommendation.understood, true);
   assert.equal(recommendation.actionType, "recommend-staffing-adjustment");
   assert.equal(recommendation.matchedBookingId, booking.id);
+  assert.equal(recommendation.staffingPlan?.length, 1);
+  assert.equal(recommendation.staffingPlan?.[0]?.bookingId, booking.id);
+  assert.equal(recommendation.staffingPlan?.[0]?.recommendedAction, "review-pending-matches");
+  assert.equal(recommendation.staffingPlan?.[0]?.pendingMatchCount, 3);
+  assert.equal(recommendation.staffingPlan?.[0]?.uncoveredCrewGap, 0);
   assert.match(recommendation.previewMessage, /Review pending crew matches/i);
   assert.match(recommendation.previewMessage, /pending match/i);
 });
@@ -11605,6 +12786,26 @@ test("provider verification guidance flags missing launch-fit basics before go-l
   assert.ok(
     queuedProvider?.guidance.warnings.some((warning) => /lead-time|launch pocket/i.test(warning))
   );
+  assert.equal(queuedProvider?.onboardingPlan.stage, "fixes-needed");
+  assert.ok(
+    queuedProvider?.onboardingPlan.launchReadinessSignals.some((signal) =>
+      /recommended verification action: reject/i.test(signal)
+    )
+  );
+  assert.ok(
+    queuedProvider?.onboardingPlan.steps.some(
+      (step) =>
+        step.key === "dispatch-settings" &&
+        step.owner === "provider" &&
+        step.status === "blocked" &&
+        /automatically resubmits/i.test(step.automationTrigger ?? "")
+    )
+  );
+  assert.ok(
+    queuedProvider?.onboardingPlan.steps.some(
+      (step) => step.key === "ops-review" && step.owner === "ops" && step.status === "blocked"
+    )
+  );
 
   await assert.rejects(
     () =>
@@ -11624,6 +12825,93 @@ test("provider verification guidance flags missing launch-fit basics before go-l
     action: "approve",
     notes:
       "Ops is approving a narrow pilot because the provider agreed to reduce the service pocket immediately, tighten lead-time settings before first booking release, and stay on same-day support escalation for the first launch jobs."
+  });
+  assert.equal(approvedProvider.verificationStatus, "verified");
+});
+
+test("provider verification guidance blocks launch approval when incident history needs ops review", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Morgan Recovery",
+    email: "provider-verification-incident@example.com",
+    password: "Password123!",
+    phone: "555-4420",
+    role: "provider",
+    companyName: "Recovery Ready Lawns",
+    bio: "Launch-ready mowing and cleanup with photo-backed communication, fast issue recovery, and clear customer follow-through.",
+    yearsExperience: 6,
+    categories: ["lawn-mowing", "seasonal-cleanup"],
+    serviceRadiusMiles: 18,
+    address: createAddress("121 Maple Ave", 30.2438, -97.7639)
+  });
+  assert.equal(provider.role, "provider");
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Incident",
+    email: "customer-verification-incident@example.com",
+    password: "Password123!",
+    phone: "555-4421",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  assert.equal(customer.role, "customer");
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Incident verification coverage",
+    totalCents: 6800
+  });
+  await repository.updateBooking(booking.id, {
+    status: "disputed",
+    disputedAt: new Date().toISOString(),
+    disputeReason: "Customer reported incomplete recovery from a prior service issue.",
+    disputedByRole: "customer"
+  });
+
+  const queue = await platform.listProviderVerificationQueue();
+  const queuedProvider = queue.find((item) => item.provider.id === provider.id);
+  assert.ok(queuedProvider);
+  assert.equal(queuedProvider?.guidance.recommendedAction, "reject");
+  assert.ok(
+    queuedProvider?.guidance.checklist.some(
+      (item) => item.key === "incident-history" && item.status === "missing"
+    )
+  );
+  assert.ok(
+    queuedProvider?.guidance.warnings.some((warning) => /dispute and refund history/i.test(warning))
+  );
+
+  const profile = await platform.getProviderProfile(provider.id);
+  assert.ok(
+    profile.verificationSummary?.nextSteps.some((step) => /document recent disputes/i.test(step))
+  );
+
+  await assert.rejects(
+    () =>
+      platform.reviewProviderVerification({
+        providerId: provider.id,
+        action: "approve",
+        notes: "Provider looks ready for launch visibility."
+      }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 400 &&
+      /specific missing launch-readiness gaps|safe right now/i.test(error.message)
+  );
+
+  const approvedProvider = await platform.reviewProviderVerification({
+    providerId: provider.id,
+    action: "approve",
+    notes:
+      "Ops reviewed the disputed booking history, confirmed the customer recovery plan with the provider, documented how future evidence and support handoffs will work, and approved a narrow monitored launch pilot."
   });
   assert.equal(approvedProvider.verificationStatus, "verified");
 });
@@ -11656,11 +12944,213 @@ test("provider profiles include backend-authored verification next steps while p
       (item) => item.key === "launch-area-fit" && item.status === "review"
     )
   );
+  assert.equal(profile.verificationSummary?.onboardingPlan.stage, "ops-review");
+  assert.ok(
+    profile.verificationSummary?.onboardingPlan.steps.some(
+      (step) => step.key === "profile-fixes" && step.status === "pending"
+    )
+  );
+  assert.ok(
+    profile.verificationSummary?.onboardingPlan.steps.some(
+      (step) => step.key === "ops-review" && step.status === "ready"
+    )
+  );
+  assert.ok(
+    profile.verificationSummary?.onboardingPlan.automationActions.some(
+      (action) =>
+        action.key === "ops-review-launch-fit" &&
+        action.owner === "ops" &&
+        action.status === "ready" &&
+        action.priority === "high" &&
+        action.blockedByStepKeys.length === 0 &&
+        action.actionHref === "/ops/providers"
+    )
+  );
+  assert.ok(
+    profile.verificationSummary?.onboardingPlan.automationActions.some(
+      (action) =>
+        action.key === "ops-approve-narrow-pilot" &&
+        action.status === "blocked" &&
+        action.blockedByStepKeys.includes("ops-review")
+    )
+  );
+  assert.equal(profile.businessControls?.teamAccessMode, "owner-only");
+  assert.equal(profile.businessControls?.teamPermissionsStatus, "owner-only");
+  assert.ok(
+    profile.businessControls?.ownerManagedControls.includes("business profile")
+  );
+  assert.ok(
+    profile.businessControls?.opsManagedControls.includes("provider verification")
+  );
+  assert.ok(
+    profile.businessControls?.freshReauthRequiredControls.includes("future bank account changes")
+  );
+  assert.ok(
+    profile.businessControls?.warnings.some((warning) => /visibility remains gated/i.test(warning))
+  );
+});
+
+test("provider onboarding automation sweep sends due action notifications idempotently", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const opsUser = await platform.registerUser({
+    fullName: "Owen Onboarding",
+    email: "ops-onboarding-sweep@example.com",
+    password: "Password123!",
+    phone: "555-4510",
+    role: "ops",
+    address: createAddress("101 Ops Way", 30.2441, -97.7641)
+  });
+  assert.equal(opsUser.role, "ops");
+  const opsActor = {
+    userId: opsUser.id,
+    email: opsUser.email,
+    role: "ops" as const,
+    sessionVersion: 1
+  };
+
+  const submittedAt = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+  const blockedProvider = await platform.registerUser({
+    fullName: "Parker Fixes",
+    email: "provider-onboarding-fixes@example.com",
+    password: "Password123!",
+    phone: "555-4511",
+    role: "provider",
+    companyName: "Fixes Needed Lawns",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 45,
+    address: createAddress("122 Maple Ave", 30.2438, -97.7639)
+  });
+  assert.equal(blockedProvider.role, "provider");
+  await repository.updateProvider(blockedProvider.id, {
+    bio: "Too short.",
+    yearsExperience: 0,
+    minimumBookingLeadHours: 72,
+    verificationSubmittedAt: submittedAt
+  });
+
+  const blockedSweep = await platform.processProviderOnboardingAutomation(opsActor, {
+    providerId: blockedProvider.id,
+    asOfIso: new Date().toISOString()
+  });
+  assert.equal(blockedSweep.providerCount, 1);
+  assert.ok(blockedSweep.sentNotificationCount >= 2);
+  assert.ok(
+    blockedSweep.items.some(
+      (item) =>
+        item.actionKey === "provider-complete-profile" &&
+        item.recipientId === blockedProvider.id &&
+        item.recipientRole === "provider" &&
+        item.notificationStatus === "sent" &&
+        item.notificationId
+    )
+  );
+  assert.ok(
+    blockedSweep.items.some(
+      (item) => item.actionKey === "ops-review-launch-fit" && item.notificationStatus === "blocked"
+    )
+  );
+  const providerNotifications = await repository.listNotificationsByRecipient(blockedProvider.id);
+  assert.ok(
+    providerNotifications.some(
+      (notification) =>
+        notification.title === "Provider profile fixes are due" &&
+        notification.body.includes(`Onboarding automation: ${blockedProvider.id}/provider-complete-profile`)
+    )
+  );
+
+  const repeatedBlockedSweep = await platform.processProviderOnboardingAutomation(opsActor, {
+    providerId: blockedProvider.id,
+    asOfIso: new Date().toISOString()
+  });
+  assert.equal(repeatedBlockedSweep.sentNotificationCount, 0);
+  assert.ok(repeatedBlockedSweep.alreadySentCount >= 2);
+  assert.ok(
+    repeatedBlockedSweep.items.some(
+      (item) =>
+        item.actionKey === "provider-complete-profile" &&
+        item.notificationStatus === "already-sent"
+    )
+  );
+
+  const readyProvider = await platform.registerUser({
+    fullName: "Quinn Ready",
+    email: "provider-onboarding-ready@example.com",
+    password: "Password123!",
+    phone: "555-4512",
+    role: "provider",
+    companyName: "Ready Launch Lawns",
+    bio: "Launch-ready mowing and cleanup with careful communication, photo-backed updates, and reliable service recovery.",
+    yearsExperience: 6,
+    categories: ["lawn-mowing", "seasonal-cleanup"],
+    serviceRadiusMiles: 18,
+    address: createAddress("123 Maple Ave", 30.2438, -97.7639)
+  });
+  assert.equal(readyProvider.role, "provider");
+  await repository.updateProvider(readyProvider.id, {
+    verificationSubmittedAt: submittedAt,
+    minimumBookingLeadHours: 12
+  });
+
+  const readySweep = await platform.processProviderOnboardingAutomation(opsActor, {
+    providerId: readyProvider.id,
+    asOfIso: new Date().toISOString()
+  });
+  assert.ok(
+    readySweep.items.some(
+      (item) =>
+        item.actionKey === "ops-review-launch-fit" &&
+        item.recipientRole === "ops" &&
+        item.notificationStatus === "sent" &&
+        item.actionHref === "/ops/providers"
+    )
+  );
+  assert.ok(
+    readySweep.items.some(
+      (item) =>
+        item.actionKey === "ops-approve-narrow-pilot" &&
+        item.recipientRole === "ops" &&
+        item.notificationStatus === "sent"
+    )
+  );
+  const opsNotifications = await repository.listNotificationsByRecipient(opsUser.id);
+  assert.ok(
+    opsNotifications.some(
+      (notification) =>
+        notification.title === "Provider verification is ready for review" &&
+        notification.body.includes(`Onboarding automation: ${readyProvider.id}/ops-review-launch-fit`)
+    )
+  );
+
+  await assert.rejects(
+    () =>
+      platform.processProviderOnboardingAutomation(
+        {
+          userId: readyProvider.id,
+          email: readyProvider.email,
+          role: "provider",
+          sessionVersion: 1
+        },
+        { providerId: readyProvider.id }
+      ),
+    /Only operations can process provider onboarding automation/i
+  );
 });
 
 test("rejected providers are automatically resubmitted when they update business profile details", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const opsUser = await platform.registerUser({
+    fullName: "Olivia Ops",
+    email: "ops-provider-resubmission@example.com",
+    password: "Password123!",
+    phone: "555-4410",
+    role: "ops",
+    address: createAddress("100 Ops Way", 30.244, -97.764)
+  });
+  assert.equal(opsUser.role, "ops");
 
   const provider = await platform.registerUser({
     fullName: "Taylor Retry",
@@ -11701,6 +13191,46 @@ test("rejected providers are automatically resubmitted when they update business
   assert.match(
     resubmittedProvider.verificationSummary?.summary ?? "",
     /last review note: add more detail about experience/i
+  );
+  assert.equal(resubmittedProvider.verificationSummary?.onboardingPlan.stage, "ready-for-approval");
+  assert.match(
+    resubmittedProvider.verificationSummary?.onboardingPlan.recommendedAutomation ?? "",
+    /approve verification/i
+  );
+  assert.ok(
+    resubmittedProvider.verificationSummary?.onboardingPlan.steps.some(
+      (step) => step.key === "launch-pilot" && step.status === "ready"
+    )
+  );
+  assert.ok(
+    resubmittedProvider.verificationSummary?.onboardingPlan.automationActions.some(
+      (action) =>
+        action.key === "ops-approve-narrow-pilot" &&
+        action.owner === "ops" &&
+        action.status === "ready" &&
+        action.priority === "normal" &&
+        action.blockedByStepKeys.length === 0 &&
+        action.actionHref === "/ops/providers"
+    )
+  );
+  assert.ok(
+    resubmittedProvider.verificationSummary?.onboardingPlan.automationActions.some(
+      (action) =>
+        action.key === "provider-complete-profile" &&
+        action.status === "completed" &&
+        action.blockedByStepKeys.length === 0
+    )
+  );
+
+  const opsNotifications = await repository.listNotificationsByRecipient(opsUser.id);
+  assert.ok(
+    opsNotifications.some(
+      (notification) =>
+        notification.recipientRole === "ops" &&
+        notification.title === "Provider verification resubmitted" &&
+        /profile and service-scope updates/i.test(notification.body) &&
+        notification.actionHref === "/ops/providers"
+    )
   );
 });
 
@@ -11908,6 +13438,20 @@ test("public marketplace overview returns only verified providers and live aggre
   assert.equal(overview.mostOnTimeProviders.length, Math.min(verifiedProviders.length, 8));
   assert.ok(overview.averageRating >= 0);
   assert.ok(overview.activeCategoryCount > 0);
+  assert.equal(overview.launchPricingPolicy.pricingModel, "hybrid-managed-marketplace");
+  assert.equal(overview.launchPricingPolicy.introductoryOffer.appliesTo, "first-completed-service");
+  assert.ok(overview.launchPricingPolicy.launchServiceCategories.includes("lawn-mowing"));
+  assert.ok(
+    overview.launchPricingPolicy.customerPricingPrinciples.some((principle) =>
+      /managed-marketplace price/i.test(principle)
+    )
+  );
+  assert.ok(
+    overview.launchPricingPolicy.providerEconomicsPrinciples.some((principle) =>
+      /silently compressing provider net payouts/i.test(principle)
+    )
+  );
+  assert.match(overview.launchPricingPolicy.providerFacingExplanation, /YardMatch sets the customer-facing launch price/i);
   assert.equal(
     overview.featuredProviders.every((provider) =>
       verifiedProviders.some((candidate) => candidate.id === provider.id)

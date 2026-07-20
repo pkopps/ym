@@ -342,6 +342,20 @@ export interface ProviderProfile extends BaseUser {
   attentionToDetailRating: number;
   reviewCount: number;
   calendarConnection: CalendarConnection;
+  businessControls?: ProviderBusinessControlsSummary;
+}
+
+export interface ProviderBusinessControlsSummary {
+  teamAccessMode: "owner-only";
+  teamPermissionsStatus: "owner-only" | "planned";
+  ownerManagedControls: string[];
+  profileControls: string[];
+  dispatchControls: string[];
+  payoutControls: string[];
+  opsManagedControls: string[];
+  freshReauthRequiredControls: string[];
+  launchGuardrails: string[];
+  warnings: string[];
 }
 
 export interface CrewMemberProfile extends BaseUser {
@@ -462,6 +476,308 @@ export interface OpsAccessAlertItem {
   title: string;
   detail: string;
   recommendedAction: string;
+}
+
+export interface OpsAccessGovernancePolicy {
+  roleModel: "admin-and-operations";
+  minimumActiveAdminAccounts: number;
+  activeAdminAccountCount: number;
+  hasRequiredAdminCoverage: boolean;
+  adminRequiredActions: string[];
+  operationsAllowedActions: string[];
+  authenticationControls: string[];
+  escalationTriggers: string[];
+  warnings: string[];
+}
+
+export type LaunchOperationsScenarioKey =
+  | "coverage-limit"
+  | "low-supply"
+  | "weather-delay"
+  | "provider-no-show"
+  | "customer-no-show"
+  | "service-quality"
+  | "completed-dispute";
+
+export interface LaunchOperationsScenarioRule {
+  key: LaunchOperationsScenarioKey;
+  title: string;
+  trigger: string;
+  primaryOwner: "ops" | "support" | "provider-success";
+  primaryAction: string;
+  customerPromise: string;
+  providerInstruction: string;
+  recommendedInterventionAction?: "reschedule-booking" | "cancel-booking" | "restore-active-booking" | "complete-booking";
+  escalationRule: string;
+}
+
+export interface LaunchOperationsCoveragePocketSummary {
+  pocketKey: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  verifiedProviderCount: number;
+  activeBookingCount: number;
+  completedBookingCount: number;
+  activeExceptionCount: number;
+  openServiceQualityTicketCount: number;
+  supportedCategories: ServiceCategory[];
+  pressureLevel: "normal" | "watch" | "critical";
+  warnings: string[];
+  recommendedAction: string;
+}
+
+export type LaunchOperationsCoverageActionKey =
+  | "hold-demand"
+  | "verify-supply"
+  | "recover-field-exception"
+  | "resolve-service-quality";
+
+export interface LaunchOperationsCoverageActionRecommendation {
+  key: LaunchOperationsCoverageActionKey;
+  pocketKey: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  priority: "normal" | "high" | "urgent";
+  owner: "ops" | "support" | "provider-success";
+  title: string;
+  detail: string;
+  recommendedAction: string;
+  dueWithinHours: number;
+  relatedScenarioKeys: LaunchOperationsScenarioKey[];
+}
+
+export type LaunchOperationsTaskStatus =
+  | "open"
+  | "in-progress"
+  | "blocked"
+  | "completed"
+  | "cancelled";
+
+export interface LaunchOperationsTask {
+  id: string;
+  recommendationFingerprint: string;
+  recommendationKey: LaunchOperationsCoverageActionKey;
+  pocketKey: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  priority: "normal" | "high" | "urgent";
+  owner: "ops" | "support" | "provider-success";
+  status: LaunchOperationsTaskStatus;
+  title: string;
+  detail: string;
+  recommendedAction: string;
+  dueAtIso: string;
+  relatedScenarioKeys: LaunchOperationsScenarioKey[];
+  createdAt: string;
+  updatedAt: string;
+  createdByOpsUserId: string;
+  createdByOpsEmail: string;
+  assignedToOpsUserId?: string;
+  assignedToOpsEmail?: string;
+  operatorNotes?: string;
+  completionNotes?: string;
+  completedAt?: string;
+  completedByOpsUserId?: string;
+}
+
+export interface CreateLaunchOperationsTaskRequest {
+  recommendationKey: LaunchOperationsCoverageActionKey;
+  pocketKey: string;
+  assignedToOpsUserId?: string;
+  operatorNotes?: string;
+}
+
+export interface CreateLaunchOperationsTaskResponse {
+  task: LaunchOperationsTask;
+  created: boolean;
+  matchedRecommendation: LaunchOperationsCoverageActionRecommendation;
+}
+
+export interface UpdateLaunchOperationsTaskRequest {
+  taskId: string;
+  status?: LaunchOperationsTaskStatus;
+  assignedToOpsUserId?: string | null;
+  operatorNotes?: string;
+  completionNotes?: string;
+}
+
+export interface UpdateLaunchOperationsTaskResponse {
+  task: LaunchOperationsTask;
+}
+
+export interface LaunchOperationsTasksResponse {
+  generatedAt: string;
+  tasks: LaunchOperationsTask[];
+}
+
+export type LaunchOperationsTaskNotificationStatus =
+  | "sent"
+  | "already-sent"
+  | "dry-run"
+  | "not-due"
+  | "completed"
+  | "cancelled"
+  | "no-recipient";
+
+export interface ProcessLaunchOperationsTaskNotificationsRequest {
+  taskId?: string;
+  asOfIso?: string;
+  dryRun?: boolean;
+  includeFuture?: boolean;
+}
+
+export interface LaunchOperationsTaskNotificationSweepItem {
+  taskId: string;
+  recommendationKey: LaunchOperationsCoverageActionKey;
+  pocketKey: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  priority: "normal" | "high" | "urgent";
+  owner: "ops" | "support" | "provider-success";
+  taskStatus: LaunchOperationsTaskStatus;
+  dueAtIso: string;
+  recipientId?: string;
+  recipientRole?: MarketplaceRole;
+  notificationTitle: string;
+  notificationBody: string;
+  notificationStatus: LaunchOperationsTaskNotificationStatus;
+  notificationId?: string;
+  reason: string;
+}
+
+export interface LaunchOperationsTaskNotificationSweepResponse {
+  generatedAt: string;
+  asOfIso: string;
+  dryRun: boolean;
+  taskCount: number;
+  candidateNotificationCount: number;
+  dueNotificationCount: number;
+  sentNotificationCount: number;
+  alreadySentCount: number;
+  skippedNotificationCount: number;
+  items: LaunchOperationsTaskNotificationSweepItem[];
+}
+
+export type LaunchOperationsTaskEscalationStatus =
+  | "sent"
+  | "already-sent"
+  | "dry-run"
+  | "not-overdue"
+  | "completed"
+  | "cancelled"
+  | "no-recipient";
+
+export interface ProcessLaunchOperationsTaskEscalationsRequest {
+  taskId?: string;
+  asOfIso?: string;
+  dryRun?: boolean;
+}
+
+export interface LaunchOperationsTaskEscalationSweepItem {
+  taskId: string;
+  recommendationKey: LaunchOperationsCoverageActionKey;
+  pocketKey: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  priority: "normal" | "high" | "urgent";
+  owner: "ops" | "support" | "provider-success";
+  taskStatus: LaunchOperationsTaskStatus;
+  dueAtIso: string;
+  overdueHours: number;
+  escalationThresholdHours: number;
+  recipientId?: string;
+  recipientRole?: MarketplaceRole;
+  notificationTitle: string;
+  notificationBody: string;
+  escalationStatus: LaunchOperationsTaskEscalationStatus;
+  notificationId?: string;
+  reason: string;
+}
+
+export interface LaunchOperationsTaskEscalationSweepResponse {
+  generatedAt: string;
+  asOfIso: string;
+  dryRun: boolean;
+  taskCount: number;
+  candidateEscalationCount: number;
+  overdueEscalationCount: number;
+  sentNotificationCount: number;
+  alreadySentCount: number;
+  skippedEscalationCount: number;
+  items: LaunchOperationsTaskEscalationSweepItem[];
+}
+
+export interface LaunchOperationsPolicy {
+  policyVersion: "launch-ops-v1";
+  activePressureLevel: "normal" | "watch" | "critical";
+  coveragePockets: LaunchOperationsCoveragePocketSummary[];
+  coverageActionRecommendations: LaunchOperationsCoverageActionRecommendation[];
+  scenarioRules: LaunchOperationsScenarioRule[];
+  serviceQualityStandards: string[];
+  interventionRules: string[];
+  escalationTriggers: string[];
+  warnings: string[];
+}
+
+export type OpsAutomationSweepKey =
+  | "provider-onboarding"
+  | "support-ticket-escalations"
+  | "launch-operations-task-notifications"
+  | "launch-operations-task-escalations";
+
+export interface ProcessOpsAutomationRunRequest {
+  sweepKeys?: OpsAutomationSweepKey[];
+  asOfIso?: string;
+  dryRun?: boolean;
+}
+
+export interface OpsAutomationSweepRunItem {
+  sweepKey: OpsAutomationSweepKey;
+  label: string;
+  status: "completed" | "failed";
+  startedAt: string;
+  completedAt: string;
+  dryRun: boolean;
+  sentNotificationCount: number;
+  alreadySentCount: number;
+  skippedCount: number;
+  providerOnboarding?: ProviderOnboardingAutomationSweepResponse;
+  supportTicketEscalations?: SupportOpsTicketEscalationSweepResponse;
+  launchOperationsTaskNotifications?: LaunchOperationsTaskNotificationSweepResponse;
+  launchOperationsTaskEscalations?: LaunchOperationsTaskEscalationSweepResponse;
+  errorMessage?: string;
+}
+
+export interface OpsAutomationRunResponse {
+  runId: string;
+  generatedAt: string;
+  asOfIso: string;
+  dryRun: boolean;
+  requestedSweepKeys: OpsAutomationSweepKey[];
+  requestedSweepCount: number;
+  completedSweepCount: number;
+  failedSweepCount: number;
+  sentNotificationCount: number;
+  alreadySentCount: number;
+  skippedCount: number;
+  items: OpsAutomationSweepRunItem[];
+}
+
+export interface OpsAutomationRunRecord extends OpsAutomationRunResponse {
+  id: string;
+  createdAt: string;
+  createdByOpsUserId: string;
+  createdByOpsEmail: string;
+}
+
+export interface OpsAutomationRunsResponse {
+  generatedAt: string;
+  runs: OpsAutomationRunRecord[];
 }
 
 export interface OpsAccountSummary {
@@ -610,7 +926,43 @@ export interface CrewMatchSummary {
 
 export interface CrewMatchesResponse {
   crewMember: CrewMemberProfile;
+  availabilityConstraints: CrewAvailabilityConstraintsSummary;
+  assignmentForecast: CrewAssignmentForecast;
   matches: CrewMatchSummary[];
+}
+
+export interface CrewAvailabilityConstraintsSummary {
+  availableWeekdays: CrewAvailabilityDay[];
+  unavailableWeekdays: CrewAvailabilityDay[];
+  serviceCategoryCount: number;
+  willingToTravelMiles: number;
+  preferredSchedule: CrewMemberSchedulePreference;
+  hasOwnEquipment: boolean;
+  winterWorkEnabled: boolean;
+  acceptedUpcomingCount: number;
+  activeAssignmentCount: number;
+  routeLeaderAssignmentCount: number;
+  availabilityStatus: "open" | "limited" | "busy" | "off-duty";
+  constraints: string[];
+  guidance: string[];
+  warnings: string[];
+}
+
+export interface CrewAssignmentForecast {
+  upcomingAssignmentCount: number;
+  acceptedUpcomingCount: number;
+  pendingReviewCount: number;
+  activeAssignmentCount: number;
+  routeLeaderAssignmentCount: number;
+  nextAssignmentIso?: string;
+  nextProviderCompanyName?: string;
+  nextServiceCategory?: ServiceCategory;
+  nextAssignmentStatus?: CrewMatchStatus;
+  nextBookingStatus?: BookingStatus;
+  forecastStatus: "open" | "pending-review" | "scheduled" | "active" | "attention";
+  workloadBand: "open" | "light" | "steady" | "full";
+  guidance: string[];
+  warnings: string[];
 }
 
 export interface ProviderCrewConversation {
@@ -1082,6 +1434,47 @@ export interface CrewPayoutLedgerEntry {
   note: string;
 }
 
+export interface CrewEarningsSummary {
+  completedAssignmentCount: number;
+  readyCents: number;
+  scheduledCents: number;
+  pendingCustomerPaymentCents: number;
+  onHoldCents: number;
+  reversedCents: number;
+  nextWeeklyPayoutDateIso: string;
+  holdPeriodHours: number;
+  guidance: string[];
+}
+
+export interface CrewAttendanceSummary {
+  acceptedAssignmentCount: number;
+  activeAssignmentCount: number;
+  completedAssignmentCount: number;
+  cancelledAssignmentCount: number;
+  cancellationCount: number;
+  lastCancellationAt?: string;
+  attendanceRate: number;
+  reliabilityStatus: "strong" | "watch" | "at-risk";
+  warnings: string[];
+}
+
+export interface CrewPerformanceSummary {
+  completedAssignmentCount: number;
+  completedWithoutIssueCount: number;
+  disputedAssignmentCount: number;
+  refundedAssignmentCount: number;
+  routeConfirmationCount: number;
+  evidenceContributionCount: number;
+  beforeEvidenceCount: number;
+  afterEvidenceCount: number;
+  reviewedEvidenceCount: number;
+  providerCount: number;
+  serviceCategories: ServiceCategory[];
+  performanceStatus: "strong" | "building" | "needs-review";
+  highlights: string[];
+  warnings: string[];
+}
+
 export interface CrewPayoutLedgerResponse {
   crewMemberId: string;
   totalReadyCents: number;
@@ -1090,6 +1483,9 @@ export interface CrewPayoutLedgerResponse {
   pendingCustomerPaymentCents: number;
   nextWeeklyPayoutDateIso: string;
   holdPeriodHours: number;
+  earningsSummary: CrewEarningsSummary;
+  attendanceSummary: CrewAttendanceSummary;
+  performanceSummary: CrewPerformanceSummary;
   entries: CrewPayoutLedgerEntry[];
 }
 
@@ -1102,6 +1498,102 @@ export interface OpsProviderPayoutRunPreviewItem {
   providerIds: string[];
 }
 
+export interface OpsPayoutPolicySummary {
+  disbursementRailStatus: "manual-preview-only" | "external-rail-ready";
+  providerHoldPeriodHours: number;
+  crewHoldPeriodHours: number;
+  providerWeeklyRunRule: string;
+  crewWeeklyPayoutDay: ProviderPayoutWeekday;
+  instantPayoutMinimumCents: number;
+  readyRequirements: string[];
+  holdReasons: string[];
+}
+
+export type OpsPayoutDisbursementRecipientRole = "provider" | "crew-member";
+export type OpsPayoutDisbursementRailMode = "manual-preview" | "external-rail-pending";
+export type OpsPayoutDisbursementActionStatus =
+  | "ready-for-manual-review"
+  | "blocked"
+  | "external-rail-pending";
+
+export interface OpsPayoutDisbursementEntryRef {
+  entryId: string;
+  bookingId: string;
+  recipientId: string;
+  recipientRole: OpsPayoutDisbursementRecipientRole;
+  amountCents: number;
+  paymentId?: string;
+  availableAtIso?: string;
+}
+
+export interface OpsPayoutDisbursementBatchPreview {
+  id: string;
+  runDateIso: string;
+  recipientRole: OpsPayoutDisbursementRecipientRole;
+  railMode: OpsPayoutDisbursementRailMode;
+  actionStatus: OpsPayoutDisbursementActionStatus;
+  totalCents: number;
+  recipientCount: number;
+  bookingCount: number;
+  entryCount: number;
+  recipientIds: string[];
+  entryIds: string[];
+  entries: OpsPayoutDisbursementEntryRef[];
+  blockerReasons: string[];
+  manualActionLabel: string;
+  auditInstructions: string[];
+}
+
+export type OpsPayoutDisbursementRunStatus =
+  | "manual-review"
+  | "reconciled";
+
+export interface OpsPayoutDisbursementRun {
+  id: string;
+  previewBatchId: string;
+  entryFingerprint: string;
+  runDateIso: string;
+  recipientRole: OpsPayoutDisbursementRecipientRole;
+  railMode: OpsPayoutDisbursementRailMode;
+  actionStatus: OpsPayoutDisbursementActionStatus;
+  status: OpsPayoutDisbursementRunStatus;
+  totalCents: number;
+  recipientCount: number;
+  bookingCount: number;
+  entryCount: number;
+  recipientIds: string[];
+  entryIds: string[];
+  entries: OpsPayoutDisbursementEntryRef[];
+  blockerReasons: string[];
+  manualActionLabel: string;
+  auditInstructions: string[];
+  createdAt: string;
+  updatedAt: string;
+  createdByOpsUserId: string;
+  createdByOpsEmail: string;
+  operatorNotes?: string;
+  reconciliationReference?: string;
+  reconciliationNotes?: string;
+  reconciledAt?: string;
+  reconciledByOpsUserId?: string;
+}
+
+export interface CreateOpsPayoutDisbursementRunRequest {
+  previewBatchId: string;
+  operatorNotes?: string;
+}
+
+export interface CreateOpsPayoutDisbursementRunResponse {
+  run: OpsPayoutDisbursementRun;
+  created: boolean;
+  matchedPreviewBatch: OpsPayoutDisbursementBatchPreview;
+}
+
+export interface OpsPayoutDisbursementRunsResponse {
+  generatedAt: string;
+  runs: OpsPayoutDisbursementRun[];
+}
+
 export interface OpsPayoutRunPreviewResponse {
   generatedAt: string;
   totalProviderReadyCents: number;
@@ -1110,7 +1602,9 @@ export interface OpsPayoutRunPreviewResponse {
   onHoldEntryCount: number;
   providerInstantEligibleCount: number;
   crewNextWeeklyPayoutDateIso: string;
+  payoutPolicy: OpsPayoutPolicySummary;
   providerRuns: OpsProviderPayoutRunPreviewItem[];
+  disbursementBatches: OpsPayoutDisbursementBatchPreview[];
 }
 
 export interface SupportTicket {
@@ -1157,6 +1651,20 @@ export type SupportResolutionReplyTemplateKey =
 
 export interface SupportResolutionReplyTemplate {
   key: SupportResolutionReplyTemplateKey;
+  title: string;
+  channel: "email" | "text";
+  reason: string;
+  subject?: string;
+  body: string;
+}
+
+export type SupportProviderCoordinationTemplateKey =
+  | "field-exception-provider-update"
+  | "provider-evidence-request"
+  | "provider-resolution-follow-up";
+
+export interface SupportProviderCoordinationTemplate {
+  key: SupportProviderCoordinationTemplateKey;
   title: string;
   channel: "email" | "text";
   reason: string;
@@ -1217,7 +1725,57 @@ export interface SupportOpsTicket {
   evidenceSummary?: SupportEvidenceSummary;
   resolutionGuidance?: SupportResolutionGuidance;
   resolutionPolicy?: SupportResolutionPolicy;
+  providerCoordinationTemplates: SupportProviderCoordinationTemplate[];
   timeline: SupportTimelineEntry[];
+}
+
+export type SupportOpsTicketEscalationStatus =
+  | "sent"
+  | "already-sent"
+  | "dry-run"
+  | "not-due"
+  | "resolved"
+  | "no-recipient";
+
+export type SupportOpsTicketEscalationPriority = "normal" | "high" | "urgent";
+
+export interface ProcessSupportOpsTicketEscalationsRequest {
+  ticketId?: string;
+  asOfIso?: string;
+  dryRun?: boolean;
+}
+
+export interface SupportOpsTicketEscalationSweepItem {
+  ticketId: string;
+  bookingId?: string;
+  issueType: SupportIssueType;
+  ticketStatus: SupportTicketStatus;
+  priority: SupportOpsTicketEscalationPriority;
+  openedAtIso: string;
+  lastUpdatedAtIso: string;
+  ageHours: number;
+  hoursSinceUpdate: number;
+  escalationThresholdHours: number;
+  recipientId?: string;
+  recipientRole?: MarketplaceRole;
+  notificationTitle: string;
+  notificationBody: string;
+  escalationStatus: SupportOpsTicketEscalationStatus;
+  notificationId?: string;
+  reason: string;
+}
+
+export interface SupportOpsTicketEscalationSweepResponse {
+  generatedAt: string;
+  asOfIso: string;
+  dryRun: boolean;
+  ticketCount: number;
+  candidateEscalationCount: number;
+  dueEscalationCount: number;
+  sentNotificationCount: number;
+  alreadySentCount: number;
+  skippedEscalationCount: number;
+  items: SupportOpsTicketEscalationSweepItem[];
 }
 
 export interface LaunchLead {
@@ -1363,6 +1921,7 @@ export interface ProviderVerificationQueueItem {
   openBookingCount: number;
   reviewCount: number;
   guidance: ProviderVerificationGuidance;
+  onboardingPlan: ProviderOnboardingAutomationPlan;
 }
 
 export interface ProviderVerificationStatusSummary {
@@ -1370,6 +1929,7 @@ export interface ProviderVerificationStatusSummary {
   summary: string;
   nextSteps: string[];
   checklist: ProviderVerificationChecklistItem[];
+  onboardingPlan: ProviderOnboardingAutomationPlan;
 }
 
 export type ProviderVerificationChecklistStatus = "ready" | "review" | "missing";
@@ -1382,6 +1942,7 @@ export interface ProviderVerificationChecklistItem {
     | "experience-signal"
     | "operational-readiness"
     | "service-quality-expectations"
+    | "incident-history"
     | "intervention-readiness";
   label: string;
   status: ProviderVerificationChecklistStatus;
@@ -1397,6 +1958,117 @@ export interface ProviderVerificationGuidance {
   approvalOverridePrompt?: string;
   minimumApprovalOverrideNoteLength?: number;
   disallowedApprovalOverrideNotes?: string[];
+}
+
+export type ProviderOnboardingAutomationStage =
+  | "fixes-needed"
+  | "ops-review"
+  | "ready-for-approval"
+  | "verified-monitoring";
+
+export type ProviderOnboardingAutomationStepKey =
+  | "profile-fixes"
+  | "dispatch-settings"
+  | "ops-review"
+  | "launch-pilot"
+  | "first-booking-monitoring"
+  | "incident-recovery";
+
+export type ProviderOnboardingAutomationActionKey =
+  | "provider-complete-profile"
+  | "provider-tighten-dispatch"
+  | "ops-document-incident-recovery"
+  | "ops-review-launch-fit"
+  | "ops-approve-narrow-pilot"
+  | "system-monitor-first-bookings";
+
+export type ProviderOnboardingAutomationActionPriority = "low" | "normal" | "high" | "urgent";
+
+export type ProviderOnboardingAutomationActionStatus =
+  | "blocked"
+  | "queued"
+  | "ready"
+  | "completed";
+
+export interface ProviderOnboardingAutomationStep {
+  key: ProviderOnboardingAutomationStepKey;
+  title: string;
+  owner: "provider" | "ops" | "system";
+  status: "blocked" | "pending" | "ready" | "complete";
+  detail: string;
+  automationTrigger?: string;
+}
+
+export interface ProviderOnboardingAutomationAction {
+  key: ProviderOnboardingAutomationActionKey;
+  sourceStepKey: ProviderOnboardingAutomationStepKey;
+  owner: "provider" | "ops" | "system";
+  status: ProviderOnboardingAutomationActionStatus;
+  priority: ProviderOnboardingAutomationActionPriority;
+  title: string;
+  detail: string;
+  actionHref?: string;
+  dueAtIso?: string;
+  blockedByStepKeys: ProviderOnboardingAutomationStepKey[];
+  notificationTitle?: string;
+  notificationBody?: string;
+}
+
+export interface ProviderOnboardingAutomationPlan {
+  stage: ProviderOnboardingAutomationStage;
+  recommendedAutomation: string;
+  launchReadinessSignals: string[];
+  steps: ProviderOnboardingAutomationStep[];
+  automationActions: ProviderOnboardingAutomationAction[];
+}
+
+export type ProviderOnboardingAutomationNotificationStatus =
+  | "sent"
+  | "already-sent"
+  | "dry-run"
+  | "not-due"
+  | "blocked"
+  | "completed"
+  | "no-notification";
+
+export interface ProcessProviderOnboardingAutomationRequest {
+  providerId?: string;
+  asOfIso?: string;
+  dryRun?: boolean;
+  includeFuture?: boolean;
+}
+
+export interface ProviderOnboardingAutomationSweepItem {
+  providerId: string;
+  companyName: string;
+  stage: ProviderOnboardingAutomationStage;
+  actionKey: ProviderOnboardingAutomationActionKey;
+  sourceStepKey: ProviderOnboardingAutomationStepKey;
+  owner: "provider" | "ops" | "system";
+  actionStatus: ProviderOnboardingAutomationActionStatus;
+  priority: ProviderOnboardingAutomationActionPriority;
+  dueAtIso?: string;
+  actionHref?: string;
+  notificationTitle?: string;
+  notificationBody?: string;
+  notificationStatus: ProviderOnboardingAutomationNotificationStatus;
+  recipientId?: string;
+  recipientRole?: MarketplaceRole;
+  notificationId?: string;
+  reason: string;
+}
+
+export interface ProviderOnboardingAutomationSweepResponse {
+  generatedAt: string;
+  asOfIso: string;
+  dryRun: boolean;
+  providerCount: number;
+  actionCount: number;
+  dueActionCount: number;
+  sentNotificationCount: number;
+  alreadySentCount: number;
+  skippedActionCount: number;
+  items: ProviderOnboardingAutomationSweepItem[];
 }
 
 export interface AppNotification {
@@ -1504,6 +2176,28 @@ export interface NotificationOpsAlert {
   detail: string;
 }
 
+export type NotificationOpsChannelReadinessStatus =
+  | "production-ready"
+  | "mock-fallback";
+
+export interface NotificationOpsChannelDeliveryPolicy {
+  channel: NotificationChannel;
+  productionProvider: string;
+  activeProvider: string;
+  readinessStatus: NotificationOpsChannelReadinessStatus;
+  retrySupported: boolean;
+  readyRequirements: string[];
+  missingConfiguration: string[];
+}
+
+export interface NotificationOpsDeliveryPolicy {
+  productionReadinessStatus: "production-ready" | "partially-configured" | "mock-only";
+  pushStrategy: "expo-push";
+  opsAlertTargetsConfigured: boolean;
+  channelPolicies: NotificationOpsChannelDeliveryPolicy[];
+  readyRequirements: string[];
+}
+
 export interface NotificationOpsHealthResponse {
   generatedAt: string;
   totalDeliveries: number;
@@ -1517,6 +2211,7 @@ export interface NotificationOpsHealthResponse {
   channels: NotificationOpsChannelHealth[];
   recentFailures: NotificationDeliveryRecord[];
   alerts: NotificationOpsAlert[];
+  deliveryPolicy: NotificationOpsDeliveryPolicy;
 }
 
 export interface NotificationOpsRetrySweepResponse {
@@ -1724,8 +2419,35 @@ export interface AuthenticatedUserEnvelope {
   user: CustomerProfile | ProviderProfile | CrewMemberProfile | OpsProfile;
 }
 
+export type SensitiveActionKey =
+  | "provider-payout-settings"
+  | "provider-bank-account"
+  | "provider-payout-account"
+  | "customer-payment-method";
+
+export interface SensitiveActionPolicyItem {
+  key: SensitiveActionKey;
+  label: string;
+  ownerRole: MarketplaceRole;
+  requiresFreshSession: boolean;
+  maxSessionAgeSeconds: number;
+  sessionFreshUntilIso?: string;
+  isCurrentSessionFresh: boolean;
+  enforcementStatus: "enforced" | "contract-ready";
+  currentBackendSurface?: string;
+  futureBackendSurface?: string;
+  rationale: string;
+}
+
+export interface SensitiveActionPolicy {
+  generatedAt: string;
+  sessionIssuedAtIso?: string;
+  actions: SensitiveActionPolicyItem[];
+}
+
 export interface CurrentUserResponse {
   user: CustomerProfile | ProviderProfile | CrewMemberProfile | OpsProfile;
+  sensitiveActionPolicy: SensitiveActionPolicy;
 }
 
 export interface CreateOpsAccountRequest {
@@ -1868,11 +2590,26 @@ export interface PublicMarketplaceCoverageArea {
   supportedCategories: ServiceCategory[];
 }
 
+export interface LaunchPricingPolicy {
+  pricingModel: "hybrid-managed-marketplace";
+  introductoryOffer: {
+    label: string;
+    appliesTo: "first-completed-service";
+    customerMessage: string;
+    opsNote: string;
+  };
+  launchServiceCategories: ServiceCategory[];
+  customerPricingPrinciples: string[];
+  providerEconomicsPrinciples: string[];
+  providerFacingExplanation: string;
+}
+
 export interface PublicMarketplaceOverviewResponse {
   generatedAt: string;
   verifiedProviderCount: number;
   averageRating: number;
   activeCategoryCount: number;
+  launchPricingPolicy: LaunchPricingPolicy;
   featuredProviders: PublicMarketplaceFeaturedProvider[];
   topRatedProviders: PublicMarketplaceFeaturedProvider[];
   mostOnTimeProviders: PublicMarketplaceFeaturedProvider[];
@@ -2333,6 +3070,30 @@ export interface ProviderAssistantBookingCandidate {
   addressLine: string;
 }
 
+export type ProviderAssistantStaffingPlanAction =
+  | "review-pending-matches"
+  | "review-pending-then-source"
+  | "source-more-crew"
+  | "covered";
+
+export interface ProviderAssistantStaffingPlanItem {
+  bookingId: string;
+  customerName: string;
+  category: ServiceCategory;
+  scheduledStartIso: string;
+  scheduledEndIso: string;
+  currentWindowKey: BookingServiceWindowKey;
+  currentWindowLabel: string;
+  requiredCrewMembers: number;
+  assignedCrewMembers: number;
+  acceptedCrewCount: number;
+  pendingMatchCount: number;
+  crewGap: number;
+  uncoveredCrewGap: number;
+  recommendedAction: ProviderAssistantStaffingPlanAction;
+  reasons: string[];
+}
+
 export interface ProviderAssistantCommandResponse {
   command: string;
   understood: boolean;
@@ -2358,6 +3119,9 @@ export interface ProviderAssistantCommandResponse {
   previewMessage: string;
   customerNotificationPreview?: string;
   bookingCandidates: ProviderAssistantBookingCandidate[];
+  staffingPlan?: ProviderAssistantStaffingPlanItem[];
+  updatedCrewConversation?: ProviderCrewConversationThread;
+  updatedCrewConversations?: ProviderCrewConversationThread[];
   updatedBooking?: Booking;
 }
 
@@ -2422,6 +3186,7 @@ export interface InstantQuoteResponse {
   address: Address;
   normalizedAddress: NormalizedAddressSummary;
   category: ServiceCategory;
+  launchPricingPolicy: LaunchPricingPolicy;
   source: PropertyEstimateSource;
   confidenceScore: number;
   confidenceTier: EstimateConfidenceTier;
@@ -2845,6 +3610,24 @@ export interface RetentionProviderMetrics {
   recurringPlanStarts: number;
 }
 
+export interface RetentionInsight {
+  kind: "volume" | "strategy" | "source" | "provider";
+  status: "needs-volume" | "watch" | "working";
+  title: string;
+  detail: string;
+  recommendedAction: string;
+  strategyKey?: CustomerRetentionStrategyKey;
+  trigger?: CustomerRetentionTimingTrigger;
+  category?: ServiceCategory;
+  requestSource?: string;
+  providerId?: string;
+  providerName?: string;
+  promptViews?: number;
+  promptAccepts?: number;
+  bookingRequests?: number;
+  rate?: number;
+}
+
 export interface LaunchLeadSourceMetrics {
   sourceChannel: LaunchLeadSourceChannel;
   totalCount: number;
@@ -2940,6 +3723,7 @@ export interface ObservabilityOverview {
   retentionMetricsByStrategy: RetentionStrategyMetrics[];
   retentionMetricsBySource: RetentionSourceMetrics[];
   retentionMetricsByProvider: RetentionProviderMetrics[];
+  retentionInsights: RetentionInsight[];
   totalLaunchLeads: number;
   openLaunchLeads: number;
   overdueLaunchLeads: number;
@@ -2965,6 +3749,8 @@ export interface ObservabilityOverview {
   neverSignedInOpsAccounts: number;
   opsAccountsWithRecentFailures: number;
   pendingOpsPasswordResetInvites: number;
+  opsAccessPolicy: OpsAccessGovernancePolicy;
+  launchOperationsPolicy: LaunchOperationsPolicy;
   accessAlerts: OpsAccessAlertItem[];
   recentOpsAccessChanges: OpsAccessAuditItem[];
   recentOpsAuthenticationEvents: OpsAuthenticationAuditItem[];

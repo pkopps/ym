@@ -17,14 +17,20 @@ import {
   OpsProfile,
   OpsAccessHistoryEntry,
   OpsAuthenticationHistoryEntry,
+  OpsAutomationRunRecord,
+  OpsAutomationSweepRunItem,
+  OpsAutomationSweepKey,
   NotificationDeliveryRecord,
   NotificationPreferences,
+  OpsPayoutDisbursementRun,
+  OpsPayoutDisbursementEntryRef,
   PaymentRecord,
   PushDevice,
   RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
   LaunchLead,
+  LaunchOperationsTask,
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
@@ -1151,6 +1157,200 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       }
     });
     return this.mapPaymentRecord(payment);
+  }
+
+  public async createPayoutDisbursementRun(
+    run: OpsPayoutDisbursementRun
+  ): Promise<OpsPayoutDisbursementRun> {
+    await (this.prisma as any).payoutDisbursementRun.create({
+      data: {
+        id: run.id,
+        previewBatchId: run.previewBatchId,
+        entryFingerprint: run.entryFingerprint,
+        runDateIso: new Date(run.runDateIso),
+        recipientRole: run.recipientRole,
+        railMode: run.railMode,
+        actionStatus: run.actionStatus,
+        status: run.status,
+        totalCents: run.totalCents,
+        recipientCount: run.recipientCount,
+        bookingCount: run.bookingCount,
+        entryCount: run.entryCount,
+        recipientIds: run.recipientIds,
+        entryIds: run.entryIds,
+        entries: asJson(run.entries),
+        blockerReasons: run.blockerReasons,
+        manualActionLabel: run.manualActionLabel,
+        auditInstructions: run.auditInstructions,
+        createdAt: new Date(run.createdAt),
+        updatedAt: new Date(run.updatedAt),
+        createdByOpsUserId: run.createdByOpsUserId,
+        createdByOpsEmail: run.createdByOpsEmail,
+        operatorNotes: run.operatorNotes,
+        reconciliationReference: run.reconciliationReference,
+        reconciliationNotes: run.reconciliationNotes,
+        reconciledAt: run.reconciledAt ? new Date(run.reconciledAt) : undefined,
+        reconciledByOpsUserId: run.reconciledByOpsUserId
+      }
+    });
+    return run;
+  }
+
+  public async listPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRun[]> {
+    const runs = await (this.prisma as any).payoutDisbursementRun.findMany({
+      orderBy: [{ runDateIso: "desc" }, { createdAt: "desc" }]
+    });
+    return runs.map((run: any) => this.mapPayoutDisbursementRun(run));
+  }
+
+  public async findPayoutDisbursementRunByBatchFingerprint(
+    previewBatchId: string,
+    entryFingerprint: string
+  ): Promise<OpsPayoutDisbursementRun | undefined> {
+    const run = await (this.prisma as any).payoutDisbursementRun.findFirst({
+      where: {
+        previewBatchId,
+        entryFingerprint
+      }
+    });
+    return run ? this.mapPayoutDisbursementRun(run) : undefined;
+  }
+
+  public async createLaunchOperationsTask(task: LaunchOperationsTask): Promise<LaunchOperationsTask> {
+    await (this.prisma as any).launchOperationsTask.create({
+      data: {
+        id: task.id,
+        recommendationFingerprint: task.recommendationFingerprint,
+        recommendationKey: task.recommendationKey,
+        pocketKey: task.pocketKey,
+        city: task.city,
+        state: task.state,
+        postalCode: task.postalCode,
+        priority: task.priority,
+        owner: task.owner,
+        status: task.status,
+        title: task.title,
+        detail: task.detail,
+        recommendedAction: task.recommendedAction,
+        dueAtIso: new Date(task.dueAtIso),
+        relatedScenarioKeys: task.relatedScenarioKeys,
+        createdAt: new Date(task.createdAt),
+        updatedAt: new Date(task.updatedAt),
+        createdByOpsUserId: task.createdByOpsUserId,
+        createdByOpsEmail: task.createdByOpsEmail,
+        assignedToOpsUserId: task.assignedToOpsUserId,
+        assignedToOpsEmail: task.assignedToOpsEmail,
+        operatorNotes: task.operatorNotes,
+        completionNotes: task.completionNotes,
+        completedAt: task.completedAt ? new Date(task.completedAt) : undefined,
+        completedByOpsUserId: task.completedByOpsUserId
+      }
+    });
+    return task;
+  }
+
+  public async listLaunchOperationsTasks(): Promise<LaunchOperationsTask[]> {
+    const tasks = await (this.prisma as any).launchOperationsTask.findMany({
+      orderBy: [{ status: "asc" }, { dueAtIso: "asc" }, { priority: "desc" }, { updatedAt: "desc" }]
+    });
+    return tasks.map((task: any) => this.mapLaunchOperationsTask(task));
+  }
+
+  public async findLaunchOperationsTaskByRecommendationFingerprint(
+    recommendationFingerprint: string
+  ): Promise<LaunchOperationsTask | undefined> {
+    const task = await (this.prisma as any).launchOperationsTask.findUnique({
+      where: { recommendationFingerprint }
+    });
+    return task ? this.mapLaunchOperationsTask(task) : undefined;
+  }
+
+  public async updateLaunchOperationsTask(
+    taskId: string,
+    updates: Partial<LaunchOperationsTask>
+  ): Promise<LaunchOperationsTask | undefined> {
+    const data: Record<string, unknown> = {
+      recommendationFingerprint: updates.recommendationFingerprint,
+      recommendationKey: updates.recommendationKey,
+      pocketKey: updates.pocketKey,
+      city: updates.city,
+      state: updates.state,
+      postalCode: updates.postalCode,
+      priority: updates.priority,
+      owner: updates.owner,
+      status: updates.status,
+      title: updates.title,
+      detail: updates.detail,
+      recommendedAction: updates.recommendedAction,
+      dueAtIso: updates.dueAtIso ? new Date(updates.dueAtIso) : undefined,
+      relatedScenarioKeys: updates.relatedScenarioKeys,
+      updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined
+    };
+    if (Object.prototype.hasOwnProperty.call(updates, "assignedToOpsUserId")) {
+      data.assignedToOpsUserId = updates.assignedToOpsUserId ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "assignedToOpsEmail")) {
+      data.assignedToOpsEmail = updates.assignedToOpsEmail ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "operatorNotes")) {
+      data.operatorNotes = updates.operatorNotes ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "completionNotes")) {
+      data.completionNotes = updates.completionNotes ?? null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "completedAt")) {
+      data.completedAt = updates.completedAt ? new Date(updates.completedAt) : null;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "completedByOpsUserId")) {
+      data.completedByOpsUserId = updates.completedByOpsUserId ?? null;
+    }
+
+    const task = await (this.prisma as any).launchOperationsTask.update({
+      where: { id: taskId },
+      data
+    }).catch((error: unknown) => {
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: string }).code === "P2025"
+      ) {
+        return undefined;
+      }
+      throw error;
+    });
+    return task ? this.mapLaunchOperationsTask(task) : undefined;
+  }
+
+  public async createOpsAutomationRun(run: OpsAutomationRunRecord): Promise<OpsAutomationRunRecord> {
+    await (this.prisma as any).opsAutomationRun.create({
+      data: {
+        id: run.id,
+        runId: run.runId,
+        generatedAt: new Date(run.generatedAt),
+        asOfIso: new Date(run.asOfIso),
+        dryRun: run.dryRun,
+        requestedSweepKeys: run.requestedSweepKeys,
+        requestedSweepCount: run.requestedSweepCount,
+        completedSweepCount: run.completedSweepCount,
+        failedSweepCount: run.failedSweepCount,
+        sentNotificationCount: run.sentNotificationCount,
+        alreadySentCount: run.alreadySentCount,
+        skippedCount: run.skippedCount,
+        items: asJson(run.items),
+        createdAt: new Date(run.createdAt),
+        createdByOpsUserId: run.createdByOpsUserId,
+        createdByOpsEmail: run.createdByOpsEmail
+      }
+    });
+    return run;
+  }
+
+  public async listOpsAutomationRuns(): Promise<OpsAutomationRunRecord[]> {
+    const runs = await (this.prisma as any).opsAutomationRun.findMany({
+      orderBy: [{ createdAt: "desc" }]
+    });
+    return runs.map((run: any) => this.mapOpsAutomationRun(run));
   }
 
   public async createLaunchLead(lead: LaunchLead): Promise<LaunchLead> {
@@ -2500,6 +2700,160 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       paidAt: record.paidAt?.toISOString(),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
+    };
+  }
+
+  private mapPayoutDisbursementRun(record: {
+    id: string;
+    previewBatchId: string;
+    entryFingerprint: string;
+    runDateIso: Date;
+    recipientRole: string;
+    railMode: string;
+    actionStatus: string;
+    status: string;
+    totalCents: number;
+    recipientCount: number;
+    bookingCount: number;
+    entryCount: number;
+    recipientIds: string[];
+    entryIds: string[];
+    entries: unknown;
+    blockerReasons: string[];
+    manualActionLabel: string;
+    auditInstructions: string[];
+    createdAt: Date;
+    updatedAt: Date;
+    createdByOpsUserId: string;
+    createdByOpsEmail: string;
+    operatorNotes: string | null;
+    reconciliationReference: string | null;
+    reconciliationNotes: string | null;
+    reconciledAt: Date | null;
+    reconciledByOpsUserId: string | null;
+  }): OpsPayoutDisbursementRun {
+    return {
+      id: record.id,
+      previewBatchId: record.previewBatchId,
+      entryFingerprint: record.entryFingerprint,
+      runDateIso: record.runDateIso.toISOString(),
+      recipientRole: record.recipientRole as OpsPayoutDisbursementRun["recipientRole"],
+      railMode: record.railMode as OpsPayoutDisbursementRun["railMode"],
+      actionStatus: record.actionStatus as OpsPayoutDisbursementRun["actionStatus"],
+      status: record.status as OpsPayoutDisbursementRun["status"],
+      totalCents: record.totalCents,
+      recipientCount: record.recipientCount,
+      bookingCount: record.bookingCount,
+      entryCount: record.entryCount,
+      recipientIds: record.recipientIds,
+      entryIds: record.entryIds,
+      entries: readJson<OpsPayoutDisbursementEntryRef[]>(record.entries),
+      blockerReasons: record.blockerReasons,
+      manualActionLabel: record.manualActionLabel,
+      auditInstructions: record.auditInstructions,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      createdByOpsUserId: record.createdByOpsUserId,
+      createdByOpsEmail: record.createdByOpsEmail,
+      operatorNotes: record.operatorNotes ?? undefined,
+      reconciliationReference: record.reconciliationReference ?? undefined,
+      reconciliationNotes: record.reconciliationNotes ?? undefined,
+      reconciledAt: record.reconciledAt?.toISOString(),
+      reconciledByOpsUserId: record.reconciledByOpsUserId ?? undefined
+    };
+  }
+
+  private mapLaunchOperationsTask(record: {
+    id: string;
+    recommendationFingerprint: string;
+    recommendationKey: string;
+    pocketKey: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    priority: string;
+    owner: string;
+    status: string;
+    title: string;
+    detail: string;
+    recommendedAction: string;
+    dueAtIso: Date;
+    relatedScenarioKeys: string[];
+    createdAt: Date;
+    updatedAt: Date;
+    createdByOpsUserId: string;
+    createdByOpsEmail: string;
+    assignedToOpsUserId: string | null;
+    assignedToOpsEmail: string | null;
+    operatorNotes: string | null;
+    completionNotes: string | null;
+    completedAt: Date | null;
+    completedByOpsUserId: string | null;
+  }): LaunchOperationsTask {
+    return {
+      id: record.id,
+      recommendationFingerprint: record.recommendationFingerprint,
+      recommendationKey: record.recommendationKey as LaunchOperationsTask["recommendationKey"],
+      pocketKey: record.pocketKey,
+      city: record.city,
+      state: record.state,
+      postalCode: record.postalCode,
+      priority: record.priority as LaunchOperationsTask["priority"],
+      owner: record.owner as LaunchOperationsTask["owner"],
+      status: record.status as LaunchOperationsTask["status"],
+      title: record.title,
+      detail: record.detail,
+      recommendedAction: record.recommendedAction,
+      dueAtIso: record.dueAtIso.toISOString(),
+      relatedScenarioKeys: record.relatedScenarioKeys as LaunchOperationsTask["relatedScenarioKeys"],
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      createdByOpsUserId: record.createdByOpsUserId,
+      createdByOpsEmail: record.createdByOpsEmail,
+      assignedToOpsUserId: record.assignedToOpsUserId ?? undefined,
+      assignedToOpsEmail: record.assignedToOpsEmail ?? undefined,
+      operatorNotes: record.operatorNotes ?? undefined,
+      completionNotes: record.completionNotes ?? undefined,
+      completedAt: record.completedAt?.toISOString(),
+      completedByOpsUserId: record.completedByOpsUserId ?? undefined
+    };
+  }
+
+  private mapOpsAutomationRun(record: {
+    id: string;
+    runId: string;
+    generatedAt: Date;
+    asOfIso: Date;
+    dryRun: boolean;
+    requestedSweepKeys: string[];
+    requestedSweepCount: number;
+    completedSweepCount: number;
+    failedSweepCount: number;
+    sentNotificationCount: number;
+    alreadySentCount: number;
+    skippedCount: number;
+    items: unknown;
+    createdAt: Date;
+    createdByOpsUserId: string;
+    createdByOpsEmail: string;
+  }): OpsAutomationRunRecord {
+    return {
+      id: record.id,
+      runId: record.runId,
+      generatedAt: record.generatedAt.toISOString(),
+      asOfIso: record.asOfIso.toISOString(),
+      dryRun: record.dryRun,
+      requestedSweepKeys: record.requestedSweepKeys as OpsAutomationSweepKey[],
+      requestedSweepCount: record.requestedSweepCount,
+      completedSweepCount: record.completedSweepCount,
+      failedSweepCount: record.failedSweepCount,
+      sentNotificationCount: record.sentNotificationCount,
+      alreadySentCount: record.alreadySentCount,
+      skippedCount: record.skippedCount,
+      items: readJson<OpsAutomationSweepRunItem[]>(record.items),
+      createdAt: record.createdAt.toISOString(),
+      createdByOpsUserId: record.createdByOpsUserId,
+      createdByOpsEmail: record.createdByOpsEmail
     };
   }
 

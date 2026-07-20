@@ -1,4 +1,4 @@
-import { NotificationChannel } from "@yardmatch/contracts";
+import { NotificationChannel, NotificationOpsDeliveryPolicy } from "@yardmatch/contracts";
 
 export interface OpsAlertTarget {
   channel: "email" | "sms";
@@ -72,6 +72,77 @@ export class NotificationDeliveryService {
   public supportsRetry(channel: NotificationChannel, destination?: string): boolean {
     const provider = this.getProviderName(channel, destination);
     return provider === "expo-push" || provider === "resend" || provider === "twilio";
+  }
+
+  public getOpsDeliveryPolicy(): NotificationOpsDeliveryPolicy {
+    const channelPolicies: NotificationOpsDeliveryPolicy["channelPolicies"] = [
+      {
+        channel: "push",
+        productionProvider: "expo-push",
+        activeProvider: "expo-push",
+        readinessStatus: "production-ready",
+        retrySupported: true,
+        readyRequirements: [
+          "Register Expo push tokens from production mobile builds.",
+          "Confirm Expo project and native app push credentials before production rollout."
+        ],
+        missingConfiguration: []
+      },
+      {
+        channel: "email",
+        productionProvider: "resend",
+        activeProvider: this.getProviderName("email"),
+        readinessStatus: this.hasResendConfig() ? "production-ready" : "mock-fallback",
+        retrySupported: this.hasResendConfig(),
+        readyRequirements: [
+          "Set RESEND_API_KEY.",
+          "Set NOTIFICATION_EMAIL_FROM to the approved YardMatch sender identity."
+        ],
+        missingConfiguration: [
+          ...(!this.resendApiKey ? ["RESEND_API_KEY"] : []),
+          ...(!this.notificationEmailFrom ? ["NOTIFICATION_EMAIL_FROM"] : [])
+        ]
+      },
+      {
+        channel: "sms",
+        productionProvider: "twilio",
+        activeProvider: this.getProviderName("sms"),
+        readinessStatus: this.hasTwilioConfig() ? "production-ready" : "mock-fallback",
+        retrySupported: this.hasTwilioConfig(),
+        readyRequirements: [
+          "Set TWILIO_ACCOUNT_SID.",
+          "Set TWILIO_AUTH_TOKEN.",
+          "Set TWILIO_FROM_NUMBER to the approved YardMatch sender number."
+        ],
+        missingConfiguration: [
+          ...(!this.twilioAccountSid ? ["TWILIO_ACCOUNT_SID"] : []),
+          ...(!this.twilioAuthToken ? ["TWILIO_AUTH_TOKEN"] : []),
+          ...(!this.twilioFromNumber ? ["TWILIO_FROM_NUMBER"] : [])
+        ]
+      }
+    ];
+    const productionReadyCount = channelPolicies.filter(
+      (policy) => policy.readinessStatus === "production-ready"
+    ).length;
+    const productionReadinessStatus =
+      productionReadyCount === channelPolicies.length
+        ? "production-ready"
+        : productionReadyCount > 0
+          ? "partially-configured"
+          : "mock-only";
+
+    return {
+      productionReadinessStatus,
+      pushStrategy: "expo-push",
+      opsAlertTargetsConfigured: this.getOpsAlertTargets().length > 0,
+      channelPolicies,
+      readyRequirements: [
+        "Keep Expo push-token registration enabled for production mobile builds.",
+        "Configure Resend before relying on transactional email delivery.",
+        "Configure Twilio before relying on SMS delivery.",
+        "Configure NOTIFICATION_ALERT_EMAILS or NOTIFICATION_ALERT_SMS_NUMBERS before launch support hours."
+      ]
+    };
   }
 
   public getOpsAlertTargets(): OpsAlertTarget[] {

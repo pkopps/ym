@@ -14,12 +14,15 @@ import {
   OpsAuthenticationMethod,
   OpsAuthenticationHistoryEntry,
   OpsFailedAuthenticationReason,
+  LaunchOperationsTask,
   CustomerProperty,
   CustomerProfile,
   OpsProfile,
   NotificationDeliveryRecord,
   NotificationPreferences,
+  OpsAutomationRunRecord,
   PaymentRecord,
+  OpsPayoutDisbursementRun,
   PushDevice,
   RecurringServicePlan,
   ProviderProfile,
@@ -123,6 +126,23 @@ export interface MarketplaceRepository {
   findPaymentByCheckoutSessionId(checkoutSessionId: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
+  createPayoutDisbursementRun(run: OpsPayoutDisbursementRun): Promise<OpsPayoutDisbursementRun>;
+  listPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRun[]>;
+  findPayoutDisbursementRunByBatchFingerprint(
+    previewBatchId: string,
+    entryFingerprint: string
+  ): Promise<OpsPayoutDisbursementRun | undefined>;
+  createLaunchOperationsTask(task: LaunchOperationsTask): Promise<LaunchOperationsTask>;
+  listLaunchOperationsTasks(): Promise<LaunchOperationsTask[]>;
+  findLaunchOperationsTaskByRecommendationFingerprint(
+    recommendationFingerprint: string
+  ): Promise<LaunchOperationsTask | undefined>;
+  updateLaunchOperationsTask(
+    taskId: string,
+    updates: Partial<LaunchOperationsTask>
+  ): Promise<LaunchOperationsTask | undefined>;
+  createOpsAutomationRun(run: OpsAutomationRunRecord): Promise<OpsAutomationRunRecord>;
+  listOpsAutomationRuns(): Promise<OpsAutomationRunRecord[]>;
   createLaunchLead(lead: LaunchLead): Promise<LaunchLead>;
   listLaunchLeads(): Promise<LaunchLead[]>;
   findLaunchLeadById(leadId: string): Promise<LaunchLead | undefined>;

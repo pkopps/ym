@@ -259,6 +259,46 @@ test("provider payout setting changes require a fresh provider session", async (
     /Re-authentication required for payout settings/i
   );
 
+  const staleMeResponse = createMockResponse();
+  await authController.handle(
+    {
+      method: "GET",
+      path: "/api/auth/me",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${staleProvider.session.token}`
+      }
+    },
+    staleMeResponse as never
+  );
+
+  assert.equal(staleMeResponse.getStatusCode(), 200);
+  const staleMe = staleMeResponse.readJson();
+  const payoutSettingsPolicy = staleMe.sensitiveActionPolicy.actions.find(
+    (action: { key: string }) => action.key === "provider-payout-settings"
+  );
+  const bankAccountPolicy = staleMe.sensitiveActionPolicy.actions.find(
+    (action: { key: string }) => action.key === "provider-bank-account"
+  );
+  const payoutAccountPolicy = staleMe.sensitiveActionPolicy.actions.find(
+    (action: { key: string }) => action.key === "provider-payout-account"
+  );
+  assert.equal(staleMe.sensitiveActionPolicy.actions.length, 3);
+  assert.ok(payoutSettingsPolicy);
+  assert.equal(payoutSettingsPolicy.maxSessionAgeSeconds, 15 * 60);
+  assert.equal(payoutSettingsPolicy.isCurrentSessionFresh, false);
+  assert.equal(payoutSettingsPolicy.enforcementStatus, "enforced");
+  assert.equal(payoutSettingsPolicy.currentBackendSurface, "POST /api/providers/settings");
+  assert.ok(bankAccountPolicy);
+  assert.equal(bankAccountPolicy.enforcementStatus, "contract-ready");
+  assert.equal(bankAccountPolicy.isCurrentSessionFresh, false);
+  assert.match(bankAccountPolicy.futureBackendSurface ?? "", /bank-account update route/i);
+  assert.ok(payoutAccountPolicy);
+  assert.equal(payoutAccountPolicy.enforcementStatus, "contract-ready");
+  assert.equal(payoutAccountPolicy.isCurrentSessionFresh, false);
+  assert.match(payoutAccountPolicy.rationale, /external payout account/i);
+
   const staleNonSensitiveResponse = createMockResponse();
   await marketplaceController.handle(
     {
@@ -2293,6 +2333,176 @@ test("ops overview route requires an ops session", async () => {
   );
   assert.equal(opsResponse.getStatusCode(), 200);
 
+  const tasksForbiddenResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/launch-operations/tasks",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    tasksForbiddenResponse as never
+  ).catch((error: Error) => {
+    tasksForbiddenResponse.writeHead(403);
+    tasksForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(tasksForbiddenResponse.getStatusCode(), 403);
+
+  const tasksOpsResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/launch-operations/tasks",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    tasksOpsResponse as never
+  );
+  assert.equal(tasksOpsResponse.getStatusCode(), 200);
+  assert.deepEqual(tasksOpsResponse.readJson().tasks, []);
+
+  const taskNotifyForbiddenResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/launch-operations/tasks/notify-due",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    taskNotifyForbiddenResponse as never
+  ).catch((error: Error) => {
+    taskNotifyForbiddenResponse.writeHead(403);
+    taskNotifyForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(taskNotifyForbiddenResponse.getStatusCode(), 403);
+
+  const taskNotifyOpsResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/launch-operations/tasks/notify-due",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    taskNotifyOpsResponse as never
+  );
+  assert.equal(taskNotifyOpsResponse.getStatusCode(), 200);
+  assert.equal(taskNotifyOpsResponse.readJson().taskCount, 0);
+
+  const taskEscalationForbiddenResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/launch-operations/tasks/escalate-overdue",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    taskEscalationForbiddenResponse as never
+  ).catch((error: Error) => {
+    taskEscalationForbiddenResponse.writeHead(403);
+    taskEscalationForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(taskEscalationForbiddenResponse.getStatusCode(), 403);
+
+  const taskEscalationOpsResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/launch-operations/tasks/escalate-overdue",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    taskEscalationOpsResponse as never
+  );
+  assert.equal(taskEscalationOpsResponse.getStatusCode(), 200);
+  assert.equal(taskEscalationOpsResponse.readJson().taskCount, 0);
+
+  const opsAutomationForbiddenResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/ops-automation/run-due",
+      body: { dryRun: true },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    opsAutomationForbiddenResponse as never
+  ).catch((error: Error) => {
+    opsAutomationForbiddenResponse.writeHead(403);
+    opsAutomationForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(opsAutomationForbiddenResponse.getStatusCode(), 403);
+
+  const opsAutomationOpsResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "POST",
+      path: "/api/observability/ops-automation/run-due",
+      body: { sweepKeys: ["support-ticket-escalations"], dryRun: true },
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    opsAutomationOpsResponse as never
+  );
+  assert.equal(opsAutomationOpsResponse.getStatusCode(), 200);
+  assert.equal(opsAutomationOpsResponse.readJson().requestedSweepCount, 1);
+
+  const opsAutomationRunsForbiddenResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/ops-automation/runs",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    opsAutomationRunsForbiddenResponse as never
+  ).catch((error: Error) => {
+    opsAutomationRunsForbiddenResponse.writeHead(403);
+    opsAutomationRunsForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(opsAutomationRunsForbiddenResponse.getStatusCode(), 403);
+
+  const opsAutomationRunsOpsResponse = createMockResponse();
+  await observabilityController.handle(
+    {
+      method: "GET",
+      path: "/api/observability/ops-automation/runs",
+      body: undefined,
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    opsAutomationRunsOpsResponse as never
+  );
+  assert.equal(opsAutomationRunsOpsResponse.getStatusCode(), 200);
+  assert.equal(opsAutomationRunsOpsResponse.readJson().runs.length, 1);
+
   const escalateForbiddenResponse = createMockResponse();
   await observabilityController.handle(
     {
@@ -2402,6 +2612,58 @@ test("support ops routes require an ops session", async () => {
     opsResponse as never
   );
   assert.equal(opsResponse.getStatusCode(), 200);
+
+  const escalationForbiddenResponse = createMockResponse();
+  await supportController.handle(
+    {
+      method: "POST",
+      path: "/api/support/ops/tickets/escalate-stale",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${customer.session.token}`
+      }
+    },
+    escalationForbiddenResponse as never
+  ).catch((error: Error) => {
+    escalationForbiddenResponse.writeHead(403);
+    escalationForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(escalationForbiddenResponse.getStatusCode(), 403);
+
+  const providerEscalationForbiddenResponse = createMockResponse();
+  await supportController.handle(
+    {
+      method: "POST",
+      path: "/api/support/ops/tickets/escalate-stale",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${provider.session.token}`
+      }
+    },
+    providerEscalationForbiddenResponse as never
+  ).catch((error: Error) => {
+    providerEscalationForbiddenResponse.writeHead(403);
+    providerEscalationForbiddenResponse.end(JSON.stringify({ message: error.message }));
+  });
+  assert.equal(providerEscalationForbiddenResponse.getStatusCode(), 403);
+
+  const escalationOpsResponse = createMockResponse();
+  await supportController.handle(
+    {
+      method: "POST",
+      path: "/api/support/ops/tickets/escalate-stale",
+      body: {},
+      query: new URLSearchParams(),
+      headers: {
+        authorization: `Bearer ${ops.session.token}`
+      }
+    },
+    escalationOpsResponse as never
+  );
+  assert.equal(escalationOpsResponse.getStatusCode(), 200);
+  assert.equal(escalationOpsResponse.readJson().ticketCount, 0);
 });
 
 test("support tickets list only the authenticated user's tickets and reject unrelated bookings", async () => {
