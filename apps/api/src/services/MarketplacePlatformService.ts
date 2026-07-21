@@ -151,6 +151,7 @@ import {
   NotificationListResponse,
   NotificationPreferences,
   PaymentRecord,
+  ProviderEconomicsSearchSummary,
   OpsReviewResponseItem,
   ProviderAssistantActionType,
   ProviderAssistantBookingCandidate,
@@ -11791,7 +11792,7 @@ export class MarketplacePlatformService {
             : undefined;
         const resolutionPolicy =
           booking && evidenceSummary && resolutionGuidance
-            ? this.buildSupportResolutionPolicy(ticket, booking, evidenceSummary, resolutionGuidance)
+            ? this.buildSupportResolutionPolicy(ticket, booking, payment, evidenceSummary, resolutionGuidance)
             : undefined;
         const requesterRole = this.resolveSupportTimelineActorRole(
           ticket.requesterId,
@@ -12219,6 +12220,7 @@ export class MarketplacePlatformService {
       const booking = await this.repository.findBookingById(ticket.bookingId);
       if (booking) {
         if (payload.status === "resolved") {
+          const latestPayment = await this.findLatestPaymentForBooking(booking.id);
           this.assertEvidenceReviewedBeforeSensitiveSupportResolution(
             ticket,
             booking,
@@ -12229,6 +12231,11 @@ export class MarketplacePlatformService {
             booking,
             payload.resolutionAction,
             resolutionNotes
+          );
+          this.assertRefundReviewBeforePaidCompletedDisputeCancellation(
+            booking,
+            latestPayment,
+            payload.resolutionAction
           );
           if (payload.resolutionAction === "approve-refund" || payload.resolutionAction === "deny-refund") {
             await this.applySupportResolutionToRefund(booking, payload.resolutionAction, resolutionNotes as string);
@@ -16700,14 +16707,22 @@ export class MarketplacePlatformService {
     const providerLead = evidenceSummary.supportsProviderCount - evidenceSummary.supportsCustomerCount;
     const customerLead = evidenceSummary.supportsCustomerCount - evidenceSummary.supportsProviderCount;
     const refundOpen = payment?.refundReviewStatus === "requested";
+    const paidCompletedDisputeNeedsRefundReview =
+      !refundOpen && this.isPaidCompletedDisputeCancellationBlocked(booking, payment);
 
     if (customerLead >= 2 || (customerLead >= 1 && ticket.issueType === "billing")) {
       const confidence: "high" | "medium" = customerLead >= 2 ? "high" : "medium";
       const guidance = {
-        recommendedAction: refundOpen ? "approve-refund" : "cancel-booking",
+        ...(paidCompletedDisputeNeedsRefundReview
+          ? {}
+          : {
+              recommendedAction: refundOpen ? "approve-refund" : "cancel-booking"
+            }),
         confidence,
         rationale:
-          "Reviewed evidence currently leans toward the customer, so ops should consider a customer-favoring resolution."
+          paidCompletedDisputeNeedsRefundReview
+            ? "Reviewed evidence currently leans toward the customer, but this completed job has captured payment. Open or approve the tied refund review before cancelling the booking so payout release and customer settlement stay reconciled."
+            : "Reviewed evidence currently leans toward the customer, so ops should consider a customer-favoring resolution."
       } satisfies Omit<NonNullable<SupportOpsTicket["resolutionGuidance"]>, "templates">;
       return {
         ...guidance,
@@ -16964,6 +16979,7 @@ export class MarketplacePlatformService {
   private buildSupportResolutionPolicy(
     ticket: SupportTicket,
     booking: Booking,
+    payment: PaymentRecord | undefined,
     evidenceSummary: NonNullable<SupportOpsTicket["evidenceSummary"]>,
     guidance: NonNullable<SupportOpsTicket["resolutionGuidance"]>
   ) {
@@ -16978,6 +16994,9 @@ export class MarketplacePlatformService {
         : supportsCustomerLead
           ? ["deny-refund", "restore-active-booking", "complete-booking"]
           : [];
+    if (this.isPaidCompletedDisputeCancellationBlocked(booking, payment)) {
+      blockedActions.push("cancel-booking");
+    }
     const requiresDetailedRationale = this.requiresDetailedRationaleForLowConfidenceSensitiveSupportDecision(
       ticket,
       booking,
@@ -17017,11 +17036,17 @@ export class MarketplacePlatformService {
       );
     }
 
+    if (this.isPaidCompletedDisputeCancellationBlocked(booking, payment)) {
+      warnings.push(
+        "This completed disputed booking has captured customer payment, so cancellation stays locked until a refund review is open or approved."
+      );
+    }
+
     return {
       evidenceSignal,
       confidence: guidance.confidence,
       requiresEvidenceReview,
-      blockedActions,
+      blockedActions: [...new Set(blockedActions)],
       requiresDetailedRationale,
       warnings,
       ...(requiresDetailedRationale
@@ -17033,6 +17058,39 @@ export class MarketplacePlatformService {
           }
         : {})
     } satisfies NonNullable<SupportOpsTicket["resolutionPolicy"]>;
+  }
+
+  private async findLatestPaymentForBooking(bookingId: string): Promise<PaymentRecord | undefined> {
+    return (await this.repository.listPayments())
+      .filter((candidate) => candidate.bookingId === bookingId)
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  }
+
+  private assertRefundReviewBeforePaidCompletedDisputeCancellation(
+    booking: Booking,
+    payment: PaymentRecord | undefined,
+    resolutionAction: UpdateSupportTicketRequest["resolutionAction"]
+  ): void {
+    if (resolutionAction !== "cancel-booking" || !this.isPaidCompletedDisputeCancellationBlocked(booking, payment)) {
+      return;
+    }
+
+    throw new HttpError(
+      409,
+      "Open or approve the refund review before cancelling a completed disputed booking with captured customer payment."
+    );
+  }
+
+  private isPaidCompletedDisputeCancellationBlocked(
+    booking: Booking,
+    payment: PaymentRecord | undefined
+  ): boolean {
+    return (
+      booking.status === "disputed" &&
+      Boolean(booking.completedAt) &&
+      payment?.status === "captured" &&
+      payment.refundReviewStatus !== "requested"
+    );
   }
 
   private assertEvidenceReviewedBeforeSensitiveSupportResolution(
@@ -19012,6 +19070,11 @@ export class MarketplacePlatformService {
             ? 6
             : 2
         : 0;
+    const providerEconomics = this.buildProviderEconomicsSearchSummary(
+      payload,
+      distanceMiles,
+      matchedCategories
+    );
 
     const factors = {
       serviceFit: Math.round((matchedCategories.length / requestedCategoryCount) * 22),
@@ -19029,6 +19092,8 @@ export class MarketplacePlatformService {
       operationalReliability: Math.round(adjustedAcceptanceScore * 7 + adjustedLateScore * 5),
       experience: Math.round((Math.min(provider.yearsExperience, 15) / 15) * 6),
       availability: suggestedSlot ? 8 : 0,
+      providerEconomics:
+        providerEconomics.status === "healthy" ? 6 : providerEconomics.status === "watch" ? 3 : 0,
       loyalty: loyaltyBoost,
       sponsorship: provider.sponsoredListingEnabled ? 5 : 0,
       issuePenalty: Math.round(
@@ -19045,6 +19110,7 @@ export class MarketplacePlatformService {
         factors.operationalReliability +
         factors.experience +
         factors.availability +
+        factors.providerEconomics +
         factors.loyalty +
         factors.sponsorship -
         factors.issuePenalty
@@ -19086,6 +19152,11 @@ export class MarketplacePlatformService {
     }
     if (nonRequestedActiveBookings.length >= 5 && lateNoticeRate <= 0.08) {
       reasons.push("Rarely sends late updates");
+    }
+    if (providerEconomics.status === "healthy") {
+      reasons.push("Meets provider-economics guardrails");
+    } else if (providerEconomics.status === "at-risk") {
+      reasons.push("Provider payout needs ops review");
     }
     if (provider.rating >= 4.8 && provider.reviewCount >= 50) {
       reasons.push("Strong reliability and review history");
@@ -19192,8 +19263,137 @@ export class MarketplacePlatformService {
       selectionSummaryDetail: `${provider.companyName} serves the area and meets the baseline fit requirements for this request.`,
       neighborhoodFamiliarityLabel,
       neighborhoodFamiliarityDetail,
+      providerEconomics,
       factors
     };
+  }
+
+  private buildProviderEconomicsSearchSummary(
+    payload: SearchProvidersRequest,
+    distanceMiles: number,
+    matchedCategories: SearchProvidersRequest["categories"]
+  ): ProviderEconomicsSearchSummary {
+    const category = matchedCategories[0] ?? payload.categories[0] ?? "lawn-mowing";
+    const durationMinutes = Math.max(payload.estimatedDurationMinutes ?? this.getProviderEconomicsDefaultDuration(category), 30);
+    const estimatedCustomerPriceCents = this.estimateSearchCustomerPriceCents(category, durationMinutes);
+    const estimatedProviderNetCents = Math.round(estimatedCustomerPriceCents * 0.72);
+    const routeBurdenCents = Math.max(0, Math.round((distanceMiles - 6) * 140));
+    const minimumRecommendedPayoutCents =
+      this.getProviderEconomicsCategoryFloorCents(category) +
+      Math.round(durationMinutes * this.getProviderEconomicsMinuteFloorCents(category)) +
+      routeBurdenCents;
+    const ratio = estimatedProviderNetCents / Math.max(minimumRecommendedPayoutCents, 1);
+    const status: ProviderEconomicsSearchSummary["status"] =
+      ratio >= 1.18 ? "healthy" : ratio >= 1 ? "watch" : "at-risk";
+    const label =
+      status === "healthy"
+        ? "Healthy provider payout"
+        : status === "watch"
+          ? "Payout margin needs watching"
+          : "Provider payout needs ops review";
+    const detail =
+      status === "healthy"
+        ? `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} clears the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor for this category, duration, and route.`
+        : status === "watch"
+          ? `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} is close to the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor, so avoid discounting this request without an ops review.`
+          : `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} is below the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor, so ops should review pricing before pushing this match.`;
+
+    return {
+      estimatedProviderNetCents,
+      minimumRecommendedPayoutCents,
+      status,
+      label,
+      detail
+    };
+  }
+
+  private getProviderEconomicsDefaultDuration(
+    category: SearchProvidersRequest["categories"][number]
+  ): number {
+    const defaults: Record<SearchProvidersRequest["categories"][number], number> = {
+      "lawn-mowing": 60,
+      "hedge-trimming": 90,
+      "mulch-installation": 150,
+      "seasonal-cleanup": 150,
+      "weed-control": 60,
+      "irrigation-check": 75,
+      "leaf-blowing": 60,
+      "aeration": 90,
+      "fertilization": 60,
+      "gutter-cleaning": 90,
+      "snow-shoveling": 60,
+      "ice-melt-salting": 45,
+      "snow-blowing": 60
+    };
+    return defaults[category];
+  }
+
+  private estimateSearchCustomerPriceCents(
+    category: SearchProvidersRequest["categories"][number],
+    durationMinutes: number
+  ): number {
+    const tripBaseByCategory: Record<SearchProvidersRequest["categories"][number], number> = {
+      "lawn-mowing": 2800,
+      "hedge-trimming": 4200,
+      "mulch-installation": 6500,
+      "seasonal-cleanup": 5200,
+      "weed-control": 3000,
+      "irrigation-check": 3900,
+      "leaf-blowing": 2400,
+      "aeration": 3600,
+      "fertilization": 3300,
+      "gutter-cleaning": 5200,
+      "snow-shoveling": 2600,
+      "ice-melt-salting": 2400,
+      "snow-blowing": 3000
+    };
+    return tripBaseByCategory[category] + durationMinutes * 95;
+  }
+
+  private getProviderEconomicsCategoryFloorCents(
+    category: SearchProvidersRequest["categories"][number]
+  ): number {
+    const floors: Record<SearchProvidersRequest["categories"][number], number> = {
+      "lawn-mowing": 2600,
+      "hedge-trimming": 3600,
+      "mulch-installation": 5600,
+      "seasonal-cleanup": 4600,
+      "weed-control": 2600,
+      "irrigation-check": 3400,
+      "leaf-blowing": 2400,
+      "aeration": 3400,
+      "fertilization": 3000,
+      "gutter-cleaning": 4400,
+      "snow-shoveling": 2600,
+      "ice-melt-salting": 2400,
+      "snow-blowing": 2800
+    };
+    return floors[category];
+  }
+
+  private getProviderEconomicsMinuteFloorCents(
+    category: SearchProvidersRequest["categories"][number]
+  ): number {
+    const minuteFloors: Record<SearchProvidersRequest["categories"][number], number> = {
+      "lawn-mowing": 20,
+      "hedge-trimming": 24,
+      "mulch-installation": 28,
+      "seasonal-cleanup": 26,
+      "weed-control": 20,
+      "irrigation-check": 24,
+      "leaf-blowing": 19,
+      "aeration": 22,
+      "fertilization": 20,
+      "gutter-cleaning": 25,
+      "snow-shoveling": 21,
+      "ice-melt-salting": 20,
+      "snow-blowing": 22
+    };
+    return minuteFloors[category];
+  }
+
+  private formatCentsForOps(cents: number): string {
+    return `$${Math.round(cents / 100)}`;
   }
 
   private withCustomerSelectionSummaries(

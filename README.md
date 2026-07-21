@@ -164,6 +164,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - The ops financial-exception board now lists payout holds directly, including both refund-review holds and dispute-driven settlement holds, instead of only surfacing a hold count.
 - The ops support queue now builds a structured ticket timeline from ticket lifecycle changes, refund review events, booking interventions, and evidence reviews so financial and service decisions are easier to audit without reading raw descriptions.
 - The ops support queue now steers completed disputed bookings toward "keep complete" actions when reviewed evidence supports the provider, instead of suggesting a return to the active schedule.
+- Completed paid disputes now block generic cancellation resolution until a refund review is open or approved, so captured customer payment, provider/crew payout holds, and customer-favoring dispute outcomes cannot drift apart.
 - When a dispute, service-quality case, or refund review includes submitted booking evidence, ops must review at least one evidence item before resolving the ticket, and the final resolution must match the direction supported by the reviewed evidence. If the reviewed evidence is mixed or inconclusive, ops now must add a specific manual rationale before closing the case.
 - Manual ops booking interventions can still add notes or reschedule freely, but disputed outcome changes now must link the related support ticket, follow the same reviewed-evidence direction guard, and use a specific intervention note when the evidence is mixed or inconclusive.
 - The ops support queue now consumes a backend-authored resolution policy payload, so evidence-review locks, blocked resolution directions, and detailed-rationale requirements come from the same source of truth the API enforces instead of being re-derived separately in the browser.
@@ -348,6 +349,7 @@ Current baseline shipped:
   - reliability summaries that explain trust beyond raw star ratings alone
   - operational follow-through signals from real marketplace behavior, like steady confirm-vs-decline history and late-update frequency
   - a clearer `why GreenRain picked this provider` explanation tied to fit, trust, route availability, and local familiarity
+  - provider-economics summaries that compare estimated provider net against a category, duration, and route payout floor before ops scales a thin route
   - neighborhood familiarity
   - completed YardMatch job count
   - availability-confidence messaging around the suggested route window

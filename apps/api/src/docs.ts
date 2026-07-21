@@ -971,7 +971,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, and sponsored placement, with an explanation payload for each ranked provider. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
+          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, provider-economics guardrails, and sponsored placement, with an explanation payload for each ranked provider. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context, availability confidence, and a backend-authored provider-economics summary for the requested category, duration, and route.",
         requestBody: {
           required: true,
           content: {
@@ -2330,7 +2330,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Triages or resolves a support ticket",
         description:
-          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket, the chosen resolution direction must match the reviewed evidence signal, and mixed evidence requires a specific written rationale before the case can close. This internal support workflow now requires an authenticated ops session instead of loading anonymously.",
+          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket, the chosen resolution direction must match the reviewed evidence signal, and mixed evidence requires a specific written rationale before the case can close. Completed paid disputes cannot be cancelled through the generic ticket-resolution path until a refund review is open or approved, keeping customer settlement and provider/crew payout holds reconciled. This internal support workflow now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

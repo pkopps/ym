@@ -35,6 +35,10 @@ Checklist:
 - define when custom pricing or manual review is required
 - define minimum job standards for launch
 
+Current state:
+
+- provider search now returns backend-authored provider-economics summaries that compare estimated provider net against category, duration, and route payout floors, including an ops-review warning when a short or distant job could undercut launch supply economics
+
 Questions to answer:
 
 - what is the simplest thing a Barnegat homeowner can buy first?
@@ -256,6 +260,7 @@ Operational scenarios to rehearse:
 Current state:
 
 - the ops overview now includes a backend-authored launch operations policy for coverage limits, low-supply recovery, weather and delay handling, no-shows, service-quality issues, completed-job disputes, evidence standards, intervention rules, escalation triggers, live pressure warnings, ZIP-level coverage pocket pressure summaries, and coverage action recommendations
+- completed paid dispute cancellations now require refund-review settlement first, so captured customer payment and provider/crew payout holds stay reconciled before ops closes a customer-favoring completed-job dispute
 - ops can now create or reuse auditable launch-operations task records from current coverage recommendations, assign them, update status, record operator/completion notes, run an idempotent due-task notification sweep, escalate overdue tasks with priority-based thresholds, and include launch-task sweeps in the broader backend ops-automation runner with actor-stamped run history
 - remaining gap: wire the backend runner into the chosen recurring scheduler and external ops workspace once the launch task handoff model is chosen
 

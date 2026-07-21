@@ -93,13 +93,23 @@ function createResult({
     selectionSummaryDetail: `${companyName} gives the strongest overall balance of fit and trust.`,
     neighborhoodFamiliarityLabel: "Knows this neighborhood well",
     neighborhoodFamiliarityDetail: `${companyName} has completed ${nearbyCompletedJobCount} jobs nearby.`,
+    providerEconomics: {
+      estimatedProviderNetCents: 6100,
+      minimumRecommendedPayoutCents: 4200,
+      status: "healthy",
+      label: "Healthy provider payout",
+      detail: "Estimated provider net clears the launch payout floor."
+    },
     factors: {
       serviceFit: 9,
       specialization,
       distance: 8,
       reliability: 8,
+      operationalReliability: 8,
       experience: 7,
       availability: hasOpenSlot ? 8 : 2,
+      providerEconomics: 6,
+      loyalty: 0,
       sponsorship: 0,
       issuePenalty: 0
     }

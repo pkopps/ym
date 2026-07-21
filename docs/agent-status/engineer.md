@@ -24,7 +24,7 @@ bcd755f31b037880bc6638a711b25623784e8988
 
 ## Last Updated
 
-2026-07-19 22:58 EDT
+2026-07-20 00:00 EDT
 
 ## Completed Since Previous Checkpoint
 
@@ -41,8 +41,10 @@ bcd755f31b037880bc6638a711b25623784e8988
 - Added a backend-authored admin-and-operations access governance policy to the ops overview, including admin-required actions, operations-allowed actions, authentication controls, escalation triggers, and active-admin coverage.
 - Added backend-authored sensitive-action policy to `/api/auth/me`, exposing the shared fresh-session window, current session freshness, the enforced provider payout-settings guard, and contract-ready future guards for provider bank-account, provider payout-account, and customer payment-method changes.
 - Added a backend-authored launch pricing policy to instant quote and public marketplace overview responses, covering hybrid managed-marketplace pricing, first-service offer framing, launch services, customer pricing principles, provider economics principles, and provider-facing explanation.
+- Added backend-authored provider-economics summaries to provider search rankings, comparing estimated provider net against category, duration, and route payout floors with healthy/watch/at-risk status, score factors, and ops-review warnings for thin long-route work.
 - Added backend-authored provider coordination templates to ops support tickets for active field exceptions and service-quality cases, giving support a provider-side script for continuation timing, access requirements, evidence, and outcome follow-up.
 - Added an ops-authenticated stale support ticket escalation sweep that applies backend-owned SLA thresholds for active field exceptions, disputed bookings, refund reviews, billing/service-quality tickets, and account/general tickets, then sends idempotent support notifications to ops users while preserving stable ticket ids, booking ids, issue types, and statuses.
+- Added a completed paid dispute settlement guard so ops support cannot resolve a customer-favoring completed-job dispute through generic cancellation while captured customer payment has no open refund review; the ops support policy now blocks `cancel-booking`, explains the refund-review requirement, and preserves provider/crew payout holds until settlement is reconciled.
 - Added backend-authored provider onboarding automation plans to verification queue/profile responses, translating checklist state into provider-owned fixes, ops review readiness, narrow launch pilot eligibility, incident recovery, and first-booking monitoring.
 - Extended provider onboarding automation plans with stable automation actions carrying owners, priorities, due timestamps, route targets, blocking step keys, and notification copy.
 - Added an ops-authenticated provider onboarding automation sweep that evaluates due provider onboarding actions, idempotently sends provider/ops notifications with stable provider/action markers, and reports sent, already-sent, blocked, completed, dry-run, not-due, and no-notification outcomes.
@@ -62,11 +64,11 @@ bcd755f31b037880bc6638a711b25623784e8988
 - Added backend-authored crew availability constraints to crew match responses, covering available/unavailable weekdays, travel radius, schedule preference, equipment and winter-work limits, active accepted load, route-leader load, status, warnings, and guidance.
 - Added structured provider-assistant staffing plans across competing bookings, including review/source recommendations, crew gaps, pending-match counts, accepted crew counts, and machine-readable booking references.
 - Expanded provider-assistant crew coordination so natural-language messages can target named crew, the route leader, or all accepted crew on a booking, with updated conversation threads returned for audit/follow-up.
-- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST to reflect the backend payout policy, manual payout disbursement batch previews, sensitive-action re-auth policy, incident-history verification behavior, provider-assistant dispatch/staffing/coordination improvements, notification delivery policy, ops access governance policy, launch pricing policy, support provider-coordination templates, stale support ticket escalation sweep, provider onboarding automation actions and ops resubmission notifications, provider business controls, launch operations policy with coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner, persisted automation run history, retention insights, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries.
+- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST to reflect the backend payout policy, manual payout disbursement batch previews, sensitive-action re-auth policy, incident-history verification behavior, provider-assistant dispatch/staffing/coordination improvements, notification delivery policy, ops access governance policy, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions and ops resubmission notifications, provider business controls, launch operations policy with coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner, persisted automation run history, retention insights, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries.
 
 ## Currently In Progress
 
-- Backend roadmap hardening continued through payout policy, manual disbursement batch previews, audit-backed manual disbursement run records, sensitive-action re-auth policy, provider assistant dispatch, multi-booking staffing plans, richer crew coordination targets, notification delivery policy, ops access governance, launch pricing policy, support provider-coordination templates, stale support ticket escalation sweep, provider onboarding automation actions plus the new due-action sweep, ops resubmission notifications, provider business controls, launch operations policy with ZIP-level coverage pockets, coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner with persisted run history, retention insights, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries; remaining work is mostly vendor/account-bound or dependent on external scheduler/workspace decisions.
+- Backend roadmap hardening continued through payout policy, manual disbursement batch previews, audit-backed manual disbursement run records, sensitive-action re-auth policy, provider assistant dispatch, multi-booking staffing plans, richer crew coordination targets, notification delivery policy, ops access governance, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions plus the new due-action sweep, ops resubmission notifications, provider business controls, launch operations policy with ZIP-level coverage pockets, coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner with persisted run history, retention insights, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries; remaining work is mostly vendor/account-bound or dependent on external scheduler/workspace decisions.
 
 ## Remaining Work
 
@@ -155,17 +157,19 @@ bcd755f31b037880bc6638a711b25623784e8988
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "launch operations recommendations|ops overview route requires|controller handler paths"`: passed, 198 tests after due-task notification and overdue-escalation sweep coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "stale support tickets|support ops routes require|controller handler paths"`: passed, 199 tests after stale support ticket escalation coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops automation runner|ops overview route requires|controller handler paths"`: passed, 200 tests after backend ops-automation runner coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "paid completed disputes|completed disputed bookings|captured disputed bookings|ops cannot restore a disputed booking|controller handler paths"`: passed, 201 tests after completed paid dispute settlement-guard coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 202 tests after provider-economics ranking coverage.
 - `npm run prisma:generate`: passed.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "auth controller registers, logs in, and returns the current user|provider payout setting changes require a fresh provider session"`: passed, 196 tests.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider profiles include backend-authored verification next steps|rejected providers are automatically resubmitted when they update business profile details"`: passed, 196 tests.
 - `npm run typecheck`: passed.
-- `npm run test:api`: passed, 200 tests after backend ops-automation runner coverage.
+- `npm run test:api`: passed, 202 tests after provider-economics ranking coverage.
 - `git diff --check`: passed.
 
 ## Test/Build/Lint/Type-Check Results
 
 - `npm run typecheck`: passed.
-- `npm run test:api`: passed, 200 tests.
+- `npm run test:api`: passed, 202 tests.
 - `git diff --check`: passed.
 
 ## Browser Workflows Checked

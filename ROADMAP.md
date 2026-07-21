@@ -58,7 +58,7 @@ Avoid drifting into:
 ### Production Operations
 
 - Keep extending support and financial exception tooling beyond the current structured ticket timeline, payout-hold queue, refund review history, booking intervention history, evidence-review history, the new evidence-before-resolution guard for disputes and refund reviews, backend-authored customer update drafts for delays, cancellations, refund approvals or denials, issue-resolution follow-up, provider coordination templates, and the ops-authenticated stale-ticket escalation sweep that notifies ops when unresolved launch-sensitive support cases pass backend-owned SLA thresholds.
-- Keep testing completed-job dispute scenarios now that provider-favoring resolutions should return those bookings to `completed` and release payout holds cleanly.
+- Keep testing completed-job dispute scenarios now that provider-favoring resolutions should return those bookings to `completed` and release payout holds cleanly, while customer-favoring cancellation of completed paid disputes is blocked until a refund review is open or approved so settlement state stays reconciled.
 - Keep tightening dispute evidence workflows beyond the current before/after photos, notes, and checklists now that ops must review at least one submitted evidence item before resolving dispute/service-quality/refund-review tickets, the final resolution direction must match the reviewed evidence signal, mixed evidence requires a specific written rationale before the case can close, and the ops UI now reads those guardrails from a backend-authored resolution policy instead of client-side heuristics.
 - Keep aligning manual intervention tooling with the same dispute/refund controls now that outcome-changing ops interventions must also link the support ticket, respect reviewed evidence direction, and use a specific intervention rationale when the evidence is mixed or inconclusive.
 - Continue testing booking interventions, refund reviews, and payout holds with real-world scenarios.
@@ -111,7 +111,7 @@ Avoid drifting into:
 - Keep tuning provider ranking beyond the current score-and-explanation model.
 - Add trustworthy conversion, reliability, and fulfillment signals only after they have enough data volume.
 - Keep service-fit weighting strong for more complex multi-service requests.
-- Preserve provider-first economics, including minimum acceptable payout thinking.
+- Preserve provider-first economics, including minimum acceptable payout thinking, now surfaced in provider search as a backend-authored estimated-net-vs-payout-floor summary for the requested category, duration, and route.
 
 ## Priority 3: Provider Operations
 

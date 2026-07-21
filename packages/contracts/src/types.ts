@@ -2555,6 +2555,14 @@ export interface SearchProvidersResponse {
   recommendedProviderId?: string;
 }
 
+export interface ProviderEconomicsSearchSummary {
+  estimatedProviderNetCents: number;
+  minimumRecommendedPayoutCents: number;
+  status: "healthy" | "watch" | "at-risk";
+  label: string;
+  detail: string;
+}
+
 export interface PublicMarketplaceFeaturedProvider {
   id: string;
   companyName: string;
@@ -2634,6 +2642,7 @@ export interface SearchProviderResult {
   selectionSummaryDetail: string;
   neighborhoodFamiliarityLabel: string;
   neighborhoodFamiliarityDetail: string;
+  providerEconomics: ProviderEconomicsSearchSummary;
   factors: {
     serviceFit: number;
     specialization: number;
@@ -2642,6 +2651,7 @@ export interface SearchProviderResult {
     operationalReliability: number;
     experience: number;
     availability: number;
+    providerEconomics: number;
     loyalty: number;
     sponsorship: number;
     issuePenalty: number;

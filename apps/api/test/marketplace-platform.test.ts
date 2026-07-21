@@ -627,6 +627,14 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.ok(results.rankedProviders[0]!.reasons.includes("Focused on this type of service"));
   assert.ok((results.rankedProviders[0]!.factors.specialization ?? 0) > 0);
   assert.ok((results.rankedProviders[0]!.factors.operationalReliability ?? 0) > 0);
+  assert.ok((results.rankedProviders[0]!.factors.providerEconomics ?? 0) > 0);
+  assert.equal(results.rankedProviders[0]!.providerEconomics.status, "healthy");
+  assert.match(results.rankedProviders[0]!.providerEconomics.label, /provider payout/i);
+  assert.ok(
+    results.rankedProviders[0]!.providerEconomics.estimatedProviderNetCents >
+      results.rankedProviders[0]!.providerEconomics.minimumRecommendedPayoutCents
+  );
+  assert.match(results.rankedProviders[0]!.providerEconomics.detail, /provider net/i);
   assert.ok(results.rankedProviders[0]!.completedJobCount >= 1);
   assert.ok(results.rankedProviders[0]!.nearbyCompletedJobCount >= 1);
   assert.equal(results.rankedProviders[0]!.availabilityConfidence, "high");
@@ -652,6 +660,49 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.match(sponsoredResult?.reliabilityLabel ?? "", /reliability|track record/i);
   assert.match(sponsoredResult?.reliabilityDetail ?? "", /decline|weaker/i);
   assert.match(sponsoredResult?.selectionSummaryLabel ?? "", /ranks behind|fallback/i);
+});
+
+test("provider search flags thin long-route economics without dropping qualified providers", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-economics-risk@example.com",
+    password: "Password123!",
+    phone: "555-0235",
+    role: "provider",
+    companyName: "Long Route Leaf Care",
+    categories: ["leaf-blowing"],
+    serviceRadiusMiles: 60,
+    address: createAddress("900 Rural Route", 30.68, -97.95)
+  });
+  await repository.updateProvider(provider.id, {
+    verificationStatus: "verified",
+    rating: 4.9,
+    timelinessRating: 4.9,
+    attentionToDetailRating: 4.9,
+    reviewCount: 40
+  });
+
+  const results = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["leaf-blowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 30
+  });
+
+  const rankedProvider = results.rankedProviders.find((result) => result.provider.id === provider.id);
+  assert.ok(rankedProvider);
+  assert.equal(rankedProvider.provider.id, provider.id);
+  assert.equal(rankedProvider.providerEconomics.status, "at-risk");
+  assert.equal(rankedProvider.factors.providerEconomics, 0);
+  assert.ok(
+    rankedProvider.providerEconomics.estimatedProviderNetCents <
+      rankedProvider.providerEconomics.minimumRecommendedPayoutCents
+  );
+  assert.ok(rankedProvider.reasons.includes("Provider payout needs ops review"));
+  assert.match(rankedProvider.providerEconomics.detail, /ops should review pricing/i);
 });
 
 test("provider search can softly prefer a proven provider for retention-driven rebooks", async () => {
@@ -8169,6 +8220,144 @@ test("completed disputed bookings guide ops toward keeping the booking complete"
   const opsTicket = (await platform.listOpsSupportTickets()).find((candidate) => candidate.ticket.id === ticket.id);
   assert.equal(opsTicket?.resolutionGuidance?.recommendedAction, "complete-booking");
   assert.equal(opsTicket?.resolutionGuidance?.confidence, "medium");
+});
+
+test("paid completed disputes require refund review before cancellation resolves the hold", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-paid-dispute-refund-guard@example.com",
+    password: "Password123!",
+    phone: "555-1850",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(76),
+    scheduledEndIso: futureIso(77),
+    notes: "Paid completed dispute refund guard",
+    totalCents: 7200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "after",
+      evidenceType: "photo",
+      imageDataUrl: "data:image/jpeg;base64,customer-leaning-photo"
+    }
+  );
+  await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "after",
+      evidenceType: "note",
+      note: "Crew note confirms part of the requested edging was missed."
+    }
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  await platform.createBookingDispute(
+    {
+      userId: customer.id,
+      email: customer.email,
+      role: "customer"
+    },
+    {
+      bookingId: booking.id,
+      reason: "Customer reported the completed visit missed the promised edging."
+    }
+  );
+
+  const disputeTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "service-quality"
+  );
+  assert.ok(disputeTicket);
+  const refreshedDisputeTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.id === disputeTicket?.ticket.id
+  );
+  const photoEvidenceId = refreshedDisputeTicket?.booking?.serviceEvidence.find(
+    (evidence) => evidence.evidenceType === "photo"
+  )?.id;
+  const noteEvidenceId = refreshedDisputeTicket?.booking?.serviceEvidence.find(
+    (evidence) => evidence.evidenceType === "note"
+  )?.id;
+  assert.ok(photoEvidenceId);
+  assert.ok(noteEvidenceId);
+
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    ticketId: disputeTicket?.ticket.id ?? "",
+    evidenceId: photoEvidenceId,
+    reviewStatus: "supports-customer",
+    reviewNotes: "The photo shows the disputed edging was not finished."
+  });
+  await platform.reviewBookingEvidenceForOps({
+    bookingId: booking.id,
+    ticketId: disputeTicket?.ticket.id ?? "",
+    evidenceId: noteEvidenceId,
+    reviewStatus: "supports-customer",
+    reviewNotes: "The provider note confirms a material scope miss."
+  });
+
+  const guardedTicket = (await platform.listOpsSupportTickets()).find(
+    (entry) => entry.ticket.id === disputeTicket?.ticket.id
+  );
+  assert.equal(guardedTicket?.resolutionGuidance?.recommendedAction, undefined);
+  assert.match(guardedTicket?.resolutionGuidance?.rationale ?? "", /refund review/i);
+  assert.ok(guardedTicket?.resolutionPolicy?.blockedActions.includes("cancel-booking"));
+  assert.ok(
+    guardedTicket?.resolutionPolicy?.warnings.some((warning) => /captured customer payment/i.test(warning))
+  );
+
+  await assert.rejects(
+    () =>
+      platform.updateSupportTicketForOps({
+        ticketId: disputeTicket?.ticket.id ?? "",
+        status: "resolved",
+        resolutionAction: "cancel-booking",
+        resolutionNotes:
+          "Support reviewed the completed dispute and found the customer evidence strong enough to unwind the job."
+      }),
+    /refund review before cancelling/i
+  );
+
+  const stillDisputedBooking = await repository.findBookingById(booking.id);
+  assert.equal(stillDisputedBooking?.status, "disputed");
+
+  const providerLedger = await platform.getProviderPayoutLedger(provider.id);
+  const providerEntry = providerLedger.entries.find((entry) => entry.bookingId === booking.id);
+  assert.equal(providerEntry?.status, "on-hold");
+  assert.match(providerEntry?.note ?? "", /booking dispute is open/i);
+
+  const payment = (await platform.listPaymentsForUser({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  }))[0];
+  assert.equal(payment?.status, "captured");
+  assert.equal(payment?.refundReviewStatus, undefined);
 });
 
 test("ops cannot deny a refund review when reviewed evidence still supports the customer", async () => {
