@@ -27,6 +27,12 @@ const stateNameToCode: Record<string, string> = {
 };
 
 const localPlaceSeeds: LocalPlaceSeed[] = [
+  { id: "barnegat-nj", label: "Barnegat, NJ", city: "Barnegat", state: "NJ", postalCode: "08005", latitude: 39.7532, longitude: -74.2229, aliases: ["barnegat township", "barnegat nj", "08005"] },
+  { id: "manahawkin-nj", label: "Manahawkin, NJ", city: "Manahawkin", state: "NJ", postalCode: "08050", latitude: 39.6954, longitude: -74.2588, aliases: ["stafford township", "stafford nj", "manahawkin nj", "08050"] },
+  { id: "waretown-nj", label: "Waretown, NJ", city: "Waretown", state: "NJ", postalCode: "08758", latitude: 39.7915, longitude: -74.1951, aliases: ["ocean township nj", "waretown nj", "08758"] },
+  { id: "forked-river-nj", label: "Forked River, NJ", city: "Forked River", state: "NJ", postalCode: "08731", latitude: 39.8398, longitude: -74.1901, aliases: ["lacey township", "lacey nj", "forked river nj", "08731"] },
+  { id: "toms-river-nj", label: "Toms River, NJ", city: "Toms River", state: "NJ", postalCode: "08753", latitude: 39.9537, longitude: -74.1979, aliases: ["toms river nj", "08753"] },
+  { id: "long-beach-township-nj", label: "Long Beach Township, NJ", city: "Long Beach Township", state: "NJ", postalCode: "08008", latitude: 39.6518, longitude: -74.1785, aliases: ["lbi", "long beach island", "long beach township nj", "08008"] },
   { id: "brooklyn-ny", label: "Brooklyn, NY", city: "Brooklyn", state: "NY", postalCode: "11201", latitude: 40.6782, longitude: -73.9442, aliases: ["bklyn", "bk", "brooklyn ny", "new york city borough"] },
   { id: "queens-ny", label: "Queens, NY", city: "Queens", state: "NY", postalCode: "11101", latitude: 40.7282, longitude: -73.7949, aliases: ["queens ny", "new york city borough"] },
   { id: "jersey-city-nj", label: "Jersey City, NJ", city: "Jersey City", state: "NJ", postalCode: "07302", latitude: 40.7178, longitude: -74.0431 },

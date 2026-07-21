@@ -37,7 +37,9 @@ Checklist:
 
 Current state:
 
-- provider search now returns backend-authored provider-economics summaries that compare estimated provider net against category, duration, and route payout floors, including an ops-review warning when a short or distant job could undercut launch supply economics
+- provider search now returns backend-authored service-fit summaries for complete versus partial multi-service coverage plus provider-economics summaries that compare estimated provider net against category or service-mix, duration, and route payout floors, including an ops-review warning when a short or distant job could undercut launch supply economics
+- instant quotes now ask for driveway and sidewalk measurements on lower-confidence winter hardscape jobs, so snow shoveling, snow blowing, and ice-melt salting do not rely only on address heuristics for the measurements that drive duration
+- saved-property geocodes are now reused across matching authenticated quote, booking, recurring-plan, and booking-address-change inputs, so repeat customers do not repeatedly geocode the same address
 
 Questions to answer:
 
@@ -259,6 +261,7 @@ Operational scenarios to rehearse:
 
 Current state:
 
+- backend place search now has local fallback seeds for Barnegat/Ocean County launch pockets, including Barnegat, Manahawkin, Waretown, Forked River, Toms River, and Long Beach Township, with exact town/ZIP/known alias matches eligible for auto-select while partial guesses still require customer confirmation
 - the ops overview now includes a backend-authored launch operations policy for coverage limits, low-supply recovery, weather and delay handling, no-shows, service-quality issues, completed-job disputes, evidence standards, intervention rules, escalation triggers, live pressure warnings, ZIP-level coverage pocket pressure summaries, and coverage action recommendations
 - completed paid dispute cancellations now require refund-review settlement first, so captured customer payment and provider/crew payout holds stay reconciled before ops closes a customer-favoring completed-job dispute
 - ops can now create or reuse auditable launch-operations task records from current coverage recommendations, assign them, update status, record operator/completion notes, run an idempotent due-task notification sweep, escalate overdue tasks with priority-based thresholds, and include launch-task sweeps in the broader backend ops-automation runner with actor-stamped run history

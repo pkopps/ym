@@ -20,11 +20,11 @@ main
 
 ## Current Commit
 
-0f32780a6344b48f154e0d34029e86e287e9b1b8
+ebdb82763e98e10dd49b56c1c5dbe0481afda01a
 
 ## Last Updated
 
-2026-07-20 22:22 EDT
+2026-07-20 22:58 EDT
 
 ## Completed Since Previous Checkpoint
 
@@ -66,11 +66,17 @@ main
 - Added backend-authored crew availability constraints to crew match responses, covering available/unavailable weekdays, travel radius, schedule preference, equipment and winter-work limits, active accepted load, route-leader load, status, warnings, and guidance.
 - Added structured provider-assistant staffing plans across competing bookings, including review/source recommendations, crew gaps, pending-match counts, accepted crew counts, route-leader assignment recommendations for fully staffed accepted-crew-fallback jobs, and machine-readable booking references.
 - Expanded provider-assistant crew coordination so natural-language messages can target named crew, the route leader, or all accepted crew on a booking, with updated conversation threads returned for audit/follow-up.
-- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST to reflect the backend payout policy, manual payout disbursement batch previews, sensitive-action re-auth policy, incident-history verification behavior, provider-assistant dispatch/staffing/coordination improvements, notification delivery policy, ops access governance policy, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions and ops resubmission notifications, provider business controls, launch operations policy with coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner, persisted automation run history, recommendation insights, retention insights, richer seasonal retention windows, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries.
+- Extended provider-assistant start-route actions so previews and executed customer notifications include the backend-estimated on-my-way ETA and live tracking copy.
+- Extended backend place-search fallback coverage for Barnegat/Ocean County launch pockets, including Barnegat, Manahawkin, Waretown, Forked River, Toms River, and Long Beach Township, while keeping exact town/ZIP/known alias matches strong and partial local guesses confirmation-required.
+- Extended instant quote measurement follow-ups for winter hardscape services so snow shoveling, snow blowing, and ice-melt salting can collect customer-confirmed driveway and sidewalk measurements instead of relying only on address heuristics for the fields that drive duration.
+- Added backend-authored provider service-fit summaries to provider search so multi-service requests expose complete versus partial category coverage, matched/missing category arrays, and customer-safe explanation copy while preserving the existing provider and ranking-factor fields.
+- Tuned provider-economics search summaries so complete multi-service matches compare provider net against a service-mix payout floor instead of only the first matched category.
+- Extended saved-property geocode reuse across matching authenticated quote, booking, recurring-plan, and booking-address-change inputs, while keeping anonymous location lookup unsaved/session-scoped.
+- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST to reflect the backend payout policy, manual payout disbursement batch previews, sensitive-action re-auth policy, incident-history verification behavior, provider-assistant dispatch/staffing/coordination improvements, notification delivery policy, ops access governance policy, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions and ops resubmission notifications, provider business controls, launch operations policy with coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner, persisted automation run history, recommendation insights, retention insights, richer seasonal retention windows, crew availability constraints, crew assignment forecasting, crew earnings/attendance/performance summaries, Barnegat/Ocean County place-search coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and saved-property geocode reuse across repeat customer address flows.
 
 ## Currently In Progress
 
-- Backend roadmap hardening continued through payout policy, manual disbursement batch previews, audit-backed manual disbursement run records, sensitive-action re-auth policy, provider assistant dispatch, multi-booking staffing plans with route-leader assignment guidance, richer crew coordination targets, notification delivery policy, ops access governance, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions plus the new due-action sweep, ops resubmission notifications, provider business controls, launch operations policy with ZIP-level coverage pockets, coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner with persisted run history, recommendation insights, retention insights, fall gutter-prep retention, winter snow/ice retention, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries; remaining work is mostly vendor/account-bound, dependent on external scheduler/workspace decisions, or waiting for real launch-volume signals.
+- Backend roadmap hardening continued through payout policy, manual disbursement batch previews, audit-backed manual disbursement run records, sensitive-action re-auth policy, provider assistant dispatch, multi-booking staffing plans with route-leader assignment guidance, richer crew coordination targets, start-route ETA/tracking previews, notification delivery policy, ops access governance, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions plus the new due-action sweep, ops resubmission notifications, provider business controls, launch operations policy with ZIP-level coverage pockets, coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner with persisted run history, recommendation insights, retention insights, fall gutter-prep retention, winter snow/ice retention, crew availability constraints, crew assignment forecasting, crew earnings/attendance/performance summaries, Barnegat/Ocean County local place-search fallback coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and customer saved-property geocode reuse for repeat address flows; remaining work is mostly vendor/account-bound, dependent on external scheduler/workspace decisions, waiting for real launch-volume signals, or deeper quote/geocoding/property-measurement quality beyond this batch.
 
 ## Remaining Work
 
@@ -80,11 +86,13 @@ main
 - Final business approval remains for the first-customer launch offer and introductory pricing posture; the API now exposes the backend policy and provider economics guardrails.
 - More granular internal RBAC remains for later once the team needs roles beyond the current admin/operations model.
 - Future provider bank-account, payout-account, and customer payment-method update routes still need implementation when those external account surfaces are built; `/api/auth/me` now exposes the fresh-session policy contract they should use.
-- Provider assistant coordination can still expand into more provider/crew field-operation actions as launch workflows settle; staffing plans now cover competing bookings and missing route-leader assignment, accepted-crew message fanout works, and live acceptance/call-off/route-leader weighting can deepen with more production data.
+- Provider assistant coordination can still expand into more provider/crew field-operation actions as launch workflows settle; staffing plans now cover competing bookings and missing route-leader assignment, accepted-crew message fanout works, start-route actions preview/send ETA tracking copy, and live acceptance/call-off/route-leader weighting can deepen with more production data.
 - Provider onboarding can still advance from contract-backed automation actions, the due-action notification sweep, and ops resubmission notifications into deeper live workflow automation once the exact ops/provider handoff flow is finalized.
 - Launch operations can still advance into production scheduling and workspace sync once ops chooses where the backend automation runner should be called from, how often it should run, and which external workspace owns task handoff/outreach after the API returns sweep results.
 - Retention can still advance into stronger loyalty/package rules once launch volume shows which seasonal services should become recurring habits instead of one-time prompts.
 - Recommendation observability can still advance into deeper time-based cohorts once launch traffic volume is high enough to make cohort comparisons reliable.
+- Search/location quality can still advance into deeper geocoding and property-measurement confidence, but the first Barnegat/Ocean County fallback launch pockets now have deterministic local coverage when Google geocoding is unavailable, winter hardscape quotes can ask for customer-confirmed driveway/sidewalk measurements, and matching saved customer addresses reuse cached geocodes across quote/booking paths.
+- Ranking quality can still advance with live conversion, reliability, and fulfillment volume, but multi-service searches now expose complete-versus-partial fit and service-mix economics before the team adds broader data-driven ranking signals.
 
 ## Blockers
 
@@ -108,6 +116,7 @@ main
 - Provider verification queue/profile summaries now include `incident-history` guidance.
 - Provider approval override requirements now account for dispute/refund/active-exception history.
 - Provider assistant dispatch adjustment previews now rank cross-day relief slots, return staffing-first guidance for capacity-driven pressure, include multi-booking staffing plans with route-leader assignment guidance, and can message the route leader or all accepted crew from natural language.
+- Provider assistant start-route previews and executions now include backend-estimated customer ETA and live tracking notification copy.
 - `GET /api/notifications/ops/health` now returns `deliveryPolicy` alongside delivery counts, channel health, failures, and alerts.
 - `GET /api/observability/overview` now returns `opsAccessPolicy` alongside access-health counts, alerts, and recent internal auth/access events.
 - `GET /api/observability/overview` now also returns `launchOperationsPolicy` for launch scenario rules, service-quality standards, intervention rules, escalation triggers, and live pressure warnings.
@@ -118,6 +127,10 @@ main
 - `POST /api/observability/launch-operations/tasks/notify-due` now runs an idempotent due-task notification sweep for launch-operations task records.
 - `GET /api/observability/overview` now also returns `retentionInsights` alongside retention strategy/source/provider metrics.
 - `GET /api/observability/overview` now also returns `recommendationInsights` alongside recommendation source metrics, preserving the existing raw counters while adding backend-authored interpretation.
+- `GET /api/places/search` now returns deterministic local fallback suggestions for Barnegat/Ocean County launch pockets, with strong matches for exact towns, ZIPs, and known aliases and confirmation-required match quality for partial local guesses.
+- `POST /api/quotes/instant` now accepts `driveway_sq_ft` and `sidewalk_linear_ft` follow-up answers for winter hardscape categories, marks those measurement sources as `customer-follow-up`, and asks those questions instead of turf/shrub prompts when address heuristics are still uncertain.
+- `POST /api/quotes/instant`, `POST /api/bookings`, recurring-plan creation, and `POST /api/bookings/address` now reuse saved-property geocode metadata for authenticated customer address inputs that normalize to an existing saved-property cache key.
+- `POST /api/providers/search` now returns `serviceFitSummary` on each ranked provider and calculates provider-economics guardrails against a category or multi-category service mix, while preserving stable provider ids, category arrays, ranking factors, reasons, and recommendation session ids.
 - `GET /api/customers/retention-opportunities` now returns specific fall gutter-prep and winter snow/ice readiness strategies during seasonal windows, preserving the existing response shape and machine-readable opportunity ids/strategy keys/triggers.
 - `POST /api/quotes/instant` and `GET /api/providers/public-overview` now return `launchPricingPolicy` without changing stable quote category or estimated-price fields.
 - `GET /api/support/ops/tickets` now returns `providerCoordinationTemplates` for provider-side exception and service-quality follow-up.
@@ -133,6 +146,7 @@ main
 - `apps/api/src/controllers/ObservabilityController.ts`
 - `apps/api/src/repositories/InMemoryMarketplaceRepository.ts`
 - `apps/api/src/services/MarketplacePlatformService.ts`
+- `apps/api/src/services/PlaceSearchService.ts`
 - `apps/api/src/services/NotificationDeliveryService.ts`
 - `apps/api/src/docs.ts`
 - `apps/api/src/repositories/MarketplaceRepository.ts`
@@ -142,6 +156,9 @@ main
 - `apps/api/prisma/migrations/20260719224500_launch_operations_tasks/migration.sql`
 - `apps/api/test/marketplace-controller-routing.test.ts`
 - `apps/api/test/marketplace-platform.test.ts`
+- `apps/api/test/place-search.test.ts`
+- `packages/domain/src/index.ts`
+- `packages/contracts/src/types.ts`
 - `apps/web/src/components/OpsDashboardClient.tsx`
 - `packages/analytics/src/index.ts`
 - `packages/domain/src/index.ts`
@@ -168,17 +185,22 @@ main
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "winter and gutter season windows|spring and fall season windows|fall back to a 90-day rebook"`: passed, 203 tests after winter snow/ice and fall gutter retention coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew|provider assistant staffing plan recommends route leader assignment|provider assistant can assign and clear a crew route leader"`: passed, 204 tests after route-leader staffing-plan coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "recommendation telemetry tracks|recommendation insights by surface"`: passed, 205 tests after backend-authored recommendation insight coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "place search"`: passed, 206 tests after Barnegat/Ocean County fallback coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "instant quotes|winter hardscape"`: passed, 207 tests after winter hardscape quote-confidence coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search favors full-service fit|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 208 tests after multi-service provider search fit/economics coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "cached geocodes|saved customer properties reuse|quotes and bookings reuse"`: passed, 209 tests after quote/booking saved-property geocode reuse coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can preview and start a route|confirm-then-route"`: passed, 209 tests after start-route ETA/tracking notification coverage.
 - `npm run prisma:generate`: passed.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "auth controller registers, logs in, and returns the current user|provider payout setting changes require a fresh provider session"`: passed, 196 tests.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider profiles include backend-authored verification next steps|rejected providers are automatically resubmitted when they update business profile details"`: passed, 196 tests.
 - `npm run typecheck`: passed.
-- `npm run test:api`: passed, 205 tests after backend-authored recommendation insight coverage.
+- `npm run test:api`: passed, 209 tests after start-route ETA/tracking notification coverage.
 - `git diff --check`: passed.
 
 ## Test/Build/Lint/Type-Check Results
 
 - `npm run typecheck`: passed.
-- `npm run test:api`: passed, 205 tests.
+- `npm run test:api`: passed, 209 tests.
 - `git diff --check`: passed after latest checkpoint edit.
 
 ## Browser Workflows Checked

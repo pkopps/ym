@@ -253,11 +253,11 @@ npm run test:web:smoke
 - Shared help-center content for customer, provider, and crew-member documentation across web and mobile
 - Analytics event logging for funnel and operational analysis
 - SEO metadata, robots, sitemap, and semantic marketing pages
-- Multiple saved customer properties with a default/primary address model
+- Multiple saved customer properties with a default/primary address model and cached geocode reuse for matching authenticated quote, booking, recurring-plan, and booking-address-change inputs
 - Booking address snapshots plus post-booking address-change workflows
-- Instant quote scaffolding with automated property-size estimation and confidence-based follow-up questions
+- Instant quote scaffolding with automated property-size estimation and confidence-based follow-up questions, including driveway and sidewalk measurement prompts for winter hardscape services when address heuristics need confirmation
 - Optional Google Address Validation enrichment for quote/search/property/signup flows when configured
-- Place search now returns structured confidence and match-reason metadata so clients can distinguish Google-verified suggestions from best local fallback guesses
+- Place search now returns structured confidence and match-reason metadata so clients can distinguish Google-verified suggestions from best local fallback guesses; the local fallback dataset includes Barnegat/Ocean County launch pockets such as Barnegat, Manahawkin, Waretown, Forked River, Toms River, and Long Beach Township
 - Recommendation-first public search no longer silently auto-selects weaker local fallback area guesses; low-confidence matches now require clearer customer confirmation
 
 ## Competitive positioning
@@ -349,7 +349,8 @@ Current baseline shipped:
   - reliability summaries that explain trust beyond raw star ratings alone
   - operational follow-through signals from real marketplace behavior, like steady confirm-vs-decline history and late-update frequency
   - a clearer `why GreenRain picked this provider` explanation tied to fit, trust, route availability, and local familiarity
-  - provider-economics summaries that compare estimated provider net against a category, duration, and route payout floor before ops scales a thin route
+  - service-fit summaries that distinguish complete versus partial category coverage for multi-service requests
+  - provider-economics summaries that compare estimated provider net against category or service-mix, duration, and route payout floors before ops scales a thin route
   - neighborhood familiarity
   - completed YardMatch job count
   - availability-confidence messaging around the suggested route window
@@ -370,7 +371,7 @@ The provider assistant is meant to reduce dispatch friction, not just restate sc
 
 Current baseline includes:
 
-- lifecycle commands like confirm, start route, start work, complete, late update, and exception reporting
+- lifecycle commands like confirm, start route with on-my-way ETA/tracking copy, start work, complete, late update, and exception reporting
 - staffing commands like accept best crew, accept/deny crew, assign route leader, message named crew, message the route leader, and message all accepted crew
 - dispatch reasoning commands like:
   - `How does tomorrow look?`
@@ -384,6 +385,7 @@ When tomorrow has no meaningfully lighter same-day window left, it can now fall 
 When multiple later openings exist, it ranks them by route pressure instead of blindly taking the first slot, and it can return a staffing-first recommendation when a large job's crew gap is the real dispatch issue.
 Crew-gap recommendations now also return a structured multi-booking staffing plan so providers and ops can see which competing jobs need sourcing, which ones should review pending matches first, when accepted crew coverage is full but a route leader still needs assignment, and which machine-readable booking fields stayed stable.
 Crew coordination commands can now target the assigned route leader or fan out to every accepted crew member on the booking while returning the updated provider-crew conversation threads for audit and follow-up.
+Start-route commands now preview the customer-facing on-my-way notification, including the backend-estimated arrival window and live tracking affordance, before execution sends the same update.
 
 ### Why not launch as a full directory
 

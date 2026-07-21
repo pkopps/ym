@@ -2568,6 +2568,15 @@ export interface ProviderEconomicsSearchSummary {
   detail: string;
 }
 
+export interface ProviderServiceFitSearchSummary {
+  requestedCategories: ServiceCategory[];
+  matchedCategories: ServiceCategory[];
+  missingCategories: ServiceCategory[];
+  status: "complete" | "partial";
+  label: string;
+  detail: string;
+}
+
 export interface PublicMarketplaceFeaturedProvider {
   id: string;
   companyName: string;
@@ -2647,6 +2656,7 @@ export interface SearchProviderResult {
   selectionSummaryDetail: string;
   neighborhoodFamiliarityLabel: string;
   neighborhoodFamiliarityDetail: string;
+  serviceFitSummary: ProviderServiceFitSearchSummary;
   providerEconomics: ProviderEconomicsSearchSummary;
   factors: {
     serviceFit: number;

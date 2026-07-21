@@ -303,6 +303,55 @@ test("complex heuristic-heavy quotes ask for layout follow-up and explain scope 
   assert.ok(quote.confidenceScore < 0.82);
 });
 
+test("winter hardscape quotes ask for driveway and sidewalk measurements", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const address = {
+    line1: "8 Bayshore Drive",
+    city: "Barnegat",
+    state: "NJ",
+    postalCode: "08005",
+    country: "US",
+    point: {
+      latitude: 39.7532,
+      longitude: -74.2229
+    }
+  };
+
+  const heuristicQuote = await platform.createInstantQuote({
+    address,
+    category: "snow-shoveling"
+  });
+
+  assert.equal(heuristicQuote.category, "snow-shoveling");
+  assert.equal(heuristicQuote.measurementSources.drivewaySqFt, "address-heuristic");
+  assert.equal(heuristicQuote.measurementSources.sidewalkLinearFt, "address-heuristic");
+  assert.ok(heuristicQuote.followUpQuestions.some((question) => question.id === "driveway_sq_ft"));
+  assert.ok(heuristicQuote.followUpQuestions.some((question) => question.id === "sidewalk_linear_ft"));
+  assert.ok(!heuristicQuote.followUpQuestions.some((question) => question.id === "turf_sq_ft"));
+  assert.ok(!heuristicQuote.followUpQuestions.some((question) => question.id === "shrub_sq_ft"));
+
+  const clarifiedQuote = await platform.createInstantQuote({
+    address,
+    category: "snow-shoveling",
+    followUpAnswers: [
+      { questionId: "driveway_sq_ft", value: 1100 },
+      { questionId: "sidewalk_linear_ft", value: 100 }
+    ]
+  });
+
+  assert.equal(clarifiedQuote.category, "snow-shoveling");
+  assert.equal(clarifiedQuote.measurements.drivewaySqFt, 1100);
+  assert.equal(clarifiedQuote.measurements.sidewalkLinearFt, 100);
+  assert.equal(clarifiedQuote.measurementSources.drivewaySqFt, "customer-follow-up");
+  assert.equal(clarifiedQuote.measurementSources.sidewalkLinearFt, "customer-follow-up");
+  assert.ok(!clarifiedQuote.followUpQuestions.some((question) => question.id === "driveway_sq_ft"));
+  assert.ok(!clarifiedQuote.followUpQuestions.some((question) => question.id === "sidewalk_linear_ft"));
+  assert.ok(clarifiedQuote.confidenceReasons.some((reason) => reason.label === "Your answers sharpened the quote"));
+  assert.ok(clarifiedQuote.estimatedDurationMinutes > heuristicQuote.estimatedDurationMinutes);
+});
+
 test("customer addresses are normalized before properties and booking snapshots are saved", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -470,6 +519,120 @@ test("saved customer properties reuse cached geocodes for the same normalized ad
     assert.deepEqual(secondProperty.address.point, firstProperty.address.point);
     assert.equal(secondProperty.address.geocodeCacheKey, firstProperty.address.geocodeCacheKey);
     assert.equal(secondProperty.address.geocodeProvider, "google-geocoding");
+  } finally {
+    process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
+    process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalAddressValidationKey;
+    global.fetch = originalFetch;
+  }
+});
+
+test("quotes and bookings reuse saved customer property geocodes for matching custom addresses", async () => {
+  const originalMapsKey = process.env.GOOGLE_MAPS_API_KEY;
+  const originalAddressValidationKey = process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+  const originalFetch = global.fetch;
+  let fetchCalls = 0;
+
+  process.env.GOOGLE_MAPS_API_KEY = "test-maps-key";
+  delete process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+  global.fetch = (async () => {
+    fetchCalls += 1;
+    return {
+      ok: true,
+      async json() {
+        return {
+          results: [
+            {
+              formatted_address: "8 Bayshore Drive, Barnegat, NJ 08005, USA",
+              place_id: "google-bayshore-barnegat",
+              geometry: {
+                location: {
+                  lat: 39.7541,
+                  lng: -74.2234
+                }
+              },
+              address_components: [
+                { long_name: "8", short_name: "8", types: ["street_number"] },
+                { long_name: "Bayshore Drive", short_name: "Bayshore Dr", types: ["route"] },
+                { long_name: "Barnegat", short_name: "Barnegat", types: ["locality"] },
+                { long_name: "New Jersey", short_name: "NJ", types: ["administrative_area_level_1"] },
+                { long_name: "08005", short_name: "08005", types: ["postal_code"] },
+                { long_name: "United States", short_name: "US", types: ["country"] }
+              ]
+            }
+          ]
+        };
+      }
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const repository = new InMemoryMarketplaceRepository();
+    await repository.createCustomer({
+      id: "customer-repeat-geocode-cache",
+      fullName: "Repeat Geocode Cache",
+      email: "repeat-geocode-cache@example.com",
+      phone: "555-0102",
+      role: "customer",
+      address: createAddress("1 Existing Home", 39.75, -74.22),
+      createdAt: new Date().toISOString(),
+      propertyNotes: "",
+      lawnSizeSqFt: 0,
+      properties: [],
+      defaultPropertyId: ""
+    });
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+    const savedProperty = await platform.createCustomerProperty("customer-repeat-geocode-cache", {
+      label: "Barnegat home",
+      address: {
+        line1: "8 bayshore drive",
+        city: "barnegat",
+        state: "nj",
+        postalCode: "08005",
+        country: "us",
+        point: {
+          latitude: 0,
+          longitude: 0
+        }
+      }
+    });
+
+    const repeatedAddress = {
+      line1: "  8   Bayshore  Drive ",
+      city: " Barnegat ",
+      state: " NJ ",
+      postalCode: "08005",
+      country: "US",
+      point: {
+        latitude: 1,
+        longitude: 1
+      }
+    };
+    const quote = await platform.createInstantQuote({
+      customerId: "customer-repeat-geocode-cache",
+      address: repeatedAddress,
+      category: "lawn-mowing"
+    });
+    const provider = (await repository.listProviders())[0];
+    assert.ok(provider);
+    const slot = (await repository.listSlotsByProvider(provider.id)).find((candidate) => !candidate.isBooked);
+    assert.ok(slot);
+    const booking = await platform.createBooking("customer-repeat-geocode-cache", {
+      providerId: provider.id,
+      serviceAddress: repeatedAddress,
+      category: "lawn-mowing",
+      scheduledStartIso: slot.startIso,
+      scheduledEndIso: slot.endIso,
+      notes: "Repeat geocode cache booking",
+      totalCents: 6200
+    });
+
+    assert.equal(fetchCalls, 1);
+    assert.deepEqual(quote.address.point, savedProperty.address.point);
+    assert.equal(quote.address.geocodeCacheKey, savedProperty.address.geocodeCacheKey);
+    assert.equal(quote.address.geocodeProvider, "google-geocoding");
+    assert.deepEqual(booking.serviceAddress.point, savedProperty.address.point);
+    assert.equal(booking.serviceAddress.geocodeCacheKey, savedProperty.address.geocodeCacheKey);
+    assert.equal(booking.serviceAddress.geocodeProvider, "google-geocoding");
   } finally {
     process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
     process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalAddressValidationKey;
@@ -660,6 +823,83 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.match(sponsoredResult?.reliabilityLabel ?? "", /reliability|track record/i);
   assert.match(sponsoredResult?.reliabilityDetail ?? "", /decline|weaker/i);
   assert.match(sponsoredResult?.selectionSummaryLabel ?? "", /ranks behind|fallback/i);
+});
+
+test("provider search favors full-service fit for multi-service requests", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const fullMixProvider = await platform.registerUser({
+    fullName: "Maya Turner",
+    email: "provider-full-mix-ranking@example.com",
+    password: "Password123!",
+    phone: "555-0236",
+    role: "provider",
+    companyName: "Barnegat Full Mix Care",
+    categories: ["lawn-mowing", "mulch-installation"],
+    serviceRadiusMiles: 20,
+    address: createAddress("12 Bayshore Drive", 39.7535, -74.2225)
+  });
+  await repository.updateProvider(fullMixProvider.id, {
+    verificationStatus: "verified",
+    rating: 4.7,
+    timelinessRating: 4.7,
+    attentionToDetailRating: 4.7,
+    reviewCount: 35,
+    yearsExperience: 7
+  });
+
+  const partialProvider = await platform.registerUser({
+    fullName: "Noah Kim",
+    email: "provider-partial-mix-ranking@example.com",
+    password: "Password123!",
+    phone: "555-0237",
+    role: "provider",
+    companyName: "Barnegat Mowing Only",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("10 Bayshore Drive", 39.75325, -74.22275)
+  });
+  await repository.updateProvider(partialProvider.id, {
+    verificationStatus: "verified",
+    rating: 4.95,
+    timelinessRating: 4.95,
+    attentionToDetailRating: 4.95,
+    reviewCount: 80,
+    yearsExperience: 10,
+    sponsoredListingEnabled: true
+  });
+
+  const results = await platform.searchProviders({
+    address: createAddress("8 Bayshore Drive", 39.7532, -74.2229),
+    categories: ["lawn-mowing", "mulch-installation"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 180
+  });
+
+  const fullMixResult = results.rankedProviders.find((result) => result.provider.id === fullMixProvider.id);
+  const partialResult = results.rankedProviders.find((result) => result.provider.id === partialProvider.id);
+
+  assert.ok(fullMixResult);
+  assert.ok(partialResult);
+  assert.equal(results.rankedProviders[0]?.provider.id, fullMixProvider.id);
+  assert.equal(fullMixResult.serviceFitSummary.status, "complete");
+  assert.deepEqual(fullMixResult.serviceFitSummary.requestedCategories, ["lawn-mowing", "mulch-installation"]);
+  assert.deepEqual(fullMixResult.serviceFitSummary.matchedCategories, ["lawn-mowing", "mulch-installation"]);
+  assert.deepEqual(fullMixResult.serviceFitSummary.missingCategories, []);
+  assert.match(fullMixResult.serviceFitSummary.label, /full service mix/i);
+  assert.match(fullMixResult.serviceFitSummary.detail, /one managed request/i);
+  assert.ok(fullMixResult.reasons.includes("Covers all requested services"));
+  assert.ok(fullMixResult.factors.serviceFit > partialResult.factors.serviceFit);
+  assert.match(fullMixResult.providerEconomics.detail, /service mix/i);
+
+  assert.equal(partialResult.serviceFitSummary.status, "partial");
+  assert.deepEqual(partialResult.serviceFitSummary.matchedCategories, ["lawn-mowing"]);
+  assert.deepEqual(partialResult.serviceFitSummary.missingCategories, ["mulch-installation"]);
+  assert.match(partialResult.serviceFitSummary.detail, /another provider|ops follow-up/i);
+  assert.ok(fullMixResult.providerEconomics.minimumRecommendedPayoutCents > partialResult.providerEconomics.minimumRecommendedPayoutCents);
+  assert.equal(partialResult.providerEconomics.status, "healthy");
+  assert.equal(partialResult.provider.categories.includes("mulch-installation"), false);
 });
 
 test("provider search flags thin long-route economics without dropping qualified providers", async () => {
@@ -12717,7 +12957,9 @@ test("provider assistant can preview and start a route from a natural-language c
   assert.equal(preview.understood, true);
   assert.equal(preview.actionType, "start-route");
   assert.equal(preview.requiresConfirmation, true);
-  assert.match(preview.previewMessage, /unlock live arrival tracking/i);
+  assert.match(preview.previewMessage, /on-my-way ETA/i);
+  assert.match(preview.customerNotificationPreview ?? "", /Estimated arrival is about \d+ minutes?/i);
+  assert.match(preview.customerNotificationPreview ?? "", /Live arrival tracking is available/i);
 
   const executed = await platform.runProviderAssistantCommand(provider.id, {
     command: "Start route for my afternoon appointment",
@@ -12729,6 +12971,17 @@ test("provider assistant can preview and start a route from a natural-language c
   assert.equal(executed.actionType, "start-route");
   assert.ok(executed.updatedBooking?.onRouteConfirmedAt);
   assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-start-route");
+  assert.match(executed.previewMessage, /sent an on-my-way ETA/i);
+  assert.match(executed.customerNotificationPreview ?? "", /Estimated arrival is about \d+ minutes?/i);
+
+  const customerNotifications = await repository.listNotificationsByRecipient(customer.id);
+  const onRouteNotification = customerNotifications.find(
+    (notification) => notification.title === "Your crew is on the way"
+  );
+  assert.ok(onRouteNotification);
+  assert.match(onRouteNotification.body, /Estimated arrival is about \d+ minutes?/i);
+  assert.match(onRouteNotification.body, /Live arrival tracking is available/i);
+  assert.match(onRouteNotification.actionHref ?? "", /tracking=1/);
 });
 
 test("provider assistant can preview and execute a confirm-then-route multi-step command", async () => {

@@ -152,6 +152,7 @@ import {
   NotificationPreferences,
   PaymentRecord,
   ProviderEconomicsSearchSummary,
+  ProviderServiceFitSearchSummary,
   OpsReviewResponseItem,
   ProviderAssistantActionType,
   ProviderAssistantBookingCandidate,
@@ -4250,10 +4251,17 @@ export class MarketplacePlatformService {
       throw new HttpError(500, "Booking could not be updated");
     }
 
+    const routeLeaderCrew =
+      actor.role === "crew-member" ? await this.repository.findCrewMemberById(actor.userId) : undefined;
     const routeLeaderLabel =
       actor.role === "provider"
         ? provider?.companyName ?? "Your landscaping business"
-        : (await this.repository.findCrewMemberById(actor.userId))?.fullName ?? "Your landscaping business";
+        : routeLeaderCrew?.fullName ?? "Your landscaping business";
+    const routeUpdate = this.buildOnRouteCustomerUpdate({
+      booking,
+      routeLeaderLabel,
+      routeStartPoint: actor.role === "crew-member" ? routeLeaderCrew?.address.point : provider.address.point
+    });
 
     await Promise.all([
       this.createNotification({
@@ -4261,7 +4269,7 @@ export class MarketplacePlatformService {
         recipientRole: "customer",
         category: "booking",
         title: "Your crew is on the way",
-        body: `${routeLeaderLabel} is heading to your property now.`,
+        body: routeUpdate.notificationBody,
         actionHref: `/customer/dashboard?bookingId=${booking.id}&tracking=1`
       }),
       this.createNotification({
@@ -4278,6 +4286,37 @@ export class MarketplacePlatformService {
     ]);
 
     return updatedBooking;
+  }
+
+  private buildOnRouteCustomerUpdate(input: {
+    booking: Booking;
+    routeLeaderLabel: string;
+    routeStartPoint?: Address["point"];
+  }): { notificationBody: string; previewText: string; etaMinutes?: number } {
+    const activeRouteStop =
+      input.booking.status === "confirmed"
+        ? this.getActiveBookingRouteStop(input.booking, input.routeStartPoint)
+        : undefined;
+    const travelMiles = this.calculateBookingRouteTotalMiles(
+      input.routeStartPoint,
+      input.booking.serviceAddress,
+      activeRouteStop
+    );
+    const etaMinutes =
+      travelMiles > 0 ? this.estimateRouteTravelMinutes(travelMiles, undefined, activeRouteStop) : undefined;
+    const etaSentence =
+      typeof etaMinutes === "number" && etaMinutes > 0
+        ? ` Estimated arrival is about ${etaMinutes} minute${etaMinutes === 1 ? "" : "s"}.`
+        : "";
+    const notificationBody =
+      `${input.routeLeaderLabel} is heading to your property now.${etaSentence} ` +
+      "Live arrival tracking is available in your dashboard.";
+
+    return {
+      notificationBody,
+      previewText: notificationBody,
+      etaMinutes
+    };
   }
 
   public async setBookingRouteStop(
@@ -5806,7 +5845,7 @@ export class MarketplacePlatformService {
           confidence: "local-only" as const,
           message: undefined
         }
-      : await this.normalizeAndValidateAddress(rawAddress);
+      : await this.normalizeValidateAndResolveCustomerAddress(rawAddress, customer);
     const normalizedAddress = validatedAddress.address;
 
     const quote = this.instantQuoteEngine.buildQuote({
@@ -5867,7 +5906,7 @@ export class MarketplacePlatformService {
 
     const validatedServiceAddress = selectedProperty
       ? selectedProperty.address
-      : (await this.normalizeAndValidateAddress(payload.serviceAddress)).address;
+      : (await this.normalizeValidateAndResolveCustomerAddress(payload.serviceAddress, customer)).address;
     const { lead: linkedLaunchLead } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     const plan: RecurringServicePlan = {
@@ -6038,7 +6077,7 @@ export class MarketplacePlatformService {
 
     const validatedServiceAddress = selectedProperty
       ? selectedProperty.address
-      : (await this.normalizeAndValidateAddress(payload.serviceAddress)).address;
+      : (await this.normalizeValidateAndResolveCustomerAddress(payload.serviceAddress, customer)).address;
     const { lead: linkedLaunchLead, linkMode } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     const bookingBase = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
@@ -8060,6 +8099,12 @@ export class MarketplacePlatformService {
 
     if (action.actionType === "start-route") {
       const customer = await this.repository.findCustomerById(booking.customerId);
+      const provider = await this.repository.findProviderById(providerId);
+      const routeUpdate = this.buildOnRouteCustomerUpdate({
+        booking,
+        routeLeaderLabel: provider?.companyName ?? "Your landscaping business",
+        routeStartPoint: provider?.address.point
+      });
       if (booking.status !== "confirmed") {
         return {
           command: originalCommand,
@@ -8079,9 +8124,9 @@ export class MarketplacePlatformService {
         };
       }
 
-      const customerNotificationPreview = `${
-        customer?.fullName ?? "The customer"
-      } will be told that your crew is on the way and live arrival tracking will unlock.`;
+      const customerNotificationPreview = `${customer?.fullName ?? "The customer"} will be told: ${
+        routeUpdate.previewText
+      }`;
 
       if (!execute) {
         return {
@@ -8097,7 +8142,7 @@ export class MarketplacePlatformService {
           matchedCustomerName: customer?.fullName,
           sourceWindowKey,
           previewLabel: "Ready to start the route",
-          previewMessage: `Start the route for ${customer?.fullName ?? "this customer"} and unlock live arrival tracking.`,
+          previewMessage: `Start the route for ${customer?.fullName ?? "this customer"}, send an on-my-way ETA, and unlock live arrival tracking.`,
           customerNotificationPreview,
           bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
         };
@@ -8137,7 +8182,7 @@ export class MarketplacePlatformService {
         matchedCustomerName: customer?.fullName,
         sourceWindowKey,
         previewLabel: "Route started",
-        previewMessage: `Started the route for ${customer?.fullName ?? "the customer"} and unlocked live arrival tracking.`,
+        previewMessage: `Started the route for ${customer?.fullName ?? "the customer"}, sent an on-my-way ETA, and unlocked live arrival tracking.`,
         customerNotificationPreview,
         bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? onRouteBooking)],
         updatedBooking: bookingWithIntervention ?? onRouteBooking
@@ -9504,7 +9549,7 @@ export class MarketplacePlatformService {
 
     const requestedAddress = selectedProperty
       ? selectedProperty.address
-      : (await this.normalizeAndValidateAddress(payload.newAddress)).address;
+      : (await this.normalizeValidateAndResolveCustomerAddress(payload.newAddress, customer)).address;
 
     const provider = await this.repository.findProviderById(booking.providerId);
     if (!provider) {
@@ -19370,6 +19415,7 @@ export class MarketplacePlatformService {
       distanceMiles,
       matchedCategories
     );
+    const serviceFitSummary = this.buildProviderServiceFitSearchSummary(payload, provider, matchedCategories);
 
     const factors = {
       serviceFit: Math.round((matchedCategories.length / requestedCategoryCount) * 22),
@@ -19558,8 +19604,44 @@ export class MarketplacePlatformService {
       selectionSummaryDetail: `${provider.companyName} serves the area and meets the baseline fit requirements for this request.`,
       neighborhoodFamiliarityLabel,
       neighborhoodFamiliarityDetail,
+      serviceFitSummary,
       providerEconomics,
       factors
+    };
+  }
+
+  private buildProviderServiceFitSearchSummary(
+    payload: SearchProvidersRequest,
+    provider: ProviderProfile,
+    matchedCategories: SearchProvidersRequest["categories"]
+  ): ProviderServiceFitSearchSummary {
+    const requestedCategories = Array.from(new Set(payload.categories));
+    const uniqueMatchedCategories = requestedCategories.filter((category) => matchedCategories.includes(category));
+    const missingCategories = requestedCategories.filter((category) => !uniqueMatchedCategories.includes(category));
+    const status: ProviderServiceFitSearchSummary["status"] = missingCategories.length === 0 ? "complete" : "partial";
+    const requestedLabel = requestedCategories.map((category) => this.titleCaseCategory(category).toLowerCase());
+    const matchedLabel = uniqueMatchedCategories.map((category) => this.titleCaseCategory(category).toLowerCase());
+    const missingLabel = missingCategories.map((category) => this.titleCaseCategory(category).toLowerCase());
+
+    return {
+      requestedCategories,
+      matchedCategories: uniqueMatchedCategories,
+      missingCategories,
+      status,
+      label:
+        status === "complete"
+          ? requestedCategories.length > 1
+            ? "Covers the full service mix"
+            : "Matches the requested service"
+          : "Partial service fit",
+      detail:
+        status === "complete"
+          ? requestedCategories.length > 1
+            ? `${provider.companyName} can handle ${this.formatListForSentence(requestedLabel)} in one managed request, so YardMatch does not need to split the job across providers.`
+            : `${provider.companyName} supports ${requestedLabel[0] ?? "this service"} for this property.`
+          : `${provider.companyName} supports ${this.formatListForSentence(
+              matchedLabel
+            )}, but ${this.formatListForSentence(missingLabel)} would still need another provider or ops follow-up.`
     };
   }
 
@@ -19568,18 +19650,26 @@ export class MarketplacePlatformService {
     distanceMiles: number,
     matchedCategories: SearchProvidersRequest["categories"]
   ): ProviderEconomicsSearchSummary {
-    const category = matchedCategories[0] ?? payload.categories[0] ?? "lawn-mowing";
-    const durationMinutes = Math.max(payload.estimatedDurationMinutes ?? this.getProviderEconomicsDefaultDuration(category), 30);
-    const estimatedCustomerPriceCents = this.estimateSearchCustomerPriceCents(category, durationMinutes);
+    const economicsCategories = Array.from(
+      new Set(matchedCategories.length > 0 ? matchedCategories : payload.categories)
+    );
+    const categories: SearchProvidersRequest["categories"] =
+      economicsCategories.length > 0 ? economicsCategories : ["lawn-mowing"];
+    const durationMinutes = Math.max(
+      payload.estimatedDurationMinutes ?? this.getProviderEconomicsDefaultDurationForCategories(categories),
+      30
+    );
+    const estimatedCustomerPriceCents = this.estimateSearchCustomerPriceCentsForCategories(categories, durationMinutes);
     const estimatedProviderNetCents = Math.round(estimatedCustomerPriceCents * 0.72);
     const routeBurdenCents = Math.max(0, Math.round((distanceMiles - 6) * 140));
     const minimumRecommendedPayoutCents =
-      this.getProviderEconomicsCategoryFloorCents(category) +
-      Math.round(durationMinutes * this.getProviderEconomicsMinuteFloorCents(category)) +
+      this.getProviderEconomicsCategoryFloorCentsForCategories(categories) +
+      Math.round(durationMinutes * this.getProviderEconomicsMinuteFloorCentsForCategories(categories)) +
       routeBurdenCents;
     const ratio = estimatedProviderNetCents / Math.max(minimumRecommendedPayoutCents, 1);
     const status: ProviderEconomicsSearchSummary["status"] =
       ratio >= 1.18 ? "healthy" : ratio >= 1 ? "watch" : "at-risk";
+    const scopeLabel = categories.length > 1 ? "service mix" : "category";
     const label =
       status === "healthy"
         ? "Healthy provider payout"
@@ -19588,10 +19678,10 @@ export class MarketplacePlatformService {
           : "Provider payout needs ops review";
     const detail =
       status === "healthy"
-        ? `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} clears the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor for this category, duration, and route.`
+        ? `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} clears the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor for this ${scopeLabel}, duration, and route.`
         : status === "watch"
-          ? `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} is close to the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor, so avoid discounting this request without an ops review.`
-          : `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} is below the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor, so ops should review pricing before pushing this match.`;
+          ? `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} is close to the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor for this ${scopeLabel}, so avoid discounting this request without an ops review.`
+          : `Estimated provider net ${this.formatCentsForOps(estimatedProviderNetCents)} is below the ${this.formatCentsForOps(minimumRecommendedPayoutCents)} launch payout floor for this ${scopeLabel}, so ops should review pricing before pushing this match.`;
 
     return {
       estimatedProviderNetCents,
@@ -19600,6 +19690,20 @@ export class MarketplacePlatformService {
       label,
       detail
     };
+  }
+
+  private getProviderEconomicsDefaultDurationForCategories(
+    categories: SearchProvidersRequest["categories"]
+  ): number {
+    if (categories.length <= 1) {
+      return this.getProviderEconomicsDefaultDuration(categories[0] ?? "lawn-mowing");
+    }
+
+    const combinedDuration = categories.reduce(
+      (total, category) => total + this.getProviderEconomicsDefaultDuration(category),
+      0
+    );
+    return Math.round(combinedDuration * 0.82);
   }
 
   private getProviderEconomicsDefaultDuration(
@@ -19627,6 +19731,27 @@ export class MarketplacePlatformService {
     category: SearchProvidersRequest["categories"][number],
     durationMinutes: number
   ): number {
+    return this.getSearchCustomerTripBaseCents(category) + durationMinutes * 95;
+  }
+
+  private estimateSearchCustomerPriceCentsForCategories(
+    categories: SearchProvidersRequest["categories"],
+    durationMinutes: number
+  ): number {
+    if (categories.length <= 1) {
+      return this.estimateSearchCustomerPriceCents(categories[0] ?? "lawn-mowing", durationMinutes);
+    }
+
+    const sortedBaseCents = categories
+      .map((category) => this.getSearchCustomerTripBaseCents(category))
+      .sort((left, right) => right - left);
+    const combinedBaseCents =
+      (sortedBaseCents[0] ?? 2800) +
+      sortedBaseCents.slice(1).reduce((total, baseCents) => total + Math.round(baseCents * 0.45), 0);
+    return combinedBaseCents + durationMinutes * 95;
+  }
+
+  private getSearchCustomerTripBaseCents(category: SearchProvidersRequest["categories"][number]): number {
     const tripBaseByCategory: Record<SearchProvidersRequest["categories"][number], number> = {
       "lawn-mowing": 2800,
       "hedge-trimming": 4200,
@@ -19642,7 +19767,7 @@ export class MarketplacePlatformService {
       "ice-melt-salting": 2400,
       "snow-blowing": 3000
     };
-    return tripBaseByCategory[category] + durationMinutes * 95;
+    return tripBaseByCategory[category];
   }
 
   private getProviderEconomicsCategoryFloorCents(
@@ -19666,6 +19791,22 @@ export class MarketplacePlatformService {
     return floors[category];
   }
 
+  private getProviderEconomicsCategoryFloorCentsForCategories(
+    categories: SearchProvidersRequest["categories"]
+  ): number {
+    if (categories.length <= 1) {
+      return this.getProviderEconomicsCategoryFloorCents(categories[0] ?? "lawn-mowing");
+    }
+
+    const sortedFloors = categories
+      .map((category) => this.getProviderEconomicsCategoryFloorCents(category))
+      .sort((left, right) => right - left);
+    return (
+      (sortedFloors[0] ?? 2600) +
+      sortedFloors.slice(1).reduce((total, floorCents) => total + Math.round(floorCents * 0.5), 0)
+    );
+  }
+
   private getProviderEconomicsMinuteFloorCents(
     category: SearchProvidersRequest["categories"][number]
   ): number {
@@ -19687,8 +19828,33 @@ export class MarketplacePlatformService {
     return minuteFloors[category];
   }
 
+  private getProviderEconomicsMinuteFloorCentsForCategories(
+    categories: SearchProvidersRequest["categories"]
+  ): number {
+    return Math.max(
+      ...categories.map((category) => this.getProviderEconomicsMinuteFloorCents(category)),
+      this.getProviderEconomicsMinuteFloorCents("lawn-mowing")
+    );
+  }
+
   private formatCentsForOps(cents: number): string {
     return `$${Math.round(cents / 100)}`;
+  }
+
+  private formatListForSentence(items: string[]): string {
+    if (items.length === 0) {
+      return "the requested services";
+    }
+
+    if (items.length === 1) {
+      return items[0];
+    }
+
+    if (items.length === 2) {
+      return `${items[0]} and ${items[1]}`;
+    }
+
+    return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
   }
 
   private withCustomerSelectionSummaries(
@@ -20820,6 +20986,21 @@ export class MarketplacePlatformService {
     return {
       ...validatedAddress,
       address: this.normalizeAddress(validatedAddress.address)
+    };
+  }
+
+  private async normalizeValidateAndResolveCustomerAddress(
+    address: Address,
+    customer: CustomerProfile | undefined
+  ): Promise<AddressValidationOutcome> {
+    const validatedAddress = await this.normalizeAndValidateAddress(address);
+    if (!customer) {
+      return validatedAddress;
+    }
+
+    return {
+      ...validatedAddress,
+      address: await this.resolveSavedPropertyAddress(validatedAddress.address, customer.properties)
     };
   }
 

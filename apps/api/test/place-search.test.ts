@@ -154,6 +154,69 @@ test("place search supports practical area aliases in the fallback dataset", asy
   assert.match(payload.suggestions[0].matchReason, /alias/i);
 });
 
+test("place search covers Barnegat launch pockets without auto-selecting partial guesses", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new MarketplaceController(platform);
+
+  const barnegatResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "GET",
+      path: "/api/places/search",
+      body: undefined,
+      query: new URLSearchParams({ query: "Barnegat Township" }),
+      headers: {}
+    },
+    barnegatResponse as never
+  );
+
+  assert.equal(barnegatResponse.getStatusCode(), 200);
+  const barnegatPayload = barnegatResponse.readJson();
+  assert.equal(barnegatPayload.searchMode, "local-dataset");
+  assert.equal(barnegatPayload.suggestions[0].address.city, "Barnegat");
+  assert.equal(barnegatPayload.suggestions[0].address.postalCode, "08005");
+  assert.equal(barnegatPayload.suggestions[0].matchQuality, "high");
+  assert.equal(isPlaceSuggestionSafeToAutoSelect(barnegatPayload.suggestions[0]), true);
+
+  const lbiResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "GET",
+      path: "/api/places/search",
+      body: undefined,
+      query: new URLSearchParams({ query: "lbi" }),
+      headers: {}
+    },
+    lbiResponse as never
+  );
+
+  assert.equal(lbiResponse.getStatusCode(), 200);
+  const lbiPayload = lbiResponse.readJson();
+  assert.equal(lbiPayload.suggestions[0].address.city, "Long Beach Township");
+  assert.equal(lbiPayload.suggestions[0].address.postalCode, "08008");
+  assert.equal(lbiPayload.suggestions[0].matchQuality, "high");
+  assert.match(lbiPayload.suggestions[0].matchReason, /alias/i);
+
+  const partialResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "GET",
+      path: "/api/places/search",
+      body: undefined,
+      query: new URLSearchParams({ query: "bar" }),
+      headers: {}
+    },
+    partialResponse as never
+  );
+
+  assert.equal(partialResponse.getStatusCode(), 200);
+  const partialPayload = partialResponse.readJson();
+  assert.equal(partialPayload.suggestions[0].address.city, "Barnegat");
+  assert.equal(partialPayload.suggestions[0].matchQuality, "medium");
+  assert.equal(isPlaceSuggestionSafeToAutoSelect(partialPayload.suggestions[0]), false);
+});
+
 test("place search returns no results for tiny queries", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

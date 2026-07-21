@@ -528,6 +528,8 @@ export const apiSpec = {
       post: {
         tags: ["Customers"],
         summary: "Add a saved property",
+        description:
+          "Adds a customer property and stores a normalized geocode cache key so later authenticated quote, booking, recurring-plan, and booking-address-change inputs can reuse the saved property geocode when the same address is sent again.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -892,7 +894,7 @@ export const apiSpec = {
         tags: ["Quotes"],
         summary: "Generate an instant quote with confidence scoring",
         description:
-          "Returns an automated price and duration estimate, backend-authored launch pricing policy, normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. Lower-confidence jobs also surface complexity-aware follow-up questions so larger or more intricate properties can be clarified before checkout.",
+          "Returns an automated price and duration estimate, backend-authored launch pricing policy, normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. Authenticated customer quote inputs that match a saved property reuse the saved geocode even when the client sends the address again instead of a property id. Lower-confidence jobs also surface complexity-aware follow-up questions so larger or more intricate properties can be clarified before checkout, including driveway and sidewalk measurement prompts for winter hardscape services.",
         requestBody: {
           required: true,
           content: {
@@ -926,7 +928,7 @@ export const apiSpec = {
         tags: ["Search"],
         summary: "Search for cities, towns, and service areas",
         description:
-          "Returns customer-facing place suggestions for booking/search flows. The fallback dataset now supports stronger city/state normalization, ZIP matching, and practical service-area aliases when live geocoding is unavailable.",
+          "Returns customer-facing place suggestions for booking/search flows. The fallback dataset now supports stronger city/state normalization, ZIP matching, practical service-area aliases, and Barnegat/Ocean County launch pockets when live geocoding is unavailable.",
         parameters: [
           {
             name: "query",
@@ -971,7 +973,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, provider-economics guardrails, and sponsored placement, with an explanation payload for each ranked provider. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context, availability confidence, and a backend-authored provider-economics summary for the requested category, duration, and route.",
+          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, provider-economics guardrails, and sponsored placement, with an explanation payload for each ranked provider. Multi-service requests include a backend-authored service-fit summary for complete versus partial category coverage, and provider-economics summaries account for the requested service mix, duration, and route instead of only the first matched category. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
         requestBody: {
           required: true,
           content: {
@@ -1044,7 +1046,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Run a provider scheduling assistant command",
         description:
-          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like reviewing named crew matches, accepting the best recommended crew, setting a provider-only interim route stop, rescheduling a job, messaging named crew, messaging the route leader, messaging accepted crew on booking threads, or sending a late arrival update to the customer when confirmed. Dispatch-summary commands can also surface the specific appointments creating pressure on a day or service window, and staffing recommendations include a structured staffingPlan across competing bookings with review/source guidance plus route-leader assignment guidance when accepted-crew fallback mode is waiting on one field owner. Commands can chain multiple same-booking actions together when each step is understood.",
+          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like reviewing named crew matches, accepting the best recommended crew, setting a provider-only interim route stop, starting the route with a customer-facing ETA and live tracking update, rescheduling a job, messaging named crew, messaging the route leader, messaging accepted crew on booking threads, or sending a late arrival update to the customer when confirmed. Dispatch-summary commands can also surface the specific appointments creating pressure on a day or service window, and staffing recommendations include a structured staffingPlan across competing bookings with review/source guidance plus route-leader assignment guidance when accepted-crew fallback mode is waiting on one field owner. Commands can chain multiple same-booking actions together when each step is understood.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1530,7 +1532,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Create a booking",
         description:
-          "Creates a customer booking request. Customer-facing recommendation-first flows can include recommendation session metadata here so ops telemetry can distinguish accepted first-choice recommendations from swapped bookings.",
+          "Creates a customer booking request. Customer-facing recommendation-first flows can include recommendation session metadata here so ops telemetry can distinguish accepted first-choice recommendations from swapped bookings. When an authenticated customer's custom service address matches a saved property, the booking snapshot reuses the saved property geocode rather than geocoding the same address again.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1642,6 +1644,8 @@ export const apiSpec = {
       post: {
         tags: ["Bookings"],
         summary: "Request an address change for an existing booking",
+        description:
+          "Evaluates a customer-requested booking address change and reuses saved-property geocode metadata when the requested address matches one of the customer's saved properties.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

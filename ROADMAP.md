@@ -99,19 +99,19 @@ Avoid drifting into:
 
 ### Search, Location, And Address Quality
 
-- Keep improving geocoding quality beyond the fallback dataset and optional Google APIs.
-- Cache saved-property geocodes aggressively within allowed usage rules so repeat bookings do not repeatedly geocode the same address.
+- Keep improving geocoding quality beyond the fallback dataset and optional Google APIs, now that the local fallback dataset covers the Barnegat/Ocean County launch pockets with town, ZIP, and practical alias matching.
+- Keep saved-property geocode reuse aggressive within allowed usage rules now that matching authenticated quote, booking, recurring-plan, and booking-address-change inputs reuse the saved property geocode instead of repeatedly geocoding the same address.
 - Keep anonymous location lookup session-scoped unless there is a clear product reason to save it.
-- Tune which fallback area suggestions can be auto-selected and which require customer confirmation.
-- Evaluate whether denser market coverage can improve neighborhood-aware matching confidence.
-- Continue improving quote and property-measurement confidence, especially for complex lots.
+- Keep tuning which fallback area suggestions can be auto-selected and which require customer confirmation, preserving the current guard that exact town/ZIP/known aliases are strong while partial fallback guesses need confirmation.
+- Evaluate whether denser market coverage can improve neighborhood-aware matching confidence beyond the first Barnegat, Manahawkin, Waretown, Forked River, Toms River, and Long Beach Township launch seeds.
+- Continue improving quote and property-measurement confidence beyond the current saved-property, follow-up-answer, winter hardscape driveway/sidewalk, and complex-lot confidence prompts, especially once licensed imagery or parcel data becomes available.
 
 ### Ranking And Provider Economics
 
 - Keep tuning provider ranking beyond the current score-and-explanation model.
 - Add trustworthy conversion, reliability, and fulfillment signals only after they have enough data volume.
-- Keep service-fit weighting strong for more complex multi-service requests.
-- Preserve provider-first economics, including minimum acceptable payout thinking, now surfaced in provider search as a backend-authored estimated-net-vs-payout-floor summary for the requested category, duration, and route.
+- Keep service-fit weighting strong for more complex multi-service requests, now that provider search exposes complete-versus-partial service-fit summaries and can recommend full-mix providers ahead of partial category matches.
+- Preserve provider-first economics, including minimum acceptable payout thinking, now surfaced in provider search as a backend-authored estimated-net-vs-payout-floor summary for the requested category or service mix, duration, and route.
 
 ## Priority 3: Provider Operations
 
@@ -119,7 +119,7 @@ Avoid drifting into:
 
 - Keep broadening dispatch-adjustment reasoning beyond the current single-command recommendation set, now that the assistant compares candidate relief slots, returns staffing-first guidance when crew capacity is the dominant pressure, and includes a multi-booking staffing plan for competing crew gaps.
 - Keep enriching staffing recommendations with real crew acceptance, call-off, and route-leader behavior now that the assistant returns structured review/source guidance across multiple bookings and can flag fully staffed accepted-crew-fallback jobs that still need a route leader assigned.
-- Keep broadening crew/provider coordination actions from natural-language requests now that provider assistant messages can target named crew, the route leader, or all accepted crew on a booking.
+- Keep broadening crew/provider coordination actions from natural-language requests now that provider assistant messages can target named crew, the route leader, or all accepted crew on a booking, and start-route commands preview/send backend-estimated customer ETA and live tracking copy.
 
 ### Calendar Interoperability
 

@@ -3,9 +3,9 @@
 ## Branch And Commit
 
 - Branch: `main`
-- Commit: `0f32780a6344b48f154e0d34029e86e287e9b1b8`
+- Commit: pending local backend roadmap commit from `ebdb82763e98e10dd49b56c1c5dbe0481afda01a`
 - Worktree: `/Users/patrickkopps/Documents/app`
-- Updated: `2026-07-20 22:22 EDT`
+- Updated: `2026-07-20 22:58 EDT`
 
 ## Completed Work
 
@@ -23,6 +23,7 @@
 - Added staffing-first dispatch adjustment previews when a large job's crew gap is the dominant pressure and a reschedule would not solve the shortage.
 - Added structured multi-booking provider-assistant staffing plans with review/source actions, accepted crew counts, pending-match counts, uncovered crew gaps, route-leader assignment recommendations for fully staffed accepted-crew-fallback jobs, and stable booking/category references.
 - Expanded provider-assistant crew coordination so messages can target named crew, the route leader, or all accepted crew on a booking, returning updated provider-crew conversation threads for audit/follow-up.
+- Extended provider-assistant start-route previews and executed customer notifications with backend-estimated on-my-way ETA and live tracking copy.
 - Added backend-authored notification delivery policy to ops health with active provider, missing configuration, retry support, Expo push strategy, and external alert target readiness.
 - Added backend-authored admin-and-operations access governance policy to the ops overview with admin-required actions, operations-allowed actions, authentication controls, escalation triggers, and active-admin coverage.
 - Added backend-authored recommendation insights to the ops overview from existing recommendation source metrics, covering low-volume caveats, coverage/open-window issues, weak handoffs, and strongest current recommendation surfaces.
@@ -50,7 +51,16 @@
 - Added backend-authored crew performance summaries to the crew payout ledger with clean completion, route confirmation, crew evidence, dispute/refund, provider breadth, service-category, highlight, warning, and status signals.
 - Added backend-authored crew assignment forecasts to crew match responses with upcoming accepted work, pending review, active assignment, route-leader, next assignment, workload, warning, and guidance signals.
 - Added backend-authored crew availability constraints to crew match responses with weekday, travel-radius, schedule, equipment, winter-work, active-load, route-leader-load, status, warning, and guidance signals.
-- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST for the backend behavior now in place, including support SLA escalation, provider-economics search summaries, the completed paid dispute settlement guard, the backend ops-automation runner with persisted run history, due-task notification/overdue escalation sweeps for launch operations tasks, and richer seasonal retention windows.
+- Extended backend place-search fallback coverage for the Barnegat/Ocean County launch area, including Barnegat, Manahawkin, Waretown, Forked River, Toms River, and Long Beach Township seeds.
+- Added API-level place-search coverage proving Barnegat Township and LBI aliases resolve strongly while partial Barnegat guesses remain confirmation-required instead of safe to auto-select.
+- Extended instant quote measurement follow-ups for winter hardscape services, allowing snow shoveling, snow blowing, and ice-melt salting quotes to collect customer-confirmed driveway and sidewalk measurements instead of relying only on address heuristics for duration-driving fields.
+- Added API-level quote coverage proving winter hardscape quotes ask driveway/sidewalk questions, suppress irrelevant turf/shrub prompts, preserve stable category fields, and mark clarified measurements as `customer-follow-up`.
+- Added backend-authored provider service-fit summaries to provider search so multi-service requests expose complete versus partial category coverage, matched/missing category arrays, and explanation copy without changing provider ids, original category arrays, ranking-factor keys, or recommendation session ids.
+- Tuned provider-economics search summaries so complete multi-service matches compare provider net against a service-mix payout floor instead of only the first matched category.
+- Added API-level ranking coverage proving full-service providers are recommended ahead of high-rated partial backups for bundled lawn/mulch requests, while partial matches preserve missing-category metadata.
+- Extended saved-property geocode reuse across matching authenticated quote, booking, recurring-plan, and booking-address-change inputs, while keeping anonymous location lookup unsaved/session-scoped.
+- Added API-level geocode-cache coverage proving a saved customer property geocode is reused by later quote and booking requests that send the same normalized address without a property id.
+- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST for the backend behavior now in place, including support SLA escalation, provider-economics search summaries, the completed paid dispute settlement guard, the backend ops-automation runner with persisted run history, due-task notification/overdue escalation sweeps for launch operations tasks, richer seasonal retention windows, Barnegat/Ocean County fallback place-search coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and saved-property geocode reuse across repeat customer address flows.
 
 ## Validation Results
 
@@ -75,8 +85,13 @@
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "winter and gutter season windows|spring and fall season windows|fall back to a 90-day rebook"`: passed, 203 tests after winter snow/ice and fall gutter retention coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew|provider assistant staffing plan recommends route leader assignment|provider assistant can assign and clear a crew route leader"`: passed, 204 tests after route-leader staffing-plan coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "recommendation telemetry tracks|recommendation insights by surface"`: passed, 205 tests after backend-authored recommendation insight coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "place search"`: passed, 206 tests after Barnegat/Ocean County fallback coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "instant quotes|winter hardscape"`: passed, 207 tests after winter hardscape quote-confidence coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search favors full-service fit|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 208 tests after multi-service provider search fit/economics coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "cached geocodes|saved customer properties reuse|quotes and bookings reuse"`: passed, 209 tests after quote/booking saved-property geocode reuse coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can preview and start a route|confirm-then-route"`: passed, 209 tests after start-route ETA/tracking notification coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew"`: passed, 195 tests.
-- `npm run test:api`: passed, 205 tests after backend-authored recommendation insight coverage.
+- `npm run test:api`: passed, 209 tests after start-route ETA/tracking notification coverage.
 - `git diff --check`: passed after latest checkpoint edit.
 
 ## Screenshot Evidence
@@ -86,8 +101,8 @@
 ## Known Defects
 
 - No new known defects from this batch.
-- Real live-vendor work remains blocked on credentials/accounts or provider selection: production Stripe validation, external payout rails, future bank/payment-method update surfaces, and production push/email/SMS sender setup. The API now exposes manual payout disbursement batch previews, audit-backed manual disbursement run records, sensitive-action policy contracts, launch-ops coverage action recommendations, launch-ops task records, and due-task notifications but does not move money externally or run external ops-workspace sync automatically.
+- Real live-vendor work remains blocked on credentials/accounts or provider selection: production Stripe validation, external payout rails, future bank/payment-method update surfaces, and production push/email/SMS sender setup. The API now exposes manual payout disbursement batch previews, audit-backed manual disbursement run records, sensitive-action policy contracts, launch-ops coverage action recommendations, launch-ops task records, due-task notifications, deterministic Barnegat/Ocean County place-search fallback coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and saved-property geocode reuse across repeat customer address flows but does not move money externally or run external ops-workspace sync automatically.
 
 ## Recommended Next Task
 
-Continue backend launch-readiness with provider-assistant field-operation actions that do not require vendors, or use launch retention data to design stronger loyalty/package rules once real repeat-service signals exist.
+Continue backend launch-readiness with deeper geocoding/property confidence once parcel or imagery inputs are available, or vendor/account cutover once production credentials and payout-provider decisions are ready.

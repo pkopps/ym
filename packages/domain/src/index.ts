@@ -831,14 +831,18 @@ export class InstantQuoteEngine {
     const baselineTurf = 2200 + (geocodeSignal % 4500);
     const turfAnswer = this.answerAsNumber(request.followUpAnswers, "turf_sq_ft");
     const shrubAnswer = this.answerAsNumber(request.followUpAnswers, "shrub_sq_ft");
+    const drivewayAnswer = this.answerAsNumber(request.followUpAnswers, "driveway_sq_ft");
+    const sidewalkAnswer = this.answerAsNumber(request.followUpAnswers, "sidewalk_linear_ft");
     const lotComplexityAnswer = this.answerAsString(request.followUpAnswers, "lot_complexity");
     const turfSqFt = property?.lawnSizeSqFt ?? turfAnswer ?? baselineTurf;
     const shrubBedSqFt = property?.shrubBedSqFt ?? shrubAnswer ?? Math.round(turfSqFt * 0.18);
     const drivewaySqFt =
       property?.drivewaySqFt ??
+      drivewayAnswer ??
       Math.round(420 + (Math.abs(Math.round(address.point.longitude * 1000)) % 700));
     const sidewalkLinearFt =
       property?.sidewalkLinearFt ??
+      sidewalkAnswer ??
       Math.round(24 + (Math.abs(Math.round(address.point.latitude * 1000)) % 60));
 
     return {
@@ -853,8 +857,8 @@ export class InstantQuoteEngine {
       measurementSources: {
         turfSqFt: this.resolveMeasurementSource(property?.lawnSizeSqFt, turfAnswer),
         shrubBedSqFt: this.resolveMeasurementSource(property?.shrubBedSqFt, shrubAnswer),
-        drivewaySqFt: property?.drivewaySqFt ? "saved-property" : "address-heuristic",
-        sidewalkLinearFt: property?.sidewalkLinearFt ? "saved-property" : "address-heuristic"
+        drivewaySqFt: this.resolveMeasurementSource(property?.drivewaySqFt, drivewayAnswer),
+        sidewalkLinearFt: this.resolveMeasurementSource(property?.sidewalkLinearFt, sidewalkAnswer)
       }
     };
   }
@@ -992,6 +996,30 @@ export class InstantQuoteEngine {
         ]
       },
       {
+        id: "driveway_sq_ft",
+        prompt: "About how much driveway or parking area needs winter service?",
+        inputType: "single-select" as const,
+        helperText: `Current estimate: about ${measurements.drivewaySqFt} sq ft.`,
+        options: [
+          { label: "Single-car driveway", value: "320" },
+          { label: "Two-car driveway", value: "640" },
+          { label: "Long or wide driveway", value: "1100" },
+          { label: "Large parking area", value: "1800" }
+        ]
+      },
+      {
+        id: "sidewalk_linear_ft",
+        prompt: "How much sidewalk or walkway should be cleared?",
+        inputType: "single-select" as const,
+        helperText: `Current estimate: about ${measurements.sidewalkLinearFt} linear ft.`,
+        options: [
+          { label: "Short front walk", value: "20" },
+          { label: "Typical sidewalk and walk", value: "55" },
+          { label: "Corner lot or long walk", value: "100" },
+          { label: "Large walkways", value: "160" }
+        ]
+      },
+      {
         id: "lot_complexity",
         prompt: "How intricate is the property layout?",
         inputType: "single-select" as const,
@@ -1006,6 +1034,14 @@ export class InstantQuoteEngine {
 
     return questions.filter((question) => {
       if (unanswered.has(question.id)) {
+        return false;
+      }
+
+      if (question.id === "driveway_sq_ft" || question.id === "sidewalk_linear_ft") {
+        return this.isWinterHardscapeCategory(category);
+      }
+
+      if (this.isWinterHardscapeCategory(category) && (question.id === "turf_sq_ft" || question.id === "shrub_sq_ft")) {
         return false;
       }
 
@@ -1121,6 +1157,10 @@ export class InstantQuoteEngine {
     }
 
     return "address-heuristic";
+  }
+
+  private isWinterHardscapeCategory(category: ServiceCategory): boolean {
+    return category === "snow-shoveling" || category === "snow-blowing" || category === "ice-melt-salting";
   }
 
   private formatAddressLabel(address: Address): string {
