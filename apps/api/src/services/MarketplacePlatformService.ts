@@ -6922,8 +6922,15 @@ export class MarketplacePlatformService {
     const matchedBookingId = bookingCandidates[0]?.bookingId;
     const pendingMatchCount = this.getProviderAssistantPendingMatchCount(recommendedJob);
     const uncoveredCrewGap = this.getProviderAssistantUncoveredCrewGap(recommendedJob);
+    const recommendedRouteLeader = this.selectProviderAssistantRouteLeaderCandidate(recommendedJob);
     const recommendationLead =
-      pendingMatchCount >= recommendedJob.crewGap
+      recommendedJob.crewGap <= 0 && recommendedJob.requiresRouteLeaderAssignment
+        ? `Assign ${
+            recommendedRouteLeader?.crewMemberName ?? "a route leader"
+          } as route leader for ${recommendedJob.customerName}'s ${this.providerAssistantWindowLabel(
+            getBookingServiceWindow(recommendedJob.scheduledStartIso).key
+          ).toLowerCase()} ${this.titleCaseCategory(recommendedJob.category).toLowerCase()} booking first.`
+        : pendingMatchCount >= recommendedJob.crewGap
         ? `Review pending crew matches for ${recommendedJob.customerName}'s ${this.providerAssistantWindowLabel(
             getBookingServiceWindow(recommendedJob.scheduledStartIso).key
           ).toLowerCase()} ${this.titleCaseCategory(recommendedJob.category).toLowerCase()} booking first.`
@@ -6935,7 +6942,11 @@ export class MarketplacePlatformService {
               getBookingServiceWindow(recommendedJob.scheduledStartIso).key
             ).toLowerCase()} ${this.titleCaseCategory(recommendedJob.category).toLowerCase()} booking first.`;
     const recommendationDetail =
-      pendingMatchCount >= recommendedJob.crewGap
+      recommendedJob.crewGap <= 0 && recommendedJob.requiresRouteLeaderAssignment
+        ? `Crew coverage is already full with ${recommendedJob.assignedCrewMembers} accepted crew member${
+            recommendedJob.assignedCrewMembers === 1 ? "" : "s"
+          }, but accepted-crew fallback mode still needs one field owner before the route starts.`
+        : pendingMatchCount >= recommendedJob.crewGap
         ? `It still shows a crew gap of ${recommendedJob.crewGap}, but ${pendingMatchCount} pending match${
             pendingMatchCount === 1 ? "" : "es"
           } already exist and could close that gap without sourcing new people.`
@@ -9307,6 +9318,80 @@ export class MarketplacePlatformService {
         actionLabel: "Book aeration again",
         recommendedCadence: "one-time"
       };
+    }
+
+    if (
+      booking.category === "gutter-cleaning" &&
+      this.isFallGutterSeasonWindow(now) &&
+      daysSinceCompleted >= 150 &&
+      daysSinceCompleted <= 430
+    ) {
+      return {
+        id: `${booking.id}:gutter-cleaning-fall-prep`,
+        sourceBookingId: booking.id,
+        propertyId: booking.servicePropertyId,
+        providerId: booking.providerId,
+        providerName,
+        category: booking.category,
+        completedAt: booking.completedAt,
+        daysSinceCompleted,
+        completedCategoryCount,
+        sameProviderCompletedCount,
+        loyaltySegment,
+        lastServiceGapDays,
+        kind: "rebook-service",
+        strategyKey: "gutter-cleaning-fall-prep",
+        trigger: "fall-season-window",
+        title: "Clear gutters before late-season weather",
+        message: `${providerName} completed the last gutter cleaning on ${this.formatShortDate(booking.completedAt)}. Late fall is a good time to clear rooflines before leaf buildup turns into overflow, ice, or messy winter runoff.${loyaltySegment === "provider-loyal" ? ` This property already has ${sameProviderCompletedCount} gutter visits with the same provider.` : ""}`,
+        actionLabel: "Book gutter cleaning again",
+        recommendedCadence: "one-time"
+      };
+    }
+
+    if (this.isWinterRetentionCategory(booking.category) && this.isWinterSeasonWindow(now)) {
+      const snowStrategyKey =
+        booking.category === "snow-blowing"
+          ? "snow-blowing-winter-ready"
+          : booking.category === "ice-melt-salting"
+            ? "ice-melt-salting-winter-ready"
+            : "snow-shoveling-winter-ready";
+      const serviceName =
+        booking.category === "ice-melt-salting"
+          ? "ice melt salting"
+          : booking.category === "snow-blowing"
+            ? "snow blowing"
+            : "snow shoveling";
+
+      if (daysSinceCompleted >= 7 && daysSinceCompleted <= 430) {
+        return {
+          id: `${booking.id}:${snowStrategyKey}`,
+          sourceBookingId: booking.id,
+          propertyId: booking.servicePropertyId,
+          providerId: booking.providerId,
+          providerName,
+          category: booking.category,
+          completedAt: booking.completedAt,
+          daysSinceCompleted,
+          completedCategoryCount,
+          sameProviderCompletedCount,
+          loyaltySegment,
+          lastServiceGapDays,
+          kind: "rebook-service",
+          strategyKey: snowStrategyKey,
+          trigger: "winter-season-window",
+          title:
+            booking.category === "ice-melt-salting"
+              ? "Keep ice treatment ready"
+              : "Keep winter service ready",
+          message: `${providerName} handled the last ${serviceName} visit on ${this.formatShortDate(booking.completedAt)}. During the winter window, GreenRain can re-check provider availability and reload a fresh recommendation before the next storm or freeze.${loyaltySegment === "provider-loyal" ? ` You've already trusted ${providerName} for ${sameProviderCompletedCount} winter visits here.` : ""}`,
+          actionLabel:
+            booking.category === "ice-melt-salting"
+              ? "Book ice treatment again"
+              : `Book ${serviceName} again`,
+          recommendedCadence: "one-time"
+        };
+      }
     }
 
     if (daysSinceCompleted >= 90) {
@@ -12868,6 +12953,21 @@ export class MarketplacePlatformService {
       recentOpsAuthenticationEvents: opsAccessAudit.recentOpsAuthenticationEvents,
       recentOpsSignIns: opsAccessAudit.recentOpsSignIns,
       recentFailedOpsSignIns: opsAccessAudit.recentFailedOpsSignIns,
+      recommendationInsights: this.buildRecommendationInsights({
+        providerSearches: overview.providerSearches,
+        providerSearchesNoResults: overview.providerSearchesNoResults,
+        providerSearchesNoOpenWindows: overview.providerSearchesNoOpenWindows,
+        providerSearchCoverageRate: overview.providerSearchCoverageRate,
+        providerSearchOpenWindowRate: overview.providerSearchOpenWindowRate,
+        recommendationViews: overview.recommendationViews,
+        recommendationBookingIntents: overview.recommendationBookingIntents,
+        recommendationBookingIntentRate: overview.recommendationBookingIntentRate,
+        acceptedRecommendations: overview.acceptedRecommendations,
+        swappedRecommendations: overview.swappedRecommendations,
+        recommendationAcceptanceRate: overview.recommendationAcceptanceRate,
+        recommendationSwapRate: overview.recommendationSwapRate,
+        sourceMetrics: overview.recommendationMetricsBySource
+      }),
       retentionMetricsByProvider,
       retentionInsights: this.buildRetentionInsights({
         promptViews: overview.retentionPromptViews,
@@ -12877,6 +12977,153 @@ export class MarketplacePlatformService {
         providerMetrics: retentionMetricsByProvider
       })
     };
+  }
+
+  private buildRecommendationInsights(input: {
+    providerSearches: number;
+    providerSearchesNoResults: number;
+    providerSearchesNoOpenWindows: number;
+    providerSearchCoverageRate: number;
+    providerSearchOpenWindowRate: number;
+    recommendationViews: number;
+    recommendationBookingIntents: number;
+    recommendationBookingIntentRate: number;
+    acceptedRecommendations: number;
+    swappedRecommendations: number;
+    recommendationAcceptanceRate: number;
+    recommendationSwapRate: number;
+    sourceMetrics: ObservabilityOverview["recommendationMetricsBySource"];
+  }): ObservabilityOverview["recommendationInsights"] {
+    const insights: ObservabilityOverview["recommendationInsights"] = [];
+    const hasLowVolume = input.recommendationViews < 10 || input.recommendationBookingIntents < 3;
+
+    insights.push({
+      kind: "volume",
+      status: hasLowVolume ? "needs-volume" : "working",
+      title: hasLowVolume
+        ? "Recommendation signal still needs volume"
+        : "Recommendation signal has enough early volume",
+      detail: `${input.recommendationViews} recommendation view${
+        input.recommendationViews === 1 ? "" : "s"
+      }, ${input.recommendationBookingIntents} booking intent${
+        input.recommendationBookingIntents === 1 ? "" : "s"
+      }, and ${input.acceptedRecommendations + input.swappedRecommendations} booking selection${
+        input.acceptedRecommendations + input.swappedRecommendations === 1 ? "" : "s"
+      } are currently attributed.`,
+      recommendedAction: hasLowVolume
+        ? "Keep tracking by surface, but treat acceptance, swap, and reveal rates as directional until at least 10 views and 3 booking intents exist."
+        : "Review source-level acceptance, swap, and handoff rates weekly before changing ranking weights or exposing more alternatives.",
+      recommendationViews: input.recommendationViews,
+      recommendationBookingIntents: input.recommendationBookingIntents,
+      acceptedRecommendations: input.acceptedRecommendations,
+      swappedRecommendations: input.swappedRecommendations,
+      rate: input.recommendationAcceptanceRate
+    });
+
+    const weakestCoverage = [...input.sourceMetrics]
+      .filter((metric) => metric.providerSearches >= 2)
+      .sort((left, right) => {
+        const openWindowDelta = left.providerSearchOpenWindowRate - right.providerSearchOpenWindowRate;
+        if (openWindowDelta !== 0) {
+          return openWindowDelta;
+        }
+
+        return left.providerSearchCoverageRate - right.providerSearchCoverageRate;
+      })[0];
+    if (
+      weakestCoverage &&
+      (weakestCoverage.providerSearchCoverageRate < 0.8 || weakestCoverage.providerSearchOpenWindowRate < 0.7)
+    ) {
+      insights.push({
+        kind: "coverage",
+        status: "watch",
+        title: `${weakestCoverage.requestSource} recommendation coverage needs attention`,
+        detail: `${weakestCoverage.providerSearches} search session${
+          weakestCoverage.providerSearches === 1 ? "" : "s"
+        } show ${weakestCoverage.providerSearchCoverageRate.toFixed(2)} coverage and ${weakestCoverage.providerSearchOpenWindowRate.toFixed(2)} open-window rate.`,
+        recommendedAction:
+          "Review ZIP/category supply for this source before sending more launch traffic or relaxing fallback-area confidence.",
+        requestSource: weakestCoverage.requestSource,
+        providerSearches: weakestCoverage.providerSearches,
+        recommendationViews: weakestCoverage.recommendationViews,
+        rate: weakestCoverage.providerSearchOpenWindowRate
+      });
+    }
+
+    const weakHandoff = [...input.sourceMetrics]
+      .filter((metric) => metric.recommendationViews >= 2)
+      .filter(
+        (metric) =>
+          metric.recommendationBookingIntentRate < 0.35 ||
+          metric.recommendationDismissalRate >= 0.35 ||
+          metric.recommendationSwapRate >= 0.35
+      )
+      .sort((left, right) => {
+        const dismissalDelta = right.recommendationDismissalRate - left.recommendationDismissalRate;
+        if (dismissalDelta !== 0) {
+          return dismissalDelta;
+        }
+
+        return left.recommendationBookingIntentRate - right.recommendationBookingIntentRate;
+      })[0];
+    if (weakHandoff) {
+      insights.push({
+        kind: "handoff",
+        status: "watch",
+        title: `${weakHandoff.requestSource} recommendation handoff is weak`,
+        detail: `${weakHandoff.recommendationViews} view${
+          weakHandoff.recommendationViews === 1 ? "" : "s"
+        } produced ${weakHandoff.recommendationBookingIntents} booking intent${
+          weakHandoff.recommendationBookingIntents === 1 ? "" : "s"
+        }, ${weakHandoff.recommendationDismissals} dismissal${
+          weakHandoff.recommendationDismissals === 1 ? "" : "s"
+        }, and ${weakHandoff.swappedRecommendations} swap${weakHandoff.swappedRecommendations === 1 ? "" : "s"}.`,
+        recommendedAction:
+          "Inspect recommendation explanation, price confidence, and alternative-provider reveal behavior for this surface before changing ranking.",
+        requestSource: weakHandoff.requestSource,
+        recommendationViews: weakHandoff.recommendationViews,
+        recommendationBookingIntents: weakHandoff.recommendationBookingIntents,
+        acceptedRecommendations: weakHandoff.acceptedRecommendations,
+        swappedRecommendations: weakHandoff.swappedRecommendations,
+        rate: weakHandoff.recommendationBookingIntentRate
+      });
+    }
+
+    const strongestSource = [...input.sourceMetrics]
+      .filter((metric) => metric.recommendationViews >= 2 || metric.recommendationBookingIntents > 0)
+      .sort((left, right) => {
+        const acceptanceDelta = right.recommendationAcceptanceRate - left.recommendationAcceptanceRate;
+        if (acceptanceDelta !== 0) {
+          return acceptanceDelta;
+        }
+
+        return right.recommendationBookingIntentRate - left.recommendationBookingIntentRate;
+      })[0];
+    if (strongestSource) {
+      insights.push({
+        kind: "surface",
+        status: strongestSource.recommendationAcceptanceRate >= 0.5 ? "working" : "needs-volume",
+        title: `${strongestSource.requestSource} is the strongest recommendation surface`,
+        detail: `${strongestSource.recommendationViews} view${
+          strongestSource.recommendationViews === 1 ? "" : "s"
+        } produced ${strongestSource.acceptedRecommendations} accepted recommendation${
+          strongestSource.acceptedRecommendations === 1 ? "" : "s"
+        } and ${strongestSource.swappedRecommendations} swap${strongestSource.swappedRecommendations === 1 ? "" : "s"}.`,
+        recommendedAction:
+          strongestSource.recommendationAcceptanceRate >= 0.5
+            ? "Keep this source active and compare whether stronger traffic volume preserves first-choice acceptance."
+            : "Keep collecting source-level data before using this surface to tune ranking or alternative-provider exposure.",
+        requestSource: strongestSource.requestSource,
+        providerSearches: strongestSource.providerSearches,
+        recommendationViews: strongestSource.recommendationViews,
+        recommendationBookingIntents: strongestSource.recommendationBookingIntents,
+        acceptedRecommendations: strongestSource.acceptedRecommendations,
+        swappedRecommendations: strongestSource.swappedRecommendations,
+        rate: strongestSource.recommendationAcceptanceRate
+      });
+    }
+
+    return insights.slice(0, 4);
   }
 
   private buildRetentionInsights(input: {
@@ -14723,7 +14970,7 @@ export class MarketplacePlatformService {
   ): ProviderStaffingJobSummary[] {
     return staffing.jobs
       .filter((job) => {
-        if (job.crewGap <= 0) {
+        if (job.crewGap <= 0 && !job.requiresRouteLeaderAssignment) {
           return false;
         }
 
@@ -14745,6 +14992,10 @@ export class MarketplacePlatformService {
           return gapDelta;
         }
 
+        if (left.requiresRouteLeaderAssignment !== right.requiresRouteLeaderAssignment) {
+          return right.requiresRouteLeaderAssignment ? 1 : -1;
+        }
+
         return new Date(left.scheduledStartIso).getTime() - new Date(right.scheduledStartIso).getTime();
       });
   }
@@ -14756,10 +15007,13 @@ export class MarketplacePlatformService {
       const pendingMatchCount = this.getProviderAssistantPendingMatchCount(job);
       const uncoveredCrewGap = this.getProviderAssistantUncoveredCrewGap(job);
       const acceptedCrewCount = job.matches.filter((match) => match.status === "accepted").length;
+      const recommendedRouteLeader = this.selectProviderAssistantRouteLeaderCandidate(job);
       const window = getBookingServiceWindow(job.scheduledStartIso);
       const recommendedAction =
         job.crewGap <= 0
-          ? "covered"
+          ? job.requiresRouteLeaderAssignment
+            ? "assign-route-leader"
+            : "covered"
           : pendingMatchCount >= job.crewGap
             ? "review-pending-matches"
             : pendingMatchCount > 0
@@ -14786,6 +15040,16 @@ export class MarketplacePlatformService {
         reasons.push("Current accepted and assigned crew cover the planned requirement.");
       }
 
+      if (job.requiresRouteLeaderAssignment) {
+        reasons.push(
+          recommendedRouteLeader
+            ? `Assign ${recommendedRouteLeader.crewMemberName} as route leader so the accepted crew has one field owner.`
+            : "Assign a route leader before the accepted crew starts travel."
+        );
+      } else if (job.assignedRouteLeaderCrewMemberName) {
+        reasons.push(`${job.assignedRouteLeaderCrewMemberName} is already set as route leader.`);
+      }
+
       return {
         bookingId: job.bookingId,
         customerName: job.customerName,
@@ -14800,6 +15064,12 @@ export class MarketplacePlatformService {
         pendingMatchCount,
         crewGap: job.crewGap,
         uncoveredCrewGap,
+        routeLeaderRequired: job.requiresRouteLeaderAssignment,
+        routeLeaderAssigned: Boolean(job.assignedRouteLeaderCrewMemberId),
+        assignedRouteLeaderCrewMemberId: job.assignedRouteLeaderCrewMemberId,
+        assignedRouteLeaderCrewMemberName: job.assignedRouteLeaderCrewMemberName,
+        recommendedRouteLeaderCrewMemberId: recommendedRouteLeader?.crewMemberId,
+        recommendedRouteLeaderCrewMemberName: recommendedRouteLeader?.crewMemberName,
         recommendedAction,
         reasons
       };
@@ -14818,12 +15088,18 @@ export class MarketplacePlatformService {
       (item) =>
         item.recommendedAction === "review-pending-matches" || item.recommendedAction === "review-pending-then-source"
     ).length;
+    const routeLeaderCount = plan.filter((item) => item.recommendedAction === "assign-route-leader").length;
     const planParts = [
       sourceCount > 0
         ? `${sourceCount} job${sourceCount === 1 ? "" : "s"} still need${sourceCount === 1 ? "s" : ""} sourcing`
         : undefined,
       reviewCount > 0
         ? `${reviewCount} job${reviewCount === 1 ? "" : "s"} should review pending matches`
+        : undefined,
+      routeLeaderCount > 0
+        ? `${routeLeaderCount} job${routeLeaderCount === 1 ? "" : "s"} need${
+            routeLeaderCount === 1 ? "s" : ""
+          } a route leader`
         : undefined
     ].filter((part): part is string => Boolean(part));
 
@@ -14840,6 +15116,25 @@ export class MarketplacePlatformService {
 
   private getProviderAssistantUncoveredCrewGap(job: ProviderStaffingJobSummary): number {
     return Math.max(job.crewGap - this.getProviderAssistantPendingMatchCount(job), 0);
+  }
+
+  private selectProviderAssistantRouteLeaderCandidate(
+    job: ProviderStaffingJobSummary
+  ): CrewMatchCandidate | undefined {
+    return [...job.matches]
+      .filter((match) => match.status === "accepted")
+      .sort((left, right) => {
+        const scoreDelta = (right.recommendationScore ?? 0) - (left.recommendationScore ?? 0);
+        if (scoreDelta !== 0) {
+          return scoreDelta;
+        }
+
+        if (left.autoAccepted !== right.autoAccepted) {
+          return left.autoAccepted ? -1 : 1;
+        }
+
+        return left.distanceMiles - right.distanceMiles;
+      })[0];
   }
 
   private selectProviderAssistantDispatchFocusWindow(
@@ -19599,6 +19894,20 @@ export class MarketplacePlatformService {
   private isFallSeasonWindow(date: Date): boolean {
     const month = date.getMonth();
     return month >= 8 && month <= 10;
+  }
+
+  private isFallGutterSeasonWindow(date: Date): boolean {
+    const month = date.getMonth();
+    return month >= 9 && month <= 10;
+  }
+
+  private isWinterSeasonWindow(date: Date): boolean {
+    const month = date.getMonth();
+    return month === 10 || month === 11 || month === 0 || month === 1;
+  }
+
+  private isWinterRetentionCategory(category: Booking["category"]): boolean {
+    return category === "snow-shoveling" || category === "snow-blowing" || category === "ice-melt-salting";
   }
 
   private interpolatePoint(

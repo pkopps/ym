@@ -20,11 +20,11 @@ main
 
 ## Current Commit
 
-bcd755f31b037880bc6638a711b25623784e8988
+0f32780a6344b48f154e0d34029e86e287e9b1b8
 
 ## Last Updated
 
-2026-07-20 00:00 EDT
+2026-07-20 22:22 EDT
 
 ## Completed Since Previous Checkpoint
 
@@ -58,17 +58,19 @@ bcd755f31b037880bc6638a711b25623784e8988
 - Added an ops-authenticated backend automation runner at `POST /api/observability/ops-automation/run-due` that orchestrates provider onboarding actions, stale support ticket SLA escalations, launch-operations due-task notifications, and launch-operations overdue-task escalations with stable sweep keys, shared `asOfIso`, dry-run support, nested sweep payloads, and aggregate notification counts for schedulers or ops-workspace integrations.
 - Persisted each backend ops-automation runner invocation as an actor-stamped audit record with requested sweep keys, nested sweep results, dry-run state, aggregate notification counts, and a stable run id, exposed through the ops-only `GET /api/observability/ops-automation/runs` history route.
 - Added backend-authored retention insights to the ops overview, interpreting low-volume caveats, leading strategies, source handoff quality, and provider-led repeat booking patterns from existing retention metrics.
+- Added backend-authored recommendation insights to the ops overview, interpreting low-volume caveats, coverage/open-window issues, weak recommendation handoffs, and the strongest current recommendation surface from existing session-based source metrics.
+- Extended backend-authored customer retention opportunities with fall gutter-prep reminders and winter snow/ice readiness reminders for snow shoveling, snow blowing, and ice-melt salting, keeping those services in the recommendation-first rebook flow instead of falling through to generic 90-day prompts during seasonal windows.
 - Added backend-authored crew earnings and attendance summaries to the crew payout ledger, covering completed assignment count, ready/scheduled/on-hold/reversed earnings, call-off history, attendance rate, and reliability status.
 - Added a backend-authored crew performance summary to the crew payout ledger, covering completed assignments, clean completions, route confirmation, crew evidence contribution, dispute/refund signals, provider breadth, service categories, highlights, warnings, and performance status.
 - Added a backend-authored crew assignment forecast to crew match responses, covering upcoming accepted work, pending provider review, active assignments, route-leader assignments, next scheduled provider/category/status, workload band, warnings, and guidance.
 - Added backend-authored crew availability constraints to crew match responses, covering available/unavailable weekdays, travel radius, schedule preference, equipment and winter-work limits, active accepted load, route-leader load, status, warnings, and guidance.
-- Added structured provider-assistant staffing plans across competing bookings, including review/source recommendations, crew gaps, pending-match counts, accepted crew counts, and machine-readable booking references.
+- Added structured provider-assistant staffing plans across competing bookings, including review/source recommendations, crew gaps, pending-match counts, accepted crew counts, route-leader assignment recommendations for fully staffed accepted-crew-fallback jobs, and machine-readable booking references.
 - Expanded provider-assistant crew coordination so natural-language messages can target named crew, the route leader, or all accepted crew on a booking, with updated conversation threads returned for audit/follow-up.
-- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST to reflect the backend payout policy, manual payout disbursement batch previews, sensitive-action re-auth policy, incident-history verification behavior, provider-assistant dispatch/staffing/coordination improvements, notification delivery policy, ops access governance policy, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions and ops resubmission notifications, provider business controls, launch operations policy with coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner, persisted automation run history, retention insights, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries.
+- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST to reflect the backend payout policy, manual payout disbursement batch previews, sensitive-action re-auth policy, incident-history verification behavior, provider-assistant dispatch/staffing/coordination improvements, notification delivery policy, ops access governance policy, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions and ops resubmission notifications, provider business controls, launch operations policy with coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner, persisted automation run history, recommendation insights, retention insights, richer seasonal retention windows, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries.
 
 ## Currently In Progress
 
-- Backend roadmap hardening continued through payout policy, manual disbursement batch previews, audit-backed manual disbursement run records, sensitive-action re-auth policy, provider assistant dispatch, multi-booking staffing plans, richer crew coordination targets, notification delivery policy, ops access governance, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions plus the new due-action sweep, ops resubmission notifications, provider business controls, launch operations policy with ZIP-level coverage pockets, coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner with persisted run history, retention insights, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries; remaining work is mostly vendor/account-bound or dependent on external scheduler/workspace decisions.
+- Backend roadmap hardening continued through payout policy, manual disbursement batch previews, audit-backed manual disbursement run records, sensitive-action re-auth policy, provider assistant dispatch, multi-booking staffing plans with route-leader assignment guidance, richer crew coordination targets, notification delivery policy, ops access governance, launch pricing policy, provider-economics search ranking summaries, support provider-coordination templates, completed paid dispute settlement guard, stale support ticket escalation sweep, provider onboarding automation actions plus the new due-action sweep, ops resubmission notifications, provider business controls, launch operations policy with ZIP-level coverage pockets, coverage action recommendations, task records, due-task notification sweep, overdue escalation sweep, backend ops-automation runner with persisted run history, recommendation insights, retention insights, fall gutter-prep retention, winter snow/ice retention, crew availability constraints, crew assignment forecasting, and crew earnings/attendance/performance summaries; remaining work is mostly vendor/account-bound, dependent on external scheduler/workspace decisions, or waiting for real launch-volume signals.
 
 ## Remaining Work
 
@@ -78,9 +80,11 @@ bcd755f31b037880bc6638a711b25623784e8988
 - Final business approval remains for the first-customer launch offer and introductory pricing posture; the API now exposes the backend policy and provider economics guardrails.
 - More granular internal RBAC remains for later once the team needs roles beyond the current admin/operations model.
 - Future provider bank-account, payout-account, and customer payment-method update routes still need implementation when those external account surfaces are built; `/api/auth/me` now exposes the fresh-session policy contract they should use.
-- Provider assistant coordination can still expand into more provider/crew field-operation actions as launch workflows settle; staffing plans now cover competing bookings, accepted-crew message fanout works, and live acceptance/call-off/route-leader weighting can deepen with more production data.
+- Provider assistant coordination can still expand into more provider/crew field-operation actions as launch workflows settle; staffing plans now cover competing bookings and missing route-leader assignment, accepted-crew message fanout works, and live acceptance/call-off/route-leader weighting can deepen with more production data.
 - Provider onboarding can still advance from contract-backed automation actions, the due-action notification sweep, and ops resubmission notifications into deeper live workflow automation once the exact ops/provider handoff flow is finalized.
 - Launch operations can still advance into production scheduling and workspace sync once ops chooses where the backend automation runner should be called from, how often it should run, and which external workspace owns task handoff/outreach after the API returns sweep results.
+- Retention can still advance into stronger loyalty/package rules once launch volume shows which seasonal services should become recurring habits instead of one-time prompts.
+- Recommendation observability can still advance into deeper time-based cohorts once launch traffic volume is high enough to make cohort comparisons reliable.
 
 ## Blockers
 
@@ -103,7 +107,7 @@ bcd755f31b037880bc6638a711b25623784e8988
 - `POST /api/providers/reviews/escalate` now reaches its handler through real server routing.
 - Provider verification queue/profile summaries now include `incident-history` guidance.
 - Provider approval override requirements now account for dispute/refund/active-exception history.
-- Provider assistant dispatch adjustment previews now rank cross-day relief slots, return staffing-first guidance for capacity-driven pressure, include multi-booking staffing plans, and can message the route leader or all accepted crew from natural language.
+- Provider assistant dispatch adjustment previews now rank cross-day relief slots, return staffing-first guidance for capacity-driven pressure, include multi-booking staffing plans with route-leader assignment guidance, and can message the route leader or all accepted crew from natural language.
 - `GET /api/notifications/ops/health` now returns `deliveryPolicy` alongside delivery counts, channel health, failures, and alerts.
 - `GET /api/observability/overview` now returns `opsAccessPolicy` alongside access-health counts, alerts, and recent internal auth/access events.
 - `GET /api/observability/overview` now also returns `launchOperationsPolicy` for launch scenario rules, service-quality standards, intervention rules, escalation triggers, and live pressure warnings.
@@ -113,6 +117,8 @@ bcd755f31b037880bc6638a711b25623784e8988
 - `POST /api/observability/launch-operations/tasks/update` now updates assignment, status, operator notes, and completion notes for launch-operations tasks.
 - `POST /api/observability/launch-operations/tasks/notify-due` now runs an idempotent due-task notification sweep for launch-operations task records.
 - `GET /api/observability/overview` now also returns `retentionInsights` alongside retention strategy/source/provider metrics.
+- `GET /api/observability/overview` now also returns `recommendationInsights` alongside recommendation source metrics, preserving the existing raw counters while adding backend-authored interpretation.
+- `GET /api/customers/retention-opportunities` now returns specific fall gutter-prep and winter snow/ice readiness strategies during seasonal windows, preserving the existing response shape and machine-readable opportunity ids/strategy keys/triggers.
 - `POST /api/quotes/instant` and `GET /api/providers/public-overview` now return `launchPricingPolicy` without changing stable quote category or estimated-price fields.
 - `GET /api/support/ops/tickets` now returns `providerCoordinationTemplates` for provider-side exception and service-quality follow-up.
 - `GET /api/providers/verification/queue` and `GET /api/providers/profile` now return `onboardingPlan` with backend-authored provider onboarding automation state plus stable `automationActions`.
@@ -159,18 +165,21 @@ bcd755f31b037880bc6638a711b25623784e8988
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops automation runner|ops overview route requires|controller handler paths"`: passed, 200 tests after backend ops-automation runner coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "paid completed disputes|completed disputed bookings|captured disputed bookings|ops cannot restore a disputed booking|controller handler paths"`: passed, 201 tests after completed paid dispute settlement-guard coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 202 tests after provider-economics ranking coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "winter and gutter season windows|spring and fall season windows|fall back to a 90-day rebook"`: passed, 203 tests after winter snow/ice and fall gutter retention coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew|provider assistant staffing plan recommends route leader assignment|provider assistant can assign and clear a crew route leader"`: passed, 204 tests after route-leader staffing-plan coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "recommendation telemetry tracks|recommendation insights by surface"`: passed, 205 tests after backend-authored recommendation insight coverage.
 - `npm run prisma:generate`: passed.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "auth controller registers, logs in, and returns the current user|provider payout setting changes require a fresh provider session"`: passed, 196 tests.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider profiles include backend-authored verification next steps|rejected providers are automatically resubmitted when they update business profile details"`: passed, 196 tests.
 - `npm run typecheck`: passed.
-- `npm run test:api`: passed, 202 tests after provider-economics ranking coverage.
+- `npm run test:api`: passed, 205 tests after backend-authored recommendation insight coverage.
 - `git diff --check`: passed.
 
 ## Test/Build/Lint/Type-Check Results
 
 - `npm run typecheck`: passed.
-- `npm run test:api`: passed, 202 tests.
-- `git diff --check`: passed.
+- `npm run test:api`: passed, 205 tests.
+- `git diff --check`: passed after latest checkpoint edit.
 
 ## Browser Workflows Checked
 
@@ -187,4 +196,4 @@ bcd755f31b037880bc6638a711b25623784e8988
 
 ## Recommended Next Task
 
-Continue backend launch-readiness with external payout rail integration once payout-rail direction is chosen, or deepen provider onboarding workflow automation beyond the current notification-backed sweep once the ops/provider handoff details are finalized.
+Continue backend launch-readiness with provider-assistant field-operation actions that do not require vendors, or use launch retention data to design stronger loyalty/package rules once real repeat-service signals exist.

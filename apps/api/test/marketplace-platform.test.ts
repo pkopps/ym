@@ -2453,6 +2453,117 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
   assert.equal(acceptedRecommendationEvent?.properties.attributionLandingPath, "/barnegat-nj/lawn-mowing");
 });
 
+test("observability overview includes backend-authored recommendation insights by surface", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
+  const occurredAt = new Date().toISOString();
+
+  const recordRecommendationEvent = (
+    name: string,
+    recommendationSessionId: string,
+    requestSource: string
+  ) => {
+    platform.createAnalyticsEvent({
+      id: crypto.randomUUID(),
+      name,
+      actorId: `actor-${recommendationSessionId}`,
+      occurredAt,
+      properties: {
+        recommendationSessionId,
+        requestSource
+      }
+    });
+  };
+
+  for (const sessionId of ["public-1", "public-2"]) {
+    recordRecommendationEvent(MarketplaceTelemetryEventCatalog.providerSearchPerformed, sessionId, "public-web-listings");
+    recordRecommendationEvent(MarketplaceTelemetryEventCatalog.recommendationPresented, sessionId, "public-web-listings");
+    recordRecommendationEvent(
+      MarketplaceTelemetryEventCatalog.recommendationBookingIntent,
+      sessionId,
+      "public-web-listings"
+    );
+    recordRecommendationEvent(MarketplaceTelemetryEventCatalog.recommendationAccepted, sessionId, "public-web-listings");
+  }
+
+  for (const sessionId of ["dashboard-1", "dashboard-2"]) {
+    recordRecommendationEvent(
+      MarketplaceTelemetryEventCatalog.providerSearchPerformed,
+      sessionId,
+      "customer-web-dashboard"
+    );
+    recordRecommendationEvent(
+      MarketplaceTelemetryEventCatalog.recommendationPresented,
+      sessionId,
+      "customer-web-dashboard"
+    );
+    recordRecommendationEvent(
+      MarketplaceTelemetryEventCatalog.recommendationDismissed,
+      sessionId,
+      "customer-web-dashboard"
+    );
+  }
+  recordRecommendationEvent(
+    MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+    "dashboard-1",
+    "customer-web-dashboard"
+  );
+  recordRecommendationEvent(
+    MarketplaceTelemetryEventCatalog.recommendationSwapped,
+    "dashboard-1",
+    "customer-web-dashboard"
+  );
+
+  for (const sessionId of ["mobile-1", "mobile-2"]) {
+    recordRecommendationEvent(
+      MarketplaceTelemetryEventCatalog.providerSearchPerformed,
+      sessionId,
+      "customer-mobile-book"
+    );
+    recordRecommendationEvent(
+      MarketplaceTelemetryEventCatalog.providerSearchNoOpenWindows,
+      sessionId,
+      "customer-mobile-book"
+    );
+  }
+
+  const overview = await platform.getObservabilityOverview();
+
+  assert.equal(overview.recommendationViews, 4);
+  assert.equal(overview.recommendationBookingIntents, 2);
+  assert.equal(overview.acceptedRecommendations, 2);
+  assert.equal(overview.swappedRecommendations, 1);
+
+  const volumeInsight = overview.recommendationInsights.find((insight) => insight.kind === "volume");
+  assert.equal(volumeInsight?.status, "needs-volume");
+  assert.equal(volumeInsight?.recommendationViews, 4);
+  assert.equal(volumeInsight?.recommendationBookingIntents, 2);
+  assert.match(volumeInsight?.recommendedAction ?? "", /10 views and 3 booking intents/i);
+
+  const coverageInsight = overview.recommendationInsights.find((insight) => insight.kind === "coverage");
+  assert.equal(coverageInsight?.requestSource, "customer-mobile-book");
+  assert.equal(coverageInsight?.status, "watch");
+  assert.equal(coverageInsight?.providerSearches, 2);
+  assert.equal(coverageInsight?.rate, 0);
+  assert.match(coverageInsight?.recommendedAction ?? "", /ZIP\/category supply/i);
+
+  const handoffInsight = overview.recommendationInsights.find((insight) => insight.kind === "handoff");
+  assert.equal(handoffInsight?.requestSource, "customer-web-dashboard");
+  assert.equal(handoffInsight?.status, "watch");
+  assert.equal(handoffInsight?.recommendationViews, 2);
+  assert.equal(handoffInsight?.recommendationBookingIntents, 0);
+  assert.equal(handoffInsight?.swappedRecommendations, 1);
+  assert.match(handoffInsight?.detail ?? "", /2 dismissals/i);
+
+  const surfaceInsight = overview.recommendationInsights.find((insight) => insight.kind === "surface");
+  assert.equal(surfaceInsight?.requestSource, "public-web-listings");
+  assert.equal(surfaceInsight?.status, "working");
+  assert.equal(surfaceInsight?.acceptedRecommendations, 2);
+  assert.equal(surfaceInsight?.rate, 1);
+  assert.match(surfaceInsight?.title ?? "", /strongest recommendation surface/i);
+});
+
 test("launch leads capture attribution and require owners, follow-up dates, and closed outcomes", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const analytics = new DataEngineeringLogger();
@@ -3882,6 +3993,138 @@ test("customer retention opportunities use spring and fall season windows for se
     assert.equal(aerationOpportunity?.strategyKey, "aeration-fall-return");
     assert.equal(aerationOpportunity?.trigger, "fall-season-window");
     assert.match(aerationOpportunity?.title ?? "", /fall aeration/i);
+  });
+});
+
+test("customer retention opportunities use winter and gutter season windows for seasonal services", async () => {
+  await withMockedNow("2026-12-10T12:00:00.000Z", async () => {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-retention-winter@example.com",
+      password: "Password123!",
+      phone: "555-0200",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress()
+    });
+
+    const providers = await repository.listProviders();
+    const shovelProvider = providers.find((provider) => provider.categories.includes("snow-shoveling"));
+    const blowerProvider = providers.find((provider) => provider.categories.includes("snow-blowing"));
+    const saltingProvider = providers.find((provider) => provider.categories.includes("ice-melt-salting"));
+    assert.ok(shovelProvider);
+    assert.ok(blowerProvider);
+    assert.ok(saltingProvider);
+
+    const snowShovelingBooking = await platform.createBooking(customer.id, {
+      providerId: shovelProvider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "snow-shoveling",
+      scheduledStartIso: futureIso(72),
+      scheduledEndIso: futureIso(73),
+      notes: "Clear the walkway",
+      totalCents: 4200
+    });
+    await repository.updateBooking(snowShovelingBooking.id, {
+      status: "completed",
+      completedAt: "2026-01-20T12:00:00.000Z"
+    });
+
+    const snowBlowingBooking = await platform.createBooking(customer.id, {
+      providerId: blowerProvider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "snow-blowing",
+      scheduledStartIso: futureIso(96),
+      scheduledEndIso: futureIso(97),
+      notes: "Clear the driveway",
+      totalCents: 6800
+    });
+    await repository.updateBooking(snowBlowingBooking.id, {
+      status: "completed",
+      completedAt: "2026-01-24T12:00:00.000Z"
+    });
+
+    const saltingBooking = await platform.createBooking(customer.id, {
+      providerId: saltingProvider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "ice-melt-salting",
+      scheduledStartIso: futureIso(120),
+      scheduledEndIso: futureIso(121),
+      notes: "Treat icy walkways",
+      totalCents: 3600
+    });
+    await repository.updateBooking(saltingBooking.id, {
+      status: "completed",
+      completedAt: "2026-01-28T12:00:00.000Z"
+    });
+
+    const retention = await platform.listCustomerRetentionOpportunities(customer.id);
+    const snowShovelingOpportunity = retention.opportunities.find((item) => item.category === "snow-shoveling");
+    const snowBlowingOpportunity = retention.opportunities.find((item) => item.category === "snow-blowing");
+    const saltingOpportunity = retention.opportunities.find((item) => item.category === "ice-melt-salting");
+
+    assert.ok(snowShovelingOpportunity);
+    assert.equal(snowShovelingOpportunity?.strategyKey, "snow-shoveling-winter-ready");
+    assert.equal(snowShovelingOpportunity?.trigger, "winter-season-window");
+    assert.match(snowShovelingOpportunity?.message ?? "", /fresh recommendation before the next storm/i);
+
+    assert.ok(snowBlowingOpportunity);
+    assert.equal(snowBlowingOpportunity?.strategyKey, "snow-blowing-winter-ready");
+    assert.equal(snowBlowingOpportunity?.trigger, "winter-season-window");
+
+    assert.ok(saltingOpportunity);
+    assert.equal(saltingOpportunity?.strategyKey, "ice-melt-salting-winter-ready");
+    assert.equal(saltingOpportunity?.trigger, "winter-season-window");
+    assert.match(saltingOpportunity?.actionLabel ?? "", /ice treatment/i);
+  });
+
+  await withMockedNow("2026-11-05T12:00:00.000Z", async () => {
+    const repository = new InMemoryMarketplaceRepository();
+    const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+    const customer = await platform.registerUser({
+      fullName: "Jordan Rivera",
+      email: "customer-retention-gutters@example.com",
+      password: "Password123!",
+      phone: "555-0200",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress()
+    });
+
+    const provider = (await repository.listProviders()).find((candidate) =>
+      candidate.categories.includes("gutter-cleaning")
+    );
+    assert.ok(provider);
+
+    const gutterBooking = await platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress(),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "gutter-cleaning",
+      scheduledStartIso: futureIso(72),
+      scheduledEndIso: futureIso(74),
+      notes: "Clear roofline gutters",
+      totalCents: 7600
+    });
+    await repository.updateBooking(gutterBooking.id, {
+      status: "completed",
+      completedAt: "2025-11-20T12:00:00.000Z"
+    });
+
+    const retention = await platform.listCustomerRetentionOpportunities(customer.id);
+    const gutterOpportunity = retention.opportunities.find((item) => item.category === "gutter-cleaning");
+    assert.ok(gutterOpportunity);
+    assert.equal(gutterOpportunity?.strategyKey, "gutter-cleaning-fall-prep");
+    assert.equal(gutterOpportunity?.trigger, "fall-season-window");
+    assert.match(gutterOpportunity?.title ?? "", /clear gutters/i);
+    assert.match(gutterOpportunity?.message ?? "", /overflow, ice, or messy winter runoff/i);
   });
 });
 
@@ -11790,6 +12033,118 @@ test("provider assistant can recommend reviewing pending crew matches before sou
   assert.equal(recommendation.staffingPlan?.[0]?.uncoveredCrewGap, 0);
   assert.match(recommendation.previewMessage, /Review pending crew matches/i);
   assert.match(recommendation.previewMessage, /pending match/i);
+});
+
+test("provider assistant staffing plan recommends route leader assignment when crew coverage is full", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-route-leader-staffing@example.com",
+    password: "Password123!",
+    phone: "555-43952",
+    role: "provider",
+    companyName: "Route Captain Lawn",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 20,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: 20,
+    staffingMode: "review-first",
+    crewReviewLeadHours: 6,
+    departureReminderLeadMinutes: 30,
+    routeLeaderMode: "accepted-crew-fallback",
+    sponsoredListingEnabled: provider.sponsoredListingEnabled
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 1);
+  serviceDay.setHours(9, 0, 0, 0);
+  const availableDay = availabilityDayForIso(serviceDay.toISOString());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-route-leader-staffing@example.com",
+    password: "Password123!",
+    phone: "555-43953",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+  const firstCrew = await platform.registerUser({
+    fullName: "Taylor Crew",
+    email: "crew-assistant-route-leader-staffing-1@example.com",
+    password: "Password123!",
+    phone: "555-43954",
+    role: "crew-member",
+    address: createAddress("113 Garden Row", 30.24355, -97.76385),
+    categories: ["lawn-mowing"],
+    availableWeekdays: [availableDay],
+    willingToTravelMiles: 20,
+    preferredSchedule: "full-time",
+    hasOwnEquipment: true
+  });
+  const secondCrew = await platform.registerUser({
+    fullName: "Morgan Crew",
+    email: "crew-assistant-route-leader-staffing-2@example.com",
+    password: "Password123!",
+    phone: "555-43955",
+    role: "crew-member",
+    address: createAddress("114 Garden Row", 30.24358, -97.76382),
+    categories: ["lawn-mowing"],
+    availableWeekdays: [availableDay],
+    willingToTravelMiles: 20,
+    preferredSchedule: "full-time",
+    hasOwnEquipment: true
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 60 * 60 * 1000).toISOString(),
+    notes: "Assistant route leader staffing recommendation test",
+    totalCents: 6200
+  });
+
+  const staffing = await platform.getProviderStaffingOverview(provider.id);
+  const job = staffing.jobs.find((item) => item.bookingId === booking.id);
+  assert.ok(job);
+  const firstMatch = job?.matches.find((match) => match.crewMemberId === firstCrew.id);
+  const secondMatch = job?.matches.find((match) => match.crewMemberId === secondCrew.id);
+  assert.ok(firstMatch);
+  assert.ok(secondMatch);
+
+  await platform.reviewCrewMatch(provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
+  await platform.reviewCrewMatch(provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
+
+  const recommendation = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Do I need more crew tomorrow?",
+    execute: false
+  });
+
+  assert.equal(recommendation.understood, true);
+  assert.equal(recommendation.actionType, "recommend-staffing-adjustment");
+  assert.equal(recommendation.matchedBookingId, booking.id);
+  assert.equal(recommendation.staffingPlan?.length, 1);
+  const planItem = recommendation.staffingPlan?.[0];
+  assert.equal(planItem?.bookingId, booking.id);
+  assert.equal(planItem?.crewGap, 0);
+  assert.equal(planItem?.uncoveredCrewGap, 0);
+  assert.equal(planItem?.acceptedCrewCount, 2);
+  assert.equal(planItem?.recommendedAction, "assign-route-leader");
+  assert.equal(planItem?.routeLeaderRequired, true);
+  assert.equal(planItem?.routeLeaderAssigned, false);
+  assert.ok([firstCrew.id, secondCrew.id].includes(planItem?.recommendedRouteLeaderCrewMemberId ?? ""));
+  assert.match(planItem?.recommendedRouteLeaderCrewMemberName ?? "", /Crew/);
+  assert.ok(planItem?.reasons.some((reason) => /route leader/i.test(reason)));
+  assert.match(recommendation.previewMessage, /Assign .*route leader/i);
+  assert.match(recommendation.previewMessage, /coverage is already full/i);
 });
 
 test("provider assistant can summarize the next 7 days of dispatch pressure", async () => {

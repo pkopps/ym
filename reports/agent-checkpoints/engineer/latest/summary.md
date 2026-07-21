@@ -3,9 +3,9 @@
 ## Branch And Commit
 
 - Branch: `main`
-- Commit: `bcd755f31b037880bc6638a711b25623784e8988`
+- Commit: `0f32780a6344b48f154e0d34029e86e287e9b1b8`
 - Worktree: `/Users/patrickkopps/Documents/app`
-- Updated: `2026-07-19 22:58 EDT`
+- Updated: `2026-07-20 22:22 EDT`
 
 ## Completed Work
 
@@ -21,10 +21,11 @@
 - Added ops-authenticated, idempotent manual payout disbursement run records created from preview batches, preserving preview batch ids, entry fingerprints, booking/payment/recipient references, operator notes, and reconciliation instructions in both in-memory and Prisma-backed repositories.
 - Improved provider assistant dispatch reasoning so cross-day move recommendations compare multiple candidate openings by route pressure.
 - Added staffing-first dispatch adjustment previews when a large job's crew gap is the dominant pressure and a reschedule would not solve the shortage.
-- Added structured multi-booking provider-assistant staffing plans with review/source actions, accepted crew counts, pending-match counts, uncovered crew gaps, and stable booking/category references.
+- Added structured multi-booking provider-assistant staffing plans with review/source actions, accepted crew counts, pending-match counts, uncovered crew gaps, route-leader assignment recommendations for fully staffed accepted-crew-fallback jobs, and stable booking/category references.
 - Expanded provider-assistant crew coordination so messages can target named crew, the route leader, or all accepted crew on a booking, returning updated provider-crew conversation threads for audit/follow-up.
 - Added backend-authored notification delivery policy to ops health with active provider, missing configuration, retry support, Expo push strategy, and external alert target readiness.
 - Added backend-authored admin-and-operations access governance policy to the ops overview with admin-required actions, operations-allowed actions, authentication controls, escalation triggers, and active-admin coverage.
+- Added backend-authored recommendation insights to the ops overview from existing recommendation source metrics, covering low-volume caveats, coverage/open-window issues, weak handoffs, and strongest current recommendation surfaces.
 - Added backend-authored sensitive-action policy to `/api/auth/me` with the shared fresh-session window, current session freshness, the enforced provider payout-settings guard, and contract-ready future guards for provider bank-account, provider payout-account, and customer payment-method changes.
 - Added backend-authored launch pricing policy to instant quote and public marketplace overview responses, including hybrid model, first-service offer framing, launch services, customer pricing principles, provider economics guardrails, and provider-facing explanation.
 - Added backend-authored provider-economics summaries to provider search rankings, comparing estimated provider net against category, duration, and route payout floors with healthy/watch/at-risk status, score factors, and ops-review warnings for thin long-route work.
@@ -44,11 +45,12 @@
 - Added an ops-authenticated backend automation runner at `POST /api/observability/ops-automation/run-due` that orchestrates provider onboarding actions, stale support ticket SLA escalations, launch-operations due-task notifications, and launch-operations overdue-task escalations with stable sweep keys, shared `asOfIso`, dry-run support, nested sweep payloads, and aggregate notification counts for schedulers or ops-workspace integrations.
 - Persisted each backend ops-automation runner invocation as an actor-stamped audit record with requested sweep keys, nested sweep results, dry-run state, aggregate notification counts, and a stable run id, exposed through the ops-only `GET /api/observability/ops-automation/runs` history route.
 - Added backend-authored retention insights to the ops overview from existing strategy, source, and provider retention metrics.
+- Extended backend-authored customer retention opportunities with fall gutter-prep reminders and winter snow/ice readiness reminders for snow shoveling, snow blowing, and ice-melt salting, while preserving the existing opportunity response shape and recommendation-first rebook flow.
 - Added backend-authored crew earnings and attendance summaries to the crew payout ledger.
 - Added backend-authored crew performance summaries to the crew payout ledger with clean completion, route confirmation, crew evidence, dispute/refund, provider breadth, service-category, highlight, warning, and status signals.
 - Added backend-authored crew assignment forecasts to crew match responses with upcoming accepted work, pending review, active assignment, route-leader, next assignment, workload, warning, and guidance signals.
 - Added backend-authored crew availability constraints to crew match responses with weekday, travel-radius, schedule, equipment, winter-work, active-load, route-leader-load, status, warning, and guidance signals.
-- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST for the backend behavior now in place, including support SLA escalation, provider-economics search summaries, the completed paid dispute settlement guard, the backend ops-automation runner with persisted run history, and due-task notification/overdue escalation sweeps for launch operations tasks.
+- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST for the backend behavior now in place, including support SLA escalation, provider-economics search summaries, the completed paid dispute settlement guard, the backend ops-automation runner with persisted run history, due-task notification/overdue escalation sweeps for launch operations tasks, and richer seasonal retention windows.
 
 ## Validation Results
 
@@ -70,9 +72,12 @@
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops automation runner|ops overview route requires|controller handler paths"`: passed, 200 tests after backend ops-automation runner coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "paid completed disputes|completed disputed bookings|captured disputed bookings|ops cannot restore a disputed booking|controller handler paths"`: passed, 201 tests after completed paid dispute settlement-guard coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 202 tests after provider-economics ranking coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "winter and gutter season windows|spring and fall season windows|fall back to a 90-day rebook"`: passed, 203 tests after winter snow/ice and fall gutter retention coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew|provider assistant staffing plan recommends route leader assignment|provider assistant can assign and clear a crew route leader"`: passed, 204 tests after route-leader staffing-plan coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "recommendation telemetry tracks|recommendation insights by surface"`: passed, 205 tests after backend-authored recommendation insight coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew"`: passed, 195 tests.
-- `npm run test:api`: passed, 202 tests after provider-economics ranking coverage.
-- `git diff --check`: passed.
+- `npm run test:api`: passed, 205 tests after backend-authored recommendation insight coverage.
+- `git diff --check`: passed after latest checkpoint edit.
 
 ## Screenshot Evidence
 
@@ -85,4 +90,4 @@
 
 ## Recommended Next Task
 
-Continue backend launch-readiness with external payout rail integration once a provider is selected, deepen provider-assistant field-operation actions as launch workflows settle, or add recurring launch-ops task sweeps/escalation rules once ops finalizes the handoff model.
+Continue backend launch-readiness with provider-assistant field-operation actions that do not require vendors, or use launch retention data to design stronger loyalty/package rules once real repeat-service signals exist.

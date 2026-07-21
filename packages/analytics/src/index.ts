@@ -168,6 +168,7 @@ export class DataEngineeringLogger {
       swappedRecommendations,
       recommendationAcceptanceRate: recommendationRates.recommendationAcceptanceRate,
       recommendationSwapRate: recommendationRates.recommendationSwapRate,
+      recommendationInsights: [],
       providerBookingConfirmations,
       providerBookingDeclines,
       customerBookingCancellations,

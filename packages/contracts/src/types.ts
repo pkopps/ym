@@ -1300,7 +1300,8 @@ export type CustomerRetentionTimingTrigger =
   | "60-day-follow-up"
   | "90-day-follow-up"
   | "spring-season-window"
-  | "fall-season-window";
+  | "fall-season-window"
+  | "winter-season-window";
 export type CustomerRetentionStrategyKey =
   | "lawn-mowing-recurring"
   | "lawn-mowing-biweekly-repeat"
@@ -1310,6 +1311,10 @@ export type CustomerRetentionStrategyKey =
   | "leaf-blowing-fall-return"
   | "fertilization-spring-return"
   | "aeration-fall-return"
+  | "gutter-cleaning-fall-prep"
+  | "snow-shoveling-winter-ready"
+  | "snow-blowing-winter-ready"
+  | "ice-melt-salting-winter-ready"
   | "general-90-day-rebook";
 export type CustomerRetentionLoyaltySegment =
   | "new-repeat"
@@ -3084,6 +3089,7 @@ export type ProviderAssistantStaffingPlanAction =
   | "review-pending-matches"
   | "review-pending-then-source"
   | "source-more-crew"
+  | "assign-route-leader"
   | "covered";
 
 export interface ProviderAssistantStaffingPlanItem {
@@ -3100,6 +3106,12 @@ export interface ProviderAssistantStaffingPlanItem {
   pendingMatchCount: number;
   crewGap: number;
   uncoveredCrewGap: number;
+  routeLeaderRequired: boolean;
+  routeLeaderAssigned: boolean;
+  assignedRouteLeaderCrewMemberId?: string;
+  assignedRouteLeaderCrewMemberName?: string;
+  recommendedRouteLeaderCrewMemberId?: string;
+  recommendedRouteLeaderCrewMemberName?: string;
   recommendedAction: ProviderAssistantStaffingPlanAction;
   reasons: string[];
 }
@@ -3588,6 +3600,21 @@ export interface RecommendationSurfaceMetrics {
   recommendationSwapRate: number;
 }
 
+export interface RecommendationInsight {
+  kind: "volume" | "coverage" | "surface" | "handoff";
+  status: "needs-volume" | "watch" | "working";
+  title: string;
+  detail: string;
+  recommendedAction: string;
+  requestSource?: string;
+  providerSearches?: number;
+  recommendationViews?: number;
+  recommendationBookingIntents?: number;
+  acceptedRecommendations?: number;
+  swappedRecommendations?: number;
+  rate?: number;
+}
+
 export interface RetentionStrategyMetrics {
   strategyKey: CustomerRetentionStrategyKey;
   trigger: CustomerRetentionTimingTrigger;
@@ -3708,6 +3735,7 @@ export interface ObservabilityOverview {
   swappedRecommendations: number;
   recommendationAcceptanceRate: number;
   recommendationSwapRate: number;
+  recommendationInsights: RecommendationInsight[];
   providerBookingConfirmations: number;
   providerBookingDeclines: number;
   customerBookingCancellations: number;

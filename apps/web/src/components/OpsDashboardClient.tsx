@@ -51,6 +51,7 @@ function createEmptyOverview(): ObservabilityOverview {
     swappedRecommendations: 0,
     recommendationAcceptanceRate: 0,
     recommendationSwapRate: 0,
+    recommendationInsights: [],
     providerBookingConfirmations: 0,
     providerBookingDeclines: 0,
     customerBookingCancellations: 0,

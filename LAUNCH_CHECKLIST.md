@@ -271,12 +271,12 @@ The hybrid model gets much stronger when repeat behavior is real.
 Checklist:
 
 - the customer dashboard now surfaces backend-authored “book again” and “start recurring mowing” nudges after completed jobs, and those nudges re-price the service plus reload a fresh recommendation instead of blindly cloning the last booking
-- the first timing rules are now live too: recent-completion mowing nudges, 30-day cleanup follow-up, 60-day hedge-trimming reminders, spring mulch-refresh and fertilization reminders, fall leaf-return and aeration reminders, and a broader 90-day rebook fallback
+- the first timing rules are now live too: recent-completion mowing nudges, 30-day cleanup follow-up, 60-day hedge-trimming reminders, spring mulch-refresh and fertilization reminders, fall leaf-return, aeration, and gutter-prep reminders, winter snow/ice readiness reminders, and a broader 90-day rebook fallback
 - mowing retention now also distinguishes between weekly and every-2-weeks plans from recent booking history and calls out repeat-customer/provider-loyal context when the same property has already completed multiple visits
 - loyalty-backed retention rebooks can now softly prefer a proven prior provider when the same property has strong completed-job history, while still running a fresh recommendation flow with alternatives
 - the ops overview now tracks retention nudge views, clicks, acceptance rate, strategy-level performance, actual repeat-service conversions by retention source and provider, and backend-authored retention insights for low-volume caveats, leading strategies, weak click-to-booking handoffs, and provider-led repeat booking patterns so repeat-service momentum is visible before volume gets large
 - remaining gap: define which additional services should push toward recurring cadence beyond the first mowing loop
-- deepen seasonal reminder flows beyond the current mulch, fertilization, leaf-return, and aeration windows
+- keep using launch retention data to decide whether gutter, snow, and ice prompts should stay one-time reminders or become stronger seasonal packages
 - broaden loyalty or repeat-customer messaging beyond the current in-product retention prompts
 - use retention insights during launch reviews to decide which source, provider, and strategy patterns deserve more volume
 
@@ -325,6 +325,7 @@ Checklist:
 Current state:
 
 - the ops dashboard now covers launch-lead backlog pressure plus review invites created, sent, opened, completed, expired, and invite-to-review completion rate
+- the ops overview now also returns backend-authored recommendation insights for low-volume caveats, coverage/open-window gaps, weak source handoffs, and strongest current recommendation surface across public web, customer dashboard, and customer mobile sources
 
 Minimum daily launch review:
 
