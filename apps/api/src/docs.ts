@@ -1046,7 +1046,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Run a provider scheduling assistant command",
         description:
-          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like reviewing named crew matches, accepting the best recommended crew, setting a provider-only interim route stop, starting the route with a customer-facing ETA and live tracking update, rescheduling a job, messaging named crew, messaging the route leader, messaging accepted crew on booking threads, or sending a late arrival update to the customer when confirmed. Dispatch-summary commands can also surface the specific appointments creating pressure on a day or service window, and staffing recommendations include a structured staffingPlan across competing bookings with review/source guidance plus route-leader assignment guidance when accepted-crew fallback mode is waiting on one field owner. Commands can chain multiple same-booking actions together when each step is understood.",
+          "Parses a natural-language provider scheduling command, previews the matched booking and outcome, and can execute provider-side actions like reviewing named crew matches, accepting the best recommended crew, setting a provider-only interim route stop, starting the route with a customer-facing ETA and live tracking update, sending a customer-safe arrived/getting-set-up update after the route has started, rescheduling a job, messaging named crew, messaging the route leader, messaging accepted crew on booking threads, or sending a late arrival update to the customer when confirmed. Dispatch-summary commands can also surface the specific appointments creating pressure on a day or service window, and staffing recommendations include a structured staffingPlan across competing bookings with review/source guidance plus route-leader assignment guidance when accepted-crew fallback mode is waiting on one field owner. Commands can chain multiple same-booking actions together when each step is understood.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -2224,7 +2224,7 @@ export const apiSpec = {
         tags: ["Launch"],
         summary: "List the internal launch lead queue",
         description:
-          "Returns follow-up requests with owner assignment, response deadlines, follow-up deadlines, attribution context, linked booking or review activity, structured channel metadata for sources like GBP threads or referral fallback contacts, suggested booking matches, and backend-authored response guidance with copy-ready follow-up drafts so ops can work inbound demand by channel instead of relying on manual inbox triage. Conversions can come from explicit website lead ids, later customer identity matching on email or phone, or an ops-side manual attachment when the booking predates the lead.",
+          "Returns follow-up requests with owner assignment, response deadlines, follow-up deadlines, attribution context, linked booking or review activity, structured channel metadata for sources like GBP threads or referral fallback contacts, suggested booking matches, and backend-authored response guidance with copy-ready customer, provider availability, curated backup coverage, first-booking readiness, referral-source, review, and referral-ask drafts so ops can work inbound demand by channel instead of relying on manual inbox triage. Conversions can come from explicit website lead ids, later customer identity matching on email or phone, or an ops-side manual attachment when the booking predates the lead.",
         responses: {
           "200": { description: "Launch lead queue" }
         }
@@ -2261,7 +2261,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "List the internal support operations queue",
         description:
-          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, backend-authored resolution policy data, copy-ready customer update drafts, and provider coordination templates for active field exceptions or service-quality cases so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive guardrails or rewriting the next message in the client. This internal support queue now requires an authenticated ops session instead of loading anonymously.",
+          "Returns support tickets with linked booking, payment, participant context, evidence summaries, timeline history, backend-authored resolution policy data, copy-ready customer update drafts, provider coordination templates for active field exceptions or service-quality cases, and structured exception-handling scripts for weather or route delays, no-shows, not-ready customers, access blockers, and incomplete service so operations can triage disputes, refund reviews, no-shows, and service issues without re-deriving the sensitive guardrails or rewriting the next message in the client. This internal support queue now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Support operations queue" }

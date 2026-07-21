@@ -3,9 +3,9 @@
 ## Branch And Commit
 
 - Branch: `main`
-- Commit: pending local backend roadmap commit from `ebdb82763e98e10dd49b56c1c5dbe0481afda01a`
+- Commit: pending local backend roadmap continuation from `c4d17cdb0e106ff1c15fd6100fc03e93d9aa1d00`
 - Worktree: `/Users/patrickkopps/Documents/app`
-- Updated: `2026-07-20 22:58 EDT`
+- Updated: `2026-07-20 23:17 EDT`
 
 ## Completed Work
 
@@ -24,6 +24,8 @@
 - Added structured multi-booking provider-assistant staffing plans with review/source actions, accepted crew counts, pending-match counts, uncovered crew gaps, route-leader assignment recommendations for fully staffed accepted-crew-fallback jobs, and stable booking/category references.
 - Expanded provider-assistant crew coordination so messages can target named crew, the route leader, or all accepted crew on a booking, returning updated provider-crew conversation threads for audit/follow-up.
 - Extended provider-assistant start-route previews and executed customer notifications with backend-estimated on-my-way ETA and live tracking copy.
+- Added provider-assistant arrival updates after route start, sending customer-safe arrived/getting-set-up notifications with a distinct backend audit intervention while preserving booking status until proof-gated start-work runs.
+- Expanded backend-authored launch lead provider outreach templates with curated backup coverage and first-booking pilot readiness variants, preserving the existing recommendation-first customer flow and referral-source handoff template.
 - Added backend-authored notification delivery policy to ops health with active provider, missing configuration, retry support, Expo push strategy, and external alert target readiness.
 - Added backend-authored admin-and-operations access governance policy to the ops overview with admin-required actions, operations-allowed actions, authentication controls, escalation triggers, and active-admin coverage.
 - Added backend-authored recommendation insights to the ops overview from existing recommendation source metrics, covering low-volume caveats, coverage/open-window issues, weak handoffs, and strongest current recommendation surfaces.
@@ -31,6 +33,7 @@
 - Added backend-authored launch pricing policy to instant quote and public marketplace overview responses, including hybrid model, first-service offer framing, launch services, customer pricing principles, provider economics guardrails, and provider-facing explanation.
 - Added backend-authored provider-economics summaries to provider search rankings, comparing estimated provider net against category, duration, and route payout floors with healthy/watch/at-risk status, score factors, and ops-review warnings for thin long-route work.
 - Added backend-authored provider coordination templates to ops support tickets for active field exceptions and service-quality cases.
+- Added structured backend-authored support exception scripts for weather or route delays, customer no-shows, not-ready customers, field access blockers, and incomplete-service cases, pairing customer-safe copy, provider instructions, ops checklists, escalation triggers, and stable recommended action keys while preserving ticket and booking machine fields.
 - Added an ops-authenticated stale support ticket escalation sweep that applies backend-owned SLA thresholds for active field exceptions, disputed bookings, refund reviews, billing/service-quality tickets, and account/general tickets, then sends idempotent support notifications to ops users while preserving stable ticket ids, booking ids, issue types, and statuses.
 - Added a completed paid dispute settlement guard so ops support cannot resolve a customer-favoring completed-job dispute through generic cancellation while captured customer payment has no open refund review; the ops support policy now blocks `cancel-booking`, explains the refund-review requirement, and preserves provider/crew payout holds until settlement is reconciled.
 - Added backend-authored provider onboarding automation plans to verification queue/profile responses, translating checklist state into provider-owned fixes, ops review readiness, narrow launch pilot eligibility, incident recovery, and first-booking monitoring.
@@ -60,7 +63,7 @@
 - Added API-level ranking coverage proving full-service providers are recommended ahead of high-rated partial backups for bundled lawn/mulch requests, while partial matches preserve missing-category metadata.
 - Extended saved-property geocode reuse across matching authenticated quote, booking, recurring-plan, and booking-address-change inputs, while keeping anonymous location lookup unsaved/session-scoped.
 - Added API-level geocode-cache coverage proving a saved customer property geocode is reused by later quote and booking requests that send the same normalized address without a property id.
-- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST for the backend behavior now in place, including support SLA escalation, provider-economics search summaries, the completed paid dispute settlement guard, the backend ops-automation runner with persisted run history, due-task notification/overdue escalation sweeps for launch operations tasks, richer seasonal retention windows, Barnegat/Ocean County fallback place-search coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and saved-property geocode reuse across repeat customer address flows.
+- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST for the backend behavior now in place, including support SLA escalation, structured support exception scripts, provider-economics search summaries, the completed paid dispute settlement guard, the backend ops-automation runner with persisted run history, due-task notification/overdue escalation sweeps for launch operations tasks, richer seasonal retention windows, Barnegat/Ocean County fallback place-search coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and saved-property geocode reuse across repeat customer address flows.
 
 ## Validation Results
 
@@ -90,8 +93,12 @@
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search favors full-service fit|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 208 tests after multi-service provider search fit/economics coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "cached geocodes|saved customer properties reuse|quotes and bookings reuse"`: passed, 209 tests after quote/booking saved-property geocode reuse coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can preview and start a route|confirm-then-route"`: passed, 209 tests after start-route ETA/tracking notification coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can send an arrived customer update|provider assistant can preview and start a route|provider assistant can preview and start work"`: passed, 210 tests after provider-assistant arrival-update coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "active category-qualified launch leads include provider outreach drafts|provider assistant can send an arrived customer update"`: passed, 210 tests after provider outreach template variant coverage.
+- `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops support queue includes delay-update drafts|ops support queue includes weather or route delay"`: passed, 211 tests after support exception-script coverage.
 - `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew"`: passed, 195 tests.
-- `npm run test:api`: passed, 209 tests after start-route ETA/tracking notification coverage.
+- `npm run typecheck`: passed after support exception-script contract coverage.
+- `npm run test:api`: passed, 211 tests after support exception-script coverage.
 - `git diff --check`: passed after latest checkpoint edit.
 
 ## Screenshot Evidence
@@ -101,7 +108,7 @@
 ## Known Defects
 
 - No new known defects from this batch.
-- Real live-vendor work remains blocked on credentials/accounts or provider selection: production Stripe validation, external payout rails, future bank/payment-method update surfaces, and production push/email/SMS sender setup. The API now exposes manual payout disbursement batch previews, audit-backed manual disbursement run records, sensitive-action policy contracts, launch-ops coverage action recommendations, launch-ops task records, due-task notifications, deterministic Barnegat/Ocean County place-search fallback coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and saved-property geocode reuse across repeat customer address flows but does not move money externally or run external ops-workspace sync automatically.
+- Real live-vendor work remains blocked on credentials/accounts or provider selection: production Stripe validation, external payout rails, future bank/payment-method update surfaces, and production push/email/SMS sender setup. The API now exposes manual payout disbursement batch previews, audit-backed manual disbursement run records, sensitive-action policy contracts, launch-ops coverage action recommendations, launch-ops task records, due-task notifications, deterministic Barnegat/Ocean County place-search fallback coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, saved-property geocode reuse across repeat customer address flows, provider-assistant ETA/arrival customer updates, richer provider outreach template variants, and structured support exception scripts but does not move money externally or run external ops-workspace sync automatically.
 
 ## Recommended Next Task
 

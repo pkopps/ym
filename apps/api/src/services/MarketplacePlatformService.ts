@@ -285,6 +285,7 @@ type ParsedProviderAssistantAction = {
   routeStopKind?: SetBookingRouteStopRequest["kind"];
   lateMinutes?: number;
   lateReason?: string;
+  arrivalUpdate?: boolean;
   exceptionType?: MarkBookingExceptionRequest["exceptionType"];
   exceptionNotes?: string;
 };
@@ -4319,6 +4320,17 @@ export class MarketplacePlatformService {
     };
   }
 
+  private buildArrivalCustomerUpdate(input: { providerLabel: string; booking: Booking }): {
+    notificationBody: string;
+  } {
+    const serviceLabel = this.titleCaseCategory(input.booking.category).toLowerCase();
+    return {
+      notificationBody:
+        `${input.providerLabel} has arrived for your ${serviceLabel} visit and is getting set up. ` +
+        "You can keep following the visit from your dashboard."
+    };
+  }
+
   public async setBookingRouteStop(
     providerId: string,
     payload: SetBookingRouteStopRequest
@@ -8100,6 +8112,147 @@ export class MarketplacePlatformService {
     if (action.actionType === "start-route") {
       const customer = await this.repository.findCustomerById(booking.customerId);
       const provider = await this.repository.findProviderById(providerId);
+      if (action.arrivalUpdate) {
+        const arrivalUpdate = this.buildArrivalCustomerUpdate({
+          providerLabel: provider?.companyName ?? "Your landscaping business",
+          booking
+        });
+
+        if (booking.status === "requested") {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "start-route",
+            actionTypes: ["start-route"],
+            requiresBookingSelection: false,
+            requiresConfirmation: false,
+            executed: false,
+            notifyCustomer: true,
+            matchedBookingId: booking.id,
+            matchedCustomerName: customer?.fullName,
+            sourceWindowKey,
+            previewLabel: "Confirm this booking first",
+            previewMessage: "Confirm this booking and start the route before sending an arrival update.",
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        if (booking.status === "completed" || booking.status === "cancelled" || booking.status === "refunded") {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "start-route",
+            actionTypes: ["start-route"],
+            requiresBookingSelection: false,
+            executed: false,
+            requiresConfirmation: false,
+            notifyCustomer: false,
+            matchedBookingId: booking.id,
+            matchedCustomerName: customer?.fullName,
+            sourceWindowKey,
+            previewLabel: "Arrival update not available",
+            previewMessage: "Arrival updates are only available before the booking is closed.",
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        if (!booking.onRouteConfirmedAt) {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "start-route",
+            actionTypes: ["start-route"],
+            requiresBookingSelection: false,
+            requiresConfirmation: false,
+            executed: false,
+            notifyCustomer: true,
+            matchedBookingId: booking.id,
+            matchedCustomerName: customer?.fullName,
+            sourceWindowKey,
+            previewLabel: "Start the route first",
+            previewMessage: "Start the route before sending an arrival update from the provider assistant.",
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        const customerNotificationPreview = `${customer?.fullName ?? "The customer"} will be told: ${
+          arrivalUpdate.notificationBody
+        }`;
+
+        if (!execute) {
+          return {
+            command: originalCommand,
+            understood: true,
+            actionType: "start-route",
+            actionTypes: ["start-route"],
+            requiresBookingSelection: false,
+            requiresConfirmation: true,
+            executed: false,
+            notifyCustomer: true,
+            matchedBookingId: booking.id,
+            matchedCustomerName: customer?.fullName,
+            sourceWindowKey,
+            previewLabel: "Ready to send arrival update",
+            previewMessage: `Tell ${customer?.fullName ?? "this customer"} the crew has arrived and is getting set up.`,
+            customerNotificationPreview,
+            bookingCandidates: [this.toProviderAssistantBookingCandidate(booking)]
+          };
+        }
+
+        await Promise.all([
+          this.createNotification({
+            recipientId: booking.customerId,
+            recipientRole: "customer",
+            category: "booking",
+            title: "Your crew has arrived",
+            body: arrivalUpdate.notificationBody,
+            actionHref: `/customer/dashboard?bookingId=${booking.id}&tracking=1`
+          }),
+          this.createNotification({
+            recipientId: booking.providerId,
+            recipientRole: "provider",
+            category: "booking",
+            title: "Arrival update sent",
+            body: "The customer was told the crew has arrived and is getting set up.",
+            actionHref: `/provider/management?bookingId=${booking.id}`
+          })
+        ]);
+
+        const now = new Date().toISOString();
+        const intervention: BookingInterventionRecord = {
+          id: crypto.randomUUID(),
+          action: "provider-assistant-arrival-update",
+          createdAt: now,
+          actorRole: "provider-assistant",
+          actorUserId: providerId,
+          note: `Provider assistant command: ${originalCommand}`,
+          previousStatus: booking.status,
+          nextStatus: booking.status
+        };
+        const bookingWithIntervention = await this.repository.updateBooking(booking.id, {
+          interventions: [...booking.interventions, intervention]
+        });
+
+        return {
+          command: originalCommand,
+          understood: true,
+          actionType: "start-route",
+          actionTypes: ["start-route"],
+          requiresBookingSelection: false,
+          requiresConfirmation: false,
+          executed: true,
+          notifyCustomer: true,
+          matchedBookingId: booking.id,
+          matchedCustomerName: customer?.fullName,
+          sourceWindowKey,
+          previewLabel: "Arrival update sent",
+          previewMessage: `Told ${customer?.fullName ?? "the customer"} the crew has arrived and is getting set up.`,
+          customerNotificationPreview,
+          bookingCandidates: [this.toProviderAssistantBookingCandidate(bookingWithIntervention ?? booking)],
+          updatedBooking: bookingWithIntervention ?? booking
+        };
+      }
+
       const routeUpdate = this.buildOnRouteCustomerUpdate({
         booking,
         routeLeaderLabel: provider?.companyName ?? "Your landscaping business",
@@ -11943,6 +12096,9 @@ export class MarketplacePlatformService {
           providerCoordinationTemplates: booking
             ? this.buildSupportProviderCoordinationTemplates(ticket, booking, customer?.fullName, provider?.companyName)
             : [],
+          exceptionScripts: booking
+            ? this.buildSupportExceptionHandlingScripts(ticket, booking, payment, customer?.fullName, provider?.companyName)
+            : [],
           timeline: this.buildSupportTimeline(ticket, booking, payment, requesterRole)
         } satisfies SupportOpsTicket;
       })
@@ -14699,6 +14855,11 @@ export class MarketplacePlatformService {
     const isStartRouteCommand = /\b(start route|start the route|on my way|head out|heading out|leave for|heading to)\b/.test(
       normalized
     );
+    const isArrivalUpdateCommand =
+      !isStartWorkCommand &&
+      /\b(arrived|at the property|at the house|we'?re here|we are here|i'?m here|i am here|on[-\s]?site|starting soon|getting set up)\b/.test(
+        normalized
+      );
 
     const actionType = isCrewMessageCommand
       ? "message-crew"
@@ -14732,7 +14893,7 @@ export class MarketplacePlatformService {
             ? "reschedule-booking"
             : isLateCommand
               ? "mark-booking-late"
-              : isStartRouteCommand
+              : isArrivalUpdateCommand || isStartRouteCommand
                 ? "start-route"
                 : isStartWorkCommand
                   ? "start-work"
@@ -14765,6 +14926,7 @@ export class MarketplacePlatformService {
           : notifyCustomer,
       lateMinutes,
       lateReason,
+      arrivalUpdate: isArrivalUpdateCommand,
       exceptionType,
       exceptionNotes
     };
@@ -17316,6 +17478,169 @@ export class MarketplacePlatformService {
     return templates.slice(0, 3);
   }
 
+  private buildSupportExceptionHandlingScripts(
+    ticket: SupportTicket,
+    booking: Booking,
+    payment: PaymentRecord | undefined,
+    customerName?: string,
+    providerName?: string
+  ): SupportOpsTicket["exceptionScripts"] {
+    const scripts: SupportOpsTicket["exceptionScripts"] = [];
+    const firstName = this.getFirstName(customerName);
+    const providerLabel = providerName?.trim() || "the provider";
+    const serviceLabel = this.titleCaseCategory(booking.category).toLowerCase();
+    const visitWindow = this.formatBookingWindowWithDate(booking.scheduledStartIso);
+    const noteText = booking.activeExceptionNotes?.trim() || booking.lateReason?.trim();
+    const detailText = noteText ? ` Current detail: ${noteText}` : "";
+
+    if (booking.lateEtaIso || /weather|rain|storm|wind|freeze|ice|snow|route|traffic/i.test(noteText ?? "")) {
+      const etaText = booking.lateEtaIso
+        ? new Date(booking.lateEtaIso).toLocaleTimeString([], { timeStyle: "short" })
+        : undefined;
+      scripts.push({
+        key: "weather-or-route-delay",
+        scenarioKey: "weather-delay",
+        title: "Weather or route delay script",
+        priority: "high",
+        trigger: "Use when weather, route pressure, traffic, or a late ETA threatens the promised service window.",
+        customerUpdate:
+          `Hi ${firstName}, GreenRain is watching the ${serviceLabel} visit scheduled for ${visitWindow}. ` +
+          `${etaText ? `The latest arrival estimate is around ${etaText}. ` : ""}` +
+          "Support is confirming whether the safer path is to continue today or move the visit to a more reliable window.",
+        providerInstruction:
+          `Confirm whether ${providerLabel} can still complete this visit safely today, the realistic arrival/completion timing, and whether weather or route pressure affects later jobs too.${detailText}`,
+        opsChecklist: [
+          "Send a customer update before the window feels abandoned.",
+          "Confirm provider arrival and completion timing with a specific ETA.",
+          "Reschedule only when the replacement window is more reliable than waiting.",
+          "Check whether the same delay threatens later launch bookings."
+        ],
+        escalationTriggers: [
+          "The provider cannot give a realistic arrival or completion time.",
+          "Weather or route pressure affects more than one customer window.",
+          "The customer has already waited through the promised window."
+        ],
+        recommendedActions: ["send-customer-update", "confirm-provider-plan", "reschedule-booking", "escalate-ops-owner"]
+      });
+    }
+
+    if (booking.activeExceptionType === "customer-no-show") {
+      scripts.push({
+        key: "customer-no-show-recovery",
+        scenarioKey: "customer-no-show",
+        title: "Customer no-show script",
+        priority: "high",
+        trigger: "Use when the provider is on site or on route but the customer is unavailable for required access or confirmation.",
+        customerUpdate:
+          `Hi ${firstName}, ${providerLabel} could not complete the ${serviceLabel} visit scheduled for ${visitWindow} because the team could not reach you or confirm access. ` +
+          "Reply with the fastest access instructions so support can decide whether the visit can still continue or needs to be rescheduled.",
+        providerInstruction:
+          `Ask ${providerLabel} to document arrival timing, contact attempts, photos or notes, and the latest point the route can wait without damaging later jobs.${detailText}`,
+        opsChecklist: [
+          "Confirm provider arrival or contact-attempt evidence.",
+          "Ask the customer for immediate access instructions.",
+          "Protect later route commitments before asking the provider to wait.",
+          "Document whether cancellation, reschedule, or restore-active-booking is the fairest path."
+        ],
+        escalationTriggers: [
+          "The provider asks for a cancellation fee decision.",
+          "The customer disputes whether access was requested.",
+          "Waiting would damage later route commitments."
+        ],
+        recommendedActions: ["send-customer-update", "request-evidence", "reschedule-booking", "cancel-booking"]
+      });
+    }
+
+    if (booking.activeExceptionType === "customer-not-ready") {
+      scripts.push({
+        key: "customer-not-ready-recovery",
+        scenarioKey: "customer-no-show",
+        title: "Customer not-ready script",
+        priority: "high",
+        trigger: "Use when pets, vehicles, locked areas, materials, or other customer-side blockers prevent the visit from starting cleanly.",
+        customerUpdate:
+          `Hi ${firstName}, ${providerLabel} is blocked from starting the ${serviceLabel} visit scheduled for ${visitWindow} because the property is not ready yet. ` +
+          "Reply with what changed and when the team can safely continue.",
+        providerInstruction:
+          `Confirm the exact blocker, whether the crew can work around it safely, and the latest wait time before the route needs to move on.${detailText}`,
+        opsChecklist: [
+          "Name the customer-side blocker plainly.",
+          "Confirm whether a partial service is acceptable or should be avoided.",
+          "Set a concrete response deadline before the route moves on.",
+          "Use an audited intervention if the visit must move or close."
+        ],
+        escalationTriggers: [
+          "The blocker creates safety or property-damage risk.",
+          "The customer does not respond before the route window collapses.",
+          "Provider and customer disagree about readiness."
+        ],
+        recommendedActions: ["send-customer-update", "confirm-provider-plan", "reschedule-booking", "cancel-booking"]
+      });
+    }
+
+    if (booking.activeExceptionType === "unable-to-access-property") {
+      scripts.push({
+        key: "field-access-recovery",
+        scenarioKey: "customer-no-show",
+        title: "Field access recovery script",
+        priority: "urgent",
+        trigger: "Use when a locked gate, blocked entry, missing code, pet, vehicle, or site condition prevents access.",
+        customerUpdate:
+          `Hi ${firstName}, ${providerLabel} cannot access the property for your ${serviceLabel} visit scheduled for ${visitWindow}. ` +
+          "Reply with the gate code, entry instructions, or a clear approval to reschedule before the route has to move on.",
+        providerInstruction:
+          `Confirm the access blocker, attach photos or notes if available, and give support the latest time the route can wait without hurting later customers.${detailText}`,
+        opsChecklist: [
+          "Ask for specific gate, pet, vehicle, or entry instructions.",
+          "Confirm whether provider evidence shows a real access blocker.",
+          "Set a short response deadline because the route is actively waiting.",
+          "Choose reschedule or cancellation through an audited intervention if access is not resolved."
+        ],
+        escalationTriggers: [
+          "The provider is actively waiting on route.",
+          "There is no customer response before the route needs to leave.",
+          "The same address has repeated access issues."
+        ],
+        recommendedActions: ["send-customer-update", "request-evidence", "reschedule-booking", "cancel-booking"]
+      });
+    }
+
+    if (booking.activeExceptionType === "service-could-not-be-completed") {
+      scripts.push({
+        key: "service-incomplete-recovery",
+        scenarioKey: "service-quality",
+        title: "Incomplete service recovery script",
+        priority: payment?.status === "captured" ? "urgent" : "high",
+        trigger: "Use when the provider reports the job cannot be completed as promised.",
+        customerUpdate:
+          `Hi ${firstName}, GreenRain is reviewing why the ${serviceLabel} visit scheduled for ${visitWindow} could not be completed as planned. ` +
+          "Support is checking provider notes and any evidence before deciding whether to reschedule, close, or open a refund review.",
+        providerInstruction:
+          `Ask ${providerLabel} for the exact completed scope, unfinished scope, photos, and whether a safe return visit is possible.${detailText}`,
+        opsChecklist: [
+          "Request evidence before deciding the outcome.",
+          "Separate completed scope from unfinished scope.",
+          "Open a refund review when captured payment and customer-favoring evidence require settlement.",
+          "Use a detailed rationale if evidence is mixed or inconclusive."
+        ],
+        escalationTriggers: [
+          "Payment is already captured and the customer is likely owed a settlement review.",
+          "Provider evidence and customer report conflict.",
+          "A repeat provider issue could affect launch recommendation visibility."
+        ],
+        recommendedActions: [
+          "send-customer-update",
+          "request-evidence",
+          "reschedule-booking",
+          "open-refund-review",
+          "escalate-ops-owner"
+        ]
+      });
+    }
+
+    return scripts;
+  }
+
   private buildSupportResolutionPolicy(
     ticket: SupportTicket,
     booking: Booking,
@@ -18096,6 +18421,46 @@ export class MarketplacePlatformService {
             ? `I am treating you as the active contact until we have the customer's direct details, so send over anything else we should know before I reply.`
             : `I plan to follow up with the customer directly, but I wanted you to know the handoff is moving.`}\n\n` +
           `If timing, access, or scope details would change the fit, send those over now so I can keep expectations accurate.\n\n` +
+          `Thanks,\n${signoff}`
+      });
+    }
+
+    if (lead.serviceCategory) {
+      templates.push({
+        key: "provider-backup-outreach",
+        audience: "provider",
+        title: "Curated backup coverage check",
+        channel: "email",
+        reason:
+          "Use this when the primary recommendation is not locked yet and ops needs one or two reliable backup providers while keeping the customer flow recommendation-first instead of turning it into a directory.",
+        subject: `GreenRain backup capacity check for ${serviceLabelLower} in ${areaLabel}`,
+        body:
+          `Hi [Provider name],\n\n` +
+          `GreenRain is checking backup coverage for a ${serviceLabelLower} request in ${areaLabel}. We are still keeping the customer experience recommendation-first, so I am only confirming a small fallback set.\n\n` +
+          `Can you reply with:\n` +
+          `- whether you could take this as backup coverage if the primary route falls through\n` +
+          `- your earliest reliable service window\n` +
+          `- any scope, travel, or payout constraint that would make this a bad fit\n\n` +
+          `A quick no is fine. I only want to hold backup options that would actually be reliable.\n\n` +
+          `Thanks,\n${signoff}`
+      });
+      templates.push({
+        key: "provider-pilot-readiness",
+        audience: "provider",
+        title: "First-booking pilot readiness",
+        channel: "email",
+        reason:
+          "Use this when ops is considering a newer or narrow-launch provider and needs readiness confirmation before putting the first customer promise on that route.",
+        subject: `GreenRain first-booking readiness check for ${serviceLabelLower}`,
+        body:
+          `Hi [Provider name],\n\n` +
+          `Before GreenRain sends a first or early ${serviceLabelLower} booking your way in ${areaLabel}, I want to confirm the route will be reliable.\n\n` +
+          `Please reply with:\n` +
+          `- who owns the job day-of\n` +
+          `- whether equipment, crew, and travel timing are already covered\n` +
+          `- any service-quality risk we should address before the customer gets a promise\n` +
+          `- whether you can send before/after proof without support chasing it\n\n` +
+          `This keeps the first customer experience calm and keeps your route from getting overloaded.\n\n` +
           `Thanks,\n${signoff}`
       });
     }

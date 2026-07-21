@@ -40,6 +40,7 @@ Current state:
 - provider search now returns backend-authored service-fit summaries for complete versus partial multi-service coverage plus provider-economics summaries that compare estimated provider net against category or service-mix, duration, and route payout floors, including an ops-review warning when a short or distant job could undercut launch supply economics
 - instant quotes now ask for driveway and sidewalk measurements on lower-confidence winter hardscape jobs, so snow shoveling, snow blowing, and ice-melt salting do not rely only on address heuristics for the measurements that drive duration
 - saved-property geocodes are now reused across matching authenticated quote, booking, recurring-plan, and booking-address-change inputs, so repeat customers do not repeatedly geocode the same address
+- provider assistant start-route and arrival-update commands now preview/send customer-safe ETA, tracking, and arrived/getting-set-up notifications while keeping lifecycle status changes behind the normal route/work gates
 
 Questions to answer:
 
@@ -64,7 +65,7 @@ Current state:
 - the ops lead queue now preserves GBP thread details, referral fallback-contact details, and inbound intake notes as structured metadata instead of only burying them inside the lead notes
 - website leads now stay linked to later self-serve booking, recurring follow-on bookings, and review generation, and matching manual email/phone leads can auto-convert too, so the ops queue can show real conversion activity
 - the ops lead queue now surfaces likely booking matches and supports manual booking attachment when the booking happened before the lead was captured
-- the ops lead queue now also returns backend-authored next-step guidance plus grouped copy-ready drafts for customer follow-up, provider availability outreach, and referral-source handoff, including first responses, customer-service help follow-up, quote/timing follow-up, booking confirmations, completed-job review requests, closed-lost closeout replies, provider availability checks, referral-source follow-up, and referral asks
+- the ops lead queue now also returns backend-authored next-step guidance plus grouped copy-ready drafts for customer follow-up, provider availability outreach, curated backup coverage, first-booking pilot readiness, and referral-source handoff, including first responses, customer-service help follow-up, quote/timing follow-up, booking confirmations, completed-job review requests, closed-lost closeout replies, provider availability checks, provider backup checks, first-booking provider readiness checks, referral-source follow-up, and referral asks
 - the ops overview now shows launch-lead backlog pressure too, including overdue first responses, overdue follow-ups, and source-channel rollups
 - the ops overview now also shows inbound automation health for direct inbox, GBP, referral, and review-reply forwarders, including recent automated activity plus stale-channel alerts when a live relay looks quiet
 - those stale inbound-forwarder alerts can now also escalate through the configured external ops contacts, so a dead launch inbox or GBP relay can page the team instead of only waiting in the dashboard
@@ -302,6 +303,8 @@ Checklist:
 - review-request template
 - referral-request template
 - provider outreach template
+- provider backup coverage template
+- provider pilot-readiness template
 - partner outreach template
 - cancellation or delay template
 - issue-resolution template
@@ -309,7 +312,7 @@ Checklist:
 Important rule:
 
 - templates should save time without sounding robotic
-- the current ops lead queue now covers customer, provider, and referral-source drafts, the ops support queue covers delay, cancellation, refund, issue-resolution customer updates, provider coordination templates, and stale-ticket SLA escalation notifications, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, persisted posted/skipped state, channel-aware posting audit fields for GBP/shared-inbox/manual replies, structured mailbox/thread/location metadata for posted replies, a secret-protected generic inbound confirmation route plus source-specific shared-inbox and GBP forwarder routes for external reply automation, and an explicit path to open or link service-quality follow-up from negative reviews; remaining work is the real posting habit and deeper exception-handling scripts plus the broader local ops playbook
+- the current ops lead queue now covers customer, provider availability, provider backup coverage, first-booking provider readiness, and referral-source drafts, the ops support queue covers delay, cancellation, refund, issue-resolution customer updates, provider coordination templates, structured exception-handling scripts for weather/route delays, no-shows, not-ready customers, access blockers, and incomplete service, plus stale-ticket SLA escalation notifications, and the ops dashboard now includes a public review-response queue with urgency labels, copy-ready replies, persisted posted/skipped state, channel-aware posting audit fields for GBP/shared-inbox/manual replies, structured mailbox/thread/location metadata for posted replies, a secret-protected generic inbound confirmation route plus source-specific shared-inbox and GBP forwarder routes for external reply automation, and an explicit path to open or link service-quality follow-up from negative reviews; remaining work is the real posting habit and the broader local ops playbook
 - the internal ops dashboard and its launch/support/review/payout/verification tools now require an authenticated `ops` session instead of loading anonymously in the browser; seeded local `ops-admin` access, the CLI provisioning path, a first in-dashboard ops-account management board, an admin-vs-staff scope split for internal account management, invite/reset flows that avoid manually sharing passwords, account deactivate/reactivate controls, explicit auth-lock clearing with audit notes, a persisted access-change history, a persisted auth-event history for sign-ins / failures / lock triggers / reset flows / session rotations / explicit lock clears, last successful sign-in tracking, failed-sign-in tracking, repeated-failure temporary login locks, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, and live overview reporting for internal access health now exist, and the remaining work is the deeper internal role lifecycle beyond that bootstrap path
 
 ## 11. Launch Dashboard

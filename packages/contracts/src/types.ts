@@ -94,6 +94,8 @@ export type LaunchLeadReplyTemplateKey =
   | "review-request"
   | "closed-lost-follow-up"
   | "provider-outreach"
+  | "provider-backup-outreach"
+  | "provider-pilot-readiness"
   | "partner-follow-up"
   | "referral-request";
 export type LaunchLeadReplyTemplateAudience = "customer" | "provider" | "partner";
@@ -123,6 +125,7 @@ export type OpsBookingInterventionAction =
   | "provider-assistant-reschedule"
   | "provider-assistant-late-update"
   | "provider-assistant-start-route"
+  | "provider-assistant-arrival-update"
   | "provider-assistant-start-work";
 export type ProviderAssistantActionType =
   | "summarize-dispatch"
@@ -1677,6 +1680,37 @@ export interface SupportProviderCoordinationTemplate {
   body: string;
 }
 
+export type SupportExceptionHandlingScriptKey =
+  | "weather-or-route-delay"
+  | "customer-no-show-recovery"
+  | "customer-not-ready-recovery"
+  | "field-access-recovery"
+  | "service-incomplete-recovery";
+
+export type SupportExceptionRecommendedAction =
+  | "send-customer-update"
+  | "confirm-provider-plan"
+  | "request-evidence"
+  | "reschedule-booking"
+  | "cancel-booking"
+  | "restore-active-booking"
+  | "complete-booking"
+  | "open-refund-review"
+  | "escalate-ops-owner";
+
+export interface SupportExceptionHandlingScript {
+  key: SupportExceptionHandlingScriptKey;
+  scenarioKey: LaunchOperationsScenarioKey;
+  title: string;
+  priority: "normal" | "high" | "urgent";
+  trigger: string;
+  customerUpdate: string;
+  providerInstruction: string;
+  opsChecklist: string[];
+  escalationTriggers: string[];
+  recommendedActions: SupportExceptionRecommendedAction[];
+}
+
 export type SupportResolutionEvidenceSignal =
   | "no-evidence"
   | "unreviewed"
@@ -1731,6 +1765,7 @@ export interface SupportOpsTicket {
   resolutionGuidance?: SupportResolutionGuidance;
   resolutionPolicy?: SupportResolutionPolicy;
   providerCoordinationTemplates: SupportProviderCoordinationTemplate[];
+  exceptionScripts: SupportExceptionHandlingScript[];
   timeline: SupportTimelineEntry[];
 }
 

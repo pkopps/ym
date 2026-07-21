@@ -3045,6 +3045,23 @@ test("active category-qualified launch leads include provider outreach drafts", 
   assert.match(providerTemplate.subject ?? "", /availability check/i);
   assert.match(providerTemplate.reason, /live capacity confirmation/i);
   assert.match(providerTemplate.body, /\[Provider name\]/i);
+
+  const backupTemplate = queuedLead.responseGuidance.templates.find(
+    (template) => template.key === "provider-backup-outreach"
+  );
+  assert.ok(backupTemplate);
+  assert.equal(backupTemplate.audience, "provider");
+  assert.match(backupTemplate.reason, /recommendation-first/i);
+  assert.match(backupTemplate.body, /backup coverage/i);
+  assert.match(backupTemplate.body, /payout constraint/i);
+
+  const pilotTemplate = queuedLead.responseGuidance.templates.find(
+    (template) => template.key === "provider-pilot-readiness"
+  );
+  assert.ok(pilotTemplate);
+  assert.equal(pilotTemplate.audience, "provider");
+  assert.match(pilotTemplate.reason, /newer or narrow-launch provider/i);
+  assert.match(pilotTemplate.body, /before\/after proof/i);
 });
 
 test("converted completed launch leads surface review-request drafts instead of new-lead scripts", async () => {
@@ -4980,6 +4997,85 @@ test("ops support queue includes delay-update drafts for active field exceptions
   assert.match(providerTemplate?.subject ?? "", /field issue/i);
   assert.match(providerTemplate?.body ?? "", /side gate is locked/i);
   assert.match(providerTemplate?.body ?? "", /earliest realistic continuation or reschedule window/i);
+
+  const accessScript = opsTicket?.exceptionScripts.find((script) => script.key === "field-access-recovery");
+  assert.ok(accessScript);
+  assert.equal(accessScript?.scenarioKey, "customer-no-show");
+  assert.equal(accessScript?.priority, "urgent");
+  assert.match(accessScript?.customerUpdate ?? "", /gate code|entry instructions/i);
+  assert.match(accessScript?.providerInstruction ?? "", /route can wait/i);
+  assert.ok(accessScript?.opsChecklist.some((item) => /audited intervention/i.test(item)));
+  assert.ok(accessScript?.escalationTriggers.some((item) => /actively waiting/i.test(item)));
+  assert.ok(accessScript?.recommendedActions.includes("request-evidence"));
+  assert.ok(accessScript?.recommendedActions.includes("cancel-booking"));
+  assert.equal(opsTicket?.ticket.id, ticket.id);
+  assert.equal(opsTicket?.ticket.issueType, "service-quality");
+  assert.equal(opsTicket?.booking?.activeExceptionType, "unable-to-access-property");
+  assert.equal(opsTicket?.booking?.status, "confirmed");
+});
+
+test("ops support queue includes weather or route delay exception scripts without changing machine fields", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-route-delay-script@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const provider = (await repository.listProviders())[0];
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(6),
+    scheduledEndIso: futureIso(8),
+    notes: "Support route-delay script test",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  const lateEtaIso = futureIso(6.75);
+  const delayedBooking = await platform.markBookingLate(provider.id, {
+    bookingId: booking.id,
+    lateEtaIso,
+    reason: "Storm cell is slowing the route."
+  });
+
+  const ticket = await platform.createSupportTicket(
+    { userId: customer.id, role: "customer" },
+    {
+      bookingId: booking.id,
+      subject: "Weather delay",
+      description: "Customer wants to know whether the visit is still happening.",
+      issueType: "general"
+    }
+  );
+
+  const opsTicket = (await platform.listOpsSupportTickets()).find((candidate) => candidate.ticket.id === ticket.id);
+  assert.ok(opsTicket);
+  const weatherScript = opsTicket?.exceptionScripts.find((script) => script.key === "weather-or-route-delay");
+  assert.ok(weatherScript);
+  assert.equal(weatherScript?.scenarioKey, "weather-delay");
+  assert.equal(weatherScript?.priority, "high");
+  assert.match(weatherScript?.trigger ?? "", /weather|route/i);
+  assert.match(weatherScript?.customerUpdate ?? "", /arrival estimate/i);
+  assert.match(weatherScript?.providerInstruction ?? "", /realistic arrival\/completion timing/i);
+  assert.ok(weatherScript?.recommendedActions.includes("reschedule-booking"));
+  assert.ok(weatherScript?.recommendedActions.includes("escalate-ops-owner"));
+  assert.equal(opsTicket?.ticket.id, ticket.id);
+  assert.equal(opsTicket?.ticket.issueType, "general");
+  assert.equal(opsTicket?.ticket.status, "open");
+  assert.equal(opsTicket?.booking?.id, booking.id);
+  assert.equal(opsTicket?.booking?.lateEtaIso, lateEtaIso);
+  assert.equal(opsTicket?.booking?.lateReason, "Storm cell is slowing the route.");
+  assert.equal(delayedBooking.status, "confirmed");
 });
 
 test("ops can escalate stale support tickets without mutating stable ticket fields", async () => {
@@ -13047,6 +13143,87 @@ test("provider assistant can preview and execute a confirm-then-route multi-step
   assert.equal(executed.updatedBooking?.status, "confirmed");
   assert.ok(executed.updatedBooking?.onRouteConfirmedAt);
   assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-start-route");
+});
+
+test("provider assistant can send an arrived customer update without changing lifecycle state", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-assistant-arrived@example.com",
+    password: "Password123!",
+    phone: "555-4401",
+    role: "provider",
+    companyName: "Prompt Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-assistant-arrived@example.com",
+    password: "Password123!",
+    phone: "555-4402",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const serviceDay = new Date();
+  serviceDay.setDate(serviceDay.getDate() + 3);
+  serviceDay.setHours(13, 0, 0, 0);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: serviceDay.toISOString(),
+    scheduledEndIso: new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString(),
+    notes: "Assistant arrived update test",
+    totalCents: 6200
+  });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  const onRoute = await platform.markBookingOnRoute(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    { bookingId: booking.id }
+  );
+
+  const preview = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell the customer we arrived for my afternoon appointment",
+    bookingId: booking.id,
+    execute: false
+  });
+
+  assert.equal(preview.understood, true);
+  assert.equal(preview.actionType, "start-route");
+  assert.equal(preview.requiresConfirmation, true);
+  assert.match(preview.previewMessage, /crew has arrived/i);
+  assert.match(preview.customerNotificationPreview ?? "", /has arrived for your lawn mowing visit/i);
+
+  const executed = await platform.runProviderAssistantCommand(provider.id, {
+    command: "Tell the customer we arrived for my afternoon appointment",
+    bookingId: booking.id,
+    execute: true
+  });
+
+  assert.equal(executed.executed, true);
+  assert.equal(executed.actionType, "start-route");
+  assert.equal(executed.updatedBooking?.status, "confirmed");
+  assert.equal(executed.updatedBooking?.onRouteConfirmedAt, onRoute.onRouteConfirmedAt);
+  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-arrival-update");
+  assert.match(executed.customerNotificationPreview ?? "", /keep following the visit/i);
+
+  const customerNotifications = await repository.listNotificationsByRecipient(customer.id);
+  const arrivalNotification = customerNotifications.find(
+    (notification) => notification.title === "Your crew has arrived"
+  );
+  assert.ok(arrivalNotification);
+  assert.match(arrivalNotification.body, /Prompt Lawn Co\. has arrived/i);
+  assert.match(arrivalNotification.body, /keep following the visit/i);
+  assert.match(arrivalNotification.actionHref ?? "", /tracking=1/);
 });
 
 test("provider assistant can preview and start work once route and before-photo requirements are met", async () => {
