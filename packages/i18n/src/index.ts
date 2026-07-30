@@ -289,8 +289,46 @@ function pseudoLocalize(value: string): string {
     y: "ÿ",
     z: "ž"
   };
-  const expanded = value.replace(/[A-Za-z]/g, (character) => accentMap[character] ?? character);
-  return `${expanded} ${expanded.slice(0, Math.ceil(expanded.length * 0.35))}`;
+  let depth = 0;
+  let literal = "";
+  let expanded = "";
+  let expansionSource = "";
+
+  const flushLiteral = () => {
+    const transformed = literal.replace(/[A-Za-z]/g, (character) => accentMap[character] ?? character);
+    expanded += transformed;
+    expansionSource += transformed;
+    literal = "";
+  };
+
+  for (const character of value) {
+    if (character === "{" && depth === 0) {
+      flushLiteral();
+      depth = 1;
+      expanded += character;
+      continue;
+    }
+
+    if (depth > 0) {
+      expanded += character;
+      if (character === "{") {
+        depth += 1;
+      } else if (character === "}") {
+        depth -= 1;
+      }
+      continue;
+    }
+
+    literal += character;
+  }
+
+  flushLiteral();
+  const normalizedExpansion = expansionSource.replace(/\s+/g, " ").trim();
+  if (!normalizedExpansion) {
+    return expanded;
+  }
+
+  return `${expanded} ${normalizedExpansion.slice(0, Math.ceil(normalizedExpansion.length * 0.35))}`;
 }
 
 function normalizeMessageModule(module: unknown): MessageDictionary {

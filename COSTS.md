@@ -129,6 +129,20 @@ These are not final finance rules. They are starter thresholds to help decide wh
 
 YardMatch is moving forward with the hybrid model.
 
+### Executable Launch Rules
+
+The application now treats these assumptions as a versioned settlement policy rather than descriptive spreadsheet math:
+
+- the customer charge remains the booked service price
+- the provider funds the $30 finder fee on the first completed paid customer/provider job and the $6.99 fee on every completed paid job
+- those fees are retained through Stripe transfer math; they are not separate crew deductions
+- Stripe processing cost is a YardMatch expense and reduces platform net revenue, not the provider settlement already promised
+- YardMatch transfers money only to the provider business; the provider is solely responsible for crew compensation
+- a job is blocked from settlement when the provider proceeds would be negative
+- actual processor cost must eventually come from Stripe balance-transaction data; estimates remain planning assumptions only
+
+Policy identifier: `2026-07-provider-funded-v1`.
+
 ### Hybrid Finder Fee + Per-Job Fee
 
 YardMatch charges a smaller one-time finder fee when a provider gets a new customer, then a smaller flat fee on each completed job.

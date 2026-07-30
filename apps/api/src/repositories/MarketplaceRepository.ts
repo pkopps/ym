@@ -22,6 +22,11 @@ import {
   NotificationPreferences,
   OpsAutomationRunRecord,
   PaymentRecord,
+  BookingFinancialSettlement,
+  CreateBookingFinancialSettlementInput,
+  FinancialLedgerEntry,
+  ProviderConnectAccount,
+  ProviderCredential,
   OpsPayoutDisbursementRun,
   PushDevice,
   RecurringServicePlan,
@@ -126,6 +131,17 @@ export interface MarketplaceRepository {
   findPaymentByCheckoutSessionId(checkoutSessionId: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
+  settleBookingFinancials(
+    input: CreateBookingFinancialSettlementInput
+  ): Promise<BookingFinancialSettlement>;
+  findBookingFinancialSettlement(
+    bookingId: string
+  ): Promise<BookingFinancialSettlement | undefined>;
+  listFinancialLedgerEntries(bookingId?: string): Promise<FinancialLedgerEntry[]>;
+  listProviderCredentials(providerId: string): Promise<ProviderCredential[]>;
+  upsertProviderCredential(credential: ProviderCredential): Promise<ProviderCredential>;
+  findProviderConnectAccount(providerId: string): Promise<ProviderConnectAccount | undefined>;
+  upsertProviderConnectAccount(account: ProviderConnectAccount): Promise<ProviderConnectAccount>;
   createPayoutDisbursementRun(run: OpsPayoutDisbursementRun): Promise<OpsPayoutDisbursementRun>;
   listPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRun[]>;
   findPayoutDisbursementRunByBatchFingerprint(

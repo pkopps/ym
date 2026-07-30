@@ -25,6 +25,11 @@ import {
   OpsPayoutDisbursementRun,
   OpsPayoutDisbursementEntryRef,
   PaymentRecord,
+  BookingFinancialSettlement,
+  CreateBookingFinancialSettlementInput,
+  FinancialLedgerEntry,
+  ProviderConnectAccount,
+  ProviderCredential,
   PushDevice,
   RecurringServicePlan,
   ProviderProfile,
@@ -34,6 +39,7 @@ import {
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
+import { buildSettlementLedgerDraft, calculateMarketplaceSettlement } from "@yardmatch/domain";
 import { AuthIdentityRecord, MarketplaceRepository } from "./MarketplaceRepository";
 
 function asJson(value: unknown): any {
@@ -245,7 +251,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async listProviders(): Promise<ProviderProfile[]> {
     const providers = await this.prisma.providerBusinessProfile.findMany({
       include: {
-        user: true
+        user: true,
+        credentials: true,
+        connectAccount: true
       }
     });
 
@@ -1029,7 +1037,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async findProviderById(providerId: string): Promise<ProviderProfile | undefined> {
     const provider = await this.prisma.providerBusinessProfile.findUnique({
       where: { userId: providerId },
-      include: { user: true }
+      include: { user: true, credentials: true, connectAccount: true }
     });
     return provider ? this.mapProviderProfile(provider.user, provider) : undefined;
   }
@@ -1159,11 +1167,178 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapPaymentRecord(payment);
   }
 
+  public async settleBookingFinancials(
+    input: CreateBookingFinancialSettlementInput
+  ): Promise<BookingFinancialSettlement> {
+    const existing = await (this.prisma as any).bookingFinancialSettlement.findUnique({
+      where: { bookingId: input.bookingId }
+    });
+    if (existing) {
+      return this.mapBookingFinancialSettlement(existing);
+    }
+
+    try {
+      const settlement = await this.prisma.$transaction(async (tx: any) => {
+        const claim = await tx.customerProviderRelationship.createMany({
+          data: {
+            customerId: input.customerId,
+            providerId: input.providerId,
+            firstSettledBookingId: input.bookingId,
+            createdAt: new Date()
+          },
+          skipDuplicates: true
+        });
+        const relationship = await tx.customerProviderRelationship.findUnique({
+          where: {
+            customerId_providerId: {
+              customerId: input.customerId,
+              providerId: input.providerId
+            }
+          }
+        });
+        const isFirstCompletedCustomerProviderJob =
+          claim.count === 1 || relationship?.firstSettledBookingId === input.bookingId;
+        const breakdown = calculateMarketplaceSettlement({
+          customerChargeCents: input.customerChargeCents,
+          isFirstCompletedCustomerProviderJob,
+          actualProcessorFeeCents: input.actualProcessorFeeCents
+        });
+        const now = new Date();
+        const created = await tx.bookingFinancialSettlement.create({
+          data: {
+            id: crypto.randomUUID(),
+            bookingId: input.bookingId,
+            paymentId: input.paymentId,
+            customerId: input.customerId,
+            providerId: input.providerId,
+            currency: input.currency.toLowerCase(),
+            policyVersion: breakdown.policyVersion,
+            customerChargeCents: breakdown.customerChargeCents,
+            providerServiceGrossCents: breakdown.providerServiceGrossCents,
+            finderFeeCents: breakdown.finderFeeCents,
+            completedJobFeeCents: breakdown.completedJobFeeCents,
+            platformGrossRevenueCents: breakdown.platformGrossRevenueCents,
+            actualProcessorFeeCents: breakdown.actualProcessorFeeCents,
+            platformNetRevenueCents: breakdown.platformNetRevenueCents,
+            providerNetCents: breakdown.providerNetCents,
+            crewPayoutByYardMatchCents: 0,
+            isFirstCompletedCustomerProviderJob,
+            status: "recorded",
+            createdAt: now,
+            updatedAt: now
+          }
+        });
+        const ledgerDraft = buildSettlementLedgerDraft(input.bookingId, breakdown);
+        await tx.financialLedgerEntry.createMany({
+          data: ledgerDraft.map((entry) => ({
+            id: crypto.randomUUID(),
+            settlementId: created.id,
+            bookingId: input.bookingId,
+            paymentId: input.paymentId,
+            account: entry.account,
+            direction: entry.direction,
+            amountCents: entry.amountCents,
+            currency: input.currency.toLowerCase(),
+            idempotencyKey: entry.idempotencyKey,
+            source:
+              entry.account === "payment-processing-expense"
+                ? "processor-fee"
+                : "booking-settlement",
+            createdAt: now
+          })),
+          skipDuplicates: true
+        });
+        return created;
+      });
+      return this.mapBookingFinancialSettlement(settlement);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const concurrent = await (this.prisma as any).bookingFinancialSettlement.findUnique({
+          where: { bookingId: input.bookingId }
+        });
+        if (concurrent) {
+          return this.mapBookingFinancialSettlement(concurrent);
+        }
+      }
+      throw error;
+    }
+  }
+
+  public async findBookingFinancialSettlement(
+    bookingId: string
+  ): Promise<BookingFinancialSettlement | undefined> {
+    const settlement = await (this.prisma as any).bookingFinancialSettlement.findUnique({
+      where: { bookingId }
+    });
+    return settlement ? this.mapBookingFinancialSettlement(settlement) : undefined;
+  }
+
+  public async listFinancialLedgerEntries(bookingId?: string): Promise<FinancialLedgerEntry[]> {
+    const entries = await (this.prisma as any).financialLedgerEntry.findMany({
+      where: bookingId ? { bookingId } : undefined,
+      orderBy: { createdAt: "asc" }
+    });
+    return entries.map((entry: any) => this.mapFinancialLedgerEntry(entry));
+  }
+
+  public async listProviderCredentials(providerId: string): Promise<ProviderCredential[]> {
+    const credentials = await (this.prisma as any).providerCredential.findMany({
+      where: { providerId },
+      orderBy: [{ type: "asc" }, { jurisdiction: "asc" }]
+    });
+    return credentials.map((credential: any) => this.mapProviderCredential(credential));
+  }
+
+  public async upsertProviderCredential(credential: ProviderCredential): Promise<ProviderCredential> {
+    const saved = await (this.prisma as any).providerCredential.upsert({
+      where: {
+        providerId_type_jurisdiction: {
+          providerId: credential.providerId,
+          type: credential.type,
+          jurisdiction: credential.jurisdiction
+        }
+      },
+      create: this.buildProviderCredentialPersistence(credential),
+      update: this.buildProviderCredentialPersistence(credential)
+    });
+    return this.mapProviderCredential(saved);
+  }
+
+  public async findProviderConnectAccount(
+    providerId: string
+  ): Promise<ProviderConnectAccount | undefined> {
+    const account = await (this.prisma as any).providerConnectAccount.findUnique({
+      where: { providerId }
+    });
+    return account ? this.mapProviderConnectAccount(account) : undefined;
+  }
+
+  public async upsertProviderConnectAccount(
+    account: ProviderConnectAccount
+  ): Promise<ProviderConnectAccount> {
+    const persistence = {
+      ...account,
+      createdAt: new Date(account.createdAt),
+      updatedAt: new Date(account.updatedAt),
+      lastSyncedAt: account.lastSyncedAt ? new Date(account.lastSyncedAt) : null
+    };
+    const saved = await (this.prisma as any).providerConnectAccount.upsert({
+      where: { providerId: account.providerId },
+      create: persistence,
+      update: {
+        ...persistence,
+        createdAt: undefined
+      }
+    });
+    return this.mapProviderConnectAccount(saved);
+  }
+
   public async createPayoutDisbursementRun(
     run: OpsPayoutDisbursementRun
   ): Promise<OpsPayoutDisbursementRun> {
-    await (this.prisma as any).payoutDisbursementRun.create({
-      data: {
+    try {
+      await (this.prisma as any).payoutDisbursementRun.create({
+        data: {
         id: run.id,
         previewBatchId: run.previewBatchId,
         entryFingerprint: run.entryFingerprint,
@@ -1191,9 +1366,21 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         reconciliationNotes: run.reconciliationNotes,
         reconciledAt: run.reconciledAt ? new Date(run.reconciledAt) : undefined,
         reconciledByOpsUserId: run.reconciledByOpsUserId
+        }
+      });
+      return run;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const existing = await this.findPayoutDisbursementRunByBatchFingerprint(
+          run.previewBatchId,
+          run.entryFingerprint
+        );
+        if (existing) {
+          return existing;
+        }
       }
-    });
-    return run;
+      throw error;
+    }
   }
 
   public async listPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRun[]> {
@@ -2229,6 +2416,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       attentionToDetailRating: number;
       reviewCount: number;
       calendarConnection: unknown;
+      credentials?: Array<Record<string, unknown>>;
+      connectAccount?: Record<string, unknown> | null;
     }
   ): ProviderProfile {
     return {
@@ -2263,7 +2452,13 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       timelinessRating: profile.timelinessRating,
       attentionToDetailRating: profile.attentionToDetailRating,
       reviewCount: profile.reviewCount,
-      calendarConnection: readJson<CalendarConnection>(profile.calendarConnection)
+      calendarConnection: readJson<CalendarConnection>(profile.calendarConnection),
+      credentials: (profile.credentials ?? []).map((credential) =>
+        this.mapProviderCredential(credential as any)
+      ),
+      connectAccount: profile.connectAccount
+        ? this.mapProviderConnectAccount(profile.connectAccount as any)
+        : undefined
     };
   }
 
@@ -2651,6 +2846,128 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       escalatedAt: record.escalatedAt?.toISOString(),
       escalatedBy: record.escalatedBy ?? undefined,
       escalationNotes: record.escalationNotes ?? undefined,
+      createdAt: record.createdAt.toISOString()
+    };
+  }
+
+  private mapProviderCredential(record: {
+    id: string;
+    providerId: string;
+    type: string;
+    status: string;
+    jurisdiction: string;
+    referenceNumber: string | null;
+    documentUrl: string | null;
+    issuedAt: Date | null;
+    expiresAt: Date | null;
+    submittedAt: Date;
+    reviewedAt: Date | null;
+    reviewedByOpsUserId: string | null;
+    reviewNotes: string | null;
+  }): ProviderCredential {
+    return {
+      id: record.id,
+      providerId: record.providerId,
+      type: record.type as ProviderCredential["type"],
+      status: record.status as ProviderCredential["status"],
+      jurisdiction: record.jurisdiction,
+      referenceNumber: record.referenceNumber ?? undefined,
+      documentUrl: record.documentUrl ?? undefined,
+      issuedAt: record.issuedAt?.toISOString(),
+      expiresAt: record.expiresAt?.toISOString(),
+      submittedAt: record.submittedAt.toISOString(),
+      reviewedAt: record.reviewedAt?.toISOString(),
+      reviewedByOpsUserId: record.reviewedByOpsUserId ?? undefined,
+      reviewNotes: record.reviewNotes ?? undefined
+    };
+  }
+
+  private buildProviderCredentialPersistence(credential: ProviderCredential) {
+    return {
+      id: credential.id,
+      providerId: credential.providerId,
+      type: credential.type,
+      status: credential.status,
+      jurisdiction: credential.jurisdiction,
+      referenceNumber: credential.referenceNumber,
+      documentUrl: credential.documentUrl,
+      issuedAt: credential.issuedAt ? new Date(credential.issuedAt) : null,
+      expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : null,
+      submittedAt: new Date(credential.submittedAt),
+      reviewedAt: credential.reviewedAt ? new Date(credential.reviewedAt) : null,
+      reviewedByOpsUserId: credential.reviewedByOpsUserId,
+      reviewNotes: credential.reviewNotes
+    };
+  }
+
+  private mapProviderConnectAccount(record: {
+    providerId: string;
+    stripeAccountId: string;
+    dashboard: string;
+    feesCollector: string;
+    lossesCollector: string;
+    chargePattern: string;
+    onboardingStatus: string;
+    transfersStatus: string;
+    payoutsStatus: string;
+    createdAt: Date;
+    updatedAt: Date;
+    lastSyncedAt: Date | null;
+  }): ProviderConnectAccount {
+    return {
+      providerId: record.providerId,
+      stripeAccountId: record.stripeAccountId,
+      dashboard: record.dashboard as ProviderConnectAccount["dashboard"],
+      feesCollector: record.feesCollector as ProviderConnectAccount["feesCollector"],
+      lossesCollector: record.lossesCollector as ProviderConnectAccount["lossesCollector"],
+      chargePattern: record.chargePattern as ProviderConnectAccount["chargePattern"],
+      onboardingStatus: record.onboardingStatus as ProviderConnectAccount["onboardingStatus"],
+      transfersStatus: record.transfersStatus as ProviderConnectAccount["transfersStatus"],
+      payoutsStatus: record.payoutsStatus as ProviderConnectAccount["payoutsStatus"],
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      lastSyncedAt: record.lastSyncedAt?.toISOString()
+    };
+  }
+
+  private mapBookingFinancialSettlement(record: any): BookingFinancialSettlement {
+    return {
+      id: record.id,
+      bookingId: record.bookingId,
+      paymentId: record.paymentId,
+      customerId: record.customerId,
+      providerId: record.providerId,
+      policyVersion: record.policyVersion,
+      currency: record.currency,
+      customerChargeCents: record.customerChargeCents,
+      providerServiceGrossCents: record.providerServiceGrossCents,
+      finderFeeCents: record.finderFeeCents,
+      completedJobFeeCents: record.completedJobFeeCents,
+      platformGrossRevenueCents: record.platformGrossRevenueCents,
+      actualProcessorFeeCents: record.actualProcessorFeeCents,
+      platformNetRevenueCents: record.platformNetRevenueCents,
+      providerNetCents: record.providerNetCents,
+      crewPayoutByYardMatchCents: 0,
+      isFirstCompletedCustomerProviderJob: record.isFirstCompletedCustomerProviderJob,
+      status: record.status as BookingFinancialSettlement["status"],
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString()
+    };
+  }
+
+  private mapFinancialLedgerEntry(record: any): FinancialLedgerEntry {
+    return {
+      id: record.id,
+      settlementId: record.settlementId,
+      bookingId: record.bookingId,
+      paymentId: record.paymentId,
+      account: record.account as FinancialLedgerEntry["account"],
+      direction: record.direction as FinancialLedgerEntry["direction"],
+      amountCents: record.amountCents,
+      currency: record.currency,
+      idempotencyKey: record.idempotencyKey,
+      source: record.source as FinancialLedgerEntry["source"],
+      reversalOfEntryId: record.reversalOfEntryId ?? undefined,
       createdAt: record.createdAt.toISOString()
     };
   }

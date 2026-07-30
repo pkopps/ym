@@ -345,7 +345,88 @@ export interface ProviderProfile extends BaseUser {
   attentionToDetailRating: number;
   reviewCount: number;
   calendarConnection: CalendarConnection;
+  credentials?: ProviderCredential[];
+  credentialReadiness?: ProviderCredentialReadiness;
+  connectAccount?: ProviderConnectAccount;
   businessControls?: ProviderBusinessControlsSummary;
+}
+
+export type ProviderCredentialType =
+  | "business-registration"
+  | "general-liability-insurance"
+  | "commercial-auto-insurance"
+  | "workers-compensation"
+  | "pesticide-applicator-license";
+
+export type ProviderCredentialStatus = "pending-review" | "verified" | "rejected" | "expired";
+
+export interface ProviderCredential {
+  id: string;
+  providerId: string;
+  type: ProviderCredentialType;
+  status: ProviderCredentialStatus;
+  jurisdiction: string;
+  referenceNumber?: string;
+  documentUrl?: string;
+  issuedAt?: string;
+  expiresAt?: string;
+  submittedAt: string;
+  reviewedAt?: string;
+  reviewedByOpsUserId?: string;
+  reviewNotes?: string;
+}
+
+export interface ProviderCredentialRequirement {
+  type: ProviderCredentialType;
+  label: string;
+  reason: string;
+  jurisdiction: string;
+  legalReviewRequired: boolean;
+}
+
+export interface ProviderCredentialReadiness {
+  ready: boolean;
+  missingTypes: ProviderCredentialType[];
+  expiredTypes: ProviderCredentialType[];
+  pendingTypes: ProviderCredentialType[];
+  requirements: ProviderCredentialRequirement[];
+  crewEngagementAllowed: boolean;
+  warnings: string[];
+}
+
+export type ProviderConnectCapabilityStatus =
+  | "not-requested"
+  | "pending"
+  | "restricted"
+  | "active";
+
+export interface ProviderConnectAccount {
+  providerId: string;
+  stripeAccountId: string;
+  dashboard: "express";
+  feesCollector: "application";
+  lossesCollector: "application";
+  chargePattern: "separate-charges-and-transfers";
+  onboardingStatus: "not-started" | "requirements-due" | "in-review" | "ready" | "restricted";
+  transfersStatus: ProviderConnectCapabilityStatus;
+  payoutsStatus: ProviderConnectCapabilityStatus;
+  createdAt: string;
+  updatedAt: string;
+  lastSyncedAt?: string;
+}
+
+export interface ProviderConnectStatusResponse {
+  stripeConfigured: boolean;
+  transferReady: boolean;
+  account?: ProviderConnectAccount;
+  crewCompensationResponsibility: "provider";
+  chargePattern: "separate-charges-and-transfers";
+  readinessRequirements: string[];
+}
+
+export interface ProviderConnectOnboardingResponse extends ProviderConnectStatusResponse {
+  onboardingUrl: string;
+  expiresAt: string;
 }
 
 export interface ProviderBusinessControlsSummary {
@@ -1388,6 +1469,62 @@ export interface PaymentRecord {
   updatedAt: string;
 }
 
+export interface BookingFinancialSettlement {
+  id: string;
+  bookingId: string;
+  paymentId: string;
+  customerId: string;
+  providerId: string;
+  policyVersion: string;
+  currency: string;
+  customerChargeCents: number;
+  providerServiceGrossCents: number;
+  finderFeeCents: number;
+  completedJobFeeCents: number;
+  platformGrossRevenueCents: number;
+  actualProcessorFeeCents: number;
+  platformNetRevenueCents: number;
+  providerNetCents: number;
+  crewPayoutByYardMatchCents: 0;
+  isFirstCompletedCustomerProviderJob: boolean;
+  status: "recorded" | "transfer-ready" | "transferred" | "reversed";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBookingFinancialSettlementInput {
+  bookingId: string;
+  paymentId: string;
+  customerId: string;
+  providerId: string;
+  customerChargeCents: number;
+  currency: string;
+  actualProcessorFeeCents?: number;
+}
+
+export type FinancialLedgerDirection = "debit" | "credit";
+export type FinancialLedgerAccount =
+  | "stripe-clearing"
+  | "provider-payable"
+  | "platform-finder-fee-revenue"
+  | "platform-job-fee-revenue"
+  | "payment-processing-expense";
+
+export interface FinancialLedgerEntry {
+  id: string;
+  settlementId: string;
+  bookingId: string;
+  paymentId: string;
+  account: FinancialLedgerAccount;
+  direction: FinancialLedgerDirection;
+  amountCents: number;
+  currency: string;
+  idempotencyKey: string;
+  source: "booking-settlement" | "processor-fee" | "reversal" | "provider-transfer";
+  reversalOfEntryId?: string;
+  createdAt: string;
+}
+
 export interface ProviderPayoutLedgerEntry {
   id: string;
   bookingId: string;
@@ -1397,6 +1534,10 @@ export interface ProviderPayoutLedgerEntry {
   addressLine: string;
   grossAmountCents: number;
   crewShareCents: number;
+  finderFeeCents?: number;
+  completedJobFeeCents?: number;
+  platformFeeCents?: number;
+  economicsPolicyVersion?: string;
   providerNetAmountCents: number;
   crewMembersAssigned: number;
   paymentId?: string;
@@ -1512,6 +1653,8 @@ export interface OpsPayoutPolicySummary {
   crewHoldPeriodHours: number;
   providerWeeklyRunRule: string;
   crewWeeklyPayoutDay: ProviderPayoutWeekday;
+  crewCompensationResponsibility?: "provider";
+  stripeChargePattern?: "separate-charges-and-transfers";
   instantPayoutMinimumCents: number;
   readyRequirements: string[];
   holdReasons: string[];
@@ -1983,7 +2126,8 @@ export interface ProviderVerificationChecklistItem {
     | "operational-readiness"
     | "service-quality-expectations"
     | "incident-history"
-    | "intervention-readiness";
+    | "intervention-readiness"
+    | "legal-credentials";
   label: string;
   status: ProviderVerificationChecklistStatus;
   detail: string;
@@ -2983,6 +3127,22 @@ export interface ReviewProviderVerificationRequest {
   notes?: string;
 }
 
+export interface SubmitProviderCredentialRequest {
+  type: ProviderCredentialType;
+  jurisdiction?: string;
+  referenceNumber?: string;
+  documentUrl?: string;
+  issuedAt?: string;
+  expiresAt?: string;
+}
+
+export interface ReviewProviderCredentialRequest {
+  providerId: string;
+  credentialId: string;
+  action: "verify" | "reject";
+  notes?: string;
+}
+
 export interface CreateExternalCalendarImportRequest {
   title: string;
   provider: ExternalCalendarProvider;
@@ -3012,6 +3172,10 @@ export interface CancelCrewMatchRequest {
 }
 
 export interface SelectPublicCrewOpportunityRequest {
+  opportunityId: string;
+}
+
+export interface ClaimPublicCrewOpportunityRequest {
   opportunityId: string;
 }
 

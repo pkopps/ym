@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookingEvidencePhase,
   BookingArrivalTracking,
   CreateExternalCalendarImportRequest,
   CustomerProviderConversationThread,
@@ -36,6 +37,21 @@ function formatDateTime(i18n: I18nInstance, iso: string) {
 
 function buildLateEta(bookingIso: string, minutes: number) {
   return new Date(new Date(bookingIso).getTime() + minutes * 60_000).toISOString();
+}
+
+function readEvidenceImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Unable to read that image."));
+    });
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("Unable to read that image.")));
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatLocalInputValue(date: Date) {
@@ -854,6 +870,28 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
+  async function handleEvidencePhoto(bookingId: string, phase: BookingEvidencePhase, file: File) {
+    setIsWorking(true);
+    setStatusMessage(undefined);
+    setErrorMessage(undefined);
+
+    try {
+      const imageDataUrl = await readEvidenceImage(file);
+      const api = createAuthenticatedWebApiClient();
+      await api.addBookingEvidence({ bookingId, phase, imageDataUrl });
+      setStatusMessage(
+        phase === "before"
+          ? i18n.t("provider_live.message.before_photo_saved")
+          : i18n.t("provider_live.message.after_photo_saved")
+      );
+      await loadProviderView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_live.error.capture_photo"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   async function handleMarkLate(bookingId: string, lateEtaIso: string, reason: string) {
     setIsWorking(true);
     setStatusMessage(undefined);
@@ -1060,7 +1098,7 @@ export function ProviderLiveManagementBoard() {
                 {i18n.t("provider_live.action.start_route")}
               </button>
             ) : null}
-            {priorityJobPrimaryAction === "start-work" ? (
+            {priorityJobPrimaryAction === "start-work" && priorityJob.beforeEvidenceCount > 0 ? (
               <button
                 className="button"
                 disabled={isWorking}
@@ -1070,7 +1108,7 @@ export function ProviderLiveManagementBoard() {
                 {i18n.t("provider_live.action.start_work")}
               </button>
             ) : null}
-            {priorityJobPrimaryAction === "complete" ? (
+            {priorityJobPrimaryAction === "complete" && priorityJob.afterEvidenceCount > 0 ? (
               <button
                 className="button"
                 disabled={isWorking}
@@ -1079,6 +1117,16 @@ export function ProviderLiveManagementBoard() {
               >
                 {i18n.t("provider_live.action.complete_job")}
               </button>
+            ) : null}
+            {priorityJobPrimaryAction === "start-work" && priorityJob.beforeEvidenceCount === 0 ? (
+              <a className="button" href={`#provider-evidence-${priorityJob.bookingId}`}>
+                {i18n.t("provider_live.evidence.add_before")}
+              </a>
+            ) : null}
+            {priorityJobPrimaryAction === "complete" && priorityJob.afterEvidenceCount === 0 ? (
+              <a className="button" href={`#provider-evidence-${priorityJob.bookingId}`}>
+                {i18n.t("provider_live.evidence.add_after")}
+              </a>
             ) : null}
             <a className="button-secondary" href="#provider-jobs">
               {i18n.t("provider_live.action.job_details")}
@@ -2002,6 +2050,52 @@ export function ProviderLiveManagementBoard() {
               </div>
             </div>
 
+            {(job.status === "confirmed" && job.onRouteConfirmedAt) || job.status === "in-progress" ? (
+              <section className="evidence-capture-panel" id={`provider-evidence-${job.bookingId}`}>
+                <div>
+                  <strong>{i18n.t("provider_live.evidence.title")}</strong>
+                  <p>
+                    {job.status === "in-progress"
+                      ? i18n.t("provider_live.evidence.after_help", { count: job.afterEvidenceCount })
+                      : i18n.t("provider_live.evidence.before_help", { count: job.beforeEvidenceCount })}
+                  </p>
+                </div>
+                <label className="button-secondary evidence-upload-button">
+                  <span>
+                    {job.status === "in-progress"
+                      ? i18n.t("provider_live.evidence.add_after")
+                      : i18n.t("provider_live.evidence.add_before")}
+                  </span>
+                  <input
+                    accept="image/*"
+                    aria-label={
+                      job.status === "in-progress"
+                        ? i18n.t("provider_live.evidence.after_label")
+                        : i18n.t("provider_live.evidence.before_label")
+                    }
+                    capture="environment"
+                    className="visually-hidden"
+                    disabled={isWorking}
+                    onChange={(event) => {
+                      const input = event.currentTarget;
+                      const file = input.files?.[0];
+                      if (!file) {
+                        return;
+                      }
+                      void handleEvidencePhoto(
+                        job.bookingId,
+                        job.status === "in-progress" ? "after" : "before",
+                        file
+                      ).finally(() => {
+                        input.value = "";
+                      });
+                    }}
+                    type="file"
+                  />
+                </label>
+              </section>
+            ) : null}
+
             <div className="cta-row">
               {job.status === "requested" ? (
                 <>
@@ -2030,7 +2124,7 @@ export function ProviderLiveManagementBoard() {
               {job.status === "confirmed" && job.onRouteConfirmedAt ? (
                 <button
                   className="button"
-                  disabled={isWorking}
+                  disabled={isWorking || job.beforeEvidenceCount === 0}
                   onClick={() => void handleStartWork(job.bookingId)}
                   type="button"
                 >
@@ -2040,7 +2134,7 @@ export function ProviderLiveManagementBoard() {
               {job.status === "in-progress" ? (
                 <button
                   className="button"
-                  disabled={isWorking}
+                  disabled={isWorking || job.afterEvidenceCount === 0}
                   onClick={() => void completeJob(job.bookingId)}
                   type="button"
                 >

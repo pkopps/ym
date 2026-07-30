@@ -7,6 +7,12 @@ dist
 test-results
 playwright-report
 
+# Local secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
 # Generated agent review evidence; keep directory anchors versioned.
 reports/progress/**
 !reports/progress/

@@ -9,6 +9,7 @@ import {
   CancelBookingRequest,
   CancelCrewMatchRequest,
   CancelRecurringServicePlanRequest,
+  ClaimPublicCrewOpportunityRequest,
   ConfirmPasswordResetRequest,
   CreateOpsAccountResponse,
   CreateOpsAccountRequest,
@@ -20,6 +21,7 @@ import {
   CustomerProviderConversation,
   CustomerProviderConversationThread,
   CrewMemberProfile,
+  CrewMatchCandidate,
   CompleteBookingRequest,
   CreateCheckoutSessionRequest,
   CreateCheckoutSessionResponse,
@@ -107,6 +109,8 @@ import {
   SyncStaleProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
   ProviderProfile,
+  ProviderConnectOnboardingResponse,
+  ProviderConnectStatusResponse,
   ProviderStaffingOverview,
   ProviderReview,
   RegisterUserRequest,
@@ -122,6 +126,8 @@ import {
   ListRecurringServicePlansResponse,
   ReviewCrewMatchRequest,
   ReviewProviderVerificationRequest,
+  ReviewProviderCredentialRequest,
+  SubmitProviderCredentialRequest,
   RemovePushDeviceRequest,
   RemoveExternalCalendarImportRequest,
   RescheduleBookingRequest,
@@ -352,6 +358,22 @@ export class MarketplaceApiClient {
     return this.postJson<ProviderProfile>(ApiRoutes.providerVerificationReview, payload);
   }
 
+  public submitProviderCredential(payload: SubmitProviderCredentialRequest) {
+    return this.postJson<ProviderProfile>(ApiRoutes.providerCredentials, payload);
+  }
+
+  public reviewProviderCredential(payload: ReviewProviderCredentialRequest) {
+    return this.postJson<ProviderProfile>(ApiRoutes.providerCredentialReview, payload);
+  }
+
+  public getProviderConnectStatus(): Promise<ProviderConnectStatusResponse> {
+    return this.getJson(ApiRoutes.providerConnectStatus);
+  }
+
+  public startProviderConnectOnboarding(): Promise<ProviderConnectOnboardingResponse> {
+    return this.postJson(ApiRoutes.providerConnectOnboarding, {});
+  }
+
   public processProviderOnboardingAutomation(
     payload: ProcessProviderOnboardingAutomationRequest = {}
   ): Promise<ProviderOnboardingAutomationSweepResponse> {
@@ -370,6 +392,12 @@ export class MarketplaceApiClient {
     payload: SelectPublicCrewOpportunityRequest
   ): Promise<SelectPublicCrewOpportunityResponse> {
     return this.postJson(ApiRoutes.selectPublicCrewOpportunity, payload);
+  }
+
+  public claimPublicCrewOpportunity(
+    payload: ClaimPublicCrewOpportunityRequest
+  ): Promise<CrewMatchCandidate> {
+    return this.postJson(ApiRoutes.claimPublicCrewOpportunity, payload);
   }
 
   public getProviderStaffingOverview(): Promise<ProviderStaffingOverview> {

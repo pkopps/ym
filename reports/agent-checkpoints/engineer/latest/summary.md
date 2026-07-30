@@ -1,115 +1,78 @@
-# Engineer Checkpoint Evidence
+# Engineer Checkpoint: Core Launch Workflows
 
 ## Branch And Commit
 
 - Branch: `main`
-- Commit: pending local backend roadmap continuation from `c4d17cdb0e106ff1c15fd6100fc03e93d9aa1d00`
-- Worktree: `/Users/patrickkopps/Documents/app`
-- Updated: `2026-07-20 23:17 EDT`
+- Baseline commit: `87724d9e1b5bd41e5c39641d9f328c6c37274658`
+- State: working tree changes intentionally uncommitted
 
 ## Completed Work
 
-- Pivoted away from i18n per coordinator direction; Huygens owns that lane.
-- Fixed two backend route-gate omissions:
-  - `GET /api/payouts/ops/preview`
-  - `POST /api/providers/reviews/escalate`
-- Added controller route-drift regression coverage across all API controllers.
-- Added provider verification incident-history guidance from booking history.
-- Made disputes, refunds, and active field exceptions affect provider verification recommendation, warnings, next steps, and approval override requirements.
-- Added backend-authored payout policy to the ops payout preview response with manual-preview rail status, hold periods, weekly grouping, instant-payout threshold, readiness requirements, and hold reasons.
-- Added backend-authored manual provider/crew disbursement batch previews to the ops payout preview with run dates, recipient roles, rail mode, action status, recipient ids, ledger entry ids, amounts, blocker reasons, manual action labels, and audit instructions.
-- Added ops-authenticated, idempotent manual payout disbursement run records created from preview batches, preserving preview batch ids, entry fingerprints, booking/payment/recipient references, operator notes, and reconciliation instructions in both in-memory and Prisma-backed repositories.
-- Improved provider assistant dispatch reasoning so cross-day move recommendations compare multiple candidate openings by route pressure.
-- Added staffing-first dispatch adjustment previews when a large job's crew gap is the dominant pressure and a reschedule would not solve the shortage.
-- Added structured multi-booking provider-assistant staffing plans with review/source actions, accepted crew counts, pending-match counts, uncovered crew gaps, route-leader assignment recommendations for fully staffed accepted-crew-fallback jobs, and stable booking/category references.
-- Expanded provider-assistant crew coordination so messages can target named crew, the route leader, or all accepted crew on a booking, returning updated provider-crew conversation threads for audit/follow-up.
-- Extended provider-assistant start-route previews and executed customer notifications with backend-estimated on-my-way ETA and live tracking copy.
-- Added provider-assistant arrival updates after route start, sending customer-safe arrived/getting-set-up notifications with a distinct backend audit intervention while preserving booking status until proof-gated start-work runs.
-- Expanded backend-authored launch lead provider outreach templates with curated backup coverage and first-booking pilot readiness variants, preserving the existing recommendation-first customer flow and referral-source handoff template.
-- Added backend-authored notification delivery policy to ops health with active provider, missing configuration, retry support, Expo push strategy, and external alert target readiness.
-- Added backend-authored admin-and-operations access governance policy to the ops overview with admin-required actions, operations-allowed actions, authentication controls, escalation triggers, and active-admin coverage.
-- Added backend-authored recommendation insights to the ops overview from existing recommendation source metrics, covering low-volume caveats, coverage/open-window issues, weak handoffs, and strongest current recommendation surfaces.
-- Added backend-authored sensitive-action policy to `/api/auth/me` with the shared fresh-session window, current session freshness, the enforced provider payout-settings guard, and contract-ready future guards for provider bank-account, provider payout-account, and customer payment-method changes.
-- Added backend-authored launch pricing policy to instant quote and public marketplace overview responses, including hybrid model, first-service offer framing, launch services, customer pricing principles, provider economics guardrails, and provider-facing explanation.
-- Added backend-authored provider-economics summaries to provider search rankings, comparing estimated provider net against category, duration, and route payout floors with healthy/watch/at-risk status, score factors, and ops-review warnings for thin long-route work.
-- Added backend-authored provider coordination templates to ops support tickets for active field exceptions and service-quality cases.
-- Added structured backend-authored support exception scripts for weather or route delays, customer no-shows, not-ready customers, field access blockers, and incomplete-service cases, pairing customer-safe copy, provider instructions, ops checklists, escalation triggers, and stable recommended action keys while preserving ticket and booking machine fields.
-- Added an ops-authenticated stale support ticket escalation sweep that applies backend-owned SLA thresholds for active field exceptions, disputed bookings, refund reviews, billing/service-quality tickets, and account/general tickets, then sends idempotent support notifications to ops users while preserving stable ticket ids, booking ids, issue types, and statuses.
-- Added a completed paid dispute settlement guard so ops support cannot resolve a customer-favoring completed-job dispute through generic cancellation while captured customer payment has no open refund review; the ops support policy now blocks `cancel-booking`, explains the refund-review requirement, and preserves provider/crew payout holds until settlement is reconciled.
-- Added backend-authored provider onboarding automation plans to verification queue/profile responses, translating checklist state into provider-owned fixes, ops review readiness, narrow launch pilot eligibility, incident recovery, and first-booking monitoring.
-- Extended provider onboarding automation plans with stable automation actions for owners, priorities, due timestamps, route targets, blocking step keys, and notification copy.
-- Added an ops-authenticated provider onboarding automation sweep that processes due provider/ops onboarding actions, sends idempotent notifications with stable provider/action markers, and reports sent, already-sent, blocked, completed, dry-run, not-due, and no-notification outcomes.
-- Added ops notifications when rejected providers materially fix profile or dispatch blockers and automatically re-enter pending review.
-- Added backend-authored provider business controls to provider profile responses for owner-only team access, provider-managed controls, ops-managed visibility, re-auth requirements, launch guardrails, and warnings.
-- Added backend-authored launch operations policy to the ops overview with scenario rules, service-quality standards, intervention rules, escalation triggers, and live pressure warnings.
-- Extended the backend-authored launch operations policy with ZIP-level coverage pocket pressure summaries and coverage action recommendations built from verified provider supply, active/completed bookings, active field exceptions, open service-quality tickets, and supported service categories.
-- Added authenticated, auditable launch-operations task records that ops can create or reuse from current coverage action recommendations, assign to ops users, update through status changes, and close with completion notes while preserving stable recommendation keys, pocket keys, scenario keys, and recommendation fingerprints.
-- Added an ops-authenticated launch-operations task notification sweep that sends idempotent support-category notifications for due open/in-progress/blocked task records to the assigned ops user, or all ops users when unassigned, while reporting already-sent, dry-run, not-due, completed, cancelled, and no-recipient outcomes.
-- Added an ops-authenticated launch-operations overdue escalation sweep that applies priority-based thresholds, sends idempotent support-category escalation notifications to ops users, and reports sent, already-sent, dry-run, not-overdue, completed, cancelled, and no-recipient outcomes while preserving stable task keys/status fields.
-- Added an ops-authenticated backend automation runner at `POST /api/observability/ops-automation/run-due` that orchestrates provider onboarding actions, stale support ticket SLA escalations, launch-operations due-task notifications, and launch-operations overdue-task escalations with stable sweep keys, shared `asOfIso`, dry-run support, nested sweep payloads, and aggregate notification counts for schedulers or ops-workspace integrations.
-- Persisted each backend ops-automation runner invocation as an actor-stamped audit record with requested sweep keys, nested sweep results, dry-run state, aggregate notification counts, and a stable run id, exposed through the ops-only `GET /api/observability/ops-automation/runs` history route.
-- Added backend-authored retention insights to the ops overview from existing strategy, source, and provider retention metrics.
-- Extended backend-authored customer retention opportunities with fall gutter-prep reminders and winter snow/ice readiness reminders for snow shoveling, snow blowing, and ice-melt salting, while preserving the existing opportunity response shape and recommendation-first rebook flow.
-- Added backend-authored crew earnings and attendance summaries to the crew payout ledger.
-- Added backend-authored crew performance summaries to the crew payout ledger with clean completion, route confirmation, crew evidence, dispute/refund, provider breadth, service-category, highlight, warning, and status signals.
-- Added backend-authored crew assignment forecasts to crew match responses with upcoming accepted work, pending review, active assignment, route-leader, next assignment, workload, warning, and guidance signals.
-- Added backend-authored crew availability constraints to crew match responses with weekday, travel-radius, schedule, equipment, winter-work, active-load, route-leader-load, status, warning, and guidance signals.
-- Extended backend place-search fallback coverage for the Barnegat/Ocean County launch area, including Barnegat, Manahawkin, Waretown, Forked River, Toms River, and Long Beach Township seeds.
-- Added API-level place-search coverage proving Barnegat Township and LBI aliases resolve strongly while partial Barnegat guesses remain confirmation-required instead of safe to auto-select.
-- Extended instant quote measurement follow-ups for winter hardscape services, allowing snow shoveling, snow blowing, and ice-melt salting quotes to collect customer-confirmed driveway and sidewalk measurements instead of relying only on address heuristics for duration-driving fields.
-- Added API-level quote coverage proving winter hardscape quotes ask driveway/sidewalk questions, suppress irrelevant turf/shrub prompts, preserve stable category fields, and mark clarified measurements as `customer-follow-up`.
-- Added backend-authored provider service-fit summaries to provider search so multi-service requests expose complete versus partial category coverage, matched/missing category arrays, and explanation copy without changing provider ids, original category arrays, ranking-factor keys, or recommendation session ids.
-- Tuned provider-economics search summaries so complete multi-service matches compare provider net against a service-mix payout floor instead of only the first matched category.
-- Added API-level ranking coverage proving full-service providers are recommended ahead of high-rated partial backups for bundled lawn/mulch requests, while partial matches preserve missing-category metadata.
-- Extended saved-property geocode reuse across matching authenticated quote, booking, recurring-plan, and booking-address-change inputs, while keeping anonymous location lookup unsaved/session-scoped.
-- Added API-level geocode-cache coverage proving a saved customer property geocode is reused by later quote and booking requests that send the same normalized address without a property id.
-- Updated API docs, README, ROADMAP, and LAUNCH_CHECKLIST for the backend behavior now in place, including support SLA escalation, structured support exception scripts, provider-economics search summaries, the completed paid dispute settlement guard, the backend ops-automation runner with persisted run history, due-task notification/overdue escalation sweeps for launch operations tasks, richer seasonal retention windows, Barnegat/Ocean County fallback place-search coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, and saved-property geocode reuse across repeat customer address flows.
+- Completed provider onboarding/verification/settings and first-job confirm/decline/route/evidence/start/complete coverage.
+- Completed crew fit/signup/preferences/assignment/schedule/directions/support/evidence/history/payout coverage.
+- Added authenticated ops automation execution/history and expanded payout preview/manual-run visibility.
+- Verified ops approval, support triage, lead creation, payout state, automation audit, and role denial.
+- Fixed mobile overflow, clipped status pills, missing desktop crew directions, and invalid pseudo ICU transformations.
+- Preserved and reran the recommendation-first customer booking workflow.
+- Verified local Stripe test-mode hosted Checkout capture with a disposable confirmed booking and standard Stripe test card.
+- Fixed hosted Checkout return URLs so Stripe receives the raw `{CHECKOUT_SESSION_ID}` macro and YardMatch can finalize the success redirect.
+- Added idempotent checkout finalization when the Stripe webhook captures payment before the browser redirect returns.
+- Added the authenticated crew claim handoff after public opening signup and carried the selected opening's actual service day into the signup URL.
+
+## In-Progress Work
+
+- None.
+
+## Remaining Work
+
+- Live Stripe credentials, transfer execution, and vendor callbacks require production-like accounts. Local Stripe test-mode hosted Checkout customer capture is verified.
+
+## Blockers
+
+- None for deterministic in-memory workflows.
+
+## Changed Workflows
+
+- Provider signup -> verified management -> first-job lifecycle.
+- Crew recommendation -> signup -> assignment -> field work -> payout history.
+- Public crew opening selection -> signup -> authenticated claim -> accepted assignment.
+- Ops login -> verification/support/leads/payouts/automation with actor-stamped state.
+- Spanish and pseudo routes across core workflows.
+- Stripe hosted Checkout -> YardMatch success return -> captured payment confirmation.
 
 ## Validation Results
 
-- Controller route-drift sanity check: passed.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "auth controller registers, logs in, and returns the current user|provider payout setting changes require a fresh provider session"`: passed, 196 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops payout preview groups ready balances into upcoming payout runs"`: passed, 196 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can preview and send a provider-crew coordination message|provider assistant can message the route leader and accepted crew"`: passed, 196 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "crew members can cancel accepted assignments|before and after photos still gate booking start"`: passed, 196 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "review-first staffing creates pending crew matches|crew members can cancel accepted assignments"`: passed, 196 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider profiles include backend-authored verification next steps"`: passed, 196 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider profiles include backend-authored verification next steps|rejected providers are automatically resubmitted when they update business profile details"`: passed, 196 tests.
+- Targeted core Playwright: 9/9 passed.
+- Focused crew Playwright rerun: 1/1 passed after the selected-opening day handoff fix.
+- Final `npm run test:web:smoke`: 15/15 passed in 41.1 seconds.
 - `npm run typecheck`: passed.
-- `npm run prisma:generate`: passed.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops payout preview groups ready balances into upcoming payout runs"`: passed, 196 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider onboarding automation sweep"`: passed, 197 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "launch operations policy"`: passed, 197 tests.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "launch operations recommendations|ops overview route requires|controller handler paths"`: passed, 198 tests after due-task notification and overdue-escalation sweep coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "stale support tickets|support ops routes require|controller handler paths"`: passed, 199 tests after stale support ticket escalation coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops automation runner|ops overview route requires|controller handler paths"`: passed, 200 tests after backend ops-automation runner coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "paid completed disputes|completed disputed bookings|captured disputed bookings|ops cannot restore a disputed booking|controller handler paths"`: passed, 201 tests after completed paid dispute settlement-guard coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 202 tests after provider-economics ranking coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "winter and gutter season windows|spring and fall season windows|fall back to a 90-day rebook"`: passed, 203 tests after winter snow/ice and fall gutter retention coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew|provider assistant staffing plan recommends route leader assignment|provider assistant can assign and clear a crew route leader"`: passed, 204 tests after route-leader staffing-plan coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "recommendation telemetry tracks|recommendation insights by surface"`: passed, 205 tests after backend-authored recommendation insight coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "place search"`: passed, 206 tests after Barnegat/Ocean County fallback coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "instant quotes|winter hardscape"`: passed, 207 tests after winter hardscape quote-confidence coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider search returns ranked results|provider search favors full-service fit|provider search flags thin long-route economics|customer provider choice presentations"`: passed, 208 tests after multi-service provider search fit/economics coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "cached geocodes|saved customer properties reuse|quotes and bookings reuse"`: passed, 209 tests after quote/booking saved-property geocode reuse coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can preview and start a route|confirm-then-route"`: passed, 209 tests after start-route ETA/tracking notification coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can send an arrived customer update|provider assistant can preview and start a route|provider assistant can preview and start work"`: passed, 210 tests after provider-assistant arrival-update coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "active category-qualified launch leads include provider outreach drafts|provider assistant can send an arrived customer update"`: passed, 210 tests after provider outreach template variant coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "ops support queue includes delay-update drafts|ops support queue includes weather or route delay"`: passed, 211 tests after support exception-script coverage.
-- `npm --workspace @yardmatch/api run test -- --test-name-pattern "provider assistant can recommend where more crew|provider assistant can recommend reviewing pending crew"`: passed, 195 tests.
-- `npm run typecheck`: passed after support exception-script contract coverage.
-- `npm run test:api`: passed, 211 tests after support exception-script coverage.
-- `git diff --check`: passed after latest checkpoint edit.
-
-## Screenshot Evidence
-
-- Not applicable. This was backend/API/contract/docs work with no web/mobile UI implementation changes.
+- `npm run test:api`: 215/215 passed.
+- `npm run i18n:validate`: passed, 3,438 keys.
+- i18n unit tests: 4/4 passed.
+- `git diff --check`: passed.
+- Local Stripe hosted UI smoke: passed through hosted Checkout, webhook-first capture, YardMatch success finalization, and captured payment display. Secrets and bearer tokens were not printed.
 
 ## Known Defects
 
-- No new known defects from this batch.
-- Real live-vendor work remains blocked on credentials/accounts or provider selection: production Stripe validation, external payout rails, future bank/payment-method update surfaces, and production push/email/SMS sender setup. The API now exposes manual payout disbursement batch previews, audit-backed manual disbursement run records, sensitive-action policy contracts, launch-ops coverage action recommendations, launch-ops task records, due-task notifications, deterministic Barnegat/Ocean County place-search fallback coverage, winter hardscape quote-confidence prompts, multi-service provider search fit/economics summaries, saved-property geocode reuse across repeat customer address flows, provider-assistant ETA/arrival customer updates, richer provider outreach template variants, and structured support exception scripts but does not move money externally or run external ops-workspace sync automatically.
+- Live payment/payout rail behavior is not verified without production-like credentials. Local Stripe test-mode hosted Checkout capture is verified.
+- Next.js middleware and smooth-scroll advisories remain non-blocking.
+
+## Screenshot Paths
+
+- `provider-onboarding-verified-{desktop,mobile}.png`
+- `provider-job-in-progress-{desktop,mobile}.png`
+- `crew-assignment-accepted-{desktop,mobile}.png`
+- `crew-payout-history-{desktop,mobile}.png`
+- `ops-workspace-{desktop,mobile}.png`
+- `i18n-spanish-ops-mobile.png`
+- `i18n-pseudo-crew-{desktop,mobile}.png`
+- `stripe-checkout-submit-ready.png`
+- `stripe-checkout-submit-after.png`
+- `stripe-ui-return-before-checkout.png`
+- `stripe-ui-return-checkout-ready.png`
+- `stripe-ui-return-captured-desktop.png`
+- `stripe-ui-return-captured-mobile.png`
 
 ## Recommended Next Task
 
-Continue backend launch-readiness with deeper geocoding/property confidence once parcel or imagery inputs are available, or vendor/account cutover once production credentials and payout-provider decisions are ready.
+Implement and visually verify the payout cutover through captured customer payment, payable states, transfer failure/retry, and live arrival tracking.

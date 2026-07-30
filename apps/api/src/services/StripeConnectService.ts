@@ -1,0 +1,190 @@
+import Stripe from "stripe";
+import {
+  ProviderConnectAccount,
+  ProviderConnectCapabilityStatus,
+  ProviderProfile
+} from "@yardmatch/contracts";
+import { HttpError } from "../http";
+
+export interface StripeRecipientReadiness {
+  stripeAccountId: string;
+  transfersStatus: ProviderConnectCapabilityStatus;
+  payoutsStatus: ProviderConnectCapabilityStatus;
+  onboardingStatus: ProviderConnectAccount["onboardingStatus"];
+}
+
+export interface StripeConnectGateway {
+  isConfigured(): boolean;
+  createRecipientAccount(provider: ProviderProfile): Promise<StripeRecipientReadiness>;
+  retrieveRecipientReadiness(stripeAccountId: string): Promise<StripeRecipientReadiness>;
+  createOnboardingLink(input: {
+    stripeAccountId: string;
+    returnUrl: string;
+    refreshUrl: string;
+  }): Promise<{ url: string; expiresAt: string }>;
+  createProviderTransfer(input: {
+    stripeAccountId: string;
+    bookingId: string;
+    settlementId: string;
+    amountCents: number;
+    currency: string;
+    idempotencyKey: string;
+  }): Promise<{ transferId: string }>;
+}
+
+function normalizeCapabilityStatus(
+  status: string | undefined
+): ProviderConnectCapabilityStatus {
+  if (status === "active" || status === "pending" || status === "restricted") {
+    return status;
+  }
+  return status ? "restricted" : "not-requested";
+}
+
+export class StripeConnectService implements StripeConnectGateway {
+  private readonly stripe?: Stripe;
+
+  public constructor(secretKey = process.env.STRIPE_SECRET_KEY) {
+    if (secretKey?.trim()) {
+      this.stripe = new Stripe(secretKey.trim());
+    }
+  }
+
+  public isConfigured(): boolean {
+    return Boolean(this.stripe);
+  }
+
+  public async createRecipientAccount(
+    provider: ProviderProfile
+  ): Promise<StripeRecipientReadiness> {
+    if (!this.stripe) {
+      throw new HttpError(503, "Stripe Connect is not configured yet.");
+    }
+    const account = await this.stripe.v2.core.accounts.create({
+      contact_email: provider.email,
+      contact_phone: provider.phone,
+      display_name: provider.companyName,
+      dashboard: "express",
+      defaults: {
+        currency: "usd",
+        locales: ["en-US"],
+        responsibilities: {
+          fees_collector: "application",
+          losses_collector: "application"
+        },
+        profile: {
+          doing_business_as: provider.companyName,
+          product_description: "Local lawn and property-care services booked through YardMatch."
+        }
+      },
+      identity: {
+        country: provider.address.country
+      },
+      configuration: {
+        recipient: {
+          capabilities: {
+            stripe_balance: {
+              stripe_transfers: {
+                requested: true
+              }
+            }
+          }
+        }
+      },
+      metadata: {
+        yardmatchProviderId: provider.id
+      },
+      include: ["configuration.recipient", "requirements", "future_requirements"]
+    });
+    return this.mapReadiness(account);
+  }
+
+  public async retrieveRecipientReadiness(
+    stripeAccountId: string
+  ): Promise<StripeRecipientReadiness> {
+    if (!this.stripe) {
+      throw new HttpError(503, "Stripe Connect is not configured yet.");
+    }
+    const account = await this.stripe.v2.core.accounts.retrieve(stripeAccountId, {
+      include: ["configuration.recipient", "requirements", "future_requirements"]
+    });
+    return this.mapReadiness(account);
+  }
+
+  public async createOnboardingLink(input: {
+    stripeAccountId: string;
+    returnUrl: string;
+    refreshUrl: string;
+  }): Promise<{ url: string; expiresAt: string }> {
+    if (!this.stripe) {
+      throw new HttpError(503, "Stripe Connect is not configured yet.");
+    }
+    const link = await this.stripe.v2.core.accountLinks.create({
+      account: input.stripeAccountId,
+      use_case: {
+        type: "account_onboarding",
+        account_onboarding: {
+          configurations: ["recipient"],
+          collection_options: {
+            fields: "eventually_due",
+            future_requirements: "include"
+          },
+          return_url: input.returnUrl,
+          refresh_url: input.refreshUrl
+        }
+      }
+    });
+    return { url: link.url, expiresAt: link.expires_at };
+  }
+
+  public async createProviderTransfer(input: {
+    stripeAccountId: string;
+    bookingId: string;
+    settlementId: string;
+    amountCents: number;
+    currency: string;
+    idempotencyKey: string;
+  }): Promise<{ transferId: string }> {
+    if (!this.stripe) {
+      throw new HttpError(503, "Stripe Connect is not configured yet.");
+    }
+    const transfer = await this.stripe.transfers.create(
+      {
+        amount: input.amountCents,
+        currency: input.currency,
+        destination: input.stripeAccountId,
+        transfer_group: `booking_${input.bookingId}`,
+        metadata: {
+          bookingId: input.bookingId,
+          settlementId: input.settlementId,
+          recipientRole: "provider"
+        }
+      },
+      { idempotencyKey: input.idempotencyKey }
+    );
+    return { transferId: transfer.id };
+  }
+
+  private mapReadiness(account: any): StripeRecipientReadiness {
+    const transfersStatus = normalizeCapabilityStatus(
+      account.configuration?.recipient?.capabilities?.stripe_balance?.stripe_transfers?.status
+    );
+    const payoutsStatus = normalizeCapabilityStatus(
+      account.configuration?.recipient?.capabilities?.stripe_balance?.payouts?.status
+    );
+    const onboardingStatus: ProviderConnectAccount["onboardingStatus"] =
+      transfersStatus === "active" && payoutsStatus === "active"
+        ? "ready"
+        : transfersStatus === "restricted" || payoutsStatus === "restricted"
+          ? "restricted"
+          : transfersStatus === "pending" || payoutsStatus === "pending"
+            ? "in-review"
+            : "requirements-due";
+    return {
+      stripeAccountId: account.id,
+      transfersStatus,
+      payoutsStatus,
+      onboardingStatus
+    };
+  }
+}

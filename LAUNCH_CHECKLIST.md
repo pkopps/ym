@@ -1,5 +1,19 @@
 # YardMatch Launch Checklist
 
+## Financial, Connect, and Legal Launch Gates
+
+- [ ] Confirm the `2026-07-provider-funded-v1` fee amounts and provider-funded posture in the signed provider agreement.
+- [ ] Have marketplace counsel confirm that each provider—not YardMatch—engages, supervises, insures, classifies, reports, and pays its crew.
+- [ ] Have counsel confirm YardMatch's merchant-of-record, refund, dispute, negative-balance, and customer-receipt posture for separate charges and transfers.
+- [ ] Configure Stripe Connect Accounts v2 with Express dashboard access, `fees_collector: application`, `losses_collector: application`, and recipient `stripe_transfers` capability only.
+- [ ] Verify transfer and payout capabilities are active before enabling a provider transfer.
+- [ ] Reconcile actual Stripe processing fees from balance transactions into the immutable ledger before finance close.
+- [ ] Verify business registration and general liability insurance for every launch provider.
+- [ ] Verify workers-compensation coverage or a counsel-approved exemption before any provider engages crew through YardMatch.
+- [ ] Have New Jersey counsel approve the category credential matrix, including fertilization and weed-control/pesticide work.
+- [ ] Run the PostgreSQL migration/integration CI job and archive its passing result before production deployment.
+- [ ] Confirm production startup fails without Postgres, strong JWT secret, live Stripe/webhook credentials, HTTPS URLs, and real email/SMS configuration.
+
 Last updated: June 17, 2026
 
 This is the working checklist for launch readiness beyond product code.

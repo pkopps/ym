@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookingEvidencePhase,
   CrewAvailabilityDay,
   CrewMemberSchedulePreference,
   CrewOpportunity,
@@ -75,6 +76,21 @@ function formatDateTime(i18n: I18nInstance, iso: string) {
   return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
+  });
+}
+
+function readEvidenceImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Unable to read that image."));
+    });
+    reader.addEventListener("error", () => reject(reader.error ?? new Error("Unable to read that image.")));
+    reader.readAsDataURL(file);
   });
 }
 
@@ -237,11 +253,13 @@ export function CrewLiveDashboard() {
   );
   const crewSignupHref = useMemo(() => {
     const params = new URLSearchParams();
+    const signupDays = new Set(publicPreferences.availableWeekdays);
     if (selectedPublicOpportunity) {
       params.set("opportunityId", selectedPublicOpportunity.id);
+      signupDays.add(getAvailabilityDay(selectedPublicOpportunity.neededByStartIso));
     }
     params.set("categories", publicPreferences.categories.join(","));
-    params.set("days", publicPreferences.availableWeekdays.join(","));
+    params.set("days", allDays.filter((day) => signupDays.has(day)).join(","));
     params.set("preferredSchedule", publicPreferences.preferredSchedule);
     params.set("willingToTravelMiles", String(publicPreferences.willingToTravelMiles));
     params.set("hasOwnEquipment", String(publicPreferences.hasOwnEquipment));
@@ -350,6 +368,28 @@ export function CrewLiveDashboard() {
       await loadCrewView();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.start_route"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function captureEvidencePhoto(bookingId: string, phase: BookingEvidencePhase, file: File) {
+    setIsWorking(true);
+    setErrorMessage(undefined);
+    setStatusMessage(undefined);
+
+    try {
+      const imageDataUrl = await readEvidenceImage(file);
+      const api = createAuthenticatedWebApiClient();
+      await api.addBookingEvidence({ bookingId, phase, imageDataUrl });
+      setStatusMessage(
+        phase === "before"
+          ? i18n.t("crew_live.status.before_photo_saved")
+          : i18n.t("crew_live.status.after_photo_saved")
+      );
+      await loadCrewView();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.capture_photo"));
     } finally {
       setIsWorking(false);
     }
@@ -864,7 +904,54 @@ export function CrewLiveDashboard() {
               ) : null}
 
               {match.status === "accepted" ? (
-                <div className="cta-row">
+                <div className="stack-md">
+                  {(match.bookingStatus === "confirmed" && match.onRouteConfirmedAt) ||
+                  match.bookingStatus === "in-progress" ? (
+                    <section className="evidence-capture-panel">
+                      <div>
+                        <strong>{i18n.t("crew_live.evidence.title")}</strong>
+                        <p>
+                          {match.bookingStatus === "in-progress"
+                            ? i18n.t("crew_live.evidence.after_help", { count: match.afterEvidenceCount })
+                            : i18n.t("crew_live.evidence.before_help", { count: match.beforeEvidenceCount })}
+                        </p>
+                      </div>
+                      <label className="button-secondary evidence-upload-button">
+                        <span>
+                          {match.bookingStatus === "in-progress"
+                            ? i18n.t("crew_live.evidence.add_after")
+                            : i18n.t("crew_live.evidence.add_before")}
+                        </span>
+                        <input
+                          accept="image/*"
+                          aria-label={
+                            match.bookingStatus === "in-progress"
+                              ? i18n.t("crew_live.evidence.after_label")
+                              : i18n.t("crew_live.evidence.before_label")
+                          }
+                          capture="environment"
+                          className="visually-hidden"
+                          disabled={isWorking}
+                          onChange={(event) => {
+                            const input = event.currentTarget;
+                            const file = input.files?.[0];
+                            if (!file) {
+                              return;
+                            }
+                            void captureEvidencePhoto(
+                              match.bookingId,
+                              match.bookingStatus === "in-progress" ? "after" : "before",
+                              file
+                            ).finally(() => {
+                              input.value = "";
+                            });
+                          }}
+                          type="file"
+                        />
+                      </label>
+                    </section>
+                  ) : null}
+                  <div className="cta-row">
                   {match.bookingStatus === "requested" ? (
                     <span className="result-badge">{i18n.t("crew_live.status.waiting_confirmation")}</span>
                   ) : null}
@@ -884,7 +971,7 @@ export function CrewLiveDashboard() {
                   {match.bookingStatus === "confirmed" && match.onRouteConfirmedAt ? (
                     <button
                       className="button"
-                      disabled={isWorking}
+                      disabled={isWorking || match.beforeEvidenceCount === 0}
                       onClick={() => void startWork(match.bookingId)}
                       type="button"
                     >
@@ -917,6 +1004,7 @@ export function CrewLiveDashboard() {
                       {i18n.t("crew_live.action.cancel_assignment")}
                     </button>
                   ) : null}
+                  </div>
                 </div>
               ) : null}
             </article>

@@ -166,6 +166,9 @@ import {
   RecurringServicePlan,
   RecurringServicePlanSummary,
   ProviderProfile,
+  ProviderConnectAccount,
+  ProviderConnectOnboardingResponse,
+  ProviderConnectStatusResponse,
   ProviderVerificationStatusSummary,
   ProviderVerificationQueueItem,
   ExternalCalendarBlock,
@@ -187,6 +190,9 @@ import {
   RegisterUserRequest,
   RotateOpsAccountSessionsRequest,
   ReviewProviderVerificationRequest,
+  ReviewProviderCredentialRequest,
+  SubmitProviderCredentialRequest,
+  ProviderCredential,
   ReviewCrewMatchRequest,
   RemoveExternalCalendarImportRequest,
   RescheduleBookingRequest,
@@ -209,6 +215,7 @@ import {
   SearchProvidersRequest,
   SearchProviderResult,
   SearchProvidersResponse,
+  ClaimPublicCrewOpportunityRequest,
   SelectPublicCrewOpportunityRequest,
   SelectPublicCrewOpportunityResponse,
   StartBookingRequest,
@@ -256,6 +263,7 @@ import {
   validatePasswordStrength
 } from "../auth";
 import { HttpError } from "../http";
+import { evaluateProviderCredentialReadiness } from "../policies/providerCredentialPolicy";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
 import { NotificationDeliveryService } from "./NotificationDeliveryService";
 import { AddressValidationOutcome, AddressValidationService } from "./AddressValidationService";
@@ -265,6 +273,7 @@ import {
   StripeCheckoutService,
   StripeWebhookEvent
 } from "./StripeCheckoutService";
+import { StripeConnectGateway, StripeConnectService } from "./StripeConnectService";
 
 const OPS_AUTH_FAILURE_LOCK_THRESHOLD = 5;
 const OPS_AUTH_LOCK_WINDOW_MINUTES = 30;
@@ -362,6 +371,7 @@ export class MarketplacePlatformService {
   );
   private readonly notificationDelivery = new NotificationDeliveryService();
   private readonly stripeCheckout: PaymentCheckoutGateway;
+  private readonly stripeConnect: StripeConnectGateway;
   private readonly appBaseUrl: string;
   private readonly apiBaseUrl: string;
 
@@ -369,9 +379,11 @@ export class MarketplacePlatformService {
     private readonly repository: MarketplaceRepository,
     private readonly analytics: DataEngineeringLogger,
     stripeCheckout: PaymentCheckoutGateway = new StripeCheckoutService(),
-    appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000"
+    appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000",
+    stripeConnect: StripeConnectGateway = new StripeConnectService()
   ) {
     this.stripeCheckout = stripeCheckout;
+    this.stripeConnect = stripeConnect;
     this.appBaseUrl = appBaseUrl;
     this.apiBaseUrl =
       process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? "4001"}`;
@@ -1752,11 +1764,104 @@ export class MarketplacePlatformService {
       this.buildProviderVerificationOperationalHistory(provider.id, bookings)
     );
     const onboardingPlan = this.buildProviderOnboardingAutomationPlan(provider, guidance);
+    const credentialReadiness = evaluateProviderCredentialReadiness(
+      provider,
+      provider.credentials ?? []
+    );
 
     return {
       ...provider,
+      credentialReadiness,
       verificationSummary: this.buildProviderVerificationStatusSummary(provider, guidance, onboardingPlan),
       businessControls: this.buildProviderBusinessControlsSummary(provider, openBookingCount)
+    };
+  }
+
+  public async getProviderConnectStatus(
+    providerId: string
+  ): Promise<ProviderConnectStatusResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+    let account = await this.repository.findProviderConnectAccount(providerId);
+    if (account && this.stripeConnect.isConfigured()) {
+      const readiness = await this.stripeConnect.retrieveRecipientReadiness(
+        account.stripeAccountId
+      );
+      account = await this.repository.upsertProviderConnectAccount({
+        ...account,
+        onboardingStatus: readiness.onboardingStatus,
+        transfersStatus: readiness.transfersStatus,
+        payoutsStatus: readiness.payoutsStatus,
+        updatedAt: new Date().toISOString(),
+        lastSyncedAt: new Date().toISOString()
+      });
+    }
+    return this.buildProviderConnectStatus(account);
+  }
+
+  public async startProviderConnectOnboarding(
+    providerId: string
+  ): Promise<ProviderConnectOnboardingResponse> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+    if (!this.stripeConnect.isConfigured()) {
+      throw new HttpError(503, "Stripe Connect is not configured yet.");
+    }
+    let account = await this.repository.findProviderConnectAccount(providerId);
+    if (!account) {
+      const readiness = await this.stripeConnect.createRecipientAccount(provider);
+      const now = new Date().toISOString();
+      account = await this.repository.upsertProviderConnectAccount({
+        providerId,
+        stripeAccountId: readiness.stripeAccountId,
+        dashboard: "express",
+        feesCollector: "application",
+        lossesCollector: "application",
+        chargePattern: "separate-charges-and-transfers",
+        onboardingStatus: readiness.onboardingStatus,
+        transfersStatus: readiness.transfersStatus,
+        payoutsStatus: readiness.payoutsStatus,
+        createdAt: now,
+        updatedAt: now,
+        lastSyncedAt: now
+      });
+    }
+    const onboarding = await this.stripeConnect.createOnboardingLink({
+      stripeAccountId: account.stripeAccountId,
+      returnUrl: new URL("/provider/management?connect=return", this.appBaseUrl).toString(),
+      refreshUrl: new URL("/provider/management?connect=refresh", this.appBaseUrl).toString()
+    });
+    return {
+      ...this.buildProviderConnectStatus(account),
+      onboardingUrl: onboarding.url,
+      expiresAt: onboarding.expiresAt
+    };
+  }
+
+  private buildProviderConnectStatus(
+    account?: ProviderConnectAccount
+  ): ProviderConnectStatusResponse {
+    return {
+      stripeConfigured: this.stripeConnect.isConfigured(),
+      transferReady:
+        account?.onboardingStatus === "ready" &&
+        account.transfersStatus === "active" &&
+        account.payoutsStatus === "active",
+      account,
+      crewCompensationResponsibility: "provider",
+      chargePattern: "separate-charges-and-transfers",
+      readinessRequirements: [
+        "Use Accounts v2 recipient configuration; do not request merchant/card-payments capabilities.",
+        "Stripe transfers and payouts capabilities must both be active.",
+        "Provider legal and insurance credentials must remain verified and current.",
+        "Booking must be complete, paid, outside the hold window, and free of refund/dispute holds.",
+        "Transfer amount must equal the immutable providerNetCents settlement and use an idempotency key.",
+        "YardMatch never creates a transfer to an individual crew member."
+      ]
     };
   }
 
@@ -2234,6 +2339,16 @@ export class MarketplacePlatformService {
     }
 
     if (payload.action === "approve") {
+      const credentialReadiness = evaluateProviderCredentialReadiness(
+        provider,
+        provider.credentials ?? []
+      );
+      if (!credentialReadiness.ready) {
+        throw new HttpError(
+          409,
+          `Provider cannot be approved until required credentials are verified: ${credentialReadiness.warnings.join(" ")}`
+        );
+      }
       const bookings = await this.repository.listBookings();
       const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
       const guidance = this.buildProviderVerificationGuidance(
@@ -2284,12 +2399,99 @@ export class MarketplacePlatformService {
     return updatedProvider;
   }
 
+  public async submitProviderCredential(
+    providerId: string,
+    payload: SubmitProviderCredentialRequest
+  ): Promise<ProviderProfile> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+    const jurisdiction = (payload.jurisdiction ?? provider.address.state).trim().toUpperCase();
+    if (!jurisdiction) {
+      throw new HttpError(400, "Credential jurisdiction is required");
+    }
+    if (!payload.referenceNumber?.trim() && !payload.documentUrl?.trim()) {
+      throw new HttpError(400, "A credential reference number or document URL is required");
+    }
+    if (payload.issuedAt && !Number.isFinite(Date.parse(payload.issuedAt))) {
+      throw new HttpError(400, "issuedAt must be a valid ISO timestamp");
+    }
+    if (payload.expiresAt && !Number.isFinite(Date.parse(payload.expiresAt))) {
+      throw new HttpError(400, "expiresAt must be a valid ISO timestamp");
+    }
+    if (
+      payload.issuedAt &&
+      payload.expiresAt &&
+      Date.parse(payload.expiresAt) <= Date.parse(payload.issuedAt)
+    ) {
+      throw new HttpError(400, "Credential expiration must be after its issue date");
+    }
+
+    const existing = (provider.credentials ?? []).find(
+      (credential) =>
+        credential.type === payload.type && credential.jurisdiction === jurisdiction
+    );
+    const credential: ProviderCredential = {
+      id: existing?.id ?? crypto.randomUUID(),
+      providerId,
+      type: payload.type,
+      status: "pending-review",
+      jurisdiction,
+      referenceNumber: payload.referenceNumber?.trim() || undefined,
+      documentUrl: payload.documentUrl?.trim() || undefined,
+      issuedAt: payload.issuedAt,
+      expiresAt: payload.expiresAt,
+      submittedAt: new Date().toISOString()
+    };
+    await this.repository.upsertProviderCredential(credential);
+    await this.repository.updateProvider(providerId, {
+      verificationStatus:
+        provider.verificationStatus === "verified" ? "pending-review" : provider.verificationStatus,
+      verificationSubmittedAt: new Date().toISOString(),
+      verificationReviewedAt: undefined
+    });
+    return this.getProviderProfile(providerId);
+  }
+
+  public async reviewProviderCredential(
+    opsUserId: string,
+    payload: ReviewProviderCredentialRequest
+  ): Promise<ProviderProfile> {
+    const provider = await this.repository.findProviderById(payload.providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found");
+    }
+    const credential = (provider.credentials ?? []).find(
+      (candidate) => candidate.id === payload.credentialId
+    );
+    if (!credential) {
+      throw new HttpError(404, "Provider credential not found");
+    }
+    const notes = payload.notes?.trim();
+    if (payload.action === "reject" && !notes) {
+      throw new HttpError(400, "Review notes are required when rejecting a credential");
+    }
+    await this.repository.upsertProviderCredential({
+      ...credential,
+      status: payload.action === "verify" ? "verified" : "rejected",
+      reviewedAt: new Date().toISOString(),
+      reviewedByOpsUserId: opsUserId,
+      reviewNotes: notes
+    });
+    return this.getProviderProfile(provider.id);
+  }
+
   private buildProviderVerificationGuidance(
     provider: ProviderProfile,
     openBookingCount: number,
     operationalHistory: ProviderVerificationOperationalHistory
   ): ProviderVerificationQueueItem["guidance"] {
     const checklist: ProviderVerificationQueueItem["guidance"]["checklist"] = [];
+    const credentialReadiness = evaluateProviderCredentialReadiness(
+      provider,
+      provider.credentials ?? []
+    );
 
     const normalizedBio = provider.bio.trim();
     checklist.push({
@@ -2421,6 +2623,21 @@ export class MarketplacePlatformService {
             : "Current staffing or route settings do not yet support the intervention standards expected during launch."
     });
 
+    checklist.push({
+      key: "legal-credentials",
+      label: "Legal and insurance credentials",
+      status: credentialReadiness.ready
+        ? "ready"
+        : credentialReadiness.pendingTypes.length > 0 &&
+            credentialReadiness.missingTypes.length === 0 &&
+            credentialReadiness.expiredTypes.length === 0
+          ? "review"
+          : "missing",
+      detail: credentialReadiness.ready
+        ? "All launch-required business, insurance, and category-specific credentials are verified and current."
+        : credentialReadiness.warnings.join(" ")
+    });
+
     const missingCount = checklist.filter((item) => item.status === "missing").length;
     const reviewCount = checklist.filter((item) => item.status === "review").length;
     const warnings: string[] = [];
@@ -2445,6 +2662,7 @@ export class MarketplacePlatformService {
     if (provider.crewReviewLeadHours < 24 || provider.departureReminderLeadMinutes < 30) {
       warnings.push("Double-check late-update, exception, and staffing escalation readiness before go-live.");
     }
+    warnings.push(...credentialReadiness.warnings);
 
     if (missingCount > 0) {
       return {
@@ -2921,6 +3139,8 @@ export class MarketplacePlatformService {
         return "Work with ops to document recent disputes, refunds, or active field exceptions and confirm what changed before public launch visibility.";
       case "intervention-readiness":
         return "Set staffing mode, crew review timing, and departure reminders so late updates and field exceptions can be handled cleanly.";
+      case "legal-credentials":
+        return "Submit current business-registration, insurance, and category-specific credential evidence for ops review before public launch visibility.";
     }
   }
 
@@ -3444,6 +3664,23 @@ export class MarketplacePlatformService {
 
     if (match.providerId !== providerId) {
       throw new Error("Only the provider can review this crew match");
+    }
+
+    if (payload.action === "accept") {
+      const provider = await this.repository.findProviderById(providerId);
+      if (!provider) {
+        throw new HttpError(404, "Provider not found");
+      }
+      const readiness = evaluateProviderCredentialReadiness(
+        provider,
+        provider.credentials ?? []
+      );
+      if (!readiness.crewEngagementAllowed) {
+        throw new HttpError(
+          409,
+          "Crew cannot be engaged until the provider has verified workers-compensation coverage or a counsel-approved exemption."
+        );
+      }
     }
 
     const nextStatus = payload.action === "accept" ? "accepted" : "denied";
@@ -5379,6 +5616,137 @@ export class MarketplacePlatformService {
     };
   }
 
+  public async claimPublicCrewOpportunity(
+    crewMemberId: string,
+    payload: ClaimPublicCrewOpportunityRequest
+  ): Promise<CrewMatchCandidate> {
+    const opportunityId = payload.opportunityId?.trim();
+    if (!opportunityId) {
+      throw new HttpError(400, "opportunityId is required");
+    }
+
+    const [crewMember, booking, allBookings, allMatches] = await Promise.all([
+      this.repository.findCrewMemberById(crewMemberId),
+      this.repository.findBookingById(opportunityId),
+      this.repository.listBookings(),
+      this.repository.listCrewMatches()
+    ]);
+
+    if (!crewMember) {
+      throw new HttpError(404, "Crew member not found");
+    }
+
+    if (
+      !booking ||
+      new Date(booking.scheduledStartIso).getTime() <= Date.now() ||
+      (booking.status !== "requested" && booking.status !== "confirmed")
+    ) {
+      throw new HttpError(404, "Crew opportunity not found");
+    }
+
+    const provider = await this.repository.findProviderById(booking.providerId);
+    if (!provider) {
+      throw new HttpError(404, "Provider not found for this crew opportunity");
+    }
+
+    const existingMatch = allMatches.find(
+      (match) => match.bookingId === booking.id && match.crewMemberId === crewMember.id
+    );
+    if (existingMatch) {
+      return existingMatch;
+    }
+
+    const distanceMiles = Number(this.geoService.distanceMiles(crewMember.address, booking.serviceAddress).toFixed(1));
+    const acceptedBookedJobs = this.getAcceptedCrewBookings(crewMember.id, allMatches, allBookings);
+    const hasConflictingAcceptedJob = acceptedBookedJobs.some(
+      (acceptedBooking) =>
+        acceptedBooking.id !== booking.id &&
+        this.doIntervalsOverlap(
+          acceptedBooking.scheduledStartIso,
+          acceptedBooking.scheduledEndIso,
+          booking.scheduledStartIso,
+          booking.scheduledEndIso
+        )
+    );
+    const isLocalAddressMatch = [booking.serviceAddress, provider.address].some(
+      (address) =>
+        address.postalCode === crewMember.address.postalCode ||
+        (address.city.toLowerCase() === crewMember.address.city.toLowerCase() &&
+          address.state.toLowerCase() === crewMember.address.state.toLowerCase())
+    );
+    const isEligible =
+      crewMember.categories.includes(booking.category) &&
+      (crewMember.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"]).includes(
+        this.isoToAvailabilityDay(booking.scheduledStartIso)
+      ) &&
+      (booking.category !== "snow-shoveling" &&
+      booking.category !== "snow-blowing" &&
+      booking.category !== "ice-melt-salting"
+        ? true
+        : crewMember.winterWorkEnabled ?? true) &&
+      !hasConflictingAcceptedJob &&
+      crewMember.status !== "off-duty" &&
+      (distanceMiles <= crewMember.willingToTravelMiles || isLocalAddressMatch);
+
+    if (!isEligible) {
+      throw new HttpError(409, "This crew profile is not eligible for the selected opportunity");
+    }
+
+    const staffingMode = provider.staffingMode ?? "review-first";
+    const status = staffingMode === "auto-accept" ? "accepted" : "pending-provider-review";
+    const now = new Date().toISOString();
+    const match = await this.repository.createCrewMatch({
+      id: crypto.randomUUID(),
+      bookingId: booking.id,
+      providerId: provider.id,
+      crewMemberId: crewMember.id,
+      crewMemberName: crewMember.fullName,
+      crewMemberPhone: crewMember.phone,
+      categories: crewMember.categories,
+      availableWeekdays: crewMember.availableWeekdays ?? ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      preferredSchedule: crewMember.preferredSchedule,
+      willingToTravelMiles: crewMember.willingToTravelMiles,
+      hasOwnEquipment: crewMember.hasOwnEquipment,
+      winterWorkEnabled: crewMember.winterWorkEnabled ?? true,
+      status,
+      autoAccepted: staffingMode === "auto-accept",
+      distanceMiles,
+      hourlyRateCents: this.estimateCrewHourlyRate(booking.category),
+      createdAt: now,
+      reviewedAt: staffingMode === "auto-accept" ? now : undefined
+    });
+
+    await this.createNotification({
+      recipientId: provider.id,
+      recipientRole: "provider",
+      category: "staffing",
+      title: staffingMode === "auto-accept" ? "Crew opening filled" : "Crew opening needs review",
+      body:
+        staffingMode === "auto-accept"
+          ? `${crewMember.fullName} claimed your ${this.titleCaseCategory(booking.category)} opening and was auto-accepted.`
+          : `${crewMember.fullName} claimed your ${this.titleCaseCategory(booking.category)} opening and is waiting for review.`,
+      actionHref: "/provider/management"
+    });
+
+    await this.createNotification({
+      recipientId: crewMember.id,
+      recipientRole: "crew-member",
+      category: "staffing",
+      title: staffingMode === "auto-accept" ? "You were accepted for a job" : "You have a new crew match",
+      body:
+        staffingMode === "auto-accept"
+          ? `${provider.companyName} added you to an upcoming ${this.titleCaseCategory(booking.category)} job.`
+          : `${provider.companyName} is reviewing you for an upcoming ${this.titleCaseCategory(booking.category)} job.`,
+      actionHref: "/crew/schedule"
+    });
+
+    if (staffingMode === "auto-accept") {
+      await this.refreshCrewMemberStatus(crewMember.id);
+    }
+
+    return match;
+  }
+
   public async updateProviderSettings(
     providerId: string,
     payload: UpdateProviderSettingsRequest
@@ -5672,6 +6040,12 @@ export class MarketplacePlatformService {
 
     if (!updatedBooking) {
       throw new Error("Booking could not be completed");
+    }
+    const capturedPayment = (await this.repository.listPayments()).find(
+      (payment) => payment.bookingId === updatedBooking.id && payment.status === "captured"
+    );
+    if (capturedPayment) {
+      await this.ensureBookingFinancialSettlement(updatedBooking, capturedPayment);
     }
 
     const existingInvite = await this.repository.findReviewInviteByBookingId(booking.id);
@@ -9812,22 +10186,34 @@ export class MarketplacePlatformService {
       this.repository.listCrewMatches(),
       this.repository.listCustomers()
     ]);
+    const providerBookings = bookings.filter(
+      (booking) => booking.providerId === providerId && this.isPayoutRelevantBooking(booking)
+    );
+    const settlementPairs = await Promise.all(
+      providerBookings.map(async (booking) => {
+        const payment = payments.find(
+          (candidate) => candidate.bookingId === booking.id && candidate.status === "captured"
+        );
+        const settlement = payment
+          ? await this.ensureBookingFinancialSettlement(booking, payment)
+          : await this.repository.findBookingFinancialSettlement(booking.id);
+        return [booking.id, settlement] as const;
+      })
+    );
+    const settlementByBookingId = new Map(settlementPairs);
 
-    const entries = bookings
-      .filter((booking) => booking.providerId === providerId && this.isPayoutRelevantBooking(booking))
+    const entries = providerBookings
       .map((booking) => {
         const payment = payments.find((candidate) => candidate.bookingId === booking.id);
         const acceptedMatches = matches.filter(
           (match) => match.bookingId === booking.id && match.status === "accepted"
         );
         const customer = customers.find((candidate) => candidate.id === booking.customerId);
-        const crewShareCents = acceptedMatches.reduce(
-          (sum, match) => sum + this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents),
-          0
-        );
+        const settlement = settlementByBookingId.get(booking.id);
+        const crewShareCents = 0;
         const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
         const availableAtIso = this.getPayoutAvailabilityIso(booking, payoutStatus);
-        const providerNetAmountCents = Math.max(booking.totalCents - crewShareCents, 0);
+        const providerNetAmountCents = settlement?.providerNetCents ?? booking.totalCents;
 
         const entry: ProviderPayoutLedgerEntry = {
           id: `provider-payout-${booking.id}`,
@@ -9838,6 +10224,10 @@ export class MarketplacePlatformService {
           addressLine: this.formatAddressLine(booking.serviceAddress),
           grossAmountCents: booking.totalCents,
           crewShareCents,
+          finderFeeCents: settlement?.finderFeeCents,
+          completedJobFeeCents: settlement?.completedJobFeeCents,
+          platformFeeCents: settlement?.platformGrossRevenueCents,
+          economicsPolicyVersion: settlement?.policyVersion,
           providerNetAmountCents,
           crewMembersAssigned: acceptedMatches.length,
           paymentId: payment?.id,
@@ -9879,47 +10269,15 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Crew member not found");
     }
 
-    const [matches, bookings, payments, providers] = await Promise.all([
+    const [matches, bookings, payments] = await Promise.all([
       this.repository.listCrewMatches(),
       this.repository.listBookings(),
-      this.repository.listPayments(),
-      this.repository.listProviders()
+      this.repository.listPayments()
     ]);
 
-    const entries = matches
-      .filter((match) => match.crewMemberId === crewMemberId && match.status === "accepted")
-      .map((match) => {
-        const booking = bookings.find((candidate) => candidate.id === match.bookingId);
-        if (!booking || !this.isPayoutRelevantBooking(booking)) {
-          return undefined;
-        }
-
-        const payment = payments.find((candidate) => candidate.bookingId === booking.id);
-        const provider = providers.find((candidate) => candidate.id === booking.providerId);
-        const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
-        const availableAtIso = this.getPayoutAvailabilityIso(booking, payoutStatus);
-        const amountCents = this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents);
-
-        const entry: CrewPayoutLedgerEntry = {
-          id: `crew-payout-${match.id}`,
-          bookingId: booking.id,
-          providerId: booking.providerId,
-          providerCompanyName: provider?.companyName ?? "Provider",
-          serviceDateIso: booking.scheduledStartIso,
-          serviceLabel: this.titleCaseCategory(booking.category),
-          addressLine: this.formatAddressLine(booking.serviceAddress),
-          amountCents,
-          paymentId: payment?.id,
-          paymentStatus: payment?.status,
-          status: payoutStatus,
-          availableAtIso,
-          note: this.buildCrewPayoutNote(booking, payoutStatus, payment)
-        };
-
-        return entry;
-      })
-      .filter((entry): entry is CrewPayoutLedgerEntry => Boolean(entry))
-      .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso));
+    // YardMatch does not accrue, hold, or disburse crew wages. Crew members are
+    // engaged and paid by their provider business under the launch responsibility model.
+    const entries: CrewPayoutLedgerEntry[] = [];
     const nextWeeklyPayoutDateIso = this.getNextPayoutRunIso(this.crewPayoutWeekday);
     const crewMatches = matches.filter((match) => match.crewMemberId === crewMemberId);
     const attendanceSummary = this.buildCrewAttendanceSummary(crewMember, crewMatches, bookings);
@@ -9969,20 +10327,10 @@ export class MarketplacePlatformService {
       .filter((entry) => entry.status === "reversed")
       .reduce((sum, entry) => sum + entry.amountCents, 0);
     const guidance = [
-      "Crew earnings appear after accepted assignments are tied to completed jobs.",
-      "Captured customer payments, refund reviews, and completed-job disputes control whether an earning is pending, scheduled, ready, on hold, or reversed.",
-      `The next crew weekly payout run is ${nextWeeklyPayoutDateIso}.`
+      "YardMatch does not employ, contract, or pay individual crew members at launch.",
+      "The provider business that accepts and supervises a crew member is responsible for compensation, payroll or contractor reporting, insurance, and workplace compliance.",
+      "Use the assignment and attendance history for operational records; confirm pay details directly with the provider business before accepting work."
     ];
-
-    if (onHoldCents > 0) {
-      guidance.push("Some crew earnings are on hold until support resolves the related refund review or completed-job dispute.");
-    }
-    if (pendingCustomerPaymentCents > 0) {
-      guidance.push("Some crew earnings are still waiting on customer payment capture before they can enter the payout schedule.");
-    }
-    if (readyCents > 0) {
-      guidance.push("Ready crew earnings can be included in the next manual payout run while external disbursement rails are still off.");
-    }
 
     return {
       completedAssignmentCount: entries.filter((entry) => entry.status !== "reversed").length,
@@ -10171,11 +10519,10 @@ export class MarketplacePlatformService {
   }
 
   public async getOpsPayoutPreview(): Promise<OpsPayoutRunPreviewResponse> {
-    const [providers, bookings, payments, matches] = await Promise.all([
+    const [providers, bookings, payments] = await Promise.all([
       this.repository.listProviders(),
       this.repository.listBookings(),
-      this.repository.listPayments(),
-      this.repository.listCrewMatches()
+      this.repository.listPayments()
     ]);
     type DisbursementEntryRef = OpsPayoutRunPreviewResponse["disbursementBatches"][number]["entries"][number];
     type MutableDisbursementBatch = {
@@ -10268,20 +10615,19 @@ export class MarketplacePlatformService {
       let providerInstantEligibleCents = 0;
 
       for (const booking of providerBookings) {
-        const payment = payments.find((candidate) => candidate.bookingId === booking.id);
-        const acceptedMatches = matches.filter(
-          (match) => match.bookingId === booking.id && match.status === "accepted"
-        );
-        const crewShareCents = acceptedMatches.reduce(
-          (sum, match) => sum + this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents),
-          0
-        );
-        const providerNetAmountCents = Math.max(booking.totalCents - crewShareCents, 0);
+        const payment =
+          payments.find(
+            (candidate) => candidate.bookingId === booking.id && candidate.status === "captured"
+          ) ?? payments.find((candidate) => candidate.bookingId === booking.id);
+        const settlement = payment
+          ? await this.ensureBookingFinancialSettlement(booking, payment)
+          : await this.repository.findBookingFinancialSettlement(booking.id);
+        const crewShareCents = 0;
+        const providerNetAmountCents = settlement?.providerNetCents ?? booking.totalCents;
         const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
 
         if (payoutStatus === "ready") {
           totalProviderReadyCents += providerNetAmountCents;
-          totalCrewReadyCents += crewShareCents;
           providerInstantEligibleCents += providerNetAmountCents;
 
           const run = providerRuns.get(nextRunIso) ?? {
@@ -10309,28 +10655,6 @@ export class MarketplacePlatformService {
                 recipientId: provider.id,
                 recipientRole: "provider",
                 amountCents: providerNetAmountCents,
-                paymentId: payment?.id,
-                availableAtIso: this.getPayoutAvailabilityIso(booking, payoutStatus)
-              }
-            );
-          }
-          for (const match of acceptedMatches) {
-            const amountCents = this.estimateCrewMatchPayoutCents(booking, match.hourlyRateCents);
-            if (amountCents <= 0) {
-              continue;
-            }
-            addDisbursementEntry(
-              touchDisbursementBatch(
-                `crew-manual-${crewNextWeeklyPayoutDateIso.slice(0, 10)}`,
-                crewNextWeeklyPayoutDateIso,
-                "crew-member"
-              ),
-              {
-                entryId: `crew-payout-${match.id}`,
-                bookingId: booking.id,
-                recipientId: match.crewMemberId,
-                recipientRole: "crew-member",
-                amountCents,
                 paymentId: payment?.id,
                 availableAtIso: this.getPayoutAvailabilityIso(booking, payoutStatus)
               }
@@ -10878,7 +11202,17 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: FinalizeCheckoutSessionRequest
   ): Promise<PaymentRecord> {
-    const payment = await this.repository.findPaymentByCheckoutSessionId(payload.checkoutSessionId);
+    let verifiedSession: Awaited<ReturnType<PaymentCheckoutGateway["verifyCheckoutSession"]>> | undefined;
+    let payment = await this.repository.findPaymentByCheckoutSessionId(payload.checkoutSessionId);
+    if (!payment) {
+      verifiedSession = await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId);
+      if (verifiedSession.paymentIntentId) {
+        payment = (await this.repository.listPayments()).find(
+          (candidate) => candidate.processorPaymentIntentId === verifiedSession?.paymentIntentId
+        );
+      }
+    }
+
     if (!payment) {
       throw new HttpError(404, "Payment session not found");
     }
@@ -10892,7 +11226,12 @@ export class MarketplacePlatformService {
       throw new HttpError(403, "Customers can only finalize payments for their own bookings");
     }
 
-    const session = await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId);
+    if (payment.status === "captured") {
+      return payment;
+    }
+
+    const session =
+      verifiedSession ?? (await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId));
     if (session.paid) {
       return this.capturePaymentRecord(payment, booking, session.paymentIntentId);
     }
@@ -11244,7 +11583,29 @@ export class MarketplacePlatformService {
       openedBy: "ops"
     });
 
+    if (booking.status === "completed" && booking.completedAt) {
+      await this.ensureBookingFinancialSettlement(booking, updatedPayment);
+    }
+
     return updatedPayment;
+  }
+
+  private async ensureBookingFinancialSettlement(
+    booking: Booking,
+    payment: PaymentRecord
+  ) {
+    if (booking.status !== "completed" || !booking.completedAt || payment.status !== "captured") {
+      return undefined;
+    }
+    return this.repository.settleBookingFinancials({
+      bookingId: booking.id,
+      paymentId: payment.id,
+      customerId: booking.customerId,
+      providerId: booking.providerId,
+      customerChargeCents: payment.amountCents,
+      currency: payment.currency,
+      actualProcessorFeeCents: 0
+    });
   }
 
   public async createOpsBookingIntervention(
@@ -21043,6 +21404,10 @@ export class MarketplacePlatformService {
       actionHref: "/provider/management"
     });
 
+    if (booking.status === "completed" && booking.completedAt) {
+      await this.ensureBookingFinancialSettlement(booking, updatedPayment);
+    }
+
     return updatedPayment;
   }
 
@@ -21179,15 +21544,20 @@ export class MarketplacePlatformService {
     return {
       disbursementRailStatus: "manual-preview-only",
       providerHoldPeriodHours: this.payoutHoldHours,
-      crewHoldPeriodHours: this.payoutHoldHours,
+      crewHoldPeriodHours: 0,
       providerWeeklyRunRule:
-        "Provider net payouts are grouped by each provider's configured weekly payout day after the post-service hold period.",
+        "Provider net settlements deduct the versioned YardMatch finder/job fees and are grouped after the post-service hold period. Crew compensation never enters YardMatch payout runs.",
       crewWeeklyPayoutDay: this.crewPayoutWeekday,
+      crewCompensationResponsibility: "provider",
+      stripeChargePattern: "separate-charges-and-transfers",
       instantPayoutMinimumCents: this.instantPayoutMinimumCents,
       readyRequirements: [
         "booking completed or completed dispute resolved in the provider's favor",
         "customer payment captured",
         "post-service hold period elapsed",
+        "immutable booking settlement and balanced ledger entries recorded",
+        "provider credentials verified and current",
+        "provider Stripe recipient transfers and payouts capabilities active",
         "no open refund review",
         "no active completed-job dispute",
         "payment not refunded"
@@ -21196,6 +21566,8 @@ export class MarketplacePlatformService {
         "open refund review",
         "completed booking dispute",
         "customer payment still awaiting capture",
+        "provider credentials missing, expired, or pending review",
+        "Stripe recipient transfer or payout capability not active",
         "refunded or reversed customer payment"
       ]
     };
@@ -21523,13 +21895,13 @@ export class MarketplacePlatformService {
 
     if (assignedCrewCount === 0) {
       return status === "ready"
-        ? "No crew share is attached to this job, so the full provider net is ready."
-        : "No crew share is attached to this job. The provider net is scheduled for weekly payout.";
+        ? "The versioned YardMatch fees have been deducted and the provider settlement is ready. Crew compensation remains the provider business's responsibility."
+        : "The versioned YardMatch fees have been deducted and the provider settlement is scheduled. Crew compensation remains the provider business's responsibility.";
     }
 
     return status === "ready"
-      ? `Crew share has been reserved and the provider net is ready. Payment status: ${payment?.status ?? "unknown"}.`
-      : `Crew share has been reserved and the provider net is scheduled for weekly payout. Payment status: ${payment?.status ?? "unknown"}.`;
+      ? `The provider settlement is ready; any crew compensation is paid separately by the provider business. Payment status: ${payment?.status ?? "unknown"}.`
+      : `The provider settlement is scheduled; any crew compensation is paid separately by the provider business. Payment status: ${payment?.status ?? "unknown"}.`;
   }
 
   private buildCrewPayoutNote(

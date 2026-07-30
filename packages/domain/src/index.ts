@@ -1226,3 +1226,180 @@ export class InstantQuoteEngine {
       .join(" ");
   }
 }
+
+export const YARDMATCH_ECONOMICS_POLICY_VERSION = "2026-07-provider-funded-v1" as const;
+
+export interface MarketplaceEconomicsPolicy {
+  version: string;
+  finderFeeCents: number;
+  completedJobFeeCents: number;
+  feeBearer: "provider";
+  processorCostBearer: "platform";
+  crewResponsibility: "provider";
+}
+
+export const ACTIVE_MARKETPLACE_ECONOMICS_POLICY: MarketplaceEconomicsPolicy = Object.freeze({
+  version: YARDMATCH_ECONOMICS_POLICY_VERSION,
+  finderFeeCents: 3_000,
+  completedJobFeeCents: 699,
+  feeBearer: "provider",
+  processorCostBearer: "platform",
+  crewResponsibility: "provider"
+});
+
+export interface MarketplaceSettlementInput {
+  customerChargeCents: number;
+  isFirstCompletedCustomerProviderJob: boolean;
+  actualProcessorFeeCents?: number;
+  policy?: MarketplaceEconomicsPolicy;
+}
+
+export interface MarketplaceSettlementBreakdown {
+  policyVersion: string;
+  customerChargeCents: number;
+  providerServiceGrossCents: number;
+  finderFeeCents: number;
+  completedJobFeeCents: number;
+  platformGrossRevenueCents: number;
+  actualProcessorFeeCents: number;
+  platformNetRevenueCents: number;
+  providerNetCents: number;
+  crewPayoutByYardMatchCents: 0;
+  feeBearer: "provider";
+  processorCostBearer: "platform";
+  crewResponsibility: "provider";
+}
+
+function assertNonNegativeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer number of cents.`);
+  }
+}
+
+/**
+ * The launch model keeps the customer price unchanged, deducts YardMatch's published
+ * provider fees from provider proceeds, and leaves crew compensation entirely inside
+ * the provider business. Processor cost is a platform expense and never silently
+ * changes the provider's already-promised settlement.
+ */
+export function calculateMarketplaceSettlement(
+  input: MarketplaceSettlementInput
+): MarketplaceSettlementBreakdown {
+  const policy = input.policy ?? ACTIVE_MARKETPLACE_ECONOMICS_POLICY;
+  const processorFeeCents = input.actualProcessorFeeCents ?? 0;
+  assertNonNegativeInteger(input.customerChargeCents, "customerChargeCents");
+  assertNonNegativeInteger(processorFeeCents, "actualProcessorFeeCents");
+  assertNonNegativeInteger(policy.finderFeeCents, "finderFeeCents");
+  assertNonNegativeInteger(policy.completedJobFeeCents, "completedJobFeeCents");
+
+  const finderFeeCents = input.isFirstCompletedCustomerProviderJob
+    ? policy.finderFeeCents
+    : 0;
+  const platformGrossRevenueCents = finderFeeCents + policy.completedJobFeeCents;
+  const providerNetCents = input.customerChargeCents - platformGrossRevenueCents;
+  if (providerNetCents < 0) {
+    throw new Error(
+      `Booking charge is too small for economics policy ${policy.version}; provider proceeds would be negative.`
+    );
+  }
+
+  return {
+    policyVersion: policy.version,
+    customerChargeCents: input.customerChargeCents,
+    providerServiceGrossCents: input.customerChargeCents,
+    finderFeeCents,
+    completedJobFeeCents: policy.completedJobFeeCents,
+    platformGrossRevenueCents,
+    actualProcessorFeeCents: processorFeeCents,
+    platformNetRevenueCents: platformGrossRevenueCents - processorFeeCents,
+    providerNetCents,
+    crewPayoutByYardMatchCents: 0,
+    feeBearer: policy.feeBearer,
+    processorCostBearer: policy.processorCostBearer,
+    crewResponsibility: policy.crewResponsibility
+  };
+}
+
+export type FinancialLedgerDirection = "debit" | "credit";
+export type FinancialLedgerAccount =
+  | "stripe-clearing"
+  | "provider-payable"
+  | "platform-finder-fee-revenue"
+  | "platform-job-fee-revenue"
+  | "payment-processing-expense";
+
+export interface SettlementLedgerDraftEntry {
+  account: FinancialLedgerAccount;
+  direction: FinancialLedgerDirection;
+  amountCents: number;
+  idempotencyKey: string;
+}
+
+export function buildSettlementLedgerDraft(
+  bookingId: string,
+  settlement: MarketplaceSettlementBreakdown
+): SettlementLedgerDraftEntry[] {
+  const normalizedBookingId = bookingId.trim();
+  if (!normalizedBookingId) {
+    throw new Error("bookingId is required to build a financial ledger draft.");
+  }
+
+  const entries: SettlementLedgerDraftEntry[] = [
+    {
+      account: "stripe-clearing",
+      direction: "debit",
+      amountCents: settlement.customerChargeCents,
+      idempotencyKey: `${normalizedBookingId}:settlement:stripe-clearing:debit`
+    },
+    {
+      account: "provider-payable",
+      direction: "credit",
+      amountCents: settlement.providerNetCents,
+      idempotencyKey: `${normalizedBookingId}:settlement:provider-payable:credit`
+    },
+    {
+      account: "platform-job-fee-revenue",
+      direction: "credit",
+      amountCents: settlement.completedJobFeeCents,
+      idempotencyKey: `${normalizedBookingId}:settlement:job-fee:credit`
+    }
+  ];
+
+  if (settlement.finderFeeCents > 0) {
+    entries.push({
+      account: "platform-finder-fee-revenue",
+      direction: "credit",
+      amountCents: settlement.finderFeeCents,
+      idempotencyKey: `${normalizedBookingId}:settlement:finder-fee:credit`
+    });
+  }
+
+  if (settlement.actualProcessorFeeCents > 0) {
+    entries.push(
+      {
+        account: "payment-processing-expense",
+        direction: "debit",
+        amountCents: settlement.actualProcessorFeeCents,
+        idempotencyKey: `${normalizedBookingId}:processing-fee:expense:debit`
+      },
+      {
+        account: "stripe-clearing",
+        direction: "credit",
+        amountCents: settlement.actualProcessorFeeCents,
+        idempotencyKey: `${normalizedBookingId}:processing-fee:clearing:credit`
+      }
+    );
+  }
+
+  const debitCents = entries
+    .filter((entry) => entry.direction === "debit")
+    .reduce((sum, entry) => sum + entry.amountCents, 0);
+  const creditCents = entries
+    .filter((entry) => entry.direction === "credit")
+    .reduce((sum, entry) => sum + entry.amountCents, 0);
+  if (debitCents !== creditCents) {
+    throw new Error(`Financial ledger draft is unbalanced: debits=${debitCents}, credits=${creditCents}.`);
+  }
+
+  return entries.filter((entry) => entry.amountCents > 0);
+}

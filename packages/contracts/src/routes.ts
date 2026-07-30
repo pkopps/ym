@@ -24,11 +24,16 @@ export class ApiRoutes {
   public static readonly updateProviderProfile = "/api/providers/profile";
   public static readonly providerVerificationQueue = "/api/providers/verification/queue";
   public static readonly providerVerificationReview = "/api/providers/verification/review";
+  public static readonly providerCredentials = "/api/providers/credentials";
+  public static readonly providerCredentialReview = "/api/providers/credentials/review";
+  public static readonly providerConnectStatus = "/api/providers/connect/status";
+  public static readonly providerConnectOnboarding = "/api/providers/connect/onboarding";
   public static readonly providerOnboardingAutomationSweep =
     "/api/providers/verification/onboarding-automation/sweep";
   public static readonly crewOpportunities = "/api/crew/opportunities";
   public static readonly publicCrewOpportunities = "/api/crew/opportunities/public";
   public static readonly selectPublicCrewOpportunity = "/api/crew/opportunities/public/select";
+  public static readonly claimPublicCrewOpportunity = "/api/crew/opportunities/claim";
   public static readonly providerStaffingOverview = "/api/providers/staffing";
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";
   public static readonly providerAssignBookingRouteLeader = "/api/providers/staffing/route-leader";

@@ -31,16 +31,40 @@ Avoid drifting into:
 - promoted-listings-first discovery
 - ranking or pricing choices that squeeze provider economics and damage supply quality
 
+## Launch Feature Freeze
+
+Effective July 29, 2026, lower-priority feature expansion is frozen until the launch-safety gates below are independently verified. Work outside these gates requires an explicit owner decision explaining why it is more important than financial, legal, or production reliability.
+
+The only default engineering priorities during the freeze are:
+
+1. Executable, versioned booking economics and margin reporting.
+2. Provider-responsible crew engagement, insurance, supervision, and compensation.
+3. Stripe Connect Accounts v2 recipient onboarding and provider-only transfers.
+4. Immutable, balanced, idempotent financial settlement records.
+5. PostgreSQL migration and repository integration tests in CI.
+6. Fail-closed production configuration and secret handling.
+7. Provider business, insurance, and category-specific credential enforcement.
+
+Exit criteria:
+
+- every completed paid booking has one versioned settlement and a balanced ledger
+- one-time customer/provider finder fees cannot be charged twice under concurrency
+- no YardMatch payout path can create a crew-member transfer
+- provider transfers remain blocked until Connect capabilities and credentials are ready
+- production cannot start with in-memory storage, the development JWT secret, test Stripe keys, HTTP application URLs, or mock notification vendors
+- CI applies all migrations to PostgreSQL and exercises repository constraints
+- launch counsel approves the provider agreement, crew-responsibility language, credential matrix, refund/dispute allocation, and merchant-of-record posture
+
 ## Priority 1: Launch-Critical
 
 ### Payments And Payouts
 
-- Turn on real Stripe credentials in development and staging.
+- Complete Stripe Connect Accounts v2 recipient onboarding in development and staging using Express access, application-owned fees/losses, and separate charges and transfers.
 - Verify production-style Stripe webhook handling end to end with live credentials now that local webhook reconciliation covers checkout completion, expiry, payment failures, and refund events.
 - Use checkout start/capture/failure telemetry in ops while validating the live Stripe cutover so abandoned or expired payment sessions are visible without raw event digging.
 - Validate live Stripe refund synchronization in development and staging after ops approves a refund review.
 - Keep validating dispute-related settlement freezes now that disputed bookings block new payment attempts and hold captured provider/crew payouts until support resolves them.
-- Turn the backend-authored payout policy, manual provider/crew disbursement batch previews, and idempotent manual disbursement run audit records now exposed in the ops payout routes into real provider and crew disbursement rails once the production payout provider and credentials are selected.
+- Turn the provider-only manual disbursement preview into Stripe transfers after settlement, credential, capability, dispute, and hold-period gates pass. YardMatch does not pay individual crew members at launch.
 
 ### Notification Delivery
 

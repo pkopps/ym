@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import type { RequestContext } from "./http";
+import { resolveJwtSecret } from "./config/productionConfig";
 
-const DEV_JWT_SECRET = "yardmatch-dev-secret";
 export const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 export const PASSWORD_RESET_TTL_MINUTES = 20;
 
@@ -40,7 +40,7 @@ function base64UrlDecode(value: string): string {
 }
 
 function getJwtSecret(): string {
-  return process.env.JWT_SECRET?.trim() || DEV_JWT_SECRET;
+  return resolveJwtSecret();
 }
 
 function verifyHmacSignature(unsignedToken: string, providedSignature: string): void {

@@ -22,6 +22,7 @@
     "prisma:deploy": "npm --workspace @yardmatch/api run prisma:deploy",
     "prisma:seed": "npm --workspace @yardmatch/api run prisma:seed",
     "test:api": "npm --workspace @yardmatch/api run test",
+    "test:api:postgres": "npm --workspace @yardmatch/api run test:postgres",
     "test:api:smoke": "node scripts/api-smoke.mjs",
     "test:web:smoke": "playwright test --config=playwright.config.ts",
     "test:smoke": "npm run test:api:smoke && npm run test:web:smoke",

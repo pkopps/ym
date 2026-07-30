@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { NotificationOpsBoard } from "./NotificationOpsBoard";
+import { OpsAutomationBoard } from "./OpsAutomationBoard";
 import { OpsAccountManagementBoard } from "./OpsAccountManagementBoard";
 import { OpsFinancialExceptionBoard } from "./OpsFinancialExceptionBoard";
 import { OpsLaunchLeadBoard } from "./OpsLaunchLeadBoard";
@@ -998,6 +999,7 @@ export function OpsDashboardClient() {
         </section>
       )}
       <NotificationOpsBoard />
+      <OpsAutomationBoard />
       <OpsPayoutRunBoard />
       <OpsFinancialExceptionBoard />
       <OpsLaunchLeadBoard />

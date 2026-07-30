@@ -182,6 +182,12 @@ export function CrewSignupExperience() {
         expiresAtIso: envelope.session.expiresAtIso
       });
 
+      if (opportunityId) {
+        const authenticatedApi = createWebApiClient(i18n.locale);
+        authenticatedApi.setAuthToken(envelope.session.token);
+        await authenticatedApi.claimPublicCrewOpportunity({ opportunityId });
+      }
+
       router.push(addLocalePrefix("/crew", i18n.locale));
       router.refresh();
     } catch (error) {

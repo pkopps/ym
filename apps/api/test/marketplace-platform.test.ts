@@ -5598,6 +5598,59 @@ test("stripe webhook capture updates pending payments without a customer redirec
   assert.equal(payments[0]?.status, "captured");
 });
 
+test("checkout finalization is idempotent when webhook capture wins the redirect race", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway()
+  );
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-webhook-race@example.com",
+    password: "Password123!",
+    phone: "555-0200",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  assert.equal(customer.role, "customer");
+
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "mulch-installation",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(75),
+    notes: "Webhook-before-redirect payment test",
+    totalCents: 9800
+  });
+
+  const checkout = await platform.createCheckoutSession(customer.id, {
+    bookingId: booking.id
+  });
+  assert.equal(checkout.payment.status, "pending");
+
+  await platform.processStripeWebhook("{}", "sig_test");
+  await repository.updatePayment(checkout.payment.id, {
+    checkoutSessionId: undefined
+  });
+
+  const finalized = await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+
+  assert.equal(finalized.id, checkout.payment.id);
+  assert.equal(finalized.status, "captured");
+  assert.equal(finalized.processorPaymentIntentId, "pi_test_123");
+  assert.equal(finalized.refundable, true);
+});
+
 test("failed checkout finalization marks the payment failed and records payment failure telemetry", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const analytics = new DataEngineeringLogger();
@@ -9685,6 +9738,78 @@ test("selecting a public crew opportunity texts auto-accept providers that the o
   );
   assert.ok(sms);
   assert.match(sms.bodyPreview, /auto-accept setting marked the opening as filled/i);
+});
+
+test("crew members can claim a selected public opportunity after signup", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-claim-select@example.com",
+    password: "Password123!",
+    phone: "555-3515",
+    role: "provider",
+    companyName: "Claim Select Lawn Co.",
+    categories: ["lawn-mowing"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 30.244, -97.764)
+  });
+  await platform.updateProviderSettings(provider.id, {
+    serviceRadiusMiles: provider.serviceRadiusMiles,
+    staffingMode: "auto-accept"
+  });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-claim-select@example.com",
+    password: "Password123!",
+    phone: "555-3615",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress("112 Garden Row", 30.2435, -97.7638)
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: undefined,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(31),
+    scheduledEndIso: futureIso(32),
+    notes: "Public crew claim auto accept test",
+    totalCents: 6200
+  });
+
+  const crewMember = await platform.registerUser({
+    fullName: "Riley Crew",
+    email: "crew-claim-select@example.com",
+    password: "Password123!",
+    phone: "555-3715",
+    role: "crew-member",
+    address: createAddress("114 Garden Row", 47.6062, -122.3321),
+    categories: ["lawn-mowing"],
+    availableWeekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    willingToTravelMiles: 20,
+    preferredSchedule: "flex",
+    hasOwnEquipment: false,
+    winterWorkEnabled: true
+  });
+
+  const match = await platform.claimPublicCrewOpportunity(crewMember.id, {
+    opportunityId: booking.id
+  });
+
+  assert.equal(match.bookingId, booking.id);
+  assert.equal(match.crewMemberId, crewMember.id);
+  assert.equal(match.status, "accepted");
+  assert.equal(match.autoAccepted, true);
+  assert.ok(match.reviewedAt);
+
+  const crewMatches = await platform.getCrewMatchesForCrew(crewMember.id);
+  assert.equal(crewMatches.matches.length, 1);
+  assert.equal(crewMatches.matches[0]?.providerCompanyName, "Claim Select Lawn Co.");
+  assert.equal(crewMatches.matches[0]?.status, "accepted");
 });
 
 test("selecting a public crew opportunity texts review-first providers that review is needed", async () => {

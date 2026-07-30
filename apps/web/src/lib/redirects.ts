@@ -1,4 +1,5 @@
 import type { MarketplaceRole } from "@yardmatch/contracts";
+import { stripLocalePrefix } from "@yardmatch/i18n";
 
 const fallbackOrigin = "https://yardmatch.local";
 
@@ -33,9 +34,10 @@ export function getRoleRedirectPath(
   fallback: string
 ): string {
   const safePath = getSafeRelativePath(candidate, fallback);
+  const rolePath = stripLocalePrefix(safePath).path;
   const allowedPrefixes = rolePathPrefixes[role];
   const isAllowed = allowedPrefixes.some(
-    (prefix) => safePath === prefix || safePath.startsWith(`${prefix}/`) || safePath.startsWith(`${prefix}?`)
+    (prefix) => rolePath === prefix || rolePath.startsWith(`${prefix}/`) || rolePath.startsWith(`${prefix}?`)
   );
 
   return isAllowed ? safePath : fallback;

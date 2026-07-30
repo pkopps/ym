@@ -5,6 +5,7 @@ import {
   CancelBookingRequest,
   CancelCrewMatchRequest,
   CancelRecurringServicePlanRequest,
+  ClaimPublicCrewOpportunityRequest,
   ConfirmBookingRequest,
   DeclineBookingRequest,
   CompleteBookingRequest,
@@ -18,6 +19,8 @@ import {
   UpdateReviewResponseRequest,
   ProviderAssistantCommandRequest,
   ReviewProviderVerificationRequest,
+  ReviewProviderCredentialRequest,
+  SubmitProviderCredentialRequest,
   CreateCustomerPropertyRequest,
   CreateBookingRequest,
   CreateRecurringServicePlanRequest,
@@ -84,10 +87,15 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/providers/profile") ||
       (context.method === "GET" && context.path === "/api/providers/verification/queue") ||
       (context.method === "POST" && context.path === "/api/providers/verification/review") ||
+      (context.method === "POST" && context.path === "/api/providers/credentials") ||
+      (context.method === "POST" && context.path === "/api/providers/credentials/review") ||
+      (context.method === "GET" && context.path === "/api/providers/connect/status") ||
+      (context.method === "POST" && context.path === "/api/providers/connect/onboarding") ||
       (context.method === "POST" && context.path === "/api/providers/verification/onboarding-automation/sweep") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities") ||
       (context.method === "GET" && context.path === "/api/crew/opportunities/public") ||
       (context.method === "POST" && context.path === "/api/crew/opportunities/public/select") ||
+      (context.method === "POST" && context.path === "/api/crew/opportunities/claim") ||
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/route-leader") ||
@@ -279,6 +287,50 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.method === "POST" && context.path === "/api/providers/credentials") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(
+        response,
+        200,
+        await this.platform.submitProviderCredential(
+          identity.userId,
+          context.body as SubmitProviderCredentialRequest
+        )
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/credentials/review") {
+      const identity = await requireOpsAccess(context, this.platform);
+      sendJson(
+        response,
+        200,
+        await this.platform.reviewProviderCredential(
+          identity.userId,
+          context.body as ReviewProviderCredentialRequest
+        )
+      );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/providers/connect/status") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.getProviderConnectStatus(identity.userId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/connect/onboarding") {
+      const identity = await requireFreshRole(
+        context,
+        this.platform,
+        "provider",
+        MarketplacePlatformService.sensitiveActionFreshSessionMaxAgeSeconds,
+        "Re-authentication required for payout onboarding. Sign in again and retry within 15 minutes."
+      );
+      sendJson(response, 200, await this.platform.startProviderConnectOnboarding(identity.userId));
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/providers/verification/onboarding-automation/sweep") {
       const identity = await requireOpsAccess(context, this.platform);
       sendJson(
@@ -308,6 +360,19 @@ export class MarketplaceController implements ApiController {
         response,
         200,
         await this.platform.selectPublicCrewOpportunity(context.body as SelectPublicCrewOpportunityRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/crew/opportunities/claim") {
+      const identity = await requireRole(context, this.platform, "crew-member");
+      sendJson(
+        response,
+        200,
+        await this.platform.claimPublicCrewOpportunity(
+          identity.userId,
+          context.body as ClaimPublicCrewOpportunityRequest
+        )
       );
       return;
     }

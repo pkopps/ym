@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { randomBytes } from "node:crypto";
 import { Address, Booking, CustomerProfile } from "@yardmatch/contracts";
 import { HttpError } from "../http";
 
@@ -65,12 +66,17 @@ function buildServiceAddress(address: Address): string {
   return [address.line1, address.city, address.state, address.postalCode].filter(Boolean).join(", ");
 }
 
-function buildReturnUrl(baseUrl: string, path: string, includeSessionPlaceholder: boolean) {
+function createIntegrationIdentifier(): string {
+  const suffix = Array.from(randomBytes(8), (byte) => String.fromCharCode(97 + (byte % 26))).join("");
+  return `yardmatch_${suffix}`;
+}
+
+export function buildReturnUrl(baseUrl: string, path: string, includeSessionPlaceholder: boolean) {
   const target = new URL(path, baseUrl);
   if (includeSessionPlaceholder) {
     target.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
   }
-  return target.toString();
+  return target.toString().replace("%7BCHECKOUT_SESSION_ID%7D", "{CHECKOUT_SESSION_ID}");
 }
 
 export class StripeCheckoutService implements PaymentCheckoutGateway {
@@ -100,6 +106,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
 
     const session = await this.stripe.checkout.sessions.create({
       mode: "payment",
+      integration_identifier: createIntegrationIdentifier(),
       success_url: buildReturnUrl(input.appBaseUrl, input.successPath, true),
       cancel_url: buildReturnUrl(input.appBaseUrl, input.cancelPath, false),
       client_reference_id: input.booking.id,

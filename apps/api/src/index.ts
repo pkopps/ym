@@ -11,12 +11,14 @@ import { localizeApiErrorMessage } from "./i18n";
 import { InMemoryMarketplaceRepository } from "./repositories/InMemoryMarketplaceRepository";
 import { PrismaMarketplaceRepository } from "./repositories/PrismaMarketplaceRepository";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
+import { validateRuntimeConfiguration } from "./config/productionConfig";
 
-const repository = process.env.DATABASE_URL
+const runtimeConfiguration = validateRuntimeConfiguration();
+const repository = runtimeConfiguration.repositoryMode === "prisma-postgres"
   ? new PrismaMarketplaceRepository(new PrismaClient())
   : new InMemoryMarketplaceRepository();
 const port = Number(process.env.PORT ?? 4001);
-const repositoryMode = process.env.DATABASE_URL ? "prisma-postgres" : "in-memory";
+const repositoryMode = runtimeConfiguration.repositoryMode;
 const analytics = new DataEngineeringLogger();
 const platform = new MarketplacePlatformService(repository, analytics);
 const controllers: ApiController[] = [

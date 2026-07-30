@@ -9,6 +9,7 @@ const reuseExistingServer = !process.env.CI;
 export default defineConfig({
   testDir: "./tests/web",
   timeout: 30_000,
+  workers: 1,
   expect: {
     timeout: 10_000
   },

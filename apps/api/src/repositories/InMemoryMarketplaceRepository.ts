@@ -19,6 +19,11 @@ import {
   NotificationPreferences,
   OpsPayoutDisbursementRun,
   PaymentRecord,
+  BookingFinancialSettlement,
+  CreateBookingFinancialSettlementInput,
+  FinancialLedgerEntry,
+  ProviderConnectAccount,
+  ProviderCredential,
   PushDevice,
   RecurringServicePlan,
   ProviderProfile,
@@ -27,6 +32,7 @@ import {
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
+import { buildSettlementLedgerDraft, calculateMarketplaceSettlement } from "@yardmatch/domain";
 import { hashPassword } from "../auth";
 import { AuthIdentityRecord, MarketplaceRepository } from "./MarketplaceRepository";
 
@@ -39,6 +45,8 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly bookings: Booking[] = [];
   private readonly recurringServicePlans: RecurringServicePlan[] = [];
   private readonly payments: PaymentRecord[] = [];
+  private readonly financialSettlements: BookingFinancialSettlement[] = [];
+  private readonly financialLedgerEntries: FinancialLedgerEntry[] = [];
   private readonly payoutDisbursementRuns: OpsPayoutDisbursementRun[] = [];
   private readonly launchOperationsTasks: LaunchOperationsTask[] = [];
   private readonly opsAutomationRuns: OpsAutomationRunRecord[] = [];
@@ -387,9 +395,128 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return payment;
   }
 
+  public async settleBookingFinancials(
+    input: CreateBookingFinancialSettlementInput
+  ): Promise<BookingFinancialSettlement> {
+    const existing = this.financialSettlements.find(
+      (settlement) => settlement.bookingId === input.bookingId
+    );
+    if (existing) {
+      return { ...existing };
+    }
+
+    const isFirstCompletedCustomerProviderJob = !this.financialSettlements.some(
+      (settlement) =>
+        settlement.customerId === input.customerId && settlement.providerId === input.providerId
+    );
+    const breakdown = calculateMarketplaceSettlement({
+      customerChargeCents: input.customerChargeCents,
+      isFirstCompletedCustomerProviderJob,
+      actualProcessorFeeCents: input.actualProcessorFeeCents
+    });
+    const now = new Date().toISOString();
+    const settlement: BookingFinancialSettlement = {
+      id: crypto.randomUUID(),
+      bookingId: input.bookingId,
+      paymentId: input.paymentId,
+      customerId: input.customerId,
+      providerId: input.providerId,
+      currency: input.currency.toLowerCase(),
+      ...breakdown,
+      isFirstCompletedCustomerProviderJob,
+      status: "recorded",
+      createdAt: now,
+      updatedAt: now
+    };
+    this.financialSettlements.push(settlement);
+
+    const ledgerDraft = buildSettlementLedgerDraft(input.bookingId, breakdown);
+    this.financialLedgerEntries.push(
+      ...ledgerDraft.map((entry) => ({
+        id: crypto.randomUUID(),
+        settlementId: settlement.id,
+        bookingId: settlement.bookingId,
+        paymentId: settlement.paymentId,
+        account: entry.account,
+        direction: entry.direction,
+        amountCents: entry.amountCents,
+        currency: settlement.currency,
+        idempotencyKey: entry.idempotencyKey,
+        source: entry.account === "payment-processing-expense" ? "processor-fee" as const : "booking-settlement" as const,
+        createdAt: now
+      }))
+    );
+
+    return { ...settlement };
+  }
+
+  public async findBookingFinancialSettlement(
+    bookingId: string
+  ): Promise<BookingFinancialSettlement | undefined> {
+    const settlement = this.financialSettlements.find((candidate) => candidate.bookingId === bookingId);
+    return settlement ? { ...settlement } : undefined;
+  }
+
+  public async listFinancialLedgerEntries(bookingId?: string): Promise<FinancialLedgerEntry[]> {
+    return this.financialLedgerEntries
+      .filter((entry) => !bookingId || entry.bookingId === bookingId)
+      .map((entry) => ({ ...entry }));
+  }
+
+  public async listProviderCredentials(providerId: string): Promise<ProviderCredential[]> {
+    return (this.providers.find((provider) => provider.id === providerId)?.credentials ?? []).map(
+      (credential) => ({ ...credential })
+    );
+  }
+
+  public async upsertProviderCredential(credential: ProviderCredential): Promise<ProviderCredential> {
+    const provider = this.providers.find((candidate) => candidate.id === credential.providerId);
+    if (!provider) {
+      throw new Error("Provider not found");
+    }
+    const credentials = provider.credentials ?? [];
+    const index = credentials.findIndex(
+      (candidate) =>
+        candidate.type === credential.type && candidate.jurisdiction === credential.jurisdiction
+    );
+    if (index >= 0) {
+      credentials[index] = { ...credential };
+    } else {
+      credentials.push({ ...credential });
+    }
+    provider.credentials = credentials;
+    return { ...credential };
+  }
+
+  public async findProviderConnectAccount(
+    providerId: string
+  ): Promise<ProviderConnectAccount | undefined> {
+    const account = this.providers.find((provider) => provider.id === providerId)?.connectAccount;
+    return account ? { ...account } : undefined;
+  }
+
+  public async upsertProviderConnectAccount(
+    account: ProviderConnectAccount
+  ): Promise<ProviderConnectAccount> {
+    const provider = this.providers.find((candidate) => candidate.id === account.providerId);
+    if (!provider) {
+      throw new Error("Provider not found");
+    }
+    provider.connectAccount = { ...account };
+    return { ...account };
+  }
+
   public async createPayoutDisbursementRun(
     run: OpsPayoutDisbursementRun
   ): Promise<OpsPayoutDisbursementRun> {
+    const existing = this.payoutDisbursementRuns.find(
+      (candidate) =>
+        candidate.previewBatchId === run.previewBatchId &&
+        candidate.entryFingerprint === run.entryFingerprint
+    );
+    if (existing) {
+      return { ...existing, entries: [...existing.entries] };
+    }
     this.payoutDisbursementRuns.push({ ...run });
     return run;
   }
@@ -747,6 +874,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   }
 
   private seedProviders(): void {
+    const defaultProviderPassword = hashPassword("YardMatch123!");
     const sampleAddresses: Address[] = [
       this.createAddress("145 Prospect Ave", "Brooklyn", "NY", "11215", 40.6681, -73.9836),
       this.createAddress("88 River Rd", "Jersey City", "NJ", "07310", 40.7261, -74.0321),
@@ -883,8 +1011,64 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     ];
 
     providers.forEach((provider, index) => {
+      const submittedAt = new Date().toISOString();
+      provider.credentials = [
+        {
+          id: crypto.randomUUID(),
+          providerId: provider.id,
+          type: "business-registration",
+          status: "verified",
+          jurisdiction: "NJ",
+          referenceNumber: `DEV-BUS-${index + 1}`,
+          submittedAt,
+          reviewedAt: submittedAt,
+          reviewNotes: "Seed-only credential for local development."
+        },
+        {
+          id: crypto.randomUUID(),
+          providerId: provider.id,
+          type: "general-liability-insurance",
+          status: "verified",
+          jurisdiction: "NJ",
+          referenceNumber: `DEV-GL-${index + 1}`,
+          expiresAt: "2099-12-31T23:59:59.000Z",
+          submittedAt,
+          reviewedAt: submittedAt,
+          reviewNotes: "Seed-only credential for local development."
+        },
+        {
+          id: crypto.randomUUID(),
+          providerId: provider.id,
+          type: "workers-compensation",
+          status: "verified",
+          jurisdiction: "NJ",
+          referenceNumber: `DEV-WC-${index + 1}`,
+          expiresAt: "2099-12-31T23:59:59.000Z",
+          submittedAt,
+          reviewedAt: submittedAt,
+          reviewNotes: "Seed-only credential for local development."
+        },
+        ...(provider.categories.some(
+          (category) => category === "fertilization" || category === "weed-control"
+        )
+          ? [
+              {
+                id: crypto.randomUUID(),
+                providerId: provider.id,
+                type: "pesticide-applicator-license" as const,
+                status: "verified" as const,
+                jurisdiction: "NJ",
+                referenceNumber: `DEV-PA-${index + 1}`,
+                expiresAt: "2099-12-31T23:59:59.000Z",
+                submittedAt,
+                reviewedAt: submittedAt,
+                reviewNotes: "Seed-only credential for local development."
+              }
+            ]
+          : [])
+      ];
       this.providers.push(provider);
-      this.saveAuthIdentity(provider.id, provider.email, provider.role);
+      this.saveAuthIdentity(provider.id, provider.email, provider.role, defaultProviderPassword);
       this.slots.push(
         {
           id: crypto.randomUUID(),

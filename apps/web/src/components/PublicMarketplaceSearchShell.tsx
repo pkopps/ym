@@ -5,7 +5,7 @@ import {
   PlaceSuggestion,
   ServiceCategory
 } from "@yardmatch/contracts";
-import { I18nInstance, sourceMessages, TranslationKey } from "@yardmatch/i18n";
+import { addLocalePrefix, I18nInstance, sourceMessages, TranslationKey } from "@yardmatch/i18n";
 import { serviceCategoryLabelKeys, servicePickerLabelKeys } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { serviceCategoryLabels } from "@yardmatch/ui";
@@ -440,7 +440,7 @@ export function PublicMarketplaceSearchShell({
       selectedCustomWindows: resolvedCustomWindows,
       selectedAdditionalTimings: additionalTimings
     });
-    router.push(`/customer/listings?${params.toString()}`);
+    router.push(addLocalePrefix(`/customer/listings?${params.toString()}`, i18n.locale));
   }
 
   return (

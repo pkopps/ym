@@ -8,55 +8,56 @@ datasource db {
 }
 
 model UserAccount {
-  id                    String                 @id
-  email                 String                 @unique
-  passwordHash          String?
-  googleSubject         String?                @unique
-  appleSubject          String?                @unique
-  sessionVersion        Int                    @default(1)
-  internalScope         String?
-  accessDisabledAt      DateTime?
-  accessDisabledBy      String?
-  accessChangeNotes     String?
-  lastAccessChangeAt    DateTime?
-  lastAccessChangeBy    String?
-  lastAccessChangeKind  String?
-  accessChangeHistory   Json?
-  authenticationEventHistory Json?
-  lastAuthenticatedAt   DateTime?
-  lastAuthenticatedMethod String?
-  failedAuthenticationCount Int                  @default(0)
-  lastFailedAuthenticationAt DateTime?
+  id                             String                   @id
+  email                          String                   @unique
+  passwordHash                   String?
+  googleSubject                  String?                  @unique
+  appleSubject                   String?                  @unique
+  sessionVersion                 Int                      @default(1)
+  internalScope                  String?
+  accessDisabledAt               DateTime?
+  accessDisabledBy               String?
+  accessChangeNotes              String?
+  lastAccessChangeAt             DateTime?
+  lastAccessChangeBy             String?
+  lastAccessChangeKind           String?
+  accessChangeHistory            Json?
+  authenticationEventHistory     Json?
+  lastAuthenticatedAt            DateTime?
+  lastAuthenticatedMethod        String?
+  failedAuthenticationCount      Int                      @default(0)
+  lastFailedAuthenticationAt     DateTime?
   lastFailedAuthenticationReason String?
-  authenticationLockExpiresAt DateTime?
-  resetPasswordCodeHash String?
-  resetPasswordExpiresAt DateTime?
-  resetPasswordRequestedAt DateTime?
-  fullName              String
-  phone                 String
-  role                  String
-  address               Json
-  createdAt             DateTime               @default(now())
-  customer              CustomerProfile?
-  provider              ProviderBusinessProfile?
-  crewMember            CrewMemberProfile?
+  authenticationLockExpiresAt    DateTime?
+  resetPasswordCodeHash          String?
+  resetPasswordExpiresAt         DateTime?
+  resetPasswordRequestedAt       DateTime?
+  fullName                       String
+  phone                          String
+  role                           String
+  address                        Json
+  createdAt                      DateTime                 @default(now())
+  customer                       CustomerProfile?
+  provider                       ProviderBusinessProfile?
+  crewMember                     CrewMemberProfile?
 
   @@map("user_accounts")
 }
 
 model CustomerProfile {
-  userId            String   @id
-  propertyNotes     String
-  lawnSizeSqFt      Int
-  defaultPropertyId String?
-  user              UserAccount        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  properties        CustomerProperty[]
+  userId                String                         @id
+  propertyNotes         String
+  lawnSizeSqFt          Int
+  defaultPropertyId     String?
+  user                  UserAccount                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  properties            CustomerProperty[]
+  providerRelationships CustomerProviderRelationship[]
 
   @@map("customer_profiles")
 }
 
 model CustomerProperty {
-  id               String   @id
+  id               String          @id
   customerId       String
   label            String
   address          Json
@@ -66,7 +67,7 @@ model CustomerProperty {
   shrubBedSqFt     Int?
   drivewaySqFt     Int?
   sidewalkLinearFt Int?
-  isDefault        Boolean  @default(false)
+  isDefault        Boolean         @default(false)
   createdAt        DateTime
   customer         CustomerProfile @relation(fields: [customerId], references: [userId], onDelete: Cascade)
 
@@ -74,174 +75,178 @@ model CustomerProperty {
 }
 
 model ProviderBusinessProfile {
-  userId                    String   @id
-  companyName               String
-  bio                       String
-  yearsExperience           Int
-  serviceRadiusMiles        Int
-  minimumBookingLeadHours   Int      @default(0)
-  staffingMode              String   @default("review-first")
-  crewReviewLeadHours       Int      @default(24)
-  departureReminderLeadMinutes Int   @default(60)
-  routeLeaderMode           String   @default("provider-only")
-  weeklyPayoutDay           String   @default("Thu")
-  instantPayoutsEnabled     Boolean  @default(false)
-  verificationStatus        String   @default("pending-review")
-  verificationSubmittedAt   DateTime?
-  verificationReviewedAt    DateTime?
-  verificationNotes         String?
-  sponsoredListingEnabled   Boolean  @default(false)
-  categories                String[]
-  rating                    Float
-  timelinessRating          Float
-  attentionToDetailRating   Float
-  reviewCount               Int
-  calendarConnection        Json
-  user                      UserAccount      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  slots                     AvailabilitySlot[]
+  userId                       String                         @id
+  companyName                  String
+  bio                          String
+  yearsExperience              Int
+  serviceRadiusMiles           Int
+  minimumBookingLeadHours      Int                            @default(0)
+  staffingMode                 String                         @default("review-first")
+  crewReviewLeadHours          Int                            @default(24)
+  departureReminderLeadMinutes Int                            @default(60)
+  routeLeaderMode              String                         @default("provider-only")
+  weeklyPayoutDay              String                         @default("Thu")
+  instantPayoutsEnabled        Boolean                        @default(false)
+  verificationStatus           String                         @default("pending-review")
+  verificationSubmittedAt      DateTime?
+  verificationReviewedAt       DateTime?
+  verificationNotes            String?
+  sponsoredListingEnabled      Boolean                        @default(false)
+  categories                   String[]
+  rating                       Float
+  timelinessRating             Float
+  attentionToDetailRating      Float
+  reviewCount                  Int
+  calendarConnection           Json
+  user                         UserAccount                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slots                        AvailabilitySlot[]
+  credentials                  ProviderCredential[]
+  connectAccount               ProviderConnectAccount?
+  customerRelationships        CustomerProviderRelationship[]
 
   @@map("provider_business_profiles")
 }
 
 model CrewMemberProfile {
-  userId                String   @id
-  bio                   String
-  yearsExperience       Int
-  categories            String[]
-  availableWeekdays     String[]
-  willingToTravelMiles  Int
-  preferredSchedule     String
-  hasOwnEquipment       Boolean
-  winterWorkEnabled     Boolean  @default(false)
-  rating                Float
-  completedJobs         Int
-  cancellationCount     Int      @default(0)
-  lastCancellationAt    DateTime?
-  status                String
-  assignedProviderId    String?
-  user                  UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId               String      @id
+  bio                  String
+  yearsExperience      Int
+  categories           String[]
+  availableWeekdays    String[]
+  willingToTravelMiles Int
+  preferredSchedule    String
+  hasOwnEquipment      Boolean
+  winterWorkEnabled    Boolean     @default(false)
+  rating               Float
+  completedJobs        Int
+  cancellationCount    Int         @default(0)
+  lastCancellationAt   DateTime?
+  status               String
+  assignedProviderId   String?
+  user                 UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("crew_member_profiles")
 }
 
 model AvailabilitySlot {
-  id        String   @id
+  id         String                  @id
   providerId String
-  startIso  DateTime
-  endIso    DateTime
-  isBooked  Boolean  @default(false)
-  provider  ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Cascade)
+  startIso   DateTime
+  endIso     DateTime
+  isBooked   Boolean                 @default(false)
+  provider   ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Cascade)
 
   @@map("availability_slots")
 }
 
 model Booking {
-  id                   String   @id
-  customerId           String
-  providerId           String
-  launchLeadId         String?
-  recurringPlanId      String?
-  recurringOccurrenceIndex Int?
-  serviceAddress       Json
-  servicePropertyId    String?
-  category             String
-  requestedAt          DateTime
-  scheduledStartIso    DateTime
-  scheduledEndIso      DateTime
-  status               String
+  id                              String                      @id
+  customerId                      String
+  providerId                      String
+  launchLeadId                    String?
+  recurringPlanId                 String?
+  recurringOccurrenceIndex        Int?
+  serviceAddress                  Json
+  servicePropertyId               String?
+  category                        String
+  requestedAt                     DateTime
+  scheduledStartIso               DateTime
+  scheduledEndIso                 DateTime
+  status                          String
   assignedRouteLeaderCrewMemberId String?
-  onRouteConfirmedAt   DateTime?
-  onRouteConfirmedByCrewMemberId String?
-  lateNoticeSentAt     DateTime?
-  lateEtaIso           DateTime?
-  lateReason           String?
-  activeExceptionType  String?
-  activeExceptionReportedAt DateTime?
-  activeExceptionNotes String?
-  routeActiveStop      Json?
-  routeLivePoint       Json?
-  routeLiveUpdatedAt   DateTime?
-  routeLiveSource      String?
-  routeLiveSpeedMph    Float?
-  routeLiveAccuracyMeters Float?
-  disputedAt           DateTime?
-  disputeReason        String?
-  disputedByRole       String?
-  completedAt          DateTime?
-  notes                String
-  totalCents           Int
-  reviewId             String?
-  serviceEvidence      Json
-  interventions        Json
-  addressChangeHistory Json
+  onRouteConfirmedAt              DateTime?
+  onRouteConfirmedByCrewMemberId  String?
+  lateNoticeSentAt                DateTime?
+  lateEtaIso                      DateTime?
+  lateReason                      String?
+  activeExceptionType             String?
+  activeExceptionReportedAt       DateTime?
+  activeExceptionNotes            String?
+  routeActiveStop                 Json?
+  routeLivePoint                  Json?
+  routeLiveUpdatedAt              DateTime?
+  routeLiveSource                 String?
+  routeLiveSpeedMph               Float?
+  routeLiveAccuracyMeters         Float?
+  disputedAt                      DateTime?
+  disputeReason                   String?
+  disputedByRole                  String?
+  completedAt                     DateTime?
+  notes                           String
+  totalCents                      Int
+  reviewId                        String?
+  serviceEvidence                 Json
+  interventions                   Json
+  addressChangeHistory            Json
+  financialSettlement             BookingFinancialSettlement?
 
   @@map("bookings")
 }
 
 model RecurringServicePlan {
-  id                     String   @id
-  customerId             String
-  providerId             String
-  launchLeadId           String?
-  serviceAddress         Json
-  servicePropertyId      String?
-  category               String
-  frequency              String
-  requestedAt            DateTime
-  notes                  String
-  totalCents             Int
-  status                 String
+  id                      String    @id
+  customerId              String
+  providerId              String
+  launchLeadId            String?
+  serviceAddress          Json
+  servicePropertyId       String?
+  category                String
+  frequency               String
+  requestedAt             DateTime
+  notes                   String
+  totalCents              Int
+  status                  String
   anchorScheduledStartIso DateTime
-  anchorScheduledEndIso  DateTime
-  lastGeneratedBookingId String?
-  lastGeneratedAt        DateTime?
+  anchorScheduledEndIso   DateTime
+  lastGeneratedBookingId  String?
+  lastGeneratedAt         DateTime?
   lastSchedulingAttemptAt DateTime?
-  lastSchedulingError    String?
-  cancelledAt           DateTime?
-  cancellationReason    String?
+  lastSchedulingError     String?
+  cancelledAt             DateTime?
+  cancellationReason      String?
 
   @@map("recurring_service_plans")
 }
 
 model CrewMatch {
-  id             String   @id
-  bookingId      String
-  providerId     String
-  crewMemberId   String
-  crewMemberName String
-  crewMemberPhone String
-  categories     String[]
-  availableWeekdays String[]
-  preferredSchedule String
+  id                   String    @id
+  bookingId            String
+  providerId           String
+  crewMemberId         String
+  crewMemberName       String
+  crewMemberPhone      String
+  categories           String[]
+  availableWeekdays    String[]
+  preferredSchedule    String
   willingToTravelMiles Int
-  hasOwnEquipment Boolean
-  winterWorkEnabled Boolean
-  status         String
-  autoAccepted   Boolean @default(false)
-  distanceMiles  Float
-  hourlyRateCents Int
-  cancellationReason String?
-  cancelledAt    DateTime?
-  createdAt      DateTime
-  reviewedAt     DateTime?
+  hasOwnEquipment      Boolean
+  winterWorkEnabled    Boolean
+  status               String
+  autoAccepted         Boolean   @default(false)
+  distanceMiles        Float
+  hourlyRateCents      Int
+  cancellationReason   String?
+  cancelledAt          DateTime?
+  createdAt            DateTime
+  reviewedAt           DateTime?
 
   @@unique([bookingId, crewMemberId])
   @@map("crew_matches")
 }
 
 model ProviderCrewConversation {
-  id               String   @id
-  crewMatchId      String   @unique
-  bookingId        String
-  providerId       String
-  crewMemberId     String
-  providerName     String
-  crewMemberName   String
-  status           String
-  updatedAt        DateTime
+  id                 String   @id
+  crewMatchId        String   @unique
+  bookingId          String
+  providerId         String
+  crewMemberId       String
+  providerName       String
+  crewMemberName     String
+  status             String
+  updatedAt          DateTime
   lastMessagePreview String?
-  unreadCount      Int      @default(0)
-  createdAt        DateTime
+  unreadCount        Int      @default(0)
+  createdAt          DateTime
 
   @@map("provider_crew_conversations")
 }
@@ -284,35 +289,35 @@ model CustomerProviderMessage {
 }
 
 model ProviderReview {
-  id                     String   @id
-  bookingId              String   @unique
-  providerId             String
-  customerId             String
-  overallRating          Int
-  timelinessRating       Int
+  id                      String    @id
+  bookingId               String    @unique
+  providerId              String
+  customerId              String
+  overallRating           Int
+  timelinessRating        Int
   attentionToDetailRating Int
-  reviewText             String
-  responseStatus         String
-  responseHandledAt      DateTime?
-  responseHandledBy      String?
-  responseNotes          String?
-  publicReplyBody        String?
-  responseChannel        String?
+  reviewText              String
+  responseStatus          String
+  responseHandledAt       DateTime?
+  responseHandledBy       String?
+  responseNotes           String?
+  publicReplyBody         String?
+  responseChannel         String?
   responseChannelMetadata Json?
-  externalResponseId     String?
-  publicResponseUrl      String?
-  supportTicketId        String?
-  escalatedAt           DateTime?
-  escalatedBy           String?
-  escalationNotes       String?
-  createdAt              DateTime
+  externalResponseId      String?
+  publicResponseUrl       String?
+  supportTicketId         String?
+  escalatedAt             DateTime?
+  escalatedBy             String?
+  escalationNotes         String?
+  createdAt               DateTime
 
   @@map("provider_reviews")
 }
 
 model ReviewInvite {
-  id               String   @id
-  bookingId        String   @unique
+  id               String    @id
+  bookingId        String    @unique
   customerId       String
   providerId       String
   email            String
@@ -329,90 +334,195 @@ model ReviewInvite {
 }
 
 model PaymentRecord {
-  id                     String   @id
-  bookingId              String
-  amountCents            Int
-  currency               String
-  status                 String
-  processor              String
-  refundable             Boolean
-  checkoutSessionId      String?
-  checkoutSessionUrl     String?
+  id                       String                      @id
+  bookingId                String
+  amountCents              Int
+  currency                 String
+  status                   String
+  processor                String
+  refundable               Boolean
+  checkoutSessionId        String?
+  checkoutSessionUrl       String?
   processorPaymentIntentId String?
-  refundReason           String?
-  refundReviewStatus     String?
-  refundRequestedAt      DateTime?
-  refundRequestedByRole  String?
-  refundReviewedAt       DateTime?
-  refundReviewedByRole   String?
-  refundDecisionNotes    String?
-  failureReason          String?
-  paidAt                 DateTime?
-  createdAt              DateTime
-  updatedAt              DateTime
+  refundReason             String?
+  refundReviewStatus       String?
+  refundRequestedAt        DateTime?
+  refundRequestedByRole    String?
+  refundReviewedAt         DateTime?
+  refundReviewedByRole     String?
+  refundDecisionNotes      String?
+  failureReason            String?
+  paidAt                   DateTime?
+  createdAt                DateTime
+  updatedAt                DateTime
+  financialSettlement      BookingFinancialSettlement?
 
+  @@unique([checkoutSessionId])
+  @@unique([processorPaymentIntentId])
   @@map("payment_records")
 }
 
 model PayoutDisbursementRun {
-  id                     String   @id
-  previewBatchId         String
-  entryFingerprint       String
-  runDateIso             DateTime
-  recipientRole          String
-  railMode               String
-  actionStatus           String
-  status                 String
-  totalCents             Int
-  recipientCount         Int
-  bookingCount           Int
-  entryCount             Int
-  recipientIds           String[]
-  entryIds               String[]
-  entries                Json
-  blockerReasons         String[]
-  manualActionLabel      String
-  auditInstructions      String[]
-  createdAt              DateTime
-  updatedAt              DateTime
-  createdByOpsUserId     String
-  createdByOpsEmail      String
-  operatorNotes          String?
+  id                      String    @id
+  previewBatchId          String
+  entryFingerprint        String
+  runDateIso              DateTime
+  recipientRole           String
+  railMode                String
+  actionStatus            String
+  status                  String
+  totalCents              Int
+  recipientCount          Int
+  bookingCount            Int
+  entryCount              Int
+  recipientIds            String[]
+  entryIds                String[]
+  entries                 Json
+  blockerReasons          String[]
+  manualActionLabel       String
+  auditInstructions       String[]
+  createdAt               DateTime
+  updatedAt               DateTime
+  createdByOpsUserId      String
+  createdByOpsEmail       String
+  operatorNotes           String?
   reconciliationReference String?
-  reconciliationNotes    String?
-  reconciledAt           DateTime?
-  reconciledByOpsUserId  String?
+  reconciliationNotes     String?
+  reconciledAt            DateTime?
+  reconciledByOpsUserId   String?
 
-  @@index([previewBatchId, entryFingerprint])
+  @@unique([previewBatchId, entryFingerprint])
   @@map("payout_disbursement_runs")
 }
 
+model ProviderCredential {
+  id                  String                  @id
+  providerId          String
+  type                String
+  status              String
+  jurisdiction        String
+  referenceNumber     String?
+  documentUrl         String?
+  issuedAt            DateTime?
+  expiresAt           DateTime?
+  submittedAt         DateTime
+  reviewedAt          DateTime?
+  reviewedByOpsUserId String?
+  reviewNotes         String?
+  provider            ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Cascade)
+
+  @@unique([providerId, type, jurisdiction])
+  @@index([status, expiresAt])
+  @@map("provider_credentials")
+}
+
+model ProviderConnectAccount {
+  providerId       String                  @id
+  stripeAccountId  String                  @unique
+  dashboard        String
+  feesCollector    String
+  lossesCollector  String
+  chargePattern    String
+  onboardingStatus String
+  transfersStatus  String
+  payoutsStatus    String
+  createdAt        DateTime
+  updatedAt        DateTime
+  lastSyncedAt     DateTime?
+  provider         ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Cascade)
+
+  @@index([onboardingStatus, transfersStatus])
+  @@map("provider_connect_accounts")
+}
+
+model CustomerProviderRelationship {
+  customerId            String
+  providerId            String
+  firstSettledBookingId String                  @unique
+  createdAt             DateTime
+  customer              CustomerProfile         @relation(fields: [customerId], references: [userId], onDelete: Restrict)
+  provider              ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Restrict)
+
+  @@id([customerId, providerId])
+  @@map("customer_provider_relationships")
+}
+
+model BookingFinancialSettlement {
+  id                                  String                 @id
+  bookingId                           String                 @unique
+  paymentId                           String                 @unique
+  customerId                          String
+  providerId                          String
+  policyVersion                       String
+  currency                            String
+  customerChargeCents                 Int
+  providerServiceGrossCents           Int
+  finderFeeCents                      Int
+  completedJobFeeCents                Int
+  platformGrossRevenueCents           Int
+  actualProcessorFeeCents             Int
+  platformNetRevenueCents             Int
+  providerNetCents                    Int
+  crewPayoutByYardMatchCents          Int                    @default(0)
+  isFirstCompletedCustomerProviderJob Boolean
+  status                              String
+  createdAt                           DateTime
+  updatedAt                           DateTime
+  booking                             Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  payment                             PaymentRecord          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  ledgerEntries                       FinancialLedgerEntry[]
+
+  @@index([providerId, status, createdAt])
+  @@index([customerId, providerId])
+  @@map("booking_financial_settlements")
+}
+
+model FinancialLedgerEntry {
+  id                String                     @id
+  settlementId      String
+  bookingId         String
+  paymentId         String
+  account           String
+  direction         String
+  amountCents       Int
+  currency          String
+  idempotencyKey    String                     @unique
+  source            String
+  reversalOfEntryId String?
+  createdAt         DateTime
+  settlement        BookingFinancialSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+
+  @@index([bookingId, createdAt])
+  @@index([account, createdAt])
+  @@map("financial_ledger_entries")
+}
+
 model LaunchOperationsTask {
-  id                         String   @id
-  recommendationFingerprint  String   @unique
-  recommendationKey          String
-  pocketKey                  String
-  city                       String
-  state                      String
-  postalCode                 String
-  priority                   String
-  owner                      String
-  status                     String
-  title                      String
-  detail                     String
-  recommendedAction          String
-  dueAtIso                   DateTime
-  relatedScenarioKeys        String[]
-  createdAt                  DateTime
-  updatedAt                  DateTime
-  createdByOpsUserId         String
-  createdByOpsEmail          String
-  assignedToOpsUserId        String?
-  assignedToOpsEmail         String?
-  operatorNotes              String?
-  completionNotes            String?
-  completedAt                DateTime?
-  completedByOpsUserId       String?
+  id                        String    @id
+  recommendationFingerprint String    @unique
+  recommendationKey         String
+  pocketKey                 String
+  city                      String
+  state                     String
+  postalCode                String
+  priority                  String
+  owner                     String
+  status                    String
+  title                     String
+  detail                    String
+  recommendedAction         String
+  dueAtIso                  DateTime
+  relatedScenarioKeys       String[]
+  createdAt                 DateTime
+  updatedAt                 DateTime
+  createdByOpsUserId        String
+  createdByOpsEmail         String
+  assignedToOpsUserId       String?
+  assignedToOpsEmail        String?
+  operatorNotes             String?
+  completionNotes           String?
+  completedAt               DateTime?
+  completedByOpsUserId      String?
 
   @@index([status, priority])
   @@index([pocketKey, recommendationKey])
@@ -420,22 +530,22 @@ model LaunchOperationsTask {
 }
 
 model OpsAutomationRun {
-  id                     String   @id
-  runId                  String   @unique
-  generatedAt            DateTime
-  asOfIso                DateTime
-  dryRun                 Boolean
-  requestedSweepKeys     String[]
-  requestedSweepCount    Int
-  completedSweepCount    Int
-  failedSweepCount       Int
-  sentNotificationCount  Int
-  alreadySentCount       Int
-  skippedCount           Int
-  items                  Json
-  createdAt              DateTime
-  createdByOpsUserId     String
-  createdByOpsEmail      String
+  id                    String   @id
+  runId                 String   @unique
+  generatedAt           DateTime
+  asOfIso               DateTime
+  dryRun                Boolean
+  requestedSweepKeys    String[]
+  requestedSweepCount   Int
+  completedSweepCount   Int
+  failedSweepCount      Int
+  sentNotificationCount Int
+  alreadySentCount      Int
+  skippedCount          Int
+  items                 Json
+  createdAt             DateTime
+  createdByOpsUserId    String
+  createdByOpsEmail     String
 
   @@index([createdAt])
   @@index([dryRun, createdAt])
@@ -443,54 +553,54 @@ model OpsAutomationRun {
 }
 
 model SupportTicket {
-  id          String   @id
-  bookingId   String?
-  launchLeadId String?
-  requesterId String
-  subject     String
-  description String
-  issueType   String
-  status      String
-  createdAt   DateTime
-  updatedAt   DateTime
-  triagedAt   DateTime?
-  resolvedAt  DateTime?
-  resolutionNotes String?
+  id               String    @id
+  bookingId        String?
+  launchLeadId     String?
+  requesterId      String
+  subject          String
+  description      String
+  issueType        String
+  status           String
+  createdAt        DateTime
+  updatedAt        DateTime
+  triagedAt        DateTime?
+  resolvedAt       DateTime?
+  resolutionNotes  String?
   resolutionAction String?
 
   @@map("support_tickets")
 }
 
 model LaunchLead {
-  id                     String   @id
-  sourceChannel          String
-  requestSource          String?
-  sourceReferenceId      String?  @unique
-  channelMetadata        Json?
-  attribution            Json?
-  contactName            String
-  email                  String?
-  phone                  String?
-  preferredContactMethod String
-  areaLabel              String
-  serviceCategory        String?
-  message                String
-  status                 String
-  assignedOwner          String?
-  firstResponseDueAt     DateTime
-  firstRespondedAt       DateTime?
-  lastContactedAt        DateTime?
-  nextFollowUpDueAt      DateTime?
-  closedAt               DateTime?
-  lossReason             String?
-  outcomeSummary         String?
-  convertedBookingIds    String[]
-  reviewIds              String[]
+  id                      String    @id
+  sourceChannel           String
+  requestSource           String?
+  sourceReferenceId       String?   @unique
+  channelMetadata         Json?
+  attribution             Json?
+  contactName             String
+  email                   String?
+  phone                   String?
+  preferredContactMethod  String
+  areaLabel               String
+  serviceCategory         String?
+  message                 String
+  status                  String
+  assignedOwner           String?
+  firstResponseDueAt      DateTime
+  firstRespondedAt        DateTime?
+  lastContactedAt         DateTime?
+  nextFollowUpDueAt       DateTime?
+  closedAt                DateTime?
+  lossReason              String?
+  outcomeSummary          String?
+  convertedBookingIds     String[]
+  reviewIds               String[]
   firstConvertedBookingAt DateTime?
-  lastConvertedBookingAt DateTime?
-  lastReviewSubmittedAt  DateTime?
-  createdAt              DateTime
-  updatedAt              DateTime
+  lastConvertedBookingAt  DateTime?
+  lastReviewSubmittedAt   DateTime?
+  createdAt               DateTime
+  updatedAt               DateTime
 
   @@index([status, createdAt])
   @@index([assignedOwner, status])
@@ -498,52 +608,52 @@ model LaunchLead {
 }
 
 model AppNotification {
-  id            String   @id
-  recipientId    String
-  recipientRole  String
-  category       String
-  title          String
-  body           String
-  actionHref     String?
-  isRead         Boolean  @default(false)
-  createdAt      DateTime
-  readAt         DateTime?
+  id            String    @id
+  recipientId   String
+  recipientRole String
+  category      String
+  title         String
+  body          String
+  actionHref    String?
+  isRead        Boolean   @default(false)
+  createdAt     DateTime
+  readAt        DateTime?
 
   @@index([recipientId, createdAt])
   @@map("app_notifications")
 }
 
 model NotificationPreference {
-  userId                  String   @id
-  role                    String
-  emailEnabled            Boolean  @default(true)
-  smsEnabled              Boolean  @default(true)
-  pushEnabled             Boolean  @default(true)
-  reviewRemindersEnabled  Boolean  @default(true)
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime
+  userId                 String   @id
+  role                   String
+  emailEnabled           Boolean  @default(true)
+  smsEnabled             Boolean  @default(true)
+  pushEnabled            Boolean  @default(true)
+  reviewRemindersEnabled Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime
 
   @@map("notification_preferences")
 }
 
 model NotificationDelivery {
-  id            String   @id
+  id             String    @id
   notificationId String
-  recipientId   String
-  recipientRole String
-  category      String
-  channel       String
-  destination   String
-  provider      String
-  status        String
-  title         String
-  bodyPreview   String
-  errorMessage  String?
-  attemptCount  Int      @default(0)
-  createdAt     DateTime
-  lastAttemptAt DateTime?
-  nextRetryAt   DateTime?
-  sentAt        DateTime?
+  recipientId    String
+  recipientRole  String
+  category       String
+  channel        String
+  destination    String
+  provider       String
+  status         String
+  title          String
+  bodyPreview    String
+  errorMessage   String?
+  attemptCount   Int       @default(0)
+  createdAt      DateTime
+  lastAttemptAt  DateTime?
+  nextRetryAt    DateTime?
+  sentAt         DateTime?
 
   @@index([recipientId, createdAt])
   @@index([notificationId])

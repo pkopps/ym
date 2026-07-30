@@ -46,6 +46,30 @@ function getSearchParamValue(searchParams: ReturnType<typeof useSearchParams>, k
   return searchParams.get(key)?.trim() ?? "";
 }
 
+function parseCarriedPoint(searchParams: ReturnType<typeof useSearchParams>) {
+  const latitudeValue = searchParams.get("lat")?.trim();
+  const longitudeValue = searchParams.get("lng")?.trim();
+  if (!latitudeValue || !longitudeValue) {
+    return undefined;
+  }
+
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+
+  if (
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return undefined;
+  }
+
+  return { latitude, longitude };
+}
+
 function parseServiceCategory(value: string | null): ServiceCategory | undefined {
   if (!value || !Object.prototype.hasOwnProperty.call(serviceCategoryLabels, value)) {
     return undefined;
@@ -95,6 +119,10 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const carriedProviderName = role === "customer" ? getSearchParamValue(searchParams, "providerName") : "";
   const carriedProviderRank = role === "customer" ? getSearchParamValue(searchParams, "rank") : "";
   const carriedSlot = role === "customer" ? getSearchParamValue(searchParams, "slot") : "";
+  const carriedCity = role === "customer" ? getSearchParamValue(searchParams, "city") : "";
+  const carriedState = role === "customer" ? getSearchParamValue(searchParams, "state") : "";
+  const carriedPostalCode = role === "customer" ? getSearchParamValue(searchParams, "postalCode") : "";
+  const carriedPoint = role === "customer" ? parseCarriedPoint(searchParams) : undefined;
   const carriedSlotLabel = formatCarriedSlotLabel(carriedSlot);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -105,16 +133,18 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const [serviceRadiusMiles, setServiceRadiusMiles] = useState(15);
   const [line1, setLine1] = useState("");
   const [line2, setLine2] = useState("");
-  const [city, setCity] = useState(() => (role === "customer" ? getSearchParamValue(searchParams, "city") : ""));
-  const [state, setState] = useState(() => (role === "customer" ? getSearchParamValue(searchParams, "state") : ""));
-  const [postalCode, setPostalCode] = useState(() =>
-    role === "customer" ? getSearchParamValue(searchParams, "postalCode") : ""
-  );
+  const [city, setCity] = useState(carriedCity);
+  const [state, setState] = useState(carriedState);
+  const [postalCode, setPostalCode] = useState(carriedPostalCode);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const shouldShowCustomerIntent = role === "customer" && (carriedService || carriedTiming || carriedArea || carriedProviderName);
   const postSignupRedirectPath = buildPostSignupRedirectPath();
   const localizedPostSignupRedirectPath = addLocalePrefix(postSignupRedirectPath, i18n.locale);
+  const customerLoginHref = addLocalePrefix(
+    `/login/customer?returnTo=${encodeURIComponent(localizedPostSignupRedirectPath)}`,
+    i18n.locale
+  );
   const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: localizedPostSignupRedirectPath });
 
   function buildPostSignupRedirectPath() {
@@ -168,6 +198,12 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
       return;
     }
 
+    const canReuseCarriedPoint = Boolean(
+      carriedPoint &&
+      city.trim().toLowerCase() === carriedCity.toLowerCase() &&
+      state.trim().toUpperCase() === carriedState.toUpperCase() &&
+      postalCode.trim() === carriedPostalCode
+    );
     const address: Address = {
       line1: line1.trim(),
       line2: line2.trim() || undefined,
@@ -175,7 +211,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
       state: state.trim().toUpperCase(),
       postalCode: postalCode.trim(),
       country: "US",
-      point: buildEstimatedPoint(state, postalCode)
+      point: canReuseCarriedPoint && carriedPoint ? carriedPoint : buildEstimatedPoint(state, postalCode)
     };
     const resolvedServiceRadiusMiles = Number.isFinite(serviceRadiusMiles)
       ? Math.min(60, Math.max(5, serviceRadiusMiles))
@@ -364,6 +400,11 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
           <button className="button" disabled={isSubmitting} type="submit">
             {isSubmitting ? i18n.t("auth_signup.creating") : i18n.t("auth_signup.create_account")}
           </button>
+          {role === "customer" ? (
+            <a className="button-secondary" href={customerLoginHref}>
+              {i18n.t("auth_signup.log_in_continue")}
+            </a>
+          ) : null}
           <a className="button-secondary" href={addLocalePrefix(role === "provider" ? "/provider" : "/auth", i18n.locale)}>
             {i18n.t("common.actions.back")}
           </a>

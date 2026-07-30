@@ -46,4 +46,6 @@ test("pseudo locale expands source strings without requiring a full copied local
   const i18n = createI18n({ locale: "pseudo", messages, fallbackMessages });
 
   assert.match(i18n.t("nav.sign_up"), /^\[!! /);
+  assert.match(i18n.t("footer.copyright", { year: 2026 }), /2026/);
+  assert.match(i18n.t("common.format.provider_count", { count: 2 }), /2 providers/);
 });
