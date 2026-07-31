@@ -45,7 +45,7 @@ Code checkpoint: `7e3a8e23061c6f808b128e9e5e6bccffa9bc7db2` (checkpoint document
 ## Blockers
 
 - The private repository cannot be cloned in this cloud image because `gh` and reusable Git credentials are unavailable.
-- GitHub Actions run `30647447728` failed before any job step started. The connector reports empty step data and no downloadable logs or artifacts, so the suite could not be executed in the cloud.
+- GitHub Actions run `30648471255` failed before any job step started. The connector reports empty step data and no downloadable logs or artifacts, so the suite could not be executed in the cloud.
 
 ## Decisions Needed
 
@@ -69,7 +69,7 @@ Code checkpoint: `7e3a8e23061c6f808b128e9e5e6bccffa9bc7db2` (checkpoint document
 
 - `npm run typecheck`: not rerun in this cloud task; the supplied pre-change checkpoint passed.
 - `npm run test:api`: not rerun in this cloud task; the supplied pre-change baseline was 228 tests: 203 passed, 24 failed, 1 skipped.
-- GitHub Actions CI run `30647447728`: failed before runner steps; no test output was produced.
+- GitHub Actions CI run `30648471255`: failed before runner steps; no test output was produced.
 - Connected-repository static review: changed TypeScript files have balanced parentheses, braces, and brackets; obsolete crew-disbursement assertions and temporary workflow diff are absent.
 
 ## Test/Build/Lint/Type-Check Results
