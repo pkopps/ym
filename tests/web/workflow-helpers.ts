@@ -88,13 +88,43 @@ export async function loginApi(request: APIRequestContext, email: string, passwo
   return postJson<AuthEnvelope>(request, "/api/auth/login", { email, password });
 }
 
-export async function approveProvider(request: APIRequestContext, providerId: string) {
+export async function approveProvider(
+  request: APIRequestContext,
+  providerId: string,
+  providerToken: string
+) {
   const ops = await loginApi(request, "ops@example.com", "YardMatch123!");
+  const credentialTypes = [
+    "business-registration",
+    "general-liability-insurance",
+    "workers-compensation"
+  ] as const;
+
+  for (const type of credentialTypes) {
+    const profile = await postJson<{
+      credentials?: Array<{ id: string; type: string; jurisdiction: string }>;
+    }>(request, "/api/providers/credentials", {
+      type,
+      jurisdiction: "NJ",
+      referenceNumber: `PLAYWRIGHT-${type}-${providerId}`
+    }, providerToken);
+    const credential = profile.credentials?.find(
+      (candidate) => candidate.type === type && candidate.jurisdiction === "NJ"
+    );
+    expect(credential).toBeTruthy();
+    await postJson(request, "/api/providers/credentials/review", {
+      providerId,
+      credentialId: credential?.id,
+      action: "verify",
+      notes: "Verified launch workflow fixture credential."
+    }, ops.session.token);
+  }
+
   await postJson(request, "/api/providers/verification/review", {
     providerId,
     action: "approve",
     notes:
-      "Ops reviewed the local service area, categories, route controls, profile detail, and first-job readiness. The business is approved for a narrow launch pilot with normal monitoring."
+      "Ops reviewed the local service area, categories, route controls, profile detail, verified credentials, and first-job readiness. The business is approved for a narrow launch pilot with normal monitoring."
   }, ops.session.token);
   return ops.session.token;
 }
