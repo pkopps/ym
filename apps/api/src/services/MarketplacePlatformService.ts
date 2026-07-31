@@ -5589,7 +5589,12 @@ export class MarketplacePlatformService {
     }
 
     const staffingMode = provider.staffingMode ?? "review-first";
-    const isAutoAccept = staffingMode === "auto-accept";
+    const credentialReadiness = evaluateProviderCredentialReadiness(
+      provider,
+      provider.credentials ?? []
+    );
+    const isAutoAccept =
+      staffingMode === "auto-accept" && credentialReadiness.crewEngagementAllowed;
     const notificationTitle = isAutoAccept
       ? "Your crew opening was filled"
       : "Crew opening needs review";
@@ -5693,7 +5698,13 @@ export class MarketplacePlatformService {
     }
 
     const staffingMode = provider.staffingMode ?? "review-first";
-    const status = staffingMode === "auto-accept" ? "accepted" : "pending-provider-review";
+    const credentialReadiness = evaluateProviderCredentialReadiness(
+      provider,
+      provider.credentials ?? []
+    );
+    const isAutoAccept =
+      isAutoAccept && credentialReadiness.crewEngagementAllowed;
+    const status = isAutoAccept ? "accepted" : "pending-provider-review";
     const now = new Date().toISOString();
     const match = await this.repository.createCrewMatch({
       id: crypto.randomUUID(),
@@ -5709,20 +5720,20 @@ export class MarketplacePlatformService {
       hasOwnEquipment: crewMember.hasOwnEquipment,
       winterWorkEnabled: crewMember.winterWorkEnabled ?? true,
       status,
-      autoAccepted: staffingMode === "auto-accept",
+      autoAccepted: isAutoAccept,
       distanceMiles,
       hourlyRateCents: this.estimateCrewHourlyRate(booking.category),
       createdAt: now,
-      reviewedAt: staffingMode === "auto-accept" ? now : undefined
+      reviewedAt: isAutoAccept ? now : undefined
     });
 
     await this.createNotification({
       recipientId: provider.id,
       recipientRole: "provider",
       category: "staffing",
-      title: staffingMode === "auto-accept" ? "Crew opening filled" : "Crew opening needs review",
+      title: isAutoAccept ? "Crew opening filled" : "Crew opening needs review",
       body:
-        staffingMode === "auto-accept"
+        isAutoAccept
           ? `${crewMember.fullName} claimed your ${this.titleCaseCategory(booking.category)} opening and was auto-accepted.`
           : `${crewMember.fullName} claimed your ${this.titleCaseCategory(booking.category)} opening and is waiting for review.`,
       actionHref: "/provider/management"
@@ -5732,15 +5743,15 @@ export class MarketplacePlatformService {
       recipientId: crewMember.id,
       recipientRole: "crew-member",
       category: "staffing",
-      title: staffingMode === "auto-accept" ? "You were accepted for a job" : "You have a new crew match",
+      title: isAutoAccept ? "You were accepted for a job" : "You have a new crew match",
       body:
-        staffingMode === "auto-accept"
+        isAutoAccept
           ? `${provider.companyName} added you to an upcoming ${this.titleCaseCategory(booking.category)} job.`
           : `${provider.companyName} is reviewing you for an upcoming ${this.titleCaseCategory(booking.category)} job.`,
       actionHref: "/crew/schedule"
     });
 
-    if (staffingMode === "auto-accept") {
+    if (isAutoAccept) {
       await this.refreshCrewMemberStatus(crewMember.id);
     }
 
@@ -16786,6 +16797,12 @@ export class MarketplacePlatformService {
     const crewDayLoadMap = this.buildCrewDayLoadMap(matches, bookings);
 
     for (const provider of targetProviders) {
+      const credentialReadiness = evaluateProviderCredentialReadiness(
+        provider,
+        provider.credentials ?? []
+      );
+      const canAutoAcceptCrew =
+        canAutoAcceptCrew && credentialReadiness.crewEngagementAllowed;
       const providerBookings = bookings.filter(
         (booking) =>
           booking.providerId === provider.id &&
@@ -16837,13 +16854,13 @@ export class MarketplacePlatformService {
         const existingIds = new Set(bookingMatches.map((match) => match.crewMemberId));
         const nextCandidates = candidatePool
           .filter(({ crewMember }) => !existingIds.has(crewMember.id))
-          .slice(0, provider.staffingMode === "auto-accept" ? gap : Math.max(3, gap));
+          .slice(0, canAutoAcceptCrew ? gap : Math.max(3, gap));
 
         for (const { crewMember } of nextCandidates) {
           const distanceMiles = Number(
             this.geoService.distanceMiles(crewMember.address, booking.serviceAddress).toFixed(1)
           );
-          const status = provider.staffingMode === "auto-accept" ? "accepted" : "pending-provider-review";
+          const status = canAutoAcceptCrew ? "accepted" : "pending-provider-review";
           await this.repository.createCrewMatch({
             id: crypto.randomUUID(),
             bookingId: booking.id,
@@ -16858,11 +16875,11 @@ export class MarketplacePlatformService {
             hasOwnEquipment: crewMember.hasOwnEquipment,
             winterWorkEnabled: crewMember.winterWorkEnabled ?? true,
             status,
-            autoAccepted: provider.staffingMode === "auto-accept",
+            autoAccepted: canAutoAcceptCrew,
             distanceMiles,
             hourlyRateCents: this.estimateCrewHourlyRate(booking.category),
             createdAt: new Date().toISOString(),
-            reviewedAt: provider.staffingMode === "auto-accept" ? new Date().toISOString() : undefined
+            reviewedAt: canAutoAcceptCrew ? new Date().toISOString() : undefined
           });
           const crewDayLoadKey = this.getCrewDayLoadKey(crewMember.id, booking.scheduledStartIso);
           crewDayLoadMap.set(crewDayLoadKey, (crewDayLoadMap.get(crewDayLoadKey) ?? 0) + 1);
@@ -16872,17 +16889,17 @@ export class MarketplacePlatformService {
             recipientRole: "crew-member",
             category: "staffing",
             title:
-              provider.staffingMode === "auto-accept"
+              canAutoAcceptCrew
                 ? "You were auto-matched to a job"
                 : "You have a new crew match",
             body:
-              provider.staffingMode === "auto-accept"
+              canAutoAcceptCrew
                 ? `${provider.companyName} automatically assigned you to an upcoming ${this.titleCaseCategory(booking.category)} job.`
                 : `${provider.companyName} is reviewing you for an upcoming ${this.titleCaseCategory(booking.category)} job.`,
             actionHref: "/crew/schedule"
           });
 
-          if (provider.staffingMode === "auto-accept") {
+          if (canAutoAcceptCrew) {
             await this.refreshCrewMemberStatus(crewMember.id);
           }
         }
