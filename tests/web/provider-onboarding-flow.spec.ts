@@ -46,7 +46,7 @@ test("provider signup reaches a complete, verified management profile", async ({
   await expect(page.getByText("Auto-accept is on for future crew matches.")).toBeVisible();
 
   const login = await loginApi(request, email);
-  await approveProvider(request, login.user.id);
+  await approveProvider(request, login.user.id, login.session.token);
   await page.reload();
   await expect(page.getByText(/Status: verified/i)).toBeVisible();
   await expect(page.getByText(/verified and visible in search/i)).toBeVisible();
