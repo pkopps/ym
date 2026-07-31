@@ -11,7 +11,7 @@ import {
 
 test("provider confirms, routes, proves, completes, and can decline a second request", async ({ page, request }) => {
   const provider = await registerProvider(request, { staffingMode: "auto-accept" });
-  await approveProvider(request, provider.providerId);
+  await approveProvider(request, provider.providerId, provider.token);
   const primaryCustomer = await registerCustomer(request, "Taylor First Job");
   const declineCustomer = await registerCustomer(request, "Casey Backup Request");
   await createBooking(request, {
