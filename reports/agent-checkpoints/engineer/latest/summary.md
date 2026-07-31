@@ -30,7 +30,7 @@
 ## Blockers
 
 - Direct private-repository clone is unavailable because the cloud image has no GitHub CLI or reusable Git credential.
-- GitHub Actions CI run `30647447728` failed before the first step and exposed no logs or artifacts.
+- GitHub Actions CI run `30648471255` failed before the first step and exposed no logs or artifacts.
 
 ## Changed Workflows
 
