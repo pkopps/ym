@@ -167,15 +167,26 @@ async function verifyProviderLaunchCredentials(
     "business-registration" | "general-liability-insurance" | "workers-compensation"
   > = ["business-registration", "general-liability-insurance",
     ...(includeWorkersCompensation ? (["workers-compensation"] as const) : [])];
+  let profile = await platform.getProviderProfile(providerId);
   for (const type of credentialTypes) {
-    const profile = await platform.submitProviderCredential(providerId, {
+    const existingCredential = profile.credentials?.find(
+      (candidate) =>
+        candidate.type === type &&
+        candidate.jurisdiction === "NJ" &&
+        candidate.status === "verified" &&
+        (!candidate.expiresAt || Date.parse(candidate.expiresAt) > Date.now())
+    );
+    if (existingCredential) {
+      continue;
+    }
+    profile = await platform.submitProviderCredential(providerId, {
       type, jurisdiction: "NJ", referenceNumber: `TEST-${type}-${providerId}`
     });
     const credential = profile.credentials?.find(
       (candidate) => candidate.type === type && candidate.jurisdiction === "NJ"
     );
     assert.ok(credential, `expected ${type} fixture credential`);
-    await platform.reviewProviderCredential("ops-test-reviewer", {
+    profile = await platform.reviewProviderCredential("ops-test-reviewer", {
       providerId, credentialId: credential.id, action: "verify",
       notes: "Verified launch-hardening test fixture credential."
     });
