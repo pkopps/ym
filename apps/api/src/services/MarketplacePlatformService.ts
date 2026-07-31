@@ -5703,7 +5703,7 @@ export class MarketplacePlatformService {
       provider.credentials ?? []
     );
     const isAutoAccept =
-      isAutoAccept && credentialReadiness.crewEngagementAllowed;
+      staffingMode === "auto-accept" && credentialReadiness.crewEngagementAllowed;
     const status = isAutoAccept ? "accepted" : "pending-provider-review";
     const now = new Date().toISOString();
     const match = await this.repository.createCrewMatch({
@@ -16802,7 +16802,7 @@ export class MarketplacePlatformService {
         provider.credentials ?? []
       );
       const canAutoAcceptCrew =
-        canAutoAcceptCrew && credentialReadiness.crewEngagementAllowed;
+        provider.staffingMode === "auto-accept" && credentialReadiness.crewEngagementAllowed;
       const providerBookings = bookings.filter(
         (booking) =>
           booking.providerId === provider.id &&
