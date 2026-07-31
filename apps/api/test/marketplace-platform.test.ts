@@ -10621,6 +10621,7 @@ test("providers can import an external iCal feed and use it to block YardMatch a
     serviceRadiusMiles: 25,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderLaunchCredentials(platform, provider.id);
 
   const customer = await platform.registerUser({
     fullName: "Jordan Rivera",
