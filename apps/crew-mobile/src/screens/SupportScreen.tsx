@@ -30,15 +30,13 @@ type LanguageSettings = {
 };
 
 const crewAccountSectionOptions: Array<{ value: CrewAccountSection; labelKey: TranslationKey }> = [
-  { value: "payouts", labelKey: "provider_mobile.dashboard.payouts" },
+  { value: "payouts", labelKey: "crew_mobile.compensation.title" },
   { value: "profile", labelKey: "crew_mobile.support.section.profile" },
   { value: "alerts", labelKey: "mobile.support.section.alerts" },
   { value: "language", labelKey: "common.language.label" },
   { value: "security", labelKey: "mobile.support.section.security" },
   { value: "help", labelKey: "mobile.support.section.help" }
 ];
-
-type CrewPayoutEntry = CrewPayoutLedgerResponse["entries"][number];
 
 const supportIssueLabelKeys: Record<SupportIssueType, TranslationKey> = {
   account: "mobile.support.issue.account",
@@ -66,27 +64,6 @@ const supportTicketStatusLabelKeys: Record<SupportTicketStatus, TranslationKey> 
   resolved: "provider_mobile.support.ticket.status.resolved",
   triaged: "provider_mobile.support.ticket.status.triaged"
 };
-
-function formatCurrency(i18n: I18nInstance, cents: number) {
-  return i18n.formatCurrency(cents);
-}
-
-function formatPayoutStatus(i18n: I18nInstance, status: CrewPayoutEntry["status"]) {
-  switch (status) {
-    case "awaiting-customer-payment":
-      return i18n.t("provider_mobile.dashboard.payout.awaiting_payment");
-    case "on-hold":
-      return i18n.t("provider_mobile.dashboard.payout.on_hold");
-    case "scheduled":
-      return i18n.t("provider_mobile.dashboard.payout.scheduled");
-    case "ready":
-      return i18n.t("provider_mobile.dashboard.payout.ready");
-    case "paid":
-      return i18n.t("provider_mobile.dashboard.payout.paid");
-    case "reversed":
-      return i18n.t("provider_mobile.dashboard.payout.reversed");
-  }
-}
 
 function formatNotificationChannelLabel(i18n: I18nInstance, channel: NotificationChannel) {
   return i18n.t(notificationChannelLabelKeys[channel]);
@@ -122,16 +99,6 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   const [showSupportComposer, setShowSupportComposer] = useState(false);
   const [showSupportHistory, setShowSupportHistory] = useState(false);
   const [activeSection, setActiveSection] = useState<CrewAccountSection>("payouts");
-  const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
-  const blockedPayoutCents =
-    (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
-    heldPayoutEntries.reduce((sum, entry) => sum + entry.amountCents, 0);
-  const payoutStateLabel =
-    blockedPayoutCents > 0
-      ? i18n.t("common.state.needs_attention")
-      : (payoutLedger?.totalReadyCents ?? 0) > 0
-        ? i18n.t("provider_mobile.support.payout.ready_now")
-        : i18n.t("provider_mobile.support.payout.on_track");
   const enabledAlertCount = [
     preferences?.pushEnabled ?? true,
     preferences?.emailEnabled ?? true,
@@ -140,7 +107,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   const currentLanguageLabel =
     languageSettings.locale === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english");
   const sectionSummaries: Record<CrewAccountSection, string> = {
-    payouts: payoutStateLabel,
+    payouts: i18n.t("crew_mobile.compensation.provider_managed"),
     profile: i18n.t("crew_mobile.support.summary.radius", {
       count: matchesResponse?.crewMember.willingToTravelMiles ?? 0
     }),
@@ -309,70 +276,35 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       </InfoCard>
 
       {activeSection === "payouts" ? (
-      <InfoCard title={i18n.t("provider_mobile.dashboard.payouts")} description={payoutStateLabel}>
+      <InfoCard
+        title={i18n.t("crew_mobile.compensation.title")}
+        description={i18n.t("crew_mobile.compensation.description")}
+      >
         <View style={styles.payoutSummaryGrid}>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.ready")}</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, payoutLedger?.totalReadyCents ?? 0)}</Text>
-          </View>
-          <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.next")}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("crew_mobile.compensation.completed")}</Text>
             <Text style={styles.payoutSummaryValue}>
-              {payoutLedger?.nextWeeklyPayoutDateIso
-                ? i18n.formatDate(payoutLedger.nextWeeklyPayoutDateIso, {
-                    month: "short",
-                    day: "numeric"
-                  })
-                : i18n.t("provider_mobile.dashboard.pending")}
+              {payoutLedger?.attendanceSummary.completedAssignmentCount ?? 0}
             </Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.support.payout.blocked")}</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, blockedPayoutCents)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("crew_mobile.compensation.attendance")}</Text>
+            <Text style={styles.payoutSummaryValue}>{Math.round((payoutLedger?.attendanceSummary.attendanceRate ?? 0) * 100)}%</Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.paid")}</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, payoutLedger?.totalPaidCents ?? 0)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("crew_mobile.compensation.evidence")}</Text>
+            <Text style={styles.payoutSummaryValue}>
+              {payoutLedger?.performanceSummary.evidenceContributionCount ?? 0}
+            </Text>
+          </View>
+          <View style={styles.payoutSummaryItem}>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("crew_mobile.compensation.providers")}</Text>
+            <Text style={styles.payoutSummaryValue}>{payoutLedger?.performanceSummary.providerCount ?? 0}</Text>
           </View>
         </View>
-        <Text style={styles.meta}>
-          {i18n.t("crew_mobile.support.payout.schedule_summary", {
-            hold: i18n.t("provider_mobile.dashboard.hold_hours", { count: payoutLedger?.holdPeriodHours ?? 0 }),
-            scheduled: formatCurrency(i18n, payoutLedger?.totalScheduledCents ?? 0)
-          })}
-        </Text>
-        {(payoutLedger?.entries ?? []).length > 0 ? (
-          <View style={styles.ticketStack}>
-            {(payoutLedger?.entries ?? []).slice(0, 3).map((entry) => (
-              <View key={entry.id} style={styles.ticketRow}>
-                <View style={styles.ticketCopy}>
-                  <Text style={styles.title}>{entry.providerCompanyName}</Text>
-                  <Text style={styles.meta}>
-                    {i18n.t("provider_mobile.support.payout.entry_summary", {
-                      service: entry.serviceLabel,
-                      amount: formatCurrency(i18n, entry.amountCents)
-                    })}
-                  </Text>
-                  <Text style={styles.meta}>{entry.note}</Text>
-                </View>
-                <Text
-                  style={[
-                    styles.payoutStatusBadge,
-                    (entry.status === "ready" || entry.status === "paid") && styles.payoutStatusBadgeHealthy,
-                    (entry.status === "on-hold" ||
-                      entry.status === "reversed" ||
-                      entry.status === "awaiting-customer-payment") &&
-                      styles.payoutStatusBadgeWarning
-                  ]}
-                >
-                  {formatPayoutStatus(i18n, entry.status)}
-                </Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <Text style={styles.meta}>{i18n.t("crew_mobile.support.payout.empty")}</Text>
-        )}
+        <Text style={styles.title}>{i18n.t("crew_mobile.compensation.provider_managed")}</Text>
+        <Text style={styles.meta}>{i18n.t("crew_mobile.compensation.no_transfer")}</Text>
+        <Text style={styles.meta}>{i18n.t("crew_mobile.compensation.confirm_terms")}</Text>
       </InfoCard>
       ) : null}
 

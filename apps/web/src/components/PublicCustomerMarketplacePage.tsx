@@ -246,6 +246,11 @@ export function PublicCustomerMarketplacePage() {
     const selected = categoryMatches.length > 0 ? categoryMatches : reviews;
     return selected.slice(0, 2);
   }, [overview, selectedService]);
+  const beforeAfterProjects = useMemo(() => {
+    const projects = overview?.beforeAfterProjects ?? [];
+    const categoryMatches = projects.filter((project) => project.category === selectedService);
+    return (categoryMatches.length > 0 ? categoryMatches : projects).slice(0, 3);
+  }, [overview, selectedService]);
   const highlightedCoverageAreas = useMemo(() => {
     const areas = overview?.coverageAreas ?? [];
     const categoryMatches = areas.filter((area) => area.supportedCategories.includes(selectedService));
@@ -422,6 +427,35 @@ export function PublicCustomerMarketplacePage() {
                     <span>{review.overallRating.toFixed(1)}★</span>
                   </div>
                   <p>"{formatHighlightedReviewText(review)}"</p>
+                </article>
+              ))}
+            </div>
+          </article>
+        ) : null}
+        {beforeAfterProjects.length > 0 ? (
+          <article className="card">
+            <h3>{i18n.t("market.home.proof.before_after.title")}</h3>
+            <p>{i18n.t("market.home.proof.before_after.body")}</p>
+            <div className="marketing-project-grid">
+              {beforeAfterProjects.map((project) => (
+                <article className="marketing-project" key={project.bookingId}>
+                  <div className="marketing-project__images">
+                    <figure>
+                      <img alt={i18n.t("market.home.proof.before_after.before_alt")} src={project.beforeImageDataUrl} />
+                      <figcaption>{i18n.t("customer_history.photos.before")}</figcaption>
+                    </figure>
+                    <figure>
+                      <img alt={i18n.t("market.home.proof.before_after.after_alt")} src={project.afterImageDataUrl} />
+                      <figcaption>{i18n.t("customer_history.photos.after")}</figcaption>
+                    </figure>
+                  </div>
+                  <div className="marketing-project__copy">
+                    <strong>{project.providerCompanyName}</strong>
+                    <p>
+                      {i18n.t(serviceCategoryLabelKeys[project.category])} • {project.city}, {project.state}
+                    </p>
+                    <small>{i18n.t("market.home.proof.before_after.consent_note")}</small>
+                  </div>
                 </article>
               ))}
             </div>

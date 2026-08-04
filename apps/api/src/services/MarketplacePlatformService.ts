@@ -241,6 +241,7 @@ import {
   UpdateReviewResponseRequest,
   SyncExternalCalendarImportRequest,
   UpdateBookingAddressRequest,
+  UpdateBookingPhotoMarketingUseRequest,
   UpdateOpsAccountAccessRequest,
   UpdateOpsAccountRequest,
   UpdateBookingAddressResponse
@@ -277,6 +278,17 @@ import { StripeConnectGateway, StripeConnectService } from "./StripeConnectServi
 
 const OPS_AUTH_FAILURE_LOCK_THRESHOLD = 5;
 const OPS_AUTH_LOCK_WINDOW_MINUTES = 30;
+const PROPERTY_PHOTO_AREAS = new Set([
+  "lawn",
+  "shrubs",
+  "garden-beds",
+  "trees",
+  "driveway",
+  "walkways",
+  "gutters",
+  "other"
+]);
+const PHOTO_MARKETING_USE_STATUSES = new Set(["granted", "denied", "revoked"]);
 
 type ParsedProviderAssistantAction = {
   command: string;
@@ -1589,6 +1601,51 @@ export class MarketplacePlatformService {
       providers.flatMap((provider) => provider.categories)
     ).size;
     const coverageAreas = this.buildPublicCoverageAreas(providers, bookings, providerMap);
+    const beforeAfterProjects = bookings
+      .filter(
+        (booking) =>
+          booking.status === "completed" &&
+          Boolean(booking.completedAt) &&
+          providerMap.has(booking.providerId)
+      )
+      .flatMap((booking) => {
+        const beforePhoto = booking.serviceEvidence.find(
+          (evidence) =>
+            evidence.phase === "before" &&
+            evidence.evidenceType === "photo" &&
+            evidence.marketingUseStatus === "granted" &&
+            Boolean(evidence.imageDataUrl)
+        );
+        const afterPhoto = booking.serviceEvidence.find(
+          (evidence) =>
+            evidence.phase === "after" &&
+            evidence.evidenceType === "photo" &&
+            evidence.marketingUseStatus === "granted" &&
+            Boolean(evidence.imageDataUrl)
+        );
+        const provider = providerMap.get(booking.providerId);
+
+        if (!beforePhoto?.imageDataUrl || !afterPhoto?.imageDataUrl || !provider || !booking.completedAt) {
+          return [];
+        }
+
+        return [
+          {
+            bookingId: booking.id,
+            providerId: provider.id,
+            providerCompanyName: provider.companyName,
+            city: booking.serviceAddress.city,
+            state: booking.serviceAddress.state,
+            category: booking.category,
+            photoArea: beforePhoto.photoArea ?? afterPhoto.photoArea,
+            completedAt: booking.completedAt,
+            beforeImageDataUrl: beforePhoto.imageDataUrl,
+            afterImageDataUrl: afterPhoto.imageDataUrl
+          }
+        ];
+      })
+      .sort((left, right) => right.completedAt.localeCompare(left.completedAt))
+      .slice(0, 6);
 
     return {
       generatedAt: new Date().toISOString(),
@@ -1600,7 +1657,8 @@ export class MarketplacePlatformService {
       topRatedProviders,
       mostOnTimeProviders,
       highlightedReviews,
-      coverageAreas
+      coverageAreas,
+      beforeAfterProjects
     };
   }
 
@@ -4790,6 +4848,10 @@ export class MarketplacePlatformService {
       (match) => match.bookingId === booking.id && match.status === "accepted"
     );
 
+    if (actor.role === "customer" && booking.customerId !== actor.userId) {
+      throw new HttpError(403, "Customers can only add photos to their own bookings");
+    }
+
     if (actor.role === "provider" && booking.providerId !== actor.userId) {
       throw new HttpError(403, "Providers can only attach evidence to their own bookings");
     }
@@ -4800,8 +4862,8 @@ export class MarketplacePlatformService {
       }
     }
 
-    if (actor.role !== "provider" && actor.role !== "crew-member") {
-      throw new HttpError(403, "Only providers and accepted crew members can attach booking evidence");
+    if (actor.role !== "customer" && actor.role !== "provider" && actor.role !== "crew-member") {
+      throw new HttpError(403, "Only the customer, provider, or accepted crew can attach booking photos");
     }
 
     if (booking.status === "completed" || booking.status === "cancelled" || booking.status === "refunded") {
@@ -4815,14 +4877,47 @@ export class MarketplacePlatformService {
       completed: Boolean(item.completed)
     }));
 
+    if (actor.role === "customer") {
+      if (payload.phase !== "before" || evidenceType !== "photo") {
+        throw new HttpError(400, "Customers can only add before-service property photos");
+      }
+      if (booking.status !== "requested" && booking.status !== "confirmed") {
+        throw new HttpError(400, "Property photos must be added before work starts");
+      }
+    }
+
     if (evidenceType === "photo") {
       const imageDataUrl = payload.imageDataUrl?.trim() ?? "";
-      if (!imageDataUrl.startsWith("data:image/")) {
-        throw new HttpError(400, "Photo evidence must be provided as an image data URL");
+      if (!/^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(imageDataUrl)) {
+        throw new HttpError(400, "Photo evidence must be a JPEG, PNG, or WebP image data URL");
       }
 
       if (imageDataUrl.length > 2_000_000) {
         throw new HttpError(400, "Booking evidence image is too large");
+      }
+
+      const actorPhotoCount = booking.serviceEvidence.filter(
+        (evidence) =>
+          evidence.phase === payload.phase &&
+          evidence.evidenceType === "photo" &&
+          (actor.role === "customer"
+            ? evidence.capturedByRole === "customer"
+            : evidence.capturedByRole !== "customer")
+      ).length;
+      const actorPhotoLimit = actor.role === "customer" ? 6 : 8;
+      if (actorPhotoCount >= actorPhotoLimit) {
+        throw new HttpError(
+          400,
+          `A booking can include up to ${actorPhotoLimit} ${actor.role === "customer" ? "customer property" : "field evidence"} photos for this phase`
+        );
+      }
+
+      if (note && note.length > 240) {
+        throw new HttpError(400, "Photo notes must be 240 characters or fewer");
+      }
+
+      if (payload.photoArea && !PROPERTY_PHOTO_AREAS.has(payload.photoArea)) {
+        throw new HttpError(400, "Choose a valid property area for this photo");
       }
     } else if (evidenceType === "note") {
       if (!note) {
@@ -4846,6 +4941,7 @@ export class MarketplacePlatformService {
       capturedByRole: actor.role,
       capturedByUserId: actor.userId,
       imageDataUrl: evidenceType === "photo" ? payload.imageDataUrl?.trim() : undefined,
+      photoArea: evidenceType === "photo" ? payload.photoArea ?? "other" : undefined,
       note,
       checklistItems: evidenceType === "checklist" ? checklistItems : undefined
     };
@@ -4858,6 +4954,53 @@ export class MarketplacePlatformService {
       throw new HttpError(500, "Booking evidence could not be saved");
     }
 
+    return updatedBooking;
+  }
+
+  public async updateBookingPhotoMarketingUse(
+    customerId: string,
+    payload: UpdateBookingPhotoMarketingUseRequest
+  ): Promise<Booking> {
+    if (!PHOTO_MARKETING_USE_STATUSES.has(payload.status)) {
+      throw new HttpError(400, "Choose a valid photo marketing preference");
+    }
+
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) {
+      throw new HttpError(404, "Booking not found");
+    }
+    if (booking.customerId !== customerId) {
+      throw new HttpError(403, "Only the booking customer can manage photo marketing use");
+    }
+    if (!["completed", "disputed", "refunded"].includes(booking.status)) {
+      throw new HttpError(400, "Photo marketing choices are available after the service is complete");
+    }
+
+    const beforePhotoCount = booking.serviceEvidence.filter(
+      (evidence) => evidence.phase === "before" && evidence.evidenceType === "photo"
+    ).length;
+    const afterPhotoCount = booking.serviceEvidence.filter(
+      (evidence) => evidence.phase === "after" && evidence.evidenceType === "photo"
+    ).length;
+    if (beforePhotoCount === 0 || afterPhotoCount === 0) {
+      throw new HttpError(400, "A before and after photo are required before marketing use can be managed");
+    }
+
+    const updatedAt = new Date().toISOString();
+    const serviceEvidence = booking.serviceEvidence.map((evidence) =>
+      evidence.evidenceType === "photo"
+        ? {
+            ...evidence,
+            marketingUseStatus: payload.status,
+            marketingUseUpdatedAt: updatedAt,
+            marketingUseUpdatedByCustomerId: customerId
+          }
+        : evidence
+    );
+    const updatedBooking = await this.repository.updateBooking(booking.id, { serviceEvidence });
+    if (!updatedBooking) {
+      throw new HttpError(500, "Photo marketing choice could not be saved");
+    }
     return updatedBooking;
   }
 
@@ -10281,7 +10424,11 @@ export class MarketplacePlatformService {
     const nextWeeklyPayoutDateIso = this.getNextPayoutRunIso(this.crewPayoutWeekday);
     const crewMatches = matches.filter((match) => match.crewMemberId === crewMemberId);
     const attendanceSummary = this.buildCrewAttendanceSummary(crewMember, crewMatches, bookings);
-    const earningsSummary = this.buildCrewEarningsSummary(entries, nextWeeklyPayoutDateIso);
+    const earningsSummary = this.buildCrewEarningsSummary(
+      entries,
+      nextWeeklyPayoutDateIso,
+      attendanceSummary.completedAssignmentCount
+    );
     const performanceSummary = this.buildCrewPerformanceSummary(crewMember, crewMatches, bookings, payments);
 
     return {
@@ -10309,7 +10456,8 @@ export class MarketplacePlatformService {
 
   private buildCrewEarningsSummary(
     entries: CrewPayoutLedgerEntry[],
-    nextWeeklyPayoutDateIso: string
+    nextWeeklyPayoutDateIso: string,
+    completedAssignmentCount: number
   ): CrewPayoutLedgerResponse["earningsSummary"] {
     const readyCents = entries
       .filter((entry) => entry.status === "ready")
@@ -10333,7 +10481,7 @@ export class MarketplacePlatformService {
     ];
 
     return {
-      completedAssignmentCount: entries.filter((entry) => entry.status !== "reversed").length,
+      completedAssignmentCount,
       readyCents,
       scheduledCents,
       pendingCustomerPaymentCents,
@@ -10568,19 +10716,24 @@ export class MarketplacePlatformService {
         runDateIso,
         recipientRole,
         railMode: "manual-preview",
-        actionStatus: "ready-for-manual-review",
+        actionStatus: recipientRole === "provider" ? "ready-for-manual-review" : "blocked",
         totalCents: 0,
         recipientIds: new Set<string>(),
         bookingIds: new Set<string>(),
         entryIds: [],
         entries: [],
-        blockerReasons: [
-          "External payout rails are not configured yet, so ops must execute and reconcile this batch manually."
-        ],
+        blockerReasons:
+          recipientRole === "provider"
+            ? [
+                "External payout rails are not configured yet, so ops must execute and reconcile this batch manually."
+              ]
+            : [
+                "YardMatch does not create crew transfers; the provider business is responsible for crew compensation."
+              ],
         manualActionLabel:
           recipientRole === "provider"
             ? "Review provider payout batch"
-            : "Review crew payout batch",
+            : "Blocked legacy crew transfer",
         auditInstructions: [
           "Confirm every entry still has captured customer payment before disbursement.",
           "Confirm no refund review, completed-job dispute, or support hold opened after this preview was generated.",
@@ -13957,7 +14110,7 @@ export class MarketplacePlatformService {
         "Submitted evidence must be reviewed before resolving dispute, service-quality, or refund-review cases.",
         "Provider-favoring resolutions must not override customer-leaning reviewed evidence.",
         "Mixed or inconclusive evidence requires a specific written rationale before ops finalizes the booking or refund outcome.",
-        "Completed-job disputes keep provider and crew payouts on hold until support resolves the booking out of disputed status."
+        "Completed-job disputes keep the provider settlement on hold until support resolves the booking out of disputed status; crew compensation remains the provider business's responsibility."
       ],
       escalationTriggers: [
         "two or more active field exceptions at the same time",
@@ -16761,6 +16914,9 @@ export class MarketplacePlatformService {
           disputedByRole: booking.disputedByRole,
           beforeEvidenceCount: this.countBookingEvidence(booking, "before"),
           afterEvidenceCount: this.countBookingEvidence(booking, "after"),
+          evidencePhotos: booking.serviceEvidence.filter(
+            (evidence) => evidence.evidenceType === "photo" && Boolean(evidence.imageDataUrl)
+          ),
           totalCents: booking.totalCents,
           requiredCrewMembers,
           assignedCrewMembers,
@@ -17519,7 +17675,10 @@ export class MarketplacePlatformService {
 
   private countBookingEvidence(booking: Booking, phase: BookingEvidenceEntry["phase"]): number {
     return booking.serviceEvidence.filter(
-      (evidence) => evidence.phase === phase && evidence.evidenceType === "photo"
+      (evidence) =>
+        evidence.phase === phase &&
+        evidence.evidenceType === "photo" &&
+        evidence.capturedByRole !== "customer"
     ).length;
   }
 
@@ -21904,30 +22063,4 @@ export class MarketplacePlatformService {
       : `The provider settlement is scheduled; any crew compensation is paid separately by the provider business. Payment status: ${payment?.status ?? "unknown"}.`;
   }
 
-  private buildCrewPayoutNote(
-    booking: Booking,
-    status: CrewPayoutLedgerEntry["status"],
-    payment?: PaymentRecord
-  ): string {
-    if (status === "reversed") {
-      return "Customer payment was refunded, so this crew payout was reversed.";
-    }
-
-    if (status === "awaiting-customer-payment") {
-      return "Customer payment still needs to clear before this crew payout can move forward.";
-    }
-
-    if (status === "on-hold") {
-      const holdReason = this.getPayoutHoldReason(booking, payment);
-      if (holdReason === "dispute") {
-        return `A booking dispute is open for this job, so crew payout is on hold. Latest note: ${booking.disputeReason ?? "Support is reviewing the disputed service outcome."}`;
-      }
-
-      return `A refund review is open for this booking, so crew payout is on hold. Latest note: ${payment?.refundReason ?? "Refund review requested."}`;
-    }
-
-    return status === "ready"
-      ? `This payout is ready based on the completed service and captured customer payment (${payment?.status ?? "unknown"}).`
-      : `This payout is scheduled to move after the standard post-service hold period. Payment status: ${payment?.status ?? "unknown"}.`;
-  }
 }

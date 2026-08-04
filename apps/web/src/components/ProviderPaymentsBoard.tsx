@@ -92,12 +92,6 @@ export function ProviderPaymentsBoard() {
     () => ledger?.entries.filter((entry) => entry.status === "on-hold") ?? [],
     [ledger?.entries]
   );
-  const crewQueueEntries = useMemo(
-    () =>
-      ledger?.entries.filter((entry) => entry.status === "ready" || entry.status === "scheduled" || entry.status === "on-hold") ??
-      [],
-    [ledger?.entries]
-  );
   const heldProviderNetCents = useMemo(
     () => heldEntries.reduce((sum, entry) => sum + entry.providerNetAmountCents, 0),
     [heldEntries]
@@ -107,7 +101,7 @@ export function ProviderPaymentsBoard() {
     blockedAmountCents > 0 ? "Needs attention" : (ledger?.totalNetReadyCents ?? 0) > 0 ? "Ready now" : "On track";
   const paidEntries = ledger?.entries.filter((entry) => entry.status === "paid") ?? [];
   const activePayoutStepIndex = (() => {
-    if (blockedAmountCents > 0 || crewQueueEntries.length > 0) {
+    if (blockedAmountCents > 0) {
       return 1;
     }
 
@@ -219,9 +213,9 @@ export function ProviderPaymentsBoard() {
             </p>
           </div>
           <div>
-            <span>{i18n.t("ops_auto.provider_payments_board.crew_reserve_a2zwtf")}</span>
-            <strong>{formatCurrency(ledger?.totalCrewOwedCents ?? 0)}</strong>
-            <p>{crewQueueEntries.length} {i18n.t("ops_auto.provider_payments_board.crew_payout_item_20qacy")}{crewQueueEntries.length === 1 ? "" : "s"}</p>
+            <span>{i18n.t("provider_payments.crew.responsibility")}</span>
+            <strong>{i18n.t("provider_payments.crew.provider_managed")}</strong>
+            <p>{i18n.t("provider_payments.crew.no_yardmatch_transfer")}</p>
           </div>
         </div>
 
@@ -298,35 +292,21 @@ export function ProviderPaymentsBoard() {
         <article className="card provider-payment-card-stack">
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">{i18n.t("ops_auto.provider_payments_board.crew_share_g6ioow")}</span>
-              <h2>{i18n.t("ops_auto.provider_payments_board.crew_payout_queue_2msqc6")}</h2>
+              <span className="eyebrow">{i18n.t("provider_payments.crew.eyebrow")}</span>
+              <h2>{i18n.t("provider_payments.crew.title")}</h2>
             </div>
           </div>
 
-          {crewQueueEntries.length > 0 ? (
-            crewQueueEntries.map((entry) => (
-              <div className="provider-payout-row" key={`${entry.id}-crew`}>
-                <div>
-                  <strong>{entry.crewMembersAssigned} {i18n.t("ops_auto.provider_payments_board.assigned_crew_member_o285qx")}{entry.crewMembersAssigned === 1 ? "" : "s"}</strong>
-                  <p>
-                    {entry.serviceLabel} • {entry.addressLine}
-                  </p>
-                  <p>{entry.note}</p>
-                </div>
-                <div className="provider-payout-row__meta">
-                  <strong>{formatCurrency(entry.crewShareCents)}</strong>
-                  <span className={getPayoutStatusClass(entry.status)}>{formatPayoutStatus(entry.status)}</span>
-                </div>
-              </div>
-            ))
-          ) : (
-            <p>{i18n.t("ops_auto.provider_payments_board.no_crew_payout_items_are_queued_yet_wutrhv")}</p>
-          )}
+          <p>{i18n.t("provider_payments.crew.body")}</p>
 
           <div className="provider-wallet-note">
-            <strong>{i18n.t("ops_auto.provider_payments_board.still_ahead_b13wo9")}</strong>
-            <p>
-              {i18n.t("ops_auto.provider_payments_board.bank_transfer_rails_and_instant_cash_out_controls_7heh3p")} </p>
+            <strong>{i18n.t("provider_payments.crew.records.title")}</strong>
+            <p>{i18n.t("provider_payments.crew.records.body")}</p>
+          </div>
+
+          <div className="provider-wallet-note">
+            <strong>{i18n.t("provider_payments.crew.compliance.title")}</strong>
+            <p>{i18n.t("provider_payments.crew.compliance.body")}</p>
           </div>
         </article>
       </section>

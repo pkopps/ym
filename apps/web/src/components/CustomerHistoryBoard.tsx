@@ -1,6 +1,6 @@
 "use client";
 
-import { Booking, PaymentRecord } from "@yardmatch/contracts";
+import { Booking, PaymentRecord, PropertyPhotoArea } from "@yardmatch/contracts";
 import { addLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
@@ -27,6 +27,17 @@ function paymentLabelKey(payment?: PaymentRecord): TranslationKey {
   return "customer_history.payment.pending";
 }
 
+const photoAreaLabelKeys: Record<PropertyPhotoArea, TranslationKey> = {
+  lawn: "photo.area.lawn",
+  shrubs: "photo.area.shrubs",
+  "garden-beds": "photo.area.garden_beds",
+  trees: "photo.area.trees",
+  driveway: "photo.area.driveway",
+  walkways: "photo.area.walkways",
+  gutters: "photo.area.gutters",
+  other: "photo.area.other"
+};
+
 export function CustomerHistoryBoard() {
   const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
@@ -36,6 +47,23 @@ export function CustomerHistoryBoard() {
   const [paymentsByBookingId, setPaymentsByBookingId] = useState<Record<string, PaymentRecord>>({});
   const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [workingBookingId, setWorkingBookingId] = useState<string | undefined>();
+
+  async function updatePhotoMarketingUse(bookingId: string, status: "granted" | "denied" | "revoked") {
+    try {
+      setWorkingBookingId(bookingId);
+      setErrorMessage(undefined);
+      const api = createAuthenticatedWebApiClient();
+      const updatedBooking = await api.updateBookingPhotoMarketingUse({ bookingId, status });
+      setBookings((current) =>
+        current.map((booking) => (booking.id === updatedBooking.id ? updatedBooking : booking))
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_history.photos.consent_error"));
+    } finally {
+      setWorkingBookingId(undefined);
+    }
+  }
 
   async function loadHistory() {
     if (!session || session.role !== "customer") {
@@ -153,6 +181,15 @@ export function CustomerHistoryBoard() {
         <section aria-label={i18n.t("nav.user.past_visits")} className="stack-lg">
           {bookings.map((booking) => {
             const payment = paymentsByBookingId[booking.id];
+            const beforePhotos = booking.serviceEvidence.filter(
+              (evidence) => evidence.phase === "before" && evidence.evidenceType === "photo" && evidence.imageDataUrl
+            );
+            const afterPhotos = booking.serviceEvidence.filter(
+              (evidence) => evidence.phase === "after" && evidence.evidenceType === "photo" && evidence.imageDataUrl
+            );
+            const marketingUseStatus = [...beforePhotos, ...afterPhotos].find(
+              (evidence) => evidence.marketingUseStatus
+            )?.marketingUseStatus;
             return (
               <article className="history-card" key={booking.id}>
                 <div className="history-card__header">
@@ -181,6 +218,103 @@ export function CustomerHistoryBoard() {
                     <p>{i18n.t(paymentLabelKey(payment))}</p>
                   </div>
                 </div>
+                {beforePhotos.length > 0 || afterPhotos.length > 0 ? (
+                  <section className="service-history-photos">
+                    <div className="service-history-photos__header">
+                      <div>
+                        <h3>{i18n.t("customer_history.photos.title")}</h3>
+                        <p>{i18n.t("customer_history.photos.body")}</p>
+                      </div>
+                      <span className="result-badge result-badge--neutral">
+                        {i18n.t("customer_history.photos.count", { count: beforePhotos.length + afterPhotos.length })}
+                      </span>
+                    </div>
+                    <div className="before-after-grid">
+                      {(["before", "after"] as const).map((phase) => {
+                        const photos = phase === "before" ? beforePhotos : afterPhotos;
+                        return (
+                          <div className="before-after-column" key={phase}>
+                            <strong>
+                              {phase === "before"
+                                ? i18n.t("customer_history.photos.before")
+                                : i18n.t("customer_history.photos.after")}
+                            </strong>
+                            {photos.length > 0 ? (
+                              <div className="service-photo-strip">
+                                {photos.map((photo) => (
+                                  <figure key={photo.id}>
+                                    <img
+                                      alt={
+                                        phase === "before"
+                                          ? i18n.t("customer_history.photos.before_alt")
+                                          : i18n.t("customer_history.photos.after_alt")
+                                      }
+                                      src={photo.imageDataUrl}
+                                    />
+                                    <figcaption>
+                                      {i18n.t(photoAreaLabelKeys[photo.photoArea ?? "other"])}
+                                      {photo.note ? ` • ${photo.note}` : ""}
+                                    </figcaption>
+                                  </figure>
+                                ))}
+                              </div>
+                            ) : (
+                              <p>{i18n.t("customer_history.photos.none")}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {booking.status === "completed" && beforePhotos.length > 0 && afterPhotos.length > 0 ? (
+                      <div className="photo-consent-panel">
+                        <div>
+                          <strong>{i18n.t("customer_history.photos.marketing_title")}</strong>
+                          <p>{i18n.t("customer_history.photos.marketing_body")}</p>
+                          <p>
+                            {marketingUseStatus === "granted"
+                              ? i18n.t("customer_history.photos.marketing_granted")
+                              : marketingUseStatus === "denied"
+                                ? i18n.t("customer_history.photos.marketing_denied")
+                                : marketingUseStatus === "revoked"
+                                  ? i18n.t("customer_history.photos.marketing_revoked")
+                                  : i18n.t("customer_history.photos.marketing_private")}
+                          </p>
+                        </div>
+                        <div className="cta-row">
+                          {marketingUseStatus !== "granted" ? (
+                            <button
+                              className="button-secondary"
+                              disabled={workingBookingId === booking.id}
+                              onClick={() => void updatePhotoMarketingUse(booking.id, "granted")}
+                              type="button"
+                            >
+                              {i18n.t("customer_history.photos.allow_marketing")}
+                            </button>
+                          ) : (
+                            <button
+                              className="button-secondary"
+                              disabled={workingBookingId === booking.id}
+                              onClick={() => void updatePhotoMarketingUse(booking.id, "revoked")}
+                              type="button"
+                            >
+                              {i18n.t("customer_history.photos.revoke_marketing")}
+                            </button>
+                          )}
+                          {marketingUseStatus !== "granted" && marketingUseStatus !== "denied" ? (
+                            <button
+                              className="button-secondary"
+                              disabled={workingBookingId === booking.id}
+                              onClick={() => void updatePhotoMarketingUse(booking.id, "denied")}
+                              type="button"
+                            >
+                              {i18n.t("customer_history.photos.keep_private")}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
               </article>
             );
           })}

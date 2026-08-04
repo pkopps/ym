@@ -55,7 +55,8 @@ import {
   UpdateCrewPreferencesRequest,
   UpdateProviderProfileRequest,
   UpdateProviderSettingsRequest,
-  UpdateBookingAddressRequest
+  UpdateBookingAddressRequest,
+  UpdateBookingPhotoMarketingUseRequest
 } from "@yardmatch/contracts";
 import {
   getOptionalAuthenticatedIdentity,
@@ -128,6 +129,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/decline") ||
       (context.method === "POST" && context.path === "/api/bookings/start") ||
       (context.method === "POST" && context.path === "/api/bookings/evidence") ||
+      (context.method === "POST" && context.path === "/api/bookings/photo-marketing-use") ||
       (context.method === "POST" && context.path === "/api/bookings/complete") ||
       (context.method === "POST" && context.path === "/api/bookings/on-route") ||
       (context.method === "POST" && context.path === "/api/bookings/route-stop") ||
@@ -679,6 +681,19 @@ export class MarketplaceController implements ApiController {
         response,
         200,
         await this.platform.addBookingEvidence(identity, context.body as AddBookingEvidenceRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/photo-marketing-use") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(
+        response,
+        200,
+        await this.platform.updateBookingPhotoMarketingUse(
+          identity.userId,
+          context.body as UpdateBookingPhotoMarketingUseRequest
+        )
       );
       return;
     }

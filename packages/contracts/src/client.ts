@@ -156,6 +156,7 @@ import {
   UpdateLaunchOperationsTaskResponse,
   UpdateSupportTicketRequest,
   UpdateBookingAddressRequest,
+  UpdateBookingPhotoMarketingUseRequest,
   UpdateOpsAccountRequest,
   StartBookingRequest
 } from "./types";
@@ -682,6 +683,10 @@ export class MarketplaceApiClient {
 
   public addBookingEvidence(payload: AddBookingEvidenceRequest) {
     return this.postJson<Booking>(ApiRoutes.addBookingEvidence, payload);
+  }
+
+  public updateBookingPhotoMarketingUse(payload: UpdateBookingPhotoMarketingUseRequest) {
+    return this.postJson<Booking>(ApiRoutes.updateBookingPhotoMarketingUse, payload);
   }
 
   public createBookingDispute(payload: CreateBookingDisputeRequest) {

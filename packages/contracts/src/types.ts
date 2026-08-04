@@ -184,6 +184,16 @@ export type BookingRouteLocationSource = "computed-origin" | "provider-device" |
 export type BookingEvidencePhase = "before" | "after";
 export type BookingEvidenceType = "photo" | "note" | "checklist";
 export type BookingEvidenceReviewStatus = "supports-provider" | "supports-customer" | "inconclusive";
+export type PropertyPhotoArea =
+  | "lawn"
+  | "shrubs"
+  | "garden-beds"
+  | "trees"
+  | "driveway"
+  | "walkways"
+  | "gutters"
+  | "other";
+export type PhotoMarketingUseStatus = "granted" | "denied" | "revoked";
 export type BookingExceptionType =
   | "customer-no-show"
   | "customer-not-ready"
@@ -962,6 +972,7 @@ export interface ProviderStaffingJobSummary {
   disputedByRole?: "customer" | "provider";
   beforeEvidenceCount: number;
   afterEvidenceCount: number;
+  evidencePhotos: BookingEvidenceEntry[];
   totalCents: number;
   requiredCrewMembers: number;
   assignedCrewMembers: number;
@@ -1191,9 +1202,10 @@ export interface BookingEvidenceEntry {
   phase: BookingEvidencePhase;
   evidenceType: BookingEvidenceType;
   capturedAt: string;
-  capturedByRole: "provider" | "crew-member";
+  capturedByRole: "customer" | "provider" | "crew-member";
   capturedByUserId: string;
   imageDataUrl?: string;
+  photoArea?: PropertyPhotoArea;
   note?: string;
   checklistItems?: BookingEvidenceChecklistItem[];
   reviewStatus?: BookingEvidenceReviewStatus;
@@ -1201,6 +1213,9 @@ export interface BookingEvidenceEntry {
   reviewedAt?: string;
   reviewedByRole?: "ops";
   reviewedByUserId?: string;
+  marketingUseStatus?: PhotoMarketingUseStatus;
+  marketingUseUpdatedAt?: string;
+  marketingUseUpdatedByCustomerId?: string;
 }
 
 export interface BookingArrivalTracking {
@@ -2791,6 +2806,19 @@ export interface PublicMarketplaceCoverageArea {
   supportedCategories: ServiceCategory[];
 }
 
+export interface PublicMarketplaceBeforeAfterProject {
+  bookingId: string;
+  providerId: string;
+  providerCompanyName: string;
+  city: string;
+  state: string;
+  category: ServiceCategory;
+  photoArea?: PropertyPhotoArea;
+  completedAt: string;
+  beforeImageDataUrl: string;
+  afterImageDataUrl: string;
+}
+
 export interface LaunchPricingPolicy {
   pricingModel: "hybrid-managed-marketplace";
   introductoryOffer: {
@@ -2816,6 +2844,7 @@ export interface PublicMarketplaceOverviewResponse {
   mostOnTimeProviders: PublicMarketplaceFeaturedProvider[];
   highlightedReviews: PublicMarketplaceHighlightedReview[];
   coverageAreas: PublicMarketplaceCoverageArea[];
+  beforeAfterProjects: PublicMarketplaceBeforeAfterProject[];
 }
 
 export interface SearchProviderResult {
@@ -3245,8 +3274,14 @@ export interface AddBookingEvidenceRequest {
   phase: BookingEvidencePhase;
   evidenceType?: BookingEvidenceType;
   imageDataUrl?: string;
+  photoArea?: PropertyPhotoArea;
   note?: string;
   checklistItems?: BookingEvidenceChecklistItem[];
+}
+
+export interface UpdateBookingPhotoMarketingUseRequest {
+  bookingId: string;
+  status: PhotoMarketingUseStatus;
 }
 
 export interface CreateBookingDisputeRequest {

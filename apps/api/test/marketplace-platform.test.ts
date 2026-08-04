@@ -159,6 +159,49 @@ async function attachEvidence(
   });
 }
 
+async function verifyProviderCredentials(
+  platform: MarketplacePlatformService,
+  providerId: string,
+  options: { includeWorkersComp?: boolean } = {}
+) {
+  const credentialTypes = [
+    "business-registration",
+    "general-liability-insurance",
+    ...(options.includeWorkersComp ? (["workers-compensation"] as const) : [])
+  ] as const;
+
+  for (const type of credentialTypes) {
+    const current = await platform.getProviderProfile(providerId);
+    if (current.credentials?.some((credential) => credential.type === type && credential.status === "verified")) {
+      continue;
+    }
+
+    const submitted = await platform.submitProviderCredential(providerId, {
+      type,
+      jurisdiction: "NJ",
+      referenceNumber: `test-${providerId}-${type}`,
+      expiresAt: futureIso(24 * 365)
+    });
+    const credential = submitted.credentials?.find((candidate) => candidate.type === type);
+    assert.ok(credential);
+    await platform.reviewProviderCredential("ops-test-user", {
+      providerId,
+      credentialId: credential.id,
+      action: "verify",
+      notes: "Verified launch regression fixture credential."
+    });
+  }
+}
+
+async function reviewCrewMatchForEligibleProvider(
+  platform: MarketplacePlatformService,
+  providerId: string,
+  payload: Parameters<MarketplacePlatformService["reviewCrewMatch"]>[1]
+) {
+  await verifyProviderCredentials(platform, providerId, { includeWorkersComp: true });
+  return platform.reviewCrewMatch(providerId, payload);
+}
+
 test("instant quotes normalize addresses and explain confidence sources", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -5951,7 +5994,7 @@ test("provider payout ledger shows completed jobs waiting on customer payment", 
   assert.equal(ledger.pendingCustomerPaymentCents, 7200);
 });
 
-test("captured disputed bookings hold provider and crew payouts until support resolves them", async () => {
+test("captured disputed bookings hold provider settlement while crew history stays provider-responsible", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(
     repository,
@@ -6007,7 +6050,7 @@ test("captured disputed bookings hold provider and crew payouts until support re
     .find((job) => job.bookingId === booking.id)
     ?.matches.find((match) => match.crewMemberId === crewMember.id);
   assert.ok(acceptedMatch);
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: acceptedMatch?.id ?? "",
     action: "accept"
   });
@@ -6045,13 +6088,11 @@ test("captured disputed bookings hold provider and crew payouts until support re
   assert.match(providerEntry?.note ?? "", /mulch depth was inconsistent/i);
 
   const crewLedger = await platform.getCrewPayoutLedger(crewMember.id);
-  const crewEntry = crewLedger.entries.find((candidate) => candidate.bookingId === booking.id);
-  assert.equal(crewEntry?.status, "on-hold");
-  assert.match(crewEntry?.note ?? "", /booking dispute is open/i);
-  assert.equal(crewLedger.earningsSummary.onHoldCents, crewEntry?.amountCents);
+  assert.equal(crewLedger.entries.length, 0);
+  assert.equal(crewLedger.earningsSummary.onHoldCents, 0);
   assert.equal(crewLedger.earningsSummary.completedAssignmentCount, 1);
   assert.ok(
-    crewLedger.earningsSummary.guidance.some((item) => /support resolves/i.test(item))
+    crewLedger.earningsSummary.guidance.some((item) => /provider business.*responsible/i.test(item))
   );
   assert.equal(crewLedger.attendanceSummary.acceptedAssignmentCount, 1);
   assert.equal(crewLedger.attendanceSummary.completedAssignmentCount, 1);
@@ -6100,12 +6141,9 @@ test("captured disputed bookings hold provider and crew payouts until support re
   );
 
   const releasedCrewLedger = await platform.getCrewPayoutLedger(crewMember.id);
-  assert.equal(
-    releasedCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
-    "scheduled"
-  );
+  assert.equal(releasedCrewLedger.entries.length, 0);
   assert.equal(releasedCrewLedger.earningsSummary.onHoldCents, 0);
-  assert.ok(releasedCrewLedger.earningsSummary.scheduledCents > 0);
+  assert.equal(releasedCrewLedger.earningsSummary.scheduledCents, 0);
 
   const resolvedSummary = await platform.getOpsFinancialExceptionSummary();
   assert.equal(resolvedSummary.payoutHoldCount, 0);
@@ -6178,7 +6216,7 @@ test("refund review requests hold payouts until ops approves the refund", async 
     .find((job) => job.bookingId === booking.id)
     ?.matches.find((match) => match.crewMemberId === crewMember.id);
   assert.ok(acceptedMatch);
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: acceptedMatch?.id ?? "",
     action: "accept"
   });
@@ -6203,15 +6241,15 @@ test("refund review requests hold payouts until ops approves the refund", async 
   const providerEntry = providerLedger.entries.find((candidate) => candidate.bookingId === booking.id);
   assert.ok(providerEntry);
   assert.equal(providerEntry?.status, "scheduled");
-  assert.ok((providerEntry?.crewShareCents ?? 0) > 0);
+  assert.equal(providerEntry?.crewShareCents, 0);
   assert.ok((providerEntry?.providerNetAmountCents ?? 0) >= 0);
+  assert.match(providerEntry?.note ?? "", /crew compensation.*provider business/i);
   assert.ok(providerLedger.totalNetScheduledCents >= (providerEntry?.providerNetAmountCents ?? 0));
 
   const crewLedger = await platform.getCrewPayoutLedger(crewMember.id);
-  const crewEntry = crewLedger.entries.find((candidate) => candidate.bookingId === booking.id);
-  assert.ok(crewEntry);
-  assert.equal(crewEntry?.status, "scheduled");
-  assert.ok((crewEntry?.amountCents ?? 0) > 0);
+  assert.equal(crewLedger.entries.length, 0);
+  assert.equal(crewLedger.earningsSummary.scheduledCents, 0);
+  assert.ok(crewLedger.earningsSummary.guidance.some((item) => /does not.*pay individual crew/i.test(item)));
 
   const payment = (await platform.listPaymentsForUser({
     userId: customer.id,
@@ -6239,10 +6277,8 @@ test("refund review requests hold payouts until ops approves the refund", async 
   );
 
   const heldCrewLedger = await platform.getCrewPayoutLedger(crewMember.id);
-  assert.equal(
-    heldCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
-    "on-hold"
-  );
+  assert.equal(heldCrewLedger.entries.length, 0);
+  assert.equal(heldCrewLedger.earningsSummary.onHoldCents, 0);
 
   const refundTicket = (await platform.listOpsSupportTickets()).find(
     (entry) => entry.ticket.bookingId === booking.id && entry.ticket.issueType === "billing"
@@ -6274,10 +6310,8 @@ test("refund review requests hold payouts until ops approves the refund", async 
   );
 
   const reversedCrewLedger = await platform.getCrewPayoutLedger(crewMember.id);
-  assert.equal(
-    reversedCrewLedger.entries.find((candidate) => candidate.bookingId === booking.id)?.status,
-    "reversed"
-  );
+  assert.equal(reversedCrewLedger.entries.length, 0);
+  assert.equal(reversedCrewLedger.earningsSummary.reversedCents, 0);
 });
 
 test("ops cannot approve a Stripe refund review without a saved payment intent", async () => {
@@ -6815,37 +6849,34 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
   }
 
   const preview = await platform.getOpsPayoutPreview();
-  const expectedCrewPayoutCents = Math.round(
-    acceptedCrewMatch!.hourlyRateCents *
-      Math.max(
-        1,
-        (Date.parse(firstBooking.scheduledEndIso) - Date.parse(firstBooking.scheduledStartIso)) /
-          (60 * 60 * 1000)
-      )
-  );
-  const expectedProviderReadyCents =
-    Math.max(firstBooking.totalCents - expectedCrewPayoutCents, 0) + secondBooking.totalCents;
-  const crewDisbursementBatch = preview.disbursementBatches.find(
-    (batch) => batch.recipientRole === "crew-member"
-  );
+  const firstSettlement = await repository.findBookingFinancialSettlement(firstBooking.id);
+  const secondSettlement = await repository.findBookingFinancialSettlement(secondBooking.id);
+  assert.ok(firstSettlement);
+  assert.ok(secondSettlement);
+  const expectedProviderReadyCents = firstSettlement.providerNetCents + secondSettlement.providerNetCents;
   const providerDisbursementBatches = preview.disbursementBatches.filter(
     (batch) => batch.recipientRole === "provider"
+  );
+  const firstProviderBatch = providerDisbursementBatches.find((batch) =>
+    batch.recipientIds.includes(providers[0]!.id)
   );
 
   assert.equal(preview.providerRuns.length, 2);
   assert.equal(preview.providerInstantEligibleCount, 1);
   assert.equal(preview.totalProviderReadyCents, expectedProviderReadyCents);
-  assert.equal(preview.totalCrewReadyCents, expectedCrewPayoutCents);
+  assert.equal(preview.totalCrewReadyCents, 0);
+  assert.equal(preview.disbursementBatches.some((batch) => batch.recipientRole === "crew-member"), false);
   assert.ok(
     preview.providerRuns.some(
-      (run) => run.providerCount === 1 && run.providerNetCents === firstBooking.totalCents - expectedCrewPayoutCents
+      (run) => run.providerCount === 1 && run.providerNetCents === firstSettlement.providerNetCents
     )
   );
   assert.equal(preview.payoutPolicy.disbursementRailStatus, "manual-preview-only");
   assert.equal(preview.payoutPolicy.providerHoldPeriodHours, 48);
-  assert.equal(preview.payoutPolicy.crewHoldPeriodHours, 48);
+  assert.equal(preview.payoutPolicy.crewHoldPeriodHours, 0);
+  assert.equal(preview.payoutPolicy.crewCompensationResponsibility, "provider");
+  assert.match(preview.payoutPolicy.providerWeeklyRunRule, /crew compensation never enters/i);
   assert.equal(preview.payoutPolicy.instantPayoutMinimumCents, 10000);
-  assert.equal(preview.payoutPolicy.crewWeeklyPayoutDay, "Fri");
   assert.ok(
     preview.payoutPolicy.readyRequirements.some((requirement) => /customer payment captured/i.test(requirement))
   );
@@ -6863,27 +6894,10 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
         batch.blockerReasons.some((reason) => /external payout rails/i.test(reason))
     )
   );
-  assert.ok(crewDisbursementBatch);
-  assert.equal(crewDisbursementBatch?.railMode, "manual-preview");
-  assert.equal(crewDisbursementBatch?.actionStatus, "ready-for-manual-review");
-  assert.equal(crewDisbursementBatch?.totalCents, expectedCrewPayoutCents);
-  assert.equal(crewDisbursementBatch?.entryCount, 1);
-  assert.ok(crewDisbursementBatch?.recipientIds.includes(crewMember.id));
-  assert.ok(crewDisbursementBatch?.entryIds.includes(`crew-payout-${acceptedCrewMatch!.id}`));
-  assert.ok(
-    crewDisbursementBatch?.auditInstructions.some((instruction) =>
-      /external transfer id/i.test(instruction)
-    )
-  );
-  assert.ok(
-    crewDisbursementBatch?.entries.some(
-      (entry) =>
-        entry.entryId === `crew-payout-${acceptedCrewMatch!.id}` &&
-        entry.bookingId === firstBooking.id &&
-        entry.recipientRole === "crew-member" &&
-        entry.amountCents === expectedCrewPayoutCents
-    )
-  );
+  assert.ok(firstProviderBatch);
+  assert.equal(firstProviderBatch?.totalCents, firstSettlement.providerNetCents);
+  assert.ok(firstProviderBatch?.entryIds.includes(`provider-payout-${firstBooking.id}`));
+  assert.equal(firstProviderBatch?.recipientIds.includes(crewMember.id), false);
 
   const opsActor = {
     userId: "ops-payout-run-reviewer",
@@ -6892,20 +6906,20 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
     sessionVersion: 1
   };
   const createdRun = await platform.createOpsPayoutDisbursementRun(opsActor, {
-    previewBatchId: crewDisbursementBatch!.id,
-    operatorNotes: "Prepared for manual payroll review."
+    previewBatchId: firstProviderBatch!.id,
+    operatorNotes: "Prepared for manual provider-settlement review."
   });
 
   assert.equal(createdRun.created, true);
-  assert.equal(createdRun.matchedPreviewBatch.id, crewDisbursementBatch?.id);
-  assert.equal(createdRun.run.previewBatchId, crewDisbursementBatch?.id);
+  assert.equal(createdRun.matchedPreviewBatch.id, firstProviderBatch?.id);
+  assert.equal(createdRun.run.previewBatchId, firstProviderBatch?.id);
   assert.equal(createdRun.run.status, "manual-review");
   assert.equal(createdRun.run.railMode, "manual-preview");
-  assert.equal(createdRun.run.recipientRole, "crew-member");
-  assert.equal(createdRun.run.totalCents, expectedCrewPayoutCents);
-  assert.equal(createdRun.run.entryIds[0], `crew-payout-${acceptedCrewMatch!.id}`);
+  assert.equal(createdRun.run.recipientRole, "provider");
+  assert.equal(createdRun.run.totalCents, firstSettlement.providerNetCents);
+  assert.equal(createdRun.run.entryIds[0], `provider-payout-${firstBooking.id}`);
   assert.equal(createdRun.run.entries[0]?.bookingId, firstBooking.id);
-  assert.equal(createdRun.run.entries[0]?.paymentId, crewDisbursementBatch?.entries[0]?.paymentId);
+  assert.equal(createdRun.run.entries[0]?.paymentId, firstProviderBatch?.entries[0]?.paymentId);
   assert.equal(createdRun.run.createdByOpsUserId, opsActor.userId);
   assert.match(createdRun.run.entryFingerprint, /^[a-f0-9]{64}$/);
   assert.ok(
@@ -6915,12 +6929,12 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
   );
 
   const duplicateRun = await platform.createOpsPayoutDisbursementRun(opsActor, {
-    previewBatchId: crewDisbursementBatch!.id,
+    previewBatchId: firstProviderBatch!.id,
     operatorNotes: "Second click should reuse the same audit record."
   });
   assert.equal(duplicateRun.created, false);
   assert.equal(duplicateRun.run.id, createdRun.run.id);
-  assert.equal(duplicateRun.run.operatorNotes, "Prepared for manual payroll review.");
+  assert.equal(duplicateRun.run.operatorNotes, "Prepared for manual provider-settlement review.");
 
   const recordedRuns = await platform.listOpsPayoutDisbursementRuns();
   assert.equal(recordedRuns.runs.length, 1);
@@ -6935,7 +6949,7 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
           role: "customer",
           sessionVersion: 1
         },
-        { previewBatchId: crewDisbursementBatch!.id }
+        { previewBatchId: firstProviderBatch!.id }
       ),
     /Only operations can create payout disbursement runs/i
   );
@@ -7294,7 +7308,7 @@ test("review-first staffing creates pending crew matches that providers can appr
   const pendingMatch = job.matches.find((match) => match.crewMemberId === crewMatch.id);
   assert.ok(pendingMatch);
 
-  const acceptedMatch = await platform.reviewCrewMatch(provider.id, {
+  const acceptedMatch = await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: pendingMatch.id,
     action: "accept"
   });
@@ -7404,7 +7418,7 @@ test("crew members can cancel accepted assignments and future staffing penalizes
   const firstMatch = firstJob?.matches.find((match) => match.crewMemberId === cancellingCrew.id);
   assert.ok(firstMatch);
 
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: firstMatch!.id,
     action: "accept"
   });
@@ -7454,7 +7468,7 @@ test("crew members can cancel accepted assignments and future staffing penalizes
   );
   assert.equal(crewLedger.earningsSummary.completedAssignmentCount, 0);
   assert.ok(
-    crewLedger.earningsSummary.guidance.some((item) => /accepted assignments/i.test(item))
+    crewLedger.earningsSummary.guidance.some((item) => /provider business.*responsible/i.test(item))
   );
   assert.equal(crewLedger.performanceSummary.completedAssignmentCount, 0);
   assert.equal(crewLedger.performanceSummary.performanceStatus, "building");
@@ -8011,7 +8025,7 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
   const crewMatch = job.matches.find((match) => match.crewMemberId === crew.id);
   assert.ok(crewMatch);
 
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: crewMatch.id,
     action: "accept"
   });
@@ -8135,7 +8149,7 @@ test("arrival tracking shows a live route once the crew is on route", async () =
   const crewMatch = staffing.jobs[0]?.matches.find((match) => match.crewMemberId === crew.id);
   assert.ok(crewMatch);
 
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: crewMatch.id,
     action: "accept"
   });
@@ -8347,7 +8361,7 @@ test("providers confirm bookings before crew can go on route or start work", asy
   const pendingMatch = overview.jobs[0]?.matches[0];
   assert.ok(pendingMatch);
 
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: pendingMatch.id,
     action: "accept"
   });
@@ -8452,7 +8466,7 @@ test("before and after photos still gate booking start and completion while note
   const overview = await platform.getProviderStaffingOverview(provider.id);
   const pendingMatch = overview.jobs[0]?.matches.find((match) => match.crewMemberId === crewMember.id);
   assert.ok(pendingMatch);
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: pendingMatch.id,
     action: "accept"
   });
@@ -8591,6 +8605,183 @@ test("before and after photos still gate booking start and completion while note
     crewLedger.performanceSummary.highlights.some((highlight) => /crew-captured evidence/i.test(highlight))
   );
   assert.equal(crewLedger.performanceSummary.warnings.length, 0);
+});
+
+test("customers can share private property photos with the provider and explicitly control public before-and-after use", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+
+  const provider = await platform.registerUser({
+    fullName: "Ariana Flores",
+    email: "provider-customer-photos@example.com",
+    password: "Password123!",
+    phone: "555-1720",
+    role: "provider",
+    companyName: "Proof Lawn Co.",
+    categories: ["hedge-trimming"],
+    serviceRadiusMiles: 25,
+    address: createAddress("1400 Provider Way", 39.755, -74.22)
+  });
+  await repository.updateProvider(provider.id, { verificationStatus: "verified" });
+
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera",
+    email: "customer-property-photos@example.com",
+    password: "Password123!",
+    phone: "555-1730",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress("112 Garden Row", 39.7532, -74.2229)
+  });
+  const otherCustomer = await platform.registerUser({
+    fullName: "Sam Neighbor",
+    email: "other-customer-property-photos@example.com",
+    password: "Password123!",
+    phone: "555-1740",
+    role: "customer",
+    propertyLabel: "Home",
+    address: createAddress("114 Garden Row", 39.7534, -74.2227)
+  });
+
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: customer.address,
+    servicePropertyId: customer.defaultPropertyId,
+    category: "hedge-trimming",
+    scheduledStartIso: futureIso(96),
+    scheduledEndIso: futureIso(98),
+    notes: "Front shrubs beside the steps",
+    totalCents: 8400
+  });
+
+  await assert.rejects(
+    platform.addBookingEvidence(
+      { userId: otherCustomer.id, email: otherCustomer.email, role: "customer" },
+      {
+        bookingId: booking.id,
+        phase: "before",
+        imageDataUrl: "data:image/jpeg;base64,not-their-property"
+      }
+    ),
+    /their own bookings/
+  );
+  await assert.rejects(
+    platform.addBookingEvidence(
+      { userId: customer.id, email: customer.email, role: "customer" },
+      {
+        bookingId: booking.id,
+        phase: "after",
+        imageDataUrl: "data:image/jpeg;base64,customer-after"
+      }
+    ),
+    /before-service property photos/
+  );
+
+  const withCustomerPhoto = await platform.addBookingEvidence(
+    { userId: customer.id, email: customer.email, role: "customer" },
+    {
+      bookingId: booking.id,
+      phase: "before",
+      imageDataUrl: "data:image/jpeg;base64,front-shrubs-before",
+      photoArea: "shrubs",
+      note: "Trim below the front window."
+    }
+  );
+  const customerPhoto = withCustomerPhoto.serviceEvidence[0];
+  assert.equal(customerPhoto?.capturedByRole, "customer");
+  assert.equal(customerPhoto?.photoArea, "shrubs");
+  assert.equal(customerPhoto?.marketingUseStatus, undefined);
+
+  const providerOverview = await platform.getProviderStaffingOverview(provider.id);
+  assert.equal(providerOverview.jobs[0]?.evidencePhotos.length, 1);
+  assert.equal(providerOverview.jobs[0]?.evidencePhotos[0]?.capturedByRole, "customer");
+  assert.equal(providerOverview.jobs[0]?.beforeEvidenceCount, 0);
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await platform.markBookingOnRoute(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    { bookingId: booking.id }
+  );
+  await assert.rejects(
+    platform.startBooking(
+      { userId: provider.id, email: provider.email, role: "provider" },
+      { bookingId: booking.id }
+    ),
+    /before photo/
+  );
+  await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "before",
+      imageDataUrl: "data:image/jpeg;base64,provider-arrival-before",
+      photoArea: "shrubs"
+    }
+  );
+  const started = await platform.startBooking(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    { bookingId: booking.id }
+  );
+  assert.equal(started.status, "in-progress");
+
+  await assert.rejects(
+    platform.updateBookingPhotoMarketingUse(customer.id, { bookingId: booking.id, status: "granted" }),
+    /after the service is complete/
+  );
+
+  await platform.addBookingEvidence(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    {
+      bookingId: booking.id,
+      phase: "after",
+      imageDataUrl: "data:image/jpeg;base64,front-shrubs-after",
+      photoArea: "shrubs",
+      note: "Shrubs shaped and clippings removed."
+    }
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+
+  assert.equal((await platform.getPublicMarketplaceOverview()).beforeAfterProjects.length, 0);
+
+  const granted = await platform.updateBookingPhotoMarketingUse(customer.id, {
+    bookingId: booking.id,
+    status: "granted"
+  });
+  assert.ok(
+    granted.serviceEvidence
+      .filter((evidence) => evidence.evidenceType === "photo")
+      .every((evidence) => evidence.marketingUseStatus === "granted")
+  );
+
+  const publicOverview = await platform.getPublicMarketplaceOverview();
+  assert.equal(publicOverview.beforeAfterProjects.length, 1);
+  assert.deepEqual(publicOverview.beforeAfterProjects[0], {
+    bookingId: booking.id,
+    providerId: provider.id,
+    providerCompanyName: "Proof Lawn Co.",
+    city: customer.address.city,
+    state: customer.address.state,
+    category: "hedge-trimming",
+    photoArea: "shrubs",
+    completedAt: granted.completedAt,
+    beforeImageDataUrl: "data:image/jpeg;base64,front-shrubs-before",
+    afterImageDataUrl: "data:image/jpeg;base64,front-shrubs-after"
+  });
+  assert.equal("customerName" in publicOverview.beforeAfterProjects[0]!, false);
+  assert.equal("streetAddress" in publicOverview.beforeAfterProjects[0]!, false);
+
+  await assert.rejects(
+    platform.updateBookingPhotoMarketingUse(otherCustomer.id, {
+      bookingId: booking.id,
+      status: "revoked"
+    }),
+    /booking customer/
+  );
+  await platform.updateBookingPhotoMarketingUse(customer.id, {
+    bookingId: booking.id,
+    status: "revoked"
+  });
+  assert.equal((await platform.getPublicMarketplaceOverview()).beforeAfterProjects.length, 0);
 });
 
 test("ops can annotate booking evidence for disputes and refund reviews", async () => {
@@ -9607,7 +9798,7 @@ test("notifications track booking, staffing, and review milestones across roles"
   });
   assert.ok(crewPendingNotifications.notifications.some((notification) => notification.title === "You have a new crew match"));
 
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: crewMatch.id,
     action: "accept"
   });
@@ -10594,6 +10785,7 @@ test("providers can import an external iCal feed and use it to block YardMatch a
     serviceRadiusMiles: 25,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderCredentials(platform, provider.id);
 
   const customer = await platform.registerUser({
     fullName: "Jordan Rivera",
@@ -11175,7 +11367,7 @@ test("provider dispatch controls tune reminder timing and route-leader permissio
     notificationList.notifications.some((notification) => notification.title === "Review crew staffing soon")
   );
 
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: pendingMatch!.id,
     action: "accept"
   });
@@ -11223,7 +11415,7 @@ test("provider dispatch controls tune reminder timing and route-leader permissio
     .find((job) => job.bookingId === secondBooking.id)
     ?.matches.find((match) => match.crewMemberId === crewMember.id);
   assert.ok(secondPendingMatch);
-  await platform.reviewCrewMatch(provider.id, {
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, {
     crewMatchId: secondPendingMatch!.id,
     action: "accept"
   });
@@ -11327,8 +11519,8 @@ test("providers can assign a specific route leader when multiple accepted crew m
   assert.ok(firstMatch);
   assert.ok(secondMatch);
 
-  await platform.reviewCrewMatch(provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
-  await platform.reviewCrewMatch(provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
   await platform.confirmBooking(provider.id, { bookingId: booking.id });
 
   const multiCrewOverview = await platform.getProviderStaffingOverview(provider.id);
@@ -11462,8 +11654,8 @@ test("provider assistant can assign and clear a crew route leader from plain lan
   const secondMatch = job?.matches.find((match) => match.crewMemberId === secondCrew.id);
   assert.ok(firstMatch);
   assert.ok(secondMatch);
-  await platform.reviewCrewMatch(provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
-  await platform.reviewCrewMatch(provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
 
   const preview = await platform.runProviderAssistantCommand(provider.id, {
     command: "Make Morgan Crew the route leader for my afternoon appointment",
@@ -11736,6 +11928,7 @@ test("provider assistant can accept or deny crew matches from plain language", a
     serviceRadiusMiles: 20,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: true });
   const customer = await platform.registerUser({
     fullName: "Jordan Rivera",
     email: "customer-assistant-crew-review@example.com",
@@ -11854,6 +12047,7 @@ test("provider assistant can accept the best recommended crew from plain languag
     serviceRadiusMiles: 20,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: true });
   const customer = await platform.registerUser({
     fullName: "Jordan Rivera",
     email: "customer-assistant-best-crew@example.com",
@@ -12581,8 +12775,8 @@ test("provider assistant staffing plan recommends route leader assignment when c
   assert.ok(firstMatch);
   assert.ok(secondMatch);
 
-  await platform.reviewCrewMatch(provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
-  await platform.reviewCrewMatch(provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, { crewMatchId: firstMatch!.id, action: "accept" });
+  await reviewCrewMatchForEligibleProvider(platform, provider.id, { crewMatchId: secondMatch!.id, action: "accept" });
 
   const recommendation = await platform.runProviderAssistantCommand(provider.id, {
     command: "Do I need more crew tomorrow?",
@@ -13516,6 +13710,7 @@ test("provider assistant can preview and execute a broader three-step same-booki
     serviceRadiusMiles: 25,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: true });
 
   const customer = await platform.registerUser({
     fullName: "Jordan Rivera",
@@ -13775,6 +13970,7 @@ test("new providers stay out of public search until ops approves verification", 
   });
   assert.equal(provider.role, "provider");
   assert.equal(provider.verificationStatus, "pending-review");
+  await verifyProviderCredentials(platform, provider.id);
 
   const queueBeforeReview = await platform.listProviderVerificationQueue();
   const queuedProvider = queueBeforeReview.find((item) => item.provider.id === provider.id);
@@ -13862,6 +14058,7 @@ test("provider verification guidance flags missing launch-fit basics before go-l
     yearsExperience: 0,
     minimumBookingLeadHours: 72
   });
+  await verifyProviderCredentials(platform, provider.id);
 
   const queue = await platform.listProviderVerificationQueue();
   const queuedProvider = queue.find((item) => item.provider.id === provider.id);
@@ -13946,6 +14143,7 @@ test("provider verification guidance blocks launch approval when incident histor
     address: createAddress("121 Maple Ave", 30.2438, -97.7639)
   });
   assert.equal(provider.role, "provider");
+  await verifyProviderCredentials(platform, provider.id);
 
   const customer = await platform.registerUser({
     fullName: "Jordan Incident",
@@ -14030,6 +14228,7 @@ test("provider profiles include backend-authored verification next steps while p
     serviceRadiusMiles: 35,
     address: createAddress("120 Maple Ave", 30.2438, -97.7639)
   });
+  await verifyProviderCredentials(platform, provider.id);
 
   const profile = await platform.getProviderProfile(provider.id);
   assert.equal(profile.verificationStatus, "pending-review");
@@ -14187,6 +14386,7 @@ test("provider onboarding automation sweep sends due action notifications idempo
     address: createAddress("123 Maple Ave", 30.2438, -97.7639)
   });
   assert.equal(readyProvider.role, "provider");
+  await verifyProviderCredentials(platform, readyProvider.id);
   await repository.updateProvider(readyProvider.id, {
     verificationSubmittedAt: submittedAt,
     minimumBookingLeadHours: 12
@@ -14262,6 +14462,7 @@ test("rejected providers are automatically resubmitted when they update business
     serviceRadiusMiles: 25,
     address: createAddress("121 Maple Ave", 30.2438, -97.7639)
   });
+  await verifyProviderCredentials(platform, provider.id);
 
   await repository.updateProvider(provider.id, {
     bio: "Short bio.",

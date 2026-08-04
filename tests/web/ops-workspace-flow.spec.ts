@@ -58,6 +58,8 @@ test("ops workspace exposes and audits verification, support, leads, payouts, an
   await expect(automationBoard.getByRole("heading", { name: "Dry-run automation audit" }).first()).toBeVisible();
 
   await expect(page.getByTestId("ops-payout-batches")).toBeVisible();
+  await expect(page.getByText("Crew transfer records (must stay 0)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Provider business" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Manual disbursement history" })).toBeVisible();
   await expect(page.getByText(/No manual payout run records|manual-review/).first()).toBeVisible();
 

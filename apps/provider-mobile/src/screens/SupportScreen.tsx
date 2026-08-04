@@ -932,8 +932,8 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
             <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, blockedPayoutCents)}</Text>
           </View>
           <View style={styles.payoutSummaryItem}>
-            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew")}</Text>
-            <Text style={styles.payoutSummaryValue}>{formatCurrency(i18n, payoutLedger?.totalCrewOwedCents ?? 0)}</Text>
+            <Text style={styles.payoutSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew_compensation")}</Text>
+            <Text style={styles.payoutSummaryValue}>{i18n.t("provider_mobile.dashboard.provider_managed")}</Text>
           </View>
         </View>
         <Text style={styles.meta}>

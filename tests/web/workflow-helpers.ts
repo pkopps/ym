@@ -21,6 +21,10 @@ type AuthEnvelope = {
   user: { id: string; email: string; role: string };
 };
 
+type ProviderCredentialFixtureProfile = {
+  credentials?: Array<{ id: string; type: string; status: string }>;
+};
+
 export function uniqueEmail(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}@example.com`;
 }
@@ -37,6 +41,46 @@ async function postJson<T>(
   });
   expect(response.ok(), await response.text()).toBeTruthy();
   return response.json() as Promise<T>;
+}
+
+async function prepareProviderCredentials(
+  request: APIRequestContext,
+  providerToken: string,
+  providerId: string
+) {
+  const ops = await loginApi(request, "ops@example.com", "YardMatch123!");
+  const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
+  for (const type of [
+    "business-registration",
+    "general-liability-insurance",
+    "workers-compensation"
+  ] as const) {
+    const profile = await postJson<ProviderCredentialFixtureProfile>(
+      request,
+      "/api/providers/credentials",
+      {
+        type,
+        jurisdiction: "NJ",
+        referenceNumber: `playwright-${providerId}-${type}`,
+        expiresAt
+      },
+      providerToken
+    );
+    const credential = profile.credentials?.find((candidate) => candidate.type === type);
+    expect(credential).toBeTruthy();
+    await postJson(
+      request,
+      "/api/providers/credentials/review",
+      {
+        providerId,
+        credentialId: credential!.id,
+        action: "verify",
+        notes: "Verified launch workflow fixture credential."
+      },
+      ops.session.token
+    );
+  }
 }
 
 export async function registerProvider(
@@ -67,6 +111,8 @@ export async function registerProvider(
     }, envelope.session.token);
   }
 
+  await prepareProviderCredentials(request, envelope.session.token, envelope.user.id);
+
   return { email, companyName, token: envelope.session.token, providerId: envelope.user.id };
 }
 
@@ -88,7 +134,14 @@ export async function loginApi(request: APIRequestContext, email: string, passwo
   return postJson<AuthEnvelope>(request, "/api/auth/login", { email, password });
 }
 
-export async function approveProvider(request: APIRequestContext, providerId: string) {
+export async function approveProvider(
+  request: APIRequestContext,
+  providerId: string,
+  providerToken?: string
+) {
+  if (providerToken) {
+    await prepareProviderCredentials(request, providerToken, providerId);
+  }
   const ops = await loginApi(request, "ops@example.com", "YardMatch123!");
   await postJson(request, "/api/providers/verification/review", {
     providerId,

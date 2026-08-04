@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
 import {
@@ -15,6 +16,7 @@ import {
   getBookingServiceWindow,
   PaymentRecord,
   CustomerReviewOpportunity,
+  PropertyPhotoArea,
   ReviewScore
 } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
@@ -29,6 +31,28 @@ import { useCustomerSession } from "../session/CustomerSessionContext";
 type ViewMode = "upcoming" | "past";
 type VisitStepStatus = "complete" | "current" | "pending";
 type VisitPrimaryActionKind = "checkout" | "support" | "track";
+
+const propertyPhotoAreas: PropertyPhotoArea[] = [
+  "lawn",
+  "shrubs",
+  "garden-beds",
+  "trees",
+  "driveway",
+  "walkways",
+  "gutters",
+  "other"
+];
+
+const photoAreaLabelKeys: Record<PropertyPhotoArea, TranslationKey> = {
+  lawn: "photo.area.lawn",
+  shrubs: "photo.area.shrubs",
+  "garden-beds": "photo.area.garden_beds",
+  trees: "photo.area.trees",
+  driveway: "photo.area.driveway",
+  walkways: "photo.area.walkways",
+  gutters: "photo.area.gutters",
+  other: "photo.area.other"
+};
 
 interface VisitNextStep {
   action?: VisitPrimaryActionKind;
@@ -139,6 +163,8 @@ export function BookingsScreen({
   const [tracking, setTracking] = useState<BookingArrivalTracking | undefined>();
   const [isTrackingModalVisible, setIsTrackingModalVisible] = useState(false);
   const [showManageByBookingId, setShowManageByBookingId] = useState<Record<string, boolean>>({});
+  const [photoAreaByBookingId, setPhotoAreaByBookingId] = useState<Record<string, PropertyPhotoArea>>({});
+  const [photoNoteByBookingId, setPhotoNoteByBookingId] = useState<Record<string, string>>({});
 
   const upcomingBookings = useMemo(
     () =>
@@ -686,6 +712,70 @@ export function BookingsScreen({
     }
   }
 
+  async function addPropertyPhoto(bookingId: string) {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setErrorMessage(i18n.t("mobile.bookings.photos.permission_required"));
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        base64: true,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.3
+      });
+      if (result.canceled || !result.assets[0]?.base64) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.addBookingEvidence({
+        bookingId,
+        phase: "before",
+        imageDataUrl: `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}`,
+        photoArea: photoAreaByBookingId[bookingId] ?? "lawn",
+        note: photoNoteByBookingId[bookingId]?.trim() || undefined
+      });
+      setPhotoNoteByBookingId((current) => ({ ...current, [bookingId]: "" }));
+      setSubmittedMessage(i18n.t("mobile.bookings.photos.uploaded"));
+      await loadBookings();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.bookings.photos.upload_error"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function updatePhotoMarketingUse(bookingId: string, status: "granted" | "denied" | "revoked") {
+    if (!envelope?.session.token) {
+      return;
+    }
+
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.updateBookingPhotoMarketingUse({ bookingId, status });
+      setSubmittedMessage(i18n.t("mobile.bookings.photos.preference_saved"));
+      await loadBookings();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.bookings.photos.consent_error"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell
       eyebrow={i18n.t("mobile.bookings.eyebrow")}
@@ -839,6 +929,68 @@ export function BookingsScreen({
                           <Text style={styles.bookingMeta}>{booking.serviceAddress.line1}</Text>
                           <Text style={styles.bookingMeta}>{getBookingStatusLabel(booking)}</Text>
                         </View>
+                        {canModifyVisit ? (
+                          <View style={styles.photoPanel}>
+                            <Text style={styles.detailLabel}>{i18n.t("mobile.bookings.photos.title")}</Text>
+                            <Text style={styles.bookingMeta}>{i18n.t("mobile.bookings.photos.body")}</Text>
+                            <View style={styles.photoAreaRow}>
+                              {propertyPhotoAreas.map((area) => {
+                                const isActive = (photoAreaByBookingId[booking.id] ?? "lawn") === area;
+                                return (
+                                  <Pressable
+                                    key={area}
+                                    onPress={() =>
+                                      setPhotoAreaByBookingId((current) => ({ ...current, [booking.id]: area }))
+                                    }
+                                    style={[styles.photoAreaChip, isActive && styles.photoAreaChipActive]}
+                                  >
+                                    <Text style={[styles.photoAreaChipLabel, isActive && styles.photoAreaChipLabelActive]}>
+                                      {i18n.t(photoAreaLabelKeys[area])}
+                                    </Text>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                            <TextInput
+                              maxLength={240}
+                              onChangeText={(value) =>
+                                setPhotoNoteByBookingId((current) => ({ ...current, [booking.id]: value }))
+                              }
+                              placeholder={i18n.t("mobile.bookings.photos.note_placeholder")}
+                              placeholderTextColor={BrandTokens.colors.muted}
+                              style={[styles.input, styles.compactInput]}
+                              value={photoNoteByBookingId[booking.id] ?? ""}
+                            />
+                            <Pressable
+                              disabled={isWorking}
+                              onPress={() => void addPropertyPhoto(booking.id)}
+                              style={styles.secondaryAction}
+                            >
+                              <Text style={styles.secondaryActionLabel}>{i18n.t("mobile.bookings.photos.add")}</Text>
+                            </Pressable>
+                            {booking.serviceEvidence.some(
+                              (evidence) => evidence.phase === "before" && evidence.evidenceType === "photo"
+                            ) ? (
+                              <View style={styles.photoRow}>
+                                {booking.serviceEvidence
+                                  .filter(
+                                    (evidence) =>
+                                      evidence.phase === "before" &&
+                                      evidence.evidenceType === "photo" &&
+                                      evidence.imageDataUrl
+                                  )
+                                  .map((evidence) => (
+                                    <View key={evidence.id} style={styles.photoTile}>
+                                      <Image source={{ uri: evidence.imageDataUrl }} style={styles.photoImage} />
+                                      <Text style={styles.photoCaption}>
+                                        {i18n.t(photoAreaLabelKeys[evidence.photoArea ?? "other"])}
+                                      </Text>
+                                    </View>
+                                  ))}
+                              </View>
+                            ) : null}
+                          </View>
+                        ) : null}
                         {canModifyVisit ? (
                           <View style={styles.inlineActions}>
                             <Pressable
@@ -1031,6 +1183,17 @@ export function BookingsScreen({
                     canRequestRefundReview(booking, payment) ||
                     payment?.refundReviewStatus === "requested" ||
                     payment?.refundReviewStatus === "denied";
+                  const beforePhotos = booking.serviceEvidence.filter(
+                    (evidence) =>
+                      evidence.phase === "before" && evidence.evidenceType === "photo" && evidence.imageDataUrl
+                  );
+                  const afterPhotos = booking.serviceEvidence.filter(
+                    (evidence) =>
+                      evidence.phase === "after" && evidence.evidenceType === "photo" && evidence.imageDataUrl
+                  );
+                  const marketingUseStatus = [...beforePhotos, ...afterPhotos].find(
+                    (evidence) => evidence.marketingUseStatus
+                  )?.marketingUseStatus;
 
                   return (
                     <View key={booking.id} style={[styles.pastVisitCard, isSelected && styles.pastVisitCardActive]}>
@@ -1069,6 +1232,88 @@ export function BookingsScreen({
                               <Text style={styles.visitSummaryValue}>{formatPrice(i18n, booking.totalCents)}</Text>
                             </View>
                           </View>
+                          {beforePhotos.length > 0 || afterPhotos.length > 0 ? (
+                            <View style={styles.photoPanel}>
+                              <Text style={styles.detailLabel}>{i18n.t("mobile.bookings.photos.before_after")}</Text>
+                              {(["before", "after"] as const).map((phase) => {
+                                const photos = phase === "before" ? beforePhotos : afterPhotos;
+                                return (
+                                  <View key={phase} style={styles.detailStack}>
+                                    <Text style={styles.bookingTitle}>
+                                      {phase === "before"
+                                        ? i18n.t("customer_history.photos.before")
+                                        : i18n.t("customer_history.photos.after")}
+                                    </Text>
+                                    {photos.length > 0 ? (
+                                      <View style={styles.photoRow}>
+                                        {photos.map((photo) => (
+                                          <View key={photo.id} style={styles.photoTile}>
+                                            <Image source={{ uri: photo.imageDataUrl }} style={styles.photoImage} />
+                                            <Text style={styles.photoCaption}>
+                                              {i18n.t(photoAreaLabelKeys[photo.photoArea ?? "other"])}
+                                            </Text>
+                                          </View>
+                                        ))}
+                                      </View>
+                                    ) : (
+                                      <Text style={styles.bookingMeta}>{i18n.t("customer_history.photos.none")}</Text>
+                                    )}
+                                  </View>
+                                );
+                              })}
+                              {booking.status === "completed" && beforePhotos.length > 0 && afterPhotos.length > 0 ? (
+                                <View style={styles.detailStack}>
+                                  <Text style={styles.bookingTitle}>{i18n.t("customer_history.photos.marketing_title")}</Text>
+                                  <Text style={styles.bookingMeta}>{i18n.t("customer_history.photos.marketing_body")}</Text>
+                                  <Text style={styles.bookingMeta}>
+                                    {marketingUseStatus === "granted"
+                                      ? i18n.t("customer_history.photos.marketing_granted")
+                                      : marketingUseStatus === "denied"
+                                        ? i18n.t("customer_history.photos.marketing_denied")
+                                        : marketingUseStatus === "revoked"
+                                          ? i18n.t("customer_history.photos.marketing_revoked")
+                                          : i18n.t("customer_history.photos.marketing_private")}
+                                  </Text>
+                                  <View style={styles.inlineActions}>
+                                    {marketingUseStatus === "granted" ? (
+                                      <Pressable
+                                        disabled={isWorking}
+                                        onPress={() => void updatePhotoMarketingUse(booking.id, "revoked")}
+                                        style={styles.secondaryAction}
+                                      >
+                                        <Text style={styles.secondaryActionLabel}>
+                                          {i18n.t("customer_history.photos.revoke_marketing")}
+                                        </Text>
+                                      </Pressable>
+                                    ) : (
+                                      <>
+                                        <Pressable
+                                          disabled={isWorking}
+                                          onPress={() => void updatePhotoMarketingUse(booking.id, "granted")}
+                                          style={styles.secondaryAction}
+                                        >
+                                          <Text style={styles.secondaryActionLabel}>
+                                            {i18n.t("customer_history.photos.allow_marketing")}
+                                          </Text>
+                                        </Pressable>
+                                        {marketingUseStatus !== "denied" ? (
+                                          <Pressable
+                                            disabled={isWorking}
+                                            onPress={() => void updatePhotoMarketingUse(booking.id, "denied")}
+                                            style={styles.secondaryAction}
+                                          >
+                                            <Text style={styles.secondaryActionLabel}>
+                                              {i18n.t("customer_history.photos.keep_private")}
+                                            </Text>
+                                          </Pressable>
+                                        ) : null}
+                                      </>
+                                    )}
+                                  </View>
+                                </View>
+                              ) : null}
+                            </View>
+                          ) : null}
                           {canOpenDisputeTools ? (
                             <>
                               <TextInput
@@ -1542,6 +1787,57 @@ const styles = StyleSheet.create({
     backgroundColor: BrandTokens.colors.surfaceStrong,
     gap: BrandTokens.spacing.md,
     padding: BrandTokens.spacing.md
+  },
+  photoPanel: {
+    gap: BrandTokens.spacing.sm,
+    borderRadius: BrandTokens.radius.sm,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    backgroundColor: "rgba(255,255,255,0.82)",
+    padding: BrandTokens.spacing.md
+  },
+  photoAreaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.xs
+  },
+  photoAreaChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: BrandTokens.colors.border,
+    paddingHorizontal: BrandTokens.spacing.sm,
+    paddingVertical: BrandTokens.spacing.xs
+  },
+  photoAreaChipActive: {
+    borderColor: BrandTokens.colors.primary,
+    backgroundColor: BrandTokens.colors.surfaceStrong
+  },
+  photoAreaChipLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12
+  },
+  photoAreaChipLabelActive: {
+    color: BrandTokens.colors.primaryStrong,
+    fontWeight: "700"
+  },
+  photoRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  photoTile: {
+    width: 112,
+    gap: BrandTokens.spacing.xs
+  },
+  photoImage: {
+    width: 112,
+    height: 88,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.border
+  },
+  photoCaption: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12
   },
   inlineActions: {
     flexDirection: "row",

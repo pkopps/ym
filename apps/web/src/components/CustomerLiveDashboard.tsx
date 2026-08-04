@@ -13,6 +13,7 @@ import {
   getBookingExceptionLabel,
   InstantQuoteResponse,
   PaymentRecord,
+  PropertyPhotoArea,
   ProviderProfile,
   RecurringServiceFrequency,
   RecurringServicePlanSummary,
@@ -27,6 +28,7 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { readEvidenceImage } from "../lib/imageUploads";
 import { getLaunchAttributionContext, getStoredLaunchLeadId } from "../lib/launchAttribution";
 import { useStoredWebSession } from "../lib/session";
 import { trackWebEvent } from "../lib/tracking";
@@ -67,6 +69,17 @@ const historicalBookingStatuses = new Set<Booking["status"]>([
   "refunded",
   "disputed"
 ]);
+
+const propertyPhotoAreaOptions: Array<{ value: PropertyPhotoArea; labelKey: TranslationKey }> = [
+  { value: "lawn", labelKey: "photo.area.lawn" },
+  { value: "shrubs", labelKey: "photo.area.shrubs" },
+  { value: "garden-beds", labelKey: "photo.area.garden_beds" },
+  { value: "trees", labelKey: "photo.area.trees" },
+  { value: "driveway", labelKey: "photo.area.driveway" },
+  { value: "walkways", labelKey: "photo.area.walkways" },
+  { value: "gutters", labelKey: "photo.area.gutters" },
+  { value: "other", labelKey: "photo.area.other" }
+];
 
 function formatOpenWindow(i18n: I18nInstance, slot?: SearchProvidersResponse["suggestedSlots"][number]) {
   return slot ? formatBookingWindowSummary(slot.startIso) : i18n.t("customer_live.no_open_slot");
@@ -318,6 +331,8 @@ export function CustomerLiveDashboard() {
   const [paymentActionHandled, setPaymentActionHandled] = useState(false);
   const [activeTrackingBookingId, setActiveTrackingBookingId] = useState<string | undefined>();
   const [activeTracking, setActiveTracking] = useState<BookingArrivalTracking | undefined>();
+  const [photoAreaByBookingId, setPhotoAreaByBookingId] = useState<Record<string, PropertyPhotoArea>>({});
+  const [photoNoteByBookingId, setPhotoNoteByBookingId] = useState<Record<string, string>>({});
   const trackedRetentionPromptIds = useRef(new Set<string>());
 
   const activeProperty = properties.find((property) => property.id === selectedPropertyId) ?? properties[0];
@@ -1279,6 +1294,32 @@ export function CustomerLiveDashboard() {
     }
   }
 
+  async function handleCustomerPropertyPhoto(bookingId: string, file: File) {
+    setLoadingState("loading");
+    setErrorMessage(undefined);
+
+    try {
+      const imageDataUrl = await readEvidenceImage(file);
+      const api = createAuthenticatedWebApiClient();
+      const updatedBooking = await api.addBookingEvidence({
+        bookingId,
+        phase: "before",
+        imageDataUrl,
+        photoArea: photoAreaByBookingId[bookingId] ?? "lawn",
+        note: photoNoteByBookingId[bookingId]?.trim() || undefined
+      });
+      setBookings((current) =>
+        current.map((booking) => (booking.id === updatedBooking.id ? updatedBooking : booking))
+      );
+      setPhotoNoteByBookingId((current) => ({ ...current, [bookingId]: "" }));
+      setBookingMessage(i18n.t("customer_live.photos.uploaded"));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.photos.upload_error"));
+    } finally {
+      setLoadingState("idle");
+    }
+  }
+
   if (
     !sessionReady ||
     (!historyOnlyView &&
@@ -1561,6 +1602,88 @@ export function CustomerLiveDashboard() {
         ) : null}
         {activeTrackingBookingId === booking.id && activeTracking ? (
           <ArrivalTrackingPanel subtitle={providerName} title={i18n.t("customer_live.status.crew_on_way")} tracking={activeTracking} />
+        ) : null}
+        {canEditVisit ? (
+          <section className="service-photo-panel" aria-label={i18n.t("customer_live.photos.title")}>
+            <div>
+              <h3>{i18n.t("customer_live.photos.title")}</h3>
+              <p>{i18n.t("customer_live.photos.body")}</p>
+            </div>
+            <div className="form-grid service-photo-panel__form">
+              <label className="form-field">
+                <span>{i18n.t("customer_live.photos.area_label")}</span>
+                <select
+                  onChange={(event) =>
+                    setPhotoAreaByBookingId((current) => ({
+                      ...current,
+                      [booking.id]: event.target.value as PropertyPhotoArea
+                    }))
+                  }
+                  value={photoAreaByBookingId[booking.id] ?? "lawn"}
+                >
+                  {propertyPhotoAreaOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {i18n.t(option.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-field">
+                <span>{i18n.t("customer_live.photos.note_label")}</span>
+                <input
+                  maxLength={240}
+                  onChange={(event) =>
+                    setPhotoNoteByBookingId((current) => ({
+                      ...current,
+                      [booking.id]: event.target.value
+                    }))
+                  }
+                  placeholder={i18n.t("customer_live.photos.note_placeholder")}
+                  value={photoNoteByBookingId[booking.id] ?? ""}
+                />
+              </label>
+            </div>
+            <label className="button-secondary evidence-upload-button">
+              <span>{i18n.t("customer_live.photos.add")}</span>
+              <input
+                accept="image/*"
+                aria-label={i18n.t("customer_live.photos.add")}
+                capture="environment"
+                className="visually-hidden"
+                disabled={loadingState === "loading"}
+                onChange={(event) => {
+                  const input = event.currentTarget;
+                  const file = input.files?.[0];
+                  if (!file) {
+                    return;
+                  }
+                  void handleCustomerPropertyPhoto(booking.id, file).finally(() => {
+                    input.value = "";
+                  });
+                }}
+                type="file"
+              />
+            </label>
+            {booking.serviceEvidence.some(
+              (evidence) => evidence.phase === "before" && evidence.evidenceType === "photo"
+            ) ? (
+              <div className="service-photo-strip">
+                {booking.serviceEvidence
+                  .filter((evidence) => evidence.phase === "before" && evidence.evidenceType === "photo" && evidence.imageDataUrl)
+                  .map((evidence) => (
+                    <figure key={evidence.id}>
+                      <img alt={i18n.t("customer_live.photos.before_alt")} src={evidence.imageDataUrl} />
+                      <figcaption>
+                        {i18n.t(
+                          propertyPhotoAreaOptions.find((option) => option.value === evidence.photoArea)?.labelKey ??
+                            "photo.area.other"
+                        )}
+                      </figcaption>
+                    </figure>
+                  ))}
+              </div>
+            ) : null}
+          </section>
         ) : null}
         <details className="service-card-disclosure">
           <summary className="service-card-disclosure__summary">{i18n.t("customer_live.active_booking.visit_details")}</summary>

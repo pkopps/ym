@@ -11,7 +11,7 @@ import {
   uniqueEmail
 } from "./workflow-helpers";
 
-test("crew selects a fit, creates preferences, receives work, routes, and sees payout history", async ({ page, request }) => {
+test("crew selects a fit, creates preferences, receives work, routes, and sees completed assignment history", async ({ page, request }) => {
   const provider = await registerProvider(request, {
     companyName: `Crew Route Partner ${Date.now()}`,
     staffingMode: "auto-accept"
@@ -85,10 +85,10 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees p
   await page.goto("/crew/schedule/history");
   await expect(page.getByRole("heading", { name: "Past job history." })).toBeVisible();
   await expect(page.getByText(provider.companyName)).toBeVisible();
-  await expect(page.getByText("awaiting customer payment", { exact: true })).toBeVisible();
+  await expect(page.getByText("Provider business handles compensation.", { exact: true })).toBeVisible();
   await captureResponsiveEvidence(
     page,
-    "crew-payout-history",
+    "crew-assignment-history",
     page.getByText(provider.companyName, { exact: true })
   );
 });

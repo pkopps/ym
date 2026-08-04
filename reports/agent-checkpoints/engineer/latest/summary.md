@@ -1,23 +1,20 @@
-# Engineer Checkpoint: Core Launch Workflows
+# Engineer Checkpoint: Launch-Freeze Reliability And Property Proof
 
 ## Branch And Commit
 
-- Branch: `main`
-- Baseline commit: `87724d9e1b5bd41e5c39641d9f328c6c37274658`
-- State: working tree changes intentionally uncommitted
+- Branch: `codex/property-photos-launch-reliability`
+- Baseline commit: `c11ee84aa28ad7326a4c6fe11a0319070c12781f`
+- State: this checkpoint is included in the milestone commit
 
 ## Completed Work
 
-- Completed provider onboarding/verification/settings and first-job confirm/decline/route/evidence/start/complete coverage.
-- Completed crew fit/signup/preferences/assignment/schedule/directions/support/evidence/history/payout coverage.
-- Added authenticated ops automation execution/history and expanded payout preview/manual-run visibility.
-- Verified ops approval, support triage, lead creation, payout state, automation audit, and role denial.
-- Fixed mobile overflow, clipped status pills, missing desktop crew directions, and invalid pseudo ICU transformations.
-- Preserved and reran the recommendation-first customer booking workflow.
-- Verified local Stripe test-mode hosted Checkout capture with a disposable confirmed booking and standard Stripe test card.
-- Fixed hosted Checkout return URLs so Stripe receives the raw `{CHECKOUT_SESSION_ID}` macro and YardMatch can finalize the success redirect.
-- Added idempotent checkout finalization when the Stripe webhook captures payment before the browser redirect returns.
-- Added the authenticated crew claim handoff after public opening signup and carried the selected opening's actual service day into the signup URL.
+- Delivered private customer property-photo intake, assigned-provider context, separate field evidence, clear customer before/after history, revocable marketing consent, and a verified-provider public trust gallery.
+- Updated API and browser fixtures for enforced provider business, liability, and workers-compensation credentials.
+- Aligned crew web/mobile history with provider-responsible compensation while preserving completed assignments, attendance, provider breadth, and proof metrics.
+- Removed crew-reserve and crew-payout claims from provider and ops surfaces, exposed the provider as compensation owner, and made crew-transfer exposure visibly zero.
+- Blocked legacy crew disbursement batches at the backend and retained provider-only manual settlement records.
+- Added the missing launch-lead/internal-auth/review-response Prisma migration, applied all 31 migrations, and confirmed zero schema drift.
+- Updated contracts, API docs, localization, README, roadmap, launch checklist, and regression coverage.
 
 ## In-Progress Work
 
@@ -25,54 +22,55 @@
 
 ## Remaining Work
 
-- Live Stripe credentials, transfer execution, and vendor callbacks require production-like accounts. Local Stripe test-mode hosted Checkout customer capture is verified.
+- Archive the PostgreSQL migration/integration result in CI.
+- Validate Stripe Connect Accounts v2 provider onboarding and provider-only transfers in development/staging.
+- Replace data-URL evidence with production object storage/CDN, scanning, retention/deletion policy, and moderation.
+- Complete legal/content review of provider responsibility and public photo-use language.
 
 ## Blockers
 
-- None for deterministic in-memory workflows.
+- No local blocker.
+- Staging Stripe credentials/accounts and launch counsel review require external access/owners.
 
 ## Changed Workflows
 
-- Provider signup -> verified management -> first-job lifecycle.
-- Crew recommendation -> signup -> assignment -> field work -> payout history.
-- Public crew opening selection -> signup -> authenticated claim -> accepted assignment.
-- Ops login -> verification/support/leads/payouts/automation with actor-stamped state.
-- Spanish and pseudo routes across core workflows.
-- Stripe hosted Checkout -> YardMatch success return -> captured payment confirmation.
+- Customer booking -> private property context photos.
+- Provider schedule -> expected site conditions; field team -> operational proof.
+- Customer history -> before/after record -> grant/deny/revoke public use.
+- Provider verification -> credential-backed approval and crew-engagement gates.
+- Crew history -> work record and provider-managed compensation responsibility.
+- Provider/ops payouts -> provider settlement only, with zero crew-transfer exposure.
+- PostgreSQL deploy -> migration-backed launch leads, auth audit state, review responses, and financial constraints.
 
 ## Validation Results
 
-- Targeted core Playwright: 9/9 passed.
-- Focused crew Playwright rerun: 1/1 passed after the selected-opening day handoff fix.
-- Final `npm run test:web:smoke`: 15/15 passed in 41.1 seconds.
-- `npm run typecheck`: passed.
-- `npm run test:api`: 215/215 passed.
-- `npm run i18n:validate`: passed, 3,438 keys.
-- i18n unit tests: 4/4 passed.
-- `git diff --check`: passed.
-- Local Stripe hosted UI smoke: passed through hosted Checkout, webhook-first capture, YardMatch success finalization, and captured payment display. Secrets and bearer tokens were not printed.
+- TypeScript build: passed.
+- Locale validation: passed, 3,522 keys.
+- Full API with PostgreSQL enabled: 229/229 passed, 0 skipped.
+- Full web smoke: 15/15 passed.
+- Final focused provider/ops browser policy checks: 3/3 passed.
+- Prisma deploy: 31 migrations applied; schema diff empty.
+- Customer, provider, and crew iOS exports: passed across the combined milestone.
+- Responsive evidence: passed at 1440x900 and 390x844.
 
 ## Known Defects
 
-- Live payment/payout rail behavior is not verified without production-like credentials. Local Stripe test-mode hosted Checkout capture is verified.
-- Next.js middleware and smooth-scroll advisories remain non-blocking.
+- Booking evidence still stores bounded compressed data URLs.
+- The compatibility-named crew payout endpoint retains zero-valued monetary fields even though crew compensation is provider-managed.
 
 ## Screenshot Paths
 
-- `provider-onboarding-verified-{desktop,mobile}.png`
-- `provider-job-in-progress-{desktop,mobile}.png`
-- `crew-assignment-accepted-{desktop,mobile}.png`
-- `crew-payout-history-{desktop,mobile}.png`
-- `ops-workspace-{desktop,mobile}.png`
-- `i18n-spanish-ops-mobile.png`
-- `i18n-pseudo-crew-{desktop,mobile}.png`
-- `stripe-checkout-submit-ready.png`
-- `stripe-checkout-submit-after.png`
-- `stripe-ui-return-before-checkout.png`
-- `stripe-ui-return-checkout-ready.png`
-- `stripe-ui-return-captured-desktop.png`
-- `stripe-ui-return-captured-mobile.png`
+- `photo-proof-home-desktop.png`
+- `photo-proof-home-mobile.png`
+- `photo-history-desktop.png`
+- `photo-history-mobile.png`
+- `crew-assignment-history-desktop.png`
+- `crew-assignment-history-mobile.png`
+- `provider-payments-responsibility-desktop.png`
+- `provider-payments-responsibility-mobile.png`
+- `ops-workspace-desktop.png`
+- `ops-workspace-mobile.png`
 
 ## Recommended Next Task
 
-Implement and visually verify the payout cutover through captured customer payment, payable states, transfer failure/retry, and live arrival tracking.
+Archive the PostgreSQL job in CI, then complete staging Stripe Connect provider onboarding and provider-only transfer validation.

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   BookingExceptionType,
@@ -877,7 +877,7 @@ export function ScheduleScreen() {
         allowsEditing: true,
         base64: true,
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.5
+        quality: 0.3
       });
 
       if (result.canceled || !result.assets[0]?.base64) {
@@ -1507,6 +1507,29 @@ export function ScheduleScreen() {
                       {i18n.t("provider_mobile.schedule.status.disputed")}
                       {job.disputeReason ? i18n.t("provider_mobile.schedule.note_suffix", { note: job.disputeReason }) : ""}
                     </Text>
+                  ) : null}
+                  {job.evidencePhotos.some(
+                    (evidence) => evidence.phase === "before" && evidence.capturedByRole === "customer"
+                  ) ? (
+                    <View style={styles.customerPhotoPanel}>
+                      <Text style={styles.proofTitle}>{i18n.t("provider_mobile.schedule.customer_photos.title")}</Text>
+                      <Text style={styles.metaLine}>{i18n.t("provider_mobile.schedule.customer_photos.body")}</Text>
+                      <View style={styles.photoRow}>
+                        {job.evidencePhotos
+                          .filter(
+                            (evidence) =>
+                              evidence.phase === "before" &&
+                              evidence.capturedByRole === "customer" &&
+                              evidence.imageDataUrl
+                          )
+                          .map((evidence) => (
+                            <View key={evidence.id} style={styles.photoTile}>
+                              <Image source={{ uri: evidence.imageDataUrl }} style={styles.photoImage} />
+                              <Text style={styles.photoLabel}>{evidence.photoArea?.replaceAll("-", " ") ?? i18n.t("photo.area.other")}</Text>
+                            </View>
+                          ))}
+                      </View>
+                    </View>
                   ) : null}
                   <View style={styles.actionRow}>
                     {primaryAction === "confirm" ? (
@@ -2397,6 +2420,33 @@ const styles = StyleSheet.create({
     color: BrandTokens.colors.ink,
     fontSize: 13,
     fontWeight: "800"
+  },
+  customerPhotoPanel: {
+    gap: BrandTokens.spacing.xs,
+    marginTop: BrandTokens.spacing.sm,
+    borderRadius: BrandTokens.radius.md,
+    backgroundColor: BrandTokens.colors.surfaceStrong,
+    padding: BrandTokens.spacing.md
+  },
+  photoRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: BrandTokens.spacing.sm
+  },
+  photoTile: {
+    width: 112,
+    gap: BrandTokens.spacing.xs
+  },
+  photoImage: {
+    width: 112,
+    height: 88,
+    borderRadius: BrandTokens.radius.sm,
+    backgroundColor: BrandTokens.colors.border
+  },
+  photoLabel: {
+    color: BrandTokens.colors.inkSoft,
+    fontSize: 12,
+    textTransform: "capitalize"
   },
   trackingCard: {
     gap: BrandTokens.spacing.xs,

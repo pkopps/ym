@@ -24,6 +24,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { readEvidenceImage } from "../lib/imageUploads";
 import { useStoredWebSession } from "../lib/session";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
@@ -37,21 +38,6 @@ function formatDateTime(i18n: I18nInstance, iso: string) {
 
 function buildLateEta(bookingIso: string, minutes: number) {
   return new Date(new Date(bookingIso).getTime() + minutes * 60_000).toISOString();
-}
-
-function readEvidenceImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("Unable to read that image."));
-    });
-    reader.addEventListener("error", () => reject(reader.error ?? new Error("Unable to read that image.")));
-    reader.readAsDataURL(file);
-  });
 }
 
 function formatLocalInputValue(date: Date) {
@@ -2049,6 +2035,35 @@ export function ProviderLiveManagementBoard() {
                 ) : null}
               </div>
             </div>
+
+            {job.evidencePhotos.some(
+              (evidence) => evidence.phase === "before" && evidence.capturedByRole === "customer"
+            ) ? (
+              <section className="service-photo-panel">
+                <div>
+                  <h3>{i18n.t("provider_live.customer_photos.title")}</h3>
+                  <p>{i18n.t("provider_live.customer_photos.body")}</p>
+                </div>
+                <div className="service-photo-strip">
+                  {job.evidencePhotos
+                    .filter(
+                      (evidence) =>
+                        evidence.phase === "before" &&
+                        evidence.capturedByRole === "customer" &&
+                        evidence.imageDataUrl
+                    )
+                    .map((evidence) => (
+                      <figure key={evidence.id}>
+                        <img alt={i18n.t("provider_live.customer_photos.alt")} src={evidence.imageDataUrl} />
+                        <figcaption>
+                          {evidence.photoArea?.replaceAll("-", " ") ?? i18n.t("photo.area.other")}
+                          {evidence.note ? ` • ${evidence.note}` : ""}
+                        </figcaption>
+                      </figure>
+                    ))}
+                </div>
+              </section>
+            ) : null}
 
             {(job.status === "confirmed" && job.onRouteConfirmedAt) || job.status === "in-progress" ? (
               <section className="evidence-capture-panel" id={`provider-evidence-${job.bookingId}`}>

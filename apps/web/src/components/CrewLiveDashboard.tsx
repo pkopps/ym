@@ -13,6 +13,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient, createWebApiClient } from "../lib/api";
+import { readEvidenceImage } from "../lib/imageUploads";
 import { useStoredWebSession } from "../lib/session";
 
 const allDays: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -76,21 +77,6 @@ function formatDateTime(i18n: I18nInstance, iso: string) {
   return i18n.formatDate(iso, {
     dateStyle: "medium",
     timeStyle: "short"
-  });
-}
-
-function readEvidenceImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("Unable to read that image."));
-    });
-    reader.addEventListener("error", () => reject(reader.error ?? new Error("Unable to read that image.")));
-    reader.readAsDataURL(file);
   });
 }
 

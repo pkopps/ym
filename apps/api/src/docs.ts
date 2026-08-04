@@ -868,7 +868,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Attach booking evidence to a job",
         description:
-          "Stores booking-linked service evidence with phase, timestamp, and actor attribution. Providers and accepted crew members can attach before-work or after-work photos, onsite notes, and structured checklists while the booking is active.",
+          "Stores booking-linked service evidence with phase, service-area tag, timestamp, and actor attribution. Customers can attach private before-service property photos to their own requested or confirmed bookings. Providers and accepted crew members can attach before-work or after-work photos, onsite notes, and structured checklists while the booking is active.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -885,7 +885,30 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Updated booking with attached service evidence" },
-          "403": { description: "Only the provider or accepted crew member can attach evidence" }
+          "403": { description: "Only an authorized booking participant can attach evidence" }
+        }
+      }
+    },
+    "/api/bookings/photo-marketing-use": {
+      post: {
+        tags: ["Marketplace"],
+        summary: "Manage public use of completed-service photos",
+        description:
+          "Lets the booking customer grant, deny, or revoke public marketing use for a completed before-and-after photo set. Photos remain private by default. Public marketplace responses include only completed, non-disputed jobs with verified providers and explicit granted consent, and omit customer identity and street address.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                bookingId: "booking_123",
+                status: "granted"
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Updated booking with audited photo marketing preference" },
+          "403": { description: "Only the booking customer can manage photo marketing use" }
         }
       }
     },
@@ -1868,7 +1891,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Get the provider payout ledger",
         description:
-          "Returns a provider-facing ledger built from completed bookings, captured customer payments, accepted crew matches, and refund state so business owners can see gross earnings, crew share, and current payout readiness.",
+          "Returns a provider-facing ledger built from versioned booking settlements, captured customer payments, credential readiness, disputes, and refund state so business owners can see provider net earnings and current payout readiness. Crew compensation is excluded and remains the provider business's responsibility.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Provider payout ledger returned" }
@@ -1878,9 +1901,9 @@ export const apiSpec = {
     "/api/payouts/crew": {
       get: {
         tags: ["Payments"],
-        summary: "Get the crew payout ledger",
+        summary: "Get the crew work-history and compensation-responsibility summary",
         description:
-          "Returns a crew-facing ledger built from accepted matches on completed jobs, including whether the payout is still waiting on customer payment, scheduled, ready, paid, on hold, or reversed by a refund. The response also includes backend-authored earnings, attendance, and performance summaries so crew members can see completed assignment count, ready/scheduled/on-hold earnings, call-off history, attendance rate, current reliability status, service follow-through, evidence contribution, route confirmation, and dispute/refund performance signals without recalculating those rules in the client.",
+          "Returns crew-facing assignment, attendance, and performance summaries plus explicit provider-responsibility guidance. YardMatch does not accrue or disburse crew wages at launch, so the legacy monetary fields remain zero and the ledger entry list remains empty.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Crew payout ledger returned" }
@@ -1890,9 +1913,9 @@ export const apiSpec = {
     "/api/payouts/ops/preview": {
       get: {
         tags: ["Payments"],
-        summary: "Preview upcoming provider and crew payout runs",
+        summary: "Preview upcoming provider payout runs",
         description:
-          "Returns an internal operations view of payout-ready provider balances, crew-share balances, upcoming grouped provider payout runs, payout entries that are still on hold or waiting on customer payment, backend-authored manual disbursement batch previews for provider and crew payouts, and the backend-authored payout policy that explains readiness, hold, instant-payout, audit, and manual-preview rules before external payout rails are enabled.",
+          "Returns an internal operations view of payout-ready provider balances, upcoming grouped provider payout runs, provider entries that are still on hold or waiting on customer payment, backend-authored manual provider disbursement batches, and the policy that explicitly excludes crew compensation from YardMatch payout rails.",
         responses: {
           "200": { description: "Ops payout preview returned" }
         }
@@ -1903,7 +1926,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "List recorded manual payout disbursement runs",
         description:
-          "Returns ops-authenticated audit records created from payout preview batches. These records preserve the preview batch id, entry fingerprint, booking/payment/recipient references, operator notes, and manual reconciliation instructions while external provider and crew payout rails are not yet enabled.",
+          "Returns ops-authenticated audit records created from provider payout preview batches. These records preserve the preview batch id, entry fingerprint, booking/payment/recipient references, operator notes, and manual reconciliation instructions while external provider payout rails are not yet enabled.",
         responses: {
           "200": { description: "Recorded payout disbursement runs returned" }
         }
@@ -2016,7 +2039,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Request a refund review",
         description:
-          "Creates a billing review for a captured customer payment, opens a support ticket, and puts provider/crew payouts on hold until ops approves or denies the refund. If ops later approves a Stripe-backed refund and Stripe is configured, YardMatch also syncs the live Stripe refund before marking the booking refunded locally.",
+          "Creates a billing review for a captured customer payment, opens a support ticket, and puts the provider settlement on hold until ops approves or denies the refund. If ops later approves a Stripe-backed refund and Stripe is configured, YardMatch also syncs the live Stripe refund before marking the booking refunded locally.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -2334,7 +2357,7 @@ export const apiSpec = {
         tags: ["Support"],
         summary: "Triages or resolves a support ticket",
         description:
-          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket, the chosen resolution direction must match the reviewed evidence signal, and mixed evidence requires a specific written rationale before the case can close. Completed paid disputes cannot be cancelled through the generic ticket-resolution path until a refund review is open or approved, keeping customer settlement and provider/crew payout holds reconciled. This internal support workflow now requires an authenticated ops session instead of loading anonymously.",
+          "Lets internal ops move a ticket into triaged or resolved state and optionally restore, cancel, or complete the linked booking, or approve and deny a refund review tied to the linked payment. Refund approvals now sync the live Stripe refund first when the captured payment came from Stripe and Stripe is configured. When submitted booking evidence exists for disputed, service-quality, or refund-review cases, ops must review at least one evidence item before resolving the ticket, the chosen resolution direction must match the reviewed evidence signal, and mixed evidence requires a specific written rationale before the case can close. Completed paid disputes cannot be cancelled through the generic ticket-resolution path until a refund review is open or approved, keeping customer settlement and the provider payout hold reconciled. This internal support workflow now requires an authenticated ops session instead of loading anonymously.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

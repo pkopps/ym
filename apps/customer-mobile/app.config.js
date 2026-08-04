@@ -24,6 +24,15 @@ module.exports = {
       ],
       "expo-secure-store",
       "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          photosPermission:
+            "YardMatch uses your photo library so you can show providers the parts of your property that need service.",
+          cameraPermission:
+            "YardMatch uses your camera so you can photograph the parts of your property that need service."
+        }
+      ],
       ...(disablePushForLocalDevice ? [] : ["expo-notifications"])
     ],
     ios: {
@@ -31,7 +40,11 @@ module.exports = {
       bundleIdentifier,
       infoPlist: {
         NSFaceIDUsageDescription:
-          "YardMatch uses Face ID so you can quickly reopen the customer app on this device."
+          "YardMatch uses Face ID so you can quickly reopen the customer app on this device.",
+        NSPhotoLibraryUsageDescription:
+          "YardMatch uses your photo library so you can show providers the parts of your property that need service.",
+        NSCameraUsageDescription:
+          "YardMatch uses your camera so you can photograph the parts of your property that need service."
       },
       entitlements: disablePushForLocalDevice
         ? {}

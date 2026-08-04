@@ -4,124 +4,90 @@ Agent-reported completion is checkpoint evidence only. It does not equal indepen
 
 ## Current Goal
 
-Core launch-workflow readiness beyond customer booking: provider onboarding and first job, crew assignment and payout visibility, authenticated ops safety-net controls, localized workflow coverage, and responsive evidence.
+Launch-freeze reliability: property before/after trust assets, enforced provider credentials, provider-responsible crew compensation, provider-only settlements, and migration-backed financial integrity.
 
 ## Agent Role
 
 Engineer
 
-## Branch Name
+## Branch And Commit
 
-main
-
-## Worktree Path
-
-/Users/patrickkopps/Documents/app
-
-## Current Commit
-
-87724d9e1b5bd41e5c39641d9f328c6c37274658 (working tree changes are intentionally uncommitted)
+- Branch: `codex/property-photos-launch-reliability`
+- Baseline commit: `c11ee84aa28ad7326a4c6fe11a0319070c12781f`
+- State: this status is included in the milestone commit
 
 ## Last Updated
 
-2026-07-22 23:52 EDT
+2026-08-03 EDT
 
 ## Completed Since Previous Checkpoint
 
-- Added provider and crew before/after evidence capture to the authenticated web dashboards and enforced the backend evidence gates before start/complete actions become available.
-- Verified provider signup, profile/categories/service radius/staffing settings, ops approval checklist, empty management state, booking confirmation and decline, route start, work start, evidence, and completion.
-- Verified crew recommendation, signup, profile/preferences, accepted assignment, schedule and desktop directions, support, field evidence, work start, completed history, and payout visibility.
-- Added an authenticated ops automation control with dry-run default, actor-stamped invocation history, per-sweep results, and failure counts.
-- Expanded the ops payout board to expose payout preview batches, blockers, manual-disbursement controls, and existing manual run history without implying money moved when no payable batch exists.
-- Verified ops provider approval, support triage, launch-lead creation, payout visibility, automation execution/history, and provider-role denial.
-- Fixed provider mobile header overflow, shrinkable dashboard grids, desktop crew directions visibility, and clipped timeline status labels.
-- Fixed pseudo-localization so ICU variables/plurals remain valid and added regression tests for plural and year interpolation.
-- Kept the completed recommendation-first customer flow in the full suite and made its localized login and screenshot steps stable in the remote runner.
-- Added deterministic, sequential Playwright execution for the shared in-memory API.
-- Verified local Stripe test-mode Checkout capture end to end with YardMatch API in in-memory mode: disposable customer/provider booking -> provider confirmation -> hosted Checkout -> `4242` test-card payment -> YardMatch finalize -> captured payment record.
-- Fixed Stripe hosted Checkout success/cancel return URL generation so the `{CHECKOUT_SESSION_ID}` macro reaches Stripe unescaped.
-- Made checkout finalization idempotent when the Stripe webhook captures payment before the browser success redirect returns.
-- Added a crew public-opportunity claim path after signup, while keeping stable role/API contracts and matching the selected opening's actual service day in the signup handoff.
-- Seeded in-memory providers now support local password login with `YardMatch123!` for deterministic Stripe/provider workflow testing.
+- Added labeled customer pre-service property photos on web and mobile, assigned-provider visibility, separate provider/crew operational proof, customer before/after history, explicit revocable marketing consent, and a privacy-safe verified-provider homepage trust gallery.
+- Updated API and browser fixtures to create and verify business registration, liability insurance, and workers-compensation credentials before provider approval or crew engagement.
+- Reconciled crew-facing history with the launch responsibility model: completed assignments, provider breadth, attendance, and proof remain visible, while YardMatch wage balances and crew transfers remain absent.
+- Replaced provider and ops crew-reserve/payout language with explicit provider-business compensation responsibility and a zero crew-transfer exposure control.
+- Hardened disbursement previews so provider batches are the only reviewable batches; any legacy crew batch is blocked by policy.
+- Updated API docs, English/Spanish copy, README, roadmap, and launch checklist to describe provider-only settlements consistently.
+- Added the missing Prisma migration for launch leads, internal access/authentication audit fields, and public review-response workflow fields. All 31 migrations now apply cleanly and the live schema diff is empty.
+- Restored the full API and browser regression suites to green, including the PostgreSQL concurrency and balanced-ledger integration test.
 
 ## Currently In Progress
 
-- None for this goal; implementation, functional verification, and visual QA are complete pending independent review.
+- None for this batch; implementation and local verification are complete pending independent review.
 
 ## Remaining Work
 
-- Live Stripe credentials, provider payout transfer, and production vendor signals still require production-like accounts; local Stripe test-mode hosted Checkout customer capture is now verified.
-- A payable in-memory batch was not fabricated merely to make a manual-disbursement screenshot; the UI safely shows its preview, blockers, and run history for the available backend state.
+- Run and archive the PostgreSQL migration/integration job in CI before production deployment.
+- Complete Stripe Connect Accounts v2 provider onboarding and provider-only transfer validation in development and staging with live test credentials.
+- Move photo data URLs to production object storage/CDN with scanning, retention/deletion controls, and moderation.
+- Complete legal/content review of provider agreements, crew-responsibility language, credential requirements, and photo marketing consent.
 
 ## Blockers
 
-- None for the deterministic in-memory launch workflows.
-- External payment and payout-rail validation is blocked on vendor credentials, outside this frontend goal.
-
-## Decisions Needed
-
-- None.
+- No local engineering blocker.
+- Stripe staging credentials/accounts and launch counsel approval are external dependencies.
 
 ## Routes Or Workflows Changed
 
-- `/auth/provider/create` -> `/provider/management`: onboarding, verification readiness, profile/settings, and first-job lifecycle.
-- `/crew` -> `/auth/crew` -> `/crew` -> `/crew/schedule` -> `/crew/schedule/history`: managed staffing, selected public-opening claim, assignment, field proof, support, and payout state.
-- `/ops`: verification queue, support queue, launch leads, payout preview/manual records, automation runner/history, and role gate.
-- `/es/...` and `/pseudo/...`: provider, crew, ops, and customer workflow localization/overflow checks.
-- Stripe hosted Checkout success return: customer payment can complete from Stripe UI back into YardMatch payment confirmation after webhook-first capture.
+- Customer booking -> private labeled property photos -> assigned provider context.
+- Provider/crew field work -> separate before/after operational evidence -> customer service history.
+- Customer completed service -> grant, deny, or revoke public photo use -> privacy-safe homepage trust asset.
+- Provider onboarding/staffing -> verified business, liability, and workers-comp credentials before approval and crew engagement.
+- Crew history/mobile account -> assignment, attendance, evidence, and provider-managed compensation guidance without a YardMatch wage ledger.
+- Provider payments and ops payouts -> versioned provider settlements only; crew-transfer exposure must remain zero.
+- PostgreSQL deploy -> 31 committed migrations with no Prisma schema drift.
 
-## Files Or Components Changed
+## Validation Results
 
-- Workflow UI: `ProviderLiveManagementBoard.tsx`, `CrewLiveDashboard.tsx`, `OpsDashboardClient.tsx`, `OpsAutomationBoard.tsx`, `OpsPayoutRunBoard.tsx`, and `globals.css`.
-- Customer carryover: `AccountSignupForm.tsx`, `PublicMarketplaceSearchShell.tsx`, and `redirects.ts`.
-- Backend payments/staffing: `MarketplacePlatformService.ts`, `StripeCheckoutService.ts`, `MarketplaceController.ts`, and in-memory provider seed auth.
-- Shared contracts: crew opportunity claim route, request type, and client method.
-- Localization: English/Spanish locale files, the pseudo-localizer, and i18n unit tests.
-- Browser coverage: customer, provider onboarding, provider lifecycle, crew assignment, ops workspace, i18n workflow specs, shared helpers, and sequential Playwright configuration.
-- Evidence/status: engineer and UX status/checkpoint files plus responsive PNG evidence.
-
-## Validation Commands Run
-
-- `npx playwright test tests/web/customer-booking-golden-path.spec.ts tests/web/provider-onboarding-flow.spec.ts tests/web/provider-job-lifecycle.spec.ts tests/web/crew-assignment-flow.spec.ts tests/web/ops-workspace-flow.spec.ts tests/web/i18n-workflow.spec.ts --config=playwright.config.ts --workers=1`: passed, 9/9.
-- `npx playwright test tests/web/customer-booking-golden-path.spec.ts tests/web/i18n-workflow.spec.ts --config=playwright.config.ts --grep "spanish"`: passed, 2/2 after keyboard-stable login submission.
-- `npx playwright test tests/web/crew-assignment-flow.spec.ts --config=playwright.config.ts`: passed, 1/1 after selected-opening day handoff fix.
-- `npm run test:web:smoke`: passed, 15/15 in 41.1 seconds.
 - `npm run typecheck`: passed.
-- `npm run test:api`: passed, 215/215.
-- `npm run i18n:validate`: passed, 3,438 keys across English, Spanish, and pseudo.
-- `npm test --workspace=@yardmatch/i18n`: passed, 4/4.
+- `npm run i18n:validate`: passed, 3,522 keys across English, Spanish, and pseudo.
+- `TEST_DATABASE_URL=... npm run test:api`: 229 passed, 0 failed, 0 skipped.
+- `npm run test:web:smoke`: 15 passed, 0 failed.
+- Focused provider-payments and ops policy browser regressions after adding final assertions: 3 passed.
+- Prisma migrate deploy: passed; 31 migrations applied locally.
+- Prisma migrate diff against the local PostgreSQL database: empty.
+- Customer, provider, and crew iOS Expo exports: passed across the combined milestone.
+- Responsive browser evidence: passed at 1440x900 and 390x844 for photo history/trust, crew assignment history, provider compensation responsibility, and ops controls.
 - `git diff --check`: passed.
-- Local Stripe hosted UI smoke: passed. YardMatch created a disposable confirmed booking, sent the customer through hosted Checkout with the Stripe test card, accepted the webhook-first capture, finalized the success redirect, and displayed a captured payment state. Secrets and bearer tokens were not printed.
-
-## Test/Build/Lint/Type-Check Results
-
-- All required web, API, TypeScript, locale, i18n unit, and whitespace checks passed.
-
-## Browser Workflows Checked
-
-- Desktop 1440x900 and mobile 390x844: provider verification and in-progress first job, accepted crew assignment and payout history, ops automation audit, Spanish ops, and pseudo-expanded crew signup.
-- No horizontal overflow, clipped status text, hidden primary action, overlapping control, or tested dead end remains in those states.
 
 ## Screenshot Paths
 
-- `reports/agent-checkpoints/engineer/latest/provider-onboarding-verified-{desktop,mobile}.png`
-- `reports/agent-checkpoints/engineer/latest/provider-job-in-progress-{desktop,mobile}.png`
-- `reports/agent-checkpoints/engineer/latest/crew-assignment-accepted-{desktop,mobile}.png`
-- `reports/agent-checkpoints/engineer/latest/crew-payout-history-{desktop,mobile}.png`
-- `reports/agent-checkpoints/engineer/latest/ops-workspace-{desktop,mobile}.png`
-- `reports/agent-checkpoints/engineer/latest/i18n-spanish-ops-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/i18n-pseudo-crew-{desktop,mobile}.png`
-- `reports/agent-checkpoints/engineer/latest/stripe-checkout-submit-ready.png`
-- `reports/agent-checkpoints/engineer/latest/stripe-checkout-submit-after.png`
-- `reports/agent-checkpoints/engineer/latest/stripe-ui-return-before-checkout.png`
-- `reports/agent-checkpoints/engineer/latest/stripe-ui-return-checkout-ready.png`
-- `reports/agent-checkpoints/engineer/latest/stripe-ui-return-captured-{desktop,mobile}.png`
+- `reports/agent-checkpoints/engineer/latest/photo-proof-home-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/photo-proof-home-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/photo-history-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/photo-history-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/crew-assignment-history-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/crew-assignment-history-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/provider-payments-responsibility-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/provider-payments-responsibility-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/ops-workspace-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/ops-workspace-mobile.png`
 
 ## Known Defects
 
-- Live Stripe checkout credentials, payout transfer execution, and live vendor callbacks remain unverified without production credentials. Local Stripe test-mode hosted Checkout capture is verified.
-- Non-blocking development warnings remain for Next.js middleware deprecation and its smooth-scroll route-transition advisory.
+- Photo evidence still uses bounded, compressed data URLs in booking records; production scale requires external media storage.
+- The legacy `/api/payouts/crew` contract retains zero-valued monetary fields for compatibility even though the product no longer presents a YardMatch crew payout ledger.
 
 ## Recommended Next Task
 
-Build the payout cutover slice: captured customer payment -> provider and crew payable states -> transfer failure/retry UX -> customer live arrival tracking, with staging/live credential evidence.
+Archive the green PostgreSQL job in CI, then validate Stripe Connect Accounts v2 provider onboarding and provider-only transfers in staging with real test credentials.

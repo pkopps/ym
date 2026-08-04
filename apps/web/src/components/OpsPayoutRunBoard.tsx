@@ -27,6 +27,9 @@ export function OpsPayoutRunBoard() {
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
+  const crewTransferRecordCount =
+    (preview?.disbursementBatches.filter((batch) => batch.recipientRole === "crew-member").length ?? 0) +
+    runs.filter((run) => run.recipientRole === "crew-member").length;
 
   async function loadBoard() {
     const api = createAuthenticatedWebApiClient();
@@ -83,8 +86,8 @@ export function OpsPayoutRunBoard() {
               <p>{i18n.t("ops_auto.ops_payout_run_board.provider_net_ready_now_xloywp")}</p>
             </article>
             <article className="card">
-              <h2>{formatCurrency(preview.totalCrewReadyCents)}</h2>
-              <p>{i18n.t("ops_auto.ops_payout_run_board.crew_share_ready_now_si3gah")}</p>
+              <h2>{crewTransferRecordCount}</h2>
+              <p>{i18n.t("ops_payout.policy.crew_transfer_records")}</p>
             </article>
             <article className="card">
               <h2>{preview.providerInstantEligibleCount}</h2>
@@ -102,8 +105,8 @@ export function OpsPayoutRunBoard() {
               <p>{i18n.t("ops_auto.ops_payout_run_board.payout_entries_on_hold_fyfix6")}</p>
             </article>
             <article className="card">
-              <h2>{formatDateTime(preview.crewNextWeeklyPayoutDateIso)}</h2>
-              <p>{i18n.t("ops_auto.ops_payout_run_board.next_crew_payout_run_8lryub")}</p>
+              <h2>{i18n.t("ops_payout.policy.provider_business")}</h2>
+              <p>{i18n.t("ops_payout.policy.compensation_owner")}</p>
             </article>
           </div>
 
@@ -118,7 +121,7 @@ export function OpsPayoutRunBoard() {
                   </div>
                   <span className="result-badge">{formatCurrency(run.providerNetCents)}</span>
                 </div>
-                <p>{i18n.t("ops_auto.ops_payout_run_board.crew_share_in_the_same_run_42858h")} {formatCurrency(run.crewShareCents)}</p>
+                <p>{i18n.t("ops_payout.policy.provider_settlement_only")}</p>
               </article>
             ))}
             {preview.providerRuns.length === 0 ? <p>{i18n.t("ops_auto.ops_payout_run_board.no_provider_payout_runs_are_ready_yet_ng3sil")}</p> : null}
@@ -129,7 +132,9 @@ export function OpsPayoutRunBoard() {
             <p>{i18n.t("ops_payout.preview.body")}</p>
             {preview.disbursementBatches.length === 0 ? <p>{i18n.t("ops_payout.preview.empty")}</p> : null}
             {preview.disbursementBatches.map((batch) => {
-              const canCreateRecord = batch.actionStatus === "ready-for-manual-review" && batch.entryCount > 0;
+              const isProviderBatch = batch.recipientRole === "provider";
+              const canCreateRecord =
+                isProviderBatch && batch.actionStatus === "ready-for-manual-review" && batch.entryCount > 0;
               return (
                 <article className="list-panel" key={batch.id}>
                   <div className="search-result-title">
@@ -141,6 +146,7 @@ export function OpsPayoutRunBoard() {
                   </div>
                   <p>{batch.manualActionLabel}</p>
                   <p>{formatCurrency(batch.totalCents)} • {batch.recipientCount} {i18n.t("ops_payout.recipients")}</p>
+                  {!isProviderBatch ? <p className="warning-copy">{i18n.t("ops_payout.policy.legacy_crew_blocked")}</p> : null}
                   {batch.blockerReasons.map((reason) => <p className="warning-copy" key={reason}>{reason}</p>)}
                   <label className="form-field">
                     <span>{i18n.t("ops_payout.operator_notes")}</span>

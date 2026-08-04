@@ -1,18 +1,25 @@
 "use client";
 
-import { CrewPayoutLedgerEntry } from "@yardmatch/contracts";
+import { CrewMatchSummary } from "@yardmatch/contracts";
 import { addLocalePrefix } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+
+const completedBookingStatuses = new Set(["completed", "disputed", "refunded"]);
+
+function formatAssignmentStatus(status: CrewMatchSummary["bookingStatus"]) {
+  return status.replaceAll("-", " ");
+}
 
 export function CrewHistoryBoard() {
   const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
-  const [entries, setEntries] = useState<CrewPayoutLedgerEntry[]>([]);
+  const [assignments, setAssignments] = useState<CrewMatchSummary[]>([]);
 
   useEffect(() => {
     if (!sessionReady) {
@@ -29,11 +36,15 @@ export function CrewHistoryBoard() {
     void (async () => {
       try {
         const api = createAuthenticatedWebApiClient();
-        const ledger = await api.getCrewPayoutLedger();
-        setEntries(
-          ledger.entries
+        const response = await api.getCrewMatches();
+        setAssignments(
+          response.matches
+            .filter(
+              (match) =>
+                match.status === "accepted" && completedBookingStatuses.has(match.bookingStatus)
+            )
             .slice()
-            .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))
+            .sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso))
         );
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_history.load_error"));
@@ -41,13 +52,18 @@ export function CrewHistoryBoard() {
     })();
   }, [i18n, sessionReady, session?.role, session?.token]);
 
-  const paidEntries = useMemo(
-    () => entries.filter((entry) => entry.status === "paid"),
-    [entries]
+  const providerCount = useMemo(
+    () => new Set(assignments.map((assignment) => assignment.providerId)).size,
+    [assignments]
   );
-  const totalPaidCents = useMemo(
-    () => paidEntries.reduce((total, entry) => total + entry.amountCents, 0),
-    [paidEntries]
+  const evidenceCount = useMemo(
+    () =>
+      assignments.reduce(
+        (total, assignment) =>
+          total + assignment.beforeEvidenceCount + assignment.afterEvidenceCount,
+        0
+      ),
+    [assignments]
   );
 
   if (!sessionReady) {
@@ -83,49 +99,64 @@ export function CrewHistoryBoard() {
 
       <section className="grid-three">
         <article className="card">
-          <h2>{entries.length}</h2>
-          <p>{i18n.t("crew_history.metric.payout_records")}</p>
+          <h2>{assignments.length}</h2>
+          <p>{i18n.t("crew_history.metric.completed_assignments")}</p>
         </article>
         <article className="card">
-          <h2>{paidEntries.length}</h2>
-          <p>{i18n.t("crew_history.metric.paid_shifts")}</p>
+          <h2>{providerCount}</h2>
+          <p>{i18n.t("crew_history.metric.providers")}</p>
         </article>
         <article className="card">
-          <h2>{i18n.formatCurrency(totalPaidCents)}</h2>
-          <p>{i18n.t("crew_history.metric.total_paid")}</p>
+          <h2>{evidenceCount}</h2>
+          <p>{i18n.t("crew_history.metric.evidence_items")}</p>
         </article>
       </section>
 
-      {entries.length === 0 ? (
+      {assignments.length === 0 ? (
         <section className="card">
           <h2>{i18n.t("crew_history.empty.title")}</h2>
           <p>{i18n.t("crew_history.empty.body")}</p>
         </section>
       ) : (
         <section className="stack-lg">
-          {entries.map((entry) => (
-            <article className="history-card" key={entry.id}>
+          {assignments.map((assignment) => (
+            <article className="history-card" key={assignment.id}>
               <div className="history-card__header">
                 <div>
-                  <span className="eyebrow">{entry.serviceLabel}</span>
-                  <h2>{entry.providerCompanyName}</h2>
+                  <span className="eyebrow">
+                    {i18n.t(serviceCategoryToI18nKey(assignment.category))}
+                  </span>
+                  <h2>{assignment.providerCompanyName}</h2>
                 </div>
-                <strong>{i18n.formatCurrency(entry.amountCents)}</strong>
+                <strong>{formatAssignmentStatus(assignment.bookingStatus)}</strong>
               </div>
               <div className="history-card__grid">
                 <div>
                   <h3>{i18n.t("crew_history.service_date")}</h3>
-                  <p>{i18n.formatDate(entry.serviceDateIso, { dateStyle: "medium", timeStyle: "short" })}</p>
-                  <p>{entry.bookingId}</p>
+                  <p>
+                    {i18n.formatDate(assignment.scheduledStartIso, {
+                      dateStyle: "medium",
+                      timeStyle: "short"
+                    })}
+                  </p>
                 </div>
                 <div>
                   <h3>{i18n.t("common.label.address")}</h3>
-                  <p>{entry.addressLine}</p>
+                  <p>{assignment.serviceAddress.line1}</p>
+                  <p>
+                    {assignment.serviceAddress.city}, {assignment.serviceAddress.state}{" "}
+                    {assignment.serviceAddress.postalCode}
+                  </p>
                 </div>
                 <div>
-                  <h3>{i18n.t("crew_history.payout")}</h3>
-                  <p>{entry.status.replaceAll("-", " ")}</p>
-                  <p>{entry.note}</p>
+                  <h3>{i18n.t("crew_history.work_record")}</h3>
+                  <p>
+                    {i18n.t("crew_history.evidence_summary", {
+                      after: assignment.afterEvidenceCount,
+                      before: assignment.beforeEvidenceCount
+                    })}
+                  </p>
+                  <p>{i18n.t("crew_history.compensation.provider_responsible")}</p>
                 </div>
               </div>
             </article>

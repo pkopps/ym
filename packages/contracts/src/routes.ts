@@ -74,6 +74,7 @@ export class ApiRoutes {
   public static readonly markBookingLate = "/api/bookings/late";
   public static readonly markBookingException = "/api/bookings/exception";
   public static readonly addBookingEvidence = "/api/bookings/evidence";
+  public static readonly updateBookingPhotoMarketingUse = "/api/bookings/photo-marketing-use";
   public static readonly createBookingDispute = "/api/bookings/dispute";
   public static readonly bookingTracking = "/api/bookings/tracking";
   public static readonly updateBookingAddress = "/api/bookings/address";

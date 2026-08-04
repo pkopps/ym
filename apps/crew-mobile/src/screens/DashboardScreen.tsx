@@ -12,21 +12,12 @@ import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
 type CrewAssignment = CrewMatchesResponse["matches"][number];
-type CrewPayoutEntry = CrewPayoutLedgerResponse["entries"][number];
 type CrewPrimaryAction = "start-route" | "start-work" | "proof";
-type CrewPayoutActionTone = "success" | "warning" | "neutral";
 type ShiftStepStatus = "complete" | "current" | "pending";
 
 interface CrewNextStep {
   detail: string;
   label: string;
-}
-
-interface CrewPayoutActionItem {
-  detail: string;
-  label: string;
-  tone: CrewPayoutActionTone;
-  value: string;
 }
 
 const bookingStatusLabelKeys: Record<BookingStatus, TranslationKey> = {
@@ -50,141 +41,6 @@ function formatHourlyPay(i18n: I18nInstance, cents: number) {
   return i18n.t("provider_mobile.clients.hourly_rate", {
     rate: i18n.formatCurrency(cents)
   });
-}
-
-function formatCurrency(i18n: I18nInstance, cents: number) {
-  return i18n.formatCurrency(cents);
-}
-
-function formatPayoutDate(i18n: I18nInstance, iso?: string) {
-  if (!iso) {
-    return i18n.t("provider_mobile.dashboard.pending");
-  }
-
-  return i18n.formatDate(iso, { month: "short", day: "numeric" });
-}
-
-function formatPayoutStatus(i18n: I18nInstance, status: CrewPayoutEntry["status"]) {
-  switch (status) {
-    case "awaiting-customer-payment":
-      return i18n.t("provider_mobile.dashboard.payout.awaiting_payment");
-    case "on-hold":
-      return i18n.t("provider_mobile.dashboard.payout.on_hold");
-    case "scheduled":
-      return i18n.t("provider_mobile.dashboard.payout.scheduled");
-    case "ready":
-      return i18n.t("provider_mobile.dashboard.payout.ready");
-    case "paid":
-      return i18n.t("provider_mobile.dashboard.payout.paid");
-    case "reversed":
-      return i18n.t("provider_mobile.dashboard.payout.reversed");
-  }
-}
-
-function formatHoldPeriod(i18n: I18nInstance, hours: number) {
-  if (hours < 24) {
-    return i18n.t("provider_mobile.dashboard.hold_hours", { count: hours });
-  }
-
-  const days = Math.round(hours / 24);
-  return i18n.t("provider_mobile.dashboard.hold_days", { count: days });
-}
-
-function getCrewPayoutFocus(
-  i18n: I18nInstance,
-  payoutLedger: CrewPayoutLedgerResponse,
-  blockedPayoutCents: number
-) {
-  if (payoutLedger.totalReadyCents > 0) {
-    return {
-      amount: formatCurrency(i18n, payoutLedger.totalReadyCents),
-      detail: i18n.t("provider_mobile.dashboard.payout.pays_date", {
-        date: formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)
-      }),
-      label: i18n.t("provider_mobile.dashboard.payout.ready")
-    };
-  }
-
-  if (payoutLedger.totalScheduledCents > 0) {
-    return {
-      amount: formatCurrency(i18n, payoutLedger.totalScheduledCents),
-      detail: i18n.t("provider_mobile.dashboard.payout.next_payout", {
-        date: formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)
-      }),
-      label: i18n.t("provider_mobile.dashboard.payout.scheduled")
-    };
-  }
-
-  if (blockedPayoutCents > 0) {
-    return {
-      amount: formatCurrency(i18n, blockedPayoutCents),
-      detail: i18n.t("provider_mobile.dashboard.payout.blocked_detail"),
-      label: i18n.t("provider_mobile.dashboard.payout.waiting")
-    };
-  }
-
-  return {
-    amount: formatCurrency(i18n, 0),
-    detail: i18n.t("crew_mobile.dashboard.payout.completed_shifts_here"),
-    label: i18n.t("provider_mobile.dashboard.payout.no_payout")
-  };
-}
-
-function getCrewPayoutActionItems(
-  i18n: I18nInstance,
-  payoutLedger: CrewPayoutLedgerResponse,
-  heldPayoutEntries: CrewPayoutEntry[]
-): CrewPayoutActionItem[] {
-  const items: CrewPayoutActionItem[] = [];
-
-  if (payoutLedger.totalReadyCents > 0) {
-    items.push({
-      detail: i18n.t("provider_mobile.dashboard.payout.pays_date", {
-        date: formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)
-      }),
-      label: i18n.t("provider_mobile.dashboard.payout.ready"),
-      tone: "success",
-      value: formatCurrency(i18n, payoutLedger.totalReadyCents)
-    });
-  }
-
-  if (payoutLedger.totalScheduledCents > 0) {
-    items.push({
-      detail: formatHoldPeriod(i18n, payoutLedger.holdPeriodHours),
-      label: i18n.t("provider_mobile.dashboard.payout.clearing"),
-      tone: "neutral",
-      value: formatCurrency(i18n, payoutLedger.totalScheduledCents)
-    });
-  }
-
-  if (payoutLedger.pendingCustomerPaymentCents > 0) {
-    items.push({
-      detail: i18n.t("provider_mobile.dashboard.payout.customer_checkout"),
-      label: i18n.t("provider_mobile.dashboard.payout.waiting"),
-      tone: "warning",
-      value: formatCurrency(i18n, payoutLedger.pendingCustomerPaymentCents)
-    });
-  }
-
-  if (heldPayoutEntries.length > 0) {
-    items.push({
-      detail: i18n.t("provider_mobile.dashboard.payout.hold_count", { count: heldPayoutEntries.length }),
-      label: i18n.t("provider_mobile.dashboard.payout.on_hold"),
-      tone: "warning",
-      value: formatCurrency(i18n, heldPayoutEntries.reduce((sum, entry) => sum + entry.amountCents, 0))
-    });
-  }
-
-  if (items.length === 0) {
-    items.push({
-      detail: i18n.t("crew_mobile.dashboard.payout.complete_shift"),
-      label: i18n.t("provider_mobile.schedule.summary.next"),
-      tone: "neutral",
-      value: formatCurrency(i18n, 0)
-    });
-  }
-
-  return items.slice(0, 4);
 }
 
 function getCrewRoleLabel(i18n: I18nInstance, assignment: CrewAssignment) {
@@ -237,18 +93,8 @@ function formatServiceCategory(i18n: I18nInstance, category: ServiceCategory) {
 
 function getCrewNextStep(
   i18n: I18nInstance,
-  assignment: CrewAssignment,
-  payoutEntry?: CrewPayoutEntry
+  assignment: CrewAssignment
 ): CrewNextStep {
-  if (payoutEntry) {
-    return {
-      detail: i18n.t("crew_mobile.dashboard.next_step.payout_status", {
-        status: formatPayoutStatus(i18n, payoutEntry.status).toLowerCase()
-      }),
-      label: i18n.t("crew_mobile.dashboard.pay")
-    };
-  }
-
   if (assignment.bookingStatus === "completed") {
     return {
       detail: i18n.t("crew_mobile.dashboard.next_step.payout_processing_detail"),
@@ -317,50 +163,24 @@ export function DashboardScreen({
     () => matchesResponse?.matches.find((match) => match.status === "accepted"),
     [matchesResponse]
   );
-  const acceptedPayoutEntry = useMemo(
-    () =>
-      acceptedMatch
-        ? payoutLedger?.entries.find((entry) => entry.bookingId === acceptedMatch.bookingId)
-        : undefined,
-    [acceptedMatch, payoutLedger]
-  );
   const acceptedPrimaryAction = acceptedMatch ? getCrewPrimaryAction(acceptedMatch) : undefined;
-  const acceptedNextStep = acceptedMatch ? getCrewNextStep(i18n, acceptedMatch, acceptedPayoutEntry) : undefined;
+  const acceptedNextStep = acceptedMatch ? getCrewNextStep(i18n, acceptedMatch) : undefined;
   const shouldShowArrivalProof =
     acceptedMatch?.bookingStatus === "confirmed" && Boolean(acceptedMatch.onRouteConfirmedAt);
   const shouldShowCompletionProof = acceptedMatch?.bookingStatus === "in-progress";
   const canManageProof = shouldShowArrivalProof || shouldShowCompletionProof;
   const pendingCount = matchesResponse?.matches.filter((match) => match.status === "pending-provider-review").length ?? 0;
   const acceptedCount = matchesResponse?.matches.filter((match) => match.status === "accepted").length ?? 0;
-  const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
-  const blockedPayoutCents =
-    (payoutLedger?.pendingCustomerPaymentCents ?? 0) +
-    heldPayoutEntries.reduce((sum, entry) => sum + entry.amountCents, 0);
-  const shouldShowPayouts =
-    Boolean(payoutLedger) &&
-    ((payoutLedger?.entries.length ?? 0) > 0 ||
-      (payoutLedger?.totalReadyCents ?? 0) > 0 ||
-      (payoutLedger?.totalScheduledCents ?? 0) > 0 ||
-      (payoutLedger?.totalPaidCents ?? 0) > 0 ||
-      (payoutLedger?.pendingCustomerPaymentCents ?? 0) > 0);
-  const payoutFocus = payoutLedger ? getCrewPayoutFocus(i18n, payoutLedger, blockedPayoutCents) : undefined;
-  const payoutActionItems = payoutLedger ? getCrewPayoutActionItems(i18n, payoutLedger, heldPayoutEntries) : [];
-  const payoutRecentEntries = (payoutLedger?.entries ?? [])
-    .slice()
-    .sort((left, right) => right.serviceDateIso.localeCompare(left.serviceDateIso))
-    .slice(0, 2);
   const activeShiftStepIndex =
-    acceptedPayoutEntry?.status === "paid"
-      ? 5
-      : acceptedMatch?.bookingStatus === "completed"
-        ? 4
-        : acceptedMatch?.bookingStatus === "in-progress"
-          ? 3
-          : acceptedMatch?.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt
-            ? 2
-            : acceptedMatch?.bookingStatus === "confirmed"
-              ? 1
-              : 0;
+    acceptedMatch?.bookingStatus === "completed"
+      ? 4
+      : acceptedMatch?.bookingStatus === "in-progress"
+        ? 3
+        : acceptedMatch?.bookingStatus === "confirmed" && acceptedMatch.onRouteConfirmedAt
+          ? 2
+          : acceptedMatch?.bookingStatus === "confirmed"
+            ? 1
+            : 0;
   const shiftSteps = [
     {
       label: i18n.t("crew_mobile.dashboard.step.accepted"),
@@ -386,10 +206,9 @@ export function DashboardScreen({
         : i18n.t("crew_mobile.dashboard.step.photos")
     },
     {
-      label: i18n.t("crew_mobile.dashboard.pay"),
-      value: acceptedPayoutEntry
-        ? formatPayoutStatus(i18n, acceptedPayoutEntry.status)
-        : acceptedMatch?.bookingStatus === "completed"
+      label: i18n.t("crew_mobile.compensation.work_record"),
+      value:
+        acceptedMatch?.bookingStatus === "completed"
           ? i18n.t("crew_mobile.dashboard.step.processing")
           : i18n.t("crew_mobile.dashboard.step.after_proof")
     }
@@ -868,88 +687,32 @@ export function DashboardScreen({
         </InfoCard>
       )}
 
-      {shouldShowPayouts && payoutLedger ? (
+      {payoutLedger ? (
         <InfoCard
-          title={i18n.t("crew_mobile.dashboard.pay")}
-          description={
-            blockedPayoutCents > 0
-              ? i18n.t("provider_mobile.dashboard.payout.waiting_amount", {
-                  amount: formatCurrency(i18n, blockedPayoutCents)
-                })
-              : i18n.t("provider_mobile.dashboard.payout.ready_amount", {
-                  amount: formatCurrency(i18n, payoutLedger.totalReadyCents)
-                })
-          }
+          title={i18n.t("crew_mobile.compensation.title")}
+          description={i18n.t("crew_mobile.compensation.description")}
         >
-          {payoutFocus ? (
-            <View style={styles.payoutFocusCard}>
-              <View style={styles.payoutFocusCopy}>
-                <Text style={styles.payoutFocusLabel}>{payoutFocus.label}</Text>
-                <Text style={styles.payoutFocusDetail}>{payoutFocus.detail}</Text>
-              </View>
-              <Text style={styles.payoutFocusAmount}>{payoutFocus.amount}</Text>
-            </View>
-          ) : null}
           <View style={styles.shiftSummaryGrid}>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.ready")}</Text>
-              <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, payoutLedger.totalReadyCents)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("crew_mobile.compensation.completed")}</Text>
+              <Text style={styles.shiftSummaryValue}>{payoutLedger.attendanceSummary.completedAssignmentCount}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.next")}</Text>
-              <Text style={styles.shiftSummaryValue}>{formatPayoutDate(i18n, payoutLedger.nextWeeklyPayoutDateIso)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("crew_mobile.compensation.attendance")}</Text>
+              <Text style={styles.shiftSummaryValue}>{Math.round(payoutLedger.attendanceSummary.attendanceRate * 100)}%</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.scheduled")}</Text>
-              <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, payoutLedger.totalScheduledCents)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("crew_mobile.compensation.evidence")}</Text>
+              <Text style={styles.shiftSummaryValue}>{payoutLedger.performanceSummary.evidenceContributionCount}</Text>
             </View>
             <View style={styles.shiftSummaryItem}>
-              <Text style={styles.shiftSummaryLabel}>{i18n.t("provider_mobile.dashboard.payout.paid")}</Text>
-              <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, payoutLedger.totalPaidCents)}</Text>
+              <Text style={styles.shiftSummaryLabel}>{i18n.t("crew_mobile.compensation.providers")}</Text>
+              <Text style={styles.shiftSummaryValue}>{payoutLedger.performanceSummary.providerCount}</Text>
             </View>
           </View>
-          <View style={styles.payoutActionGrid}>
-            {payoutActionItems.map((item) => (
-              <View
-                key={`${item.label}-${item.value}`}
-                style={[
-                  styles.payoutActionItem,
-                  item.tone === "success"
-                    ? styles.payoutActionItemSuccess
-                    : item.tone === "warning"
-                      ? styles.payoutActionItemWarning
-                      : styles.payoutActionItemNeutral
-                ]}
-              >
-                <Text style={styles.payoutActionLabel}>{item.label}</Text>
-                <Text style={styles.payoutActionValue}>{item.value}</Text>
-                <Text style={styles.payoutActionDetail}>{item.detail}</Text>
-              </View>
-            ))}
-          </View>
-          {payoutRecentEntries.length > 0 ? (
-            <View style={styles.payoutEntryList}>
-              {payoutRecentEntries.map((entry) => (
-                <View key={entry.id} style={styles.payoutEntryRow}>
-                  <View style={styles.payoutEntryCopy}>
-                    <Text style={styles.title}>{entry.providerCompanyName}</Text>
-                    <Text style={styles.meta}>
-                      {i18n.t("crew_mobile.dashboard.payout.entry_summary", {
-                        service: entry.serviceLabel,
-                        date: formatPayoutDate(i18n, entry.serviceDateIso)
-                      })}
-                    </Text>
-                  </View>
-                  <View style={styles.payoutEntryAmountBlock}>
-                    <Text style={styles.shiftSummaryValue}>{formatCurrency(i18n, entry.amountCents)}</Text>
-                    <Text style={styles.shiftSummaryLabel}>{formatPayoutStatus(i18n, entry.status)}</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ) : (
-            <Text style={styles.meta}>{i18n.t("crew_mobile.dashboard.payout.empty")}</Text>
-          )}
+          <Text style={styles.title}>{i18n.t("crew_mobile.compensation.provider_managed")}</Text>
+          <Text style={styles.meta}>{i18n.t("crew_mobile.compensation.no_transfer")}</Text>
+          <Text style={styles.meta}>{i18n.t("crew_mobile.compensation.confirm_terms")}</Text>
         </InfoCard>
       ) : null}
 

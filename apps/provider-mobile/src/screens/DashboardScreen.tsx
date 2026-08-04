@@ -464,8 +464,8 @@ export function DashboardScreen({
               <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, payoutLedger.totalNetScheduledCents)}</Text>
             </View>
             <View style={styles.jobSummaryItem}>
-              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew")}</Text>
-              <Text style={styles.jobSummaryValue}>{formatCurrency(i18n, payoutLedger.totalCrewOwedCents)}</Text>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.crew_compensation")}</Text>
+              <Text style={styles.jobSummaryValue}>{i18n.t("provider_mobile.dashboard.provider_managed")}</Text>
             </View>
           </View>
           <View style={styles.payoutActionGrid}>

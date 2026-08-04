@@ -11,10 +11,11 @@
 - [ ] Verify business registration and general liability insurance for every launch provider.
 - [ ] Verify workers-compensation coverage or a counsel-approved exemption before any provider engages crew through YardMatch.
 - [ ] Have New Jersey counsel approve the category credential matrix, including fertilization and weed-control/pesticide work.
+- [x] Apply all committed migrations locally, confirm an empty Prisma schema diff, and pass the PostgreSQL atomic-settlement/balanced-ledger integration test.
 - [ ] Run the PostgreSQL migration/integration CI job and archive its passing result before production deployment.
 - [ ] Confirm production startup fails without Postgres, strong JWT secret, live Stripe/webhook credentials, HTTPS URLs, and real email/SMS configuration.
 
-Last updated: June 17, 2026
+Last updated: August 3, 2026
 
 This is the working checklist for launch readiness beyond product code.
 
@@ -89,8 +90,8 @@ Current state:
 - provider profiles now expose backend-authored business controls, so provider owners and ops can see owner-only team access, provider-managed controls, ops-managed visibility controls, payout-sensitive re-auth requirements, and launch guardrails before deeper team permissions ship
 - authenticated users now receive a backend-authored sensitive-action policy from `/api/auth/me`, including the current provider payout-settings re-auth guard and contract-ready future guards for provider bank-account, provider payout-account, and customer payment-method changes
 - those proof sections now include recent completed-booking review snippets tied to verified providers plus coverage-pocket cards based on verified supply and completed jobs, not just aggregate counts
-- crew payout history now includes backend-authored earnings, attendance, and performance summaries, so crew can see completed assignment count, ready/scheduled/on-hold earnings, call-off history, attendance rate, reliability status, service follow-through, evidence contribution, route confirmation, and dispute/refund performance signals before external payout rails are enabled
-- ops payout preview now includes manual provider and crew disbursement batches with recipient ids, ledger entry ids, amounts, blocker reasons, and audit instructions so launch payouts can be reviewed consistently before external payout rails are selected
+- crew work history now includes backend-authored assignment, attendance, and performance summaries, so crew can see completed work, call-off history, attendance rate, reliability status, service follow-through, evidence contribution, route confirmation, provider breadth, and dispute/refund performance signals; crew compensation is explicitly provider-managed and excluded from YardMatch payout rails
+- ops payout preview now includes manual provider-only disbursement batches with recipient ids, ledger entry ids, amounts, blocker reasons, and audit instructions, plus an explicit zero crew-transfer exposure check
 - ops can now create idempotent manual payout disbursement run records from preview batches, preserving entry fingerprints, booking/payment/recipient references, operator notes, and reconciliation instructions before external payout rails are selected
 - crew match history now includes backend-authored availability constraints and assignment forecasts, so crew can see available/unavailable weekdays, travel radius, equipment and winter-work limits, active accepted load, upcoming accepted work, pending review opportunities, route-leader assignments, next scheduled assignment details, and workload warnings before launch volume scales
 - remaining gap: wire the live GBP/referral forwarders and an actual direct inbox relay to the inbound endpoints so fewer leads depend on manual entry
@@ -278,7 +279,7 @@ Current state:
 
 - backend place search now has local fallback seeds for Barnegat/Ocean County launch pockets, including Barnegat, Manahawkin, Waretown, Forked River, Toms River, and Long Beach Township, with exact town/ZIP/known alias matches eligible for auto-select while partial guesses still require customer confirmation
 - the ops overview now includes a backend-authored launch operations policy for coverage limits, low-supply recovery, weather and delay handling, no-shows, service-quality issues, completed-job disputes, evidence standards, intervention rules, escalation triggers, live pressure warnings, ZIP-level coverage pocket pressure summaries, and coverage action recommendations
-- completed paid dispute cancellations now require refund-review settlement first, so captured customer payment and provider/crew payout holds stay reconciled before ops closes a customer-favoring completed-job dispute
+- completed paid dispute cancellations now require refund-review settlement first, so captured customer payment and provider payout holds stay reconciled before ops closes a customer-favoring completed-job dispute
 - ops can now create or reuse auditable launch-operations task records from current coverage recommendations, assign them, update status, record operator/completion notes, run an idempotent due-task notification sweep, escalate overdue tasks with priority-based thresholds, and include launch-task sweeps in the broader backend ops-automation runner with actor-stamped run history
 - remaining gap: wire the backend runner into the chosen recurring scheduler and external ops workspace once the launch task handoff model is chosen
 

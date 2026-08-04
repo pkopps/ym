@@ -73,4 +73,10 @@ test("provider confirms, routes, proves, completes, and can decline a second req
   await declineJob.getByRole("button", { name: "Decline request" }).click();
   await expect(page.getByText("Booking declined. The customer can choose another qualified provider.")).toBeVisible();
   await expect(declineJob).toHaveCount(0);
+
+  await page.goto("/provider/payments");
+  const compensationPolicy = page.locator("article.card").filter({ hasText: "Managed by your business" });
+  await expect(compensationPolicy).toBeVisible();
+  await expect(page.getByText("No crew wages are deducted or disbursed by YardMatch.")).toBeVisible();
+  await captureResponsiveEvidence(page, "provider-payments-responsibility", compensationPolicy);
 });
