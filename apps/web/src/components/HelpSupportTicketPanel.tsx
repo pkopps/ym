@@ -128,7 +128,7 @@ export function HelpSupportTicketPanel() {
       setIsWorking(true);
       setSubmitError(undefined);
       const api = createAuthenticatedWebApiClient();
-      const ticket = await api.createSupportTicket({
+      await api.createSupportTicket({
         bookingId: selectedBookingId || undefined,
         issueType,
         subject: subject.trim(),

@@ -166,7 +166,7 @@ export function OpsSupportQueue() {
   function getEvidenceReviewDraft(ticketId: string, evidenceId: string) {
     return (
       evidenceReviewDrafts[`${ticketId}:${evidenceId}`] ?? {
-        reviewStatus: "inconclusive" as BookingEvidenceReviewStatus,
+        reviewStatus: "inconclusive",
         reviewNotes: ""
       }
     );

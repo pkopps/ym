@@ -446,6 +446,33 @@ export const apiSpec = {
         }
       }
     },
+    "/api/providers/connect/status": {
+      get: {
+        tags: ["Providers", "Payments"],
+        summary: "Get provider Stripe recipient readiness",
+        description:
+          "Returns the authenticated provider's Accounts v2 recipient state for Dashboard Express, fee collection by YardMatch, negative-balance liability by YardMatch, and separate charges and transfers. Stripe capability state is refreshed when configured. Crew members are never transfer recipients.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Provider recipient readiness returned" },
+          "401": { description: "Provider authentication required" }
+        }
+      }
+    },
+    "/api/providers/connect/onboarding": {
+      post: {
+        tags: ["Providers", "Payments"],
+        summary: "Start or continue provider Stripe recipient onboarding",
+        description:
+          "Creates at most one Accounts v2 recipient configuration for the authenticated provider and returns a hosted Dashboard Express onboarding link. A fresh provider session is required.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "Provider onboarding link returned" },
+          "401": { description: "Fresh provider authentication required" },
+          "503": { description: "Stripe Connect is not configured" }
+        }
+      }
+    },
     "/api/providers/public-overview": {
       get: {
         tags: ["Providers"],
@@ -1915,7 +1942,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Preview upcoming provider payout runs",
         description:
-          "Returns an internal operations view of payout-ready provider balances, upcoming grouped provider payout runs, provider entries that are still on hold or waiting on customer payment, backend-authored manual provider disbursement batches, and the policy that explicitly excludes crew compensation from YardMatch payout rails.",
+          "Returns an internal operations view of payout-ready provider balances, upcoming provider runs, holds, and backend-authored disbursement batches. When Stripe Connect is configured, each provider batch is independently gated by completed delivery, captured and fee-reconciled payment, elapsed hold, current credentials, approved provider verification, and active recipient transfer/payout capabilities. Crew compensation is always excluded.",
         responses: {
           "200": { description: "Ops payout preview returned" }
         }
@@ -1924,20 +1951,48 @@ export const apiSpec = {
     "/api/payouts/ops/disbursement-runs": {
       get: {
         tags: ["Payments"],
-        summary: "List recorded manual payout disbursement runs",
+        summary: "List audited provider payout runs and transfers",
         description:
-          "Returns ops-authenticated audit records created from provider payout preview batches. These records preserve the preview batch id, entry fingerprint, booking/payment/recipient references, operator notes, and manual reconciliation instructions while external provider payout rails are not yet enabled.",
+          "Returns ops-authenticated run records plus immutable provider transfer and reversal identifiers. Run records preserve the preview fingerprint, booking/payment/recipient references, operator notes, and current execution state.",
         responses: {
           "200": { description: "Recorded payout disbursement runs returned" }
         }
       },
       post: {
         tags: ["Payments"],
-        summary: "Create a manual payout disbursement run from a preview batch",
+        summary: "Create an audited payout disbursement run from a preview batch",
         description:
-          "Creates or reuses an ops-authenticated manual-review payout run for a current preview batch. The route is idempotent for the same preview batch and entry fingerprint, keeps stable payout entry ids unchanged, and does not initiate any external money movement.",
+          "Creates or reuses an ops-authenticated payout run for a current preview batch. Creation is idempotent for the same preview batch and entry fingerprint and never initiates money movement by itself.",
         responses: {
           "201": { description: "Payout disbursement run created or reused" }
+        }
+      }
+    },
+    "/api/payouts/ops/disbursement-runs/execute": {
+      post: {
+        tags: ["Payments"],
+        summary: "Execute a scheduled provider-only Stripe transfer run",
+        description:
+          "Requires a fresh ops-admin session, explicit confirmation, and operator notes. Revalidates every delivery, payment, settlement, hold, credential, provider, and Stripe recipient gate immediately before using separate charges and transfers. Transfer and reversal writes append balanced, idempotent ledger entries; no crew transfer can be created.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              example: {
+                runId: "payout_run_123",
+                confirmation: "execute-provider-transfers",
+                operatorNotes: "Revalidated delivery, credentials, payment, and recipient readiness."
+              }
+            }
+          }
+        },
+        responses: {
+          "200": { description: "Provider transfer run executed or idempotently reused" },
+          "401": { description: "Fresh ops authentication required" },
+          "403": { description: "Ops-admin scope required" },
+          "409": { description: "Run date or transfer readiness gate is not satisfied" },
+          "503": { description: "Stripe Connect is not configured" }
         }
       }
     },
@@ -1946,7 +2001,7 @@ export const apiSpec = {
         tags: ["Payments"],
         summary: "Receive Stripe webhook events",
         description:
-          "Server-to-server Stripe webhook endpoint. Requires Stripe signature verification and is intended for production payment settlement updates.",
+          "Server-to-server Stripe webhook endpoint. Requires Stripe signature verification, reconciles completed charge processing fees, marks refunds, opens Stripe disputes, and idempotently reverses any already-released provider transfer before the local refund/dispute state is finalized.",
         parameters: [
           {
             name: "Stripe-Signature",

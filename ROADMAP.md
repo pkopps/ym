@@ -41,8 +41,8 @@ The only default engineering priorities during the freeze are:
 2. Provider-responsible crew engagement, insurance, supervision, and compensation.
 3. Stripe Connect Accounts v2 recipient onboarding and provider-only transfers.
 4. Immutable, balanced, idempotent financial settlement records.
-5. PostgreSQL migration and repository integration tests in CI.
-6. Fail-closed production configuration and secret handling.
+5. Archive and review a green PostgreSQL migration, schema-drift, and repository-integration CI gate before production deployment.
+6. Independently verify the fail-closed production configuration and secret-handling gate in the deployment environment.
 7. Provider business, insurance, and category-specific credential enforcement.
 
 Exit criteria:
@@ -59,12 +59,11 @@ Exit criteria:
 
 ### Payments And Payouts
 
-- Complete Stripe Connect Accounts v2 recipient onboarding in development and staging using Express access, application-owned fees/losses, and separate charges and transfers.
-- Verify production-style Stripe webhook handling end to end with live credentials now that local webhook reconciliation covers checkout completion, expiry, payment failures, and refund events.
+- Activate Stripe Connect Accounts v2 in staging and production, archive the requested Express/application-owned configuration, and complete one real test-mode recipient onboarding now that the repository creates and reuses the approved provider account shape.
+- Verify production-style Stripe webhook handling end to end with live credentials now that local reconciliation covers checkout completion, expiry, payment failures, refunds, disputes, actual charge fees, provider-transfer reversal, and retry idempotency.
 - Use checkout start/capture/failure telemetry in ops while validating the live Stripe cutover so abandoned or expired payment sessions are visible without raw event digging.
-- Validate live Stripe refund synchronization in development and staging after ops approves a refund review.
-- Keep validating dispute-related settlement freezes now that disputed bookings block new payment attempts and hold captured provider settlements until support resolves them.
-- Turn the provider-only manual disbursement preview into Stripe transfers after settlement, credential, capability, dispute, and hold-period gates pass. YardMatch does not pay individual crew members at launch.
+- Validate a real test-mode provider transfer and refund reversal in staging after ops approves a refund review.
+- Validate a real test-mode dispute webhook and transfer reversal in staging; disputed bookings already block new payment attempts and hold unreleased settlements until support resolves them.
 
 ### Notification Delivery
 

@@ -57,6 +57,69 @@ function requireHttpsUrl(
   }
 }
 
+function requirePostgresUrl(
+  environment: RuntimeEnvironment,
+  problems: string[]
+): void {
+  const configured = requireValue(environment, "DATABASE_URL", problems);
+  if (!configured) {
+    return;
+  }
+
+  try {
+    const parsed = new URL(configured);
+    if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
+      problems.push("DATABASE_URL must use PostgreSQL in production.");
+    }
+    if (!parsed.hostname || parsed.pathname === "/" || parsed.pathname === "") {
+      problems.push("DATABASE_URL must identify a PostgreSQL host and database in production.");
+    }
+  } catch {
+    problems.push("DATABASE_URL must be a valid PostgreSQL URL in production.");
+  }
+}
+
+function requirePattern(
+  environment: RuntimeEnvironment,
+  key: string,
+  pattern: RegExp,
+  message: string,
+  problems: string[]
+): string {
+  const configured = requireValue(environment, key, problems);
+  if (configured && !pattern.test(configured)) {
+    problems.push(message);
+  }
+  return configured;
+}
+
+function requireProductionEmailFrom(
+  environment: RuntimeEnvironment,
+  problems: string[]
+): void {
+  const configured = requireValue(environment, "NOTIFICATION_EMAIL_FROM", problems);
+  if (!configured) {
+    return;
+  }
+
+  const angleBracketMatch = configured.match(/<([^<>]+)>$/);
+  const address = (angleBracketMatch?.[1] ?? configured).trim().toLowerCase();
+  const emailMatch = address.match(/^[^\s@]+@([^\s@]+\.[^\s@]+)$/);
+  const domain = emailMatch?.[1];
+  if (
+    !domain ||
+    domain === "example.com" ||
+    domain.endsWith(".example") ||
+    domain.endsWith(".invalid") ||
+    domain.endsWith(".test") ||
+    domain === "localhost"
+  ) {
+    problems.push(
+      "NOTIFICATION_EMAIL_FROM must use a valid production sender domain, not a placeholder domain."
+    );
+  }
+}
+
 /**
  * Prevents the API from silently launching with development storage, auth, payment,
  * or notification fallbacks. Local development intentionally remains permissive.
@@ -73,7 +136,7 @@ export function validateRuntimeConfiguration(
   }
 
   const problems: string[] = [];
-  requireValue(environment, "DATABASE_URL", problems);
+  requirePostgresUrl(environment, problems);
 
   const jwtSecret = requireValue(environment, "JWT_SECRET", problems);
   if (jwtSecret && (jwtSecret === DEVELOPMENT_JWT_SECRET || jwtSecret.length < 32)) {
@@ -84,16 +147,46 @@ export function validateRuntimeConfiguration(
   if (stripeKey && !stripeKey.startsWith("rk_live_") && !stripeKey.startsWith("sk_live_")) {
     problems.push("STRIPE_SECRET_KEY must be a live restricted or secret key in production.");
   }
-  requireValue(environment, "STRIPE_WEBHOOK_SECRET", problems);
+  requirePattern(
+    environment,
+    "STRIPE_WEBHOOK_SECRET",
+    /^whsec_[A-Za-z0-9]{16,}$/,
+    "STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret in production.",
+    problems
+  );
 
   requireHttpsUrl(environment, "APP_BASE_URL", problems);
   requireHttpsUrl(environment, "API_BASE_URL", problems);
 
-  requireValue(environment, "RESEND_API_KEY", problems);
-  requireValue(environment, "NOTIFICATION_EMAIL_FROM", problems);
-  requireValue(environment, "TWILIO_ACCOUNT_SID", problems);
-  requireValue(environment, "TWILIO_AUTH_TOKEN", problems);
-  requireValue(environment, "TWILIO_FROM_NUMBER", problems);
+  requirePattern(
+    environment,
+    "RESEND_API_KEY",
+    /^re_[A-Za-z0-9_-]{16,}$/,
+    "RESEND_API_KEY must be a production-shaped Resend API key.",
+    problems
+  );
+  requireProductionEmailFrom(environment, problems);
+  requirePattern(
+    environment,
+    "TWILIO_ACCOUNT_SID",
+    /^AC[a-fA-F0-9]{32}$/,
+    "TWILIO_ACCOUNT_SID must be a valid Twilio account SID.",
+    problems
+  );
+  requirePattern(
+    environment,
+    "TWILIO_AUTH_TOKEN",
+    /^[a-fA-F0-9]{32}$/,
+    "TWILIO_AUTH_TOKEN must be a production-shaped Twilio auth token.",
+    problems
+  );
+  requirePattern(
+    environment,
+    "TWILIO_FROM_NUMBER",
+    /^\+[1-9]\d{7,14}$/,
+    "TWILIO_FROM_NUMBER must be an approved E.164 sender number.",
+    problems
+  );
 
   if (problems.length > 0) {
     throw new Error(`Unsafe production configuration:\n- ${problems.join("\n- ")}`);

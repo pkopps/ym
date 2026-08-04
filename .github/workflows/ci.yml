@@ -8,7 +8,7 @@ on:
 
 jobs:
   checks:
-    name: Typecheck and API tests
+    name: Lint, typecheck, and API tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,6 +26,9 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -38,6 +41,7 @@ jobs:
   postgres-integration:
     name: Postgres migrations and repository integration
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -68,15 +72,37 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Prepare archived verification evidence
+        run: mkdir -p reports/ci/postgres-integration
+
       - name: Apply migrations to isolated test database
-        run: npm run prisma:deploy
+        run: npm run prisma:deploy 2>&1 | tee reports/ci/postgres-integration/migrate-deploy.log
+        env:
+          DATABASE_URL: postgresql://yardmatch:yardmatch_test@127.0.0.1:5432/yardmatch_test
+
+      - name: Confirm migration history is current
+        run: npx prisma migrate status --schema apps/api/prisma/schema.prisma 2>&1 | tee reports/ci/postgres-integration/migrate-status.log
+        env:
+          DATABASE_URL: postgresql://yardmatch:yardmatch_test@127.0.0.1:5432/yardmatch_test
+
+      - name: Reject Prisma schema drift outside migrations
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel apps/api/prisma/schema.prisma --exit-code 2>&1 | tee reports/ci/postgres-integration/schema-diff.log
         env:
           DATABASE_URL: postgresql://yardmatch:yardmatch_test@127.0.0.1:5432/yardmatch_test
 
       - name: Postgres repository integration tests
-        run: npm run test:api:postgres
+        run: npm run test:api:postgres 2>&1 | tee reports/ci/postgres-integration/repository-tests.log
         env:
           TEST_DATABASE_URL: postgresql://yardmatch:yardmatch_test@127.0.0.1:5432/yardmatch_test
+
+      - name: Archive Postgres launch-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-launch-gate-${{ github.sha }}
+          path: reports/ci/postgres-integration/
+          if-no-files-found: error
+          retention-days: 90
 
   web-smoke:
     name: Web smoke

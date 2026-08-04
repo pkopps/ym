@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Address, ServiceCategory, formatBookingWindowSummary } from "@yardmatch/contracts";
 import { addLocalePrefix } from "@yardmatch/i18n";
 import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
@@ -138,6 +138,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const [postalCode, setPostalCode] = useState(carriedPostalCode);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const shouldShowCustomerIntent = role === "customer" && (carriedService || carriedTiming || carriedArea || carriedProviderName);
   const postSignupRedirectPath = buildPostSignupRedirectPath();
   const localizedPostSignupRedirectPath = addLocalePrefix(postSignupRedirectPath, i18n.locale);
@@ -146,6 +147,10 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
     i18n.locale
   );
   const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: localizedPostSignupRedirectPath });
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   function buildPostSignupRedirectPath() {
     if (role === "provider") {
@@ -313,7 +318,12 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
         <div className="form-grid">
           <label className="form-field form-field--full">
             <span>{i18n.t("auth_signup.field.full_name")}</span>
-            <input onChange={(event) => setFullName(event.target.value)} placeholder={i18n.t("auth_signup.placeholder.full_name")} value={fullName} />
+            <input
+              disabled={!isHydrated || isSubmitting}
+              onChange={(event) => setFullName(event.target.value)}
+              placeholder={i18n.t("auth_signup.placeholder.full_name")}
+              value={fullName}
+            />
           </label>
           {role === "provider" ? (
             <label className="form-field form-field--full">
@@ -397,7 +407,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
         ) : null}
 
         <div className="cta-row">
-          <button className="button" disabled={isSubmitting} type="submit">
+          <button className="button" disabled={!isHydrated || isSubmitting} type="submit">
             {isSubmitting ? i18n.t("auth_signup.creating") : i18n.t("auth_signup.create_account")}
           </button>
           {role === "customer" ? (

@@ -37,6 +37,7 @@ import {
   MarkBookingOnRouteRequest,
   CreatePaymentIntentRequest,
   CreateOpsPayoutDisbursementRunRequest,
+  ExecuteOpsPayoutDisbursementRunRequest,
   FinalizeCheckoutSessionRequest,
   ProcessReviewInvitesRequest,
   ProcessProviderOnboardingAutomationRequest,
@@ -157,6 +158,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/payouts/ops/preview") ||
       (context.method === "GET" && context.path === "/api/payouts/ops/disbursement-runs") ||
       (context.method === "POST" && context.path === "/api/payouts/ops/disbursement-runs") ||
+      (context.method === "POST" && context.path === "/api/payouts/ops/disbursement-runs/execute") ||
       (context.method === "POST" && context.path === "/api/payments/webhook") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session") ||
       (context.method === "POST" && context.path === "/api/payments/checkout-session/finalize") ||
@@ -855,6 +857,28 @@ export class MarketplaceController implements ApiController {
         await this.platform.createOpsPayoutDisbursementRun(
           identity,
           context.body as CreateOpsPayoutDisbursementRunRequest
+        )
+      );
+      return;
+    }
+
+    if (
+      context.method === "POST" &&
+      context.path === "/api/payouts/ops/disbursement-runs/execute"
+    ) {
+      const identity = await requireFreshRole(
+        context,
+        this.platform,
+        "ops",
+        MarketplacePlatformService.sensitiveActionFreshSessionMaxAgeSeconds,
+        "Re-authentication required for provider transfers. Sign in again and retry within 15 minutes."
+      );
+      sendJson(
+        response,
+        200,
+        await this.platform.executeOpsPayoutDisbursementRun(
+          identity,
+          context.body as ExecuteOpsPayoutDisbursementRunRequest
         )
       );
       return;

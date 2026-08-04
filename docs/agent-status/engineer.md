@@ -4,7 +4,7 @@ Agent-reported completion is checkpoint evidence only. It does not equal indepen
 
 ## Current Goal
 
-Launch-freeze reliability: property before/after trust assets, enforced provider credentials, provider-responsible crew compensation, provider-only settlements, and migration-backed financial integrity.
+Finish all repository-owned launch-freeze gates, including provider-only Stripe transfers, production startup enforcement, auditable verification evidence, and a working ESLint 10 quality gate.
 
 ## Agent Role
 
@@ -12,9 +12,9 @@ Engineer
 
 ## Branch And Commit
 
-- Branch: `codex/property-photos-launch-reliability`
-- Baseline commit: `c11ee84aa28ad7326a4c6fe11a0319070c12781f`
-- State: this status is included in the milestone commit
+- Branch: `main`
+- Baseline commit: `46171072de18b063d13fabb72210b11d5e51b279`
+- State: this checkpoint is included in the milestone commit
 
 ## Last Updated
 
@@ -22,72 +22,81 @@ Engineer
 
 ## Completed Since Previous Checkpoint
 
-- Added labeled customer pre-service property photos on web and mobile, assigned-provider visibility, separate provider/crew operational proof, customer before/after history, explicit revocable marketing consent, and a privacy-safe verified-provider homepage trust gallery.
-- Updated API and browser fixtures to create and verify business registration, liability insurance, and workers-compensation credentials before provider approval or crew engagement.
-- Reconciled crew-facing history with the launch responsibility model: completed assignments, provider breadth, attendance, and proof remain visible, while YardMatch wage balances and crew transfers remain absent.
-- Replaced provider and ops crew-reserve/payout language with explicit provider-business compensation responsibility and a zero crew-transfer exposure control.
-- Hardened disbursement previews so provider batches are the only reviewable batches; any legacy crew batch is blocked by policy.
-- Updated API docs, English/Spanish copy, README, roadmap, and launch checklist to describe provider-only settlements consistently.
-- Added the missing Prisma migration for launch leads, internal access/authentication audit fields, and public review-response workflow fields. All 31 migrations now apply cleanly and the live schema diff is empty.
-- Restored the full API and browser regression suites to green, including the PostgreSQL concurrency and balanced-ledger integration test.
+- Hardened production configuration validation so only PostgreSQL storage is accepted and malformed Stripe webhook, Resend sender, Twilio account, Twilio token, and E.164 sender values fail before API startup.
+- Added a child-process regression proving the real API entry point exits without opening a listening socket when production configuration is unsafe.
+- Added a secret-safe `npm run verify:production-config` deployment preflight that refuses to pass outside production mode and reports no credential values.
+- Extended the PostgreSQL CI job to apply migrations, confirm migration status, reject Prisma schema drift outside committed migrations, run repository integration tests, and archive all four logs for 90 days by commit SHA.
+- Added Stripe Connect Accounts v2 recipient onboarding with Express dashboard access, application-owned fees/losses, separate charges and transfers, persisted readiness state, and fresh provider re-authentication.
+- Reconciled actual Stripe balance-transaction fees before immutable settlement, blocking payout readiness when reconciliation is unavailable.
+- Added ops-admin-only execution for provider Stripe runs with scheduled-date, credential, capability, dispute, hold, charge, settlement, and exact-net revalidation; execution is retry-safe and crew recipients are impossible.
+- Added persisted provider transfer and reversal records, balanced append-only ledger entries, refund/dispute reversal handling, terminal reversed-run behavior, and auditable retry failures.
+- Added provider and ops UI for Connect readiness, onboarding, explicit run confirmation, execution results, and Stripe transfer/reversal history, with English and Spanish copy.
+- Added a pinned ESLint 10 flat configuration for JavaScript, TypeScript-aware application/package source, React Hooks, and Next.js Core Web Vitals without retaining incompatible Next aggregate-config peers.
+- Fixed 31 actionable initial lint findings and recorded only existing Prisma-boundary `any`, Hook dependency, and raw-image debt in ESLint's checked-in per-file suppression baseline so new violations fail.
+- Added zero-warning lint enforcement to `npm run verify` and GitHub Actions, plus fix/prune maintenance commands and local-development guidance.
+- Updated README, local-development guidance, roadmap, and launch checklist to separate complete repository enforcement from external staging, legal, production, and vendor evidence.
 
 ## Currently In Progress
 
-- None for this batch; implementation and local verification are complete pending independent review.
+- None; repository implementation and local verification are complete pending independent review.
 
 ## Remaining Work
 
-- Run and archive the PostgreSQL migration/integration job in CI before production deployment.
-- Complete Stripe Connect Accounts v2 provider onboarding and provider-only transfer validation in development and staging with live test credentials.
-- Move photo data URLs to production object storage/CDN with scanning, retention/deletion controls, and moderation.
-- Complete legal/content review of provider agreements, crew-responsibility language, credential requirements, and photo marketing consent.
+- Commit and push this slice, then review and retain the green `postgres-launch-gate-<commit>` GitHub Actions artifact.
+- Run the production preflight and the full Connect checkout/fee/transfer/refund/dispute lifecycle in staging with real injected test credentials.
+- Obtain launch-counsel approvals and verify every launch provider's business, liability, and workers-compensation evidence or exemption.
+- Select and configure production photo storage/CDN, scanning, moderation, retention, and deletion controls.
+- Activate production email, SMS, push, inbound-channel, review-response, and recurring scheduler integrations.
 
 ## Blockers
 
 - No local engineering blocker.
-- Stripe staging credentials/accounts and launch counsel approval are external dependencies.
+- Remote CI evidence requires the changes to be pushed.
+- Stripe accounts/credentials, production/CI access, media vendor selection, notification/channel credentials, and legal approvals remain external dependencies.
 
 ## Routes Or Workflows Changed
 
-- Customer booking -> private labeled property photos -> assigned provider context.
-- Provider/crew field work -> separate before/after operational evidence -> customer service history.
-- Customer completed service -> grant, deny, or revoke public photo use -> privacy-safe homepage trust asset.
-- Provider onboarding/staffing -> verified business, liability, and workers-comp credentials before approval and crew engagement.
-- Crew history/mobile account -> assignment, attendance, evidence, and provider-managed compensation guidance without a YardMatch wage ledger.
-- Provider payments and ops payouts -> versioned provider settlements only; crew-transfer exposure must remain zero.
-- PostgreSQL deploy -> 31 committed migrations with no Prisma schema drift.
+- Production API boot -> validate durable storage, auth, URL, payment, email, and SMS configuration -> listen only when safe.
+- Deployment preflight -> validate injected production configuration -> return only readiness and repository mode.
+- PostgreSQL CI -> deploy migrations -> confirm status -> reject schema drift -> exercise repository constraints -> retain evidence artifact.
+- Provider payments -> inspect Connect readiness -> begin/resume fresh-session onboarding -> return from Stripe.
+- Completed paid job -> actual processor-fee reconciliation -> immutable settlement -> scheduled provider-only Stripe run -> explicit ops-admin execution.
+- Approved refund or Stripe dispute/refund webhook -> idempotent provider-transfer reversal -> balanced reversal ledger -> support/refund state reconciliation.
+- Local/CI verification -> ESLint flat config -> typed source, Hooks, and Next checks -> reject new violations before typecheck and API tests.
 
 ## Validation Results
 
+- `npm run verify`: passed, including zero-warning ESLint 10, TypeScript, and 239 API tests with 1 expected PostgreSQL-only skip.
+- `TEST_DATABASE_URL=... npm run test:api:postgres`: 1 passed, including settlement, transfer, reversal, idempotency, and balanced-ledger constraints.
+- Unsafe real-process production startup: exited nonzero before listening.
+- Production preflight: rejected development mode and passed a structurally complete production-shaped environment.
 - `npm run typecheck`: passed.
-- `npm run i18n:validate`: passed, 3,522 keys across English, Spanish, and pseudo.
-- `TEST_DATABASE_URL=... npm run test:api`: 229 passed, 0 failed, 0 skipped.
-- `npm run test:web:smoke`: 15 passed, 0 failed.
-- Focused provider-payments and ops policy browser regressions after adding final assertions: 3 passed.
-- Prisma migrate deploy: passed; 31 migrations applied locally.
-- Prisma migrate diff against the local PostgreSQL database: empty.
-- Customer, provider, and crew iOS Expo exports: passed across the combined milestone.
-- Responsive browser evidence: passed at 1440x900 and 390x844 for photo history/trust, crew assignment history, provider compensation responsibility, and ops controls.
+- `npm run build:api` and `npm run build:web`: passed; the web build generated all 43 routes.
+- `npm run test:api:smoke`: passed.
+- `npm run test:web:smoke`: 15 passed.
+- `npm run i18n:validate`: 3,542 keys passed across English, Spanish, and pseudo locales.
+- Customer, provider, and crew iOS Expo exports: passed.
+- Prisma migration status: 33 migrations; database schema up to date.
+- Prisma migrate diff with `--exit-code`: no difference detected.
+- CI workflow YAML parse: passed.
+- `npm ls --depth=0`: passed with a valid dependency tree and no ESLint peer conflicts.
+- `npm run lint:prune-suppressions`: passed; the checked-in suppression baseline is current.
 - `git diff --check`: passed.
 
 ## Screenshot Paths
 
-- `reports/agent-checkpoints/engineer/latest/photo-proof-home-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/photo-proof-home-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/photo-history-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/photo-history-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/crew-assignment-history-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/crew-assignment-history-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/provider-payments-responsibility-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/provider-payments-responsibility-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/ops-workspace-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/ops-workspace-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/provider-payments-connect-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/provider-payments-connect-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/ops-provider-transfer-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/ops-provider-transfer-mobile.png`
 
 ## Known Defects
 
-- Photo evidence still uses bounded, compressed data URLs in booking records; production scale requires external media storage.
-- The legacy `/api/payouts/crew` contract retains zero-valued monetary fields for compatibility even though the product no longer presents a YardMatch crew payout ledger.
+- The remote PostgreSQL evidence artifact does not exist until this change is pushed and its GitHub Actions run completes.
+- Configuration validation checks credential shape and prevents unsafe fallbacks; actual vendor connectivity still requires staging/production verification.
+- Property and service-evidence images still use bounded data URLs pending a production media vendor and scanning/retention design.
+- The incremental lint baseline currently records 80 explicit-`any` violations at Prisma/Stripe test boundaries, 37 existing Hook dependency violations, and 12 raw Next.js image usages. The rules remain errors for new code; suppression counts should only decrease.
 
 ## Recommended Next Task
 
-Archive the green PostgreSQL job in CI, then validate Stripe Connect Accounts v2 provider onboarding and provider-only transfers in staging with real test credentials.
+Publish this slice, review the archived PostgreSQL launch-gate artifact, then run and archive the production preflight and full Stripe Connect staging lifecycle.

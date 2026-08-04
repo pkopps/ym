@@ -75,6 +75,9 @@ test("provider confirms, routes, proves, completes, and can decline a second req
   await expect(declineJob).toHaveCount(0);
 
   await page.goto("/provider/payments");
+  await expect(page.getByTestId("provider-connect-status")).toBeVisible();
+  await expect(page.getByText("How the payout account works")).toBeVisible();
+  await expect(page.getByText(/transfers go only to the provider business/i)).toBeVisible();
   const compensationPolicy = page.locator("article.card").filter({ hasText: "Managed by your business" });
   await expect(compensationPolicy).toBeVisible();
   await expect(page.getByText("No crew wages are deducted or disbursed by YardMatch.")).toBeVisible();

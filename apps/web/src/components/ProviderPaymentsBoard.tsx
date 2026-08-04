@@ -1,6 +1,9 @@
 "use client";
 
-import { ProviderPayoutLedgerResponse } from "@yardmatch/contracts";
+import {
+  ProviderConnectStatusResponse,
+  ProviderPayoutLedgerResponse
+} from "@yardmatch/contracts";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
@@ -65,7 +68,9 @@ export function ProviderPaymentsBoard() {
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [ledger, setLedger] = useState<ProviderPayoutLedgerResponse | undefined>();
+  const [connectStatus, setConnectStatus] = useState<ProviderConnectStatusResponse | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
+  const [isStartingOnboarding, setIsStartingOnboarding] = useState(false);
 
   useEffect(() => {
     if (!sessionReady) {
@@ -80,13 +85,39 @@ export function ProviderPaymentsBoard() {
     setAccessDenied(false);
     setErrorMessage(undefined);
     const api = createAuthenticatedWebApiClient();
-    void api
-      .getProviderPayoutLedger()
-      .then((response) => setLedger(response))
+    void Promise.allSettled([api.getProviderPayoutLedger(), api.getProviderConnectStatus()])
+      .then(([payoutLedgerResult, payoutConnectStatusResult]) => {
+        if (payoutLedgerResult.status === "fulfilled") {
+          setLedger(payoutLedgerResult.value);
+        }
+        if (payoutConnectStatusResult.status === "fulfilled") {
+          setConnectStatus(payoutConnectStatusResult.value);
+        }
+        const failedResult = [payoutLedgerResult, payoutConnectStatusResult].find(
+          (result) => result.status === "rejected"
+        );
+        if (failedResult?.status === "rejected") {
+          throw failedResult.reason;
+        }
+      })
       .catch((error) => {
         setErrorMessage(error instanceof Error ? error.message : "Unable to load payout ledger.");
       });
   }, [sessionReady, session?.token, session?.role]);
+
+  async function startConnectOnboarding() {
+    try {
+      setIsStartingOnboarding(true);
+      setErrorMessage(undefined);
+      const response = await createAuthenticatedWebApiClient().startProviderConnectOnboarding();
+      window.location.assign(response.onboardingUrl);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : i18n.t("provider_payments.connect.error")
+      );
+      setIsStartingOnboarding(false);
+    }
+  }
 
   const heldEntries = useMemo(
     () => ledger?.entries.filter((entry) => entry.status === "on-hold") ?? [],
@@ -163,6 +194,49 @@ export function ProviderPaymentsBoard() {
           <p>{errorMessage}</p>
         </section>
       ) : null}
+
+      <section className="card provider-payment-overview" data-testid="provider-connect-status">
+        <div className="search-result-title">
+          <div>
+            <span className="eyebrow">{i18n.t("provider_payments.connect.eyebrow")}</span>
+            <h2>
+              {connectStatus?.transferReady
+                ? i18n.t("provider_payments.connect.ready")
+                : connectStatus?.account
+                  ? i18n.t("provider_payments.connect.finish")
+                  : i18n.t("provider_payments.connect.start")}
+            </h2>
+            <p>{i18n.t("provider_payments.connect.body")}</p>
+          </div>
+          <span className={connectStatus?.transferReady ? "result-badge" : "result-badge result-badge--neutral"}>
+            {connectStatus?.transferReady
+              ? i18n.t("provider_payments.connect.active")
+              : connectStatus?.account?.onboardingStatus?.replaceAll("-", " ") ??
+                i18n.t("provider_payments.connect.not_started")}
+          </span>
+        </div>
+        <div className="provider-wallet-note">
+          <strong>{i18n.t("provider_payments.connect.configuration.title")}</strong>
+          <p>{i18n.t("provider_payments.connect.configuration.body")}</p>
+        </div>
+        {!connectStatus?.stripeConfigured ? (
+          <p className="warning-copy">{i18n.t("provider_payments.connect.unavailable")}</p>
+        ) : null}
+        {!connectStatus?.transferReady ? (
+          <button
+            className="button"
+            disabled={!connectStatus?.stripeConfigured || isStartingOnboarding}
+            onClick={() => void startConnectOnboarding()}
+            type="button"
+          >
+            {isStartingOnboarding
+              ? i18n.t("provider_payments.connect.opening")
+              : connectStatus?.account
+                ? i18n.t("provider_payments.connect.continue")
+                : i18n.t("provider_payments.connect.begin")}
+          </button>
+        ) : null}
+      </section>
 
       <section className="card provider-payment-overview">
         <div className="search-result-title">

@@ -1,7 +1,6 @@
 import {
   AddBookingEvidenceRequest,
   AssignBookingRouteLeaderRequest,
-  AppNotification,
   AnalyticsEvent,
   AuthenticatedUserEnvelope,
   BookingArrivalTracking,
@@ -61,6 +60,8 @@ import {
   CreateLaunchOperationsTaskResponse,
   CreateOpsPayoutDisbursementRunRequest,
   CreateOpsPayoutDisbursementRunResponse,
+  ExecuteOpsPayoutDisbursementRunRequest,
+  ExecuteOpsPayoutDisbursementRunResponse,
   LaunchOperationsTaskEscalationSweepResponse,
   LaunchOperationsTaskNotificationSweepResponse,
   LaunchOperationsTasksResponse,
@@ -725,6 +726,12 @@ export class MarketplaceApiClient {
     payload: CreateOpsPayoutDisbursementRunRequest
   ): Promise<CreateOpsPayoutDisbursementRunResponse> {
     return this.postJson(ApiRoutes.opsPayoutDisbursementRuns, payload);
+  }
+
+  public executeOpsPayoutDisbursementRun(
+    payload: ExecuteOpsPayoutDisbursementRunRequest
+  ): Promise<ExecuteOpsPayoutDisbursementRunResponse> {
+    return this.postJson(ApiRoutes.opsPayoutDisbursementRunsExecute, payload);
   }
 
   public createCheckoutSession(

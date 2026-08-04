@@ -28,8 +28,16 @@ export interface StripeConnectGateway {
     settlementId: string;
     amountCents: number;
     currency: string;
+    sourceTransactionId?: string;
     idempotencyKey: string;
   }): Promise<{ transferId: string }>;
+  reverseProviderTransfer(input: {
+    transferId: string;
+    bookingId: string;
+    settlementId: string;
+    amountCents: number;
+    idempotencyKey: string;
+  }): Promise<{ reversalId: string }>;
 }
 
 function normalizeCapabilityStatus(
@@ -143,6 +151,7 @@ export class StripeConnectService implements StripeConnectGateway {
     settlementId: string;
     amountCents: number;
     currency: string;
+    sourceTransactionId?: string;
     idempotencyKey: string;
   }): Promise<{ transferId: string }> {
     if (!this.stripe) {
@@ -153,6 +162,7 @@ export class StripeConnectService implements StripeConnectGateway {
         amount: input.amountCents,
         currency: input.currency,
         destination: input.stripeAccountId,
+        source_transaction: input.sourceTransactionId,
         transfer_group: `booking_${input.bookingId}`,
         metadata: {
           bookingId: input.bookingId,
@@ -163,6 +173,31 @@ export class StripeConnectService implements StripeConnectGateway {
       { idempotencyKey: input.idempotencyKey }
     );
     return { transferId: transfer.id };
+  }
+
+  public async reverseProviderTransfer(input: {
+    transferId: string;
+    bookingId: string;
+    settlementId: string;
+    amountCents: number;
+    idempotencyKey: string;
+  }): Promise<{ reversalId: string }> {
+    if (!this.stripe) {
+      throw new HttpError(503, "Stripe Connect is not configured yet.");
+    }
+    const reversal = await this.stripe.transfers.createReversal(
+      input.transferId,
+      {
+        amount: input.amountCents,
+        metadata: {
+          bookingId: input.bookingId,
+          settlementId: input.settlementId,
+          recipientRole: "provider"
+        }
+      },
+      { idempotencyKey: input.idempotencyKey }
+    );
+    return { reversalId: reversal.id };
   }
 
   private mapReadiness(account: any): StripeRecipientReadiness {

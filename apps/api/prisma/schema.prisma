@@ -344,6 +344,11 @@ model PaymentRecord {
   checkoutSessionId        String?
   checkoutSessionUrl       String?
   processorPaymentIntentId String?
+  processorChargeId        String?
+  actualProcessorFeeCents  Int?
+  processorFeeStatus       String?
+  processorFeeUpdatedAt    DateTime?
+  processorFeeFailureReason String?
   refundReason             String?
   refundReviewStatus       String?
   refundRequestedAt        DateTime?
@@ -359,6 +364,7 @@ model PaymentRecord {
 
   @@unique([checkoutSessionId])
   @@unique([processorPaymentIntentId])
+  @@unique([processorChargeId])
   @@map("payment_records")
 }
 
@@ -471,10 +477,36 @@ model BookingFinancialSettlement {
   booking                             Booking                @relation(fields: [bookingId], references: [id], onDelete: Restrict)
   payment                             PaymentRecord          @relation(fields: [paymentId], references: [id], onDelete: Restrict)
   ledgerEntries                       FinancialLedgerEntry[]
+  providerTransfer                    ProviderTransferRecord?
 
   @@index([providerId, status, createdAt])
   @@index([customerId, providerId])
   @@map("booking_financial_settlements")
+}
+
+model ProviderTransferRecord {
+  id                       String                     @id
+  settlementId             String                     @unique
+  bookingId                String                     @unique
+  paymentId                String
+  providerId               String
+  stripeAccountId          String
+  stripeTransferId         String?                    @unique
+  stripeTransferReversalId String?                    @unique
+  amountCents              Int
+  currency                 String
+  status                   String
+  idempotencyKey           String                     @unique
+  failureReason            String?
+  createdAt                DateTime
+  updatedAt                DateTime
+  transferredAt            DateTime?
+  reversedAt               DateTime?
+  settlement               BookingFinancialSettlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+
+  @@index([providerId, status, createdAt])
+  @@index([paymentId])
+  @@map("provider_transfer_records")
 }
 
 model FinancialLedgerEntry {

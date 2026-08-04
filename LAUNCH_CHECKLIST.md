@@ -5,15 +5,21 @@
 - [ ] Confirm the `2026-07-provider-funded-v1` fee amounts and provider-funded posture in the signed provider agreement.
 - [ ] Have marketplace counsel confirm that each provider—not YardMatch—engages, supervises, insures, classifies, reports, and pays its crew.
 - [ ] Have counsel confirm YardMatch's merchant-of-record, refund, dispute, negative-balance, and customer-receipt posture for separate charges and transfers.
-- [ ] Configure Stripe Connect Accounts v2 with Express dashboard access, `fees_collector: application`, `losses_collector: application`, and recipient `stripe_transfers` capability only.
-- [ ] Verify transfer and payout capabilities are active before enabling a provider transfer.
-- [ ] Reconcile actual Stripe processing fees from balance transactions into the immutable ledger before finance close.
+- [ ] Activate and archive staging/production evidence for Stripe Connect Accounts v2 with Express dashboard access, `fees_collector: application`, `losses_collector: application`, and recipient `stripe_transfers` capability only.
+- [x] Enforce active recipient transfer and payout capabilities before enabling a provider transfer.
+- [x] Reconcile actual Stripe processing fees from charge balance transactions before creating the immutable settlement and provider transfer.
+- [x] Restrict YardMatch disbursement execution to provider recipients, persist one idempotent transfer per settlement, and reverse released transfers before Stripe refunds or dispute handling proceeds.
+- [ ] Run and archive a staging Stripe lifecycle with real test credentials: provider onboarding, checkout webhook, fee reconciliation, provider transfer, refund reversal, and dispute reversal.
 - [ ] Verify business registration and general liability insurance for every launch provider.
 - [ ] Verify workers-compensation coverage or a counsel-approved exemption before any provider engages crew through YardMatch.
 - [ ] Have New Jersey counsel approve the category credential matrix, including fertilization and weed-control/pesticide work.
 - [x] Apply all committed migrations locally, confirm an empty Prisma schema diff, and pass the PostgreSQL atomic-settlement/balanced-ledger integration test.
 - [ ] Run the PostgreSQL migration/integration CI job and archive its passing result before production deployment.
-- [ ] Confirm production startup fails without Postgres, strong JWT secret, live Stripe/webhook credentials, HTTPS URLs, and real email/SMS configuration.
+- [x] Confirm production startup fails without Postgres, strong JWT secret, live Stripe/webhook credentials, HTTPS URLs, and real email/SMS configuration.
+
+The repository now requests the approved Accounts v2 recipient configuration, reuses one Connect account per provider, blocks inactive capabilities or missing provider credentials, reconciles Stripe's actual balance-transaction fee, executes provider-only transfers from the originating charge, and records idempotent transfer/reversal ledger entries. The open Stripe items require a real Stripe account and credentials, so they remain deployment evidence rather than unfinished repository behavior.
+
+The CI workflow creates a 90-day PostgreSQL launch-gate artifact containing migration deployment, migration status, schema-drift, and repository-test logs. The CI checkbox stays open until a passing remote run is archived and reviewed. Production startup is covered at the validator and real API process boundary, including rejection of non-PostgreSQL storage and malformed vendor configuration before the server listens.
 
 Last updated: August 3, 2026
 
@@ -91,8 +97,9 @@ Current state:
 - authenticated users now receive a backend-authored sensitive-action policy from `/api/auth/me`, including the current provider payout-settings re-auth guard and contract-ready future guards for provider bank-account, provider payout-account, and customer payment-method changes
 - those proof sections now include recent completed-booking review snippets tied to verified providers plus coverage-pocket cards based on verified supply and completed jobs, not just aggregate counts
 - crew work history now includes backend-authored assignment, attendance, and performance summaries, so crew can see completed work, call-off history, attendance rate, reliability status, service follow-through, evidence contribution, route confirmation, provider breadth, and dispute/refund performance signals; crew compensation is explicitly provider-managed and excluded from YardMatch payout rails
-- ops payout preview now includes manual provider-only disbursement batches with recipient ids, ledger entry ids, amounts, blocker reasons, and audit instructions, plus an explicit zero crew-transfer exposure check
-- ops can now create idempotent manual payout disbursement run records from preview batches, preserving entry fingerprints, booking/payment/recipient references, operator notes, and reconciliation instructions before external payout rails are selected
+- ops payout preview now creates provider-only Stripe transfer batches when Connect is configured and keeps an explicit zero crew-transfer exposure check; local development without Stripe retains auditable manual previews
+- ops can create idempotent disbursement run records from preview batches, and a freshly re-authenticated ops admin can explicitly execute eligible Stripe runs after the scheduled date; every entry is revalidated against the booking, provider credentials, Connect capabilities, captured charge, immutable settlement, and exact provider net before money moves
+- Stripe charge balance transactions provide the actual processing fee used by the immutable settlement, and provider transfers plus refund/dispute reversals are recorded as balanced, idempotent ledger movements with Stripe references
 - crew match history now includes backend-authored availability constraints and assignment forecasts, so crew can see available/unavailable weekdays, travel radius, equipment and winter-work limits, active accepted load, upcoming accepted work, pending review opportunities, route-leader assignments, next scheduled assignment details, and workload warnings before launch volume scales
 - remaining gap: wire the live GBP/referral forwarders and an actual direct inbox relay to the inbound endpoints so fewer leads depend on manual entry
 
@@ -125,7 +132,7 @@ If launch channels are not tracked, good and bad channels will look the same.
 Current state:
 
 - public web already captures privacy-safe first-touch attribution from `utm_*`, referrer, and landing-path data and now carries it into both marketplace events and website follow-up lead intake
-- remaining gap: connect booked, completed, repeat-booking, and review outcomes back to the same inquiry record without manual reconciliation
+- website and matching email/phone launch leads now stay linked through booked, completed, repeat-booking, review-invite, and review outcomes; live forwarders still need external channel setup and monitoring
 
 Checklist:
 
@@ -387,12 +394,12 @@ During the first 2 weeks, review:
 
 ## Recommended Immediate Next Steps
 
-If we want the highest-leverage business readiness work next, do these first:
+The remaining launch steps now require business, legal, vendor, or production owners:
 
-1. Finalize the launch offer and service scope.
-2. Create the lead tracker and source taxonomy.
-3. Set up Google Business Profile and review workflow.
-4. Write the provider acceptance and quality rules.
-5. Publish the core customer-facing policy and trust pages.
-6. Define the repeat-service follow-up plan for mowing customers.
-7. Draft the launch scripts and templates.
+1. Approve the provider agreement, pricing posture, crew-responsibility language, credential matrix, and payment/refund/dispute allocation.
+2. Activate Stripe Connect and run the archived staging lifecycle evidence listed in the financial gate section.
+3. Verify every launch provider's business registration, liability insurance, and workers-compensation coverage or approved exemption.
+4. Run the production configuration preflight and archive the green PostgreSQL CI artifact.
+5. Select and configure production media storage/CDN, malware scanning, moderation, retention, and deletion controls for property and proof-of-work photos.
+6. Activate the production email, SMS, push, direct-inbox, Google Business Profile, referral, review-response, and recurring scheduler integrations.
+7. Rehearse the launch operations playbook with named owners before turning on traffic.

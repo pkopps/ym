@@ -1,6 +1,10 @@
 "use client";
 
-import { OpsPayoutDisbursementRun, OpsPayoutRunPreviewResponse } from "@yardmatch/contracts";
+import {
+  OpsPayoutDisbursementRun,
+  OpsPayoutRunPreviewResponse,
+  ProviderTransferRecord
+} from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useI18n } from "@yardmatch/i18n/react";
@@ -23,6 +27,7 @@ export function OpsPayoutRunBoard() {
   const i18n = useI18n();
   const [preview, setPreview] = useState<OpsPayoutRunPreviewResponse | undefined>();
   const [runs, setRuns] = useState<OpsPayoutDisbursementRun[]>([]);
+  const [providerTransfers, setProviderTransfers] = useState<ProviderTransferRecord[]>([]);
   const [operatorNotes, setOperatorNotes] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -39,6 +44,7 @@ export function OpsPayoutRunBoard() {
     ]);
     setPreview(nextPreview);
     setRuns(nextRuns.runs);
+    setProviderTransfers(nextRuns.providerTransfers);
   }
 
   useEffect(() => {
@@ -65,6 +71,31 @@ export function OpsPayoutRunBoard() {
       await loadBoard();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("ops_payout.error.create"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function executeRun(runId: string) {
+    try {
+      setIsWorking(true);
+      setStatusMessage(undefined);
+      setErrorMessage(undefined);
+      const response = await createAuthenticatedWebApiClient().executeOpsPayoutDisbursementRun({
+        runId,
+        confirmation: "execute-provider-transfers",
+        operatorNotes: operatorNotes[runId]?.trim() ?? ""
+      });
+      setStatusMessage(
+        i18n.t("ops_payout.status.executed", {
+          transferred: response.transferredCount,
+          existing: response.alreadyTransferredCount,
+          failed: response.failedCount
+        })
+      );
+      await loadBoard();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("ops_payout.error.execute"));
     } finally {
       setIsWorking(false);
     }
@@ -134,7 +165,9 @@ export function OpsPayoutRunBoard() {
             {preview.disbursementBatches.map((batch) => {
               const isProviderBatch = batch.recipientRole === "provider";
               const canCreateRecord =
-                isProviderBatch && batch.actionStatus === "ready-for-manual-review" && batch.entryCount > 0;
+                isProviderBatch &&
+                ["ready-for-manual-review", "ready-for-transfer"].includes(batch.actionStatus) &&
+                batch.entryCount > 0;
               return (
                 <article className="list-panel" key={batch.id}>
                   <div className="search-result-title">
@@ -163,7 +196,9 @@ export function OpsPayoutRunBoard() {
                     onClick={() => void createManualRun(batch.id)}
                     type="button"
                   >
-                    {i18n.t("ops_payout.create_record")}
+                    {batch.actionStatus === "ready-for-transfer"
+                      ? i18n.t("ops_payout.create_transfer_run")
+                      : i18n.t("ops_payout.create_record")}
                   </button>
                 </article>
               );
@@ -173,7 +208,18 @@ export function OpsPayoutRunBoard() {
           <div className="stack-md" data-testid="ops-payout-history">
             <h3>{i18n.t("ops_payout.history.title")}</h3>
             {runs.length === 0 ? <p>{i18n.t("ops_payout.history.empty")}</p> : null}
-            {runs.map((run) => (
+            {runs.map((run) => {
+              const runTransfers = providerTransfers.filter((transfer) =>
+                run.entries.some((entry) => entry.bookingId === transfer.bookingId)
+              );
+              const canOfferExecution =
+                run.railMode === "stripe-transfer" &&
+                run.actionStatus === "ready-for-transfer" &&
+                ["ready-for-transfer", "failed", "partially-transferred"].includes(run.status);
+              const canExecute =
+                canOfferExecution &&
+                Date.parse(run.runDateIso) <= Date.now();
+              return (
               <article className="list-panel" key={run.id}>
                 <div className="search-result-title">
                   <div>
@@ -184,8 +230,59 @@ export function OpsPayoutRunBoard() {
                 </div>
                 <p>{formatCurrency(run.totalCents)} • {run.entryCount} {i18n.t("ops_payout.entries")}</p>
                 {run.operatorNotes ? <p>{run.operatorNotes}</p> : null}
+                {run.blockerReasons.map((reason) => (
+                  <p className="warning-copy" key={reason}>{reason}</p>
+                ))}
+                {runTransfers.map((transfer) => (
+                  <div key={transfer.id}>
+                    <p>
+                      {transfer.status.replaceAll("-", " ")} • {formatCurrency(transfer.amountCents)}
+                      {transfer.stripeTransferId ? ` • ${transfer.stripeTransferId}` : ""}
+                      {transfer.stripeTransferReversalId
+                        ? ` • ${transfer.stripeTransferReversalId}`
+                        : ""}
+                    </p>
+                    {transfer.failureReason ? (
+                      <p className="warning-copy">{transfer.failureReason}</p>
+                    ) : null}
+                  </div>
+                ))}
+                {canOfferExecution ? (
+                  <>
+                    <label className="form-field">
+                      <span>{i18n.t("ops_payout.execution_notes")}</span>
+                      <textarea
+                        disabled={isWorking || !canExecute}
+                        onChange={(event) =>
+                          setOperatorNotes((current) => ({
+                            ...current,
+                            [run.id]: event.target.value
+                          }))
+                        }
+                        rows={2}
+                        value={operatorNotes[run.id] ?? ""}
+                      />
+                    </label>
+                    <button
+                      className="button"
+                      disabled={
+                        isWorking ||
+                        !canExecute ||
+                        (operatorNotes[run.id]?.trim().length ?? 0) < 12
+                      }
+                      onClick={() => void executeRun(run.id)}
+                      type="button"
+                    >
+                      {i18n.t("ops_payout.execute")}
+                    </button>
+                    {!canExecute && Date.parse(run.runDateIso) > Date.now() ? (
+                      <p>{i18n.t("ops_payout.scheduled_execution")}</p>
+                    ) : null}
+                  </>
+                ) : null}
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}

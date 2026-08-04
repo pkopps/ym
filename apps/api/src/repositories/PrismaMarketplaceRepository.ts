@@ -24,6 +24,7 @@ import {
   NotificationPreferences,
   OpsPayoutDisbursementRun,
   OpsPayoutDisbursementEntryRef,
+  ProviderTransferRecord,
   PaymentRecord,
   BookingFinancialSettlement,
   CreateBookingFinancialSettlementInput,
@@ -40,7 +41,12 @@ import {
   SupportTicket
 } from "@yardmatch/contracts";
 import { buildSettlementLedgerDraft, calculateMarketplaceSettlement } from "@yardmatch/domain";
-import { AuthIdentityRecord, MarketplaceRepository } from "./MarketplaceRepository";
+import {
+  AuthIdentityRecord,
+  CompleteProviderTransferInput,
+  CompleteProviderTransferReversalInput,
+  MarketplaceRepository
+} from "./MarketplaceRepository";
 
 function asJson(value: unknown): any {
   return value as any;
@@ -1104,6 +1110,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         ...payment,
         refundRequestedAt: payment.refundRequestedAt ? new Date(payment.refundRequestedAt) : undefined,
         refundReviewedAt: payment.refundReviewedAt ? new Date(payment.refundReviewedAt) : undefined,
+        processorFeeUpdatedAt: payment.processorFeeUpdatedAt
+          ? new Date(payment.processorFeeUpdatedAt)
+          : undefined,
         paidAt: payment.paidAt ? new Date(payment.paidAt) : undefined,
         createdAt: new Date(payment.createdAt),
         updatedAt: new Date(payment.updatedAt)
@@ -1158,6 +1167,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
           updates.refundReviewedAt
             ? new Date(updates.refundReviewedAt)
             : updates.refundReviewedAt === undefined
+              ? undefined
+              : null,
+        processorFeeUpdatedAt:
+          updates.processorFeeUpdatedAt
+            ? new Date(updates.processorFeeUpdatedAt)
+            : updates.processorFeeUpdatedAt === undefined
               ? undefined
               : null,
         paidAt: updates.paidAt ? new Date(updates.paidAt) : updates.paidAt === undefined ? undefined : null,
@@ -1401,6 +1416,201 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       }
     });
     return run ? this.mapPayoutDisbursementRun(run) : undefined;
+  }
+
+  public async updatePayoutDisbursementRun(
+    runId: string,
+    updates: Partial<OpsPayoutDisbursementRun>
+  ): Promise<OpsPayoutDisbursementRun | undefined> {
+    const current = await (this.prisma as any).payoutDisbursementRun.findUnique({
+      where: { id: runId }
+    });
+    if (!current) {
+      return undefined;
+    }
+    const saved = await (this.prisma as any).payoutDisbursementRun.update({
+      where: { id: runId },
+      data: {
+        previewBatchId: updates.previewBatchId,
+        entryFingerprint: updates.entryFingerprint,
+        runDateIso: updates.runDateIso ? new Date(updates.runDateIso) : undefined,
+        recipientRole: updates.recipientRole,
+        railMode: updates.railMode,
+        actionStatus: updates.actionStatus,
+        status: updates.status,
+        totalCents: updates.totalCents,
+        recipientCount: updates.recipientCount,
+        bookingCount: updates.bookingCount,
+        entryCount: updates.entryCount,
+        recipientIds: updates.recipientIds,
+        entryIds: updates.entryIds,
+        entries: updates.entries ? asJson(updates.entries) : undefined,
+        blockerReasons: updates.blockerReasons,
+        manualActionLabel: updates.manualActionLabel,
+        auditInstructions: updates.auditInstructions,
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined,
+        operatorNotes: updates.operatorNotes,
+        reconciliationReference: updates.reconciliationReference,
+        reconciliationNotes: updates.reconciliationNotes,
+        reconciledAt:
+          updates.reconciledAt
+            ? new Date(updates.reconciledAt)
+            : updates.reconciledAt === undefined
+              ? undefined
+              : null,
+        reconciledByOpsUserId: updates.reconciledByOpsUserId
+      }
+    });
+    return this.mapPayoutDisbursementRun(saved);
+  }
+
+  public async createProviderTransferRecord(
+    record: ProviderTransferRecord
+  ): Promise<ProviderTransferRecord> {
+    try {
+      const saved = await (this.prisma as any).providerTransferRecord.create({
+        data: this.buildProviderTransferPersistence(record)
+      });
+      return this.mapProviderTransferRecord(saved);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const existing = await this.findProviderTransferBySettlementId(record.settlementId);
+        if (existing) {
+          return existing;
+        }
+      }
+      throw error;
+    }
+  }
+
+  public async findProviderTransferBySettlementId(
+    settlementId: string
+  ): Promise<ProviderTransferRecord | undefined> {
+    const record = await (this.prisma as any).providerTransferRecord.findUnique({
+      where: { settlementId }
+    });
+    return record ? this.mapProviderTransferRecord(record) : undefined;
+  }
+
+  public async listProviderTransferRecords(): Promise<ProviderTransferRecord[]> {
+    const records = await (this.prisma as any).providerTransferRecord.findMany({
+      orderBy: { createdAt: "desc" }
+    });
+    return records.map((record: any) => this.mapProviderTransferRecord(record));
+  }
+
+  public async updateProviderTransferRecord(
+    transferRecordId: string,
+    updates: Partial<ProviderTransferRecord>
+  ): Promise<ProviderTransferRecord | undefined> {
+    const current = await (this.prisma as any).providerTransferRecord.findUnique({
+      where: { id: transferRecordId }
+    });
+    if (!current) {
+      return undefined;
+    }
+    const saved = await (this.prisma as any).providerTransferRecord.update({
+      where: { id: transferRecordId },
+      data: {
+        stripeAccountId: updates.stripeAccountId,
+        stripeTransferId: updates.stripeTransferId,
+        stripeTransferReversalId: updates.stripeTransferReversalId,
+        amountCents: updates.amountCents,
+        currency: updates.currency,
+        status: updates.status,
+        failureReason: updates.failureReason,
+        updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined,
+        transferredAt:
+          updates.transferredAt
+            ? new Date(updates.transferredAt)
+            : updates.transferredAt === undefined
+              ? undefined
+              : null,
+        reversedAt:
+          updates.reversedAt
+            ? new Date(updates.reversedAt)
+            : updates.reversedAt === undefined
+              ? undefined
+              : null
+      }
+    });
+    return this.mapProviderTransferRecord(saved);
+  }
+
+  public async completeProviderTransfer(
+    input: CompleteProviderTransferInput
+  ): Promise<ProviderTransferRecord> {
+    const record = await this.prisma.$transaction(async (tx: any) => {
+      const current = await tx.providerTransferRecord.findUnique({
+        where: { id: input.transferRecordId }
+      });
+      if (!current) {
+        throw new Error("Provider transfer record not found");
+      }
+      if (current.status === "transferred" || current.status === "reversed") {
+        return current;
+      }
+      await tx.financialLedgerEntry.createMany({
+        data: input.ledgerEntries.map((entry) => ({
+          ...entry,
+          createdAt: new Date(entry.createdAt)
+        })),
+        skipDuplicates: true
+      });
+      await tx.bookingFinancialSettlement.update({
+        where: { id: current.settlementId },
+        data: { status: "transferred", updatedAt: new Date(input.transferredAt) }
+      });
+      return tx.providerTransferRecord.update({
+        where: { id: input.transferRecordId },
+        data: {
+          stripeTransferId: input.stripeTransferId,
+          status: "transferred",
+          failureReason: null,
+          transferredAt: new Date(input.transferredAt),
+          updatedAt: new Date(input.transferredAt)
+        }
+      });
+    });
+    return this.mapProviderTransferRecord(record);
+  }
+
+  public async completeProviderTransferReversal(
+    input: CompleteProviderTransferReversalInput
+  ): Promise<ProviderTransferRecord> {
+    const record = await this.prisma.$transaction(async (tx: any) => {
+      const current = await tx.providerTransferRecord.findUnique({
+        where: { id: input.transferRecordId }
+      });
+      if (!current) {
+        throw new Error("Provider transfer record not found");
+      }
+      if (current.status === "reversed") {
+        return current;
+      }
+      await tx.financialLedgerEntry.createMany({
+        data: input.ledgerEntries.map((entry) => ({
+          ...entry,
+          createdAt: new Date(entry.createdAt)
+        })),
+        skipDuplicates: true
+      });
+      await tx.bookingFinancialSettlement.update({
+        where: { id: current.settlementId },
+        data: { status: "reversed", updatedAt: new Date(input.reversedAt) }
+      });
+      return tx.providerTransferRecord.update({
+        where: { id: input.transferRecordId },
+        data: {
+          stripeTransferReversalId: input.stripeTransferReversalId,
+          status: "reversed",
+          failureReason: null,
+          reversedAt: new Date(input.reversedAt),
+          updatedAt: new Date(input.reversedAt)
+        }
+      });
+    });
+    return this.mapProviderTransferRecord(record);
   }
 
   public async createLaunchOperationsTask(task: LaunchOperationsTask): Promise<LaunchOperationsTask> {
@@ -2983,6 +3193,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     checkoutSessionId: string | null;
     checkoutSessionUrl: string | null;
     processorPaymentIntentId: string | null;
+    processorChargeId: string | null;
+    actualProcessorFeeCents: number | null;
+    processorFeeStatus: string | null;
+    processorFeeUpdatedAt: Date | null;
+    processorFeeFailureReason: string | null;
     refundReason: string | null;
     refundReviewStatus: string | null;
     refundRequestedAt: Date | null;
@@ -3006,6 +3221,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       checkoutSessionId: record.checkoutSessionId ?? undefined,
       checkoutSessionUrl: record.checkoutSessionUrl ?? undefined,
       processorPaymentIntentId: record.processorPaymentIntentId ?? undefined,
+      processorChargeId: record.processorChargeId ?? undefined,
+      actualProcessorFeeCents: record.actualProcessorFeeCents ?? undefined,
+      processorFeeStatus:
+        (record.processorFeeStatus as PaymentRecord["processorFeeStatus"]) ?? undefined,
+      processorFeeUpdatedAt: record.processorFeeUpdatedAt?.toISOString(),
+      processorFeeFailureReason: record.processorFeeFailureReason ?? undefined,
       refundReason: record.refundReason ?? undefined,
       refundReviewStatus: record.refundReviewStatus as PaymentRecord["refundReviewStatus"],
       refundRequestedAt: record.refundRequestedAt?.toISOString(),
@@ -3017,6 +3238,68 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       paidAt: record.paidAt?.toISOString(),
       createdAt: record.createdAt.toISOString(),
       updatedAt: record.updatedAt.toISOString()
+    };
+  }
+
+  private buildProviderTransferPersistence(record: ProviderTransferRecord) {
+    return {
+      id: record.id,
+      settlementId: record.settlementId,
+      bookingId: record.bookingId,
+      paymentId: record.paymentId,
+      providerId: record.providerId,
+      stripeAccountId: record.stripeAccountId,
+      stripeTransferId: record.stripeTransferId,
+      stripeTransferReversalId: record.stripeTransferReversalId,
+      amountCents: record.amountCents,
+      currency: record.currency,
+      status: record.status,
+      idempotencyKey: record.idempotencyKey,
+      failureReason: record.failureReason,
+      createdAt: new Date(record.createdAt),
+      updatedAt: new Date(record.updatedAt),
+      transferredAt: record.transferredAt ? new Date(record.transferredAt) : undefined,
+      reversedAt: record.reversedAt ? new Date(record.reversedAt) : undefined
+    };
+  }
+
+  private mapProviderTransferRecord(record: {
+    id: string;
+    settlementId: string;
+    bookingId: string;
+    paymentId: string;
+    providerId: string;
+    stripeAccountId: string;
+    stripeTransferId: string | null;
+    stripeTransferReversalId: string | null;
+    amountCents: number;
+    currency: string;
+    status: string;
+    idempotencyKey: string;
+    failureReason: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+    transferredAt: Date | null;
+    reversedAt: Date | null;
+  }): ProviderTransferRecord {
+    return {
+      id: record.id,
+      settlementId: record.settlementId,
+      bookingId: record.bookingId,
+      paymentId: record.paymentId,
+      providerId: record.providerId,
+      stripeAccountId: record.stripeAccountId,
+      stripeTransferId: record.stripeTransferId ?? undefined,
+      stripeTransferReversalId: record.stripeTransferReversalId ?? undefined,
+      amountCents: record.amountCents,
+      currency: record.currency,
+      status: record.status as ProviderTransferRecord["status"],
+      idempotencyKey: record.idempotencyKey,
+      failureReason: record.failureReason ?? undefined,
+      createdAt: record.createdAt.toISOString(),
+      updatedAt: record.updatedAt.toISOString(),
+      transferredAt: record.transferredAt?.toISOString(),
+      reversedAt: record.reversedAt?.toISOString()
     };
   }
 

@@ -127,8 +127,11 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `NOTIFICATION_ALERT_SMS_NUMBERS` as a comma-separated list
 - Prisma/Postgres scaffolding is in place under [`apps/api/prisma`](</Users/patrickkopps/Documents/app/apps/api/prisma>).
 - The committed migration chain now includes launch leads, internal authentication/access audit state, public review-response fields, versioned booking settlements, and balanced financial ledger constraints. After `npm run prisma:migrate`, verify local schema parity with Prisma migrate diff and run the repository gate with `TEST_DATABASE_URL=... npm run test:api`.
+- CI applies the complete migration chain to an isolated PostgreSQL 16 database, verifies migration status, rejects schema drift that is not represented by a migration, runs the repository integration suite, and retains the resulting logs for 90 days as a `postgres-launch-gate-<commit>` artifact.
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
+- `NODE_ENV=production` disables those development fallbacks. The API exits before listening unless it has a PostgreSQL URL, a non-development JWT secret of at least 32 characters, HTTPS app/API URLs, a live-prefixed Stripe key and Stripe webhook signing secret, plus production-shaped Resend and Twilio sender configuration.
+- Deployment environments can run `NODE_ENV=production npm run verify:production-config` as a secret-safe preflight; it reports only readiness and repository mode, and refuses to pass in development mode.
 - Local development now has a dedicated seeded ops login instead of relying on provider fallback:
   - in-memory mode seeds `ops@example.com` with password `YardMatch123!` as an `ops-admin` account
   - `npm run prisma:seed` also seeds the same `ops@example.com` admin account into Prisma/Postgres
@@ -144,17 +147,18 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - repeated failed ops password attempts now trigger a temporary internal login lock, successful password recovery clears that lock plus the accumulated failed-attempt state, and each ops account now keeps a durable authentication-event history covering sign-ins, failures, temporary lock triggers, reset requests/completions, session rotations, and explicit lock clears
   - the live ops overview now also surfaces internal access health, including active admin/staff counts, disabled-account count, temporary lock count, pending reset invites, never-signed-in and dormant-account counts, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, a backend-authored admin-and-operations access governance policy, recent access changes, recent internal auth events, recent internal sign-ins, and recent failed internal sign-ins so staff-access drift and suspicious login activity are visible without opening each account record
 - Real customer card payments are now prepared through Stripe hosted Checkout.
-- Stripe webhook reconciliation now covers checkout completion, checkout expiry, payment-intent failures, and refund events so Stripe-originated payment state changes can flow back into the local booking and payout records.
+- Stripe webhook reconciliation now covers checkout completion, checkout expiry, payment-intent failures, refunds, and disputes so Stripe-originated payment state changes flow back into booking, support, settlement, and payout records.
+- Captured Stripe payments reconcile the actual processor fee and charge id from the charge balance transaction before an immutable settlement becomes transfer-ready. A failed or not-yet-available fee lookup holds the provider payout instead of substituting an estimate.
 - Disputed bookings now freeze settlement until support resolves them:
   - customers cannot continue Stripe Checkout or legacy payment authorization while the booking is disputed
   - captured disputed bookings now hold provider settlements instead of settling normally
   - if ops resolves a completed disputed booking in the provider's favor, the booking now returns to `completed` instead of reopening as active work
 - Provider payout ledgers now read from immutable, versioned settlements, captured customer payments, credential readiness, refund state, and dispute holds. The legacy crew-payout route returns no wage entries or monetary balances; it remains temporarily contract-compatible while exposing assignment, attendance, performance, and provider-responsibility guidance for crew work history.
 - Crew match responses now include backend-authored availability constraints and assignment forecasts covering available/unavailable weekdays, travel radius, schedule preference, equipment and winter-work limits, active accepted load, route-leader load, upcoming accepted work, pending provider review, next scheduled provider/category/status, workload band, warnings, and guidance.
-- Providers can now choose a weekly payout day and whether instant payouts are enabled, and ops can preview upcoming payout runs before real bank-transfer rails are switched on.
-- The ops payout preview now includes a backend-authored provider-only payout policy summary covering the provider hold period, weekly payout grouping, instant-payout threshold, credential and Stripe-capability requirements, hold reasons, the current `manual-preview-only` rail status, and explicit provider responsibility for crew compensation.
-- The ops payout preview returns manual provider disbursement batch previews only. Each batch includes the run date, recipient role, rail mode, action status, recipient ids, ledger entry ids, entry amounts, blocker reasons, a manual action label, and audit instructions; the ops UI also surfaces a crew-transfer exposure count that must remain zero.
-- Ops can now create idempotent manual payout disbursement run records from those preview batches at `/api/payouts/ops/disbursement-runs`. The records preserve batch ids, entry fingerprints, booking/payment/recipient references, operator notes, and reconciliation instructions without initiating external money movement.
+- Providers can choose a weekly payout day and whether instant payouts are enabled, and the payments dashboard shows their Stripe Connect recipient status plus an onboarding action. YardMatch requests an Accounts v2 recipient with Express dashboard access, application-owned fees/losses, and only the Stripe transfers capability; crew compensation remains the provider's responsibility.
+- The ops payout preview includes a backend-authored provider-only payout policy covering hold periods, weekly grouping, instant-payout thresholds, credential and Connect capability requirements, hold reasons, transfer readiness, and explicit zero crew-transfer exposure. Without Stripe credentials local development stays on an auditable manual-preview rail.
+- Ops can create idempotent disbursement run records at `/api/payouts/ops/disbursement-runs`. A freshly re-authenticated ops admin can execute a scheduled, eligible Stripe run at `/api/payouts/ops/disbursement-runs/execute`; the API revalidates every provider, capability, credential, booking, payment, settlement, and exact net amount immediately before creating a provider-only transfer tied to the originating charge.
+- Every successful provider transfer is persisted once with its Stripe id and a balanced provider-payable/Stripe-clearing ledger movement. Approved refunds and Stripe refund/dispute webhooks reverse an already-released provider transfer idempotently before the refund or dispute workflow proceeds, and payout history retains both transfer and reversal references.
 - Instant quotes and the public marketplace overview now include a backend-authored launch pricing policy covering the hybrid managed-marketplace model, first-service launch offer framing, launch service categories, customer pricing principles, provider economics principles, and provider-facing explanation. The quote math still returns stable `estimatedPriceCents`; the policy explains how launch incentives should be handled without silently compressing provider payouts.
 - Refunds now flow through an internal review path instead of an instant customer-side reversal:
   - customers can request a refund review from completed paid bookings
@@ -226,11 +230,14 @@ npm run prisma:seed
 ### Verification commands
 
 ```bash
+npm run lint
 npm run typecheck
 npm run test:api
 npm run test:api:smoke
 npm run test:web:smoke
 ```
+
+`npm run verify` runs lint, typecheck, and the full API suite. The ESLint 10 setup uses a root flat config with TypeScript-aware source checks, React Hooks rules, and Next.js Core Web Vitals rules; initial legacy debt is counted in `eslint-suppressions.json` so new violations cannot expand it unnoticed.
 
 ### Current backend test coverage
 

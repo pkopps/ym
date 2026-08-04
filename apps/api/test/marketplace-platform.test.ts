@@ -7,6 +7,7 @@ import { HttpError } from "../src/http";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
 import { PaymentCheckoutGateway } from "../src/services/StripeCheckoutService";
+import { StripeConnectGateway } from "../src/services/StripeConnectService";
 
 function createAddress(
   line1 = "112 Garden Row",
@@ -108,6 +109,7 @@ function availabilityDayForIso(iso: string) {
 
 function createFakeStripeGateway(overrides?: {
   verifyCheckoutSession?: PaymentCheckoutGateway["verifyCheckoutSession"];
+  retrieveChargeFinancials?: PaymentCheckoutGateway["retrieveChargeFinancials"];
   parseWebhookEvent?: PaymentCheckoutGateway["parseWebhookEvent"];
   createRefund?: PaymentCheckoutGateway["createRefund"];
 }): PaymentCheckoutGateway {
@@ -129,6 +131,12 @@ function createFakeStripeGateway(overrides?: {
         paymentIntentId: "pi_test_123",
         paid: true
       })),
+    retrieveChargeFinancials:
+      overrides?.retrieveChargeFinancials ??
+      (async () => ({
+        chargeId: "ch_test_123",
+        actualProcessorFeeCents: 225
+      })),
     parseWebhookEvent:
       overrides?.parseWebhookEvent ??
       (async () => ({
@@ -143,6 +151,59 @@ function createFakeStripeGateway(overrides?: {
         refundId: "re_test_123",
         status: "succeeded"
       }))
+  };
+}
+
+function createFakeStripeConnectGateway(options?: {
+  transferIds?: string[];
+  reversalIds?: string[];
+  readiness?: {
+    transfersStatus: "not-requested" | "pending" | "restricted" | "active";
+    payoutsStatus: "not-requested" | "pending" | "restricted" | "active";
+    onboardingStatus: "not-started" | "requirements-due" | "in-review" | "restricted" | "ready";
+  };
+  onCreateAccount?: (providerId: string) => void;
+  onTransfer?: (input: Parameters<StripeConnectGateway["createProviderTransfer"]>[0]) => void;
+  onReversal?: (input: Parameters<StripeConnectGateway["reverseProviderTransfer"]>[0]) => void;
+  transferErrors?: Error[];
+}): StripeConnectGateway {
+  return {
+    isConfigured: () => true,
+    async createRecipientAccount(provider) {
+      options?.onCreateAccount?.(provider.id);
+      return {
+        stripeAccountId: `acct_${provider.id}`,
+        transfersStatus: options?.readiness?.transfersStatus ?? "active",
+        payoutsStatus: options?.readiness?.payoutsStatus ?? "active",
+        onboardingStatus: options?.readiness?.onboardingStatus ?? "ready"
+      };
+    },
+    async retrieveRecipientReadiness(stripeAccountId) {
+      return {
+        stripeAccountId,
+        transfersStatus: options?.readiness?.transfersStatus ?? "active",
+        payoutsStatus: options?.readiness?.payoutsStatus ?? "active",
+        onboardingStatus: options?.readiness?.onboardingStatus ?? "ready"
+      };
+    },
+    async createOnboardingLink() {
+      return {
+        url: "https://connect.stripe.test/onboarding",
+        expiresAt: futureIso(1)
+      };
+    },
+    async createProviderTransfer(input) {
+      options?.onTransfer?.(input);
+      const transferError = options?.transferErrors?.shift();
+      if (transferError) {
+        throw transferError;
+      }
+      return { transferId: options?.transferIds?.shift() ?? `tr_${input.bookingId}` };
+    },
+    async reverseProviderTransfer(input) {
+      options?.onReversal?.(input);
+      return { reversalId: options?.reversalIds?.shift() ?? `trr_${input.bookingId}` };
+    }
   };
 }
 
@@ -191,6 +252,108 @@ async function verifyProviderCredentials(
       notes: "Verified launch regression fixture credential."
     });
   }
+}
+
+async function createExecutedStripeProviderTransferFixture(options?: {
+  parseWebhookEvent?: PaymentCheckoutGateway["parseWebhookEvent"];
+  transferErrors?: Error[];
+}) {
+  const repository = new InMemoryMarketplaceRepository();
+  const transferInputs: Parameters<StripeConnectGateway["createProviderTransfer"]>[0][] = [];
+  const reversalInputs: Parameters<StripeConnectGateway["reverseProviderTransfer"]>[0][] = [];
+  const stripeCheckout = createFakeStripeGateway({
+    parseWebhookEvent: options?.parseWebhookEvent
+  });
+  const stripeConnect = createFakeStripeConnectGateway({
+    onTransfer: (input) => transferInputs.push(input),
+    onReversal: (input) => reversalInputs.push(input),
+    transferErrors: options?.transferErrors
+  });
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    stripeCheckout,
+    "http://localhost:3000",
+    stripeConnect
+  );
+  const customer = await platform.registerUser({
+    fullName: "Stripe Transfer Customer",
+    email: `stripe-transfer-${crypto.randomUUID()}@example.com`,
+    password: "Password123!",
+    phone: "555-0299",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  const opsProfile = (await repository.listOpsUsers())[0];
+  assert.ok(provider);
+  assert.ok(opsProfile);
+  const opsActor = {
+    userId: opsProfile.id,
+    email: opsProfile.email,
+    role: "ops" as const,
+    sessionVersion: 1
+  };
+  await platform.startProviderConnectOnboarding(provider.id);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Stripe provider transfer lifecycle fixture",
+    totalCents: 12_800
+  });
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  const payment = await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+  await repository.updateBooking(booking.id, {
+    completedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()
+  });
+  const preview = await platform.getOpsPayoutPreview();
+  const batch = preview.disbursementBatches.find(
+    (candidate) =>
+      candidate.recipientRole === "provider" && candidate.recipientIds.includes(provider.id)
+  );
+  assert.ok(batch);
+  assert.equal(batch.actionStatus, "ready-for-transfer");
+  const created = await platform.createOpsPayoutDisbursementRun(opsActor, {
+    previewBatchId: batch.id,
+    operatorNotes: "All provider transfer controls reviewed before execution."
+  });
+  const executed = await withMockedNow(
+    new Date(Date.parse(created.run.runDateIso) + 1_000).toISOString(),
+    () =>
+      platform.executeOpsPayoutDisbursementRun(opsActor, {
+        runId: created.run.id,
+        confirmation: "execute-provider-transfers",
+        operatorNotes: "Revalidated delivery, payment, credentials, and Stripe readiness."
+      })
+  );
+  return {
+    repository,
+    platform,
+    customer,
+    provider,
+    opsActor,
+    booking,
+    payment,
+    createdRun: created.run,
+    executed,
+    transferInputs,
+    reversalInputs
+  };
 }
 
 async function reviewCrewMatchForEligibleProvider(
@@ -1464,7 +1627,7 @@ test("observability overview includes internal ops access health, recent access 
       internalScope: "admin"
     })
   );
-  const lockedCreate = await withMockedNow("2026-06-24T09:07:00.000Z", () =>
+  await withMockedNow("2026-06-24T09:07:00.000Z", () =>
     platform.createOpsAccount(adminIdentity, {
       fullName: "Morgan Locked",
       email: "morgan.locked@example.com",
@@ -1473,7 +1636,7 @@ test("observability overview includes internal ops access health, recent access 
       internalScope: "operations"
     })
   );
-  const watchCreate = await withMockedNow("2026-06-24T09:08:00.000Z", () =>
+  await withMockedNow("2026-06-24T09:08:00.000Z", () =>
     platform.createOpsAccount(adminIdentity, {
       fullName: "Riley Watch",
       email: "riley.watch@example.com",
@@ -6955,6 +7118,375 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
   );
 });
 
+test("Stripe provider transfers reconcile actual fees, execute once, and keep the ledger balanced", async () => {
+  const fixture = await createExecutedStripeProviderTransferFixture();
+
+  assert.equal(fixture.payment.processorFeeStatus, "reconciled");
+  assert.equal(fixture.payment.processorChargeId, "ch_test_123");
+  assert.equal(fixture.payment.actualProcessorFeeCents, 225);
+  assert.equal(fixture.executed.run.status, "transferred");
+  assert.equal(fixture.executed.transferredCount, 1);
+  assert.equal(fixture.executed.failedCount, 0);
+  assert.equal(fixture.transferInputs.length, 1);
+  assert.equal(fixture.transferInputs[0]?.stripeAccountId, `acct_${fixture.provider.id}`);
+  assert.equal(fixture.transferInputs[0]?.sourceTransactionId, "ch_test_123");
+
+  const settlement = await fixture.repository.findBookingFinancialSettlement(fixture.booking.id);
+  assert.ok(settlement);
+  assert.equal(settlement.status, "transferred");
+  assert.equal(settlement.actualProcessorFeeCents, 225);
+  assert.equal(fixture.executed.transfers[0]?.providerId, fixture.provider.id);
+  assert.equal(
+    fixture.executed.transfers.some(
+      (transfer) => transfer.providerId !== fixture.provider.id
+    ),
+    false
+  );
+
+  const ledgerEntries = await fixture.repository.listFinancialLedgerEntries(fixture.booking.id);
+  const debits = ledgerEntries
+    .filter((entry) => entry.direction === "debit")
+    .reduce((sum, entry) => sum + entry.amountCents, 0);
+  const credits = ledgerEntries
+    .filter((entry) => entry.direction === "credit")
+    .reduce((sum, entry) => sum + entry.amountCents, 0);
+  assert.equal(debits, credits);
+  assert.equal(
+    ledgerEntries.filter((entry) => entry.source === "provider-transfer").length,
+    2
+  );
+
+  const retried = await withMockedNow(
+    new Date(Date.parse(fixture.createdRun.runDateIso) + 2_000).toISOString(),
+    () =>
+      fixture.platform.executeOpsPayoutDisbursementRun(fixture.opsActor, {
+        runId: fixture.createdRun.id,
+        confirmation: "execute-provider-transfers",
+        operatorNotes: "Idempotency recheck for the already completed provider transfer."
+      })
+  );
+  assert.equal(retried.transferredCount, 0);
+  assert.equal(retried.alreadyTransferredCount, 1);
+  assert.equal(fixture.transferInputs.length, 1);
+
+  const payoutLedger = await fixture.platform.getProviderPayoutLedger(fixture.provider.id);
+  assert.equal(
+    payoutLedger.entries.find((entry) => entry.bookingId === fixture.booking.id)?.status,
+    "paid"
+  );
+});
+
+test("failed provider transfers keep an audited reason and can be retried safely", async () => {
+  const fixture = await createExecutedStripeProviderTransferFixture({
+    transferErrors: [new Error("Stripe recipient transfer was temporarily unavailable.")]
+  });
+
+  assert.equal(fixture.executed.run.status, "failed");
+  assert.equal(fixture.executed.failedCount, 1);
+  assert.ok(
+    fixture.executed.run.blockerReasons.some((reason) =>
+      /temporarily unavailable/i.test(reason)
+    )
+  );
+  assert.equal(fixture.executed.transfers[0]?.status, "failed");
+
+  const retried = await withMockedNow(
+    new Date(Date.parse(fixture.createdRun.runDateIso) + 3_000).toISOString(),
+    () =>
+      fixture.platform.executeOpsPayoutDisbursementRun(fixture.opsActor, {
+        runId: fixture.createdRun.id,
+        confirmation: "execute-provider-transfers",
+        operatorNotes: "Retry after confirming the temporary Stripe transfer failure cleared."
+      })
+  );
+  assert.equal(retried.run.status, "transferred");
+  assert.deepEqual(retried.run.blockerReasons, []);
+  assert.equal(retried.transferredCount, 1);
+  assert.equal(retried.failedCount, 0);
+  assert.equal(fixture.transferInputs.length, 2);
+  assert.equal(
+    fixture.transferInputs[0]?.idempotencyKey,
+    fixture.transferInputs[1]?.idempotencyKey
+  );
+});
+
+test("provider Connect onboarding reuses one recipient and blocks transfers until capabilities are active", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const createdProviderIds: string[] = [];
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway(),
+    "http://localhost:3000",
+    createFakeStripeConnectGateway({
+      readiness: {
+        transfersStatus: "pending",
+        payoutsStatus: "restricted",
+        onboardingStatus: "restricted"
+      },
+      onCreateAccount: (providerId) => createdProviderIds.push(providerId)
+    })
+  );
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+  const firstOnboarding = await platform.startProviderConnectOnboarding(provider.id);
+  const secondOnboarding = await platform.startProviderConnectOnboarding(provider.id);
+  assert.equal(createdProviderIds.length, 1);
+  assert.equal(firstOnboarding.account?.stripeAccountId, secondOnboarding.account?.stripeAccountId);
+  assert.equal(firstOnboarding.account?.dashboard, "express");
+  assert.equal(firstOnboarding.account?.feesCollector, "application");
+  assert.equal(firstOnboarding.account?.lossesCollector, "application");
+  assert.equal(firstOnboarding.chargePattern, "separate-charges-and-transfers");
+  assert.equal(firstOnboarding.crewCompensationResponsibility, "provider");
+  assert.equal(firstOnboarding.transferReady, false);
+
+  const customer = await platform.registerUser({
+    fullName: "Restricted Connect Customer",
+    email: "restricted-connect-customer@example.com",
+    password: "Password123!",
+    phone: "555-0217",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Restricted Connect payout gate",
+    totalCents: 8_400
+  });
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  await platform.finalizeCheckoutSession(customer.id, { checkoutSessionId: "cs_test_123" });
+  await repository.updateBooking(booking.id, {
+    completedAt: new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()
+  });
+  const preview = await platform.getOpsPayoutPreview();
+  const providerBatch = preview.disbursementBatches.find((candidate) =>
+    candidate.recipientIds.includes(provider.id)
+  );
+  assert.equal(providerBatch?.railMode, "stripe-transfer");
+  assert.equal(providerBatch?.actionStatus, "blocked");
+  assert.ok(
+    providerBatch?.blockerReasons.some((reason) => /not both active/i.test(reason))
+  );
+});
+
+test("provider settlements stay on hold when Stripe fee reconciliation fails", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    createFakeStripeGateway({
+      retrieveChargeFinancials: async () => {
+        throw new Error("Stripe balance transaction is not available yet.");
+      }
+    })
+  );
+  const customer = await platform.registerUser({
+    fullName: "Fee Hold Customer",
+    email: "fee-hold-customer@example.com",
+    password: "Password123!",
+    phone: "555-0218",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+  const booking = await platform.createBooking(customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Processor fee reconciliation hold",
+    totalCents: 7_900
+  });
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+  await attachEvidence(
+    platform,
+    { userId: provider.id, email: provider.email, role: "provider" },
+    booking.id,
+    "after"
+  );
+  await platform.completeBooking(provider.id, { bookingId: booking.id });
+  await platform.createCheckoutSession(customer.id, { bookingId: booking.id });
+  const payment = await platform.finalizeCheckoutSession(customer.id, {
+    checkoutSessionId: "cs_test_123"
+  });
+  assert.equal(payment.status, "captured");
+  assert.equal(payment.processorFeeStatus, "failed");
+  assert.equal(await repository.findBookingFinancialSettlement(booking.id), undefined);
+  const ledger = await platform.getProviderPayoutLedger(provider.id);
+  const entry = ledger.entries.find((candidate) => candidate.bookingId === booking.id);
+  assert.equal(entry?.status, "on-hold");
+  assert.match(entry?.note ?? "", /processing fees are reconciled/i);
+});
+
+test("Stripe refund webhooks reverse released provider transfers exactly once", async () => {
+  let eventType = "charge.refunded";
+  const fixture = await createExecutedStripeProviderTransferFixture({
+    parseWebhookEvent: async () => ({
+      type: eventType,
+      paymentIntentId: "pi_test_123"
+    })
+  });
+
+  const firstWebhook = await fixture.platform.processStripeWebhook("{}", "sig_test");
+  assert.equal(firstWebhook.eventType, "charge.refunded");
+  assert.equal(fixture.reversalInputs.length, 1);
+  const settlement = await fixture.repository.findBookingFinancialSettlement(fixture.booking.id);
+  const transfer = settlement
+    ? await fixture.repository.findProviderTransferBySettlementId(settlement.id)
+    : undefined;
+  assert.equal(settlement?.status, "reversed");
+  assert.equal(transfer?.status, "reversed");
+  assert.ok(transfer?.stripeTransferReversalId);
+  assert.equal(
+    (await fixture.repository.listPayoutDisbursementRuns()).find(
+      (run) => run.id === fixture.createdRun.id
+    )?.status,
+    "reversed"
+  );
+
+  await fixture.platform.processStripeWebhook("{}", "sig_test");
+  assert.equal(fixture.reversalInputs.length, 1);
+  const ledgerEntries = await fixture.repository.listFinancialLedgerEntries(fixture.booking.id);
+  assert.equal(ledgerEntries.filter((entry) => entry.source === "reversal").length, 2);
+  const payoutLedger = await fixture.platform.getProviderPayoutLedger(fixture.provider.id);
+  assert.equal(
+    payoutLedger.entries.find((entry) => entry.bookingId === fixture.booking.id)?.status,
+    "reversed"
+  );
+  const replayedRun = await withMockedNow(
+    new Date(Date.parse(fixture.createdRun.runDateIso) + 4_000).toISOString(),
+    () =>
+      fixture.platform.executeOpsPayoutDisbursementRun(fixture.opsActor, {
+        runId: fixture.createdRun.id,
+        confirmation: "execute-provider-transfers",
+        operatorNotes: "Confirm the reversed transfer run remains terminal and idempotent."
+      })
+  );
+  assert.equal(replayedRun.run.status, "reversed");
+  assert.equal(replayedRun.transferredCount, 0);
+  assert.equal(replayedRun.failedCount, 0);
+  assert.equal(fixture.transferInputs.length, 1);
+  eventType = "charge.refunded";
+});
+
+test("approved in-product refunds reverse a released provider transfer before refunding", async () => {
+  const fixture = await createExecutedStripeProviderTransferFixture();
+  await fixture.platform.createRefund(
+    { userId: fixture.customer.id, role: "customer" },
+    {
+      paymentId: fixture.payment.id,
+      reason: "The customer reported a material service-quality problem after payout release."
+    }
+  );
+  const heldLedger = await fixture.platform.getProviderPayoutLedger(fixture.provider.id);
+  assert.equal(
+    heldLedger.entries.find((entry) => entry.bookingId === fixture.booking.id)?.status,
+    "on-hold"
+  );
+  assert.equal(fixture.reversalInputs.length, 0);
+
+  const ticket = (await fixture.repository.listSupportTickets()).find(
+    (candidate) =>
+      candidate.bookingId === fixture.booking.id && candidate.issueType === "billing"
+  );
+  const booking = await fixture.repository.findBookingById(fixture.booking.id);
+  const evidence = booking?.serviceEvidence[0];
+  assert.ok(ticket);
+  assert.ok(evidence);
+  await fixture.platform.reviewBookingEvidenceForOps({
+    bookingId: fixture.booking.id,
+    ticketId: ticket.id,
+    evidenceId: evidence.id,
+    reviewStatus: "supports-customer",
+    reviewNotes: "The submitted evidence supports the customer's refund request."
+  });
+  await fixture.platform.updateSupportTicketForOps({
+    ticketId: ticket.id,
+    status: "resolved",
+    resolutionAction: "approve-refund",
+    resolutionNotes: "Approved after evidence review confirmed the service-quality issue."
+  });
+
+  assert.equal(fixture.reversalInputs.length, 1);
+  const settlement = await fixture.repository.findBookingFinancialSettlement(fixture.booking.id);
+  const transfer = settlement
+    ? await fixture.repository.findProviderTransferBySettlementId(settlement.id)
+    : undefined;
+  assert.equal(settlement?.status, "reversed");
+  assert.equal(transfer?.status, "reversed");
+  assert.equal((await fixture.repository.findPaymentById(fixture.payment.id))?.status, "refunded");
+});
+
+test("in-product booking disputes hold an already released transfer pending support resolution", async () => {
+  const fixture = await createExecutedStripeProviderTransferFixture();
+
+  const disputed = await fixture.platform.createBookingDispute(
+    { userId: fixture.customer.id, role: "customer" },
+    {
+      bookingId: fixture.booking.id,
+      reason: "The completed service needs a quality review after payout release."
+    }
+  );
+
+  assert.equal(disputed.status, "disputed");
+  assert.equal(fixture.reversalInputs.length, 0);
+  const settlement = await fixture.repository.findBookingFinancialSettlement(fixture.booking.id);
+  const transfer = settlement
+    ? await fixture.repository.findProviderTransferBySettlementId(settlement.id)
+    : undefined;
+  assert.equal(settlement?.status, "transferred");
+  assert.equal(transfer?.status, "transferred");
+  const payoutLedger = await fixture.platform.getProviderPayoutLedger(fixture.provider.id);
+  assert.equal(
+    payoutLedger.entries.find((entry) => entry.bookingId === fixture.booking.id)?.status,
+    "on-hold"
+  );
+});
+
+test("Stripe dispute webhooks reverse released provider transfers and open a payout hold", async () => {
+  const fixture = await createExecutedStripeProviderTransferFixture({
+    parseWebhookEvent: async () => ({
+      type: "charge.dispute.created",
+      paymentIntentId: "pi_test_123",
+      disputeId: "dp_test_123",
+      disputedAmountCents: 12_800,
+      disputeReason: "product_not_received"
+    })
+  });
+
+  const webhook = await fixture.platform.processStripeWebhook("{}", "sig_test");
+  assert.equal(webhook.eventType, "charge.dispute.created");
+  assert.equal(fixture.reversalInputs.length, 1);
+  const booking = await fixture.repository.findBookingById(fixture.booking.id);
+  assert.equal(booking?.status, "disputed");
+  assert.match(booking?.disputeReason ?? "", /dp_test_123/);
+  const settlement = await fixture.repository.findBookingFinancialSettlement(fixture.booking.id);
+  assert.equal(settlement?.status, "reversed");
+  assert.ok(
+    (await fixture.repository.listSupportTickets()).some(
+      (ticket) => ticket.bookingId === fixture.booking.id
+    )
+  );
+});
+
 test("customer service can open a refund review override from a billing ticket", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(
@@ -10787,7 +11319,7 @@ test("providers can import an external iCal feed and use it to block YardMatch a
   });
   await verifyProviderCredentials(platform, provider.id);
 
-  const customer = await platform.registerUser({
+  await platform.registerUser({
     fullName: "Jordan Rivera",
     email: "customer-calendar-import@example.com",
     password: "Password123!",

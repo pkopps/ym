@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
-import type { Booking, CustomerProfile, PaymentRecord, ProviderProfile } from "@yardmatch/contracts";
+import type {
+  Booking,
+  CustomerProfile,
+  FinancialLedgerEntry,
+  PaymentRecord,
+  ProviderProfile,
+  ProviderTransferRecord
+} from "@yardmatch/contracts";
 import { PrismaMarketplaceRepository } from "../src/repositories/PrismaMarketplaceRepository";
 
 const databaseUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -29,6 +36,7 @@ test(
     };
 
     const cleanup = async () => {
+      await (prisma as any).providerTransferRecord.deleteMany({ where: { bookingId } });
       await (prisma as any).financialLedgerEntry.deleteMany({ where: { bookingId } });
       await (prisma as any).bookingFinancialSettlement.deleteMany({ where: { bookingId } });
       await (prisma as any).customerProviderRelationship.deleteMany({
@@ -117,6 +125,10 @@ test(
         refundable: true,
         checkoutSessionId: `cs_${suffix}`,
         processorPaymentIntentId: `pi_${suffix}`,
+        processorChargeId: `ch_${suffix}`,
+        actualProcessorFeeCents: 248,
+        processorFeeStatus: "reconciled",
+        processorFeeUpdatedAt: now,
         paidAt: now,
         createdAt: now,
         updatedAt: now
@@ -156,6 +168,126 @@ test(
       assert.equal(debits, credits);
       assert.equal(new Set(ledger.map((entry) => entry.idempotencyKey)).size, ledger.length);
 
+      const providerTransfer: ProviderTransferRecord = {
+        id: `pg-it-transfer-${suffix}`,
+        settlementId: first.id,
+        bookingId,
+        paymentId,
+        providerId,
+        stripeAccountId: `acct_${suffix}`,
+        amountCents: first.providerNetCents,
+        currency: first.currency,
+        status: "pending",
+        idempotencyKey: `provider-transfer:${first.id}:v1`,
+        createdAt: now,
+        updatedAt: now
+      };
+      await repository.createProviderTransferRecord(providerTransfer);
+      const transferEntries: FinancialLedgerEntry[] = [
+        {
+          id: `pg-it-transfer-debit-${suffix}`,
+          settlementId: first.id,
+          bookingId,
+          paymentId,
+          account: "provider-payable",
+          direction: "debit",
+          amountCents: first.providerNetCents,
+          currency: first.currency,
+          idempotencyKey: `provider-transfer:${first.id}:provider-payable:debit`,
+          source: "provider-transfer",
+          createdAt: now
+        },
+        {
+          id: `pg-it-transfer-credit-${suffix}`,
+          settlementId: first.id,
+          bookingId,
+          paymentId,
+          account: "stripe-clearing",
+          direction: "credit",
+          amountCents: first.providerNetCents,
+          currency: first.currency,
+          idempotencyKey: `provider-transfer:${first.id}:stripe-clearing:credit`,
+          source: "provider-transfer",
+          createdAt: now
+        }
+      ];
+      const transferred = await repository.completeProviderTransfer({
+        transferRecordId: providerTransfer.id,
+        stripeTransferId: `tr_${suffix}`,
+        transferredAt: now,
+        ledgerEntries: transferEntries
+      });
+      const repeatedTransfer = await repository.completeProviderTransfer({
+        transferRecordId: providerTransfer.id,
+        stripeTransferId: `tr_${suffix}`,
+        transferredAt: now,
+        ledgerEntries: transferEntries
+      });
+      assert.equal(transferred.status, "transferred");
+      assert.equal(repeatedTransfer.status, "transferred");
+      assert.equal(
+        (await repository.listFinancialLedgerEntries(bookingId)).filter(
+          (entry) => entry.source === "provider-transfer"
+        ).length,
+        2
+      );
+
+      const reversalEntries: FinancialLedgerEntry[] = [
+        {
+          id: `pg-it-reversal-debit-${suffix}`,
+          settlementId: first.id,
+          bookingId,
+          paymentId,
+          account: "stripe-clearing",
+          direction: "debit",
+          amountCents: first.providerNetCents,
+          currency: first.currency,
+          idempotencyKey: `provider-transfer-reversal:${first.id}:stripe-clearing:debit`,
+          source: "reversal",
+          createdAt: now
+        },
+        {
+          id: `pg-it-reversal-credit-${suffix}`,
+          settlementId: first.id,
+          bookingId,
+          paymentId,
+          account: "provider-payable",
+          direction: "credit",
+          amountCents: first.providerNetCents,
+          currency: first.currency,
+          idempotencyKey: `provider-transfer-reversal:${first.id}:provider-payable:credit`,
+          source: "reversal",
+          createdAt: now
+        }
+      ];
+      const reversed = await repository.completeProviderTransferReversal({
+        transferRecordId: providerTransfer.id,
+        stripeTransferReversalId: `trr_${suffix}`,
+        reversedAt: now,
+        ledgerEntries: reversalEntries
+      });
+      const repeatedReversal = await repository.completeProviderTransferReversal({
+        transferRecordId: providerTransfer.id,
+        stripeTransferReversalId: `trr_${suffix}`,
+        reversedAt: now,
+        ledgerEntries: reversalEntries
+      });
+      assert.equal(reversed.status, "reversed");
+      assert.equal(repeatedReversal.status, "reversed");
+      assert.equal(
+        (await repository.findBookingFinancialSettlement(bookingId))?.status,
+        "reversed"
+      );
+      const finalLedger = await repository.listFinancialLedgerEntries(bookingId);
+      assert.equal(
+        finalLedger
+          .filter((entry) => entry.direction === "debit")
+          .reduce((sum, entry) => sum + entry.amountCents, 0),
+        finalLedger
+          .filter((entry) => entry.direction === "credit")
+          .reduce((sum, entry) => sum + entry.amountCents, 0)
+      );
+
       await assert.rejects(
         () =>
           prisma.paymentRecord.create({
@@ -164,6 +296,8 @@ test(
               id: `${paymentId}-duplicate`,
               checkoutSessionId: payment.checkoutSessionId,
               processorPaymentIntentId: `pi_duplicate_${suffix}`,
+              processorChargeId: `ch_duplicate_${suffix}`,
+              processorFeeUpdatedAt: new Date(payment.processorFeeUpdatedAt!),
               paidAt: new Date(payment.paidAt!),
               createdAt: new Date(payment.createdAt),
               updatedAt: new Date(payment.updatedAt)

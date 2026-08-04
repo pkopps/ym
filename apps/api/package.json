@@ -12,6 +12,7 @@
     "prisma:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "prisma:seed": "tsx prisma/seed.ts",
     "ops:create-user": "tsx src/scripts/createOpsUser.ts",
+    "verify:production-config": "node --import tsx src/scripts/verifyProductionConfig.ts",
     "test": "node --test --import tsx test/**/*.test.ts",
     "test:postgres": "node --test --import tsx test/postgres-repository.integration.test.ts"
   },

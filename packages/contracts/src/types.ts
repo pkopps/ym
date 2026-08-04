@@ -52,6 +52,11 @@ export type RecurringServicePlanStatus = "active" | "cancelled";
 
 export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "failed";
 export type PaymentProcessor = "manual" | "stripe";
+export type ProcessorFeeReconciliationStatus =
+  | "not-applicable"
+  | "pending"
+  | "reconciled"
+  | "failed";
 export type RefundReviewStatus = "requested" | "approved" | "denied";
 export type RefundActorRole = "customer" | "provider" | "ops";
 export type PayoutLedgerStatus =
@@ -1471,6 +1476,11 @@ export interface PaymentRecord {
   checkoutSessionId?: string;
   checkoutSessionUrl?: string;
   processorPaymentIntentId?: string;
+  processorChargeId?: string;
+  actualProcessorFeeCents?: number;
+  processorFeeStatus?: ProcessorFeeReconciliationStatus;
+  processorFeeUpdatedAt?: string;
+  processorFeeFailureReason?: string;
   refundReason?: string;
   refundReviewStatus?: RefundReviewStatus;
   refundRequestedAt?: string;
@@ -1505,6 +1515,32 @@ export interface BookingFinancialSettlement {
   status: "recorded" | "transfer-ready" | "transferred" | "reversed";
   createdAt: string;
   updatedAt: string;
+}
+
+export type ProviderTransferStatus =
+  | "pending"
+  | "transferred"
+  | "failed"
+  | "reversed";
+
+export interface ProviderTransferRecord {
+  id: string;
+  settlementId: string;
+  bookingId: string;
+  paymentId: string;
+  providerId: string;
+  stripeAccountId: string;
+  stripeTransferId?: string;
+  stripeTransferReversalId?: string;
+  amountCents: number;
+  currency: string;
+  status: ProviderTransferStatus;
+  idempotencyKey: string;
+  failureReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  transferredAt?: string;
+  reversedAt?: string;
 }
 
 export interface CreateBookingFinancialSettlementInput {
@@ -1663,7 +1699,7 @@ export interface OpsProviderPayoutRunPreviewItem {
 }
 
 export interface OpsPayoutPolicySummary {
-  disbursementRailStatus: "manual-preview-only" | "external-rail-ready";
+  disbursementRailStatus: "manual-preview-only" | "stripe-transfer-ready";
   providerHoldPeriodHours: number;
   crewHoldPeriodHours: number;
   providerWeeklyRunRule: string;
@@ -1676,11 +1712,15 @@ export interface OpsPayoutPolicySummary {
 }
 
 export type OpsPayoutDisbursementRecipientRole = "provider" | "crew-member";
-export type OpsPayoutDisbursementRailMode = "manual-preview" | "external-rail-pending";
+export type OpsPayoutDisbursementRailMode =
+  | "manual-preview"
+  | "external-rail-pending"
+  | "stripe-transfer";
 export type OpsPayoutDisbursementActionStatus =
   | "ready-for-manual-review"
   | "blocked"
-  | "external-rail-pending";
+  | "external-rail-pending"
+  | "ready-for-transfer";
 
 export interface OpsPayoutDisbursementEntryRef {
   entryId: string;
@@ -1712,6 +1752,12 @@ export interface OpsPayoutDisbursementBatchPreview {
 
 export type OpsPayoutDisbursementRunStatus =
   | "manual-review"
+  | "ready-for-transfer"
+  | "processing"
+  | "partially-transferred"
+  | "transferred"
+  | "failed"
+  | "reversed"
   | "reconciled";
 
 export interface OpsPayoutDisbursementRun {
@@ -1758,6 +1804,21 @@ export interface CreateOpsPayoutDisbursementRunResponse {
 export interface OpsPayoutDisbursementRunsResponse {
   generatedAt: string;
   runs: OpsPayoutDisbursementRun[];
+  providerTransfers: ProviderTransferRecord[];
+}
+
+export interface ExecuteOpsPayoutDisbursementRunRequest {
+  runId: string;
+  confirmation: "execute-provider-transfers";
+  operatorNotes: string;
+}
+
+export interface ExecuteOpsPayoutDisbursementRunResponse {
+  run: OpsPayoutDisbursementRun;
+  transfers: ProviderTransferRecord[];
+  transferredCount: number;
+  failedCount: number;
+  alreadyTransferredCount: number;
 }
 
 export interface OpsPayoutRunPreviewResponse {
@@ -2993,7 +3054,7 @@ export function buildCustomerProviderChoicePresentations(
     return [];
   }
 
-  const presentations: CustomerProviderChoicePresentation[] = rankedProviders.map((result) =>
+  const presentations: CustomerProviderChoicePresentation[] = rankedProviders.map(() =>
     buildQualifiedFallbackChoicePresentation()
   );
   presentations[0] = buildRecommendedChoicePresentation(rankedProviders[0]);

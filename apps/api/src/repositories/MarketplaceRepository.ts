@@ -1,7 +1,5 @@
 import {
   AppNotification,
-  ActiveSession,
-  Address,
   AvailabilitySlot,
   Booking,
   BookingAddressChangeRequest,
@@ -28,13 +26,13 @@ import {
   ProviderConnectAccount,
   ProviderCredential,
   OpsPayoutDisbursementRun,
+  ProviderTransferRecord,
   PushDevice,
   RecurringServicePlan,
   ProviderProfile,
   ProviderReview,
   LaunchLead,
   OpsAccessHistoryEntry,
-  SupportOpsTicket,
   ReviewInvite,
   SupportTicket
 } from "@yardmatch/contracts";
@@ -71,6 +69,20 @@ export interface AuthIdentityRecord {
   resetPasswordCodeHash?: string;
   resetPasswordExpiresAt?: string;
   resetPasswordRequestedAt?: string;
+}
+
+export interface CompleteProviderTransferInput {
+  transferRecordId: string;
+  stripeTransferId: string;
+  transferredAt: string;
+  ledgerEntries: FinancialLedgerEntry[];
+}
+
+export interface CompleteProviderTransferReversalInput {
+  transferRecordId: string;
+  stripeTransferReversalId: string;
+  reversedAt: string;
+  ledgerEntries: FinancialLedgerEntry[];
 }
 
 export interface MarketplaceRepository {
@@ -148,6 +160,23 @@ export interface MarketplaceRepository {
     previewBatchId: string,
     entryFingerprint: string
   ): Promise<OpsPayoutDisbursementRun | undefined>;
+  updatePayoutDisbursementRun(
+    runId: string,
+    updates: Partial<OpsPayoutDisbursementRun>
+  ): Promise<OpsPayoutDisbursementRun | undefined>;
+  createProviderTransferRecord(record: ProviderTransferRecord): Promise<ProviderTransferRecord>;
+  findProviderTransferBySettlementId(
+    settlementId: string
+  ): Promise<ProviderTransferRecord | undefined>;
+  listProviderTransferRecords(): Promise<ProviderTransferRecord[]>;
+  updateProviderTransferRecord(
+    transferRecordId: string,
+    updates: Partial<ProviderTransferRecord>
+  ): Promise<ProviderTransferRecord | undefined>;
+  completeProviderTransfer(input: CompleteProviderTransferInput): Promise<ProviderTransferRecord>;
+  completeProviderTransferReversal(
+    input: CompleteProviderTransferReversalInput
+  ): Promise<ProviderTransferRecord>;
   createLaunchOperationsTask(task: LaunchOperationsTask): Promise<LaunchOperationsTask>;
   listLaunchOperationsTasks(): Promise<LaunchOperationsTask[]>;
   findLaunchOperationsTaskByRecommendationFingerprint(

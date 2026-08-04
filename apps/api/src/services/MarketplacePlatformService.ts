@@ -22,6 +22,8 @@ import {
   CreateOpsBookingInterventionRequest,
   CreateOpsPayoutDisbursementRunRequest,
   CreateOpsPayoutDisbursementRunResponse,
+  ExecuteOpsPayoutDisbursementRunRequest,
+  ExecuteOpsPayoutDisbursementRunResponse,
   CrewAvailabilityDay,
   CrewMatchCandidate,
   CrewMatchesResponse,
@@ -100,6 +102,7 @@ import {
   CreatePaymentIntentRequest,
   CreateOpsRefundOverrideRequest,
   FinalizeCheckoutSessionRequest,
+  FinancialLedgerEntry,
   ProcessReviewInvitesRequest,
   ProcessReviewInvitesResponse,
   ProcessProviderOnboardingAutomationRequest,
@@ -124,7 +127,6 @@ import {
   LaunchOperationsTaskNotificationSweepItem,
   LaunchOperationsTaskNotificationSweepResponse,
   LaunchOperationsTasksResponse,
-  OpsAutomationRunRecord,
   OpsAutomationRunResponse,
   OpsAutomationRunsResponse,
   OpsAutomationSweepKey,
@@ -137,6 +139,7 @@ import {
   UpdateLaunchOperationsTaskResponse,
   UpdateSupportTicketRequest,
   Booking,
+  BookingFinancialSettlement,
   BookingStatus,
   BookingServiceWindowKey,
   BookingInterventionRecord,
@@ -151,6 +154,7 @@ import {
   NotificationListResponse,
   NotificationPreferences,
   PaymentRecord,
+  ProviderTransferRecord,
   ProviderEconomicsSearchSummary,
   ProviderServiceFitSearchSummary,
   OpsReviewResponseItem,
@@ -202,8 +206,6 @@ import {
   LaunchLead,
   LaunchLeadBookingMatch,
   LaunchLeadChannelMetadata,
-  LaunchLeadStatus,
-  LaunchLeadLossReason,
   LaunchLeadSourceChannel,
   LaunchLeadContactPreference,
   ClearBookingRouteStopRequest,
@@ -5165,8 +5167,6 @@ export class MarketplacePlatformService {
     const provider = await this.repository.findProviderById(booking.providerId);
     const matches = await this.repository.listCrewMatches();
     const acceptedMatches = matches.filter((match) => match.bookingId === booking.id && match.status === "accepted");
-    const acceptedMatch = acceptedMatches[0];
-
     if (actor.role === "customer" && booking.customerId !== actor.userId) {
       throw new HttpError(403, "Customers can only track their own bookings");
     }
@@ -6977,7 +6977,7 @@ export class MarketplacePlatformService {
     }
 
     if (parsed.actions.length === 1) {
-      return this.runProviderAssistantSingleAction(providerId, booking, parsed.actions[0]!, payload.execute === true, command);
+      return this.runProviderAssistantSingleAction(providerId, booking, parsed.actions[0], payload.execute === true, command);
     }
 
     const stepResponses: ProviderAssistantCommandResponse[] = [];
@@ -7334,7 +7334,7 @@ export class MarketplacePlatformService {
         .map((candidate) => providerBookingsById.get(candidate.bookingId))
         .find((candidate): candidate is Awaited<ReturnType<typeof this.listProviderAssistantCandidates>>[number] =>
           Boolean(candidate)
-        ) ?? providerBookingsById.get(orderedCandidates[0]!.bookingId);
+        ) ?? providerBookingsById.get(orderedCandidates[0].bookingId);
 
     if (!recommendedCandidate) {
       return {
@@ -7483,7 +7483,7 @@ export class MarketplacePlatformService {
       };
     }
 
-    const recommendedJob = jobsNeedingCrew[0]!;
+    const recommendedJob = jobsNeedingCrew[0];
     const bookingCandidates = jobsNeedingCrew.map((job) => this.toProviderAssistantBookingCandidateFromStaffingJob(job));
     const staffingPlan = this.buildProviderAssistantStaffingPlan(jobsNeedingCrew);
     const staffingPlanPreview = this.buildProviderAssistantStaffingPlanPreview(staffingPlan);
@@ -9818,8 +9818,8 @@ export class MarketplacePlatformService {
         ? Math.max(
             0,
             Math.floor(
-              (new Date(completedBookingsForCategory[0]!.completedAt!).getTime() -
-                new Date(completedBookingsForCategory[1]!.completedAt!).getTime()) /
+              (new Date(completedBookingsForCategory[0].completedAt!).getTime() -
+                new Date(completedBookingsForCategory[1].completedAt).getTime()) /
                 (24 * 60 * 60 * 1000)
             )
           )
@@ -10323,11 +10323,12 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Provider not found");
     }
 
-    const [bookings, payments, matches, customers] = await Promise.all([
+    const [bookings, payments, matches, customers, providerTransfers] = await Promise.all([
       this.repository.listBookings(),
       this.repository.listPayments(),
       this.repository.listCrewMatches(),
-      this.repository.listCustomers()
+      this.repository.listCustomers(),
+      this.repository.listProviderTransferRecords()
     ]);
     const providerBookings = bookings.filter(
       (booking) => booking.providerId === providerId && this.isPayoutRelevantBooking(booking)
@@ -10353,8 +10354,16 @@ export class MarketplacePlatformService {
         );
         const customer = customers.find((candidate) => candidate.id === booking.customerId);
         const settlement = settlementByBookingId.get(booking.id);
+        const providerTransfer = settlement
+          ? providerTransfers.find((candidate) => candidate.settlementId === settlement.id)
+          : undefined;
         const crewShareCents = 0;
-        const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
+        const payoutStatus = this.getPayoutLedgerStatus(
+          booking,
+          payment,
+          settlement,
+          providerTransfer
+        );
         const availableAtIso = this.getPayoutAvailabilityIso(booking, payoutStatus);
         const providerNetAmountCents = settlement?.providerNetCents ?? booking.totalCents;
 
@@ -10377,7 +10386,14 @@ export class MarketplacePlatformService {
           paymentStatus: payment?.status,
           status: payoutStatus,
           availableAtIso,
-          note: this.buildProviderPayoutNote(booking, payoutStatus, payment, acceptedMatches.length)
+          note: this.buildProviderPayoutNote(
+            booking,
+            payoutStatus,
+            payment,
+            acceptedMatches.length,
+            settlement,
+            providerTransfer
+          )
         };
 
         return entry;
@@ -10667,11 +10683,13 @@ export class MarketplacePlatformService {
   }
 
   public async getOpsPayoutPreview(): Promise<OpsPayoutRunPreviewResponse> {
-    const [providers, bookings, payments] = await Promise.all([
+    const [providers, bookings, payments, providerTransfers] = await Promise.all([
       this.repository.listProviders(),
       this.repository.listBookings(),
-      this.repository.listPayments()
+      this.repository.listPayments(),
+      this.repository.listProviderTransferRecords()
     ]);
+    const stripeTransfersConfigured = this.stripeConnect.isConfigured();
     type DisbursementEntryRef = OpsPayoutRunPreviewResponse["disbursementBatches"][number]["entries"][number];
     type MutableDisbursementBatch = {
       id: string;
@@ -10715,8 +10733,16 @@ export class MarketplacePlatformService {
         id,
         runDateIso,
         recipientRole,
-        railMode: "manual-preview",
-        actionStatus: recipientRole === "provider" ? "ready-for-manual-review" : "blocked",
+        railMode:
+          recipientRole === "provider" && stripeTransfersConfigured
+            ? "stripe-transfer"
+            : "manual-preview",
+        actionStatus:
+          recipientRole === "provider"
+            ? stripeTransfersConfigured
+              ? "ready-for-transfer"
+              : "ready-for-manual-review"
+            : "blocked",
         totalCents: 0,
         recipientIds: new Set<string>(),
         bookingIds: new Set<string>(),
@@ -10724,20 +10750,26 @@ export class MarketplacePlatformService {
         entries: [],
         blockerReasons:
           recipientRole === "provider"
-            ? [
-                "External payout rails are not configured yet, so ops must execute and reconcile this batch manually."
-              ]
+            ? stripeTransfersConfigured
+              ? []
+              : [
+                  "External payout rails are not configured yet, so ops must execute and reconcile this batch manually."
+                ]
             : [
                 "YardMatch does not create crew transfers; the provider business is responsible for crew compensation."
               ],
         manualActionLabel:
           recipientRole === "provider"
-            ? "Review provider payout batch"
+            ? stripeTransfersConfigured
+              ? "Execute provider transfers"
+              : "Review provider payout batch"
             : "Blocked legacy crew transfer",
         auditInstructions: [
           "Confirm every entry still has captured customer payment before disbursement.",
           "Confirm no refund review, completed-job dispute, or support hold opened after this preview was generated.",
-          "Record the external transfer id, recipient, amount, and operator in the financial runbook until payout rails are integrated."
+          stripeTransfersConfigured
+            ? "Execute only the provider net settlement through Stripe; YardMatch never transfers funds to crew members."
+            : "Record the external transfer id, recipient, amount, and operator in the financial runbook until payout rails are integrated."
         ]
       };
       disbursementBatches.set(id, batch);
@@ -10755,7 +10787,7 @@ export class MarketplacePlatformService {
     };
 
     let totalProviderReadyCents = 0;
-    let totalCrewReadyCents = 0;
+    const totalCrewReadyCents = 0;
     let totalAwaitingCustomerPaymentCents = 0;
     let onHoldEntryCount = 0;
     let providerInstantEligibleCount = 0;
@@ -10766,6 +10798,33 @@ export class MarketplacePlatformService {
       );
       const nextRunIso = this.getNextPayoutRunIso(provider.weeklyPayoutDay);
       let providerInstantEligibleCents = 0;
+      const providerTransferBlockers: string[] = [];
+      if (stripeTransfersConfigured) {
+        if (provider.verificationStatus !== "verified") {
+          providerTransferBlockers.push("Provider marketplace verification is not approved.");
+        }
+        const credentialReadiness = evaluateProviderCredentialReadiness(
+          provider,
+          provider.credentials ?? []
+        );
+        if (!credentialReadiness.ready) {
+          providerTransferBlockers.push(...credentialReadiness.warnings);
+        }
+        try {
+          const connectStatus = await this.getProviderConnectStatus(provider.id);
+          if (!connectStatus.transferReady) {
+            providerTransferBlockers.push(
+              "Provider Stripe recipient transfers and payouts capabilities are not both active."
+            );
+          }
+        } catch (error) {
+          providerTransferBlockers.push(
+            error instanceof Error
+              ? `Stripe recipient readiness could not be verified: ${error.message}`
+              : "Stripe recipient readiness could not be verified."
+          );
+        }
+      }
 
       for (const booking of providerBookings) {
         const payment =
@@ -10775,9 +10834,17 @@ export class MarketplacePlatformService {
         const settlement = payment
           ? await this.ensureBookingFinancialSettlement(booking, payment)
           : await this.repository.findBookingFinancialSettlement(booking.id);
+        const providerTransfer = settlement
+          ? providerTransfers.find((candidate) => candidate.settlementId === settlement.id)
+          : undefined;
         const crewShareCents = 0;
         const providerNetAmountCents = settlement?.providerNetCents ?? booking.totalCents;
-        const payoutStatus = this.getPayoutLedgerStatus(booking, payment);
+        const payoutStatus = this.getPayoutLedgerStatus(
+          booking,
+          payment,
+          settlement,
+          providerTransfer
+        );
 
         if (payoutStatus === "ready") {
           totalProviderReadyCents += providerNetAmountCents;
@@ -10796,12 +10863,31 @@ export class MarketplacePlatformService {
           run.crewShareCents += crewShareCents;
           providerRuns.set(nextRunIso, run);
           if (providerNetAmountCents > 0) {
+            const batch = touchDisbursementBatch(
+              stripeTransfersConfigured
+                ? `provider-stripe-${provider.id}-${nextRunIso.slice(0, 10)}`
+                : `provider-manual-${nextRunIso.slice(0, 10)}`,
+              nextRunIso,
+              "provider"
+            );
+            if (providerTransferBlockers.length > 0) {
+              batch.actionStatus = "blocked";
+              batch.blockerReasons.push(
+                ...providerTransferBlockers.filter(
+                  (reason) => !batch.blockerReasons.includes(reason)
+                )
+              );
+            }
+            if (stripeTransfersConfigured && payment?.processor !== "stripe") {
+              batch.actionStatus = "blocked";
+              const reason =
+                "Provider Stripe transfers require a captured and reconciled Stripe customer charge.";
+              if (!batch.blockerReasons.includes(reason)) {
+                batch.blockerReasons.push(reason);
+              }
+            }
             addDisbursementEntry(
-              touchDisbursementBatch(
-                `provider-manual-${nextRunIso.slice(0, 10)}`,
-                nextRunIso,
-                "provider"
-              ),
+              batch,
               {
                 entryId: `provider-payout-${booking.id}`,
                 bookingId: booking.id,
@@ -10875,7 +10961,10 @@ export class MarketplacePlatformService {
   }
 
   public async listOpsPayoutDisbursementRuns(): Promise<OpsPayoutDisbursementRunsResponse> {
-    const runs = await this.repository.listPayoutDisbursementRuns();
+    const [runs, providerTransfers] = await Promise.all([
+      this.repository.listPayoutDisbursementRuns(),
+      this.repository.listProviderTransferRecords()
+    ]);
     return {
       generatedAt: new Date().toISOString(),
       runs: runs.sort((left, right) => {
@@ -10883,7 +10972,8 @@ export class MarketplacePlatformService {
           return right.runDateIso.localeCompare(left.runDateIso);
         }
         return right.createdAt.localeCompare(left.createdAt);
-      })
+      }),
+      providerTransfers
     };
   }
 
@@ -10931,7 +11021,7 @@ export class MarketplacePlatformService {
       recipientRole: batch.recipientRole,
       railMode: batch.railMode,
       actionStatus: batch.actionStatus,
-      status: "manual-review",
+      status: batch.actionStatus === "ready-for-transfer" ? "ready-for-transfer" : "manual-review",
       totalCents: batch.totalCents,
       recipientCount: batch.recipientCount,
       bookingCount: batch.bookingCount,
@@ -10943,7 +11033,11 @@ export class MarketplacePlatformService {
       manualActionLabel: batch.manualActionLabel,
       auditInstructions: [
         ...batch.auditInstructions,
-        "Attach the external bank or payout-provider reference here after the manual run is reconciled."
+        ...(batch.railMode === "manual-preview"
+          ? [
+              "Attach the external bank or payout-provider reference here after the manual run is reconciled."
+            ]
+          : ["Stripe transfer ids are retained on each immutable provider transfer record."])
       ],
       createdAt: now,
       updatedAt: now,
@@ -10956,6 +11050,213 @@ export class MarketplacePlatformService {
       run,
       created: true,
       matchedPreviewBatch: batch
+    };
+  }
+
+  public async executeOpsPayoutDisbursementRun(
+    actor: AuthIdentityRecord,
+    payload: ExecuteOpsPayoutDisbursementRunRequest
+  ): Promise<ExecuteOpsPayoutDisbursementRunResponse> {
+    if (actor.role !== "ops") {
+      throw new HttpError(403, "Only operations can execute payout disbursement runs");
+    }
+    const opsUser = await this.repository.findOpsUserById(actor.userId);
+    if (!opsUser || opsUser.internalScope !== "admin") {
+      throw new HttpError(403, "Only ops administrators can execute provider transfers");
+    }
+    if (payload.confirmation !== "execute-provider-transfers") {
+      throw new HttpError(400, "Provider transfer confirmation is required");
+    }
+    const operatorNotes = payload.operatorNotes?.trim();
+    if (!operatorNotes || operatorNotes.length < 12) {
+      throw new HttpError(400, "Explain why this provider transfer run is ready to execute");
+    }
+    if (!this.stripeConnect.isConfigured()) {
+      throw new HttpError(503, "Stripe Connect is not configured yet.");
+    }
+
+    const run = (await this.repository.listPayoutDisbursementRuns()).find(
+      (candidate) => candidate.id === payload.runId
+    );
+    if (!run) {
+      throw new HttpError(404, "Payout disbursement run not found");
+    }
+    if (run.recipientRole !== "provider" || run.railMode !== "stripe-transfer") {
+      throw new HttpError(409, "Only provider Stripe transfer runs can be executed");
+    }
+    if (run.actionStatus !== "ready-for-transfer") {
+      throw new HttpError(409, "This payout run still has transfer blockers");
+    }
+    if (Date.parse(run.runDateIso) > Date.now()) {
+      throw new HttpError(409, "This payout run cannot execute before its scheduled run date");
+    }
+
+    const existingTransfers = await this.repository.listProviderTransferRecords();
+    if (run.status === "transferred" || run.status === "reversed") {
+      const transfers = existingTransfers.filter((candidate) =>
+        run.entries.some((entry) => entry.bookingId === candidate.bookingId)
+      );
+      return {
+        run,
+        transfers,
+        transferredCount: 0,
+        failedCount: 0,
+        alreadyTransferredCount: transfers.filter(
+          (candidate) => candidate.status === "transferred"
+        ).length
+      };
+    }
+
+    const processingAt = new Date().toISOString();
+    let currentRun =
+      (await this.repository.updatePayoutDisbursementRun(run.id, {
+        status: "processing",
+        operatorNotes,
+        updatedAt: processingAt
+      })) ?? run;
+    const transfers: ProviderTransferRecord[] = [];
+    let transferredCount = 0;
+    let failedCount = 0;
+    let alreadyTransferredCount = 0;
+    const executionFailures: string[] = [];
+
+    for (const entry of run.entries) {
+      let transferRecord: ProviderTransferRecord | undefined;
+      try {
+        const [booking, payment, provider] = await Promise.all([
+          this.repository.findBookingById(entry.bookingId),
+          entry.paymentId
+            ? this.repository.findPaymentById(entry.paymentId)
+            : Promise.resolve(undefined),
+          this.repository.findProviderById(entry.recipientId)
+        ]);
+        if (!booking || !payment || !provider) {
+          throw new Error("Booking, payment, or provider record is missing.");
+        }
+        if (booking.providerId !== provider.id || entry.recipientRole !== "provider") {
+          throw new Error("Payout entry recipient does not match the booking provider.");
+        }
+        if (provider.verificationStatus !== "verified") {
+          throw new Error("Provider marketplace verification is not approved.");
+        }
+        const credentialReadiness = evaluateProviderCredentialReadiness(
+          provider,
+          provider.credentials ?? []
+        );
+        if (!credentialReadiness.ready) {
+          throw new Error(credentialReadiness.warnings.join(" "));
+        }
+        const connectStatus = await this.getProviderConnectStatus(provider.id);
+        if (!connectStatus.transferReady || !connectStatus.account) {
+          throw new Error("Provider Stripe recipient transfers and payouts are not active.");
+        }
+        if (payment.processor !== "stripe" || !payment.processorChargeId) {
+          throw new Error("Provider transfers require a reconciled Stripe charge.");
+        }
+        const settlement = await this.ensureBookingFinancialSettlement(booking, payment);
+        if (!settlement) {
+          throw new Error("Immutable booking settlement is not ready.");
+        }
+        const existing = await this.repository.findProviderTransferBySettlementId(settlement.id);
+        const payoutStatus = this.getPayoutLedgerStatus(booking, payment, settlement, existing);
+        if (existing?.status === "transferred") {
+          transfers.push(existing);
+          alreadyTransferredCount += 1;
+          continue;
+        }
+        if (existing?.status === "reversed") {
+          throw new Error("The provider transfer was already reversed and cannot be reissued.");
+        }
+        if (payoutStatus !== "ready") {
+          throw new Error(`Provider payout is ${payoutStatus} after final revalidation.`);
+        }
+        if (entry.amountCents !== settlement.providerNetCents) {
+          throw new Error("Payout entry no longer matches the immutable provider net settlement.");
+        }
+
+        const idempotencyKey = `provider-transfer:${settlement.id}:v1`;
+        const recordNow = new Date().toISOString();
+        transferRecord = await this.repository.createProviderTransferRecord({
+          id: existing?.id ?? crypto.randomUUID(),
+          settlementId: settlement.id,
+          bookingId: booking.id,
+          paymentId: payment.id,
+          providerId: provider.id,
+          stripeAccountId: connectStatus.account.stripeAccountId,
+          stripeTransferId: existing?.stripeTransferId,
+          amountCents: settlement.providerNetCents,
+          currency: settlement.currency,
+          status: "pending",
+          idempotencyKey,
+          createdAt: existing?.createdAt ?? recordNow,
+          updatedAt: recordNow
+        });
+        if (transferRecord.status === "failed") {
+          transferRecord =
+            (await this.repository.updateProviderTransferRecord(transferRecord.id, {
+              status: "pending",
+              failureReason: undefined,
+              updatedAt: recordNow
+            })) ?? transferRecord;
+        }
+        const stripeTransfer = await this.stripeConnect.createProviderTransfer({
+          stripeAccountId: connectStatus.account.stripeAccountId,
+          bookingId: booking.id,
+          settlementId: settlement.id,
+          amountCents: settlement.providerNetCents,
+          currency: settlement.currency,
+          sourceTransactionId: payment.processorChargeId,
+          idempotencyKey
+        });
+        const transferredAt = new Date().toISOString();
+        transferRecord = await this.repository.completeProviderTransfer({
+          transferRecordId: transferRecord.id,
+          stripeTransferId: stripeTransfer.transferId,
+          transferredAt,
+          ledgerEntries: this.buildProviderTransferLedgerEntries(
+            settlement,
+            stripeTransfer.transferId,
+            transferredAt
+          )
+        });
+        transfers.push(transferRecord);
+        transferredCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        const failureReason = error instanceof Error ? error.message : "Provider transfer failed.";
+        executionFailures.push(`${entry.bookingId}: ${failureReason}`);
+        if (transferRecord) {
+          const failed = await this.repository.updateProviderTransferRecord(transferRecord.id, {
+            status: "failed",
+            failureReason,
+            updatedAt: new Date().toISOString()
+          });
+          if (failed) {
+            transfers.push(failed);
+          }
+        }
+      }
+    }
+
+    const finalStatus: OpsPayoutDisbursementRunsResponse["runs"][number]["status"] =
+      failedCount === 0
+        ? "transferred"
+        : transferredCount + alreadyTransferredCount > 0
+          ? "partially-transferred"
+          : "failed";
+    currentRun =
+      (await this.repository.updatePayoutDisbursementRun(run.id, {
+        status: finalStatus,
+        blockerReasons: executionFailures,
+        operatorNotes,
+        updatedAt: new Date().toISOString()
+      })) ?? currentRun;
+    return {
+      run: currentRun,
+      transfers,
+      transferredCount,
+      failedCount,
+      alreadyTransferredCount
     };
   }
 
@@ -11298,6 +11599,11 @@ export class MarketplacePlatformService {
       checkoutSessionId: session.checkoutSessionId,
       checkoutSessionUrl: session.checkoutUrl,
       processorPaymentIntentId: session.paymentIntentId,
+      processorChargeId: undefined,
+      actualProcessorFeeCents: undefined,
+      processorFeeStatus: "pending",
+      processorFeeUpdatedAt: undefined,
+      processorFeeFailureReason: undefined,
       refundReason: currentPayment?.refundReason,
       refundReviewStatus: currentPayment?.refundReviewStatus,
       refundRequestedAt: currentPayment?.refundRequestedAt,
@@ -11321,6 +11627,11 @@ export class MarketplacePlatformService {
           checkoutSessionId: paymentBase.checkoutSessionId,
           checkoutSessionUrl: paymentBase.checkoutSessionUrl,
           processorPaymentIntentId: paymentBase.processorPaymentIntentId,
+          processorChargeId: paymentBase.processorChargeId,
+          actualProcessorFeeCents: paymentBase.actualProcessorFeeCents,
+          processorFeeStatus: paymentBase.processorFeeStatus,
+          processorFeeUpdatedAt: paymentBase.processorFeeUpdatedAt,
+          processorFeeFailureReason: paymentBase.processorFeeFailureReason,
           refundReason: paymentBase.refundReason,
           refundReviewStatus: paymentBase.refundReviewStatus,
           refundRequestedAt: paymentBase.refundRequestedAt,
@@ -11455,11 +11766,28 @@ export class MarketplacePlatformService {
     }
 
     if (event.type === "charge.refunded") {
+      await this.reverseProviderTransferIfNeeded(booking);
       const updatedPayment = await this.markPaymentRefundedFromProcessor(payment, booking);
       return {
         received: true,
         eventType: event.type,
         paymentId: updatedPayment.id
+      };
+    }
+
+    if (event.type === "charge.dispute.created") {
+      await this.reverseProviderTransferIfNeeded(booking);
+      await this.createBookingDispute(
+        { userId: booking.customerId, role: "customer" },
+        {
+          bookingId: booking.id,
+          reason: `Stripe dispute ${event.disputeId ?? "opened"}: ${event.disputeReason ?? "customer disputed the charge"}${event.disputedAmountCents ? ` (${event.disputedAmountCents} cents)` : ""}.`
+        }
+      );
+      return {
+        received: true,
+        eventType: event.type,
+        paymentId: payment.id
       };
     }
 
@@ -11511,6 +11839,9 @@ export class MarketplacePlatformService {
       updatedAt: now,
       status: "authorized",
       refundable: true,
+      actualProcessorFeeCents: 0,
+      processorFeeStatus: "not-applicable",
+      processorFeeUpdatedAt: now,
       refundReviewStatus: undefined,
       refundRequestedAt: undefined,
       refundRequestedByRole: undefined,
@@ -11746,8 +12077,16 @@ export class MarketplacePlatformService {
   private async ensureBookingFinancialSettlement(
     booking: Booking,
     payment: PaymentRecord
-  ) {
+  ): Promise<BookingFinancialSettlement | undefined> {
     if (booking.status !== "completed" || !booking.completedAt || payment.status !== "captured") {
+      return undefined;
+    }
+    const reconciledPayment = await this.reconcileProcessorFee(payment);
+    if (
+      reconciledPayment.processor === "stripe" &&
+      (reconciledPayment.processorFeeStatus !== "reconciled" ||
+        reconciledPayment.actualProcessorFeeCents === undefined)
+    ) {
       return undefined;
     }
     return this.repository.settleBookingFinancials({
@@ -11757,8 +12096,70 @@ export class MarketplacePlatformService {
       providerId: booking.providerId,
       customerChargeCents: payment.amountCents,
       currency: payment.currency,
-      actualProcessorFeeCents: 0
+      actualProcessorFeeCents: reconciledPayment.actualProcessorFeeCents ?? 0
     });
+  }
+
+  private async reconcileProcessorFee(payment: PaymentRecord): Promise<PaymentRecord> {
+    if (payment.processor !== "stripe") {
+      if (
+        payment.processorFeeStatus === "not-applicable" &&
+        payment.actualProcessorFeeCents === 0
+      ) {
+        return payment;
+      }
+      return (
+        (await this.repository.updatePayment(payment.id, {
+          actualProcessorFeeCents: 0,
+          processorFeeStatus: "not-applicable",
+          processorFeeUpdatedAt: new Date().toISOString(),
+          processorFeeFailureReason: undefined,
+          updatedAt: new Date().toISOString()
+        })) ?? payment
+      );
+    }
+    if (
+      payment.processorFeeStatus === "reconciled" &&
+      payment.actualProcessorFeeCents !== undefined &&
+      payment.processorChargeId
+    ) {
+      return payment;
+    }
+    const paymentIntentId = payment.processorPaymentIntentId;
+    const now = new Date().toISOString();
+    if (!paymentIntentId) {
+      return (
+        (await this.repository.updatePayment(payment.id, {
+          processorFeeStatus: "failed",
+          processorFeeUpdatedAt: now,
+          processorFeeFailureReason: "Stripe payment intent is missing.",
+          updatedAt: now
+        })) ?? payment
+      );
+    }
+    try {
+      const financials = await this.stripeCheckout.retrieveChargeFinancials(paymentIntentId);
+      return (
+        (await this.repository.updatePayment(payment.id, {
+          processorChargeId: financials.chargeId,
+          actualProcessorFeeCents: financials.actualProcessorFeeCents,
+          processorFeeStatus: "reconciled",
+          processorFeeUpdatedAt: now,
+          processorFeeFailureReason: undefined,
+          updatedAt: now
+        })) ?? payment
+      );
+    } catch (error) {
+      const failureReason = error instanceof Error ? error.message : "Stripe fee reconciliation failed.";
+      return (
+        (await this.repository.updatePayment(payment.id, {
+          processorFeeStatus: "failed",
+          processorFeeUpdatedAt: now,
+          processorFeeFailureReason: failureReason,
+          updatedAt: now
+        })) ?? payment
+      );
+    }
   }
 
   public async createOpsBookingIntervention(
@@ -12153,8 +12554,6 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Inbound leads require at least one contact method: email or phone.");
     }
 
-    const subject = payload.subject?.trim().replace(/\s+/g, " ") || undefined;
-    const messageBody = payload.message?.trim().replace(/\s+/g, " ") || undefined;
     const message = messageText || "Inbound lead captured for ops follow-up.";
     const contactName =
       payload.contactName?.trim().replace(/\s+/g, " ") ||
@@ -13471,6 +13870,8 @@ export class MarketplacePlatformService {
       );
     }
 
+    await this.reverseProviderTransferIfNeeded(booking);
+
     await this.stripeCheckout.createRefund({
       paymentIntentId: payment.processorPaymentIntentId,
       amountCents: payment.amountCents,
@@ -13478,6 +13879,57 @@ export class MarketplacePlatformService {
       bookingId: booking.id,
       paymentId: payment.id
     });
+  }
+
+  private async reverseProviderTransferIfNeeded(booking: Booking): Promise<void> {
+    const settlement = await this.repository.findBookingFinancialSettlement(booking.id);
+    if (!settlement) {
+      return;
+    }
+    const providerTransfer = await this.repository.findProviderTransferBySettlementId(
+      settlement.id
+    );
+    if (!providerTransfer || providerTransfer.status === "reversed") {
+      return;
+    }
+    if (providerTransfer.status !== "transferred") {
+      return;
+    }
+    if (!providerTransfer.stripeTransferId) {
+      throw new HttpError(409, "Transferred provider payout is missing its Stripe transfer id.");
+    }
+    if (!this.stripeConnect.isConfigured()) {
+      throw new HttpError(503, "Stripe Connect is required to reverse the provider transfer.");
+    }
+    const reversedAt = new Date().toISOString();
+    const reversal = await this.stripeConnect.reverseProviderTransfer({
+      transferId: providerTransfer.stripeTransferId,
+      bookingId: booking.id,
+      settlementId: settlement.id,
+      amountCents: providerTransfer.amountCents,
+      idempotencyKey: `provider-transfer-reversal:${providerTransfer.id}:v1`
+    });
+    await this.repository.completeProviderTransferReversal({
+      transferRecordId: providerTransfer.id,
+      stripeTransferReversalId: reversal.reversalId,
+      reversedAt,
+      ledgerEntries: this.buildProviderTransferReversalLedgerEntries(
+        settlement,
+        providerTransfer,
+        reversedAt
+      )
+    });
+    const relatedRuns = (await this.repository.listPayoutDisbursementRuns()).filter((run) =>
+      run.entries.some((entry) => entry.bookingId === booking.id)
+    );
+    await Promise.all(
+      relatedRuns.map((run) =>
+        this.repository.updatePayoutDisbursementRun(run.id, {
+          status: "reversed",
+          updatedAt: reversedAt
+        })
+      )
+    );
   }
 
   private async markPaymentRefundedFromProcessor(
@@ -16271,10 +16723,10 @@ export class MarketplacePlatformService {
               label: "Provider external payout account changes",
               ownerRole: "provider",
               requiresFreshSession: true,
-              enforcementStatus: "contract-ready",
-              futureBackendSurface: "future payout-provider account link/update route",
+              enforcementStatus: "enforced",
+              currentBackendSurface: "POST /api/providers/connect/onboarding",
               rationale:
-                "External payout account linking can redirect provider settlement and should not be accepted from an old bearer session."
+                "External payout account linking through Stripe recipient onboarding can redirect provider settlement and requires a fresh provider session before YardMatch creates a hosted Dashboard Express link."
             })
           ]
         : [];
@@ -16963,7 +17415,7 @@ export class MarketplacePlatformService {
 
         const candidatePool = crewMembers
           .filter((crewMember) =>
-            this.isCrewMemberEligibleForBooking(crewMember, booking, matches, bookings, crewDayLoadMap)
+            this.isCrewMemberEligibleForBooking(crewMember, booking, matches, bookings)
           )
           .map((crewMember) => ({
             crewMember,
@@ -17069,8 +17521,7 @@ export class MarketplacePlatformService {
     crewMember: CrewMemberProfile,
     booking: Booking,
     allMatches: CrewMatchCandidate[],
-    allBookings: Booking[],
-    crewDayLoadMap?: Map<string, number>
+    allBookings: Booking[]
   ): boolean {
     if (!crewMember.categories.includes(booking.category)) {
       return false;
@@ -17129,11 +17580,6 @@ export class MarketplacePlatformService {
     const { crewMember, booking, provider, allBookings, allMatches } = input;
     const distanceMiles = this.geoService.distanceMiles(crewMember.address, booking.serviceAddress);
     const acceptedCrewBookings = this.getAcceptedCrewBookings(crewMember.id, allMatches, allBookings);
-    const sameDayAcceptedBookings = acceptedCrewBookings.filter(
-      (candidate) =>
-        this.localDateKey(candidate.scheduledStartIso) === this.localDateKey(booking.scheduledStartIso) &&
-        candidate.id !== booking.id
-    );
     const sameDayLoadCount =
       input.dayLoadCount ??
       this.getCrewSameDayLoadCount(crewMember.id, booking.scheduledStartIso, allMatches, allBookings);
@@ -21085,7 +21531,7 @@ export class MarketplacePlatformService {
     pushTokens: string[];
   } | undefined> {
     const pushTokens = (
-      await this.repository.listActivePushDevicesByRecipient(identity.userId, identity.role as PushDevice["role"])
+      await this.repository.listActivePushDevicesByRecipient(identity.userId, identity.role)
     ).map((device) => device.token);
 
     if (identity.role === "customer") {
@@ -21524,7 +21970,7 @@ export class MarketplacePlatformService {
     paymentIntentId?: string
   ): Promise<PaymentRecord> {
     if (payment.status === "captured") {
-      return payment;
+      return this.reconcileProcessorFee(payment);
     }
 
     const now = new Date().toISOString();
@@ -21540,6 +21986,7 @@ export class MarketplacePlatformService {
     if (!updatedPayment) {
       throw new HttpError(500, "Payment record could not be updated");
     }
+    const reconciledPayment = await this.reconcileProcessorFee(updatedPayment);
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCaptured, booking.id, {
       paymentId: updatedPayment.id,
@@ -21564,10 +22011,10 @@ export class MarketplacePlatformService {
     });
 
     if (booking.status === "completed" && booking.completedAt) {
-      await this.ensureBookingFinancialSettlement(booking, updatedPayment);
+      await this.ensureBookingFinancialSettlement(booking, reconciledPayment);
     }
 
-    return updatedPayment;
+    return reconciledPayment;
   }
 
   private async failPaymentRecord(
@@ -21701,7 +22148,9 @@ export class MarketplacePlatformService {
 
   private buildOpsPayoutPolicySummary(): OpsPayoutRunPreviewResponse["payoutPolicy"] {
     return {
-      disbursementRailStatus: "manual-preview-only",
+      disbursementRailStatus: this.stripeConnect.isConfigured()
+        ? "stripe-transfer-ready"
+        : "manual-preview-only",
       providerHoldPeriodHours: this.payoutHoldHours,
       crewHoldPeriodHours: 0,
       providerWeeklyRunRule:
@@ -21747,6 +22196,70 @@ export class MarketplacePlatformService {
       .sort((left, right) => left.entryId.localeCompare(right.entryId));
 
     return createHash("sha256").update(JSON.stringify(stableEntries)).digest("hex");
+  }
+
+  private buildProviderTransferLedgerEntries(
+    settlement: BookingFinancialSettlement,
+    stripeTransferId: string,
+    createdAt: string
+  ): FinancialLedgerEntry[] {
+    const entryBase = {
+      settlementId: settlement.id,
+      bookingId: settlement.bookingId,
+      paymentId: settlement.paymentId,
+      amountCents: settlement.providerNetCents,
+      currency: settlement.currency,
+      source: "provider-transfer" as const,
+      createdAt
+    };
+    return [
+      {
+        ...entryBase,
+        id: crypto.randomUUID(),
+        account: "provider-payable",
+        direction: "debit",
+        idempotencyKey: `provider-transfer:${settlement.id}:${stripeTransferId}:provider-payable:debit`
+      },
+      {
+        ...entryBase,
+        id: crypto.randomUUID(),
+        account: "stripe-clearing",
+        direction: "credit",
+        idempotencyKey: `provider-transfer:${settlement.id}:${stripeTransferId}:stripe-clearing:credit`
+      }
+    ];
+  }
+
+  private buildProviderTransferReversalLedgerEntries(
+    settlement: BookingFinancialSettlement,
+    providerTransfer: ProviderTransferRecord,
+    createdAt: string
+  ): FinancialLedgerEntry[] {
+    const entryBase = {
+      settlementId: settlement.id,
+      bookingId: settlement.bookingId,
+      paymentId: settlement.paymentId,
+      amountCents: settlement.providerNetCents,
+      currency: settlement.currency,
+      source: "reversal" as const,
+      createdAt
+    };
+    return [
+      {
+        ...entryBase,
+        id: crypto.randomUUID(),
+        account: "stripe-clearing",
+        direction: "debit",
+        idempotencyKey: `provider-transfer-reversal:${providerTransfer.id}:stripe-clearing:debit`
+      },
+      {
+        ...entryBase,
+        id: crypto.randomUUID(),
+        account: "provider-payable",
+        direction: "credit",
+        idempotencyKey: `provider-transfer-reversal:${providerTransfer.id}:provider-payable:credit`
+      }
+    ];
   }
 
   private buildLaunchOperationsRecommendationFingerprint(
@@ -21810,9 +22323,16 @@ export class MarketplacePlatformService {
 
   private getPayoutLedgerStatus(
     booking: Booking,
-    payment?: PaymentRecord
+    payment?: PaymentRecord,
+    settlement?: BookingFinancialSettlement,
+    providerTransfer?: ProviderTransferRecord
   ): ProviderPayoutLedgerEntry["status"] {
-    if (booking.status === "refunded" || payment?.status === "refunded") {
+    if (
+      providerTransfer?.status === "reversed" ||
+      settlement?.status === "reversed" ||
+      booking.status === "refunded" ||
+      payment?.status === "refunded"
+    ) {
       return "reversed";
     }
 
@@ -21820,8 +22340,16 @@ export class MarketplacePlatformService {
       return "on-hold";
     }
 
+    if (providerTransfer?.status === "transferred" || settlement?.status === "transferred") {
+      return "paid";
+    }
+
     if (payment?.status !== "captured") {
       return "awaiting-customer-payment";
+    }
+
+    if (booking.status === "completed" && !settlement) {
+      return "on-hold";
     }
 
     const completedAtMs = Date.parse(booking.completedAt ?? booking.scheduledEndIso);
@@ -22033,7 +22561,9 @@ export class MarketplacePlatformService {
     booking: Booking,
     status: ProviderPayoutLedgerEntry["status"],
     payment: PaymentRecord | undefined,
-    assignedCrewCount: number
+    assignedCrewCount: number,
+    settlement?: BookingFinancialSettlement,
+    providerTransfer?: ProviderTransferRecord
   ): string {
     if (status === "reversed") {
       return "Customer payment was refunded, so provider payout is reversed.";
@@ -22043,13 +22573,25 @@ export class MarketplacePlatformService {
       return "Customer payment still needs to clear before provider earnings can settle.";
     }
 
+    if (status === "paid") {
+      return `YardMatch transferred the immutable provider net settlement through Stripe${providerTransfer?.stripeTransferId ? ` (${providerTransfer.stripeTransferId})` : ""}. Crew compensation remains the provider business's responsibility.`;
+    }
+
     if (status === "on-hold") {
       const holdReason = this.getPayoutHoldReason(booking, payment);
       if (holdReason === "dispute") {
-        return `A booking dispute is open for this job, so provider payout is on hold. Latest note: ${booking.disputeReason ?? "Support is reviewing the disputed service outcome."}`;
+        return providerTransfer?.status === "transferred"
+          ? `A booking dispute is open after the provider transfer was released. Support must confirm Stripe reversal before closing the case. Latest note: ${booking.disputeReason ?? "Support is reviewing the disputed service outcome."}`
+          : `A booking dispute is open for this job, so provider payout is on hold. Latest note: ${booking.disputeReason ?? "Support is reviewing the disputed service outcome."}`;
       }
 
-      return `A refund review is open for this booking, so provider payout is on hold. Latest note: ${payment?.refundReason ?? "Refund review requested."}`;
+      if (!settlement && payment?.processor === "stripe") {
+        return `Provider payout is on hold until Stripe processing fees are reconciled${payment.processorFeeFailureReason ? `: ${payment.processorFeeFailureReason}` : "."}`;
+      }
+
+      return providerTransfer?.status === "transferred"
+        ? `A refund review is open after the provider transfer was released. YardMatch must reverse the transfer before an approved customer refund. Latest note: ${payment?.refundReason ?? "Refund review requested."}`
+        : `A refund review is open for this booking, so provider payout is on hold. Latest note: ${payment?.refundReason ?? "Refund review requested."}`;
     }
 
     if (assignedCrewCount === 0) {

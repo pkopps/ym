@@ -18,6 +18,7 @@ import {
   NotificationDeliveryRecord,
   NotificationPreferences,
   OpsPayoutDisbursementRun,
+  ProviderTransferRecord,
   PaymentRecord,
   BookingFinancialSettlement,
   CreateBookingFinancialSettlementInput,
@@ -34,7 +35,12 @@ import {
 } from "@yardmatch/contracts";
 import { buildSettlementLedgerDraft, calculateMarketplaceSettlement } from "@yardmatch/domain";
 import { hashPassword } from "../auth";
-import { AuthIdentityRecord, MarketplaceRepository } from "./MarketplaceRepository";
+import {
+  AuthIdentityRecord,
+  CompleteProviderTransferInput,
+  CompleteProviderTransferReversalInput,
+  MarketplaceRepository
+} from "./MarketplaceRepository";
 
 export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly customers: CustomerProfile[] = [];
@@ -48,6 +54,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly financialSettlements: BookingFinancialSettlement[] = [];
   private readonly financialLedgerEntries: FinancialLedgerEntry[] = [];
   private readonly payoutDisbursementRuns: OpsPayoutDisbursementRun[] = [];
+  private readonly providerTransferRecords: ProviderTransferRecord[] = [];
   private readonly launchOperationsTasks: LaunchOperationsTask[] = [];
   private readonly opsAutomationRuns: OpsAutomationRunRecord[] = [];
   private readonly launchLeads: LaunchLead[] = [];
@@ -535,6 +542,130 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         candidate.entryFingerprint === entryFingerprint
     );
     return run ? { ...run, entries: [...run.entries] } : undefined;
+  }
+
+  public async updatePayoutDisbursementRun(
+    runId: string,
+    updates: Partial<OpsPayoutDisbursementRun>
+  ): Promise<OpsPayoutDisbursementRun | undefined> {
+    const run = this.payoutDisbursementRuns.find((candidate) => candidate.id === runId);
+    if (!run) {
+      return undefined;
+    }
+    Object.assign(run, updates);
+    return { ...run, entries: [...run.entries] };
+  }
+
+  public async createProviderTransferRecord(
+    record: ProviderTransferRecord
+  ): Promise<ProviderTransferRecord> {
+    const existing = this.providerTransferRecords.find(
+      (candidate) =>
+        candidate.settlementId === record.settlementId ||
+        candidate.idempotencyKey === record.idempotencyKey
+    );
+    if (existing) {
+      return { ...existing };
+    }
+    this.providerTransferRecords.push({ ...record });
+    return { ...record };
+  }
+
+  public async findProviderTransferBySettlementId(
+    settlementId: string
+  ): Promise<ProviderTransferRecord | undefined> {
+    const record = this.providerTransferRecords.find(
+      (candidate) => candidate.settlementId === settlementId
+    );
+    return record ? { ...record } : undefined;
+  }
+
+  public async listProviderTransferRecords(): Promise<ProviderTransferRecord[]> {
+    return this.providerTransferRecords.map((record) => ({ ...record }));
+  }
+
+  public async updateProviderTransferRecord(
+    transferRecordId: string,
+    updates: Partial<ProviderTransferRecord>
+  ): Promise<ProviderTransferRecord | undefined> {
+    const record = this.providerTransferRecords.find(
+      (candidate) => candidate.id === transferRecordId
+    );
+    if (!record) {
+      return undefined;
+    }
+    Object.assign(record, updates);
+    return { ...record };
+  }
+
+  public async completeProviderTransfer(
+    input: CompleteProviderTransferInput
+  ): Promise<ProviderTransferRecord> {
+    const record = this.providerTransferRecords.find(
+      (candidate) => candidate.id === input.transferRecordId
+    );
+    if (!record) {
+      throw new Error("Provider transfer record not found");
+    }
+    if (record.status === "transferred" || record.status === "reversed") {
+      return { ...record };
+    }
+    const settlement = this.financialSettlements.find(
+      (candidate) => candidate.id === record.settlementId
+    );
+    if (!settlement) {
+      throw new Error("Booking financial settlement not found");
+    }
+    for (const entry of input.ledgerEntries) {
+      if (!this.financialLedgerEntries.some((candidate) => candidate.idempotencyKey === entry.idempotencyKey)) {
+        this.financialLedgerEntries.push({ ...entry });
+      }
+    }
+    settlement.status = "transferred";
+    settlement.updatedAt = input.transferredAt;
+    Object.assign(record, {
+      stripeTransferId: input.stripeTransferId,
+      status: "transferred" as const,
+      failureReason: undefined,
+      transferredAt: input.transferredAt,
+      updatedAt: input.transferredAt
+    });
+    return { ...record };
+  }
+
+  public async completeProviderTransferReversal(
+    input: CompleteProviderTransferReversalInput
+  ): Promise<ProviderTransferRecord> {
+    const record = this.providerTransferRecords.find(
+      (candidate) => candidate.id === input.transferRecordId
+    );
+    if (!record) {
+      throw new Error("Provider transfer record not found");
+    }
+    if (record.status === "reversed") {
+      return { ...record };
+    }
+    const settlement = this.financialSettlements.find(
+      (candidate) => candidate.id === record.settlementId
+    );
+    if (!settlement) {
+      throw new Error("Booking financial settlement not found");
+    }
+    for (const entry of input.ledgerEntries) {
+      if (!this.financialLedgerEntries.some((candidate) => candidate.idempotencyKey === entry.idempotencyKey)) {
+        this.financialLedgerEntries.push({ ...entry });
+      }
+    }
+    settlement.status = "reversed";
+    settlement.updatedAt = input.reversedAt;
+    Object.assign(record, {
+      stripeTransferReversalId: input.stripeTransferReversalId,
+      status: "reversed" as const,
+      failureReason: undefined,
+      reversedAt: input.reversedAt,
+      updatedAt: input.reversedAt
+    });
+    return { ...record };
   }
 
   public async createLaunchOperationsTask(task: LaunchOperationsTask): Promise<LaunchOperationsTask> {

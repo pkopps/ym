@@ -26,24 +26,32 @@
     "test:api:smoke": "node scripts/api-smoke.mjs",
     "test:web:smoke": "playwright test --config=playwright.config.ts",
     "test:smoke": "npm run test:api:smoke && npm run test:web:smoke",
+    "verify:production-config": "npm --workspace @yardmatch/api run verify:production-config",
     "i18n:validate": "npm --workspace @yardmatch/i18n run validate",
     "i18n:export:tms": "npm --workspace @yardmatch/i18n run export:tms",
     "i18n:audit:literals": "npm --workspace @yardmatch/i18n run audit:literals",
-    "verify": "npm run typecheck && npm run test:api",
+    "verify": "npm run lint && npm run typecheck && npm run test:api",
     "verify:local": "npm run verify && npm run test:smoke",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "lint:prune-suppressions": "eslint . --prune-suppressions",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@next/eslint-plugin-next": "16.2.4",
     "@playwright/test": "^1.61.1",
     "@types/node": "*",
     "@types/react": "*",
     "@types/react-dom": "*",
-    "eslint": "*",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.9.0",
     "prisma": "^6.19.0",
     "tsx": "*",
     "turbo": "*",
-    "typescript": "*"
+    "typescript": "*",
+    "typescript-eslint": "8.66.0"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0"

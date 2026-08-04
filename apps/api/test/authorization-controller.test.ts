@@ -259,6 +259,27 @@ test("provider payout setting changes require a fresh provider session", async (
     /Re-authentication required for payout settings/i
   );
 
+  const staleConnectResponse = createMockResponse();
+  await marketplaceController
+    .handle(
+      {
+        method: "POST",
+        path: "/api/providers/connect/onboarding",
+        body: {},
+        query: new URLSearchParams(),
+        headers: {
+          authorization: `Bearer ${staleProvider.session.token}`
+        }
+      },
+      staleConnectResponse as never
+    )
+    .catch((error: Error) => {
+      staleConnectResponse.writeHead(401);
+      staleConnectResponse.end(JSON.stringify({ message: error.message }));
+    });
+  assert.equal(staleConnectResponse.getStatusCode(), 401);
+  assert.match(staleConnectResponse.readJson().message, /payout onboarding/i);
+
   const staleMeResponse = createMockResponse();
   await authController.handle(
     {
@@ -295,8 +316,12 @@ test("provider payout setting changes require a fresh provider session", async (
   assert.equal(bankAccountPolicy.isCurrentSessionFresh, false);
   assert.match(bankAccountPolicy.futureBackendSurface ?? "", /bank-account update route/i);
   assert.ok(payoutAccountPolicy);
-  assert.equal(payoutAccountPolicy.enforcementStatus, "contract-ready");
+  assert.equal(payoutAccountPolicy.enforcementStatus, "enforced");
   assert.equal(payoutAccountPolicy.isCurrentSessionFresh, false);
+  assert.equal(
+    payoutAccountPolicy.currentBackendSurface,
+    "POST /api/providers/connect/onboarding"
+  );
   assert.match(payoutAccountPolicy.rationale, /external payout account/i);
 
   const staleNonSensitiveResponse = createMockResponse();
@@ -345,6 +370,95 @@ test("provider payout setting changes require a fresh provider session", async (
   assert.equal(freshResponse.getStatusCode(), 200);
   const updatedProvider = freshResponse.readJson();
   assert.equal(updatedProvider.instantPayoutsEnabled, true);
+});
+
+test("provider transfer execution requires a fresh ops admin session", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const authController = new AuthController(platform);
+  const marketplaceController = new MarketplaceController(platform);
+
+  const staleAdmin = await withMockedNow(Date.now() - 31 * 60 * 1000, () =>
+    createOpsSession(authController, platform, {
+      email: "stale-transfer-admin@example.com",
+      internalScope: "admin"
+    })
+  );
+  const staleResponse = createMockResponse();
+  await marketplaceController
+    .handle(
+      {
+        method: "POST",
+        path: "/api/payouts/ops/disbursement-runs/execute",
+        body: {
+          runId: "missing-run",
+          confirmation: "execute-provider-transfers",
+          operatorNotes: "Testing fresh authorization for transfers."
+        },
+        query: new URLSearchParams(),
+        headers: { authorization: `Bearer ${staleAdmin.session.token}` }
+      },
+      staleResponse as never
+    )
+    .catch((error: Error) => {
+      staleResponse.writeHead(401);
+      staleResponse.end(JSON.stringify({ message: error.message }));
+    });
+  assert.equal(staleResponse.getStatusCode(), 401);
+  assert.match(staleResponse.readJson().message, /Re-authentication required for provider transfers/i);
+
+  const operationsUser = await createOpsSession(authController, platform, {
+    email: "transfer-operations@example.com",
+    internalScope: "operations"
+  });
+  const operationsResponse = createMockResponse();
+  await marketplaceController
+    .handle(
+      {
+        method: "POST",
+        path: "/api/payouts/ops/disbursement-runs/execute",
+        body: {
+          runId: "missing-run",
+          confirmation: "execute-provider-transfers",
+          operatorNotes: "Testing admin authorization for provider transfers."
+        },
+        query: new URLSearchParams(),
+        headers: { authorization: `Bearer ${operationsUser.session.token}` }
+      },
+      operationsResponse as never
+    )
+    .catch((error: Error & { statusCode?: number }) => {
+      operationsResponse.writeHead(error.statusCode ?? 500);
+      operationsResponse.end(JSON.stringify({ message: error.message }));
+    });
+  assert.equal(operationsResponse.getStatusCode(), 403);
+
+  const admin = await createOpsSession(authController, platform, {
+    email: "transfer-admin@example.com",
+    internalScope: "admin"
+  });
+  const adminResponse = createMockResponse();
+  await marketplaceController
+    .handle(
+      {
+        method: "POST",
+        path: "/api/payouts/ops/disbursement-runs/execute",
+        body: {
+          runId: "missing-run",
+          confirmation: "execute-provider-transfers",
+          operatorNotes: "Testing admin authorization for provider transfers."
+        },
+        query: new URLSearchParams(),
+        headers: { authorization: `Bearer ${admin.session.token}` }
+      },
+      adminResponse as never
+    )
+    .catch((error: Error & { statusCode?: number }) => {
+      adminResponse.writeHead(error.statusCode ?? 500);
+      adminResponse.end(JSON.stringify({ message: error.message }));
+    });
+  assert.equal(adminResponse.getStatusCode(), 503);
+  assert.match(adminResponse.readJson().message, /Stripe Connect is not configured/i);
 });
 
 test("public signup rejects ops accounts", async () => {
@@ -2670,7 +2784,6 @@ test("support tickets list only the authenticated user's tickets and reject unre
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
   const authController = new AuthController(platform);
-  const marketplaceController = new MarketplaceController(platform);
   const supportController = new SupportController(platform);
 
   const customer = await registerUser(authController, {

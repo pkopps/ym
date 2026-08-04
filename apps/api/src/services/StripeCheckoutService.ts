@@ -28,8 +28,16 @@ export interface StripeWebhookEvent {
   type: string;
   checkoutSessionId?: string;
   paymentIntentId?: string;
+  disputeId?: string;
+  disputedAmountCents?: number;
+  disputeReason?: string;
   paid?: boolean;
   failureReason?: string;
+}
+
+export interface StripeChargeFinancials {
+  chargeId: string;
+  actualProcessorFeeCents: number;
 }
 
 export interface CreateStripeRefundInput {
@@ -51,6 +59,7 @@ export interface PaymentCheckoutGateway {
     input: CreateStripeCheckoutSessionInput
   ): Promise<CreatedStripeCheckoutSession>;
   verifyCheckoutSession(checkoutSessionId: string): Promise<VerifiedStripeCheckoutSession>;
+  retrieveChargeFinancials(paymentIntentId: string): Promise<StripeChargeFinancials>;
   parseWebhookEvent(rawBody: string, signature: string): Promise<StripeWebhookEvent>;
   createRefund(input: CreateStripeRefundInput): Promise<CreatedStripeRefund>;
 }
@@ -174,6 +183,38 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     };
   }
 
+  public async retrieveChargeFinancials(
+    paymentIntentId: string
+  ): Promise<StripeChargeFinancials> {
+    if (!this.stripe) {
+      throw new HttpError(503, "Stripe is not configured yet.");
+    }
+
+    const intent = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ["latest_charge.balance_transaction"]
+    });
+    if (!intent.latest_charge) {
+      throw new HttpError(409, "Stripe has not created a charge for this payment yet.");
+    }
+    const charge =
+      typeof intent.latest_charge === "string"
+        ? await this.stripe.charges.retrieve(intent.latest_charge, {
+            expand: ["balance_transaction"]
+          })
+        : intent.latest_charge;
+    const balanceTransaction = charge.balance_transaction;
+    if (!balanceTransaction || typeof balanceTransaction === "string") {
+      throw new HttpError(502, "Stripe did not return the charge balance transaction.");
+    }
+    if (!Number.isInteger(balanceTransaction.fee) || balanceTransaction.fee < 0) {
+      throw new HttpError(502, "Stripe returned an invalid processing fee.");
+    }
+    return {
+      chargeId: charge.id,
+      actualProcessorFeeCents: balanceTransaction.fee
+    };
+  }
+
   public async parseWebhookEvent(rawBody: string, signature: string): Promise<StripeWebhookEvent> {
     if (!this.stripe || !this.webhookSecret) {
       throw new HttpError(503, "Stripe webhook signing secret is not configured yet.");
@@ -188,7 +229,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       event.type === "checkout.session.completed" ||
       event.type === "checkout.session.expired"
     ) {
-      const session = event.data.object as Stripe.Checkout.Session;
+      const session = event.data.object;
       return {
         type: event.type,
         checkoutSessionId: session.id,
@@ -201,7 +242,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     }
 
     if (event.type === "payment_intent.payment_failed") {
-      const intent = event.data.object as Stripe.PaymentIntent;
+      const intent = event.data.object;
       return {
         type: event.type,
         paymentIntentId: intent.id,
@@ -210,11 +251,23 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     }
 
     if (event.type === "charge.refunded") {
-      const charge = event.data.object as Stripe.Charge;
+      const charge = event.data.object;
       return {
         type: event.type,
         paymentIntentId:
           typeof charge.payment_intent === "string" ? charge.payment_intent : undefined
+      };
+    }
+
+    if (event.type === "charge.dispute.created") {
+      const dispute = event.data.object;
+      return {
+        type: event.type,
+        disputeId: dispute.id,
+        disputedAmountCents: dispute.amount,
+        disputeReason: dispute.reason,
+        paymentIntentId:
+          typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent?.id
       };
     }
 
