@@ -1210,6 +1210,12 @@ export interface BookingEvidenceEntry {
   capturedByRole: "customer" | "provider" | "crew-member";
   capturedByUserId: string;
   imageDataUrl?: string;
+  imageStorageProvider?: "vercel-blob-private";
+  imageObjectPathname?: string;
+  imageContentType?: "image/jpeg" | "image/png" | "image/webp";
+  imageByteSize?: number;
+  imageWidth?: number;
+  imageHeight?: number;
   photoArea?: PropertyPhotoArea;
   note?: string;
   checklistItems?: BookingEvidenceChecklistItem[];

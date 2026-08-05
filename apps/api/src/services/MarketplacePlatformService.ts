@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
@@ -266,9 +266,11 @@ import {
   validatePasswordStrength
 } from "../auth";
 import { HttpError } from "../http";
+import { ValidatedEvidenceImage, validateEvidenceImageDataUrl } from "../media/imageValidation";
 import { evaluateProviderCredentialReadiness } from "../policies/providerCredentialPolicy";
 import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
 import { NotificationDeliveryService } from "./NotificationDeliveryService";
+import { PhotoStorageService, ReadEvidencePhoto } from "./PhotoStorageService";
 import { AddressValidationOutcome, AddressValidationService } from "./AddressValidationService";
 import { PlaceSearchService } from "./PlaceSearchService";
 import {
@@ -388,19 +390,22 @@ export class MarketplacePlatformService {
   private readonly stripeConnect: StripeConnectGateway;
   private readonly appBaseUrl: string;
   private readonly apiBaseUrl: string;
+  private readonly photoStorage: PhotoStorageService;
 
   public constructor(
     private readonly repository: MarketplaceRepository,
     private readonly analytics: DataEngineeringLogger,
     stripeCheckout: PaymentCheckoutGateway = new StripeCheckoutService(),
     appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000",
-    stripeConnect: StripeConnectGateway = new StripeConnectService()
+    stripeConnect: StripeConnectGateway = new StripeConnectService(),
+    photoStorage?: PhotoStorageService
   ) {
     this.stripeCheckout = stripeCheckout;
     this.stripeConnect = stripeConnect;
     this.appBaseUrl = appBaseUrl;
     this.apiBaseUrl =
       process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? "4001"}`;
+    this.photoStorage = photoStorage ?? new PhotoStorageService(this.apiBaseUrl);
   }
 
   public async registerUser(
@@ -1641,8 +1646,12 @@ export class MarketplacePlatformService {
             category: booking.category,
             photoArea: beforePhoto.photoArea ?? afterPhoto.photoArea,
             completedAt: booking.completedAt,
-            beforeImageDataUrl: beforePhoto.imageDataUrl,
-            afterImageDataUrl: afterPhoto.imageDataUrl
+            beforeImageDataUrl: beforePhoto.imageStorageProvider
+              ? this.photoStorage.buildMarketingDeliveryUrl(beforePhoto.id)
+              : beforePhoto.imageDataUrl,
+            afterImageDataUrl: afterPhoto.imageStorageProvider
+              ? this.photoStorage.buildMarketingDeliveryUrl(afterPhoto.id)
+              : afterPhoto.imageDataUrl
           }
         ];
       })
@@ -4888,15 +4897,10 @@ export class MarketplacePlatformService {
       }
     }
 
+    let validatedImage: ValidatedEvidenceImage | undefined;
     if (evidenceType === "photo") {
       const imageDataUrl = payload.imageDataUrl?.trim() ?? "";
-      if (!/^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(imageDataUrl)) {
-        throw new HttpError(400, "Photo evidence must be a JPEG, PNG, or WebP image data URL");
-      }
-
-      if (imageDataUrl.length > 2_000_000) {
-        throw new HttpError(400, "Booking evidence image is too large");
-      }
+      validatedImage = validateEvidenceImageDataUrl(imageDataUrl);
 
       const actorPhotoCount = booking.serviceEvidence.filter(
         (evidence) =>
@@ -4935,28 +4939,96 @@ export class MarketplacePlatformService {
       }
     }
 
+    const evidenceId = crypto.randomUUID();
+    const storedPhoto = evidenceType === "photo" && validatedImage
+      ? await this.photoStorage.store(
+          booking.id,
+          evidenceId,
+          payload.imageDataUrl?.trim() ?? "",
+          validatedImage
+        )
+      : undefined;
     const evidence: BookingEvidenceEntry = {
-      id: crypto.randomUUID(),
+      id: evidenceId,
       phase: payload.phase,
       evidenceType,
       capturedAt: new Date().toISOString(),
       capturedByRole: actor.role,
       capturedByUserId: actor.userId,
-      imageDataUrl: evidenceType === "photo" ? payload.imageDataUrl?.trim() : undefined,
+      imageDataUrl: storedPhoto?.deliveryUrl,
+      imageStorageProvider: storedPhoto?.storageProvider,
+      imageObjectPathname: storedPhoto?.objectPathname,
+      imageContentType: validatedImage?.contentType,
+      imageByteSize: validatedImage?.bytes.length,
+      imageWidth: validatedImage?.width,
+      imageHeight: validatedImage?.height,
       photoArea: evidenceType === "photo" ? payload.photoArea ?? "other" : undefined,
       note,
       checklistItems: evidenceType === "checklist" ? checklistItems : undefined
     };
 
-    const updatedBooking = await this.repository.updateBooking(booking.id, {
-      serviceEvidence: [...booking.serviceEvidence, evidence]
-    });
+    let updatedBooking: Booking | undefined;
+    try {
+      updatedBooking = await this.repository.updateBooking(booking.id, {
+        serviceEvidence: [...booking.serviceEvidence, evidence]
+      });
+    } catch (error) {
+      await this.photoStorage.remove(evidence).catch(() => undefined);
+      throw error;
+    }
 
     if (!updatedBooking) {
+      await this.photoStorage.remove(evidence).catch(() => undefined);
       throw new HttpError(500, "Booking evidence could not be saved");
     }
 
     return updatedBooking;
+  }
+
+  public async getEvidencePhoto(
+    evidenceId: string,
+    accessToken: string | undefined,
+    marketingUse: boolean
+  ): Promise<ReadEvidencePhoto> {
+    const bookings = await this.repository.listBookings();
+    const booking = bookings.find((candidate) =>
+      candidate.serviceEvidence.some((evidence) => evidence.id === evidenceId)
+    );
+    const evidence = booking?.serviceEvidence.find((candidate) => candidate.id === evidenceId);
+    if (!booking || !evidence?.imageObjectPathname || evidence.imageStorageProvider !== "vercel-blob-private") {
+      throw new HttpError(404, "Photo not found");
+    }
+
+    if (marketingUse) {
+      const provider = await this.repository.findProviderById(booking.providerId);
+      if (
+        booking.status !== "completed" ||
+        evidence.marketingUseStatus !== "granted" ||
+        provider?.verificationStatus !== "verified"
+      ) {
+        throw new HttpError(404, "Photo not found");
+      }
+    } else {
+      const expectedToken = this.photoStorage.extractAccessToken(evidence.imageDataUrl);
+      if (!this.secureStringsEqual(accessToken, expectedToken)) {
+        throw new HttpError(404, "Photo not found");
+      }
+    }
+
+    const photo = await this.photoStorage.read(evidence.imageObjectPathname);
+    if (!photo) {
+      throw new HttpError(404, "Photo not found");
+    }
+    return photo;
+  }
+
+  private secureStringsEqual(left: string | undefined, right: string | undefined): boolean {
+    if (!left || !right) {
+      return false;
+    }
+    const leftBytes = Buffer.from(left);
+    const rightBytes = Buffer.from(right);
+    return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
   }
 
   public async updateBookingPhotoMarketingUse(

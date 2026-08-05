@@ -130,8 +130,9 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - CI applies the complete migration chain to an isolated PostgreSQL 16 database, verifies migration status, rejects schema drift that is not represented by a migration, runs the repository integration suite, and retains the resulting logs for 90 days as a `postgres-launch-gate-<commit>` artifact.
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
-- `NODE_ENV=production` disables those development fallbacks. The API exits before listening unless it has a PostgreSQL URL, a non-development JWT secret of at least 32 characters, HTTPS app/API URLs, a live-prefixed Stripe key and Stripe webhook signing secret, plus production-shaped Resend and Twilio sender configuration.
-- Deployment environments can run `NODE_ENV=production npm run verify:production-config` as a secret-safe preflight; it reports only readiness and repository mode, and refuses to pass in development mode.
+- `NODE_ENV=production` plus `YARDMATCH_ENV=staging|production` disables development fallbacks. The API exits before listening unless it has PostgreSQL, a strong JWT, HTTPS app/API URLs, an exact CORS allowlist, private Blob photo storage, environment-appropriate Stripe credentials, and production-shaped Resend/Twilio sender configuration. Staging additionally suppresses destinations outside explicit notification allowlists.
+- Deployment environments can run `npm run verify:production-config` as a secret-safe preflight; it reports only environment readiness and repository mode, and refuses to pass in local mode. `/healthz` reports liveness and `/readyz` verifies PostgreSQL readiness for deployment health checks.
+- The Render Blueprint, Vercel setup, private-photo architecture, safe staging seed, and remote smoke commands are documented in `STAGING_DEPLOYMENT.md`.
 - Local development now has a dedicated seeded ops login instead of relying on provider fallback:
   - in-memory mode seeds `ops@example.com` with password `YardMatch123!` as an `ops-admin` account
   - `npm run prisma:seed` also seeds the same `ops@example.com` admin account into Prisma/Postgres

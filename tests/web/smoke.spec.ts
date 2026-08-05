@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { opsEmail, opsPassword } from "./workflow-helpers";
 
 async function expectSocialAuthLinks({
   expectedMode,
@@ -94,8 +95,8 @@ test.describe("YardMatch web smoke", () => {
   test("ops login opens the authenticated operations workspace", async ({ page }) => {
     await page.goto("/login/ops");
 
-    await page.getByLabel("Email").fill("ops@example.com");
-    await page.getByLabel("Password").fill("YardMatch123!");
+    await page.getByLabel("Email").fill(opsEmail);
+    await page.getByLabel("Password").fill(opsPassword);
     await page.getByRole("button", { name: "Log in" }).click();
 
     await expect(page).toHaveURL(/\/ops$/);

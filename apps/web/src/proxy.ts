@@ -4,7 +4,7 @@ import { resolveLocale, stripLocalePrefix } from "@yardmatch/i18n";
 const localeCookieName = "ym-locale";
 const staticPathPattern = /^\/(?:_next|media|favicon\.ico|robots\.txt|sitemap\.xml)/;
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (staticPathPattern.test(pathname)) {
     return NextResponse.next();

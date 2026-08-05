@@ -3,6 +3,8 @@ import {
   authenticatedPost,
   evidenceRoot,
   loginUi,
+  opsEmail,
+  opsPassword,
   registerCustomer,
   registerProvider
 } from "./workflow-helpers";
@@ -18,7 +20,7 @@ test("ops workspace exposes and audits verification, support, leads, payouts, an
   });
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await loginUi(page, "ops", "ops@example.com", "YardMatch123!");
+  await loginUi(page, "ops", opsEmail, opsPassword);
   await expect(page).toHaveURL(/\/ops$/);
   await expect(page.getByText("Live from the authenticated API.")).toBeVisible();
 

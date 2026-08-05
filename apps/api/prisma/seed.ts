@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/auth";
 import { PrismaMarketplaceRepository } from "../src/repositories/PrismaMarketplaceRepository";
+import { resolveSeedPassword } from "./seedConfig";
 
 const prisma = new PrismaClient();
 
@@ -29,7 +30,7 @@ async function main() {
   const repository = new PrismaMarketplaceRepository(prisma);
 
   const now = new Date().toISOString();
-  const seededPassword = hashPassword("YardMatch123!");
+  const seededPassword = hashPassword(resolveSeedPassword());
 
   const providers = [
     {
@@ -154,7 +155,8 @@ async function main() {
         data: {
           fullName: provider.fullName,
           phone: provider.phone,
-          address: provider.address
+          address: provider.address,
+          passwordHash: seededPassword
         }
       });
       await prisma.providerBusinessProfile.update({
@@ -266,6 +268,10 @@ async function main() {
     defaultPropertyId = customer.defaultPropertyId;
   } else {
     customerId = existingCustomer.id;
+    await prisma.userAccount.update({
+      where: { id: existingCustomer.id },
+      data: { passwordHash: seededPassword }
+    });
     const customerProfile = await repository.findCustomerById(existingCustomer.id);
     defaultPropertyId = customerProfile?.defaultPropertyId ?? "";
   }
@@ -305,7 +311,8 @@ async function main() {
       data: {
         fullName: "Maya Brooks",
         phone: "555-0300",
-        address: createAddress("170 5th Ave", "Brooklyn", "NY", "11217", 40.6761, -73.9804)
+        address: createAddress("170 5th Ave", "Brooklyn", "NY", "11217", 40.6761, -73.9804),
+        passwordHash: seededPassword
       }
     });
     await prisma.crewMemberProfile.update({

@@ -128,13 +128,15 @@ TEST_DATABASE_URL=postgresql://yardmatch:yardmatch@localhost:5432/yardmatch npm 
 
 The GitHub Actions PostgreSQL job runs the same migration, status, drift, and repository gates against an isolated PostgreSQL 16 service. It archives the logs for 90 days as `postgres-launch-gate-<commit>` so the production-deployment checklist can point to durable evidence instead of an unrecorded local run.
 
-## Production Startup Safety
+## Staging And Production Startup Safety
 
-Local development intentionally permits the in-memory repository and development auth defaults. `NODE_ENV=production` is fail-closed: the API exits before opening a listening socket when PostgreSQL, strong JWT configuration, HTTPS public URLs, live-shaped Stripe/webhook credentials, or production-shaped Resend/Twilio sender configuration is absent or malformed.
+Local development intentionally permits the in-memory repository, inline evidence images, and development auth defaults. Deployed environments use `NODE_ENV=production` plus an explicit `YARDMATCH_ENV=staging|production`. The API exits before opening a listening socket when PostgreSQL, a strong JWT, HTTPS public URLs, an exact CORS allowlist, private Blob storage, Stripe/webhook credentials, or production-shaped Resend/Twilio sender configuration is absent or malformed. Staging accepts only Stripe test keys and requires email/SMS allowlists; production accepts only live Stripe keys.
 
 The production configuration tests include a child-process startup check, so this boundary is exercised through the real API entry point rather than only as a helper-function unit test.
 
-Before a staging or production deployment, run `NODE_ENV=production npm run verify:production-config` with that environment's real secrets injected. The command returns only the readiness status and selected repository mode; it never prints credential values. It fails when `NODE_ENV` is not production so a development fallback cannot be mistaken for a passing deployment preflight.
+Before a staging or production deployment, run `npm run verify:production-config` with `NODE_ENV=production`, the intended `YARDMATCH_ENV`, and that environment's real secrets injected. The command returns only the environment readiness status and selected repository mode; it never prints credential values. It refuses local mode so a development fallback cannot be mistaken for a passing deployment preflight.
+
+The API exposes `/healthz` for process liveness and `/readyz` for repository readiness. It caps request bodies at 2.5 MB by default, validates decoded JPEG/PNG/WebP content and dimensions, drains active connections on `SIGTERM`, and stores deployed booking evidence in private Vercel Blob objects behind YardMatch delivery URLs. See `STAGING_DEPLOYMENT.md` for the Render/Vercel setup and remote smoke commands.
 
 ## Stripe Connect Payout Lifecycle
 

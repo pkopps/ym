@@ -3,6 +3,8 @@ import { expect, type APIRequestContext, type Locator, type Page } from "@playwr
 export const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? 4001}`;
 export const evidenceRoot = "reports/agent-checkpoints/engineer/latest";
 export const testPassword = "LaunchReady123";
+export const opsEmail = process.env.YARDMATCH_SMOKE_OPS_EMAIL ?? "ops@example.com";
+export const opsPassword = process.env.YARDMATCH_SMOKE_OPS_PASSWORD ?? "YardMatch123!";
 
 export const barnegatAddress = {
   line1: "18 Bay Ave",
@@ -48,7 +50,7 @@ async function prepareProviderCredentials(
   providerToken: string,
   providerId: string
 ) {
-  const ops = await loginApi(request, "ops@example.com", "YardMatch123!");
+  const ops = await loginApi(request, opsEmail, opsPassword);
   const expiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
   for (const type of [
@@ -142,7 +144,7 @@ export async function approveProvider(
   if (providerToken) {
     await prepareProviderCredentials(request, providerToken, providerId);
   }
-  const ops = await loginApi(request, "ops@example.com", "YardMatch123!");
+  const ops = await loginApi(request, opsEmail, opsPassword);
   await postJson(request, "/api/providers/verification/review", {
     providerId,
     action: "approve",

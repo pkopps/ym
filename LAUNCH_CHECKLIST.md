@@ -15,7 +15,8 @@
 - [ ] Have New Jersey counsel approve the category credential matrix, including fertilization and weed-control/pesticide work.
 - [x] Apply all committed migrations locally, confirm an empty Prisma schema diff, and pass the PostgreSQL atomic-settlement/balanced-ledger integration test.
 - [ ] Run the PostgreSQL migration/integration CI job and archive its passing result before production deployment.
-- [x] Confirm production startup fails without Postgres, strong JWT secret, live Stripe/webhook credentials, HTTPS URLs, and real email/SMS configuration.
+- [x] Confirm staging and production startup fail without Postgres, a strong JWT, HTTPS URLs, exact CORS origins, private Blob photo storage, environment-appropriate Stripe credentials, and real email/SMS configuration; require notification allowlists and test-mode Stripe in staging.
+- [ ] Provision the Vercel web/Blob and Render API/Postgres staging resources, run the safe staging seed, and archive passing remote API/web/photo-lifecycle smoke evidence.
 
 The repository now requests the approved Accounts v2 recipient configuration, reuses one Connect account per provider, blocks inactive capabilities or missing provider credentials, reconciles Stripe's actual balance-transaction fee, executes provider-only transfers from the originating charge, and records idempotent transfer/reversal ledger entries. The open Stripe items require a real Stripe account and credentials, so they remain deployment evidence rather than unfinished repository behavior.
 

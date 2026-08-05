@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Readable } from "node:stream";
 import { IncomingMessage } from "node:http";
-import { parseRequest } from "../src/http";
+import { isCorsOriginAllowed, parseRequest } from "../src/http";
 
 function createRequest(options: {
   method?: string;
@@ -50,4 +50,32 @@ test("parseRequest returns a 400-style HttpError for malformed JSON bodies", asy
     (error: Error & { statusCode?: number }) =>
       error.statusCode === 400 && /Malformed JSON request body/i.test(error.message)
   );
+});
+
+test("parseRequest rejects declared and streamed request bodies over the configured limit", async () => {
+  const declared = createRequest({
+    headers: { "content-length": "101", "content-type": "application/json" },
+    body: "{}"
+  });
+  await assert.rejects(
+    () => parseRequest(declared, 100),
+    (error: Error & { statusCode?: number }) => error.statusCode === 413
+  );
+
+  const streamed = createRequest({
+    headers: { "content-type": "text/plain" },
+    body: "x".repeat(101)
+  });
+  await assert.rejects(
+    () => parseRequest(streamed, 100),
+    (error: Error & { statusCode?: number }) => error.statusCode === 413
+  );
+});
+
+test("CORS allowlists support exact origins and scoped preview subdomains", () => {
+  const origins = ["https://yardmatch-staging.vercel.app", "https://*.preview.yardmatch.com"];
+  assert.equal(isCorsOriginAllowed("https://yardmatch-staging.vercel.app", origins), true);
+  assert.equal(isCorsOriginAllowed("https://branch.preview.yardmatch.com", origins), true);
+  assert.equal(isCorsOriginAllowed("https://preview.yardmatch.com", origins), false);
+  assert.equal(isCorsOriginAllowed("https://evil-yardmatch-staging.vercel.app", origins), false);
 });

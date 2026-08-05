@@ -6,6 +6,7 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "start": "node --import tsx src/index.ts",
     "build": "tsc -p tsconfig.json",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
@@ -17,7 +18,8 @@
     "test:postgres": "node --test --import tsx test/postgres-repository.integration.test.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "^6.19.3",
+    "@vercel/blob": "^2.6.1",
     "@yardmatch/analytics": "0.1.0",
     "@yardmatch/contracts": "0.1.0",
     "@yardmatch/domain": "0.1.0",

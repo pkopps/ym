@@ -2,14 +2,15 @@ import { validateRuntimeConfiguration } from "../config/productionConfig";
 
 const configuration = validateRuntimeConfiguration();
 
-if (!configuration.production) {
-  throw new Error("Production configuration verification requires NODE_ENV=production.");
+if (!configuration.deployed) {
+  throw new Error("Deployment configuration verification requires staging or production.");
 }
 
 console.log(
   JSON.stringify(
     {
-      status: "production-configuration-ready",
+      status: `${configuration.deploymentEnvironment}-configuration-ready`,
+      environment: configuration.deploymentEnvironment,
       repositoryMode: configuration.repositoryMode
     },
     null,

@@ -13,8 +13,8 @@
     "@yardmatch/i18n": "0.1.0",
     "@yardmatch/observability": "0.1.0",
     "@yardmatch/ui": "0.1.0",
-    "next": "*",
-    "react": "*",
-    "react-dom": "*"
+    "next": "16.3.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
   }
 }

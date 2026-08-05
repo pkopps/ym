@@ -6,6 +6,8 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { HttpError } from "../src/http";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
+import { PhotoStorageService } from "../src/services/PhotoStorageService";
+import { ValidatedEvidenceImage } from "../src/media/imageValidation";
 import { PaymentCheckoutGateway } from "../src/services/StripeCheckoutService";
 import { StripeConnectGateway } from "../src/services/StripeConnectService";
 
@@ -216,8 +218,44 @@ async function attachEvidence(
   return platform.addBookingEvidence(actor, {
     bookingId,
     phase,
-    imageDataUrl: `data:image/jpeg;base64,${phase}-photo`
+    imageDataUrl: testImageDataUrl(`${phase}-photo`)
   });
+}
+
+const onePixelPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Av7czgAAAABJRU5ErkJggg==",
+  "base64"
+);
+
+function testImageDataUrl(label: string): string {
+  return `data:image/png;base64,${Buffer.concat([onePixelPng, Buffer.from(label)]).toString("base64")}`;
+}
+
+class FakePrivatePhotoStorage extends PhotoStorageService {
+  private readonly photos = new Map<string, { bytes: Buffer; contentType: string }>();
+
+  public constructor() {
+    super("https://api.staging.yardmatch.test", "inline");
+  }
+
+  public override async store(
+    bookingId: string,
+    evidenceId: string,
+    _originalDataUrl: string,
+    image: ValidatedEvidenceImage
+  ) {
+    const objectPathname = `booking-evidence/${bookingId}/${evidenceId}.${image.extension}`;
+    this.photos.set(objectPathname, { bytes: image.bytes, contentType: image.contentType });
+    return {
+      deliveryUrl: `https://api.staging.yardmatch.test/api/media/evidence/${evidenceId}?token=secret-${evidenceId}`,
+      storageProvider: "vercel-blob-private" as const,
+      objectPathname
+    };
+  }
+
+  public override async read(objectPathname: string) {
+    return this.photos.get(objectPathname);
+  }
 }
 
 async function verifyProviderCredentials(
@@ -9141,7 +9179,15 @@ test("before and after photos still gate booking start and completion while note
 
 test("customers can share private property photos with the provider and explicitly control public before-and-after use", async () => {
   const repository = new InMemoryMarketplaceRepository();
-  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const photoStorage = new FakePrivatePhotoStorage();
+  const platform = new MarketplacePlatformService(
+    repository,
+    new DataEngineeringLogger(),
+    undefined,
+    undefined,
+    undefined,
+    photoStorage
+  );
 
   const provider = await platform.registerUser({
     fullName: "Ariana Flores",
@@ -9192,7 +9238,7 @@ test("customers can share private property photos with the provider and explicit
       {
         bookingId: booking.id,
         phase: "before",
-        imageDataUrl: "data:image/jpeg;base64,not-their-property"
+        imageDataUrl: testImageDataUrl("not-their-property")
       }
     ),
     /their own bookings/
@@ -9203,7 +9249,7 @@ test("customers can share private property photos with the provider and explicit
       {
         bookingId: booking.id,
         phase: "after",
-        imageDataUrl: "data:image/jpeg;base64,customer-after"
+        imageDataUrl: testImageDataUrl("customer-after")
       }
     ),
     /before-service property photos/
@@ -9214,7 +9260,7 @@ test("customers can share private property photos with the provider and explicit
     {
       bookingId: booking.id,
       phase: "before",
-      imageDataUrl: "data:image/jpeg;base64,front-shrubs-before",
+      imageDataUrl: testImageDataUrl("front-shrubs-before"),
       photoArea: "shrubs",
       note: "Trim below the front window."
     }
@@ -9223,6 +9269,18 @@ test("customers can share private property photos with the provider and explicit
   assert.equal(customerPhoto?.capturedByRole, "customer");
   assert.equal(customerPhoto?.photoArea, "shrubs");
   assert.equal(customerPhoto?.marketingUseStatus, undefined);
+  assert.equal(customerPhoto?.imageStorageProvider, "vercel-blob-private");
+  assert.match(customerPhoto?.imageDataUrl ?? "", /\/api\/media\/evidence\//);
+  await assert.rejects(
+    platform.getEvidencePhoto(customerPhoto!.id, "wrong-token", false),
+    /Photo not found/
+  );
+  const privatePhoto = await platform.getEvidencePhoto(
+    customerPhoto!.id,
+    `secret-${customerPhoto!.id}`,
+    false
+  );
+  assert.equal(privatePhoto.contentType, "image/png");
 
   const providerOverview = await platform.getProviderStaffingOverview(provider.id);
   assert.equal(providerOverview.jobs[0]?.evidencePhotos.length, 1);
@@ -9246,7 +9304,7 @@ test("customers can share private property photos with the provider and explicit
     {
       bookingId: booking.id,
       phase: "before",
-      imageDataUrl: "data:image/jpeg;base64,provider-arrival-before",
+      imageDataUrl: testImageDataUrl("provider-arrival-before"),
       photoArea: "shrubs"
     }
   );
@@ -9266,7 +9324,7 @@ test("customers can share private property photos with the provider and explicit
     {
       bookingId: booking.id,
       phase: "after",
-      imageDataUrl: "data:image/jpeg;base64,front-shrubs-after",
+      imageDataUrl: testImageDataUrl("front-shrubs-after"),
       photoArea: "shrubs",
       note: "Shrubs shaped and clippings removed."
     }
@@ -9296,9 +9354,12 @@ test("customers can share private property photos with the provider and explicit
     category: "hedge-trimming",
     photoArea: "shrubs",
     completedAt: granted.completedAt,
-    beforeImageDataUrl: "data:image/jpeg;base64,front-shrubs-before",
-    afterImageDataUrl: "data:image/jpeg;base64,front-shrubs-after"
+    beforeImageDataUrl: `https://api.staging.yardmatch.test/api/media/marketing/${customerPhoto!.id}`,
+    afterImageDataUrl: `https://api.staging.yardmatch.test/api/media/marketing/${
+      granted.serviceEvidence.find((evidence) => evidence.phase === "after" && evidence.evidenceType === "photo")!.id
+    }`
   });
+  assert.equal((await platform.getEvidencePhoto(customerPhoto!.id, undefined, true)).contentType, "image/png");
   assert.equal("customerName" in publicOverview.beforeAfterProjects[0]!, false);
   assert.equal("streetAddress" in publicOverview.beforeAfterProjects[0]!, false);
 
@@ -9314,6 +9375,10 @@ test("customers can share private property photos with the provider and explicit
     status: "revoked"
   });
   assert.equal((await platform.getPublicMarketplaceOverview()).beforeAfterProjects.length, 0);
+  await assert.rejects(
+    platform.getEvidencePhoto(customerPhoto!.id, undefined, true),
+    /Photo not found/
+  );
 });
 
 test("ops can annotate booking evidence for disputes and refund reviews", async () => {
@@ -9448,7 +9513,7 @@ test("ops support tickets include evidence summaries and resolution guidance", a
       bookingId: booking.id,
       phase: "after",
       evidenceType: "photo",
-      imageDataUrl: "data:image/jpeg;base64,after-photo"
+      imageDataUrl: testImageDataUrl("after-photo")
     }
   );
   const photoEvidenceId = bookingWithPhoto.serviceEvidence.find((evidence) => evidence.evidenceType === "photo")?.id;
@@ -9538,7 +9603,7 @@ test("completed disputed bookings guide ops toward keeping the booking complete"
       bookingId: booking.id,
       phase: "after",
       evidenceType: "photo",
-      imageDataUrl: "data:image/jpeg;base64,completed-after-photo"
+      imageDataUrl: testImageDataUrl("completed-after-photo")
     }
   );
   const photoEvidenceId = bookingWithEvidence.serviceEvidence.find(
@@ -9615,7 +9680,7 @@ test("paid completed disputes require refund review before cancellation resolves
       bookingId: booking.id,
       phase: "after",
       evidenceType: "photo",
-      imageDataUrl: "data:image/jpeg;base64,customer-leaning-photo"
+      imageDataUrl: testImageDataUrl("customer-leaning-photo")
     }
   );
   await platform.addBookingEvidence(
@@ -9916,7 +9981,7 @@ test("ops require a detailed rationale before resolving a mixed-evidence refund 
       bookingId: booking.id,
       phase: "after",
       evidenceType: "photo",
-      imageDataUrl: "data:image/jpeg;base64,mixed-refund-photo"
+      imageDataUrl: testImageDataUrl("mixed-refund-photo")
     }
   );
   const photoEvidenceId = bookingWithPhoto.serviceEvidence.find(
@@ -10038,7 +10103,7 @@ test("ops can apply a mixed-evidence disputed intervention when the note is spec
       bookingId: booking.id,
       phase: "after",
       evidenceType: "photo",
-      imageDataUrl: "data:image/jpeg;base64,mixed-dispute-photo"
+      imageDataUrl: testImageDataUrl("mixed-dispute-photo")
     }
   );
   const photoEvidenceId = bookingWithPhoto.serviceEvidence.find(

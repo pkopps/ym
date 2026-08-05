@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { evidenceRoot } from "./workflow-helpers";
+import { evidenceRoot, opsEmail, opsPassword } from "./workflow-helpers";
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page) {
   const dimensions = await page.evaluate(() => {
@@ -40,10 +40,10 @@ test("spanish provider, crew, and ops workflow routes remain localized", async (
   await expectNoHorizontalOverflow(page);
 
   await page.goto("/es/login/ops");
-  await page.getByLabel("Correo").fill("ops@example.com");
-  const opsPassword = page.getByLabel("Contrasena");
-  await opsPassword.fill("YardMatch123!");
-  await opsPassword.press("Enter");
+  await page.getByLabel("Correo").fill(opsEmail);
+  const opsPasswordInput = page.getByLabel("Contrasena");
+  await opsPasswordInput.fill(opsPassword);
+  await opsPasswordInput.press("Enter");
   await expect(page).toHaveURL(/\/es\/ops$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
   await expect(page.getByText("Control de automatizacion")).toBeVisible();

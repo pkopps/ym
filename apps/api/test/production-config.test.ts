@@ -11,24 +11,47 @@ import {
 function completeProductionEnvironment(): RuntimeEnvironment {
   return {
     NODE_ENV: "production",
+    YARDMATCH_ENV: "production",
     DATABASE_URL: "postgresql://yardmatch:secret@db.yardmatch.com/yardmatch",
     JWT_SECRET: "a-production-secret-that-is-longer-than-32-characters",
     APP_BASE_URL: "https://yardmatch.com",
     API_BASE_URL: "https://api.yardmatch.com",
+    CORS_ALLOWED_ORIGINS: "https://yardmatch.com,https://www.yardmatch.com",
     STRIPE_SECRET_KEY: "rk_live_51YardMatchProductionShape",
     STRIPE_WEBHOOK_SECRET: "whsec_1234567890abcdef",
     RESEND_API_KEY: "re_1234567890abcdef",
     NOTIFICATION_EMAIL_FROM: "YardMatch <notifications@yardmatch.com>",
     TWILIO_ACCOUNT_SID: "AC1234567890abcdef1234567890abcdef",
     TWILIO_AUTH_TOKEN: "1234567890abcdef1234567890abcdef",
-    TWILIO_FROM_NUMBER: "+15555550100"
+    TWILIO_FROM_NUMBER: "+15555550100",
+    PHOTO_STORAGE_MODE: "vercel-blob-private",
+    BLOB_READ_WRITE_TOKEN: "vercel_blob_rw_production_secret_123456"
+  };
+}
+
+function completeStagingEnvironment(): RuntimeEnvironment {
+  return {
+    ...completeProductionEnvironment(),
+    YARDMATCH_ENV: "staging",
+    DATABASE_URL: "postgresql://yardmatch:secret@staging-db.yardmatch.com/yardmatch",
+    JWT_SECRET: "a-staging-secret-that-is-longer-than-32-characters",
+    APP_BASE_URL: "https://yardmatch-staging.vercel.app",
+    API_BASE_URL: "https://yardmatch-staging-api.onrender.com",
+    CORS_ALLOWED_ORIGINS: "https://yardmatch-staging.vercel.app,https://*.vercel.app",
+    STRIPE_SECRET_KEY: "rk_test_51YardMatchStagingShape",
+    STAGING_NOTIFICATION_ALLOWED_EMAILS: "qa@yardmatch.com",
+    STAGING_NOTIFICATION_ALLOWED_SMS_NUMBERS: "+15555550199"
   };
 }
 
 test("local runtime intentionally permits the in-memory development repository", () => {
   assert.deepEqual(validateRuntimeConfiguration({ NODE_ENV: "development" }), {
     production: false,
-    repositoryMode: "in-memory"
+    staging: false,
+    deployed: false,
+    deploymentEnvironment: "local",
+    repositoryMode: "in-memory",
+    maxRequestBodyBytes: 2_500_000
   });
   assert.equal(resolveJwtSecret({ NODE_ENV: "development" }), "yardmatch-dev-secret");
 });
@@ -103,7 +126,10 @@ test("API process refuses to listen with unsafe production configuration", () =>
     "NOTIFICATION_EMAIL_FROM",
     "TWILIO_ACCOUNT_SID",
     "TWILIO_AUTH_TOKEN",
-    "TWILIO_FROM_NUMBER"
+    "TWILIO_FROM_NUMBER",
+    "CORS_ALLOWED_ORIGINS",
+    "PHOTO_STORAGE_MODE",
+    "BLOB_READ_WRITE_TOKEN"
   ]) {
     delete unsafeEnvironment[key];
   }
@@ -122,6 +148,38 @@ test("API process refuses to listen with unsafe production configuration", () =>
 test("complete production configuration selects Postgres", () => {
   assert.deepEqual(validateRuntimeConfiguration(completeProductionEnvironment()), {
     production: true,
-    repositoryMode: "prisma-postgres"
+    staging: false,
+    deployed: true,
+    deploymentEnvironment: "production",
+    repositoryMode: "prisma-postgres",
+    maxRequestBodyBytes: 2_500_000
+  });
+});
+
+test("staging requires test-mode Stripe, notification allowlists, and private photo storage", () => {
+  const invalid = completeStagingEnvironment();
+  invalid.STRIPE_SECRET_KEY = "sk_live_51WrongForStaging";
+  invalid.STAGING_NOTIFICATION_ALLOWED_EMAILS = "";
+  invalid.PHOTO_STORAGE_MODE = "inline";
+
+  assert.throws(
+    () => validateRuntimeConfiguration(invalid),
+    (error: Error) => {
+      assert.match(error.message, /Stripe test mode/);
+      assert.match(error.message, /STAGING_NOTIFICATION_ALLOWED_EMAILS is required/);
+      assert.match(error.message, /PHOTO_STORAGE_MODE must be vercel-blob-private/);
+      return true;
+    }
+  );
+});
+
+test("complete staging configuration selects Postgres and deployment safeguards", () => {
+  assert.deepEqual(validateRuntimeConfiguration(completeStagingEnvironment()), {
+    production: false,
+    staging: true,
+    deployed: true,
+    deploymentEnvironment: "staging",
+    repositoryMode: "prisma-postgres",
+    maxRequestBodyBytes: 2_500_000
   });
 });

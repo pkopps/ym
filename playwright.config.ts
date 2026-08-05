@@ -5,6 +5,7 @@ const webPort = Number(process.env.YARDMATCH_WEB_PORT ?? 3000);
 const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${apiPort}`;
 const webBaseUrl = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${webPort}`;
 const reuseExistingServer = !process.env.CI;
+const startLocalServers = process.env.YARDMATCH_SMOKE_START_SERVERS !== "0";
 
 export default defineConfig({
   testDir: "./tests/web",
@@ -28,7 +29,7 @@ export default defineConfig({
       }
     }
   ],
-  webServer: [
+  webServer: startLocalServers ? [
     {
       command: `API_BASE_URL=${apiBaseUrl} PORT=${apiPort} DATABASE_URL= npm run dev:api`,
       url: `${apiBaseUrl}/api/docs/openapi.json`,
@@ -41,5 +42,5 @@ export default defineConfig({
       reuseExistingServer,
       timeout: 60_000
     }
-  ]
+  ] : undefined
 });

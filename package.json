@@ -12,6 +12,7 @@
     "dev:provider-mobile": "npm --workspace @yardmatch/provider-mobile run dev",
     "dev:crew-mobile": "npm --workspace @yardmatch/crew-mobile run dev",
     "dev:api": "PORT=${PORT:-4001} node --import tsx apps/api/src/index.ts",
+    "start:api": "node --import tsx apps/api/src/index.ts",
     "build:web": "next build apps/web",
     "build:customer-mobile": "npm --workspace @yardmatch/customer-mobile run export",
     "build:provider-mobile": "npm --workspace @yardmatch/provider-mobile run export",
@@ -25,6 +26,8 @@
     "test:api:postgres": "npm --workspace @yardmatch/api run test:postgres",
     "test:api:smoke": "node scripts/api-smoke.mjs",
     "test:web:smoke": "playwright test --config=playwright.config.ts",
+    "test:staging:api": "YARDMATCH_SMOKE_START_API=0 npm run test:api:smoke",
+    "test:staging:web": "YARDMATCH_SMOKE_START_SERVERS=0 npm run test:web:smoke",
     "test:smoke": "npm run test:api:smoke && npm run test:web:smoke",
     "verify:production-config": "npm --workspace @yardmatch/api run verify:production-config",
     "i18n:validate": "npm --workspace @yardmatch/i18n run validate",
@@ -39,7 +42,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@next/eslint-plugin-next": "16.2.4",
+    "@next/eslint-plugin-next": "^16.3.0",
     "@playwright/test": "^1.61.1",
     "@types/node": "*",
     "@types/react": "*",
@@ -47,13 +50,13 @@
     "eslint": "10.8.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.9.0",
-    "prisma": "^6.19.0",
-    "tsx": "*",
-    "turbo": "*",
+    "prisma": "^6.19.3",
+    "tsx": "4.23.6",
+    "turbo": "^2.10.8",
     "typescript": "*",
     "typescript-eslint": "8.66.0"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.0"
+    "@prisma/client": "^6.19.3"
   }
 }

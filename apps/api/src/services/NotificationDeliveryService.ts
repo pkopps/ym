@@ -27,8 +27,27 @@ export class NotificationDeliveryService {
   private readonly twilioFromNumber = process.env.TWILIO_FROM_NUMBER?.trim();
   private readonly notificationAlertEmails = process.env.NOTIFICATION_ALERT_EMAILS?.trim();
   private readonly notificationAlertSmsNumbers = process.env.NOTIFICATION_ALERT_SMS_NUMBERS?.trim();
+  private readonly staging = process.env.YARDMATCH_ENV?.trim().toLowerCase() === "staging";
+  private readonly stagingAllowedEmails = new Set(
+    this.parseCsv(process.env.STAGING_NOTIFICATION_ALLOWED_EMAILS).map((item) => item.toLowerCase())
+  );
+  private readonly stagingAllowedSmsNumbers = new Set(
+    this.parseCsv(process.env.STAGING_NOTIFICATION_ALLOWED_SMS_NUMBERS)
+  );
+  private readonly stagingAllowedPushTokens = new Set(
+    this.parseCsv(process.env.STAGING_NOTIFICATION_ALLOWED_PUSH_TOKENS)
+  );
 
   public async dispatch(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
+    if (this.staging && input.channel !== "in-app" && !this.isStagingDestinationAllowed(input)) {
+      const provider = `staging-suppressed-${input.channel}`;
+      return {
+        provider,
+        sentAt: new Date().toISOString(),
+        externalId: `${provider}_${crypto.randomUUID()}`
+      };
+    }
+
     if (input.channel === "push" && input.destination.startsWith("ExponentPushToken[")) {
       return this.dispatchExpoPush(input);
     }
@@ -50,6 +69,15 @@ export class NotificationDeliveryService {
   }
 
   public getProviderName(channel: NotificationChannel, destination?: string): string {
+    if (
+      this.staging &&
+      channel !== "in-app" &&
+      destination &&
+      !this.isStagingDestinationAllowed({ channel, destination })
+    ) {
+      return `staging-suppressed-${channel}`;
+    }
+
     if (channel === "push" && destination?.startsWith("ExponentPushToken[")) {
       return "expo-push";
     }
@@ -178,6 +206,19 @@ export class NotificationDeliveryService {
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
+  }
+
+  private isStagingDestinationAllowed(input: Pick<NotificationDispatchInput, "channel" | "destination">): boolean {
+    if (input.channel === "email") {
+      return this.stagingAllowedEmails.has(input.destination.toLowerCase());
+    }
+    if (input.channel === "sms") {
+      return this.stagingAllowedSmsNumbers.has(input.destination);
+    }
+    if (input.channel === "push") {
+      return this.stagingAllowedPushTokens.has(input.destination);
+    }
+    return true;
   }
 
   private async dispatchExpoPush(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {

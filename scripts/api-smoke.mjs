@@ -114,6 +114,13 @@ async function runSmoke() {
 
   log("API docs are reachable");
 
+  const health = await request("/healthz");
+  const readiness = await request("/readyz");
+  if (health.status !== "ok" || readiness.status !== "ready") {
+    throw new Error("Health or readiness endpoint did not report a deployable API");
+  }
+  log(`health and readiness passed (${health.environment}, ${health.repository})`);
+
   const placeSearch = await request("/api/places/search?query=Brooklyn");
   const brooklyn = placeSearch.suggestions?.find((suggestion) => suggestion.label === "Brooklyn, NY");
   if (!brooklyn) {

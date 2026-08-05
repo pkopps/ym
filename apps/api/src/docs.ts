@@ -23,7 +23,8 @@ export const apiSpec = {
     { name: "Chat" },
     { name: "Payments" },
     { name: "Support" },
-    { name: "Observability" }
+    { name: "Observability" },
+    { name: "Operations" }
   ],
   components: {
     securitySchemes: {
@@ -35,6 +36,23 @@ export const apiSpec = {
     }
   },
   paths: {
+    "/healthz": {
+      get: {
+        tags: ["Operations"],
+        summary: "Check API process liveness",
+        responses: { "200": { description: "API process is alive" } }
+      }
+    },
+    "/readyz": {
+      get: {
+        tags: ["Operations"],
+        summary: "Check API repository readiness",
+        responses: {
+          "200": { description: "API and repository are ready for traffic" },
+          "503": { description: "Repository is not ready" }
+        }
+      }
+    },
     "/api/auth/register": {
       post: {
         tags: ["Auth"],
@@ -895,7 +913,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Attach booking evidence to a job",
         description:
-          "Stores booking-linked service evidence with phase, service-area tag, timestamp, and actor attribution. Customers can attach private before-service property photos to their own requested or confirmed bookings. Providers and accepted crew members can attach before-work or after-work photos, onsite notes, and structured checklists while the booking is active.",
+          "Stores booking-linked service evidence with phase, service-area tag, timestamp, and actor attribution. Customers can attach private before-service property photos to their own requested or confirmed bookings. Providers and accepted crew members can attach before-work or after-work photos, onsite notes, and structured checklists while the booking is active. Deployed runtimes validate the decoded JPEG/PNG/WebP and store it as a private object; booking responses contain a YardMatch delivery URL rather than inline bytes.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -936,6 +954,35 @@ export const apiSpec = {
         responses: {
           "200": { description: "Updated booking with audited photo marketing preference" },
           "403": { description: "Only the booking customer can manage photo marketing use" }
+        }
+      }
+    },
+    "/api/media/evidence/{evidenceId}": {
+      get: {
+        tags: ["Bookings"],
+        summary: "Deliver a private booking-evidence photo",
+        description: "Uses the opaque token embedded in the booking's photo URL. The underlying object remains private.",
+        parameters: [
+          { name: "evidenceId", in: "path", required: true, schema: { type: "string" } },
+          { name: "token", in: "query", required: true, schema: { type: "string" } }
+        ],
+        responses: {
+          "200": { description: "Private image bytes" },
+          "404": { description: "Photo or access token not found" }
+        }
+      }
+    },
+    "/api/media/marketing/{evidenceId}": {
+      get: {
+        tags: ["Marketplace"],
+        summary: "Deliver a consented marketing photo",
+        description: "Rechecks completed-booking status, verified-provider status, and current customer consent before every delivery so revocation takes effect without exposing the private Blob URL.",
+        parameters: [
+          { name: "evidenceId", in: "path", required: true, schema: { type: "string" } }
+        ],
+        responses: {
+          "200": { description: "Consented image bytes" },
+          "404": { description: "Photo is absent or no longer eligible for public use" }
         }
       }
     },
