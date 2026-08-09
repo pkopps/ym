@@ -55,10 +55,14 @@
 	<array>
 		<string>_expo._tcp</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>YardMatch uses your camera so you can photograph the parts of your property that need service.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>YardMatch uses Face ID so you can quickly reopen the customer app on this device.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Expo Dev Launcher uses the local network to discover and connect to development servers running on your computer.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>YardMatch uses your photo library so you can show providers the parts of your property that need service.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

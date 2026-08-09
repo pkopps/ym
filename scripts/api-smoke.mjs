@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomBytes } from "node:crypto";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4001";
 const startApi = process.env.YARDMATCH_SMOKE_START_API !== "0";
@@ -144,7 +145,7 @@ async function runSmoke() {
 
   const unique = Date.now();
   const email = `smoke-${unique}@example.com`;
-  const password = "YardMatch123!";
+  const password = `Smoke-${randomBytes(18).toString("base64url")}!aA1`;
 
   const registered = await request("/api/auth/register", {
     method: "POST",

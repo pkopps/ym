@@ -1,0 +1,86 @@
+name: Staging acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Optional API URL override (otherwise STAGING_API_BASE_URL environment variable)
+        required: false
+        type: string
+      web_url:
+        description: Optional web URL override (otherwise STAGING_WEB_BASE_URL environment variable)
+        required: false
+        type: string
+      expected_revision:
+        description: Commit SHA expected on both deployments (defaults to this workflow commit)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yardmatch-staging-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: Hosted API, web, and photo lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: staging
+      url: ${{ inputs.web_url || vars.STAGING_WEB_BASE_URL }}
+    env:
+      API_BASE_URL: ${{ inputs.api_url || vars.STAGING_API_BASE_URL }}
+      PLAYWRIGHT_BASE_URL: ${{ inputs.web_url || vars.STAGING_WEB_BASE_URL }}
+      YARDMATCH_EXPECTED_REVISION: ${{ inputs.expected_revision || github.sha }}
+      YARDMATCH_SMOKE_OPS_EMAIL: ${{ secrets.STAGING_OPS_EMAIL }}
+      YARDMATCH_SMOKE_OPS_PASSWORD: ${{ secrets.STAGING_OPS_PASSWORD }}
+      YARDMATCH_DEPLOY_WAIT_MS: "720000"
+      YARDMATCH_DEPLOYMENT_EVIDENCE_PATH: reports/ci/staging-acceptance/deployment.json
+      YARDMATCH_ACCEPTANCE_EVIDENCE_PATH: reports/ci/staging-acceptance/photo-lifecycle.json
+    steps:
+      - name: Checkout expected revision
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run prisma:generate
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare acceptance evidence
+        run: mkdir -p reports/ci/staging-acceptance
+
+      - name: Wait for matching healthy deployments
+        run: npm run test:staging:wait 2>&1 | tee reports/ci/staging-acceptance/deployment-wait.log
+
+      - name: API acceptance
+        run: npm run test:staging:api 2>&1 | tee reports/ci/staging-acceptance/api-smoke.log
+
+      - name: Private photo and consent lifecycle
+        run: npm run test:staging:photos 2>&1 | tee reports/ci/staging-acceptance/photo-smoke.log
+
+      - name: Hosted browser acceptance
+        run: npm run test:staging:web 2>&1 | tee reports/ci/staging-acceptance/web-smoke.log
+
+      - name: Archive staging acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-acceptance-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            reports/ci/staging-acceptance/
+            test-results/
+          if-no-files-found: error
+          retention-days: 90

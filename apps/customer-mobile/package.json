@@ -22,15 +22,15 @@
     "@yardmatch/observability": "0.1.0",
     "@yardmatch/ui": "0.1.0",
     "expo": "~55.0.28",
-    "expo-dev-client": "~55.0.35",
+    "expo-dev-client": "~55.0.37",
     "expo-image-picker": "~55.0.20",
-    "expo-local-authentication": "~55.0.14",
-    "expo-notifications": "~55.0.23",
-    "expo-secure-store": "~55.0.14",
-    "expo-web-browser": "~55.0.16",
+    "expo-local-authentication": "~55.0.16",
+    "expo-notifications": "~55.0.25",
+    "expo-secure-store": "~55.0.16",
+    "expo-web-browser": "~55.0.18",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "react-native": "0.83.6",
+    "react-native": "0.83.10",
     "react-native-web": "0.21.2"
   }
 }

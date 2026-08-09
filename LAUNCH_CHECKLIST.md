@@ -16,13 +16,18 @@
 - [x] Apply all committed migrations locally, confirm an empty Prisma schema diff, and pass the PostgreSQL atomic-settlement/balanced-ledger integration test.
 - [ ] Run the PostgreSQL migration/integration CI job and archive its passing result before production deployment.
 - [x] Confirm staging and production startup fail without Postgres, a strong JWT, HTTPS URLs, exact CORS origins, private Blob photo storage, environment-appropriate Stripe credentials, and real email/SMS configuration; require notification allowlists and test-mode Stripe in staging.
+- [x] Add required API/web production builds, customer/provider/crew cross-platform exports, mobile release-config validation, and retained CI metadata before Git-connected deployment.
 - [ ] Provision the Vercel web/Blob and Render API/Postgres staging resources, run the safe staging seed, and archive passing remote API/web/photo-lifecycle smoke evidence.
+- [ ] Create and protect the GitHub `staging`, `mobile-preview`, and `mobile-store-test` environments with the documented variables, secrets, and reviewers.
+- [ ] Link customer/provider/crew EAS projects, initialize iOS/Android credentials interactively, and archive one accepted internal preview build per app/platform.
+- [ ] Create App Store Connect and Google Play records and distribute one staging-backed customer, provider, and crew build through TestFlight/internal testing without enabling public release.
+- [ ] Rehearse and record one coordinated Vercel/Render staging rollback and post-rollback acceptance run.
 
 The repository now requests the approved Accounts v2 recipient configuration, reuses one Connect account per provider, blocks inactive capabilities or missing provider credentials, reconciles Stripe's actual balance-transaction fee, executes provider-only transfers from the originating charge, and records idempotent transfer/reversal ledger entries. The open Stripe items require a real Stripe account and credentials, so they remain deployment evidence rather than unfinished repository behavior.
 
 The CI workflow creates a 90-day PostgreSQL launch-gate artifact containing migration deployment, migration status, schema-drift, and repository-test logs. The CI checkbox stays open until a passing remote run is archived and reviewed. Production startup is covered at the validator and real API process boundary, including rejection of non-PostgreSQL storage and malformed vendor configuration before the server listens.
 
-Last updated: August 3, 2026
+Last updated: August 9, 2026
 
 This is the working checklist for launch readiness beyond product code.
 
@@ -35,6 +40,9 @@ Related docs:
 - `SEO_PLAN.md`
 - `CONTENT_PLAN.md`
 - `COSTS.md`
+- `STAGING_DEPLOYMENT.md`
+- `MOBILE_DEPLOYMENT.md`
+- `RELEASE_RUNBOOK.md`
 
 ## How To Use This File
 

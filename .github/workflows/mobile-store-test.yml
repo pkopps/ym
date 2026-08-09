@@ -1,0 +1,69 @@
+name: Mobile store test
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: YardMatch mobile app
+        required: true
+        type: choice
+        options:
+          - customer
+          - provider
+          - crew
+      platform:
+        description: Store test destination
+        required: true
+        type: choice
+        options:
+          - ios
+          - android
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-store-test-${{ inputs.app }}-${{ inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-submit:
+    name: ${{ inputs.app }} to ${{ inputs.platform }} internal testing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: mobile-store-test
+    env:
+      STAGING_API_BASE_URL: ${{ vars.STAGING_API_BASE_URL }}
+      YARDMATCH_MOBILE_APP: ${{ inputs.app }}
+      YARDMATCH_REQUIRE_MOBILE_RELEASE_ENV: "1"
+      YARDMATCH_CUSTOMER_EXPO_PROJECT_ID: ${{ vars.EXPO_CUSTOMER_PROJECT_ID }}
+      YARDMATCH_PROVIDER_EXPO_PROJECT_ID: ${{ vars.EXPO_PROVIDER_PROJECT_ID }}
+      YARDMATCH_CREW_EXPO_PROJECT_ID: ${{ vars.EXPO_CREW_PROJECT_ID }}
+      EXPO_PUBLIC_API_BASE_URL: ${{ vars.STAGING_API_BASE_URL }}
+      EXPO_PUBLIC_EXPO_PROJECT_ID: ${{ inputs.app == 'customer' && vars.EXPO_CUSTOMER_PROJECT_ID || inputs.app == 'provider' && vars.EXPO_PROVIDER_PROJECT_ID || vars.EXPO_CREW_PROJECT_ID }}
+      EXPO_PUBLIC_YARDMATCH_ENV: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify selected app release configuration
+        run: npm run verify:mobile-release
+
+      - name: Build and submit staging binary
+        working-directory: apps/${{ inputs.app }}-mobile
+        run: eas build --platform ${{ inputs.platform }} --profile store-test --auto-submit --non-interactive --no-wait

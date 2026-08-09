@@ -57,6 +57,13 @@ Exit criteria:
 
 ## Priority 1: Launch-Critical
 
+### Test Deployment And Distribution
+
+- Provision the repository-defined Vercel web/private Blob and Render API/PostgreSQL staging environment, inject the documented secrets, and retain the first green revision-matched `staging-acceptance-<commit>-<attempt>` artifact. The repository now waits for web/API health, rejects revision drift or a non-staging/non-PostgreSQL target, exercises API and ops access, and proves customer-private upload through consent grant and revocation.
+- Create and link separate customer, provider, and crew EAS projects; configure preview and production EAS environments; complete the first interactive signing build for each platform; then archive green `Mobile internal preview` artifacts/install checks. Repository profiles now separate internal preview, iOS simulator, staging-backed store test, and production builds, and deployed configs fail rather than falling back to localhost.
+- Create App Store Connect and Google Play app records, complete agreements/store test metadata, upload signing/submission credentials to EAS, and exercise the protected `Mobile store test` workflow. Android stays draft on the internal track until reviewed; iOS is assigned to an internal TestFlight group after processing. No workflow currently submits a public production release.
+- Rehearse the coordinated rollback runbook against staging and record the last accepted Vercel deployment, Render deploy, database migration state, GitHub acceptance artifact, and mobile build IDs. Add a server-side minimum-supported-mobile-version policy before production so an unsafe installed binary can be blocked explicitly.
+
 ### Payments And Payouts
 
 - Activate Stripe Connect Accounts v2 in staging and production, archive the requested Express/application-owned configuration, and complete one real test-mode recipient onboarding now that the repository creates and reuses the approved provider account shape.

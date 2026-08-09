@@ -15,6 +15,7 @@ Phase 1 prepares one persistent test environment: the Next.js website on Vercel,
 1. Import this repository into Vercel and select `apps/web` as the project Root Directory. Keep source-file access outside that directory enabled so workspace packages remain available.
 2. Create a private Blob store and connect it to the web project. Copy its `BLOB_READ_WRITE_TOKEN` into the Render API secrets; do not expose it as a `NEXT_PUBLIC_*` value.
 3. Set the Vercel Preview and staging/Production environment values:
+   - `YARDMATCH_ENV=staging`
    - `NEXT_PUBLIC_API_BASE_URL=https://yardmatch-staging-api.onrender.com`
    - `NEXT_PUBLIC_SITE_URL=<the canonical Vercel staging URL>`
    - `NEXT_PUBLIC_DEFAULT_SERVICE_AREA_LABEL=Barnegat, NJ`
@@ -54,7 +55,23 @@ YARDMATCH_ENV=staging YARDMATCH_STAGING_SEED_PASSWORD='<secret-from-password-man
 
 The free Blueprint runs this seed after migrations on each staging build. It is idempotent and refreshes fixture-account passwords to the configured secret. Store that value in the team's password manager and use the same value as `YARDMATCH_SMOKE_OPS_PASSWORD` when running remote browser smoke tests. The seed never prints the password.
 
-## 4. Verify The Live Test Environment
+## 4. Configure The Protected Acceptance Gate
+
+Create a GitHub environment named `staging`. Restrict it to the staging deployment branch and add a required reviewer when the repository plan supports environment protection.
+
+Environment variables:
+
+- `STAGING_API_BASE_URL`: canonical HTTPS Render API origin
+- `STAGING_WEB_BASE_URL`: canonical HTTPS Vercel web origin
+
+Environment secrets:
+
+- `STAGING_OPS_EMAIL`: the seeded staging ops account
+- `STAGING_OPS_PASSWORD`: the strong `YARDMATCH_STAGING_SEED_PASSWORD`
+
+The `Staging acceptance` workflow waits for both services to report the requested Git commit, then archives API, browser, private-photo, consent-grant, and consent-revocation evidence for 90 days. Environment secrets are not available to the runner until any configured approval gate passes.
+
+## 5. Verify The Live Test Environment
 
 API health and configuration:
 
@@ -79,7 +96,20 @@ YARDMATCH_SMOKE_OPS_PASSWORD='<staging-seed-secret>' \
 npm run test:staging:web
 ```
 
-Also verify one photo lifecycle: customer upload, provider visibility, provider after-photo upload, completed service-history pairing, consent grant, homepage display, consent revocation, and homepage removal. Blob objects must remain private even when the API exposes a consent-checked marketing URL.
+Automated photo lifecycle:
+
+```bash
+API_BASE_URL=https://yardmatch-staging-api.onrender.com \
+YARDMATCH_SMOKE_OPS_EMAIL=ops@example.com \
+YARDMATCH_SMOKE_OPS_PASSWORD='<staging-seed-secret>' \
+npm run test:staging:photos
+```
+
+The photo gate creates isolated synthetic customer/provider records, verifies customer private upload, provider before/after evidence, service-history pairing, consented marketing delivery, and revocation. It revokes consent and removes the synthetic provider from live matching before finishing.
+
+To run the complete gate locally or from CI, provide both URLs and run `npm run test:staging:acceptance`. The deployment wait refuses non-HTTPS/non-staging targets, requires PostgreSQL, and can match both services to `YARDMATCH_EXPECTED_REVISION`.
+
+See `MOBILE_DEPLOYMENT.md` for EAS internal distribution and store-test builds. See `RELEASE_RUNBOOK.md` for acceptance evidence and coordinated rollback.
 
 ## Safety Boundaries
 
@@ -88,3 +118,4 @@ Also verify one photo lifecycle: customer upload, provider visibility, provider 
 - Keep staging notification allowlists narrow. Non-allowlisted email, SMS, and push destinations are recorded as suppressed and are not sent externally.
 - Do not use fixture seeding in production.
 - A failed `/readyz` response must keep a new API revision out of service.
+- Never run the acceptance workflow against production; the photo gate intentionally creates and mutates staging records.

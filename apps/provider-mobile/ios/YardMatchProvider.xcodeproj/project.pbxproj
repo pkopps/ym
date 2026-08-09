@@ -356,6 +356,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = FFF2E58552FD0ED48E8F991D /* Pods-YardMatchProvider.debug.xcconfig */;
 			buildSettings = {
+				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = YardMatchProvider/YardMatchProvider.entitlements;
@@ -392,6 +393,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 42652A4D6B1481DEFE33A068 /* Pods-YardMatchProvider.release.xcconfig */;
 			buildSettings = {
+				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = YardMatchProvider/YardMatchProvider.entitlements;

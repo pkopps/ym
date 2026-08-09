@@ -132,7 +132,9 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
 - `NODE_ENV=production` plus `YARDMATCH_ENV=staging|production` disables development fallbacks. The API exits before listening unless it has PostgreSQL, a strong JWT, HTTPS app/API URLs, an exact CORS allowlist, private Blob photo storage, environment-appropriate Stripe credentials, and production-shaped Resend/Twilio sender configuration. Staging additionally suppresses destinations outside explicit notification allowlists.
 - Deployment environments can run `npm run verify:production-config` as a secret-safe preflight; it reports only environment readiness and repository mode, and refuses to pass in local mode. `/healthz` reports liveness and `/readyz` verifies PostgreSQL readiness for deployment health checks.
-- The Render Blueprint, Vercel setup, private-photo architecture, safe staging seed, and remote smoke commands are documented in `STAGING_DEPLOYMENT.md`.
+- The Render Blueprint, Vercel setup, private-photo architecture, safe staging seed, revision-matched hosted acceptance workflow, and remote smoke commands are documented in `STAGING_DEPLOYMENT.md`.
+- CI now builds the API and website and exports customer/provider/crew bundles for web, iOS, and Android before Git-connected hosting can deploy. A protected manual staging gate archives health, API, browser, private-photo, consent, and revocation evidence for 90 days.
+- EAS internal preview and store-test profiles/workflows are documented in `MOBILE_DEPLOYMENT.md`; coordinated web/API/mobile rollback and evidence handling are documented in `RELEASE_RUNBOOK.md`.
 - Local development now has a dedicated seeded ops login instead of relying on provider fallback:
   - in-memory mode seeds `ops@example.com` with password `YardMatch123!` as an `ops-admin` account
   - `npm run prisma:seed` also seeds the same `ops@example.com` admin account into Prisma/Postgres

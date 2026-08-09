@@ -138,6 +138,18 @@ Before a staging or production deployment, run `npm run verify:production-config
 
 The API exposes `/healthz` for process liveness and `/readyz` for repository readiness. It caps request bodies at 2.5 MB by default, validates decoded JPEG/PNG/WebP content and dimensions, drains active connections on `SIGTERM`, and stores deployed booking evidence in private Vercel Blob objects behind YardMatch delivery URLs. See `STAGING_DEPLOYMENT.md` for the Render/Vercel setup and remote smoke commands.
 
+## Deployment And Mobile Release Checks
+
+Validate all three EAS profiles, native identifiers, environment separation, and internal-track submission settings without requiring an Expo login:
+
+```bash
+npm run verify:mobile-release
+```
+
+Deployed mobile builds set `EXPO_PUBLIC_YARDMATCH_ENV=staging|production` and fail configuration when `EXPO_PUBLIC_API_BASE_URL` is absent or not HTTPS. Local builds keep the localhost fallback. Use an EAS `preview` environment for both direct internal builds and store-test binaries so TestFlight/Play internal testing cannot accidentally write production data.
+
+The ordinary CI gate builds API/web and exports customer, provider, and crew bundles for web, iOS, and Android. After hosting is provisioned, the protected `Staging acceptance` workflow waits for revision-matched web/API health and archives the full remote gate. See `MOBILE_DEPLOYMENT.md` and `RELEASE_RUNBOOK.md` before initializing EAS or sharing test builds.
+
 ## Stripe Connect Payout Lifecycle
 
 With `STRIPE_SECRET_KEY` configured, providers can inspect their recipient state at `GET /api/providers/connect/status` and start or resume Accounts v2 onboarding at `POST /api/providers/connect/onboarding`. The requested account uses Express dashboard access, application-owned fees and losses, and a recipient-only transfer configuration. Starting onboarding is a payout-account-sensitive action and requires a fresh provider session.

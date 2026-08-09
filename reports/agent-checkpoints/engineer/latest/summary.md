@@ -1,61 +1,63 @@
-# Engineer Checkpoint: Phase 1 Staging Deployment Foundation
+# Engineer Checkpoint: Test Deployment And Mobile Distribution
 
 ## Branch And Commit
 
 - Branch: `main`
-- Baseline commit: `6632f218212fb235049683bb170a49b95216f11a`
-- State: implemented and verified in the working tree; not yet committed.
+- Baseline commit: `536da131c664086f449dea313197ef20f3c752e0`
+- State: repository-owned deployment phases are implemented and verified in the working tree; not yet committed.
 
 ## Completed Work
 
-- Added fail-closed staging/production runtime modes with PostgreSQL, HTTPS, scoped CORS, strong JWT, private photo storage, Stripe environment separation, and real notification-provider requirements.
-- Added staging email/SMS/push destination suppression outside explicit QA allowlists.
-- Added liveness/readiness routes, graceful shutdown, request-body limits, and a production API start path.
-- Added private Vercel Blob evidence storage, opaque YardMatch media delivery, actual image validation, consent-aware marketing delivery, immediate revocation enforcement, and storage cleanup when persistence fails.
-- Added a safe staging seed requiring an environment-provided strong password and refusing production fixture seeding.
-- Added Render/Vercel deployment configuration and documentation plus remote API/web smoke modes and a manual photo-lifecycle acceptance test.
-- Patched launch-relevant dependencies, upgraded Next to 16.3.0, adopted `proxy.ts`, and kept all API, web, and mobile checks green.
+- Added revision-matched hosted health/readiness checks and a protected, evidence-retaining staging acceptance workflow.
+- Automated the complete private before/after photo, service-history, marketing-consent, and revocation lifecycle against staging.
+- Added required API/web builds, mobile release preflight, and customer/provider/crew cross-platform export jobs to CI.
+- Added fail-closed dynamic mobile configs, app-specific EAS project IDs, internal preview/simulator/store-test/production profiles, and protected preview/store-test workflows.
+- Corrected iOS photo permission copy, removed unused microphone access, and separated Debug versus Release APNs entitlements.
+- Aligned every Expo workspace to the SDK-supported React Native/module matrix and pinned the monorepo peer graph to one `0.83.10` runtime.
+- Added mobile deployment and coordinated rollback/fix-forward runbooks.
 
 ## In-Progress Work
 
-- None; local Phase 1 work is complete.
+- External host, EAS, signing, and store provisioning.
 
 ## Remaining Work
 
-- Commit and push this slice.
-- Provision Vercel web/private Blob and Render API/Postgres with the documented external secrets.
-- Seed and smoke the live staging environment, including consent grant and revocation.
-- Run Stripe's full test-mode lifecycle and add production media scanning/retention/deletion controls.
+- Provision Vercel/Blob and Render/PostgreSQL; configure GitHub protected environments and secrets.
+- Archive a live revision-matched staging acceptance artifact and rehearse one coordinated rollback.
+- Link three EAS projects, complete first interactive signing builds, and archive internal preview install results.
+- Create Apple/Google store records and distribute staging-backed internal builds.
+- Add minimum-supported-mobile-version enforcement and production media scanning/retention/deletion controls.
 
 ## Blockers
 
-- Live deployment requires authenticated hosting accounts and vendor/QA secrets; no local blocker remains.
+- Render MCP initialization is waiting on `RENDER_API_KEY`; Vercel MCP initialization reports that authentication is required.
+- Platform accounts, vendor secrets, approved QA destinations, EAS token/project IDs, Apple/Google agreements, signing credentials, and store records are external prerequisites.
 
 ## Changed Workflows
 
-- Deployed API startup is environment-explicit and fail-closed.
-- Readiness includes a live PostgreSQL check and deploy shutdown drains active requests.
-- Evidence photos move from validated upload to private Blob storage and consent-checked API delivery.
-- Staging notifications are allowlist-only.
-- Remote smoke tests reuse the existing suites against hosted URLs and a secret staging fixture password.
+- Required CI now proves code quality, API/web production builds, PostgreSQL behavior, browser workflows, mobile configuration, and all three platform exports before deployment.
+- Hosted staging acceptance waits for one exact revision and proves API, database, private media, consent, marketplace, and internal-role behavior before recording success.
+- Mobile preview and store-test builds are explicit, protected, staging-backed, app-specific actions; public production submission is absent by design.
+- API/web rollback is coordinated with schema compatibility; mobile incidents use server mitigation plus fix-forward builds.
 
 ## Validation Results
 
-- Full verify: ESLint 10 and TypeScript passed; API 250 passed, 1 expected PostgreSQL-only skip.
-- API and Next.js production builds: passed; 43 web routes generated.
-- API smoke: passed with health/readiness.
-- Playwright web smoke: 15/15 passed.
-- Customer, provider, crew, and legacy Expo web/iOS/Android exports: passed.
-- Prisma Client 6.19.3 generation and staging configuration preflight: passed.
-- Render YAML parse and diff whitespace check: passed.
-- Dependency audit: 0 critical/high/low and 9 moderate Expo configuration-tool findings; npm offers only an incompatible Expo 46 downgrade.
+- Clean `npm ci`: passed.
+- Full verify: Prisma generation, ESLint 10, TypeScript, mobile config, and API tests passed; 250 tests passed and 1 PostgreSQL-only test was intentionally skipped locally.
+- API and Next.js production builds: passed; 43 app routes plus `/api/healthz` generated.
+- API/browser smoke: passed; Playwright 15/15.
+- Hosted acceptance: deployment wait passed, private photo/consent/revocation lifecycle passed, Playwright 2/2.
+- Customer/provider/crew staging exports: web, iOS, and Android passed.
+- Expo dependency checks: all four workspaces current; one React Native `0.83.10` runtime resolves across the monorepo.
+- Strict mobile release environment, YAML, plist/entitlements, and whitespace validation: passed.
+- npm production audit: 0 critical, 10 high, 6 moderate upstream Expo/Metro/Xcode toolchain advisories; no compatible remediation is currently offered.
 
 ## Known Defects
 
-- Live staging and remote acceptance evidence are pending account/secrets provisioning.
-- Free Render resources are for test use only and can sleep/expire.
-- Media scanning, moderation, retention, and deletion automation remain production gates.
-- Expo's native configuration chain retains nine moderate audit findings pending an upstream-compatible fix.
+- Live remote deployment/build/store/rollback evidence is pending external provisioning.
+- No server-enforced minimum supported mobile version exists yet.
+- Render free resources are test-only; media scanning/moderation/retention/deletion remain production gates.
+- Expo's current toolchain retains upstream audit findings; npm's proposed Expo downgrade is incompatible with the supported SDK matrix.
 
 ## Screenshot Paths
 
@@ -66,4 +68,4 @@
 
 ## Recommended Next Task
 
-Commit/push Phase 1, provision the resources from `STAGING_DEPLOYMENT.md`, and archive live API/web/photo-lifecycle acceptance evidence before Phase 2.
+Provision the protected Vercel/Render staging environment, run the hosted acceptance workflow, then link the three EAS projects and perform first interactive iOS/Android signing builds.
