@@ -4,7 +4,7 @@ Agent-reported completion is checkpoint evidence only. It does not equal indepen
 
 ## Current Goal
 
-Give YardMatch's slower production data surfaces stable, accessible loading states without stacking spinners and skeletons or hiding already-loaded content during refreshes.
+Implement YardMatch priorities 2–5: truthful local proof and expansion messaging, a faster recommendation-first conversion path, ranking and fee clarity, and a narrower Barnegat launch story.
 
 ## Agent Role
 
@@ -12,9 +12,9 @@ Engineer
 
 ## Branch And Commit
 
-- Branch: `codex/skeleton-loading-states`
-- Baseline commit: `23a8aa1294c2314331a7fac8c646c23da9212e79` (`fix: add timeout recovery across app`)
-- State: the skeleton-loading milestone is implemented and verified; this checkpoint is included in the current skeleton-loading commit.
+- Branch: `main`
+- Baseline commit: `f2e8656b3f09176b986cde41828392761900a181`
+- State: implemented and locally verified in the working tree; changes are not committed.
 
 ## Last Updated
 
@@ -22,55 +22,65 @@ Engineer
 
 ## Completed Since Previous Checkpoint
 
-- Added an accessible reusable web skeleton region with configurable card counts, avatar, copy, and action shapes.
-- Added matching React Native skeleton cards to the customer, provider, and crew apps.
-- Added shimmer/pulse motion that honors web and native reduced-motion preferences.
-- Kept the branded lawn-mower animation limited to whole-route web transitions; skeleton regions never render it at the same time.
-- Added initial-load skeletons to provider matching, customer dashboards/history/bookings/support, account security, provider operations/schedule/clients/payments/support, crew work/schedule/history/availability/support, notifications, and the ops overview.
-- Preserved existing content during subsequent refreshes and kept inline button progress for mutations.
-- Prevented the ops overview from showing believable zero metrics while live values are still loading.
-- Added a delayed provider-search Playwright regression that asserts two result-card skeletons, no route loader, and successful replacement with real results.
+- Reframed the public launch honestly as “Starting in Barnegat. Expanding town by town,” with a coverage-request path for people outside the launch area.
+- Restricted launch proof, reviews, before-and-after work, and provider stats to the requested local market. Barnegat no longer borrows seeded proof from Brooklyn or Jersey City.
+- Removed broad provider leaderboards and the three-sided marketplace pitch from the customer homepage; narrowed popular launch services to lawn mowing and seasonal cleanup.
+- Simplified customer results to one recommendation first, with curated backup providers hidden until requested and the primary action renamed “See price and request.”
+- Collapsed secondary search controls and progress details so the provider recommendation and action appear sooner on desktop and mobile.
+- Removed paid-placement influence from recommendation scoring, match reasons, seeded data, public badges, provider marketing, and active settings behavior. Legacy contract fields remain inert for compatibility.
+- Added provider pricing disclosures before signup: `$30` once after the first completed new-customer job and `$6.99` per completed job, with no lead fee or bidding for visibility.
+- Documented that recommendation order is earned by fit and that YardMatch absorbs payment-processing cost while providers remain responsible for crew compensation.
+- Improved compact public and provider headers at the 390px mobile viewport and kept the primary conversion action visible in the first provider viewport.
+- Updated English and Spanish content, API documentation, domain/API regressions, web smoke coverage, README guidance, and roadmap guardrails.
 
 ## Currently In Progress
 
-- No repository implementation remains for this milestone.
+- No repository implementation remains for priorities 2–5.
 
 ## Remaining Work
 
-- Exercise native skeleton timing on physical customer, provider, and crew devices under throttled mobile networking.
-- Tune skeleton counts only if production layouts or measured response distributions materially change.
+- Recruit and verify real Barnegat providers before replacing the honest early-market state with local supply, reviews, and completed-work proof.
+- Complete external production, legal, payment-vendor, and operational acceptance work when accounts and credentials are available.
+- Consider a separate quoting initiative if YardMatch should show a reliable property-specific price before collecting the address and property details currently required for pricing.
 
 ## Blockers
 
-- Physical-device throttling was not available in this local browser/export pass.
+- Verified real-world Barnegat supply and completed local jobs do not yet exist in repository data.
+- Production credentials, vendor acceptance, and legal review were outside this local implementation pass.
 
 ## Routes Or Workflows Changed
 
-- Whole web route transition -> branded mower loader only.
-- Initial structured data request -> layout-shaped skeleton cards -> real cards replace them in place.
-- Background refresh -> existing data remains visible; no skeleton reset.
-- User mutation -> existing inline working/disabled state; no skeleton or route loader.
-- Reduced-motion preference -> static skeleton blocks without shimmer/pulse animation.
+- Customer homepage -> Barnegat launch search -> honest town-by-town expansion explanation -> coverage request for unsupported towns.
+- Customer result -> one recommended provider -> price/request action; curated backups appear only when the customer asks to compare.
+- Provider landing/signup -> clear fee disclosure before account creation.
+- Provider recommendation -> fit-based score only; paid placement cannot alter order or appear as a match reason.
+- Mobile public/provider navigation -> compact headers that preserve the core conversion action above the fold.
 
 ## Validation Results
 
+- `npm run i18n:validate`: passed 3,622 keys across English, Spanish, and pseudo locales.
 - `npm run typecheck`: passed across the monorepo.
-- `npm run lint`: passed with zero warnings.
-- `npm run i18n:validate`: passed 3,583 keys across English, Spanish, and pseudo locales.
-- `npx playwright test tests/web/skeleton-loading.spec.ts`: 1/1 passed with a delayed provider-search response.
-- `npm run test:web:smoke`: 18/18 passed, including security, timeout, and skeleton regressions.
-- `npm run build:mobile`: customer, provider, and crew exports passed for web, iOS, and Android.
-- Browser evidence at 1440x900 and 390x844 shows stable provider-result skeleton cards without the route loader or horizontal overflow.
+- `npm run test:api`: 259 runnable tests passed; 2 Postgres-specific tests skipped because `TEST_DATABASE_URL` was not configured.
+- `npm run test:web:smoke`: 19/19 passed.
+- `npx playwright test tests/web/customer-booking-golden-path.spec.ts --config=playwright.config.ts`: 2/2 passed.
+- `npx playwright test tests/web/smoke.spec.ts --config=playwright.config.ts`: 7/7 passed after adding checkpoint captures.
+- In-app browser acceptance at 1440x900 and 390x844 confirmed clean homepage, listings, and provider layouts with no horizontal overflow or browser errors.
 
 ## Screenshot Paths
 
-- `reports/agent-checkpoints/engineer/latest/skeleton-provider-match-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/skeleton-provider-match-mobile-web.png`
+- `reports/agent-checkpoints/engineer/latest/honest-launch-home-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/honest-launch-home-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/customer-booking-listings-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/customer-booking-listings-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/provider-pricing-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/provider-landing-mobile.png`
 
 ## Known Defects
 
-- Native skeleton components are typechecked and exported but have not yet been visually captured on physical devices with throttled networking.
+- YardMatch still has no verified real Barnegat supply; the UI intentionally reports the early-market state instead of manufacturing nationwide or nonlocal proof.
+- A customer sees the final property-specific price after continuing with the address/property-detail flow, not directly on the public provider card.
+- Exact web viewports were checked, but this checkpoint did not include physical-device acceptance.
 
 ## Recommended Next Task
 
-Run a physical-device network-throttling pass for all three role apps, then adjust only surfaces whose measured load duration or card geometry differs from the current skeletons.
+Recruit and verify the first Barnegat provider cohort, then replace the early-market proof state only with real local availability, completed jobs, customer reviews, and permissioned work photos.

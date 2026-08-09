@@ -69,22 +69,42 @@ export function LaunchMarketplaceProofSection({
   }, [api]);
 
   const highlightedProviders = useMemo(() => {
+    const areaPreference = parsePreferredAreaLabel(preferredAreaLabel);
     const providers = overview?.topRatedProviders ?? overview?.featuredProviders ?? [];
+    const areaMatches = areaPreference?.city
+      ? providers.filter((provider) => {
+          const cityMatches = provider.city.toLowerCase() === areaPreference.city;
+          const stateMatches = areaPreference.state
+            ? provider.state.toLowerCase() === areaPreference.state
+            : true;
+          return cityMatches && stateMatches;
+        })
+      : providers;
     const categoryMatches = preferredCategory
-      ? providers.filter((provider) => provider.primaryCategory === preferredCategory)
+      ? areaMatches.filter((provider) => provider.primaryCategory === preferredCategory)
       : [];
-    const selected = categoryMatches.length > 0 ? categoryMatches : providers;
+    const selected = categoryMatches.length > 0 ? categoryMatches : areaMatches;
     return selected.slice(0, 3);
-  }, [overview, preferredCategory]);
+  }, [overview, preferredAreaLabel, preferredCategory]);
 
   const highlightedReviews = useMemo(() => {
-    const reviews = overview?.highlightedReviews ?? [];
+    const areaPreference = parsePreferredAreaLabel(preferredAreaLabel);
+    const reviews = (overview?.highlightedReviews ?? []).filter((review) => {
+      if (!areaPreference?.city) {
+        return true;
+      }
+      const cityMatches = review.city.toLowerCase() === areaPreference.city;
+      const stateMatches = areaPreference.state
+        ? review.state.toLowerCase() === areaPreference.state
+        : true;
+      return cityMatches && stateMatches;
+    });
     const categoryMatches = preferredCategory
       ? reviews.filter((review) => review.primaryCategory === preferredCategory)
       : [];
     const selected = categoryMatches.length > 0 ? categoryMatches : reviews;
     return selected.slice(0, 2);
-  }, [overview, preferredCategory]);
+  }, [overview, preferredAreaLabel, preferredCategory]);
 
   const highlightedCoverageAreas = useMemo(() => {
     const areaPreference = parsePreferredAreaLabel(preferredAreaLabel);
@@ -105,18 +125,41 @@ export function LaunchMarketplaceProofSection({
     return selected.slice(0, 3);
   }, [overview, preferredAreaLabel, preferredCategory]);
 
-  const proofStats = [
+  const localCoverageArea = highlightedCoverageAreas[0];
+  const averageRating = highlightedProviders.length
+    ? highlightedProviders.reduce((total, provider) => total + provider.rating, 0) / highlightedProviders.length
+    : undefined;
+  const hasLocalProof =
+    highlightedProviders.length > 0 ||
+    highlightedReviews.length > 0 ||
+    Boolean(localCoverageArea?.verifiedProviderCount);
+  const proofStats = hasLocalProof ? [
     {
       label: i18n.t("launch_proof.stat.verified_providers.label"),
-      value: overview?.verifiedProviderCount ? i18n.formatNumber(overview.verifiedProviderCount) : i18n.t("common.state.growing")
+      value: i18n.formatNumber(localCoverageArea?.verifiedProviderCount ?? highlightedProviders.length)
     },
     {
       label: i18n.t("launch_proof.stat.average_rating.label"),
-      value: overview?.averageRating ? `${i18n.formatNumber(overview.averageRating, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}★` : i18n.t("common.state.new")
+      value: averageRating ? `${i18n.formatNumber(averageRating, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}★` : i18n.t("common.state.new")
     },
     {
       label: i18n.t("launch_proof.stat.active_categories.label"),
-      value: overview?.activeCategoryCount ? i18n.formatNumber(overview.activeCategoryCount) : i18n.t("common.state.focused")
+      value: localCoverageArea?.supportedCategories.length
+        ? i18n.formatNumber(localCoverageArea.supportedCategories.length)
+        : i18n.t("common.state.focused")
+    }
+  ] as const : [
+    {
+      label: i18n.t("launch_proof.opening.market_label"),
+      value: preferredAreaLabel ?? i18n.t("common.state.focused")
+    },
+    {
+      label: i18n.t("launch_proof.opening.supply_label"),
+      value: i18n.t("launch_proof.opening.supply_value")
+    },
+    {
+      label: i18n.t("launch_proof.opening.expansion_label"),
+      value: i18n.t("launch_proof.opening.expansion_value")
     }
   ] as const;
 

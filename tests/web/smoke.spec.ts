@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { opsEmail, opsPassword } from "./workflow-helpers";
 
+const engineerEvidenceRoot = "reports/agent-checkpoints/engineer/latest";
+
 async function expectSocialAuthLinks({
   expectedMode,
   expectedReturnTo,
@@ -33,6 +35,7 @@ async function expectSocialAuthLinks({
 
 test.describe("YardMatch web smoke", () => {
   test("public marketplace loads and shows recommendation-first positioning", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: "One local match for yard care." })).toBeVisible();
@@ -40,6 +43,14 @@ test.describe("YardMatch web smoke", () => {
     await expect(page.getByRole("combobox", { name: "Need" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: /Where/ })).toHaveValue(/Barnegat, NJ/i);
     await expect(page.getByRole("button", { name: "Find my match" }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Starting in Barnegat. Expanding town by town." })).toBeVisible();
+    await expect(page.getByText("Top-rated providers")).toHaveCount(0);
+    await expect(page.getByText("Most on-time providers")).toHaveCount(0);
+    await expect(page.getByText("Want YardMatch in your town?")).toBeVisible();
+
+    await page.screenshot({ path: `${engineerEvidenceRoot}/honest-launch-home-desktop.png` });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: `${engineerEvidenceRoot}/honest-launch-home-mobile.png` });
   });
 
   test("spanish public marketplace route renders localized shell", async ({ page }) => {
@@ -71,7 +82,14 @@ test.describe("YardMatch web smoke", () => {
     await expect(page.getByText("Recommended for this property", { exact: true })).toBeVisible();
     await expect(page.getByText("Best overall match", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { level: 3, name: "GreenStride Lawn Co." })).toBeVisible();
-    const requestMatch = page.getByRole("link", { name: "Request this match" });
+    await expect(page.getByText("Sponsored", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { level: 3, name: "TerraCut Studio" })).toHaveCount(0);
+    const showBackups = page.getByRole("button", { name: /Show \d+ backup options?/ });
+    await expect(showBackups).toBeVisible();
+    await showBackups.click();
+    await expect(page.getByRole("heading", { level: 3, name: "TerraCut Studio" })).toBeVisible();
+
+    const requestMatch = page.getByRole("link", { name: "See price and request" });
     await expect(requestMatch).toBeVisible();
 
     await requestMatch.click();
@@ -90,6 +108,32 @@ test.describe("YardMatch web smoke", () => {
     expect(signupUrl.searchParams.get("postalCode")).toBe("11201");
     expect(signupUrl.searchParams.get("source")).toBe("listings");
     expect(Date.parse(signupUrl.searchParams.get("slot") ?? "")).not.toBeNaN();
+  });
+
+  test("Barnegat launch proof stays local and provider pricing is disclosed before signup", async ({ page }) => {
+    await page.goto("/barnegat-nj");
+
+    await expect(page.getByText("Barnegat, NJ", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText(/verified local providers are not live here yet/i)).toBeVisible();
+    await expect(page.getByText("GreenStride Lawn Co.")).toHaveCount(0);
+    await expect(page.getByText("TerraCut Studio")).toHaveCount(0);
+
+    await page.goto("/provider");
+    const pricingHeading = page.getByRole("heading", { name: "Simple launch pricing, before you sign up" });
+    await expect(pricingHeading).toBeVisible();
+    await expect(page.getByRole("heading", { name: "$30 once" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "$6.99 per completed job" })).toBeVisible();
+    await expect(page.getByText(/paid placement never changes recommendation order/i)).toBeVisible();
+    await pricingHeading.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-pricing-desktop.png` });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/provider");
+    await expect(page.getByRole("heading", { name: "Grow local routes without losing control of your calendar or margins." })).toBeVisible();
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png` });
+
+    await page.goto("/auth/provider/create");
+    await expect(page.getByText(/\$30 once per new customer relationship/i)).toBeVisible();
   });
 
   test("ops login opens the authenticated operations workspace", async ({ page }) => {

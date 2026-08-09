@@ -6394,8 +6394,7 @@ export class MarketplacePlatformService {
       routeLeaderMode,
       weeklyPayoutDay,
       instantPayoutsEnabled,
-      sponsoredListingEnabled:
-        payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
+      sponsoredListingEnabled: false,
       calendarConnection: nextCalendarConnection
     });
 
@@ -6408,8 +6407,7 @@ export class MarketplacePlatformService {
       routeLeaderMode,
       weeklyPayoutDay,
       instantPayoutsEnabled,
-      sponsoredListingEnabled:
-        payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
+      sponsoredListingEnabled: false,
       calendarConnection: nextCalendarConnection
     };
 
@@ -6441,8 +6439,6 @@ export class MarketplacePlatformService {
         routeLeaderMode,
         weeklyPayoutDay,
         instantPayoutsEnabled,
-        sponsoredListingEnabled:
-          payload.sponsoredListingEnabled ?? provider.sponsoredListingEnabled,
         externalEventsBlockingEnabled:
           payload.externalEventsBlockingEnabled ??
           provider.calendarConnection.externalEventsBlockingEnabled ??
@@ -6454,19 +6450,6 @@ export class MarketplacePlatformService {
         city: provider.address.city
       }
     });
-
-    if (payload.sponsoredListingEnabled !== undefined) {
-      this.analytics.record({
-        id: crypto.randomUUID(),
-        name: MarketplaceTelemetryEventCatalog.providerSponsorshipUpdated,
-        actorId: provider.id,
-        occurredAt: new Date().toISOString(),
-        properties: {
-          sponsoredListingEnabled: payload.sponsoredListingEnabled,
-          city: provider.address.city
-        }
-      });
-    }
 
     return this.getProviderProfile(provider.id);
   }
@@ -21209,7 +21192,9 @@ export class MarketplacePlatformService {
       providerEconomics:
         providerEconomics.status === "healthy" ? 6 : providerEconomics.status === "watch" ? 3 : 0,
       loyalty: loyaltyBoost,
-      sponsorship: provider.sponsoredListingEnabled ? 5 : 0,
+      // Retain the response field for contract compatibility, but paid placement
+      // never changes recommendation order.
+      sponsorship: 0,
       issuePenalty: Math.round(
         Math.min(disputedBookings * 5 + refundedBookings * 4 + activeExceptionBookings * 3 + issueRate * 12, 20)
       )
@@ -21225,8 +21210,7 @@ export class MarketplacePlatformService {
         factors.experience +
         factors.availability +
         factors.providerEconomics +
-        factors.loyalty +
-        factors.sponsorship -
+        factors.loyalty -
         factors.issuePenalty
     );
 
@@ -21277,9 +21261,6 @@ export class MarketplacePlatformService {
     }
     if (provider.yearsExperience >= 10) {
       reasons.push("Deep local experience");
-    }
-    if (provider.sponsoredListingEnabled) {
-      reasons.push("Sponsored placement");
     }
     if (reasons.length === 0) {
       reasons.push("Serves this property area");
@@ -21361,7 +21342,10 @@ export class MarketplacePlatformService {
         : `${provider.companyName} serves ${payload.address.city} within a ${provider.serviceRadiusMiles}-mile route radius.`;
 
     return {
-      provider,
+      provider: {
+        ...provider,
+        sponsoredListingEnabled: false
+      },
       score,
       distanceMiles: Number(distanceMiles.toFixed(1)),
       hasOpenSlot: Boolean(suggestedSlot),

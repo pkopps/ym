@@ -22,6 +22,14 @@ export default async function ProviderSignupCreatePage() {
         <p>{i18n.t("auth_provider.body")}</p>
       </section>
 
+      <section className="card provider-signup-economics" aria-label={i18n.t("auth_provider.economics.aria")}>
+        <div>
+          <span className="eyebrow">{i18n.t("auth_provider.economics.eyebrow")}</span>
+          <h2>{i18n.t("auth_provider.economics.title")}</h2>
+        </div>
+        <p>{i18n.t("auth_provider.economics.body")}</p>
+      </section>
+
       <Suspense fallback={<LoadingScreen label={i18n.t("auth_signup.loading")} />}>
         <AccountSignupForm role="provider" />
       </Suspense>

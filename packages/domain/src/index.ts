@@ -48,8 +48,6 @@ export class GeoService {
 }
 
 export class ProviderMatchService {
-  private static readonly sponsorshipBoost = 35;
-
   public constructor(private readonly geoService: GeoService) {}
 
   // Ranking blends proximity, service radius, and reputation into one simple score.
@@ -64,11 +62,8 @@ export class ProviderMatchService {
   private scoreProvider(customerAddress: Address, provider: ProviderProfile): number {
     const distance = this.geoService.distanceMiles(customerAddress, provider.address);
     const distanceScore = Math.max(0, provider.serviceRadiusMiles - distance);
-    const sponsorshipScore = provider.sponsoredListingEnabled
-      ? ProviderMatchService.sponsorshipBoost
-      : 0;
 
-    return distanceScore * 10 + provider.rating * 20 + provider.reviewCount * 0.03 + sponsorshipScore;
+    return distanceScore * 10 + provider.rating * 20 + provider.reviewCount * 0.03;
   }
 }
 

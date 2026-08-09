@@ -32,7 +32,7 @@ const operatingLeverKeys = [
   "provider_landing.operating.lever.provider_app",
   "provider_landing.operating.lever.property_match",
   "provider_landing.operating.lever.calendar",
-  "provider_landing.operating.lever.sponsored",
+  "provider_landing.operating.lever.ranking",
   "provider_landing.operating.lever.reviews",
   "provider_landing.operating.lever.support"
 ] satisfies TranslationKey[];
@@ -47,8 +47,8 @@ const acquisitionChannels = [
     bodyKey: "provider_landing.acquisition.google.body"
   },
   {
-    titleKey: "provider_landing.acquisition.paid.title",
-    bodyKey: "provider_landing.acquisition.paid.body"
+    titleKey: "provider_landing.acquisition.repeat.title",
+    bodyKey: "provider_landing.acquisition.repeat.body"
   }
 ] satisfies Array<{ titleKey: TranslationKey; bodyKey: TranslationKey }>;
 
@@ -70,7 +70,7 @@ const staffingValue = [
 const heroChipKeys = [
   "provider_landing.hero.chip.routes",
   "provider_landing.hero.chip.cleanup",
-  "provider_landing.hero.chip.google",
+  "provider_landing.hero.chip.launch",
   "provider_landing.hero.chip.crew"
 ] satisfies TranslationKey[];
 
@@ -133,6 +133,31 @@ export default async function ProviderPage() {
             </article>
           ))}
         </div>
+      </section>
+
+      <section className="container stack-lg provider-pricing-section">
+        <div className="section-header">
+          <h2>{i18n.t("provider_landing.pricing.title")}</h2>
+          <p>{i18n.t("provider_landing.pricing.body")}</p>
+        </div>
+        <div className="grid-three">
+          <article className="card">
+            <span className="eyebrow">{i18n.t("provider_landing.pricing.finder.eyebrow")}</span>
+            <h3>{i18n.t("provider_landing.pricing.finder.title")}</h3>
+            <p>{i18n.t("provider_landing.pricing.finder.body")}</p>
+          </article>
+          <article className="card">
+            <span className="eyebrow">{i18n.t("provider_landing.pricing.job.eyebrow")}</span>
+            <h3>{i18n.t("provider_landing.pricing.job.title")}</h3>
+            <p>{i18n.t("provider_landing.pricing.job.body")}</p>
+          </article>
+          <article className="card">
+            <span className="eyebrow">{i18n.t("provider_landing.pricing.fairness.eyebrow")}</span>
+            <h3>{i18n.t("provider_landing.pricing.fairness.title")}</h3>
+            <p>{i18n.t("provider_landing.pricing.fairness.body")}</p>
+          </article>
+        </div>
+        <p className="provider-pricing-section__note">{i18n.t("provider_landing.pricing.note")}</p>
       </section>
 
       <section className="container stack-lg">

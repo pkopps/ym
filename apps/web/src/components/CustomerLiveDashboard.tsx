@@ -2590,7 +2590,6 @@ export function CustomerLiveDashboard() {
                             {choicePresentation ? (
                               <span className="result-badge">{choicePresentation.badge}</span>
                             ) : null}
-                            {provider.sponsoredListingEnabled ? <span className="result-badge">{i18n.t("booked_results.sponsored")}</span> : null}
                           </div>
                         </div>
                         {choicePresentation ? <p>{choicePresentation.detail}</p> : null}

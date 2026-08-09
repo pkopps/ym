@@ -292,6 +292,7 @@ export function PublicCustomerListingsExperience({
     })
   );
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
+  const [showAlternatives, setShowAlternatives] = useState(false);
   const [searchState, setSearchState] = useState<"loading" | "loaded" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [resolvedAreaLabel, setResolvedAreaLabel] = useState(initialAreaLabel ?? launchAreaLabel);
@@ -322,6 +323,7 @@ export function PublicCustomerListingsExperience({
   const rankedProviders = providerResults?.rankedProviders ?? [];
   const providerChoicePresentations = buildCustomerProviderChoicePresentations(rankedProviders);
   const featuredProviders = rankedProviders.slice(0, 3);
+  const visibleProviders = showAlternatives ? featuredProviders : featuredProviders.slice(0, 1);
   const liveMetrics = formatSearchMetrics(i18n, providerResults);
   const providersWithOpenWindows = rankedProviders.filter((provider) => provider.hasOpenSlot);
   const alternativeTimingSuggestions = getAlternativeTimingSuggestions(selectedTiming);
@@ -376,6 +378,8 @@ export function PublicCustomerListingsExperience({
       )
     : 12;
   const mapProviders = rankedProviders.filter((provider) => provider.distanceMiles <= listingsMapRadiusMiles);
+  const visibleProviderIds = new Set(visibleProviders.map((result) => result.provider.id));
+  const visibleMapProviders = mapProviders.filter((result) => visibleProviderIds.has(result.provider.id));
 
   async function runSearch({
     nextAreaQuery,
@@ -401,6 +405,7 @@ export function PublicCustomerListingsExperience({
     shouldUpdateUrl: boolean;
   }) {
     setSearchState("loading");
+    setShowAlternatives(false);
     setErrorMessage(undefined);
 
     try {
@@ -588,7 +593,10 @@ export function PublicCustomerListingsExperience({
       />
 
       <section className="card live-listings-card">
-        <div className="customer-listings-spine" aria-label={i18n.t("customer.listings.search_progress")}>
+        <details className="customer-listings-spine" aria-label={i18n.t("customer.listings.search_progress")}>
+          <summary className="customer-listings-spine__summary">
+            {i18n.t("customer.listings.request_details")}
+          </summary>
           <ol className="customer-listings-spine__steps">
             {listingsSteps.map((step, index) => (
               <li
@@ -627,7 +635,7 @@ export function PublicCustomerListingsExperience({
               ))}
             </div>
           </details>
-        </div>
+        </details>
 
         {searchState === "loading" ? (
           <LoadingSkeleton
@@ -759,7 +767,7 @@ export function PublicCustomerListingsExperience({
               </article>
             ) : null}
             <div className="live-listings-card__featured-grid">
-              {featuredProviders.map((result, index) => (
+              {visibleProviders.map((result, index) => (
                 <LiveProviderCard
                   choicePresentation={providerChoicePresentations[index]}
                   i18n={i18n}
@@ -785,11 +793,37 @@ export function PublicCustomerListingsExperience({
                 />
               ))}
             </div>
-            {selectedSuggestion && mapProviders.length > 0 ? (
+            {featuredProviders.length > 1 && !showAlternatives ? (
+              <article className="live-listings-card__alternatives">
+                <div>
+                  <strong>{i18n.t("customer.listings.alternatives.title")}</strong>
+                  <p>{i18n.t("customer.listings.alternatives.body")}</p>
+                </div>
+                <button
+                  className="button-secondary"
+                  onClick={() => {
+                    setShowAlternatives(true);
+                    void trackWebEvent(
+                      MarketplaceTelemetryEventCatalog.recommendationAlternativesViewed,
+                      {
+                        recommendationSessionId: providerResults?.recommendationSessionId ?? "none",
+                        recommendedProviderId: providerResults?.recommendedProviderId ?? "none",
+                        providerCount: featuredProviders.length,
+                        requestSource: "public-web-listings"
+                      }
+                    );
+                  }}
+                  type="button"
+                >
+                  {i18n.t("customer.listings.alternatives.cta", { count: featuredProviders.length - 1 })}
+                </button>
+              </article>
+            ) : null}
+            {selectedSuggestion && visibleMapProviders.length > 0 ? (
               <LiveProviderMap
                 areaLabel={resolvedAreaLabel}
                 i18n={i18n}
-                providerResults={mapProviders}
+                providerResults={visibleMapProviders}
                 radiusMiles={listingsMapRadiusMiles}
                 selectedSuggestion={selectedSuggestion}
                 serviceLabel={serviceLabel}
@@ -827,7 +861,7 @@ function LiveProviderCard({
     : i18n.t("customer.listings.card.window_full");
   const requestCtaLabel = result.hasOpenSlot
     ? rank === 1
-      ? i18n.t("customer.listings.card.request_match")
+      ? i18n.t("customer.listings.card.see_price_and_request")
       : i18n.t("customer.listings.card.request")
     : i18n.t("customer.listings.card.review_provider");
   const matchHeading = choicePresentation?.heading ?? result.selectionSummaryLabel;
@@ -859,7 +893,6 @@ function LiveProviderCard({
           ) : rank === 1 ? (
             <span className="result-badge">{i18n.t("customer.listings.card.best_fit")}</span>
           ) : null}
-          {provider.sponsoredListingEnabled ? <span className="result-badge">{i18n.t("customer.listings.card.sponsored")}</span> : null}
           <span className={`result-badge${result.hasOpenSlot ? "" : " result-badge--neutral"}`}>
             {result.hasOpenSlot ? i18n.t("customer.listings.card.open_time") : i18n.t("customer.listings.card.window_full")}
           </span>
@@ -887,9 +920,12 @@ function LiveProviderCard({
             <dd>{result.selectionSummaryLabel}</dd>
           </div>
         </dl>
-        <a className="button live-provider-card__action" href={signupHref}>
-          {requestCtaLabel}
-        </a>
+        <div className="live-provider-card__conversion">
+          <a className="button live-provider-card__action" href={signupHref}>
+            {requestCtaLabel}
+          </a>
+          <small>{i18n.t("customer.listings.card.price_next")}</small>
+        </div>
       </div>
 
       <details className="service-card-disclosure">

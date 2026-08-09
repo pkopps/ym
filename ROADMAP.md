@@ -29,6 +29,7 @@ Avoid drifting into:
 - many-provider bidding on one common-service lead
 - quote-comparison-first behavior for routine property care
 - promoted-listings-first discovery
+- any paid-placement influence on recommendation order
 - ranking or pricing choices that squeeze provider economics and damage supply quality
 
 ## Launch Feature Freeze

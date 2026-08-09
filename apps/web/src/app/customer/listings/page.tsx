@@ -10,10 +10,19 @@ import {
 import { getRequestI18n } from "../../../lib/i18n-server";
 import { launchAreaLabel, noIndexRobots } from "../../../lib/site";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}): Promise<Metadata> {
   const i18n = await getRequestI18n();
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const area =
+    typeof resolvedSearchParams.area === "string" && resolvedSearchParams.area.trim()
+      ? resolvedSearchParams.area.trim()
+      : launchAreaLabel;
   return {
-    title: i18n.t("metadata.listings.title", { area: launchAreaLabel }),
+    title: i18n.t("metadata.listings.title", { area }),
     description: i18n.t("metadata.listings.description"),
     alternates: {
       languages: {

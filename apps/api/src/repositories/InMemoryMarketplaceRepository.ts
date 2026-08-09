@@ -1036,7 +1036,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         verificationSubmittedAt: new Date().toISOString(),
         verificationReviewedAt: new Date().toISOString(),
         verificationNotes: "Seeded local provider verification for development.",
-        sponsoredListingEnabled: true,
+        sponsoredListingEnabled: false,
         categories: [
           "lawn-mowing",
           "seasonal-cleanup",
@@ -1120,7 +1120,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
         verificationSubmittedAt: new Date().toISOString(),
         verificationReviewedAt: new Date().toISOString(),
         verificationNotes: "Seeded local provider verification for development.",
-        sponsoredListingEnabled: true,
+        sponsoredListingEnabled: false,
         categories: [
           "seasonal-cleanup",
           "irrigation-check",

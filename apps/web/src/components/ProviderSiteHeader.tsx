@@ -17,9 +17,9 @@ const productColumns = [
         bodyKey: "provider_header.product.list_business.body" as TranslationKey
       },
       {
-        href: "/customer/listings",
-        titleKey: "provider_header.product.sponsored.title" as TranslationKey,
-        bodyKey: "provider_header.product.sponsored.body" as TranslationKey
+        href: "/provider-verification",
+        titleKey: "provider_header.product.ranking.title" as TranslationKey,
+        bodyKey: "provider_header.product.ranking.body" as TranslationKey
       },
       {
         href: "/provider",

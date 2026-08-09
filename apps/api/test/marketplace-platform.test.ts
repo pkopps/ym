@@ -1058,7 +1058,8 @@ test("provider search returns ranked results with score reasons and reliability-
 
   const sponsoredResult = results.rankedProviders.find((result) => result.provider.id === farProvider.id);
   assert.ok(sponsoredResult);
-  assert.ok((sponsoredResult?.factors.sponsorship ?? 0) > 0);
+  assert.equal(sponsoredResult?.factors.sponsorship, 0);
+  assert.equal(sponsoredResult?.reasons.includes("Sponsored placement"), false);
   assert.ok(
     (results.rankedProviders[0]!.factors.operationalReliability ?? 0) >
       (sponsoredResult?.factors.operationalReliability ?? 0)

@@ -1142,7 +1142,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, provider-economics guardrails, and sponsored placement, with an explanation payload for each ranked provider. Multi-service requests include a backend-authored service-fit summary for complete versus partial category coverage, and provider-economics summaries account for the requested service mix, duration, and route instead of only the first matched category. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
+          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, and provider-economics guardrails. Paid placement never changes recommendation order. Multi-service requests include a backend-authored service-fit summary for complete versus partial category coverage, and provider-economics summaries account for the requested service mix, duration, and route instead of only the first matched category. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
         requestBody: {
           required: true,
           content: {
@@ -1189,7 +1189,6 @@ export const apiSpec = {
                 crewReviewLeadHours: 6,
                 departureReminderLeadMinutes: 45,
                 routeLeaderMode: "provider-only",
-                sponsoredListingEnabled: true,
                 externalEventsBlockingEnabled: true,
                 externalCalendarBlocks: [
                   {

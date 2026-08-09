@@ -74,17 +74,6 @@ export function BookedBusinessResults({
                   <div>
                     <span className="eyebrow">{business.fullyBookedLabel}</span>
                     <h3>{business.name}</h3>
-                    {business.sponsored ? (
-                      <div className="sponsored-cluster">
-                        <span className="result-badge">{i18n.t("booked_results.sponsored")}</span>
-                        <details className="sponsored-explainer">
-                          <summary className="sponsored-explainer__summary">
-                            {i18n.t("booked_results.sponsored_summary")}
-                          </summary>
-                          <div className="sponsored-explainer__body">{i18n.t("booked_results.sponsored_body")}</div>
-                        </details>
-                      </div>
-                    ) : null}
                     <p>
                       {i18n.t("booked_results.owner_rating", {
                         ownerName: business.ownerName,

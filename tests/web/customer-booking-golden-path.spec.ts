@@ -80,7 +80,7 @@ test.describe.serial("customer booking golden path", () => {
     });
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    await page.getByRole("link", { name: "Request this match" }).click();
+    await page.getByRole("link", { name: "See price and request" }).click();
     await expect(page).toHaveURL(/\/auth\/customer/);
     const signupUrl = new URL(page.url());
     expect(signupUrl.searchParams.get("lat")).toBe("40.6782");
@@ -145,7 +145,7 @@ test.describe.serial("customer booking golden path", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await searchSeededBrooklyn(page, "es");
 
-    await page.getByRole("link", { name: "Solicitar esta recomendacion" }).click();
+    await page.getByRole("link", { name: "Ver precio y solicitar" }).click();
     await expect(page).toHaveURL(/\/es\/auth\/customer/);
     await page.getByRole("link", { name: "Iniciar sesion y continuar" }).click();
     await expect(page).toHaveURL(/\/es\/login\/customer\?returnTo=/);

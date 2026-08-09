@@ -131,68 +131,71 @@ export function CustomerListingsHero({
             <span>{timingLabel}</span>
           </div>
         </div>
-        {metricItems.length > 0 ? (
-          <div className="page-hero__metrics">
-            {metricItems.map((metric) => (
-              <div className="page-hero__metric" key={metric.label}>
-                <strong>{metric.value}</strong>
-                <span>{metric.label}</span>
-              </div>
-            ))}
-          </div>
-        ) : null}
       </div>
 
-      <div className="page-hero__search-card" aria-label={i18n.t("customer_listings_hero.update_search_aria")}>
-        <PublicMarketplaceSearchShell
-          areaQuery={resolvedAreaQuery}
-          onAreaQueryChange={(value) => {
-            setLocalAreaQuery(value);
-            onAreaQueryChange?.(value);
-          }}
-          onSearch={onSearch}
-          onSelectedAdditionalTimingsChange={(value) => {
-            setLocalSelectedAdditionalTimings(value);
-            onSelectedAdditionalTimingsChange?.(value);
-          }}
-          onSelectedCustomDateChange={(value) => {
-            setLocalSelectedCustomDate(value);
-            onSelectedCustomDateChange?.(value);
-          }}
-          onSelectedCustomEndDateChange={(value) => {
-            setLocalSelectedCustomEndDate(value);
-            onSelectedCustomEndDateChange?.(value);
-          }}
-          onSelectedCustomWindowChange={(value) => {
-            setLocalSelectedCustomWindow(value);
-            onSelectedCustomWindowChange?.(value);
-          }}
-          onSelectedCustomWindowsChange={(value) => {
-            setLocalSelectedCustomWindows(value);
-            onSelectedCustomWindowsChange?.(value);
-          }}
-          onSelectedServiceChange={(value) => {
-            setLocalSelectedService(value);
-            onSelectedServiceChange?.(value);
-          }}
-          onSelectedSuggestionChange={(value) => {
-            setLocalSelectedSuggestion(value);
-            onSelectedSuggestionChange?.(value);
-          }}
-          onSelectedTimingChange={(value) => {
-            setLocalSelectedTiming(value);
-            onSelectedTimingChange?.(value);
-          }}
-          selectedService={resolvedSelectedService}
-          selectedAdditionalTimings={resolvedSelectedAdditionalTimings}
-          selectedCustomDate={resolvedSelectedCustomDate}
-          selectedCustomEndDate={resolvedSelectedCustomEndDate}
-          selectedCustomWindow={resolvedSelectedCustomWindow}
-          selectedCustomWindows={resolvedSelectedCustomWindows}
-          selectedSuggestion={resolvedSelectedSuggestion}
-          selectedTiming={resolvedSelectedTiming}
-        />
-      </div>
+      <details className="page-hero__edit-search">
+        <summary>{i18n.t("customer_listings_hero.edit_search")}</summary>
+        <div className="page-hero__search-card" aria-label={i18n.t("customer_listings_hero.update_search_aria")}>
+          <PublicMarketplaceSearchShell
+            areaQuery={resolvedAreaQuery}
+            onAreaQueryChange={(value) => {
+              setLocalAreaQuery(value);
+              onAreaQueryChange?.(value);
+            }}
+            onSearch={onSearch}
+            onSelectedAdditionalTimingsChange={(value) => {
+              setLocalSelectedAdditionalTimings(value);
+              onSelectedAdditionalTimingsChange?.(value);
+            }}
+            onSelectedCustomDateChange={(value) => {
+              setLocalSelectedCustomDate(value);
+              onSelectedCustomDateChange?.(value);
+            }}
+            onSelectedCustomEndDateChange={(value) => {
+              setLocalSelectedCustomEndDate(value);
+              onSelectedCustomEndDateChange?.(value);
+            }}
+            onSelectedCustomWindowChange={(value) => {
+              setLocalSelectedCustomWindow(value);
+              onSelectedCustomWindowChange?.(value);
+            }}
+            onSelectedCustomWindowsChange={(value) => {
+              setLocalSelectedCustomWindows(value);
+              onSelectedCustomWindowsChange?.(value);
+            }}
+            onSelectedServiceChange={(value) => {
+              setLocalSelectedService(value);
+              onSelectedServiceChange?.(value);
+            }}
+            onSelectedSuggestionChange={(value) => {
+              setLocalSelectedSuggestion(value);
+              onSelectedSuggestionChange?.(value);
+            }}
+            onSelectedTimingChange={(value) => {
+              setLocalSelectedTiming(value);
+              onSelectedTimingChange?.(value);
+            }}
+            selectedService={resolvedSelectedService}
+            selectedAdditionalTimings={resolvedSelectedAdditionalTimings}
+            selectedCustomDate={resolvedSelectedCustomDate}
+            selectedCustomEndDate={resolvedSelectedCustomEndDate}
+            selectedCustomWindow={resolvedSelectedCustomWindow}
+            selectedCustomWindows={resolvedSelectedCustomWindows}
+            selectedSuggestion={resolvedSelectedSuggestion}
+            selectedTiming={resolvedSelectedTiming}
+          />
+          {metricItems.length > 0 ? (
+            <div className="page-hero__metrics">
+              {metricItems.map((metric) => (
+                <div className="page-hero__metric" key={metric.label}>
+                  <strong>{metric.value}</strong>
+                  <span>{metric.label}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </details>
     </section>
   );
 }
