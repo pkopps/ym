@@ -11,6 +11,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 const issueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 const issueLabelKeys: Record<SupportIssueType, TranslationKey> = {
@@ -149,10 +150,7 @@ export function HelpSupportTicketPanel() {
 
   if (!sessionReady || (session && isLoadingSupport && tickets.length === 0 && bookingOptions.length === 0 && !supportLoadError)) {
     return (
-      <article className="card">
-        <h2>{i18n.t("support.open_ticket")}</h2>
-        <p>{i18n.t("support.loading")}</p>
-      </article>
+      <LoadingSkeleton label={i18n.t("support.loading")} lines={4} showAction />
     );
   }
 

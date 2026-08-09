@@ -7,6 +7,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 const completedBookingStatuses = new Set(["completed", "disputed", "refunded"]);
 
@@ -18,6 +19,7 @@ export function CrewHistoryBoard() {
   const i18n = useI18n();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [assignments, setAssignments] = useState<CrewMatchSummary[]>([]);
 
@@ -28,6 +30,7 @@ export function CrewHistoryBoard() {
 
     if (!session || session.role !== "crew-member") {
       setAccessDenied(true);
+      setIsLoading(false);
       return;
     }
 
@@ -48,6 +51,8 @@ export function CrewHistoryBoard() {
         );
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_history.load_error"));
+      } finally {
+        setIsLoading(false);
       }
     })();
   }, [i18n, sessionReady, session?.role, session?.token]);
@@ -66,11 +71,9 @@ export function CrewHistoryBoard() {
     [assignments]
   );
 
-  if (!sessionReady) {
+  if (!sessionReady || (!accessDenied && isLoading && assignments.length === 0 && !errorMessage)) {
     return (
-      <section className="card">
-        <h2>{i18n.t("crew_history.loading")}</h2>
-      </section>
+      <LoadingSkeleton cardCount={3} className="grid-three" label={i18n.t("crew_history.loading")} />
     );
   }
 

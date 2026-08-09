@@ -27,6 +27,7 @@ import { I18nInstance, TranslationKey, type SupportedLocale } from "@yardmatch/i
 import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createProviderMobileApiClient } from "../lib/api";
 import { getProviderAuthDevice } from "../lib/sessionSecurity";
 import { useProviderSession } from "../session/ProviderSessionContext";
@@ -216,6 +217,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showStaffingSettings, setShowStaffingSettings] = useState(false);
   const [showCalendarTools, setShowCalendarTools] = useState(false);
   const [showAlertPreferences, setShowAlertPreferences] = useState(false);
@@ -315,6 +317,8 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       setSecurityMethod(nextSecurity.method ?? "email");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.load_settings"));
+    } finally {
+      setIsInitialLoading(false);
     }
   }
 
@@ -708,6 +712,20 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
       setIsWorking(false);
     }
+  }
+
+  if (isInitialLoading && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("provider_mobile.support.eyebrow")}
+        title={i18n.t("provider_mobile.support.title")}
+        description={i18n.t("provider_mobile.support.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} />
+      </ScreenShell>
+    );
   }
 
   return (

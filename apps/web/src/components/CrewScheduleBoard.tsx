@@ -6,6 +6,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 type ScheduleView = "calendar" | "list";
 
@@ -42,6 +43,7 @@ export function CrewScheduleBoard() {
   const { session, sessionReady } = useStoredWebSession();
   const [view, setView] = useState<ScheduleView>("calendar");
   const [accessDenied, setAccessDenied] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [acceptedMatches, setAcceptedMatches] = useState<CrewMatchSummary[]>([]);
 
@@ -52,6 +54,7 @@ export function CrewScheduleBoard() {
 
     if (!session || session.role !== "crew-member") {
       setAccessDenied(true);
+      setIsLoading(false);
       return;
     }
 
@@ -68,6 +71,8 @@ export function CrewScheduleBoard() {
         );
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_schedule.board.load_error"));
+      } finally {
+        setIsLoading(false);
       }
     })();
   }, [i18n, sessionReady, session?.role, session?.token]);
@@ -106,11 +111,9 @@ export function CrewScheduleBoard() {
     }));
   }, [acceptedMatches, i18n]);
 
-  if (!sessionReady) {
+  if (!sessionReady || (!accessDenied && isLoading && acceptedMatches.length === 0 && !errorMessage)) {
     return (
-      <section className="card">
-        <h2>{i18n.t("crew_schedule.board.loading")}</h2>
-      </section>
+      <LoadingSkeleton cardCount={3} className="grid-three" label={i18n.t("crew_schedule.board.loading")} showAction />
     );
   }
 

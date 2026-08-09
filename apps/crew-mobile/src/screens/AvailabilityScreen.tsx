@@ -12,6 +12,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createCrewMobileApiClient } from "../lib/api";
 import { useCrewSession } from "../session/CrewSessionContext";
 
@@ -133,6 +134,19 @@ export function AvailabilityScreen() {
           count: crewMember.willingToTravelMiles
         })
       : i18n.t("crew_mobile.availability.incomplete_summary");
+
+  if (!crewMember && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("crew_mobile.availability.eyebrow")}
+        title={i18n.t("crew_mobile.availability.title")}
+        description={i18n.t("crew_mobile.availability.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} />
+      </ScreenShell>
+    );
+  }
 
   return (
     <ScreenShell

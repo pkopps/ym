@@ -23,6 +23,7 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createCustomerMobileApiClient } from "../lib/api";
 import { buildTrackingSummary } from "../lib/arrivalTracking";
 import { getCustomerMobileTracker } from "../lib/tracking";
@@ -156,6 +157,7 @@ export function BookingsScreen({
   const [submittedMessage, setSubmittedMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [activeChatBookingId, setActiveChatBookingId] = useState<string | undefined>();
   const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
   const [chatDraft, setChatDraft] = useState("");
@@ -252,6 +254,8 @@ export function BookingsScreen({
       );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.bookings.error.load_visits"));
+    } finally {
+      setIsInitialLoading(false);
     }
   }
 
@@ -774,6 +778,19 @@ export function BookingsScreen({
     } finally {
       setIsWorking(false);
     }
+  }
+
+  if (isInitialLoading && bookings.length === 0 && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("mobile.bookings.eyebrow")}
+        title={i18n.t("mobile.bookings.title")}
+        description={i18n.t("mobile.bookings.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
+      </ScreenShell>
+    );
   }
 
   return (

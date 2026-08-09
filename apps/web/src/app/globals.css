@@ -4576,6 +4576,91 @@ body {
   margin: 0;
 }
 
+.loading-skeleton-card {
+  min-height: 10.5rem;
+  align-content: start;
+  overflow: hidden;
+}
+
+.loading-skeleton-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--ym-space-4);
+}
+
+.loading-skeleton-card__heading,
+.loading-skeleton-card__body {
+  display: grid;
+  gap: var(--ym-space-3);
+  width: 100%;
+}
+
+.loading-skeleton {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(20, 40, 29, 0.09);
+}
+
+.loading-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.7),
+    transparent
+  );
+  animation: loading-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.loading-skeleton--avatar {
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 3.25rem;
+}
+
+.loading-skeleton--eyebrow {
+  width: min(8rem, 42%);
+  height: 0.65rem;
+}
+
+.loading-skeleton--title {
+  width: min(17rem, 76%);
+  height: 1.25rem;
+}
+
+.loading-skeleton--line {
+  height: 0.85rem;
+}
+
+.loading-skeleton--line-1 {
+  width: 100%;
+}
+
+.loading-skeleton--line-2 {
+  width: 82%;
+}
+
+.loading-skeleton--line-3 {
+  width: 61%;
+}
+
+.loading-skeleton--action {
+  width: 8rem;
+  height: 2.75rem;
+  margin-top: var(--ym-space-2);
+}
+
+@keyframes loading-skeleton-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 .loading-icon-preview__card {
   display: grid;
   gap: var(--ym-space-4);
@@ -4685,6 +4770,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .loading-skeleton::after,
   .lawn-mower-loader__orbit,
   .lawn-mower-loader__blade {
     animation-duration: 0s;

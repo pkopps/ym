@@ -4,7 +4,7 @@ Agent-reported completion is checkpoint evidence only. It does not equal indepen
 
 ## Current Goal
 
-Prevent user-facing and server-to-server YardMatch operations from waiting indefinitely by adding bounded timeouts, aborting stalled work, and showing actionable retry guidance.
+Give YardMatch's slower production data surfaces stable, accessible loading states without stacking spinners and skeletons or hiding already-loaded content during refreshes.
 
 ## Agent Role
 
@@ -12,9 +12,9 @@ Engineer
 
 ## Branch And Commit
 
-- Branch: `codex/account-security`
-- Baseline commit: `ecadb4eba37ebd0ce53bf040e3a7cc62d4ea81c2` (`feat: add account two-factor security`)
-- State: the timeout-resilience milestone is implemented and verified on top of the account-security baseline.
+- Branch: `codex/skeleton-loading-states`
+- Baseline commit: `23a8aa1294c2314331a7fac8c646c23da9212e79` (`fix: add timeout recovery across app`)
+- State: the skeleton-loading milestone is implemented and verified; this checkpoint is included in the current skeleton-loading commit.
 
 ## Last Updated
 
@@ -22,13 +22,14 @@ Engineer
 
 ## Completed Since Previous Checkpoint
 
-- Added one abortable timeout path to the shared contracts API client used by the web, customer, provider, and crew apps.
-- Set a 30-second general API deadline and a 10-second place-search/reverse-geocode deadline, with English and Spanish connection/retry guidance.
-- Made stalled web and mobile address lookup exit its loading state and render an error instead of silently dropping the failure.
-- Added bounded server requests for Google geocoding/address validation, Google/Apple OAuth, Expo push, Resend, Twilio, external calendar feeds, Vercel Blob, and the inbound automation relay.
-- Reduced Stripe's prior 80-second-per-attempt default to 10 seconds with one retry and mapped connection timeouts to actionable HTTP 504 errors for checkout, refund, Connect, transfer, and reversal workflows.
-- Added a 12-second initial GPS deadline for provider route sharing, preserving estimated route timing and showing location-service guidance when a fix does not arrive.
-- Added API and browser regression coverage for stalled GET/POST calls, abort behavior, notification/OAuth/place/address integrations, relay 504 responses, Stripe timeout mapping, and visible public-search recovery.
+- Added an accessible reusable web skeleton region with configurable card counts, avatar, copy, and action shapes.
+- Added matching React Native skeleton cards to the customer, provider, and crew apps.
+- Added shimmer/pulse motion that honors web and native reduced-motion preferences.
+- Kept the branded lawn-mower animation limited to whole-route web transitions; skeleton regions never render it at the same time.
+- Added initial-load skeletons to provider matching, customer dashboards/history/bookings/support, account security, provider operations/schedule/clients/payments/support, crew work/schedule/history/availability/support, notifications, and the ops overview.
+- Preserved existing content during subsequent refreshes and kept inline button progress for mutations.
+- Prevented the ops overview from showing believable zero metrics while live values are still loading.
+- Added a delayed provider-search Playwright regression that asserts two result-card skeletons, no route loader, and successful replacement with real results.
 
 ## Currently In Progress
 
@@ -36,44 +37,40 @@ Engineer
 
 ## Remaining Work
 
-- Exercise real vendor timeout behavior in staging with configured Stripe, Resend, Twilio, Google, Blob, and OAuth credentials.
-- Confirm provider GPS timeout/recovery copy on a physical device with location services intentionally degraded.
-- Tune deadline values only if production latency evidence shows a legitimate operation regularly approaching a limit.
+- Exercise native skeleton timing on physical customer, provider, and crew devices under throttled mobile networking.
+- Tune skeleton counts only if production layouts or measured response distributions materially change.
 
 ## Blockers
 
-- Live vendor and physical-device timeout acceptance requires staging credentials, approved test destinations, and devices; local deterministic coverage is complete.
+- Physical-device throttling was not available in this local browser/export pass.
 
 ## Routes Or Workflows Changed
 
-- Any shared web/mobile API request -> bounded wait -> abort -> localized connection/retry error -> loading state clears.
-- Public and signup address lookup -> 10-second API deadline; Google server lookup separately falls back after 5 seconds to YardMatch's local service-area data.
-- OAuth/notification/calendar/Blob/relay calls -> provider-specific deadline -> retry-safe error, stored health state, or HTTP 504 as appropriate.
-- Stripe checkout, refund, onboarding, payout, and reversal -> 10-second provider attempts with one SDK retry -> refresh-before-retry guidance if Stripe times out.
-- Provider route sharing -> 12-second initial location fix -> estimated route status plus a visible location-services error if GPS stalls.
+- Whole web route transition -> branded mower loader only.
+- Initial structured data request -> layout-shaped skeleton cards -> real cards replace them in place.
+- Background refresh -> existing data remains visible; no skeleton reset.
+- User mutation -> existing inline working/disabled state; no skeleton or route loader.
+- Reduced-motion preference -> static skeleton blocks without shimmer/pulse animation.
 
 ## Validation Results
 
-- `npm run verify:local`: passed Prisma generation, lint, typecheck, mobile release configuration, the full API suite, API smoke, and web smoke.
-- `node --test --import tsx apps/api/test/request-timeouts.test.ts`: 5/5 passed.
-- `npm run test:api`: 261 tests, 259 passed, 2 expected PostgreSQL-only skips, 0 failed.
 - `npm run typecheck`: passed across the monorepo.
 - `npm run lint`: passed with zero warnings.
-- `npm run i18n:validate`: passed 3,581 keys across English, Spanish, and pseudo locales.
-- `npm run test:web:smoke`: 17/17 passed, including the new stalled place-search timeout test.
+- `npm run i18n:validate`: passed 3,583 keys across English, Spanish, and pseudo locales.
+- `npx playwright test tests/web/skeleton-loading.spec.ts`: 1/1 passed with a delayed provider-search response.
+- `npm run test:web:smoke`: 18/18 passed, including security, timeout, and skeleton regressions.
 - `npm run build:mobile`: customer, provider, and crew exports passed for web, iOS, and Android.
-- Browser evidence at 1440x900 and 390x844: loading stopped and actionable timeout guidance rendered without horizontal overflow.
+- Browser evidence at 1440x900 and 390x844 shows stable provider-result skeleton cards without the route loader or horizontal overflow.
 
 ## Screenshot Paths
 
-- `reports/agent-checkpoints/engineer/latest/timeout-search-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/timeout-search-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/skeleton-provider-match-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/skeleton-provider-match-mobile-web.png`
 
 ## Known Defects
 
-- Real third-party timeout payloads and retry timing were not exercised without staging vendor credentials; deterministic stalled-request simulations cover the local behavior.
-- Provider GPS timeout behavior is typechecked/exported but has not yet been exercised on a physical device with poor satellite reception.
+- Native skeleton components are typechecked and exported but have not yet been visually captured on physical devices with throttled networking.
 
 ## Recommended Next Task
 
-Run a staging fault-injection pass against each configured vendor and a physical-device GPS degradation check, then adjust only the deadlines that have measured false positives.
+Run a physical-device network-throttling pass for all three role apps, then adjust only surfaces whose measured load duration or card geometry differs from the current skeletons.

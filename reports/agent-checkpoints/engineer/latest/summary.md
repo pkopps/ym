@@ -1,62 +1,57 @@
-# Engineer Checkpoint: Timeout Resilience And Recovery Messages
+# Engineer Checkpoint: Skeleton Loading States
 
 ## Branch And Commit
 
-- Branch: `codex/account-security`
-- Baseline commit: `ecadb4eba37ebd0ce53bf040e3a7cc62d4ea81c2`
-- State: implemented and verified on top of the account-security baseline.
+- Branch: `codex/skeleton-loading-states`
+- Baseline commit: `23a8aa1294c2314331a7fac8c646c23da9212e79`
+- State: implemented and verified; this checkpoint is included in the current skeleton-loading commit.
 
 ## Completed Work
 
-- Added abortable 30-second shared API deadlines across web and all three mobile apps, plus 10-second place-search deadlines.
-- Added visible English/Spanish retry guidance to public, signup, and saved-property address searches.
-- Added 5-15 second deadlines to Google, OAuth, notification, calendar, Blob, and inbound-relay calls.
-- Set Stripe requests to 10 seconds with one retry and mapped timeout failures to workflow-specific HTTP 504 guidance.
-- Added a 12-second provider GPS-fix deadline with an estimated-route fallback message.
-- Added deterministic API and Playwright regressions for stalled calls and user-visible timeout recovery.
+- Added reusable accessible skeleton-card primitives for web and each React Native app.
+- Applied skeletons to initial card/list loads across customer matching and account views, provider operations, crew work, payments, security, notifications, support, and ops.
+- Kept the mower animation route-only and prevented loader stacking.
+- Retained real content during refreshes and preserved inline progress for mutations.
+- Added reduced-motion behavior and localized accessibility labels.
+- Added delayed-response browser coverage for skeleton appearance, no spinner overlap, and replacement with live provider results.
 
 ## In-Progress Work
 
-- Repository work is complete. Live vendor and physical-device acceptance remain external follow-up.
+- Repository work is complete. Physical-device throttling remains follow-up acceptance work.
 
 ## Remaining Work
 
-- Fault-inject configured staging vendors and confirm production error payloads and retry behavior.
-- Exercise provider GPS timeout/recovery on a physical device.
-- Revisit deadline values only with measured production latency data.
+- Visually inspect native skeletons on physical customer, provider, and crew devices under throttled networking.
+- Tune counts or geometry only from measured production evidence.
 
 ## Blockers
 
-- Live acceptance requires vendor credentials, approved destinations, and a physical provider device.
+- No physical-device network-throttling environment was available during this checkpoint.
 
 ## Changed Workflows
 
-- Web/mobile API request -> bounded wait -> abort -> retry guidance -> loading state clears.
-- Address lookup -> fast Google deadline -> local YardMatch fallback or visible manual-entry guidance.
-- External vendor call -> bounded provider attempt -> retryable record, stored calendar health, OAuth redirect error, relay 504, or user-facing API 504.
-- Provider live route -> bounded initial GPS fix -> estimated timing plus location-services guidance.
+- Initial structured load -> skeleton cards -> live content.
+- Background refresh -> retain live content.
+- Mutation -> inline working state.
+- Whole-route web navigation -> branded mower loader only.
 
 ## Validation Results
 
-- Full local verification passed: Prisma generation, lint, typecheck, mobile release configuration, API tests, API smoke, and web smoke.
-- Timeout regressions: 5/5 passed.
-- API suite: 261 tests, 259 passed, 2 expected PostgreSQL-only skips, 0 failed.
-- TypeScript and zero-warning ESLint passed.
-- Locale validation passed 3,581 English/Spanish/pseudo keys.
-- Playwright web smoke: 17/17 passed, including stalled search recovery.
+- TypeScript, zero-warning ESLint, and 3,583-key locale validation passed.
+- Targeted delayed-response skeleton regression: 1/1 passed.
+- Full Playwright web smoke: 18/18 passed.
 - Customer/provider/crew Expo exports passed for web, iOS, and Android.
-- Desktop 1440x900 and mobile 390x844 screenshots show the timeout message without horizontal overflow.
+- Desktop and mobile-web screenshots show no loader stacking or horizontal overflow.
 
 ## Known Defects
 
-- Real vendor timeouts remain unverified without staging credentials.
-- Physical-device degraded-GPS acceptance remains outstanding.
+- Physical-device native visual acceptance under throttled networking remains outstanding.
 
 ## Screenshot Paths
 
-- `timeout-search-desktop.png`
-- `timeout-search-mobile.png`
+- `skeleton-provider-match-desktop.png`
+- `skeleton-provider-match-mobile-web.png`
 
 ## Recommended Next Task
 
-Run staging vendor fault injection and a physical-device GPS degradation check before tuning any deadline.
+Run a native physical-device throttling pass before changing skeleton timing or geometry.

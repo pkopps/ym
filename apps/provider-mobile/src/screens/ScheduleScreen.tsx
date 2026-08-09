@@ -23,6 +23,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
@@ -1018,6 +1019,20 @@ export function ScheduleScreen() {
       ...current,
       [bookingId]: true
     }));
+  }
+
+  if (!overview && !calendarOverview && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("provider_mobile.schedule.eyebrow")}
+        title={i18n.t("provider_mobile.schedule.title")}
+        description={i18n.t("provider_mobile.schedule.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAvatar />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} />
+      </ScreenShell>
+    );
   }
 
   return (

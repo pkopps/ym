@@ -23,6 +23,7 @@ import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createCustomerMobileApiClient } from "../lib/api";
 import { getCustomerAuthDevice } from "../lib/sessionSecurity";
 import { findTrackableBooking, parseTrackingBookingId } from "../lib/arrivalTracking";
@@ -129,6 +130,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   const [activeSection, setActiveSection] = useState<CustomerAccountSection>("properties");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [securitySettings, setSecuritySettings] = useState<AccountSecuritySettings>();
   const [securityMethod, setSecurityMethod] = useState<TwoFactorMethod>("email");
@@ -194,6 +196,8 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       setSecurityMethod(nextSecurity.method ?? "email");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.load_account"));
+    } finally {
+      setIsInitialLoading(false);
     }
   }
 
@@ -448,6 +452,19 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
     if (nextValue) {
       setErrorMessage(i18n.t("mobile.support.error.enable_biometric", { biometric: biometricLabel }));
     }
+  }
+
+  if (isInitialLoading && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("mobile.support.eyebrow")}
+        title={i18n.t("mobile.support.title")}
+        description={i18n.t("mobile.support.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} />
+      </ScreenShell>
+    );
   }
 
   return (

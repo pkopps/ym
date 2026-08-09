@@ -28,6 +28,7 @@ import { readEvidenceImage } from "../lib/imageUploads";
 import { useStoredWebSession } from "../lib/session";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { FloatingChatWindow } from "./FloatingChatWindow";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 function formatDateTime(i18n: I18nInstance, iso: string) {
   return i18n.formatDate(iso, {
@@ -972,11 +973,9 @@ export function ProviderLiveManagementBoard() {
     }
   }
 
-  if (!sessionReady) {
+  if (!sessionReady || (!accessDenied && !overview && !errorMessage)) {
     return (
-      <section className="card">
-        <h2>{i18n.t("provider_live.loading")}</h2>
-      </section>
+      <LoadingSkeleton cardCount={3} className="grid-three" label={i18n.t("provider_live.loading")} showAction />
     );
   }
 

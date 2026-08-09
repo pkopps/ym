@@ -22,6 +22,7 @@ import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createCustomerMobileApiClient } from "../lib/api";
 import { getCustomerMobileTracker } from "../lib/tracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
@@ -676,7 +677,12 @@ export function BookServiceScreen({
           >
             {searchState === "loading" ? (
               <View style={styles.providerStack}>
-                <Text style={styles.emptyState}>{i18n.t("mobile.book.checking_nearby_openings")}</Text>
+                <SkeletonCard
+                  label={i18n.t("mobile.book.checking_nearby_openings")}
+                  lines={3}
+                  showAction
+                  showAvatar
+                />
               </View>
             ) : searchState === "error" ? (
               <View style={styles.providerStack}>

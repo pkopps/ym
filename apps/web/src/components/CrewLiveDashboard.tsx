@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient, createWebApiClient } from "../lib/api";
 import { readEvidenceImage } from "../lib/imageUploads";
 import { useStoredWebSession } from "../lib/session";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 const allDays: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const skillOptions: ServiceCategory[] = [
@@ -442,11 +443,9 @@ export function CrewLiveDashboard() {
     });
   }
 
-  if (!sessionReady) {
+  if (!sessionReady || (!accessDenied && !matchesResponse && !errorMessage)) {
     return (
-      <section className="card">
-        <h2>{i18n.t("crew_live.loading")}</h2>
-      </section>
+      <LoadingSkeleton cardCount={3} className="grid-three" label={i18n.t("crew_live.loading")} showAction />
     );
   }
 

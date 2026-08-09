@@ -13,6 +13,7 @@ import {
   getWebAuthDevice
 } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 export function SecuritySettingsPanel() {
   const i18n = useI18n();
@@ -138,6 +139,10 @@ export function SecuritySettingsPanel() {
         <a className="button" href="/login">{i18n.t("nav.log_in")}</a>
       </section>
     );
+  }
+
+  if (!sessionReady || (session && !settings && !errorMessage)) {
+    return <LoadingSkeleton label={i18n.t("security.loading")} lines={4} showAction />;
   }
 
   return (

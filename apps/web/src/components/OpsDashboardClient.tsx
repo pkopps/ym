@@ -14,6 +14,7 @@ import { OpsPayoutRunBoard } from "./OpsPayoutRunBoard";
 import { OpsProviderVerificationQueue } from "./OpsProviderVerificationQueue";
 import { OpsReviewResponseBoard } from "./OpsReviewResponseBoard";
 import { OpsSupportQueue } from "./OpsSupportQueue";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 import { useI18n } from "@yardmatch/i18n/react";
 
 function formatRate(value: number) {
@@ -206,6 +207,24 @@ export function OpsDashboardClient() {
     );
   }
 
+  if (isLoading) {
+    return (
+      <main className="container stack-lg">
+        <section className="page-hero">
+          <span className="eyebrow">{i18n.t("ops_auto.ops_dashboard_client.live_operations_6th7cw")}</span>
+          <h1>{i18n.t("ops_auto.ops_dashboard_client.bookings_activity_and_support_y23kvt")}</h1>
+          <p>{i18n.t("ops_auto.ops_dashboard_client.refreshing_the_latest_ops_data_i6zw57")}</p>
+        </section>
+        <LoadingSkeleton
+          cardCount={3}
+          className="grid-three"
+          label={i18n.t("ops_auto.ops_dashboard_client.refreshing_the_latest_ops_data_i6zw57")}
+          lines={2}
+        />
+      </main>
+    );
+  }
+
   async function handleEscalateInboundAutomation() {
     try {
       setIsEscalatingInboundAlerts(true);
@@ -229,7 +248,6 @@ export function OpsDashboardClient() {
         <span className="eyebrow">{i18n.t("ops_auto.ops_dashboard_client.live_operations_6th7cw")}</span>
         <h1>{i18n.t("ops_auto.ops_dashboard_client.bookings_activity_and_support_y23kvt")}</h1>
         <p>{i18n.t("ops_auto.ops_dashboard_client.live_from_the_authenticated_api_5w1d6y")}</p>
-        {isLoading ? <p>{i18n.t("ops_auto.ops_dashboard_client.refreshing_the_latest_ops_data_i6zw57")}</p> : null}
         {errorMessage ? <p>{errorMessage}</p> : null}
       </section>
 

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { useI18n } from "@yardmatch/i18n/react";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 function formatCurrency(cents: number) {
   return new Intl.NumberFormat("en-US", {
@@ -164,12 +165,14 @@ export function ProviderPaymentsBoard() {
     status: getPayoutStepStatus(index, activePayoutStepIndex)
   }));
 
-  if (!sessionReady) {
+  if (!sessionReady || (!accessDenied && !ledger && !connectStatus && !errorMessage)) {
     return (
-      <section className="card">
-        <h2>{i18n.t("ops_auto.provider_payments_board.loading_payments_tj6gdn")}</h2>
-        <p>{i18n.t("ops_auto.provider_payments_board.checking_the_provider_payout_ledger_nbvpgl")}</p>
-      </section>
+      <LoadingSkeleton
+        cardCount={3}
+        className="grid-three"
+        label={i18n.t("ops_auto.provider_payments_board.loading_payments_tj6gdn")}
+        showAction
+      />
     );
   }
 

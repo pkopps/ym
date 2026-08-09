@@ -10,6 +10,7 @@ import { I18nInstance } from "@yardmatch/i18n";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 function formatDateTime(i18n: I18nInstance, iso?: string) {
   if (!iso) {
@@ -103,13 +104,16 @@ export function NotificationOpsBoard() {
     }
   }
 
+  if (isLoading && !health) {
+    return <LoadingSkeleton label={i18n.t("notification_ops.loading")} lines={5} showAction />;
+  }
+
   return (
     <section className="card">
       <span className="eyebrow">{i18n.t("notification_ops.eyebrow")}</span>
       <h2>{i18n.t("notification_ops.title")}</h2>
       <p>{i18n.t("notification_ops.body")}</p>
 
-      {isLoading ? <p>{i18n.t("notification_ops.loading")}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       {retryResult ? (
         <p>

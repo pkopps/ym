@@ -6,6 +6,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 function paymentLabelKey(payment?: PaymentRecord): TranslationKey {
   if (!payment) {
@@ -133,9 +134,7 @@ export function CustomerHistoryBoard() {
 
   if (!sessionReady || (!accessDenied && isLoadingHistory && bookings.length === 0 && !errorMessage)) {
     return (
-      <section className="card">
-        <h2>{i18n.t("customer_history.loading")}</h2>
-      </section>
+      <LoadingSkeleton cardCount={3} className="grid-three" label={i18n.t("customer_history.loading")} showAvatar />
     );
   }
 

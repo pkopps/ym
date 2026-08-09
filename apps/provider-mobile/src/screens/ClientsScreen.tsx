@@ -7,6 +7,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createProviderMobileApiClient } from "../lib/api";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
@@ -240,6 +241,19 @@ export function ClientsScreen() {
           </View>
         ) : null}
       </View>
+    );
+  }
+
+  if (!overview && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("provider_mobile.clients.eyebrow")}
+        title={i18n.t("provider_mobile.clients.title")}
+        description={i18n.t("provider_mobile.clients.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
+      </ScreenShell>
     );
   }
 

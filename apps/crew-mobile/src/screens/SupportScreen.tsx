@@ -21,6 +21,7 @@ import { I18nInstance, TranslationKey, type SupportedLocale } from "@yardmatch/i
 import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createCrewMobileApiClient } from "../lib/api";
 import { getCrewAuthDevice } from "../lib/sessionSecurity";
 import { useCrewSession } from "../session/CrewSessionContext";
@@ -98,6 +99,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   const [description, setDescription] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [showAlertPreferences, setShowAlertPreferences] = useState(false);
   const [showSupportComposer, setShowSupportComposer] = useState(false);
@@ -170,6 +172,8 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       setSecurityMethod(nextSecurity.method ?? "email");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.load_account"));
+    } finally {
+      setIsInitialLoading(false);
     }
   }
 
@@ -332,6 +336,19 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
       setIsWorking(false);
     }
+  }
+
+  if (isInitialLoading && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("mobile.support.eyebrow")}
+        title={i18n.t("mobile.support.title")}
+        description={i18n.t("crew_mobile.support.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} />
+      </ScreenShell>
+    );
   }
 
   return (

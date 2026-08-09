@@ -31,6 +31,7 @@ import {
   getCustomerTimingLabel
 } from "./PublicMarketplaceSearchShell";
 import { CustomerListingsHero } from "./CustomerListingsHero";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 
 function buildInitialSuggestion({
   areaLabel,
@@ -629,16 +630,15 @@ export function PublicCustomerListingsExperience({
         </div>
 
         {searchState === "loading" ? (
-          <div className="live-listings-card__grid">
-            <article className="list-panel live-listings-card__message">
-              <h3>{i18n.t("customer.listings.loading.checking.title")}</h3>
-              <p>{i18n.t("customer.listings.loading.checking.body", { timing: timingLabel.toLowerCase() })}</p>
-            </article>
-            <article className="list-panel live-listings-card__message">
-              <h3>{i18n.t("customer.listings.loading.sorting.title")}</h3>
-              <p>{i18n.t("customer.listings.loading.sorting.body")}</p>
-            </article>
-          </div>
+          <LoadingSkeleton
+            cardClassName="list-panel"
+            cardCount={2}
+            className="live-listings-card__grid"
+            label={i18n.t("customer.listings.loading.checking.title")}
+            lines={3}
+            showAction
+            showAvatar
+          />
         ) : null}
 
         {searchState === "error" ? (

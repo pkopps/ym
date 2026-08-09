@@ -13,6 +13,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createCustomerMobileApiClient } from "../lib/api";
 import { buildTrackingDetail, buildTrackingSummary, findTrackableBooking } from "../lib/arrivalTracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
@@ -156,6 +157,7 @@ export function DashboardScreen({
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const nextBooking = useMemo(
     () =>
@@ -304,6 +306,8 @@ export function DashboardScreen({
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.load_account"));
+    } finally {
+      setIsInitialLoading(false);
     }
   }
 
@@ -347,6 +351,20 @@ export function DashboardScreen({
     } finally {
       setIsWorking(false);
     }
+  }
+
+  if (isInitialLoading && bookings.length === 0 && properties.length === 0 && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("mobile.dashboard.eyebrow")}
+        title={i18n.t("mobile.dashboard.title")}
+        description={i18n.t("mobile.dashboard.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} showAvatar />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={2} />
+      </ScreenShell>
+    );
   }
 
   return (

@@ -12,6 +12,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
+import { SkeletonCard } from "../components/SkeletonCard";
 import { createProviderMobileApiClient } from "../lib/api";
 import { getProviderMobileTracker } from "../lib/tracking";
 import { useProviderSession } from "../session/ProviderSessionContext";
@@ -371,6 +372,20 @@ export function DashboardScreen({
     } finally {
       setIsWorking(false);
     }
+  }
+
+  if (!overview && !payoutLedger && !errorMessage) {
+    return (
+      <ScreenShell
+        eyebrow={i18n.t("provider_mobile.dashboard.eyebrow")}
+        title={i18n.t("provider_mobile.dashboard.title")}
+        description={i18n.t("provider_mobile.dashboard.description")}
+      >
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} showAvatar />
+        <SkeletonCard label={i18n.t("common.loading.content")} lines={3} />
+      </ScreenShell>
+    );
   }
 
   return (

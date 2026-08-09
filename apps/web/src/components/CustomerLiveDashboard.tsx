@@ -35,6 +35,7 @@ import { trackWebEvent } from "../lib/tracking";
 import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { CustomerHistoryBoard } from "./CustomerHistoryBoard";
 import { FloatingChatWindow } from "./FloatingChatWindow";
+import { LoadingSkeleton } from "./LoadingSkeleton";
 import {
   CustomerCustomTimingWindow,
   buildDateIsoForCustomerTiming,
@@ -1332,9 +1333,12 @@ export function CustomerLiveDashboard() {
   ) {
     return (
       <section className="container stack-lg">
-        <section className="card">
-          <h2>{i18n.t("customer_live.loading_account")}</h2>
-        </section>
+        <LoadingSkeleton
+          cardCount={3}
+          className="grid-three"
+          label={i18n.t("customer_live.loading_account")}
+          showAction
+        />
       </section>
     );
   }
