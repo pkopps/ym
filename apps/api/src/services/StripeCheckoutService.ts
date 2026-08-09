@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { randomBytes } from "node:crypto";
 import { Address, Booking, CustomerProfile } from "@yardmatch/contracts";
 import { HttpError } from "../http";
+import { createStripeClient, runStripeRequest } from "../integrations/stripeRequest";
 
 export interface CreateStripeCheckoutSessionInput {
   booking: Booking;
@@ -97,7 +98,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   ) {
     if (secretKey) {
-      this.stripe = new Stripe(secretKey);
+      this.stripe = createStripeClient(secretKey);
     }
     this.webhookSecret = webhookSecret;
   }
@@ -113,43 +114,46 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       throw new HttpError(503, "Stripe is not configured yet.");
     }
 
-    const session = await this.stripe.checkout.sessions.create({
-      mode: "payment",
-      integration_identifier: createIntegrationIdentifier(),
-      success_url: buildReturnUrl(input.appBaseUrl, input.successPath, true),
-      cancel_url: buildReturnUrl(input.appBaseUrl, input.cancelPath, false),
-      client_reference_id: input.booking.id,
-      customer_email: input.customer.email,
-      billing_address_collection: "auto",
-      phone_number_collection: {
-        enabled: true
-      },
-      metadata: {
-        bookingId: input.booking.id,
-        customerId: input.customer.id,
-        providerId: input.booking.providerId
-      },
-      payment_intent_data: {
+    const session = await runStripeRequest(
+      () => this.stripe!.checkout.sessions.create({
+        mode: "payment",
+        integration_identifier: createIntegrationIdentifier(),
+        success_url: buildReturnUrl(input.appBaseUrl, input.successPath, true),
+        cancel_url: buildReturnUrl(input.appBaseUrl, input.cancelPath, false),
+        client_reference_id: input.booking.id,
+        customer_email: input.customer.email,
+        billing_address_collection: "auto",
+        phone_number_collection: {
+          enabled: true
+        },
         metadata: {
           bookingId: input.booking.id,
           customerId: input.customer.id,
           providerId: input.booking.providerId
-        }
-      },
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: input.booking.totalCents,
-            product_data: {
-              name: `${prettifyCategory(input.booking.category)} service`,
-              description: `YardMatch booking at ${buildServiceAddress(input.booking.serviceAddress)}`
+        },
+        payment_intent_data: {
+          metadata: {
+            bookingId: input.booking.id,
+            customerId: input.customer.id,
+            providerId: input.booking.providerId
+          }
+        },
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: input.booking.totalCents,
+              product_data: {
+                name: `${prettifyCategory(input.booking.category)} service`,
+                description: `YardMatch booking at ${buildServiceAddress(input.booking.serviceAddress)}`
+              }
             }
           }
-        }
-      ]
-    });
+        ]
+      }),
+      "Stripe checkout did not respond in time. Refresh the booking before trying again."
+    );
 
     if (!session.url) {
       throw new HttpError(502, "Stripe did not return a checkout URL.");
@@ -170,7 +174,10 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       throw new HttpError(503, "Stripe is not configured yet.");
     }
 
-    const session = await this.stripe.checkout.sessions.retrieve(checkoutSessionId);
+    const session = await runStripeRequest(
+      () => this.stripe!.checkout.sessions.retrieve(checkoutSessionId),
+      "Stripe checkout status did not respond in time. Refresh the booking and try again."
+    );
     const paymentIntentId =
       typeof session.payment_intent === "string" ? session.payment_intent : undefined;
 
@@ -190,18 +197,21 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       throw new HttpError(503, "Stripe is not configured yet.");
     }
 
-    const intent = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
-      expand: ["latest_charge.balance_transaction"]
-    });
-    if (!intent.latest_charge) {
-      throw new HttpError(409, "Stripe has not created a charge for this payment yet.");
-    }
-    const charge =
-      typeof intent.latest_charge === "string"
-        ? await this.stripe.charges.retrieve(intent.latest_charge, {
-            expand: ["balance_transaction"]
-          })
-        : intent.latest_charge;
+    const charge = await runStripeRequest(async () => {
+      const intent = await this.stripe!.paymentIntents.retrieve(paymentIntentId, {
+        expand: ["latest_charge.balance_transaction"]
+      });
+      if (!intent.latest_charge) {
+        throw new HttpError(409, "Stripe has not created a charge for this payment yet.");
+      }
+      const charge =
+        typeof intent.latest_charge === "string"
+          ? await this.stripe!.charges.retrieve(intent.latest_charge, {
+              expand: ["balance_transaction"]
+            })
+          : intent.latest_charge;
+      return charge;
+    }, "Stripe payment details did not respond in time. Refresh the booking and try again.");
     const balanceTransaction = charge.balance_transaction;
     if (!balanceTransaction || typeof balanceTransaction === "string") {
       throw new HttpError(502, "Stripe did not return the charge balance transaction.");
@@ -281,16 +291,19 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       throw new HttpError(503, "Stripe is not configured yet.");
     }
 
-    const refund = await this.stripe.refunds.create({
-      payment_intent: input.paymentIntentId,
-      amount: input.amountCents,
-      reason: "requested_by_customer",
-      metadata: {
-        bookingId: input.bookingId,
-        paymentId: input.paymentId,
-        refundReason: input.reason
-      }
-    });
+    const refund = await runStripeRequest(
+      () => this.stripe!.refunds.create({
+        payment_intent: input.paymentIntentId,
+        amount: input.amountCents,
+        reason: "requested_by_customer",
+        metadata: {
+          bookingId: input.bookingId,
+          paymentId: input.paymentId,
+          refundReason: input.reason
+        }
+      }),
+      "Stripe refund processing did not respond in time. Refresh the payment before trying again."
+    );
 
     return {
       refundId: refund.id,

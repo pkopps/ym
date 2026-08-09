@@ -5,6 +5,7 @@ import {
   ProviderProfile
 } from "@yardmatch/contracts";
 import { HttpError } from "../http";
+import { createStripeClient, runStripeRequest } from "../integrations/stripeRequest";
 
 export interface StripeRecipientReadiness {
   stripeAccountId: string;
@@ -54,7 +55,7 @@ export class StripeConnectService implements StripeConnectGateway {
 
   public constructor(secretKey = process.env.STRIPE_SECRET_KEY) {
     if (secretKey?.trim()) {
-      this.stripe = new Stripe(secretKey.trim());
+      this.stripe = createStripeClient(secretKey.trim());
     }
   }
 
@@ -68,42 +69,45 @@ export class StripeConnectService implements StripeConnectGateway {
     if (!this.stripe) {
       throw new HttpError(503, "Stripe Connect is not configured yet.");
     }
-    const account = await this.stripe.v2.core.accounts.create({
-      contact_email: provider.email,
-      contact_phone: provider.phone,
-      display_name: provider.companyName,
-      dashboard: "express",
-      defaults: {
-        currency: "usd",
-        locales: ["en-US"],
-        responsibilities: {
-          fees_collector: "application",
-          losses_collector: "application"
+    const account = await runStripeRequest(
+      () => this.stripe!.v2.core.accounts.create({
+        contact_email: provider.email,
+        contact_phone: provider.phone,
+        display_name: provider.companyName,
+        dashboard: "express",
+        defaults: {
+          currency: "usd",
+          locales: ["en-US"],
+          responsibilities: {
+            fees_collector: "application",
+            losses_collector: "application"
+          },
+          profile: {
+            doing_business_as: provider.companyName,
+            product_description: "Local lawn and property-care services booked through YardMatch."
+          }
         },
-        profile: {
-          doing_business_as: provider.companyName,
-          product_description: "Local lawn and property-care services booked through YardMatch."
-        }
-      },
-      identity: {
-        country: provider.address.country
-      },
-      configuration: {
-        recipient: {
-          capabilities: {
-            stripe_balance: {
-              stripe_transfers: {
-                requested: true
+        identity: {
+          country: provider.address.country
+        },
+        configuration: {
+          recipient: {
+            capabilities: {
+              stripe_balance: {
+                stripe_transfers: {
+                  requested: true
+                }
               }
             }
           }
-        }
-      },
-      metadata: {
-        yardmatchProviderId: provider.id
-      },
-      include: ["configuration.recipient", "requirements", "future_requirements"]
-    });
+        },
+        metadata: {
+          yardmatchProviderId: provider.id
+        },
+        include: ["configuration.recipient", "requirements", "future_requirements"]
+      }),
+      "Stripe Connect did not respond in time. Refresh payout setup before trying again."
+    );
     return this.mapReadiness(account);
   }
 
@@ -113,9 +117,12 @@ export class StripeConnectService implements StripeConnectGateway {
     if (!this.stripe) {
       throw new HttpError(503, "Stripe Connect is not configured yet.");
     }
-    const account = await this.stripe.v2.core.accounts.retrieve(stripeAccountId, {
-      include: ["configuration.recipient", "requirements", "future_requirements"]
-    });
+    const account = await runStripeRequest(
+      () => this.stripe!.v2.core.accounts.retrieve(stripeAccountId, {
+        include: ["configuration.recipient", "requirements", "future_requirements"]
+      }),
+      "Stripe Connect status did not respond in time. Refresh payout setup and try again."
+    );
     return this.mapReadiness(account);
   }
 
@@ -127,21 +134,24 @@ export class StripeConnectService implements StripeConnectGateway {
     if (!this.stripe) {
       throw new HttpError(503, "Stripe Connect is not configured yet.");
     }
-    const link = await this.stripe.v2.core.accountLinks.create({
-      account: input.stripeAccountId,
-      use_case: {
-        type: "account_onboarding",
-        account_onboarding: {
-          configurations: ["recipient"],
-          collection_options: {
-            fields: "eventually_due",
-            future_requirements: "include"
-          },
-          return_url: input.returnUrl,
-          refresh_url: input.refreshUrl
+    const link = await runStripeRequest(
+      () => this.stripe!.v2.core.accountLinks.create({
+        account: input.stripeAccountId,
+        use_case: {
+          type: "account_onboarding",
+          account_onboarding: {
+            configurations: ["recipient"],
+            collection_options: {
+              fields: "eventually_due",
+              future_requirements: "include"
+            },
+            return_url: input.returnUrl,
+            refresh_url: input.refreshUrl
+          }
         }
-      }
-    });
+      }),
+      "Stripe Connect onboarding did not respond in time. Refresh payout setup before trying again."
+    );
     return { url: link.url, expiresAt: link.expires_at };
   }
 
@@ -157,20 +167,23 @@ export class StripeConnectService implements StripeConnectGateway {
     if (!this.stripe) {
       throw new HttpError(503, "Stripe Connect is not configured yet.");
     }
-    const transfer = await this.stripe.transfers.create(
-      {
-        amount: input.amountCents,
-        currency: input.currency,
-        destination: input.stripeAccountId,
-        source_transaction: input.sourceTransactionId,
-        transfer_group: `booking_${input.bookingId}`,
-        metadata: {
-          bookingId: input.bookingId,
-          settlementId: input.settlementId,
-          recipientRole: "provider"
-        }
-      },
-      { idempotencyKey: input.idempotencyKey }
+    const transfer = await runStripeRequest(
+      () => this.stripe!.transfers.create(
+        {
+          amount: input.amountCents,
+          currency: input.currency,
+          destination: input.stripeAccountId,
+          source_transaction: input.sourceTransactionId,
+          transfer_group: `booking_${input.bookingId}`,
+          metadata: {
+            bookingId: input.bookingId,
+            settlementId: input.settlementId,
+            recipientRole: "provider"
+          }
+        },
+        { idempotencyKey: input.idempotencyKey }
+      ),
+      "Stripe transfer processing did not respond in time. Refresh the payout run before retrying."
     );
     return { transferId: transfer.id };
   }
@@ -185,17 +198,20 @@ export class StripeConnectService implements StripeConnectGateway {
     if (!this.stripe) {
       throw new HttpError(503, "Stripe Connect is not configured yet.");
     }
-    const reversal = await this.stripe.transfers.createReversal(
-      input.transferId,
-      {
-        amount: input.amountCents,
-        metadata: {
-          bookingId: input.bookingId,
-          settlementId: input.settlementId,
-          recipientRole: "provider"
-        }
-      },
-      { idempotencyKey: input.idempotencyKey }
+    const reversal = await runStripeRequest(
+      () => this.stripe!.transfers.createReversal(
+        input.transferId,
+        {
+          amount: input.amountCents,
+          metadata: {
+            bookingId: input.bookingId,
+            settlementId: input.settlementId,
+            recipientRole: "provider"
+          }
+        },
+        { idempotencyKey: input.idempotencyKey }
+      ),
+      "Stripe transfer reversal did not respond in time. Refresh the payout status before retrying."
     );
     return { reversalId: reversal.id };
   }

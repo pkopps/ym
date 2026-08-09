@@ -1,4 +1,5 @@
 import { Address } from "@yardmatch/contracts";
+import { withAbortableTimeout } from "../integrations/outboundRequestTimeout";
 
 export type AddressValidationOutcome = {
   address: Address;
@@ -36,7 +37,10 @@ type GoogleAddressValidationResponse = {
 };
 
 export class AddressValidationService {
-  public constructor(private readonly googleAddressValidationApiKey?: string) {}
+  public constructor(
+    private readonly googleAddressValidationApiKey?: string,
+    private readonly externalRequestTimeoutMs = 5_000
+  ) {}
 
   public async validateAddress(address: Address): Promise<AddressValidationOutcome> {
     if (!this.googleAddressValidationApiKey) {
@@ -46,37 +50,44 @@ export class AddressValidationService {
         confidence: "local-only"
       };
     }
+    const googleAddressValidationApiKey = this.googleAddressValidationApiKey;
 
     try {
-      const response = await fetch(
-        `https://addressvalidation.googleapis.com/v1:validateAddress?key=${encodeURIComponent(
-          this.googleAddressValidationApiKey
-        )}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            address: {
-              regionCode: address.country || "US",
-              addressLines: [address.line1, address.line2].filter(Boolean)
+      return await withAbortableTimeout(async (signal) => {
+        const response = await fetch(
+          `https://addressvalidation.googleapis.com/v1:validateAddress?key=${encodeURIComponent(
+            googleAddressValidationApiKey
+          )}`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
             },
-            enableUspsCass: true
-          })
+            body: JSON.stringify({
+              address: {
+                regionCode: address.country || "US",
+                addressLines: [address.line1, address.line2].filter(Boolean)
+              },
+              enableUspsCass: true
+            }),
+            signal
+          }
+        );
+
+        if (!response.ok) {
+          return {
+            address,
+            source: "local-rules" as const,
+            confidence: "local-only" as const
+          };
         }
-      );
 
-      if (!response.ok) {
-        return {
-          address,
-          source: "local-rules",
-          confidence: "local-only"
-        };
-      }
-
-      const payload = (await response.json()) as GoogleAddressValidationResponse;
-      return this.fromGoogleValidationPayload(address, payload);
+        const payload = (await response.json()) as GoogleAddressValidationResponse;
+        return this.fromGoogleValidationPayload(address, payload);
+      }, {
+        timeoutMs: this.externalRequestTimeoutMs,
+        timeoutMessage: "Google address validation timed out."
+      });
     } catch {
       return {
         address,

@@ -9,6 +9,7 @@ import {
   Address,
   AuthenticatedUserEnvelope,
   AuthFlowMode,
+  isMarketplaceApiTimeoutError,
   PlaceSuggestion,
   TwoFactorChallengeResponse
 } from "@yardmatch/contracts";
@@ -134,15 +135,19 @@ export function CustomerAuthScreen({
           setSuggestions(response.suggestions);
           setAddressSearchMessage(response.searchMessage ?? "");
         })
-        .catch(() => {
+        .catch((error) => {
           setSuggestions([]);
-          setAddressSearchMessage("");
+          setAddressSearchMessage(
+            isMarketplaceApiTimeoutError(error)
+              ? error.message
+              : i18n.t("api.places.search_failed")
+          );
         })
         .finally(() => setIsSearching(false));
     }, 220);
 
     return () => clearTimeout(timeoutId);
-  }, [addressQuery, mode]);
+  }, [addressQuery, i18n, mode]);
 
   function clearPendingSignupState() {
     setPendingSignupToken("");

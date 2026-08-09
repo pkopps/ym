@@ -1,4 +1,8 @@
 import { NotificationChannel, NotificationOpsDeliveryPolicy } from "@yardmatch/contracts";
+import {
+  DEFAULT_EXTERNAL_REQUEST_TIMEOUT_MS,
+  withAbortableTimeout
+} from "../integrations/outboundRequestTimeout";
 
 export interface OpsAlertTarget {
   channel: "email" | "sms";
@@ -37,6 +41,10 @@ export class NotificationDeliveryService {
   private readonly stagingAllowedPushTokens = new Set(
     this.parseCsv(process.env.STAGING_NOTIFICATION_ALLOWED_PUSH_TOKENS)
   );
+
+  public constructor(
+    private readonly externalRequestTimeoutMs = DEFAULT_EXTERNAL_REQUEST_TIMEOUT_MS
+  ) {}
 
   public async dispatch(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
     if (this.staging && input.channel !== "in-app" && !this.isStagingDestinationAllowed(input)) {
@@ -222,81 +230,95 @@ export class NotificationDeliveryService {
   }
 
   private async dispatchExpoPush(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json"
-      },
-      body: JSON.stringify({
-        to: input.destination,
-        title: input.title,
-        body: input.body,
-        data: input.data
-      })
-    });
+    return withAbortableTimeout(async (signal) => {
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({
+          to: input.destination,
+          title: input.title,
+          body: input.body,
+          data: input.data
+        }),
+        signal
+      });
 
-    if (!response.ok) {
-      throw new Error(`Expo push request failed with status ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Expo push request failed with status ${response.status}`);
+      }
 
-    const payload = (await response.json()) as {
-      data?: {
-        id?: string;
-        status?: string;
-        message?: string;
+      const payload = (await response.json()) as {
+        data?: {
+          id?: string;
+          status?: string;
+          message?: string;
+        };
+        errors?: Array<{ message?: string }>;
       };
-      errors?: Array<{ message?: string }>;
-    };
 
-    const errorMessage = payload.errors?.[0]?.message ?? (payload.data?.status === "error" ? payload.data.message : undefined);
-    if (errorMessage) {
-      throw new Error(errorMessage);
-    }
+      const errorMessage =
+        payload.errors?.[0]?.message ??
+        (payload.data?.status === "error" ? payload.data.message : undefined);
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
 
-    return {
-      provider: "expo-push",
-      sentAt: new Date().toISOString(),
-      externalId: payload.data?.id ?? `expo-push_${crypto.randomUUID()}`
-    };
+      return {
+        provider: "expo-push",
+        sentAt: new Date().toISOString(),
+        externalId: payload.data?.id ?? `expo-push_${crypto.randomUUID()}`
+      };
+    }, {
+      timeoutMs: this.externalRequestTimeoutMs,
+      timeoutMessage: "Expo push delivery did not respond in time. Try the delivery again."
+    });
   }
 
   private async dispatchResendEmail(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.resendApiKey}`
-      },
-      body: JSON.stringify({
-        from: this.notificationEmailFrom,
-        to: [input.destination],
-        subject: input.title,
-        text: input.body
-      })
-    });
+    return withAbortableTimeout(async (signal) => {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.resendApiKey}`
+        },
+        body: JSON.stringify({
+          from: this.notificationEmailFrom,
+          to: [input.destination],
+          subject: input.title,
+          text: input.body
+        }),
+        signal
+      });
 
-    if (!response.ok) {
-      const payload = await response.text();
-      throw new Error(`Resend request failed with status ${response.status}: ${payload.slice(0, 200)}`);
-    }
+      if (!response.ok) {
+        const payload = await response.text();
+        throw new Error(`Resend request failed with status ${response.status}: ${payload.slice(0, 200)}`);
+      }
 
-    const payload = (await response.json()) as {
-      id?: string;
-      error?: {
-        message?: string;
+      const payload = (await response.json()) as {
+        id?: string;
+        error?: {
+          message?: string;
+        };
       };
-    };
 
-    if (payload.error?.message) {
-      throw new Error(payload.error.message);
-    }
+      if (payload.error?.message) {
+        throw new Error(payload.error.message);
+      }
 
-    return {
-      provider: "resend",
-      sentAt: new Date().toISOString(),
-      externalId: payload.id ?? `resend_${crypto.randomUUID()}`
-    };
+      return {
+        provider: "resend",
+        sentAt: new Date().toISOString(),
+        externalId: payload.id ?? `resend_${crypto.randomUUID()}`
+      };
+    }, {
+      timeoutMs: this.externalRequestTimeoutMs,
+      timeoutMessage: "Email delivery did not respond in time. Try requesting or sending it again."
+    });
   }
 
   private async dispatchTwilioSms(input: NotificationDispatchInput): Promise<NotificationDispatchResult> {
@@ -304,42 +326,48 @@ export class NotificationDeliveryService {
     const authToken = this.twilioAuthToken as string;
     const fromNumber = this.twilioFromNumber as string;
     const body = input.body === input.title ? input.body : `${input.title}\n${input.body}`;
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`
-        },
-        body: new URLSearchParams({
-          To: input.destination,
-          From: fromNumber,
-          Body: body
-        }).toString()
+    return withAbortableTimeout(async (signal) => {
+      const response = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(accountSid)}/Messages.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`
+          },
+          body: new URLSearchParams({
+            To: input.destination,
+            From: fromNumber,
+            Body: body
+          }).toString(),
+          signal
+        }
+      );
+
+      if (!response.ok) {
+        const payload = await response.text();
+        throw new Error(`Twilio request failed with status ${response.status}: ${payload.slice(0, 200)}`);
       }
-    );
 
-    if (!response.ok) {
-      const payload = await response.text();
-      throw new Error(`Twilio request failed with status ${response.status}: ${payload.slice(0, 200)}`);
-    }
+      const payload = (await response.json()) as {
+        sid?: string;
+        message?: string;
+        status?: string;
+        code?: number;
+      };
 
-    const payload = (await response.json()) as {
-      sid?: string;
-      message?: string;
-      status?: string;
-      code?: number;
-    };
+      if (payload.code || payload.status === "failed") {
+        throw new Error(payload.message ?? "Twilio SMS delivery failed.");
+      }
 
-    if (payload.code || payload.status === "failed") {
-      throw new Error(payload.message ?? "Twilio SMS delivery failed.");
-    }
-
-    return {
-      provider: "twilio",
-      sentAt: new Date().toISOString(),
-      externalId: payload.sid ?? `twilio_${crypto.randomUUID()}`
-    };
+      return {
+        provider: "twilio",
+        sentAt: new Date().toISOString(),
+        externalId: payload.sid ?? `twilio_${crypto.randomUUID()}`
+      };
+    }, {
+      timeoutMs: this.externalRequestTimeoutMs,
+      timeoutMessage: "SMS delivery did not respond in time. Try requesting or sending it again."
+    });
   }
 }

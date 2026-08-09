@@ -1,5 +1,9 @@
 import { createPrivateKey, createSign } from "node:crypto";
 import { HttpError } from "../http";
+import {
+  DEFAULT_EXTERNAL_REQUEST_TIMEOUT_MS,
+  withAbortableTimeout
+} from "../integrations/outboundRequestTimeout";
 
 export type SocialAuthProvider = "google" | "apple";
 
@@ -35,7 +39,10 @@ function deriveDisplayNameFromEmail(email: string): string {
 }
 
 export class SocialAuthService {
-  public constructor(private readonly apiBaseUrl: string) {}
+  public constructor(
+    private readonly apiBaseUrl: string,
+    private readonly externalRequestTimeoutMs = DEFAULT_EXTERNAL_REQUEST_TIMEOUT_MS
+  ) {}
 
   public isConfigured(provider: SocialAuthProvider): boolean {
     return this.getMissingConfiguration(provider).length === 0;
@@ -113,47 +120,59 @@ export class SocialAuthService {
   }
 
   private async exchangeGoogleCode(code: string): Promise<SocialIdentity> {
-    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!.trim(),
-        client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!.trim(),
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: this.getCallbackUrl("google")
-      })
+    const tokenPayload = await withAbortableTimeout(async (signal) => {
+      const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!.trim(),
+          client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!.trim(),
+          code,
+          grant_type: "authorization_code",
+          redirect_uri: this.getCallbackUrl("google")
+        }),
+        signal
+      });
+
+      if (!tokenResponse.ok) {
+        throw new HttpError(502, "Google token exchange failed");
+      }
+
+      return (await tokenResponse.json()) as {
+        access_token?: string;
+      };
+    }, {
+      timeoutMs: this.externalRequestTimeoutMs,
+      timeoutMessage: "Google sign-in took too long. Please try again."
     });
-
-    if (!tokenResponse.ok) {
-      throw new HttpError(502, "Google token exchange failed");
-    }
-
-    const tokenPayload = (await tokenResponse.json()) as {
-      access_token?: string;
-    };
     if (!tokenPayload.access_token) {
       throw new HttpError(502, "Google token exchange did not return an access token");
     }
 
-    const userInfoResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-      headers: {
-        Authorization: `Bearer ${tokenPayload.access_token}`
+    const userInfo = await withAbortableTimeout(async (signal) => {
+      const userInfoResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+        headers: {
+          Authorization: `Bearer ${tokenPayload.access_token}`
+        },
+        signal
+      });
+
+      if (!userInfoResponse.ok) {
+        throw new HttpError(502, "Google user info lookup failed");
       }
+
+      return (await userInfoResponse.json()) as {
+        sub?: string;
+        email?: string;
+        email_verified?: boolean;
+        name?: string;
+      };
+    }, {
+      timeoutMs: this.externalRequestTimeoutMs,
+      timeoutMessage: "Google sign-in took too long. Please try again."
     });
-
-    if (!userInfoResponse.ok) {
-      throw new HttpError(502, "Google user info lookup failed");
-    }
-
-    const userInfo = (await userInfoResponse.json()) as {
-      sub?: string;
-      email?: string;
-      email_verified?: boolean;
-      name?: string;
-    };
 
     if (!userInfo.sub || !userInfo.email) {
       throw new HttpError(502, "Google user info is missing required identity fields");
@@ -169,27 +188,33 @@ export class SocialAuthService {
   }
 
   private async exchangeAppleCode(code: string): Promise<SocialIdentity> {
-    const tokenResponse = await fetch("https://appleid.apple.com/auth/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        client_id: process.env.APPLE_CLIENT_ID!.trim(),
-        client_secret: this.buildAppleClientSecret(),
-        code,
-        grant_type: "authorization_code",
-        redirect_uri: this.getCallbackUrl("apple")
-      })
+    const tokenPayload = await withAbortableTimeout(async (signal) => {
+      const tokenResponse = await fetch("https://appleid.apple.com/auth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          client_id: process.env.APPLE_CLIENT_ID!.trim(),
+          client_secret: this.buildAppleClientSecret(),
+          code,
+          grant_type: "authorization_code",
+          redirect_uri: this.getCallbackUrl("apple")
+        }),
+        signal
+      });
+
+      if (!tokenResponse.ok) {
+        throw new HttpError(502, "Apple token exchange failed");
+      }
+
+      return (await tokenResponse.json()) as {
+        id_token?: string;
+      };
+    }, {
+      timeoutMs: this.externalRequestTimeoutMs,
+      timeoutMessage: "Apple sign-in took too long. Please try again."
     });
-
-    if (!tokenResponse.ok) {
-      throw new HttpError(502, "Apple token exchange failed");
-    }
-
-    const tokenPayload = (await tokenResponse.json()) as {
-      id_token?: string;
-    };
 
     if (!tokenPayload.id_token) {
       throw new HttpError(502, "Apple token exchange did not return an identity token");

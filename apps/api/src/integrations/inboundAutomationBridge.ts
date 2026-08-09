@@ -1,4 +1,9 @@
 import { ApiRoutes } from "@yardmatch/contracts";
+import {
+  DEFAULT_EXTERNAL_REQUEST_TIMEOUT_MS,
+  ExternalRequestTimeoutError,
+  withAbortableTimeout
+} from "./outboundRequestTimeout";
 
 type BridgeSecretKind = "lead" | "review";
 
@@ -16,6 +21,7 @@ export interface InboundAutomationBridgeConfig {
   inboundLeadWebhookSecret?: string;
   inboundReviewResponseWebhookSecret?: string;
   fetchImpl?: typeof fetch;
+  requestTimeoutMs?: number;
 }
 
 export const inboundAutomationBridgeRoutes: InboundAutomationBridgeRoute[] = [
@@ -65,7 +71,11 @@ export function readInboundAutomationBridgeConfigFromEnv(
       .replace(/\/+$/, ""),
     bridgeSecret: env.INBOUND_AUTOMATION_BRIDGE_SECRET?.trim() || undefined,
     inboundLeadWebhookSecret: env.INBOUND_LEAD_WEBHOOK_SECRET?.trim() || undefined,
-    inboundReviewResponseWebhookSecret: env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET?.trim() || undefined
+    inboundReviewResponseWebhookSecret: env.INBOUND_REVIEW_RESPONSE_WEBHOOK_SECRET?.trim() || undefined,
+    requestTimeoutMs: readPositiveNumber(
+      env.INBOUND_AUTOMATION_BRIDGE_TIMEOUT_MS,
+      DEFAULT_EXTERNAL_REQUEST_TIMEOUT_MS
+    )
   };
 }
 
@@ -116,12 +126,21 @@ export function createInboundAutomationBridgeHandler(config: InboundAutomationBr
     headers.set(route.secretHeaderName, upstreamSecret);
 
     try {
-      const upstreamResponse = await fetchImpl(`${targetBaseUrl}${route.targetPath}`, {
-        method: "POST",
-        headers,
-        body
+      const { upstreamResponse, responseText } = await withAbortableTimeout(async (signal) => {
+        const upstreamResponse = await fetchImpl(`${targetBaseUrl}${route.targetPath}`, {
+          method: "POST",
+          headers,
+          body,
+          signal
+        });
+        return {
+          upstreamResponse,
+          responseText: await upstreamResponse.text()
+        };
+      }, {
+        timeoutMs: config.requestTimeoutMs,
+        timeoutMessage: "The YardMatch API did not respond in time. Retry this relay request."
       });
-      const responseText = await upstreamResponse.text();
       const responseHeaders = new Headers();
       const upstreamContentType = upstreamResponse.headers.get("content-type");
       if (upstreamContentType) {
@@ -132,14 +151,21 @@ export function createInboundAutomationBridgeHandler(config: InboundAutomationBr
         headers: responseHeaders
       });
     } catch (error) {
-      return jsonResponse(502, {
+      return jsonResponse(error instanceof ExternalRequestTimeoutError ? 504 : 502, {
         message:
           error instanceof Error
-            ? `Bridge could not reach the YardMatch API: ${error.message}`
+            ? error instanceof ExternalRequestTimeoutError
+              ? error.message
+              : `Bridge could not reach the YardMatch API: ${error.message}`
             : "Bridge could not reach the YardMatch API."
       });
     }
   };
+}
+
+function readPositiveNumber(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function jsonResponse(status: number, payload: Record<string, unknown>): Response {

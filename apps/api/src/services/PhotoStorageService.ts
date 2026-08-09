@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { del, get, put } from "@vercel/blob";
 import { BookingEvidenceEntry } from "@yardmatch/contracts";
+import { withAbortableTimeout } from "../integrations/outboundRequestTimeout";
 import { ValidatedEvidenceImage } from "../media/imageValidation";
 
 export type PhotoStorageMode = "inline" | "vercel-blob-private";
@@ -24,7 +25,8 @@ export class PhotoStorageService {
   public constructor(
     private readonly apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? "4001"}`,
     mode = process.env.PHOTO_STORAGE_MODE?.trim(),
-    blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim()
+    blobToken = process.env.BLOB_READ_WRITE_TOKEN?.trim(),
+    private readonly externalRequestTimeoutMs = 15_000
   ) {
     this.mode = mode === "vercel-blob-private" ? mode : "inline";
     this.blobToken = blobToken;
@@ -44,15 +46,23 @@ export class PhotoStorageService {
     }
 
     const objectPathname = `booking-evidence/${bookingId}/${evidenceId}.${image.extension}`;
-    await put(objectPathname, image.bytes, {
-      access: "private",
-      token: this.blobToken,
-      contentType: image.contentType,
-      addRandomSuffix: false,
-      allowOverwrite: false,
-      maximumSizeInBytes: image.bytes.length,
-      cacheControlMaxAge: 60
-    });
+    await withAbortableTimeout(
+      (signal) =>
+        put(objectPathname, image.bytes, {
+          access: "private",
+          token: this.blobToken,
+          contentType: image.contentType,
+          addRandomSuffix: false,
+          allowOverwrite: false,
+          maximumSizeInBytes: image.bytes.length,
+          cacheControlMaxAge: 60,
+          abortSignal: signal
+        }),
+      {
+        timeoutMs: this.externalRequestTimeoutMs,
+        timeoutMessage: "Photo storage did not respond in time. Try saving the photo again."
+      }
+    );
     const accessToken = randomBytes(32).toString("base64url");
     return {
       deliveryUrl: this.buildPrivateDeliveryUrl(evidenceId, accessToken),
@@ -81,25 +91,40 @@ export class PhotoStorageService {
     if (!this.blobToken) {
       throw new Error("Private photo storage is missing BLOB_READ_WRITE_TOKEN");
     }
-    const result = await get(objectPathname, {
-      access: "private",
-      token: this.blobToken,
-      useCache: false
+    return withAbortableTimeout(async (signal) => {
+      const result = await get(objectPathname, {
+        access: "private",
+        token: this.blobToken,
+        useCache: false,
+        abortSignal: signal
+      });
+      if (!result || result.statusCode !== 200) {
+        return undefined;
+      }
+      return {
+        bytes: Buffer.from(await new Response(result.stream).arrayBuffer()),
+        contentType: result.blob.contentType
+      };
+    }, {
+      timeoutMs: this.externalRequestTimeoutMs,
+      timeoutMessage: "Photo storage did not respond in time. Try loading the photo again."
     });
-    if (!result || result.statusCode !== 200) {
-      return undefined;
-    }
-    return {
-      bytes: Buffer.from(await new Response(result.stream).arrayBuffer()),
-      contentType: result.blob.contentType
-    };
   }
 
   public async remove(evidence: Pick<BookingEvidenceEntry, "imageObjectPathname">): Promise<void> {
     if (this.mode !== "vercel-blob-private" || !evidence.imageObjectPathname || !this.blobToken) {
       return;
     }
-    await del(evidence.imageObjectPathname, { token: this.blobToken });
+    await withAbortableTimeout(
+      (signal) => del(evidence.imageObjectPathname as string, {
+        token: this.blobToken,
+        abortSignal: signal
+      }),
+      {
+        timeoutMs: this.externalRequestTimeoutMs,
+        timeoutMessage: "Photo storage did not respond in time. Try removing the photo again."
+      }
+    );
   }
 
   private buildPrivateDeliveryUrl(evidenceId: string, accessToken: string): string {

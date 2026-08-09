@@ -9,6 +9,7 @@ import {
   Address,
   AuthenticatedUserEnvelope,
   AuthFlowMode,
+  isMarketplaceApiTimeoutError,
   PlaceSuggestion,
   TwoFactorChallengeResponse
 } from "@yardmatch/contracts";
@@ -84,6 +85,7 @@ export function ProviderAuthScreen({
   const [addressQuery, setAddressQuery] = useState("");
   const [address, setAddress] = useState<Address>(createEmptyAddress());
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [addressSearchMessage, setAddressSearchMessage] = useState("");
   const [selectedSuggestion, setSelectedSuggestion] = useState<PlaceSuggestion | undefined>();
   const [isSearching, setIsSearching] = useState(false);
   const [pendingSignupToken, setPendingSignupToken] = useState("");
@@ -121,6 +123,7 @@ export function ProviderAuthScreen({
   useEffect(() => {
     if (mode !== "signup" || signupStep !== "business" || addressQuery.trim().length < 2) {
       setSuggestions([]);
+      setAddressSearchMessage("");
       return;
     }
 
@@ -128,13 +131,23 @@ export function ProviderAuthScreen({
       setIsSearching(true);
       createProviderMobileApiClient()
         .searchPlaces(addressQuery)
-        .then((response) => setSuggestions(response.suggestions))
-        .catch(() => setSuggestions([]))
+        .then((response) => {
+          setSuggestions(response.suggestions);
+          setAddressSearchMessage(response.searchMessage ?? "");
+        })
+        .catch((error) => {
+          setSuggestions([]);
+          setAddressSearchMessage(
+            isMarketplaceApiTimeoutError(error)
+              ? error.message
+              : i18n.t("api.places.search_failed")
+          );
+        })
         .finally(() => setIsSearching(false));
     }, 220);
 
     return () => clearTimeout(timeoutId);
-  }, [addressQuery, mode, signupStep]);
+  }, [addressQuery, i18n, mode, signupStep]);
 
   function clearPendingSignupState() {
     setPendingSignupToken("");
@@ -584,6 +597,8 @@ export function ProviderAuthScreen({
                   </View>
                 ) : addressQuery.trim().length >= 2 && isSearching ? (
                   <Text style={styles.helper}>{i18n.t("mobile.auth.searching_nearby_areas")}</Text>
+                ) : addressQuery.trim().length >= 2 && addressSearchMessage ? (
+                  <Text style={styles.helper}>{addressSearchMessage}</Text>
                 ) : null}
                 <TextInput
                   autoCapitalize="words"

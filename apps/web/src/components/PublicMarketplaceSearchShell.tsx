@@ -2,6 +2,7 @@
 
 import {
   isPlaceSuggestionSafeToAutoSelect,
+  isMarketplaceApiTimeoutError,
   PlaceSuggestion,
   ServiceCategory
 } from "@yardmatch/contracts";
@@ -351,9 +352,13 @@ export function PublicMarketplaceSearchShell({
     } catch (error) {
       const code = typeof error === "object" && error && "code" in error ? Number(error.code) : undefined;
       setLocationGuidance(
-        code === 1
-          ? i18n.t("api.places.permission_blocked")
-          : i18n.t("api.places.browser_location_failed")
+        isMarketplaceApiTimeoutError(error)
+          ? error.message
+          : code === 1
+            ? i18n.t("api.places.permission_blocked")
+            : code === 3
+              ? i18n.t("api.places.location_lookup_timed_out")
+              : i18n.t("api.places.browser_location_failed")
       );
     } finally {
       setIsResolvingLocation(false);
@@ -386,9 +391,14 @@ export function PublicMarketplaceSearchShell({
             onSelectedSuggestionChange(undefined);
           }
         })
-        .catch(() => {
+        .catch((error) => {
           setSuggestions([]);
-          setSearchMessage(undefined);
+          setSearchMessage(
+            isMarketplaceApiTimeoutError(error)
+              ? error.message
+              : i18n.t("api.places.search_failed")
+          );
+          setIsSuggestionMenuOpen(true);
         })
         .finally(() => {
           setHasFinishedSearch(true);
@@ -397,7 +407,7 @@ export function PublicMarketplaceSearchShell({
     }, 220);
 
     return () => window.clearTimeout(timeoutId);
-  }, [api, areaQuery, onSelectedSuggestionChange, selectedSuggestion]);
+  }, [api, areaQuery, i18n, onSelectedSuggestionChange, selectedSuggestion]);
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {

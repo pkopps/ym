@@ -172,12 +172,55 @@ import {
 } from "./types";
 import { ApiRoutes } from "./routes";
 
+const DEFAULT_API_REQUEST_TIMEOUT_MS = 30_000;
+const PLACE_SEARCH_REQUEST_TIMEOUT_MS = 10_000;
+
+export interface MarketplaceApiClientOptions {
+  requestTimeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}
+
+export class MarketplaceApiTimeoutError extends Error {
+  public readonly code = "REQUEST_TIMEOUT";
+
+  public constructor(
+    public readonly path: string,
+    public readonly timeoutMs: number,
+    message: string
+  ) {
+    super(message);
+    this.name = "MarketplaceApiTimeoutError";
+  }
+}
+
+export function isMarketplaceApiTimeoutError(error: unknown): error is MarketplaceApiTimeoutError {
+  return Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "REQUEST_TIMEOUT" &&
+      "message" in error &&
+      typeof error.message === "string"
+  );
+}
+
 export class MarketplaceApiClient {
   private authToken?: string;
   private locale?: string;
   private onUnauthorized?: (error: Error) => void;
+  private readonly requestTimeoutMs: number;
+  private readonly fetchImpl: typeof fetch;
 
-  public constructor(private readonly baseUrl: string) {}
+  public constructor(
+    private readonly baseUrl: string,
+    options: MarketplaceApiClientOptions = {}
+  ) {
+    this.requestTimeoutMs =
+      Number.isFinite(options.requestTimeoutMs) && Number(options.requestTimeoutMs) > 0
+        ? Number(options.requestTimeoutMs)
+        : DEFAULT_API_REQUEST_TIMEOUT_MS;
+    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+  }
 
   public setAuthToken(token: string | undefined): void {
     this.authToken = token;
@@ -210,41 +253,78 @@ export class MarketplaceApiClient {
     }
   }
 
-  // Shared clients use one JSON helper so browsers and React Native stay consistent.
-  private async postJson<TResponse>(path: string, payload: unknown): Promise<TResponse> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      const error = await this.buildError(response, path);
-      if (response.status === 401) {
-        this.onUnauthorized?.(error);
-      }
-      throw error;
-    }
-
-    return (await response.json()) as TResponse;
+  private buildTimeoutError(path: string, timeoutMs: number): MarketplaceApiTimeoutError {
+    const message = this.locale?.toLowerCase().startsWith("es")
+      ? "YardMatch esta tardando mas de lo esperado. Revisa tu conexion e intentalo de nuevo."
+      : "YardMatch is taking longer than expected. Check your connection and try again.";
+    return new MarketplaceApiTimeoutError(path, timeoutMs, message);
   }
 
-  private async getJson<TResponse>(path: string): Promise<TResponse> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: "GET",
-      headers: this.buildHeaders(),
-      cache: "no-store"
+  private async requestJson<TResponse>(
+    path: string,
+    init: RequestInit,
+    timeoutMs = this.requestTimeoutMs
+  ): Promise<TResponse> {
+    const controller = new AbortController();
+    let didTimeout = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeoutId = setTimeout(() => {
+        didTimeout = true;
+        reject(this.buildTimeoutError(path, timeoutMs));
+        controller.abort();
+      }, timeoutMs);
     });
 
-    if (!response.ok) {
-      const error = await this.buildError(response, path);
-      if (response.status === 401) {
-        this.onUnauthorized?.(error);
+    try {
+      const requestPromise = (async () => {
+        const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+          ...init,
+          headers: this.buildHeaders(),
+          signal: controller.signal
+        });
+
+        if (!response.ok) {
+          const error = await this.buildError(response, path);
+          if (response.status === 401) {
+            this.onUnauthorized?.(error);
+          }
+          throw error;
+        }
+
+        return (await response.json()) as TResponse;
+      })();
+
+      return await Promise.race([requestPromise, timeoutPromise]);
+    } catch (error) {
+      if (didTimeout && !isMarketplaceApiTimeoutError(error)) {
+        throw this.buildTimeoutError(path, timeoutMs);
       }
       throw error;
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
     }
+  }
 
-    return (await response.json()) as TResponse;
+  // Shared clients use one JSON helper so browsers and React Native stay consistent.
+  private postJson<TResponse>(
+    path: string,
+    payload: unknown,
+    timeoutMs = this.requestTimeoutMs
+  ): Promise<TResponse> {
+    return this.requestJson<TResponse>(path, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    }, timeoutMs);
+  }
+
+  private getJson<TResponse>(path: string, timeoutMs = this.requestTimeoutMs): Promise<TResponse> {
+    return this.requestJson<TResponse>(path, {
+      method: "GET",
+      cache: "no-store"
+    }, timeoutMs);
   }
 
   public registerUser(payload: RegisterUserRequest): Promise<AuthenticatedUserEnvelope> {
@@ -363,11 +443,18 @@ export class MarketplaceApiClient {
   }
 
   public searchPlaces(query: string): Promise<PlaceSearchResponse> {
-    return this.getJson(`${ApiRoutes.placeSearch}?query=${encodeURIComponent(query)}`);
+    return this.getJson(
+      `${ApiRoutes.placeSearch}?query=${encodeURIComponent(query)}`,
+      Math.min(this.requestTimeoutMs, PLACE_SEARCH_REQUEST_TIMEOUT_MS)
+    );
   }
 
   public reverseGeocodePlace(payload: ReverseGeocodePlaceRequest): Promise<PlaceSearchResponse> {
-    return this.postJson(ApiRoutes.placeReverseGeocode, payload);
+    return this.postJson(
+      ApiRoutes.placeReverseGeocode,
+      payload,
+      Math.min(this.requestTimeoutMs, PLACE_SEARCH_REQUEST_TIMEOUT_MS)
+    );
   }
 
   public createCustomerProperty(payload: CreateCustomerPropertyRequest) {

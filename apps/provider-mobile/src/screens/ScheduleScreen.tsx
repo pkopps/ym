@@ -103,6 +103,25 @@ function formatCurrency(i18n: I18nInstance, cents: number) {
   return i18n.formatCurrency(cents);
 }
 
+async function withPromiseTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 function formatMinutesAsHours(i18n: I18nInstance, minutes: number) {
   if (minutes < 60) {
     return i18n.t("provider_mobile.support.minutes", { count: minutes });
@@ -517,9 +536,13 @@ export function ScheduleScreen() {
       routeSharingBookingIdRef.current = bookingId;
       setStatusMessage(i18n.t("provider_mobile.schedule.message.sharing_route"));
 
-      const currentPosition = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced
-      });
+      const currentPosition = await withPromiseTimeout(
+        Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced
+        }),
+        12_000,
+        i18n.t("provider_mobile.schedule.error.route_location_timed_out")
+      );
       await pushRouteLocation(bookingId, currentPosition);
 
       locationSubscriptionRef.current = await Location.watchPositionAsync(

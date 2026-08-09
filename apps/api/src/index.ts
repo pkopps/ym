@@ -14,6 +14,7 @@ import { InMemoryMarketplaceRepository } from "./repositories/InMemoryMarketplac
 import { PrismaMarketplaceRepository } from "./repositories/PrismaMarketplaceRepository";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
 import { validateRuntimeConfiguration } from "./config/productionConfig";
+import { ExternalRequestTimeoutError } from "./integrations/outboundRequestTimeout";
 
 const runtimeConfiguration = validateRuntimeConfiguration();
 const prismaClient = runtimeConfiguration.repositoryMode === "prisma-postgres"
@@ -67,6 +68,13 @@ const server = createServer(async (request, response) => {
   } catch (error) {
     if (error instanceof HttpError) {
       sendJson(response, error.statusCode, {
+        message: await localizeApiErrorMessage(error.message, context?.headers ?? request.headers)
+      });
+      return;
+    }
+
+    if (error instanceof ExternalRequestTimeoutError) {
+      sendJson(response, 504, {
         message: await localizeApiErrorMessage(error.message, context?.headers ?? request.headers)
       });
       return;

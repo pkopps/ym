@@ -1,4 +1,5 @@
 import { Address, PlaceSearchResponse, PlaceSuggestion } from "@yardmatch/contracts";
+import { withAbortableTimeout } from "../integrations/outboundRequestTimeout";
 
 type LocalPlaceSeed = {
   id: string;
@@ -51,7 +52,10 @@ const localPlaceSeeds: LocalPlaceSeed[] = [
 ];
 
 export class PlaceSearchService {
-  public constructor(private readonly googleMapsApiKey?: string) {}
+  public constructor(
+    private readonly googleMapsApiKey?: string,
+    private readonly externalRequestTimeoutMs = 5_000
+  ) {}
 
   public async geocodeAddress(address: Address): Promise<PlaceSuggestion | undefined> {
     const query = [address.line1, address.line2, address.city, address.state, address.postalCode, address.country]
@@ -195,31 +199,37 @@ export class PlaceSearchService {
     if (!this.googleMapsApiKey) {
       return [];
     }
+    const googleMapsApiKey = this.googleMapsApiKey;
 
     try {
-      const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-      url.searchParams.set("address", query);
-      url.searchParams.set("components", "country:US");
-      url.searchParams.set("key", this.googleMapsApiKey);
+      return await withAbortableTimeout(async (signal) => {
+        const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+        url.searchParams.set("address", query);
+        url.searchParams.set("components", "country:US");
+        url.searchParams.set("key", googleMapsApiKey);
 
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        return [];
-      }
+        const response = await fetch(url.toString(), { signal });
+        if (!response.ok) {
+          return [];
+        }
 
-      const payload = (await response.json()) as {
-        results?: Array<{
-          formatted_address: string;
-          geometry?: { location?: { lat: number; lng: number } };
-          place_id?: string;
-          address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
-        }>;
-      };
+        const payload = (await response.json()) as {
+          results?: Array<{
+            formatted_address: string;
+            geometry?: { location?: { lat: number; lng: number } };
+            place_id?: string;
+            address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
+          }>;
+        };
 
-      return (payload.results ?? [])
-        .map((result) => this.fromGoogleResult(result))
-        .filter((suggestion): suggestion is PlaceSuggestion => Boolean(suggestion))
-        .slice(0, 8);
+        return (payload.results ?? [])
+          .map((result) => this.fromGoogleResult(result))
+          .filter((suggestion): suggestion is PlaceSuggestion => Boolean(suggestion))
+          .slice(0, 8);
+      }, {
+        timeoutMs: this.externalRequestTimeoutMs,
+        timeoutMessage: "Google place search timed out."
+      });
     } catch {
       return [];
     }
@@ -229,31 +239,37 @@ export class PlaceSearchService {
     if (!this.googleMapsApiKey) {
       return [];
     }
+    const googleMapsApiKey = this.googleMapsApiKey;
 
     try {
-      const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
-      url.searchParams.set("latlng", `${latitude},${longitude}`);
-      url.searchParams.set("result_type", "street_address|premise|postal_code|locality|neighborhood");
-      url.searchParams.set("key", this.googleMapsApiKey);
+      return await withAbortableTimeout(async (signal) => {
+        const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+        url.searchParams.set("latlng", `${latitude},${longitude}`);
+        url.searchParams.set("result_type", "street_address|premise|postal_code|locality|neighborhood");
+        url.searchParams.set("key", googleMapsApiKey);
 
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        return [];
-      }
+        const response = await fetch(url.toString(), { signal });
+        if (!response.ok) {
+          return [];
+        }
 
-      const payload = (await response.json()) as {
-        results?: Array<{
-          formatted_address: string;
-          geometry?: { location?: { lat: number; lng: number } };
-          place_id?: string;
-          address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
-        }>;
-      };
+        const payload = (await response.json()) as {
+          results?: Array<{
+            formatted_address: string;
+            geometry?: { location?: { lat: number; lng: number } };
+            place_id?: string;
+            address_components?: Array<{ long_name: string; short_name: string; types: string[] }>;
+          }>;
+        };
 
-      return (payload.results ?? [])
-        .map((result) => this.fromGoogleResult(result))
-        .filter((suggestion): suggestion is PlaceSuggestion => Boolean(suggestion))
-        .slice(0, 5);
+        return (payload.results ?? [])
+          .map((result) => this.fromGoogleResult(result))
+          .filter((suggestion): suggestion is PlaceSuggestion => Boolean(suggestion))
+          .slice(0, 5);
+      }, {
+        timeoutMs: this.externalRequestTimeoutMs,
+        timeoutMessage: "Google reverse geocoding timed out."
+      });
     } catch {
       return [];
     }

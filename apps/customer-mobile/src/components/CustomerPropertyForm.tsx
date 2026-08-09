@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
-import { CreateCustomerPropertyRequest, PlaceSuggestion } from "@yardmatch/contracts";
+import {
+  CreateCustomerPropertyRequest,
+  isMarketplaceApiTimeoutError,
+  PlaceSuggestion
+} from "@yardmatch/contracts";
 import { useI18n } from "@yardmatch/i18n/react";
 import { createCustomerMobileApiClient } from "../lib/api";
 
@@ -64,15 +68,19 @@ export function CustomerPropertyForm({
           setSuggestions(response.suggestions);
           setSearchMessage(response.searchMessage ?? "");
         })
-        .catch(() => {
+        .catch((error) => {
           setSuggestions([]);
-          setSearchMessage("");
+          setSearchMessage(
+            isMarketplaceApiTimeoutError(error)
+              ? error.message
+              : i18n.t("api.places.search_failed")
+          );
         })
         .finally(() => setIsSearching(false));
     }, 220);
 
     return () => clearTimeout(timeoutId);
-  }, [locationQuery]);
+  }, [i18n, locationQuery]);
 
   async function handleSubmit() {
     if (!canSubmit) {

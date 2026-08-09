@@ -283,6 +283,7 @@ import {
   verifyTwoFactorCode
 } from "../auth";
 import { HttpError } from "../http";
+import { withAbortableTimeout } from "../integrations/outboundRequestTimeout";
 import { ValidatedEvidenceImage, validateEvidenceImageDataUrl } from "../media/imageValidation";
 import { evaluateProviderCredentialReadiness } from "../policies/providerCredentialPolicy";
 import {
@@ -15825,12 +15826,16 @@ export class MarketplacePlatformService {
 
   private async fetchExternalCalendarFeed(feedUrl: string): Promise<string> {
     const normalizedUrl = feedUrl.replace(/^webcal:\/\//i, "https://");
-    const response = await fetch(normalizedUrl);
-    if (!response.ok) {
-      throw new HttpError(400, `Calendar feed returned ${response.status}`);
-    }
+    return withAbortableTimeout(async (signal) => {
+      const response = await fetch(normalizedUrl, { signal });
+      if (!response.ok) {
+        throw new HttpError(400, `Calendar feed returned ${response.status}`);
+      }
 
-    return response.text();
+      return response.text();
+    }, {
+      timeoutMessage: "Calendar feed did not respond in time. Check the feed URL and try syncing again."
+    });
   }
 
   private parseExternalCalendarFeed(input: {
