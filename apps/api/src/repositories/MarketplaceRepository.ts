@@ -1,5 +1,6 @@
 import {
   AppNotification,
+  AuthDeviceDescriptor,
   AvailabilitySlot,
   Booking,
   BookingAddressChangeRequest,
@@ -34,8 +35,21 @@ import {
   LaunchLead,
   OpsAccessHistoryEntry,
   ReviewInvite,
-  SupportTicket
+  SecurityActivitySummary,
+  SupportTicket,
+  TwoFactorMethod
 } from "@yardmatch/contracts";
+
+export interface TrustedDeviceRecord {
+  id: string;
+  deviceIdHash: string;
+  label: string;
+  platform: AuthDeviceDescriptor["platform"];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  expiresAtIso: string;
+  revokedAt?: string;
+}
 
 export interface AuthIdentityRecord {
   userId: string;
@@ -69,6 +83,20 @@ export interface AuthIdentityRecord {
   resetPasswordCodeHash?: string;
   resetPasswordExpiresAt?: string;
   resetPasswordRequestedAt?: string;
+  twoFactorMethod?: TwoFactorMethod;
+  twoFactorEnabledAt?: string;
+  twoFactorChallengeId?: string;
+  twoFactorChallengePurpose?: "login" | "setup";
+  twoFactorChallengeMethod?: TwoFactorMethod;
+  twoFactorChallengeCodeHash?: string;
+  twoFactorChallengeExpiresAt?: string;
+  twoFactorChallengeRequestedAt?: string;
+  twoFactorChallengeFailedAttempts?: number;
+  twoFactorChallengeDeviceIdHash?: string;
+  twoFactorChallengeDeviceLabel?: string;
+  twoFactorChallengeDevicePlatform?: AuthDeviceDescriptor["platform"];
+  trustedDevices?: TrustedDeviceRecord[];
+  securityEventHistory?: SecurityActivitySummary[];
 }
 
 export interface CompleteProviderTransferInput {

@@ -2,12 +2,15 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
+  AccountSecuritySettings,
   AddBookingEvidenceRequest,
   AssignBookingRouteLeaderRequest,
   AppNotification,
   AnalyticsEvent,
   Address,
+  AuthDeviceDescriptor,
   AvailabilitySlot,
+  BeginTwoFactorSetupResponse,
   BookingEvidenceEntry,
   CancelBookingRequest,
   CancelCrewMatchRequest,
@@ -15,6 +18,7 @@ import {
   BookingArrivalTracking,
   CompleteBookingRequest,
   ConfirmBookingRequest,
+  ConfirmTwoFactorSetupRequest,
   CreateOpsAccountResponse,
   CreateOpsAccountRequest,
   CreateLaunchOperationsTaskRequest,
@@ -108,6 +112,7 @@ import {
   ProcessProviderOnboardingAutomationRequest,
   RequestPasswordResetRequest,
   RequestPasswordResetResponse,
+  ResendTwoFactorChallengeRequest,
   CreateRefundRequest,
   CreateInboundEmailLaunchLeadRequest,
   CreateInboundGoogleBusinessProfileLeadRequest,
@@ -150,6 +155,7 @@ import {
   ObservabilityOverview,
   CustomerProfile,
   CurrentUserResponse,
+  DisableTwoFactorRequest,
   OpsProfile,
   NotificationListResponse,
   NotificationPreferences,
@@ -234,6 +240,7 @@ import {
   LaunchAttributionContext,
   SensitiveActionPolicy,
   SensitiveActionPolicyItem,
+  SecurityActivitySummary,
   SupportTimelineActorRole,
   SupportTimelineEntry,
   SupportOpsTicket,
@@ -246,7 +253,9 @@ import {
   UpdateBookingPhotoMarketingUseRequest,
   UpdateOpsAccountAccessRequest,
   UpdateOpsAccountRequest,
-  UpdateBookingAddressResponse
+  UpdateBookingAddressResponse,
+  TwoFactorMethod,
+  VerifyTwoFactorLoginRequest
 } from "@yardmatch/contracts";
 import {
   BookingAddressPolicyService,
@@ -260,15 +269,27 @@ import {
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import {
   PASSWORD_RESET_TTL_MINUTES,
+  TWO_FACTOR_CODE_TTL_MINUTES,
   generatePasswordResetCode,
+  generateTwoFactorCode,
+  hashDeviceIdentifier,
   hashPassword,
   hashPasswordResetCode,
-  validatePasswordStrength
+  hashTwoFactorCode,
+  signScopedToken,
+  validatePasswordStrength,
+  verifyPassword,
+  verifyScopedToken,
+  verifyTwoFactorCode
 } from "../auth";
 import { HttpError } from "../http";
 import { ValidatedEvidenceImage, validateEvidenceImageDataUrl } from "../media/imageValidation";
 import { evaluateProviderCredentialReadiness } from "../policies/providerCredentialPolicy";
-import { AuthIdentityRecord, MarketplaceRepository } from "../repositories/MarketplaceRepository";
+import {
+  AuthIdentityRecord,
+  MarketplaceRepository,
+  TrustedDeviceRecord
+} from "../repositories/MarketplaceRepository";
 import { NotificationDeliveryService } from "./NotificationDeliveryService";
 import { PhotoStorageService, ReadEvidencePhoto } from "./PhotoStorageService";
 import { AddressValidationOutcome, AddressValidationService } from "./AddressValidationService";
@@ -282,6 +303,17 @@ import { StripeConnectGateway, StripeConnectService } from "./StripeConnectServi
 
 const OPS_AUTH_FAILURE_LOCK_THRESHOLD = 5;
 const OPS_AUTH_LOCK_WINDOW_MINUTES = 30;
+const TWO_FACTOR_CHALLENGE_PURPOSE = "yardmatch-two-factor-challenge";
+const TWO_FACTOR_RESEND_COOLDOWN_SECONDS = 60;
+const TWO_FACTOR_MAX_FAILED_ATTEMPTS = 5;
+const TRUSTED_DEVICE_TTL_DAYS = 30;
+const SECURITY_EVENT_HISTORY_LIMIT = 50;
+
+interface TwoFactorChallengeTokenPayload {
+  userId: string;
+  challengeId: string;
+  purpose: "login" | "setup";
+}
 const PROPERTY_PHOTO_AREAS = new Set([
   "lawn",
   "shrubs",
@@ -941,6 +973,333 @@ export class MarketplacePlatformService {
     }
 
     return user;
+  }
+
+  public hasTwoFactorEnabled(identity: AuthIdentityRecord): boolean {
+    return Boolean(identity.twoFactorMethod && identity.twoFactorEnabledAt);
+  }
+
+  public isTrustedDevice(identity: AuthIdentityRecord, device?: AuthDeviceDescriptor): boolean {
+    if (!device?.id.trim()) {
+      return false;
+    }
+
+    const deviceIdHash = hashDeviceIdentifier(device.id);
+    return (identity.trustedDevices ?? []).some(
+      (trustedDevice) =>
+        trustedDevice.deviceIdHash === deviceIdHash &&
+        !trustedDevice.revokedAt &&
+        Date.parse(trustedDevice.expiresAtIso) > Date.now()
+    );
+  }
+
+  public async beginLoginTwoFactorChallenge(
+    identity: AuthIdentityRecord,
+    device?: AuthDeviceDescriptor
+  ): Promise<BeginTwoFactorSetupResponse> {
+    if (!this.hasTwoFactorEnabled(identity) || !identity.twoFactorMethod) {
+      throw new HttpError(409, "Two-factor authentication is not enabled for this account.");
+    }
+
+    return this.issueTwoFactorChallenge(identity, "login", identity.twoFactorMethod, device);
+  }
+
+  public async beginTwoFactorSetup(
+    identity: AuthIdentityRecord,
+    method: TwoFactorMethod,
+    device?: AuthDeviceDescriptor
+  ): Promise<BeginTwoFactorSetupResponse> {
+    if (method !== "email" && method !== "sms") {
+      throw new HttpError(400, "Choose email or text message for two-factor authentication.");
+    }
+
+    if (!identity.passwordHash) {
+      throw new HttpError(
+        409,
+        "Two-factor authentication currently requires a password-based YardMatch account."
+      );
+    }
+
+    return this.issueTwoFactorChallenge(identity, "setup", method, device);
+  }
+
+  public async resendTwoFactorChallenge(
+    payload: ResendTwoFactorChallengeRequest
+  ): Promise<BeginTwoFactorSetupResponse> {
+    const { identity, tokenPayload } = await this.resolveTwoFactorChallenge(payload.challengeToken);
+    const lastRequestedAt = Date.parse(identity.twoFactorChallengeRequestedAt ?? "");
+    const nextAllowedAt = lastRequestedAt + TWO_FACTOR_RESEND_COOLDOWN_SECONDS * 1000;
+    if (!Number.isNaN(lastRequestedAt) && Date.now() < nextAllowedAt) {
+      const waitSeconds = Math.max(1, Math.ceil((nextAllowedAt - Date.now()) / 1000));
+      throw new HttpError(429, `Wait ${waitSeconds} seconds before requesting another security code.`);
+    }
+
+    const method = identity.twoFactorChallengeMethod;
+    if (!method) {
+      throw new HttpError(401, "This security-code challenge is no longer active.");
+    }
+
+    const challengeDevice = this.getChallengeDevice(identity);
+    return this.issueTwoFactorChallenge(identity, tokenPayload.purpose, method, challengeDevice, true, true);
+  }
+
+  public async verifyLoginTwoFactor(
+    payload: VerifyTwoFactorLoginRequest
+  ): Promise<{ identity: AuthIdentityRecord; user: CurrentUserResponse["user"] }> {
+    const { identity } = await this.verifyActiveTwoFactorChallenge(
+      payload.challengeToken,
+      payload.code,
+      "login"
+    );
+    if (identity.accessDisabledAt) {
+      await this.recordFailedAuthentication(identity, "disabled-account");
+      throw new HttpError(403, "Account access has been disabled");
+    }
+    const challengeDevice = this.getChallengeDevice(identity);
+    await this.completeDeviceSignIn(identity, challengeDevice, payload.rememberDevice !== false, false, true);
+    const refreshedIdentity = await this.repository.findAuthIdentityByUserId(identity.userId);
+    if (!refreshedIdentity) {
+      throw new HttpError(404, "User profile not found");
+    }
+    if (refreshedIdentity.accessDisabledAt) {
+      await this.recordFailedAuthentication(refreshedIdentity, "disabled-account");
+      throw new HttpError(403, "Account access has been disabled");
+    }
+    const user = await this.getUserByIdentity(refreshedIdentity);
+    if (!user) {
+      throw new HttpError(404, "User profile not found");
+    }
+
+    return { identity: refreshedIdentity, user };
+  }
+
+  public async confirmTwoFactorSetup(
+    identity: AuthIdentityRecord,
+    payload: ConfirmTwoFactorSetupRequest
+  ): Promise<AccountSecuritySettings> {
+    const verified = await this.verifyActiveTwoFactorChallenge(
+      payload.challengeToken,
+      payload.code,
+      "setup",
+      identity.userId
+    );
+    const method = verified.identity.twoFactorChallengeMethod;
+    if (!method) {
+      throw new HttpError(401, "This security-code challenge is no longer active.");
+    }
+
+    const previousMethod = verified.identity.twoFactorMethod;
+    if (payload.rememberDevice !== false) {
+      await this.rememberChallengeDevice(verified.identity);
+    }
+    await this.repository.updateAuthIdentity(identity.userId, {
+      twoFactorMethod: method,
+      twoFactorEnabledAt: new Date().toISOString(),
+      ...this.clearedTwoFactorChallenge()
+    });
+    const refreshed = await this.requireAuthIdentity(identity.userId);
+    await this.appendSecurityEvent(identity.userId, {
+      id: crypto.randomUUID(),
+      kind: previousMethod && previousMethod !== method ? "two-factor-method-changed" : "two-factor-enabled",
+      occurredAt: new Date().toISOString(),
+      detail:
+        previousMethod && previousMethod !== method
+          ? `Two-factor delivery changed to ${method === "sms" ? "text message" : "email"}.`
+          : `Two-factor authentication was enabled by ${method === "sms" ? "text message" : "email"}.`
+    });
+    await this.createSecurityNotification(
+      refreshed,
+      previousMethod && previousMethod !== method
+        ? "Two-factor method changed"
+        : "Two-factor authentication turned on",
+      previousMethod && previousMethod !== method
+        ? `Your YardMatch security codes will now be sent by ${method === "sms" ? "text message" : "email"}.`
+        : `Your YardMatch account now requires a security code sent by ${method === "sms" ? "text message" : "email"} on unrecognized devices.`
+    );
+
+    return this.getSecuritySettings(await this.requireAuthIdentity(identity.userId));
+  }
+
+  public async disableTwoFactor(
+    identity: AuthIdentityRecord,
+    payload: DisableTwoFactorRequest
+  ): Promise<AccountSecuritySettings> {
+    if (!this.hasTwoFactorEnabled(identity)) {
+      throw new HttpError(409, "Two-factor authentication is already off.");
+    }
+    if (!identity.passwordHash || !verifyPassword(payload.password, identity.passwordHash)) {
+      throw new HttpError(401, "Enter your current password to turn off two-factor authentication.");
+    }
+
+    await this.repository.updateAuthIdentity(identity.userId, {
+      twoFactorMethod: undefined,
+      twoFactorEnabledAt: undefined,
+      trustedDevices: [],
+      ...this.clearedTwoFactorChallenge()
+    });
+    await this.appendSecurityEvent(identity.userId, {
+      id: crypto.randomUUID(),
+      kind: "two-factor-disabled",
+      occurredAt: new Date().toISOString(),
+      detail: "Two-factor authentication was disabled and remembered devices were cleared."
+    });
+    const refreshed = await this.requireAuthIdentity(identity.userId);
+    await this.createSecurityNotification(
+      refreshed,
+      "Two-factor authentication turned off",
+      "Two-factor authentication was turned off for your YardMatch account. If this wasn't you, reset your password now."
+    );
+    return this.getSecuritySettings(await this.requireAuthIdentity(identity.userId));
+  }
+
+  public async getSecuritySettings(
+    identity: AuthIdentityRecord,
+    currentDeviceId?: string
+  ): Promise<AccountSecuritySettings> {
+    const currentDeviceHash = currentDeviceId?.trim()
+      ? hashDeviceIdentifier(currentDeviceId)
+      : undefined;
+    const destination = this.hasTwoFactorEnabled(identity) && identity.twoFactorMethod
+      ? await this.getSecurityDestination(identity, identity.twoFactorMethod)
+      : undefined;
+    const trustedDevices = (identity.trustedDevices ?? [])
+      .filter((device) => !device.revokedAt && Date.parse(device.expiresAtIso) > Date.now())
+      .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt))
+      .map((device) => ({
+        id: device.id,
+        label: device.label,
+        platform: device.platform,
+        firstSeenAt: device.firstSeenAt,
+        lastSeenAt: device.lastSeenAt,
+        expiresAtIso: device.expiresAtIso,
+        isCurrentDevice: device.deviceIdHash === currentDeviceHash
+      }));
+
+    return {
+      twoFactorEnabled: this.hasTwoFactorEnabled(identity),
+      method: this.hasTwoFactorEnabled(identity) ? identity.twoFactorMethod : undefined,
+      destinationHint: destination ? this.maskSecurityDestination(identity.twoFactorMethod as TwoFactorMethod, destination) : undefined,
+      enabledAt: identity.twoFactorEnabledAt,
+      newDeviceAlertsEnabled: true,
+      trustedDevices,
+      recentActivity: [...(identity.securityEventHistory ?? [])]
+        .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+        .slice(0, 10)
+    };
+  }
+
+  public async revokeTrustedDevice(
+    identity: AuthIdentityRecord,
+    trustedDeviceId: string
+  ): Promise<AccountSecuritySettings> {
+    const devices = identity.trustedDevices ?? [];
+    const target = devices.find((device) => device.id === trustedDeviceId && !device.revokedAt);
+    if (!target) {
+      throw new HttpError(404, "Remembered device not found.");
+    }
+    const revokedAt = new Date().toISOString();
+    await this.repository.updateAuthIdentity(identity.userId, {
+      trustedDevices: devices.map((device) =>
+        device.id === trustedDeviceId ? { ...device, revokedAt } : device
+      )
+    });
+    await this.appendSecurityEvent(identity.userId, {
+      id: crypto.randomUUID(),
+      kind: "trusted-device-revoked",
+      occurredAt: revokedAt,
+      deviceLabel: target.label,
+      detail: `${target.label} was removed from remembered devices.`
+    });
+    return this.getSecuritySettings(await this.requireAuthIdentity(identity.userId));
+  }
+
+  public async revokeAllSessions(identity: AuthIdentityRecord): Promise<AccountSecuritySettings> {
+    const occurredAt = new Date().toISOString();
+    await this.repository.updateAuthIdentity(identity.userId, {
+      sessionVersion: identity.sessionVersion + 1,
+      trustedDevices: [],
+      ...this.clearedTwoFactorChallenge()
+    });
+    await this.appendSecurityEvent(identity.userId, {
+      id: crypto.randomUUID(),
+      kind: "all-sessions-revoked",
+      occurredAt,
+      detail: "All YardMatch sessions were revoked and remembered devices were cleared."
+    });
+    const refreshed = await this.requireAuthIdentity(identity.userId);
+    await this.createSecurityNotification(
+      refreshed,
+      "All sessions signed out",
+      "All YardMatch sessions and remembered devices were revoked from your account."
+    );
+    return this.getSecuritySettings(await this.requireAuthIdentity(identity.userId));
+  }
+
+  public async completeDeviceSignIn(
+    identity: AuthIdentityRecord,
+    device: AuthDeviceDescriptor | undefined,
+    rememberDevice = true,
+    suppressNewDeviceAlert = false,
+    deviceIdAlreadyHashed = false
+  ): Promise<void> {
+    const normalizedDevice = this.normalizeDevice(device);
+    if (!normalizedDevice) {
+      return;
+    }
+
+    const nowIso = new Date().toISOString();
+    const deviceIdHash = deviceIdAlreadyHashed
+      ? normalizedDevice.id
+      : hashDeviceIdentifier(normalizedDevice.id);
+    const devices = identity.trustedDevices ?? [];
+    const existing = devices.find(
+      (candidate) => candidate.deviceIdHash === deviceIdHash && !candidate.revokedAt
+    );
+    if (existing) {
+      const expiresAtIso = new Date(Date.now() + TRUSTED_DEVICE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+      await this.repository.updateAuthIdentity(identity.userId, {
+        trustedDevices: devices.map((candidate) =>
+          candidate.id === existing.id
+            ? { ...candidate, label: normalizedDevice.label, platform: normalizedDevice.platform, lastSeenAt: nowIso, expiresAtIso }
+            : candidate
+        )
+      });
+      await this.appendSecurityEvent(identity.userId, {
+        id: crypto.randomUUID(),
+        kind: "recognized-device-sign-in",
+        occurredAt: nowIso,
+        deviceLabel: normalizedDevice.label,
+        detail: `Sign-in completed from remembered device ${normalizedDevice.label}.`
+      });
+      return;
+    }
+
+    if (rememberDevice) {
+      await this.addTrustedDevice(identity.userId, {
+        id: crypto.randomUUID(),
+        deviceIdHash,
+        label: normalizedDevice.label,
+        platform: normalizedDevice.platform,
+        firstSeenAt: nowIso,
+        lastSeenAt: nowIso,
+        expiresAtIso: new Date(Date.now() + TRUSTED_DEVICE_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString()
+      });
+    }
+    await this.appendSecurityEvent(identity.userId, {
+      id: crypto.randomUUID(),
+      kind: "new-device-sign-in",
+      occurredAt: nowIso,
+      deviceLabel: normalizedDevice.label,
+      detail: `New-device sign-in completed from ${normalizedDevice.label}.`
+    });
+    if (!suppressNewDeviceAlert) {
+      const refreshed = await this.requireAuthIdentity(identity.userId);
+      await this.createSecurityNotification(
+        refreshed,
+        "New device signed in",
+        `A sign-in to your YardMatch account was completed from ${normalizedDevice.label} at ${new Date(nowIso).toLocaleString("en-US", { timeZone: "UTC", timeZoneName: "short" })}. If this wasn't you, reset your password and contact support.`
+      );
+    }
   }
 
   public async searchPlaces(query: string): Promise<PlaceSearchResponse> {
@@ -17180,7 +17539,7 @@ export class MarketplacePlatformService {
   }
 
   public isAuthIdentityTemporarilyLocked(identity: AuthIdentityRecord | undefined): boolean {
-    return identity?.role === "ops" ? this.isOpsAuthenticationLocked(identity) : false;
+    return this.isOpsAuthenticationLocked(identity);
   }
 
   public getAuthIdentityLockExpiryIso(identity: AuthIdentityRecord | undefined): string | undefined {
@@ -17210,19 +17569,16 @@ export class MarketplacePlatformService {
     return updatedIdentity;
   }
 
-  public async recordFailedOpsAuthentication(
+  public async recordFailedAuthentication(
     identity: AuthIdentityRecord,
     reason: OpsFailedAuthenticationReason
   ): Promise<AuthIdentityRecord | undefined> {
-    if (identity.role !== "ops") {
-      return identity;
-    }
-
     const currentIdentity = (await this.repository.findAuthIdentityByUserId(identity.userId)) ?? identity;
     const previousLockExpiresAt = currentIdentity.authenticationLockExpiresAt;
     const nextFailureCount = (currentIdentity.failedAuthenticationCount ?? 0) + 1;
     const nextLockExpiresAt =
-      reason === "invalid-password" && nextFailureCount >= OPS_AUTH_FAILURE_LOCK_THRESHOLD
+      (reason === "invalid-password" || reason === "invalid-two-factor-code") &&
+      nextFailureCount >= OPS_AUTH_FAILURE_LOCK_THRESHOLD
         ? new Date(Date.now() + OPS_AUTH_LOCK_WINDOW_MINUTES * 60 * 1000).toISOString()
         : currentIdentity.authenticationLockExpiresAt;
     const updatedIdentity = await this.repository.updateAuthIdentity(identity.userId, {
@@ -17231,22 +17587,31 @@ export class MarketplacePlatformService {
       lastFailedAuthenticationReason: reason,
       authenticationLockExpiresAt: nextLockExpiresAt
     });
-    await this.appendOpsAuthenticationHistory(identity.userId, {
-      kind: "sign-in-failed",
-      reason,
-      failedCount: nextFailureCount,
-      lockExpiresAt: nextLockExpiresAt
-    });
-    if (nextLockExpiresAt && nextLockExpiresAt !== previousLockExpiresAt) {
+    if (identity.role === "ops") {
       await this.appendOpsAuthenticationHistory(identity.userId, {
-        kind: "temporary-lock-triggered",
+        kind: "sign-in-failed",
         reason,
         failedCount: nextFailureCount,
         lockExpiresAt: nextLockExpiresAt
       });
+      if (nextLockExpiresAt && nextLockExpiresAt !== previousLockExpiresAt) {
+        await this.appendOpsAuthenticationHistory(identity.userId, {
+          kind: "temporary-lock-triggered",
+          reason,
+          failedCount: nextFailureCount,
+          lockExpiresAt: nextLockExpiresAt
+        });
+      }
     }
 
     return (await this.repository.findAuthIdentityByUserId(identity.userId)) ?? updatedIdentity;
+  }
+
+  public async recordFailedOpsAuthentication(
+    identity: AuthIdentityRecord,
+    reason: OpsFailedAuthenticationReason
+  ): Promise<AuthIdentityRecord | undefined> {
+    return this.recordFailedAuthentication(identity, reason);
   }
 
   private async appendOpsAuthenticationHistory(
@@ -21492,8 +21857,267 @@ export class MarketplacePlatformService {
     };
   }
 
+  private async issueTwoFactorChallenge(
+    identity: AuthIdentityRecord,
+    purpose: "login" | "setup",
+    method: TwoFactorMethod,
+    device?: AuthDeviceDescriptor,
+    deviceIdAlreadyHashed = false,
+    skipCooldown = false
+  ): Promise<BeginTwoFactorSetupResponse> {
+    if (this.isAuthIdentityTemporarilyLocked(identity)) {
+      throw new HttpError(423, "Account temporarily locked after repeated failed sign-in attempts.");
+    }
+
+    const lastRequestedAt = Date.parse(identity.twoFactorChallengeRequestedAt ?? "");
+    const nextAllowedAt = lastRequestedAt + TWO_FACTOR_RESEND_COOLDOWN_SECONDS * 1000;
+    if (!skipCooldown && !Number.isNaN(lastRequestedAt) && Date.now() < nextAllowedAt) {
+      const waitSeconds = Math.max(1, Math.ceil((nextAllowedAt - Date.now()) / 1000));
+      throw new HttpError(429, `Wait ${waitSeconds} seconds before requesting another security code.`);
+    }
+
+    const normalizedDevice = this.normalizeDevice(device);
+    const destination = await this.getSecurityDestination(identity, method);
+    const challengeId = crypto.randomUUID();
+    const code = generateTwoFactorCode();
+    const requestedAt = new Date().toISOString();
+    const expiresAtIso = new Date(Date.now() + TWO_FACTOR_CODE_TTL_MINUTES * 60 * 1000).toISOString();
+    await this.repository.updateAuthIdentity(identity.userId, {
+      twoFactorChallengeId: challengeId,
+      twoFactorChallengePurpose: purpose,
+      twoFactorChallengeMethod: method,
+      twoFactorChallengeCodeHash: hashTwoFactorCode(identity.userId, challengeId, code),
+      twoFactorChallengeExpiresAt: expiresAtIso,
+      twoFactorChallengeRequestedAt: requestedAt,
+      twoFactorChallengeFailedAttempts: 0,
+      twoFactorChallengeDeviceIdHash: normalizedDevice
+        ? deviceIdAlreadyHashed
+          ? normalizedDevice.id
+          : hashDeviceIdentifier(normalizedDevice.id)
+        : undefined,
+      twoFactorChallengeDeviceLabel: normalizedDevice?.label,
+      twoFactorChallengeDevicePlatform: normalizedDevice?.platform
+    });
+
+    await this.notificationDelivery.dispatch({
+      channel: method,
+      destination,
+      title: "Your YardMatch security code",
+      body: `${code} is your YardMatch security code. It expires in ${TWO_FACTOR_CODE_TTL_MINUTES} minutes. Do not share it with anyone.`
+    });
+
+    const challengeToken = signScopedToken<TwoFactorChallengeTokenPayload>(
+      TWO_FACTOR_CHALLENGE_PURPOSE,
+      { userId: identity.userId, challengeId, purpose },
+      TWO_FACTOR_CODE_TTL_MINUTES * 60
+    );
+    return {
+      twoFactorRequired: true,
+      challengeToken,
+      method,
+      destinationHint: this.maskSecurityDestination(method, destination),
+      expiresAtIso,
+      codePreview: process.env.NODE_ENV === "production" ? undefined : code
+    };
+  }
+
+  private async resolveTwoFactorChallenge(challengeToken: string): Promise<{
+    identity: AuthIdentityRecord;
+    tokenPayload: TwoFactorChallengeTokenPayload;
+  }> {
+    let tokenPayload: TwoFactorChallengeTokenPayload;
+    try {
+      tokenPayload = verifyScopedToken<TwoFactorChallengeTokenPayload>(
+        challengeToken,
+        TWO_FACTOR_CHALLENGE_PURPOSE
+      );
+    } catch (error) {
+      throw new HttpError(401, error instanceof Error ? error.message : "The security code has expired.");
+    }
+    const identity = await this.requireAuthIdentity(tokenPayload.userId);
+    if (
+      identity.twoFactorChallengeId !== tokenPayload.challengeId ||
+      identity.twoFactorChallengePurpose !== tokenPayload.purpose ||
+      !identity.twoFactorChallengeCodeHash ||
+      !identity.twoFactorChallengeExpiresAt
+    ) {
+      throw new HttpError(401, "This security-code challenge is no longer active.");
+    }
+    if (Date.parse(identity.twoFactorChallengeExpiresAt) <= Date.now()) {
+      await this.repository.updateAuthIdentity(identity.userId, this.clearedTwoFactorChallenge());
+      throw new HttpError(401, "The security code has expired. Request a new code and try again.");
+    }
+    return { identity, tokenPayload };
+  }
+
+  private async verifyActiveTwoFactorChallenge(
+    challengeToken: string,
+    code: string,
+    expectedPurpose: "login" | "setup",
+    expectedUserId?: string
+  ): Promise<{ identity: AuthIdentityRecord; tokenPayload: TwoFactorChallengeTokenPayload }> {
+    const resolved = await this.resolveTwoFactorChallenge(challengeToken);
+    const { identity, tokenPayload } = resolved;
+    if (tokenPayload.purpose !== expectedPurpose || (expectedUserId && identity.userId !== expectedUserId)) {
+      throw new HttpError(403, "This security-code challenge does not belong to the current account flow.");
+    }
+
+    const valid = verifyTwoFactorCode(
+      identity.userId,
+      tokenPayload.challengeId,
+      code,
+      identity.twoFactorChallengeCodeHash as string
+    );
+    if (!valid) {
+      const failedAttempts = (identity.twoFactorChallengeFailedAttempts ?? 0) + 1;
+      const challengeUpdates: Partial<AuthIdentityRecord> = {
+        twoFactorChallengeFailedAttempts: failedAttempts
+      };
+      if (failedAttempts >= TWO_FACTOR_MAX_FAILED_ATTEMPTS) {
+        Object.assign(challengeUpdates, this.clearedTwoFactorChallenge());
+      }
+      await this.repository.updateAuthIdentity(identity.userId, challengeUpdates);
+      if (expectedPurpose === "login") {
+        await this.recordFailedAuthentication(identity, "invalid-two-factor-code");
+      }
+      throw new HttpError(
+        failedAttempts >= TWO_FACTOR_MAX_FAILED_ATTEMPTS ? 423 : 401,
+        failedAttempts >= TWO_FACTOR_MAX_FAILED_ATTEMPTS
+          ? "Too many incorrect security codes. Sign-in is temporarily locked."
+          : "That security code is incorrect."
+      );
+    }
+
+    const verifiedIdentity: AuthIdentityRecord = {
+      ...identity,
+      trustedDevices: identity.trustedDevices ? [...identity.trustedDevices] : undefined,
+      securityEventHistory: identity.securityEventHistory ? [...identity.securityEventHistory] : undefined
+    };
+    await this.repository.updateAuthIdentity(identity.userId, this.clearedTwoFactorChallenge());
+    return { identity: verifiedIdentity, tokenPayload };
+  }
+
+  private clearedTwoFactorChallenge(): Partial<AuthIdentityRecord> {
+    return {
+      twoFactorChallengeId: undefined,
+      twoFactorChallengePurpose: undefined,
+      twoFactorChallengeMethod: undefined,
+      twoFactorChallengeCodeHash: undefined,
+      twoFactorChallengeExpiresAt: undefined,
+      twoFactorChallengeRequestedAt: undefined,
+      twoFactorChallengeFailedAttempts: 0,
+      twoFactorChallengeDeviceIdHash: undefined,
+      twoFactorChallengeDeviceLabel: undefined,
+      twoFactorChallengeDevicePlatform: undefined
+    };
+  }
+
+  private getChallengeDevice(identity: AuthIdentityRecord): AuthDeviceDescriptor | undefined {
+    if (!identity.twoFactorChallengeDeviceIdHash) {
+      return undefined;
+    }
+    return {
+      id: identity.twoFactorChallengeDeviceIdHash,
+      label: identity.twoFactorChallengeDeviceLabel ?? "Unrecognized device",
+      platform: identity.twoFactorChallengeDevicePlatform ?? "unknown"
+    };
+  }
+
+  private normalizeDevice(device?: AuthDeviceDescriptor): AuthDeviceDescriptor | undefined {
+    const id = device?.id?.trim();
+    if (!device || !id || id.length > 256) {
+      return undefined;
+    }
+    const label = device.label?.trim().replace(/\s+/g, " ").slice(0, 80) || "Unrecognized device";
+    const platform = ["android", "ios", "web", "unknown"].includes(device.platform)
+      ? device.platform
+      : "unknown";
+    return { id, label, platform };
+  }
+
+  private async getSecurityDestination(identity: AuthIdentityRecord, method: TwoFactorMethod): Promise<string> {
+    const user = await this.getUserByIdentity(identity);
+    if (!user) {
+      throw new HttpError(404, "User profile not found");
+    }
+    const destination = method === "email" ? user.email.trim().toLowerCase() : user.phone.trim();
+    if (!destination) {
+      throw new HttpError(
+        409,
+        method === "email"
+          ? "Add an email address before enabling email security codes."
+          : "Add a mobile number before enabling text-message security codes."
+      );
+    }
+    return destination;
+  }
+
+  private maskSecurityDestination(method: TwoFactorMethod, destination: string): string {
+    if (method === "email") {
+      const [localPart, domain] = destination.split("@");
+      if (!domain) {
+        return "your email";
+      }
+      return `${localPart.slice(0, 1)}${"*".repeat(Math.max(2, Math.min(6, localPart.length - 1)))}@${domain}`;
+    }
+    const digits = destination.replace(/\D/g, "");
+    return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : "your mobile number";
+  }
+
+  private async rememberChallengeDevice(identity: AuthIdentityRecord): Promise<void> {
+    const device = this.getChallengeDevice(identity);
+    if (!device) {
+      return;
+    }
+    await this.completeDeviceSignIn(identity, device, true, true, true);
+  }
+
+  private async addTrustedDevice(userId: string, device: TrustedDeviceRecord): Promise<void> {
+    const current = await this.requireAuthIdentity(userId);
+    const withoutPreviousMatch = (current.trustedDevices ?? []).filter(
+      (candidate) => candidate.deviceIdHash !== device.deviceIdHash
+    );
+    await this.repository.updateAuthIdentity(userId, {
+      trustedDevices: [...withoutPreviousMatch, device]
+    });
+  }
+
+  private async appendSecurityEvent(userId: string, event: SecurityActivitySummary): Promise<void> {
+    const current = await this.requireAuthIdentity(userId);
+    await this.repository.updateAuthIdentity(userId, {
+      securityEventHistory: [...(current.securityEventHistory ?? []), event].slice(-SECURITY_EVENT_HISTORY_LIMIT)
+    });
+  }
+
+  private async createSecurityNotification(
+    identity: AuthIdentityRecord,
+    title: string,
+    body: string
+  ): Promise<void> {
+    await this.createNotification(
+      {
+        recipientId: identity.userId,
+        recipientRole: identity.role,
+        category: "account",
+        title,
+        body,
+        actionHref: "/account/security"
+      },
+      ["email"]
+    );
+  }
+
+  private async requireAuthIdentity(userId: string): Promise<AuthIdentityRecord> {
+    const identity = await this.repository.findAuthIdentityByUserId(userId);
+    if (!identity) {
+      throw new HttpError(404, "User profile not found");
+    }
+    return identity;
+  }
+
   private async createNotification(
-    payload: Omit<AppNotification, "id" | "isRead" | "createdAt">
+    payload: Omit<AppNotification, "id" | "isRead" | "createdAt">,
+    forcedChannels: NotificationChannel[] = []
   ): Promise<AppNotification> {
     const notification = await this.repository.createNotification({
       id: crypto.randomUUID(),
@@ -21508,7 +22132,7 @@ export class MarketplacePlatformService {
       readAt: undefined
     });
 
-    await this.queueNotificationDeliveries(notification);
+    await this.queueNotificationDeliveries(notification, forcedChannels);
     return notification;
   }
 
@@ -21532,14 +22156,22 @@ export class MarketplacePlatformService {
     });
   }
 
-  private async queueNotificationDeliveries(notification: AppNotification): Promise<void> {
+  private async queueNotificationDeliveries(
+    notification: AppNotification,
+    forcedChannels: NotificationChannel[] = []
+  ): Promise<void> {
     const identity = await this.repository.findAuthIdentityByUserId(notification.recipientId);
     if (!identity) {
       return;
     }
 
     const preferences = await this.ensureNotificationPreferences(identity);
-    const channels = this.getExternalNotificationChannels(notification.category, preferences);
+    const channels = [
+      ...new Set([
+        ...this.getExternalNotificationChannels(notification.category, preferences),
+        ...forcedChannels
+      ])
+    ];
     if (channels.length === 0) {
       return;
     }
@@ -21626,6 +22258,18 @@ export class MarketplacePlatformService {
       return {
         email: provider.email,
         phone: provider.phone,
+        pushTokens
+      };
+    }
+
+    if (identity.role === "ops") {
+      const opsUser = await this.repository.findOpsUserById(identity.userId);
+      if (!opsUser) {
+        return undefined;
+      }
+      return {
+        email: opsUser.email,
+        phone: opsUser.phone,
         pushTokens
       };
     }

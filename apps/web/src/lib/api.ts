@@ -1,4 +1,4 @@
-import type { OpsInternalScope } from "@yardmatch/contracts";
+import type { AuthDeviceDescriptor, OpsInternalScope } from "@yardmatch/contracts";
 import { MarketplaceApiClient } from "@yardmatch/contracts";
 import { resolveLocale, SupportedLocale } from "@yardmatch/i18n";
 import { localeCookieName } from "./i18n-client";
@@ -6,6 +6,7 @@ import { localeCookieName } from "./i18n-client";
 const authStorageKey = "yardmatch-web-session";
 const sessionChangeEventName = "yardmatch-web-session-change";
 const sessionChannelName = "yardmatch-web-session";
+const authDeviceStorageKey = "yardmatch-web-device-id";
 let cachedSessionRawValue: string | null | undefined;
 let cachedSessionValue: StoredWebSession | undefined;
 
@@ -61,6 +62,44 @@ export function createWebApiClient(locale?: SupportedLocale): MarketplaceApiClie
   const api = new MarketplaceApiClient(getWebApiBaseUrl());
   api.setLocale(resolveWebClientLocale(locale));
   return api;
+}
+
+export function getWebAuthDevice(): AuthDeviceDescriptor {
+  if (typeof window === "undefined") {
+    return { id: "server-render", label: "Web browser", platform: "web" };
+  }
+
+  let id = window.localStorage.getItem(authDeviceStorageKey);
+  if (!id) {
+    id = window.crypto.randomUUID();
+    window.localStorage.setItem(authDeviceStorageKey, id);
+  }
+
+  const userAgent = window.navigator.userAgent;
+  const browser = userAgent.includes("Firefox/")
+    ? "Firefox"
+    : userAgent.includes("Edg/")
+      ? "Edge"
+      : userAgent.includes("Chrome/")
+        ? "Chrome"
+        : userAgent.includes("Safari/")
+          ? "Safari"
+          : "Web browser";
+  const operatingSystem = userAgent.includes("Mac OS")
+    ? "Mac"
+    : userAgent.includes("Windows")
+      ? "Windows"
+      : userAgent.includes("Android")
+        ? "Android"
+        : userAgent.includes("iPhone") || userAgent.includes("iPad")
+          ? "iOS"
+          : undefined;
+
+  return {
+    id,
+    label: operatingSystem ? `${browser} on ${operatingSystem}` : browser,
+    platform: "web"
+  };
 }
 
 export function loadStoredSession(): StoredWebSession | undefined {

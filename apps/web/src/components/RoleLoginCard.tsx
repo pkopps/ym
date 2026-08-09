@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { MarketplaceRole } from "@yardmatch/contracts";
+import {
+  AuthenticatedUserEnvelope,
+  MarketplaceRole,
+  TwoFactorChallengeResponse
+} from "@yardmatch/contracts";
 import { addLocalePrefix, stripLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { saveStoredSession } from "../lib/api";
+import { getWebAuthDevice, saveStoredSession } from "../lib/api";
 import { createWebApiClient } from "../lib/api";
 import { getRoleRedirectPath } from "../lib/redirects";
 import { buildSocialAuthRedirectUri } from "../lib/socialAuth";
@@ -60,6 +64,32 @@ export function RoleLoginCard({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState<TwoFactorChallengeResponse | undefined>();
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(true);
+
+  function completeAuthentication(envelope: AuthenticatedUserEnvelope) {
+    if (envelope.user.role !== role) {
+      throw new Error(
+        i18n.t("login_card.error.role_mismatch", {
+          actualRole: envelope.user.role,
+          expectedRole: role
+        })
+      );
+    }
+
+    saveStoredSession({
+      token: envelope.session.token,
+      role: envelope.user.role,
+      internalScope: envelope.user.role === "ops" ? envelope.user.internalScope : undefined,
+      email: envelope.user.email,
+      userId: envelope.user.id,
+      fullName: envelope.user.fullName,
+      expiresAtIso: envelope.session.expiresAtIso
+    });
+    router.push(localizedRedirectPath);
+    router.refresh();
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,30 +100,16 @@ export function RoleLoginCard({
       const api = createWebApiClient(i18n.locale);
       const envelope = await api.login({
         email: email.trim(),
-        password
+        password,
+        device: getWebAuthDevice()
       });
 
-      if (envelope.user.role !== role) {
-        throw new Error(
-          i18n.t("login_card.error.role_mismatch", {
-            actualRole: envelope.user.role,
-            expectedRole: role
-          })
-        );
+      if ("twoFactorRequired" in envelope) {
+        setTwoFactorChallenge(envelope);
+        setTwoFactorCode("");
+        return;
       }
-
-      saveStoredSession({
-        token: envelope.session.token,
-        role: envelope.user.role,
-        internalScope: envelope.user.role === "ops" ? envelope.user.internalScope : undefined,
-        email: envelope.user.email,
-        userId: envelope.user.id,
-        fullName: envelope.user.fullName,
-        expiresAtIso: envelope.session.expiresAtIso
-      });
-
-      router.push(localizedRedirectPath);
-      router.refresh();
+      completeAuthentication(envelope);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("login_card.error.login_failed"));
     } finally {
@@ -132,21 +148,15 @@ export function RoleLoginCard({
       const envelope = await api.confirmPasswordReset({
         email: email.trim(),
         resetCode: recoveryCode.trim(),
-        newPassword
+        newPassword,
+        device: getWebAuthDevice()
       });
-
-      saveStoredSession({
-        token: envelope.session.token,
-        role: envelope.user.role,
-        internalScope: envelope.user.role === "ops" ? envelope.user.internalScope : undefined,
-        email: envelope.user.email,
-        userId: envelope.user.id,
-        fullName: envelope.user.fullName,
-        expiresAtIso: envelope.session.expiresAtIso
-      });
-
-      router.push(localizedRedirectPath);
-      router.refresh();
+      if ("twoFactorRequired" in envelope) {
+        setTwoFactorChallenge(envelope);
+        setShowRecovery(false);
+        return;
+      }
+      completeAuthentication(envelope);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("login_card.error.reset_failed"));
     } finally {
@@ -154,9 +164,57 @@ export function RoleLoginCard({
     }
   }
 
+  async function handleVerifyTwoFactor(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!twoFactorChallenge) {
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(undefined);
+    try {
+      const api = createWebApiClient(i18n.locale);
+      const envelope = await api.verifyTwoFactorLogin({
+        challengeToken: twoFactorChallenge.challengeToken,
+        code: twoFactorCode.trim(),
+        rememberDevice
+      });
+      completeAuthentication(envelope);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("login_card.error.login_failed"));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleResendTwoFactor() {
+    if (!twoFactorChallenge) {
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(undefined);
+    try {
+      const api = createWebApiClient(i18n.locale);
+      setTwoFactorChallenge(
+        await api.resendTwoFactorChallenge({ challengeToken: twoFactorChallenge.challengeToken })
+      );
+      setTwoFactorCode("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("login_card.error.login_failed"));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <section className="card auth-form-card">
-      <form className="auth-form-stack" onSubmit={handleSubmit}>
+      {errorMessage ? (
+        <div className="list-panel" role="alert">
+          <strong>{i18n.t("login_card.error_title")}</strong>
+          <p>{errorMessage}</p>
+        </div>
+      ) : null}
+
+      {!twoFactorChallenge ? <form className="auth-form-stack" onSubmit={handleSubmit}>
         <div className="auth-form-card__header">
           <h3>{i18n.t("login_card.title")}</h3>
           <p>{i18n.t(roleCopy[role].helperKey)}</p>
@@ -181,13 +239,6 @@ export function RoleLoginCard({
           </label>
         </div>
 
-        {errorMessage ? (
-          <div className="list-panel" role="alert">
-            <strong>{i18n.t("login_card.error_title")}</strong>
-            <p>{errorMessage}</p>
-          </div>
-        ) : null}
-
         <div className="cta-row">
           <button className="button" disabled={isSubmitting} type="submit">
             {isSubmitting ? i18n.t("login_card.logging_in") : i18n.t("login_card.submit")}
@@ -206,9 +257,58 @@ export function RoleLoginCard({
         </div>
 
         {role === "ops" ? null : <AuthIdentityOptions mode="login" redirectUri={socialRedirectUri} role={role} />}
-      </form>
+      </form> : null}
 
-      {showRecovery ? (
+      {twoFactorChallenge ? (
+        <form className="auth-form-stack" onSubmit={handleVerifyTwoFactor}>
+          <div className="auth-form-card__header">
+            <h3>{i18n.t("security.challenge.title")}</h3>
+            <p>{i18n.t("security.challenge.body", { destination: twoFactorChallenge.destinationHint })}</p>
+            {twoFactorChallenge.codePreview ? (
+              <p>{i18n.t("security.setup.local_preview", { code: twoFactorChallenge.codePreview })}</p>
+            ) : null}
+          </div>
+          <label className="form-field">
+            <span>{i18n.t("security.setup.code")}</span>
+            <input
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              maxLength={6}
+              onChange={(event) => setTwoFactorCode(event.target.value.replace(/\D/g, ""))}
+              value={twoFactorCode}
+            />
+          </label>
+          <label className="form-field form-field--checkbox">
+            <input
+              checked={rememberDevice}
+              onChange={(event) => setRememberDevice(event.target.checked)}
+              type="checkbox"
+            />
+            <span>{i18n.t("security.challenge.remember")}</span>
+          </label>
+          <div className="cta-row">
+            <button className="button" disabled={isSubmitting || twoFactorCode.length !== 6} type="submit">
+              {i18n.t("security.challenge.verify")}
+            </button>
+            <button className="button-secondary" disabled={isSubmitting} onClick={() => void handleResendTwoFactor()} type="button">
+              {i18n.t("security.challenge.resend")}
+            </button>
+            <button
+              className="button-secondary"
+              onClick={() => {
+                setTwoFactorChallenge(undefined);
+                setTwoFactorCode("");
+                setErrorMessage(undefined);
+              }}
+              type="button"
+            >
+              {i18n.t("security.challenge.cancel")}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {showRecovery && !twoFactorChallenge ? (
         <form className="auth-form-stack" onSubmit={handleConfirmReset}>
           <div className="list-panel">
             <strong>{i18n.t("login_card.reset.title")}</strong>

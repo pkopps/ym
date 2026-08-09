@@ -128,6 +128,481 @@ test("auth controller registers, logs in, and returns the current user", async (
   assert.match(paymentMethodPolicy.rationale, /payment-method changes/i);
 });
 
+test("two-factor setup supports email codes, challenges new devices, and remembers verified devices", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+  const firstDevice = {
+    id: "customer-device-one",
+    label: "Jordan's Mac",
+    platform: "web"
+  } as const;
+  const secondDevice = {
+    id: "customer-device-two",
+    label: "Jordan's iPhone",
+    platform: "ios"
+  } as const;
+
+  const registerResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/register",
+      body: {
+        fullName: "Jordan Secure",
+        email: "secure@example.com",
+        password: "Password123!",
+        phone: "+15550299",
+        role: "customer",
+        propertyLabel: "Primary home",
+        address: createAddress(),
+        device: firstDevice
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    registerResponse as never
+  );
+  const originalSession = registerResponse.readJson().session.token as string;
+
+  const setupResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/two-factor/setup",
+      body: { method: "email", device: firstDevice },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${originalSession}` }
+    },
+    setupResponse as never
+  );
+  const setup = setupResponse.readJson();
+  assert.equal(setup.twoFactorRequired, true);
+  assert.equal(setup.method, "email");
+  assert.match(setup.destinationHint, /@example\.com$/);
+  assert.match(setup.codePreview, /^\d{6}$/);
+
+  const confirmResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/two-factor/confirm",
+      body: {
+        challengeToken: setup.challengeToken,
+        code: setup.codePreview,
+        rememberDevice: true
+      },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${originalSession}` }
+    },
+    confirmResponse as never
+  );
+  const settings = confirmResponse.readJson();
+  assert.equal(settings.twoFactorEnabled, true);
+  assert.equal(settings.method, "email");
+  assert.equal(settings.trustedDevices.length, 1);
+
+  const challengedLoginResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "secure@example.com",
+        password: "Password123!",
+        device: secondDevice
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    challengedLoginResponse as never
+  );
+  assert.equal(challengedLoginResponse.getStatusCode(), 202);
+  const challenge = challengedLoginResponse.readJson();
+  assert.equal(challenge.twoFactorRequired, true);
+  assert.equal(challenge.session, undefined);
+
+  await assert.rejects(
+    () =>
+      controller.handle(
+        {
+          method: "POST",
+          path: "/api/auth/two-factor/verify",
+          body: {
+            challengeToken: challenge.challengeToken,
+            code: "000000",
+            rememberDevice: true
+          },
+          query: new URLSearchParams(),
+          headers: {}
+        },
+        createMockResponse() as never
+      ),
+    /security code is incorrect/i
+  );
+
+  const verifyResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/two-factor/verify",
+      body: {
+        challengeToken: challenge.challengeToken,
+        code: challenge.codePreview,
+        rememberDevice: true
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    verifyResponse as never
+  );
+  assert.ok(verifyResponse.readJson().session.token);
+
+  const trustedLoginResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "secure@example.com",
+        password: "Password123!",
+        device: secondDevice
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    trustedLoginResponse as never
+  );
+  assert.equal(trustedLoginResponse.getStatusCode(), 200);
+  assert.ok(trustedLoginResponse.readJson().session.token);
+
+  const notifications = await repository.listNotificationsByRecipient(
+    trustedLoginResponse.readJson().user.id
+  );
+  assert.ok(notifications.some((notification) => notification.title === "New device signed in"));
+
+  const deliveries = await repository.listNotificationDeliveriesByRecipient(
+    trustedLoginResponse.readJson().user.id
+  );
+  assert.ok(
+    deliveries.some(
+      (delivery) => delivery.title === "New device signed in" && delivery.channel === "email"
+    ),
+    "new-device warnings should always include email delivery"
+  );
+
+  const securityResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "GET",
+      path: "/api/auth/security",
+      body: undefined,
+      query: new URLSearchParams({ deviceId: secondDevice.id }),
+      headers: { authorization: `Bearer ${verifyResponse.readJson().session.token}` }
+    },
+    securityResponse as never
+  );
+  const security = securityResponse.readJson();
+  const rememberedSecondDevice = security.trustedDevices.find(
+    (device: { label: string }) => device.label === secondDevice.label
+  );
+  assert.equal(rememberedSecondDevice.isCurrentDevice, true);
+
+  const revokeDeviceResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/devices/revoke",
+      body: { trustedDeviceId: rememberedSecondDevice.id },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${verifyResponse.readJson().session.token}` }
+    },
+    revokeDeviceResponse as never
+  );
+  assert.equal(
+    revokeDeviceResponse
+      .readJson()
+      .trustedDevices.some((device: { id: string }) => device.id === rememberedSecondDevice.id),
+    false
+  );
+
+  const revokedDeviceLoginResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: {
+        email: "secure@example.com",
+        password: "Password123!",
+        device: secondDevice
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    revokedDeviceLoginResponse as never
+  );
+  assert.equal(revokedDeviceLoginResponse.getStatusCode(), 202);
+
+  const revokeSessionsResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/sessions/revoke",
+      body: {},
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${verifyResponse.readJson().session.token}` }
+    },
+    revokeSessionsResponse as never
+  );
+  assert.equal(revokeSessionsResponse.readJson().trustedDevices.length, 0);
+  await assert.rejects(
+    () =>
+      controller.handle(
+        {
+          method: "GET",
+          path: "/api/auth/me",
+          body: undefined,
+          query: new URLSearchParams(),
+          headers: { authorization: `Bearer ${verifyResponse.readJson().session.token}` }
+        },
+        createMockResponse() as never
+      ),
+    /session has been replaced/i
+  );
+});
+
+test("two-factor setup supports text messages and requires the password to disable it", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+  const device = { id: "sms-device", label: "Sam's phone", platform: "android" } as const;
+
+  const registerResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/register",
+      body: {
+        fullName: "Sam Text",
+        email: "sam-text@example.com",
+        password: "Password123!",
+        phone: "+1 (555) 867-5309",
+        role: "customer",
+        propertyLabel: "Primary home",
+        address: createAddress(),
+        device
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    registerResponse as never
+  );
+  const sessionToken = registerResponse.readJson().session.token as string;
+
+  const setupResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/two-factor/setup",
+      body: { method: "sms", device },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${sessionToken}` }
+    },
+    setupResponse as never
+  );
+  const challenge = setupResponse.readJson();
+  assert.equal(challenge.method, "sms");
+  assert.match(challenge.destinationHint, /5309$/);
+  assert.match(challenge.codePreview, /^\d{6}$/);
+
+  const confirmResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/two-factor/confirm",
+      body: {
+        challengeToken: challenge.challengeToken,
+        code: challenge.codePreview,
+        rememberDevice: true
+      },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${sessionToken}` }
+    },
+    confirmResponse as never
+  );
+  assert.equal(confirmResponse.readJson().method, "sms");
+
+  await assert.rejects(
+    () =>
+      controller.handle(
+        {
+          method: "POST",
+          path: "/api/auth/security/two-factor/disable",
+          body: { password: "WrongPass123!" },
+          query: new URLSearchParams(),
+          headers: { authorization: `Bearer ${sessionToken}` }
+        },
+        createMockResponse() as never
+      ),
+    /current password/i
+  );
+
+  const disableResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/two-factor/disable",
+      body: { password: "Password123!" },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${sessionToken}` }
+    },
+    disableResponse as never
+  );
+  assert.equal(disableResponse.readJson().twoFactorEnabled, false);
+  assert.equal(disableResponse.readJson().trustedDevices.length, 0);
+});
+
+test("a two-factor challenge cannot mint a session after account access is disabled", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+  const firstDevice = { id: "race-first-device", label: "First device", platform: "web" } as const;
+  const secondDevice = { id: "race-second-device", label: "Second device", platform: "web" } as const;
+
+  const registerResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/register",
+      body: {
+        fullName: "Access Race",
+        email: "access-race@example.com",
+        password: "Password123!",
+        phone: "+15550199",
+        role: "customer",
+        propertyLabel: "Primary home",
+        address: createAddress(),
+        device: firstDevice
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    registerResponse as never
+  );
+  const registered = registerResponse.readJson();
+
+  const setupResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/two-factor/setup",
+      body: { method: "email", device: firstDevice },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${registered.session.token}` }
+    },
+    setupResponse as never
+  );
+  const setup = setupResponse.readJson();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/security/two-factor/confirm",
+      body: { challengeToken: setup.challengeToken, code: setup.codePreview, rememberDevice: true },
+      query: new URLSearchParams(),
+      headers: { authorization: `Bearer ${registered.session.token}` }
+    },
+    createMockResponse() as never
+  );
+
+  const loginResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/login",
+      body: { email: "access-race@example.com", password: "Password123!", device: secondDevice },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    loginResponse as never
+  );
+  const challenge = loginResponse.readJson();
+  await repository.updateAuthIdentity(registered.user.id, { accessDisabledAt: new Date().toISOString() });
+
+  await assert.rejects(
+    () =>
+      controller.handle(
+        {
+          method: "POST",
+          path: "/api/auth/two-factor/verify",
+          body: {
+            challengeToken: challenge.challengeToken,
+            code: challenge.codePreview,
+            rememberDevice: true
+          },
+          query: new URLSearchParams(),
+          headers: {}
+        },
+        createMockResponse() as never
+      ),
+    /account access has been disabled/i
+  );
+});
+
+test("repeated invalid passwords lock customer accounts as well as internal accounts", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+  const registerResponse = createMockResponse();
+  await controller.handle(
+    {
+      method: "POST",
+      path: "/api/auth/register",
+      body: {
+        fullName: "Taylor Lock",
+        email: "lock@example.com",
+        password: "Password123!",
+        phone: "555-0210",
+        role: "customer",
+        propertyLabel: "Primary home",
+        address: createAddress()
+      },
+      query: new URLSearchParams(),
+      headers: {}
+    },
+    registerResponse as never
+  );
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await assert.rejects(() =>
+      controller.handle(
+        {
+          method: "POST",
+          path: "/api/auth/login",
+          body: { email: "lock@example.com", password: "WrongPass123!" },
+          query: new URLSearchParams(),
+          headers: {}
+        },
+        createMockResponse() as never
+      )
+    );
+  }
+
+  await assert.rejects(
+    () =>
+      controller.handle(
+        {
+          method: "POST",
+          path: "/api/auth/login",
+          body: { email: "lock@example.com", password: "Password123!" },
+          query: new URLSearchParams(),
+          headers: {}
+        },
+        createMockResponse() as never
+      ),
+    /temporarily locked/i
+  );
+});
+
 test("password reset rotates sessions and signs the user back in", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());

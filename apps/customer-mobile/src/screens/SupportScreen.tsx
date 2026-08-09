@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { StyleSheet, Switch, Text, View, Pressable, TextInput } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  AccountSecuritySettings,
   AppNotification,
   BookingArrivalTracking,
   Booking,
@@ -11,7 +12,9 @@ import {
   NotificationDeliveryRecord,
   NotificationPreferences,
   SupportIssueType,
-  SupportTicket
+  SupportTicket,
+  TwoFactorChallengeResponse,
+  TwoFactorMethod
 } from "@yardmatch/contracts";
 import { I18nInstance, TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
 import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
@@ -21,6 +24,7 @@ import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createCustomerMobileApiClient } from "../lib/api";
+import { getCustomerAuthDevice } from "../lib/sessionSecurity";
 import { findTrackableBooking, parseTrackingBookingId } from "../lib/arrivalTracking";
 import { useCustomerSession } from "../session/CustomerSessionContext";
 
@@ -126,6 +130,11 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   const [statusMessage, setStatusMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [securitySettings, setSecuritySettings] = useState<AccountSecuritySettings>();
+  const [securityMethod, setSecurityMethod] = useState<TwoFactorMethod>("email");
+  const [securityChallenge, setSecurityChallenge] = useState<TwoFactorChallengeResponse>();
+  const [securityCode, setSecurityCode] = useState("");
+  const [securityPassword, setSecurityPassword] = useState("");
   const { biometricAvailable, biometricEnabled, biometricLabel, envelope, setBiometricEnabled, signOut } =
     useCustomerSession();
   const defaultProperty = properties.find((property) => property.isDefault) ?? properties[0];
@@ -139,7 +148,12 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
     alerts: enabledAlertCount === undefined
       ? i18n.t("mobile.support.summary.loading")
       : i18n.t("mobile.support.summary.alerts_on", { count: enabledAlertCount }),
-    security: !biometricAvailable
+    security: securitySettings?.twoFactorEnabled
+      ? i18n.t("security.two_factor.on", {
+          destination: securitySettings.destinationHint ?? "",
+          method: i18n.t(securitySettings.method === "sms" ? "security.method.sms" : "security.method.email")
+        })
+      : !biometricAvailable
       ? i18n.t("mobile.support.summary.unavailable")
       : biometricEnabled
         ? i18n.t("mobile.support.summary.biometric_on", { biometric: biometricLabel })
@@ -159,13 +173,15 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
     try {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [nextProperties, nextBookings, nextTickets, notificationResponse, nextPreferences, nextDeliveries] = await Promise.all([
+      const device = await getCustomerAuthDevice();
+      const [nextProperties, nextBookings, nextTickets, notificationResponse, nextPreferences, nextDeliveries, nextSecurity] = await Promise.all([
         api.getCustomerProperties(),
         api.getBookings(),
         api.getSupportTickets(),
         api.getNotifications(),
         api.getNotificationPreferences(),
-        api.getNotificationDeliveries()
+        api.getNotificationDeliveries(),
+        api.getSecuritySettings(device.id)
       ]);
       setProperties(nextProperties);
       setBookings(nextBookings);
@@ -174,8 +190,91 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       setUnreadCount(notificationResponse.unreadCount);
       setPreferences(nextPreferences);
       setDeliveries(nextDeliveries.deliveries);
+      setSecuritySettings(nextSecurity);
+      setSecurityMethod(nextSecurity.method ?? "email");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.support.error.load_account"));
+    }
+  }
+
+  async function beginTwoFactorSetup() {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setSecurityChallenge(await api.beginTwoFactorSetup({ method: securityMethod, device: await getCustomerAuthDevice() }));
+      setSecurityCode("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function confirmTwoFactorSetup() {
+    if (!envelope?.session.token || !securityChallenge) return;
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setSecuritySettings(await api.confirmTwoFactorSetup({ challengeToken: securityChallenge.challengeToken, code: securityCode, rememberDevice: true }));
+      setSecurityChallenge(undefined);
+      setSecurityCode("");
+      setStatusMessage(i18n.t("security.status.updated"));
+      await loadAccount();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function disableTwoFactor() {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setSecuritySettings(await api.disableTwoFactor({ password: securityPassword }));
+      setSecurityPassword("");
+      setStatusMessage(i18n.t("security.status.updated"));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function revokeTrustedDevice(trustedDeviceId: string) {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.revokeTrustedDevice({ trustedDeviceId });
+      await loadAccount();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function revokeAllSessions() {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.revokeOtherSessions();
+      signOut();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+      setIsWorking(false);
     }
   }
 
@@ -493,6 +592,66 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
             value={biometricEnabled}
           />
         </View>
+        <View style={styles.sectionDivider} />
+        <Text style={styles.sectionHeading}>{i18n.t("security.two_factor.title")}</Text>
+        <Text style={styles.meta}>
+          {securitySettings?.twoFactorEnabled && securitySettings.destinationHint && securitySettings.method
+            ? i18n.t("security.two_factor.on", {
+                destination: securitySettings.destinationHint,
+                method: i18n.t(securitySettings.method === "sms" ? "security.method.sms" : "security.method.email")
+              })
+            : i18n.t("security.two_factor.off")}
+        </Text>
+        <View style={styles.chipWrap}>
+          {(["email", "sms"] as TwoFactorMethod[]).map((method) => (
+            <Pressable key={method} onPress={() => setSecurityMethod(method)} style={[styles.chip, securityMethod === method && styles.chipActive]}>
+              <Text style={[styles.chipLabel, securityMethod === method && styles.chipLabelActive]}>
+                {i18n.t(method === "sms" ? "security.method.sms" : "security.method.email")}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {securityChallenge ? (
+          <View style={styles.list}>
+            <Text style={styles.meta}>{i18n.t("security.setup.sent", { destination: securityChallenge.destinationHint })}</Text>
+            {securityChallenge.codePreview ? <Text style={styles.meta}>{i18n.t("security.setup.local_preview", { code: securityChallenge.codePreview })}</Text> : null}
+            <TextInput keyboardType="number-pad" maxLength={6} onChangeText={(value) => setSecurityCode(value.replace(/\D/g, ""))} placeholder={i18n.t("security.setup.code")} style={styles.input} value={securityCode} />
+            <Pressable disabled={isWorking || securityCode.length !== 6} onPress={() => void confirmTwoFactorSetup()} style={styles.linkButton}>
+              <Text style={styles.linkButtonLabel}>{i18n.t("security.setup.confirm")}</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable disabled={isWorking} onPress={() => void beginTwoFactorSetup()} style={styles.linkButton}>
+            <Text style={styles.linkButtonLabel}>{i18n.t("security.setup.send")}</Text>
+          </Pressable>
+        )}
+        {securitySettings?.twoFactorEnabled ? (
+          <View style={styles.list}>
+            <TextInput onChangeText={setSecurityPassword} placeholder={i18n.t("security.disable.password")} secureTextEntry style={styles.input} value={securityPassword} />
+            <Pressable disabled={isWorking || !securityPassword} onPress={() => void disableTwoFactor()} style={styles.linkButton}>
+              <Text style={styles.linkButtonLabel}>{i18n.t("security.disable.action")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        <View style={styles.sectionDivider} />
+        <Text style={styles.sectionHeading}>{i18n.t("security.alerts.title")}</Text>
+        <Text style={styles.meta}>{i18n.t("security.alerts.body")}</Text>
+        <Text style={styles.sectionHeading}>{i18n.t("security.devices.title")}</Text>
+        {securitySettings?.trustedDevices.length ? securitySettings.trustedDevices.map((device) => (
+          <View key={device.id} style={styles.ticketRow}>
+            <View style={styles.copy}>
+              <Text style={styles.title}>{device.label}{device.isCurrentDevice ? ` · ${i18n.t("security.devices.current")}` : ""}</Text>
+              <Text style={styles.meta}>{i18n.t("security.devices.last_seen", { date: i18n.formatDate(device.lastSeenAt) })}</Text>
+            </View>
+            <Pressable disabled={isWorking} onPress={() => void revokeTrustedDevice(device.id)} style={styles.linkButton}>
+              <Text style={styles.linkButtonLabel}>{i18n.t("security.devices.remove")}</Text>
+            </Pressable>
+          </View>
+        )) : <Text style={styles.meta}>{i18n.t("security.devices.empty")}</Text>}
+        <Text style={styles.meta}>{i18n.t("security.sessions.warning")}</Text>
+        <Pressable disabled={isWorking} onPress={() => void revokeAllSessions()} style={styles.linkButton}>
+          <Text style={styles.linkButtonLabel}>{i18n.t("security.sessions.revoke")}</Text>
+        </Pressable>
         <Pressable onPress={signOut} style={styles.logoutButton}>
           <Text style={styles.logoutButtonLabel}>{i18n.t("mobile.support.log_out")}</Text>
         </Pressable>

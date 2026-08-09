@@ -2466,7 +2466,55 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
             ? updates.resetPasswordRequestedAt
               ? new Date(updates.resetPasswordRequestedAt)
               : null
-            : undefined
+            : undefined,
+        twoFactorMethod:
+          "twoFactorMethod" in updates ? updates.twoFactorMethod ?? null : undefined,
+        twoFactorEnabledAt:
+          "twoFactorEnabledAt" in updates
+            ? updates.twoFactorEnabledAt
+              ? new Date(updates.twoFactorEnabledAt)
+              : null
+            : undefined,
+        twoFactorChallengeId:
+          "twoFactorChallengeId" in updates ? updates.twoFactorChallengeId ?? null : undefined,
+        twoFactorChallengePurpose:
+          "twoFactorChallengePurpose" in updates ? updates.twoFactorChallengePurpose ?? null : undefined,
+        twoFactorChallengeMethod:
+          "twoFactorChallengeMethod" in updates ? updates.twoFactorChallengeMethod ?? null : undefined,
+        twoFactorChallengeCodeHash:
+          "twoFactorChallengeCodeHash" in updates ? updates.twoFactorChallengeCodeHash ?? null : undefined,
+        twoFactorChallengeExpiresAt:
+          "twoFactorChallengeExpiresAt" in updates
+            ? updates.twoFactorChallengeExpiresAt
+              ? new Date(updates.twoFactorChallengeExpiresAt)
+              : null
+            : undefined,
+        twoFactorChallengeRequestedAt:
+          "twoFactorChallengeRequestedAt" in updates
+            ? updates.twoFactorChallengeRequestedAt
+              ? new Date(updates.twoFactorChallengeRequestedAt)
+              : null
+            : undefined,
+        twoFactorChallengeFailedAttempts:
+          "twoFactorChallengeFailedAttempts" in updates
+            ? updates.twoFactorChallengeFailedAttempts ?? 0
+            : undefined,
+        twoFactorChallengeDeviceIdHash:
+          "twoFactorChallengeDeviceIdHash" in updates
+            ? updates.twoFactorChallengeDeviceIdHash ?? null
+            : undefined,
+        twoFactorChallengeDeviceLabel:
+          "twoFactorChallengeDeviceLabel" in updates
+            ? updates.twoFactorChallengeDeviceLabel ?? null
+            : undefined,
+        twoFactorChallengeDevicePlatform:
+          "twoFactorChallengeDevicePlatform" in updates
+            ? updates.twoFactorChallengeDevicePlatform ?? null
+            : undefined,
+        trustedDevices:
+          "trustedDevices" in updates ? asJson(updates.trustedDevices ?? null) : undefined,
+        securityEventHistory:
+          "securityEventHistory" in updates ? asJson(updates.securityEventHistory ?? null) : undefined
       }
     }).catch((error: any) => {
       if (error?.code === "P2025") {
@@ -2503,6 +2551,20 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     resetPasswordCodeHash: string | null;
     resetPasswordExpiresAt: Date | null;
     resetPasswordRequestedAt: Date | null;
+    twoFactorMethod: string | null;
+    twoFactorEnabledAt: Date | null;
+    twoFactorChallengeId: string | null;
+    twoFactorChallengePurpose: string | null;
+    twoFactorChallengeMethod: string | null;
+    twoFactorChallengeCodeHash: string | null;
+    twoFactorChallengeExpiresAt: Date | null;
+    twoFactorChallengeRequestedAt: Date | null;
+    twoFactorChallengeFailedAttempts: number;
+    twoFactorChallengeDeviceIdHash: string | null;
+    twoFactorChallengeDeviceLabel: string | null;
+    twoFactorChallengeDevicePlatform: string | null;
+    trustedDevices: unknown;
+    securityEventHistory: unknown;
   }): AuthIdentityRecord {
     return {
       userId: identity.id,
@@ -2533,7 +2595,28 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       authenticationLockExpiresAt: identity.authenticationLockExpiresAt?.toISOString(),
       resetPasswordCodeHash: identity.resetPasswordCodeHash ?? undefined,
       resetPasswordExpiresAt: identity.resetPasswordExpiresAt?.toISOString(),
-      resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString()
+      resetPasswordRequestedAt: identity.resetPasswordRequestedAt?.toISOString(),
+      twoFactorMethod: identity.twoFactorMethod as AuthIdentityRecord["twoFactorMethod"],
+      twoFactorEnabledAt: identity.twoFactorEnabledAt?.toISOString(),
+      twoFactorChallengeId: identity.twoFactorChallengeId ?? undefined,
+      twoFactorChallengePurpose:
+        identity.twoFactorChallengePurpose as AuthIdentityRecord["twoFactorChallengePurpose"],
+      twoFactorChallengeMethod:
+        identity.twoFactorChallengeMethod as AuthIdentityRecord["twoFactorChallengeMethod"],
+      twoFactorChallengeCodeHash: identity.twoFactorChallengeCodeHash ?? undefined,
+      twoFactorChallengeExpiresAt: identity.twoFactorChallengeExpiresAt?.toISOString(),
+      twoFactorChallengeRequestedAt: identity.twoFactorChallengeRequestedAt?.toISOString(),
+      twoFactorChallengeFailedAttempts: identity.twoFactorChallengeFailedAttempts ?? 0,
+      twoFactorChallengeDeviceIdHash: identity.twoFactorChallengeDeviceIdHash ?? undefined,
+      twoFactorChallengeDeviceLabel: identity.twoFactorChallengeDeviceLabel ?? undefined,
+      twoFactorChallengeDevicePlatform:
+        identity.twoFactorChallengeDevicePlatform as AuthIdentityRecord["twoFactorChallengeDevicePlatform"],
+      trustedDevices: identity.trustedDevices
+        ? readJson<NonNullable<AuthIdentityRecord["trustedDevices"]>>(identity.trustedDevices)
+        : undefined,
+      securityEventHistory: identity.securityEventHistory
+        ? readJson<NonNullable<AuthIdentityRecord["securityEventHistory"]>>(identity.securityEventHistory)
+        : undefined
     };
   }
 

@@ -24,16 +24,22 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
   customer: [
     { href: "/customer", labelKey: "nav.user.search_services" },
     { href: "/customer/dashboard", labelKey: "nav.user.account" },
-    { href: "/customer/dashboard?view=history", labelKey: "nav.user.past_visits" }
+    { href: "/customer/dashboard?view=history", labelKey: "nav.user.past_visits" },
+    { href: "/account/security", labelKey: "security.title" }
   ],
   provider: [
     { href: "/provider/management", labelKey: "nav.user.management" },
-    { href: "/provider/payments", labelKey: "nav.user.payments" }
+    { href: "/provider/payments", labelKey: "nav.user.payments" },
+    { href: "/account/security", labelKey: "security.title" }
   ],
-  ops: [{ href: "/ops", labelKey: "nav.user.operations_dashboard" }],
+  ops: [
+    { href: "/ops", labelKey: "nav.user.operations_dashboard" },
+    { href: "/account/security", labelKey: "security.title" }
+  ],
   "crew-member": [
     { href: "/crew", labelKey: "nav.user.open_work" },
-    { href: "/crew/schedule", labelKey: "nav.user.schedule" }
+    { href: "/crew/schedule", labelKey: "nav.user.schedule" },
+    { href: "/account/security", labelKey: "security.title" }
   ]
 };
 

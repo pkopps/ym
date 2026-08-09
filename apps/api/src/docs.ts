@@ -107,8 +107,80 @@ export const apiSpec = {
         },
         responses: {
           "200": { description: "Authenticated user profile and bearer token" },
+          "202": { description: "Password accepted; a two-factor security code must be verified before a session is issued" },
           "401": { description: "Invalid credentials" }
         }
+      }
+    },
+    "/api/auth/two-factor/verify": {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify a two-factor sign-in code",
+        description: "Consumes a short-lived single-use email or SMS challenge and only then issues the bearer session.",
+        responses: {
+          "200": { description: "Security code accepted and authenticated session issued" },
+          "401": { description: "Invalid, expired, or superseded security code" },
+          "423": { description: "Too many failed code attempts" }
+        }
+      }
+    },
+    "/api/auth/two-factor/resend": {
+      post: {
+        tags: ["Auth"],
+        summary: "Replace an active two-factor code",
+        description: "Invalidates the previous code and enforces a resend cooldown before dispatching a replacement.",
+        responses: {
+          "200": { description: "Replacement challenge dispatched" },
+          "429": { description: "Resend cooldown is still active" }
+        }
+      }
+    },
+    "/api/auth/security": {
+      get: {
+        tags: ["Auth"],
+        summary: "Review account security settings and remembered devices",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Two-factor status, remembered devices, and recent security activity" } }
+      }
+    },
+    "/api/auth/security/two-factor/setup": {
+      post: {
+        tags: ["Auth"],
+        summary: "Send an email or SMS two-factor setup code",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Short-lived setup challenge dispatched" } }
+      }
+    },
+    "/api/auth/security/two-factor/confirm": {
+      post: {
+        tags: ["Auth"],
+        summary: "Enable or change two-factor delivery after code verification",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Updated account security settings" } }
+      }
+    },
+    "/api/auth/security/two-factor/disable": {
+      post: {
+        tags: ["Auth"],
+        summary: "Disable two-factor authentication after password confirmation",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Two-factor authentication disabled and remembered devices cleared" } }
+      }
+    },
+    "/api/auth/security/devices/revoke": {
+      post: {
+        tags: ["Auth"],
+        summary: "Remove a remembered device",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Remembered device revoked" } }
+      }
+    },
+    "/api/auth/security/sessions/revoke": {
+      post: {
+        tags: ["Auth"],
+        summary: "Sign out every session and clear remembered devices",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Session version rotated and remembered devices cleared" } }
       }
     },
     "/api/auth/password-reset/request": {

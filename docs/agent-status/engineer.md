@@ -4,7 +4,7 @@ Agent-reported completion is checkpoint evidence only. It does not equal indepen
 
 ## Current Goal
 
-Finish the repository-owned test-deployment roadmap after Phase 1: revision-matched hosted acceptance, customer/provider/crew mobile test distribution, CI release gates, and rollback documentation. Isolate the remaining work to external provisioning, credentials, store accounts, and live evidence.
+Strengthen YardMatch account security with user-selected email or SMS two-factor authentication, new-device warnings, remembered-device controls, and global session revocation across API, web, and mobile.
 
 ## Agent Role
 
@@ -13,8 +13,8 @@ Engineer
 ## Branch And Commit
 
 - Branch: `main`
-- Baseline commit: `536da131c664086f449dea313197ef20f3c752e0` (`feat: prepare phase one staging deployment`)
-- State: remaining deployment phases are implemented and verified in the working tree; not yet committed.
+- Baseline commit: `a5469ccb6ab24e39739004b42e54fdbb42fd4634` (`feat: prepare staging and mobile test deployments`)
+- State: the account-security milestone is implemented and verified in the working tree; not yet committed.
 
 ## Last Updated
 
@@ -22,75 +22,70 @@ Engineer
 
 ## Completed Since Previous Checkpoint
 
-- Added a fail-closed web `/api/healthz` route and a hosted deployment waiter that rejects insecure URLs, web/API origin mixups, non-staging or non-PostgreSQL targets, and revision drift before acceptance begins.
-- Added an automated staging photo lifecycle that creates isolated synthetic users and a booking, proves customer-private before-photo access, provider before/after capture, customer service-history pairing, explicit marketing consent, privacy-safe public delivery, and immediate revocation.
-- Added a protected GitHub `staging` workflow that waits for the exact web/API revision, runs API, photo, ops-role, and browser acceptance, and retains secret-safe evidence for 90 days.
-- Expanded required CI to build API/web, verify mobile release configuration, export customer/provider/crew web/iOS/Android bundles, and retain per-app export metadata.
-- Added dynamic customer/provider/crew app configuration, distinct EAS project IDs, fail-closed staging/production API URLs, internal preview and simulator profiles, store-test and production profiles, and separate staging display names.
-- Added protected manual GitHub workflows for Expo internal previews and store-test builds. Android store tests remain draft on the internal track; iOS builds can process into TestFlight; no workflow enables a public production release.
-- Corrected native iOS evidence-photo permission declarations, removed unused microphone permission requests, and made APNs entitlements resolve to development for Debug and production for Release.
-- Aligned all Expo workspaces and the monorepo peer graph to React Native `0.83.10` plus SDK-supported module patches. `npm ci` now reproduces one React Native runtime across every Expo package.
-- Made Prisma Client generation an explicit prerequisite of `npm run verify`, preventing clean-checkout lint failures caused by missing generated types.
-- Added `MOBILE_DEPLOYMENT.md` and `RELEASE_RUNBOOK.md`, including first interactive credential setup, protected-environment configuration, acceptance evidence, coordinated Vercel/Render rollback, database compatibility, and mobile fix-forward guidance.
+- Added opt-in two-factor authentication for password-backed customer, provider, crew, and ops accounts with user-selectable email or SMS delivery.
+- Added hashed, single-use six-digit challenges with 10-minute expiry, 60-second resend throttling, a five-attempt lock threshold, and no production code preview.
+- Extended repeated-failure account lockout from ops-only password attempts to every role and to invalid login security codes.
+- Added hashed per-install device identifiers, 30-day remembered devices, device-specific recent activity, individual device removal, and global session/device revocation.
+- Added mandatory in-app and email warnings after successful new-device sign-ins, independent of ordinary account-email preferences.
+- Added the authenticated web account security center at `/account/security`, a focused second-step login card, navigation entry points, and responsive desktop/mobile coverage.
+- Added matching two-factor setup, login challenge, remembered-device, new-device alert, device removal, and session-revocation controls in customer, provider, and crew mobile apps.
+- Protected password-reset completion with the same new-device two-factor challenge and prevented linked social sign-in from bypassing enabled YardMatch 2FA.
+- Added additive Prisma fields/migration, API contracts/client routes, API documentation, English/Spanish translations, local-development guidance, and roadmap follow-up for social-only OAuth handoff.
 
 ## Currently In Progress
 
-- External resource provisioning and live evidence collection are ready to begin but require authenticated platform accounts and credentials.
+- No repository implementation remains for the requested milestone. Production delivery rollout and live-device acceptance require configured staging vendors and approved QA destinations.
 
 ## Remaining Work
 
-- Provision the Vercel web/private Blob and Render API/PostgreSQL resources and configure the protected GitHub `staging` environment.
-- Run the safe seed plus revision-matched hosted acceptance and archive the first `staging-acceptance-<commit>-<attempt>` artifact.
-- Create/link three EAS projects, configure EAS preview/production variables, and complete the first interactive iOS/Android signing build for each app.
-- Create App Store Connect and Google Play records, complete agreements/metadata, configure submission credentials, and distribute staging-backed builds through internal TestFlight/Google Play testing.
-- Rehearse one coordinated staging rollback and record the accepted Vercel/Render revisions, database migration state, acceptance artifact, and mobile build IDs.
-- Add a server-side minimum-supported-mobile-version policy before production; finish production media scanning, moderation, retention, and deletion automation.
+- Configure Resend and Twilio in staging and prove email/SMS codes plus warning delivery to approved QA destinations.
+- Add an OAuth callback-to-2FA challenge handoff before allowing social-only accounts to enable YardMatch-managed two-factor authentication.
+- Consider recovery codes, authenticator-app/TOTP support, and richer IP/location/risk context after launch usage clarifies the support burden.
+- Continue the existing external Vercel/Render/EAS/store provisioning work from the deployment checkpoint.
 
 ## Blockers
 
-- The installed Render connector cannot initialize until `RENDER_API_KEY` is available, and the installed Vercel connector currently reports that authentication is required.
-- Live staging requires Vercel, Render, Blob, Stripe test, Resend, Twilio, and approved QA-destination secrets.
-- Cloud mobile builds require an Expo access token, three EAS project IDs, and one interactive signing setup per app/platform.
-- Store testing requires Apple Developer/App Store Connect and Google Play Console access, completed agreements, app records, and submission credentials.
+- Live email/SMS acceptance needs Resend/Twilio staging credentials, verified sender identities/numbers, and allowlisted QA destinations.
+- Social-only 2FA remains intentionally unavailable until its OAuth challenge handoff is implemented; password-backed accounts, including accounts linked to a social provider, are covered now.
 
 ## Routes Or Workflows Changed
 
-- Git push -> required CI builds/tests/exports -> Git-connected Vercel/Render deploy -> protected revision-matched staging acceptance -> retained evidence.
-- Hosted acceptance -> API/web health and revision -> API smoke -> private before/after lifecycle and consent revocation -> recommendation-first homepage and ops role gate.
-- Mobile config -> explicit YardMatch environment and HTTPS API -> app-specific EAS project -> internal preview or store-test build -> protected manual workflow.
-- iOS signing -> Debug APNs development entitlement -> Release APNs production entitlement; camera/photo permissions remain explicit and microphone access is not requested.
-- Failed mobile binary -> server/API mitigation and compatible fix-forward build; web/API rollback does not pretend to downgrade an installed mobile binary.
+- Password sign-in -> remembered-device check -> full session or email/SMS security-code challenge -> optional 30-day device trust -> new-device activity and warning.
+- Password-reset completion -> enabled-2FA/new-device check -> security-code challenge before a replacement session is issued.
+- Account security -> choose email/SMS -> receive and confirm setup code -> inspect or remove remembered devices -> sign out every session when needed.
+- Linked social account with enabled YardMatch 2FA -> explicit password-login handoff instead of an OAuth bypass.
+- New-device success -> durable activity entry + in-app account notification + forced email delivery.
 
 ## Validation Results
 
-- `npm ci`: passed from the lockfile.
-- `npm run verify`: passed Prisma generation, zero-warning ESLint 10, TypeScript, mobile release validation, and 251 API tests (250 passed, 1 expected PostgreSQL-only skip).
+- `npm run prisma:generate`: passed.
+- Local Prisma migration deploy: applied `20260809173000_account_two_factor_security`; schema diff reported no difference.
+- `npm run typecheck`: passed across the monorepo.
+- `npm run lint`: passed with zero warnings.
+- `npm run i18n:validate`: passed 3,578 keys across English, Spanish, and pseudo locales.
+- `npm run test:api`: 256 tests, 254 passed, 2 expected PostgreSQL-only skips, 0 failed.
+- `TEST_DATABASE_URL=... npm run test:api:postgres`: 2/2 passed, including durable 2FA/device/activity JSON persistence.
+- Targeted account-security API regressions: 4/4 passed for email, SMS, remembered devices, warnings, revocation, disablement, lockout, and disabled-account challenge races.
 - `npm run build:api`: passed.
-- `npm run build:web`: passed on Next.js 16.3.0; 43 application routes plus `/api/healthz` were generated.
-- `npm run test:smoke`: API smoke passed and Playwright web smoke passed 15/15.
-- Local hosted staging checks: deployment wait passed, full private-photo/consent/revocation lifecycle passed, and hosted Playwright acceptance passed 2/2.
-- Customer, provider, and crew Expo exports: web, iOS, and Android passed with staging configuration after the final dependency alignment.
-- `npx expo install --check`: passed for legacy, customer, provider, and crew workspaces.
-- Strict mobile environment preflight with HTTPS staging URL and UUID-shaped project IDs: passed.
-- GitHub workflow/Render YAML parsing and all changed iOS plist/entitlement validation: passed.
-- Production dependency audit: 0 critical, 10 high, and 6 moderate advisories remain in the Expo/Metro/Xcode build chain. npm offers an incompatible Expo SDK downgrade; no breaking forced fix was applied.
+- `npm run build:web`: passed on Next.js 16.3.0; `/account/security` generated successfully.
+- `npm run test:web:smoke`: 16/16 passed, including a full enable-2FA/new-device challenge flow.
+- `npm run build:mobile`: customer, provider, and crew exports passed for web, iOS, and Android.
+- `npm run verify:mobile-release`: passed for all three apps and all configured release profiles.
+- In-app browser review at 1440x900 and 390x844: account security and challenge layouts rendered without horizontal overflow or application console errors. The existing Next.js smooth-scroll development warning remains.
 
 ## Screenshot Paths
 
-- `reports/agent-checkpoints/engineer/latest/photo-proof-home-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/photo-proof-home-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/photo-history-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/photo-history-mobile-after.png`
+- `reports/agent-checkpoints/engineer/latest/account-security-enabled-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/two-factor-login-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/account-security-activity-mobile.png`
 
 ## Known Defects
 
-- This task could not provision the live hosts: the Render MCP is missing `RENDER_API_KEY`, and the Vercel MCP requires authentication.
-- No live Vercel/Render deployment, EAS build, store-test artifact, or rollback rehearsal evidence exists until external resources and credentials are configured.
-- Mobile binaries do not yet have a server-enforced minimum supported version.
-- Render free resources can sleep/expire and are suitable only for the first test environment.
-- Media validation and private storage are implemented, but malware scanning, moderation, retention, and deletion automation remain production gates.
-- Expo SDK 55's current Metro/Xcode toolchain retains upstream npm advisories without a compatible audit remediation. The affected chain is used to build apps; the unsafe proposed SDK downgrade was rejected.
+- Real Resend/Twilio delivery was not exercised without staging credentials; local mock delivery and development-only code previews were exercised.
+- Social-only accounts cannot enable YardMatch-managed 2FA yet. This is fail-closed and documented; linked accounts with passwords must use password sign-in when 2FA is enabled.
+- New-device warnings currently report the device label and time, not IP-derived location or a risk score.
+- Recovery codes and authenticator-app/TOTP methods are not part of this milestone.
 
 ## Recommended Next Task
 
-Provision Vercel/Render and the protected `staging` environment from `STAGING_DEPLOYMENT.md`, run the hosted acceptance workflow, then link the three EAS projects and perform the first interactive signing builds from `MOBILE_DEPLOYMENT.md`.
+Configure staging Resend/Twilio allowlisted destinations and run one physical-device email flow plus one SMS flow, then build the OAuth-to-2FA handoff so social-only users can opt in without weakening the second-factor guarantee.

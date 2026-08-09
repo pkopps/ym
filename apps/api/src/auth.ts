@@ -4,6 +4,7 @@ import { resolveJwtSecret } from "./config/productionConfig";
 
 export const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 export const PASSWORD_RESET_TTL_MINUTES = 20;
+export const TWO_FACTOR_CODE_TTL_MINUTES = 10;
 
 export interface SessionActor {
   userId: string;
@@ -88,10 +89,35 @@ export function generatePasswordResetCode(): string {
   return String(randomInt(100000, 1000000));
 }
 
+export function generateTwoFactorCode(): string {
+  return String(randomInt(100000, 1000000));
+}
+
 export function hashPasswordResetCode(email: string, resetCode: string): string {
   return createHash("sha256")
     .update(`${email.trim().toLowerCase()}:${resetCode}:${getJwtSecret()}`)
     .digest("hex");
+}
+
+export function hashTwoFactorCode(userId: string, challengeId: string, code: string): string {
+  return createHmac("sha256", getJwtSecret())
+    .update(`${userId}:${challengeId}:${code.trim()}`)
+    .digest("hex");
+}
+
+export function verifyTwoFactorCode(
+  userId: string,
+  challengeId: string,
+  code: string,
+  storedHash: string
+): boolean {
+  const candidate = Buffer.from(hashTwoFactorCode(userId, challengeId, code), "hex");
+  const expected = Buffer.from(storedHash, "hex");
+  return candidate.length === expected.length && timingSafeEqual(candidate, expected);
+}
+
+export function hashDeviceIdentifier(deviceId: string): string {
+  return createHmac("sha256", getJwtSecret()).update(deviceId.trim()).digest("hex");
 }
 
 export function signSessionToken(actor: SessionActor): string {

@@ -264,6 +264,9 @@ export function ProviderSiteHeader() {
               <a className="button-secondary" href={localHref("/provider/payments")}>
                 {i18n.t("nav.user.payments")}
               </a>
+              <a className="button-secondary" href={localHref("/account/security")}>
+                {i18n.t("security.title")}
+              </a>
               <button className="button" onClick={handleSignOut} type="button">
                 {i18n.t("nav.sign_out")}
               </button>

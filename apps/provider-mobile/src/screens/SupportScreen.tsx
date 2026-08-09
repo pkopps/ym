@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
+  AccountSecuritySettings,
   AppNotification,
   CreateExternalCalendarImportRequest,
   CreateSupportTicketRequest,
@@ -18,13 +19,16 @@ import {
   ProviderStaffingOverview,
   SupportIssueType,
   SupportTicket,
-  SupportTicketStatus
+  SupportTicketStatus,
+  TwoFactorChallengeResponse,
+  TwoFactorMethod
 } from "@yardmatch/contracts";
 import { I18nInstance, TranslationKey, type SupportedLocale } from "@yardmatch/i18n";
 import { useI18n } from "@yardmatch/i18n/react";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { createProviderMobileApiClient } from "../lib/api";
+import { getProviderAuthDevice } from "../lib/sessionSecurity";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
@@ -218,6 +222,11 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   const [showSupportComposer, setShowSupportComposer] = useState(false);
   const [showSupportHistory, setShowSupportHistory] = useState(false);
   const [activeSection, setActiveSection] = useState<ProviderBusinessSection>("work");
+  const [securitySettings, setSecuritySettings] = useState<AccountSecuritySettings>();
+  const [securityMethod, setSecurityMethod] = useState<TwoFactorMethod>("email");
+  const [securityChallenge, setSecurityChallenge] = useState<TwoFactorChallengeResponse>();
+  const [securityCode, setSecurityCode] = useState("");
+  const [securityPassword, setSecurityPassword] = useState("");
   const calendarHealth = calendarImports?.syncHealth;
   const heldPayoutEntries = (payoutLedger?.entries ?? []).filter((entry) => entry.status === "on-hold");
   const blockedPayoutCents =
@@ -244,7 +253,12 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       enabled: enabledAlertCount
     }),
     language: i18n.t("mobile.settings.language.summary", { language: currentLanguageLabel }),
-    security: !biometricAvailable
+    security: securitySettings?.twoFactorEnabled
+      ? i18n.t("security.two_factor.on", {
+          destination: securitySettings.destinationHint ?? "",
+          method: i18n.t(securitySettings.method === "sms" ? "security.method.sms" : "security.method.email")
+        })
+      : !biometricAvailable
       ? i18n.t("mobile.support.summary.unavailable")
       : biometricEnabled
         ? i18n.t("mobile.support.summary.biometric_on", { biometric: biometricLabel })
@@ -263,6 +277,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
     try {
       const api = createProviderMobileApiClient();
       api.setAuthToken(envelope.session.token);
+      const device = await getProviderAuthDevice();
       const [
         me,
         nextOverview,
@@ -272,7 +287,8 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
         nextDeliveries,
         nextCalendarSubscription,
         nextCalendarImports,
-        nextPayoutLedger
+        nextPayoutLedger,
+        nextSecurity
       ] = await Promise.all([
         api.getCurrentUser(),
         api.getProviderStaffingOverview(),
@@ -282,7 +298,8 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
         api.getNotificationDeliveries(),
         api.getProviderCalendarSubscription(),
         api.getProviderCalendarImports(),
-        api.getProviderPayoutLedger()
+        api.getProviderPayoutLedger(),
+        api.getSecuritySettings(device.id)
       ]);
       setProvider(me.user as ProviderProfile);
       setOverview(nextOverview);
@@ -294,6 +311,8 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       setCalendarSubscription(nextCalendarSubscription);
       setCalendarImports(nextCalendarImports);
       setPayoutLedger(nextPayoutLedger);
+      setSecuritySettings(nextSecurity);
+      setSecurityMethod(nextSecurity.method ?? "email");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("provider_mobile.support.error.load_settings"));
     }
@@ -620,6 +639,77 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
     }
   }
 
+  async function beginTwoFactorSetup() {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      setErrorMessage("");
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setSecurityChallenge(await api.beginTwoFactorSetup({ method: securityMethod, device: await getProviderAuthDevice() }));
+      setSecurityCode("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally { setIsWorking(false); }
+  }
+
+  async function confirmTwoFactorSetup() {
+    if (!envelope?.session.token || !securityChallenge) return;
+    try {
+      setIsWorking(true);
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.confirmTwoFactorSetup({ challengeToken: securityChallenge.challengeToken, code: securityCode, rememberDevice: true });
+      setSecurityChallenge(undefined);
+      setSecurityCode("");
+      setStatusMessage(i18n.t("security.status.updated"));
+      await loadProvider();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally { setIsWorking(false); }
+  }
+
+  async function disableTwoFactor() {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      setSecuritySettings(await api.disableTwoFactor({ password: securityPassword }));
+      setSecurityPassword("");
+      setStatusMessage(i18n.t("security.status.updated"));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally { setIsWorking(false); }
+  }
+
+  async function revokeTrustedDevice(trustedDeviceId: string) {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.revokeTrustedDevice({ trustedDeviceId });
+      await loadProvider();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+    } finally { setIsWorking(false); }
+  }
+
+  async function revokeAllSessions() {
+    if (!envelope?.session.token) return;
+    try {
+      setIsWorking(true);
+      const api = createProviderMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      await api.revokeOtherSessions();
+      signOut();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("security.error.load"));
+      setIsWorking(false);
+    }
+  }
+
   return (
     <ScreenShell
       eyebrow={i18n.t("provider_mobile.support.eyebrow")}
@@ -740,6 +830,46 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
             }}
             value={biometricEnabled}
           />
+        </View>
+        <View style={styles.ticketStack}>
+          <Text style={styles.title}>{i18n.t("security.two_factor.title")}</Text>
+          <Text style={styles.meta}>
+            {securitySettings?.twoFactorEnabled && securitySettings.destinationHint && securitySettings.method
+              ? i18n.t("security.two_factor.on", { destination: securitySettings.destinationHint, method: i18n.t(securitySettings.method === "sms" ? "security.method.sms" : "security.method.email") })
+              : i18n.t("security.two_factor.off")}
+          </Text>
+          <View style={styles.issueRow}>
+            {(["email", "sms"] as TwoFactorMethod[]).map((method) => (
+              <Pressable key={method} onPress={() => setSecurityMethod(method)} style={[styles.secondaryButton, securityMethod === method && styles.secondaryButtonActive]}>
+                <Text style={[styles.secondaryButtonLabel, securityMethod === method && styles.secondaryButtonLabelActive]}>{i18n.t(method === "sms" ? "security.method.sms" : "security.method.email")}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {securityChallenge ? (
+            <>
+              <Text style={styles.meta}>{i18n.t("security.setup.sent", { destination: securityChallenge.destinationHint })}</Text>
+              {securityChallenge.codePreview ? <Text style={styles.meta}>{i18n.t("security.setup.local_preview", { code: securityChallenge.codePreview })}</Text> : null}
+              <TextInput keyboardType="number-pad" maxLength={6} onChangeText={(value) => setSecurityCode(value.replace(/\D/g, ""))} placeholder={i18n.t("security.setup.code")} style={styles.input} value={securityCode} />
+              <Pressable disabled={isWorking || securityCode.length !== 6} onPress={() => void confirmTwoFactorSetup()} style={styles.secondaryButton}><Text style={styles.secondaryButtonLabel}>{i18n.t("security.setup.confirm")}</Text></Pressable>
+            </>
+          ) : <Pressable disabled={isWorking} onPress={() => void beginTwoFactorSetup()} style={styles.secondaryButton}><Text style={styles.secondaryButtonLabel}>{i18n.t("security.setup.send")}</Text></Pressable>}
+          {securitySettings?.twoFactorEnabled ? (
+            <>
+              <TextInput onChangeText={setSecurityPassword} placeholder={i18n.t("security.disable.password")} secureTextEntry style={styles.input} value={securityPassword} />
+              <Pressable disabled={isWorking || !securityPassword} onPress={() => void disableTwoFactor()} style={styles.secondaryButton}><Text style={styles.secondaryButtonLabel}>{i18n.t("security.disable.action")}</Text></Pressable>
+            </>
+          ) : null}
+          <Text style={styles.title}>{i18n.t("security.alerts.title")}</Text>
+          <Text style={styles.meta}>{i18n.t("security.alerts.body")}</Text>
+          <Text style={styles.title}>{i18n.t("security.devices.title")}</Text>
+          {securitySettings?.trustedDevices.length ? securitySettings.trustedDevices.map((device) => (
+            <View key={device.id} style={styles.ticketRow}>
+              <View style={styles.ticketCopy}><Text style={styles.title}>{device.label}</Text><Text style={styles.meta}>{i18n.t("security.devices.last_seen", { date: i18n.formatDate(device.lastSeenAt) })}</Text></View>
+              <Pressable disabled={isWorking} onPress={() => void revokeTrustedDevice(device.id)} style={styles.secondaryButton}><Text style={styles.secondaryButtonLabel}>{i18n.t("security.devices.remove")}</Text></Pressable>
+            </View>
+          )) : <Text style={styles.meta}>{i18n.t("security.devices.empty")}</Text>}
+          <Text style={styles.meta}>{i18n.t("security.sessions.warning")}</Text>
+          <Pressable disabled={isWorking} onPress={() => void revokeAllSessions()} style={styles.secondaryButton}><Text style={styles.secondaryButtonLabel}>{i18n.t("security.sessions.revoke")}</Text></Pressable>
         </View>
         <Pressable onPress={signOut} style={styles.logoutButton}>
           <Text style={styles.logoutButtonLabel}>{i18n.t("mobile.support.log_out")}</Text>

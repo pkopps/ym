@@ -32,6 +32,20 @@ model UserAccount {
   resetPasswordCodeHash          String?
   resetPasswordExpiresAt         DateTime?
   resetPasswordRequestedAt       DateTime?
+  twoFactorMethod                String?
+  twoFactorEnabledAt             DateTime?
+  twoFactorChallengeId           String?
+  twoFactorChallengePurpose      String?
+  twoFactorChallengeMethod       String?
+  twoFactorChallengeCodeHash     String?
+  twoFactorChallengeExpiresAt    DateTime?
+  twoFactorChallengeRequestedAt  DateTime?
+  twoFactorChallengeFailedAttempts Int                      @default(0)
+  twoFactorChallengeDeviceIdHash String?
+  twoFactorChallengeDeviceLabel  String?
+  twoFactorChallengeDevicePlatform String?
+  trustedDevices                 Json?
+  securityEventHistory           Json?
   fullName                       String
   phone                          String
   role                           String

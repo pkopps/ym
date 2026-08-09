@@ -81,6 +81,14 @@ Crew mobile:
 npm run dev:crew-mobile
 ```
 
+## Two-Factor And Device Security
+
+Password-backed accounts can choose email or SMS security codes from the web account security center at `http://localhost:3000/account/security` or from the Security section in each mobile app. Local notification delivery uses the existing mock Resend/Twilio path unless real vendor credentials are configured, so setup and login challenge responses include a development-only `codePreview` for deterministic testing. Production responses never include the code.
+
+The flow uses 10-minute single-use codes, a 60-second resend cooldown, a five-attempt lock threshold, and hashed device identifiers remembered for 30 days. A successful sign-in from an unrecognized device always creates an in-app event and queues an email warning. Removing a remembered device forces a security-code challenge on its next sign-in; revoking all sessions increments the account session version and clears every remembered device.
+
+Real delivery uses the existing `RESEND_API_KEY` / `NOTIFICATION_EMAIL_FROM` and `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` configuration. Staging allowlists still apply. Social-only accounts are intentionally prevented from enabling YardMatch two-factor authentication until the OAuth callback flow has its own second-step handoff.
+
 ## Verification
 
 Fast checks:

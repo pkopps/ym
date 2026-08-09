@@ -10,6 +10,7 @@ import { NotificationMenu } from "./NotificationMenu";
 const profileLinks = [
   { href: "/customer/dashboard", labelKey: "nav.user.account" },
   { href: "/customer/dashboard?view=history", labelKey: "nav.user.past_visits" },
+  { href: "/account/security", labelKey: "security.title" },
   { href: "/help", labelKey: "nav.help" }
 ] satisfies Array<{ href: string; labelKey: TranslationKey }>;
 

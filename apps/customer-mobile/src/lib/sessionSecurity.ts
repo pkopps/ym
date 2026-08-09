@@ -1,9 +1,11 @@
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
-import { AuthenticatedUserEnvelope } from "@yardmatch/contracts";
+import { Platform } from "react-native";
+import { AuthDeviceDescriptor, AuthenticatedUserEnvelope } from "@yardmatch/contracts";
 
 const sessionStorageKey = "yardmatch.customer.session";
 const biometricPreferenceStorageKey = "yardmatch.customer.biometric-enabled";
+const authDeviceStorageKey = "yardmatch.customer.auth-device-id";
 
 type BiometricLabel = "Face ID" | "Fingerprint" | "device biometrics";
 
@@ -29,6 +31,22 @@ export async function saveStoredCustomerSession(envelope: AuthenticatedUserEnvel
 
 export async function clearStoredCustomerSession() {
   await SecureStore.deleteItemAsync(sessionStorageKey);
+}
+
+export async function getCustomerAuthDevice(): Promise<AuthDeviceDescriptor> {
+  let id = await SecureStore.getItemAsync(authDeviceStorageKey);
+  if (!id) {
+    id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await SecureStore.setItemAsync(authDeviceStorageKey, id, {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY
+    });
+  }
+  const platform = Platform.OS === "ios" || Platform.OS === "android" ? Platform.OS : "unknown";
+  return {
+    id,
+    label: Platform.OS === "ios" ? "Customer app on iPhone or iPad" : Platform.OS === "android" ? "Customer app on Android" : "Customer app",
+    platform
+  };
 }
 
 export async function loadCustomerBiometricPreference() {

@@ -11,7 +11,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createWebApiClient, saveStoredSession } from "../lib/api";
+import { createWebApiClient, getWebAuthDevice, saveStoredSession } from "../lib/api";
 import { SignupIdentityOptions } from "./SignupIdentityOptions";
 
 const dayOptions: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -161,6 +161,7 @@ export function CrewSignupExperience() {
         phone: phone.trim(),
         role: "crew-member",
         address: normalizedAddress,
+        device: getWebAuthDevice(),
         categories,
         availableWeekdays,
         willingToTravelMiles,

@@ -7,7 +7,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter, useSearchParams } from "next/navigation";
-import { createWebApiClient, saveStoredSession } from "../lib/api";
+import { createWebApiClient, getWebAuthDevice, saveStoredSession } from "../lib/api";
 import { buildSocialAuthRedirectUri } from "../lib/socialAuth";
 import { SignupIdentityOptions } from "./SignupIdentityOptions";
 import {
@@ -232,6 +232,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
         phone: phone.trim(),
         role,
         address,
+        device: getWebAuthDevice(),
         ...(role === "provider"
           ? {
               companyName: companyName.trim(),

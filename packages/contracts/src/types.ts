@@ -3,7 +3,10 @@ export type AuthFlowMode = "signup" | "login";
 export type AuthProvider = "google" | "apple";
 export type OpsInternalScope = "operations" | "admin";
 export type OpsAuthenticationMethod = "password" | "password-reset" | AuthProvider;
-export type OpsFailedAuthenticationReason = "invalid-password" | "disabled-account";
+export type OpsFailedAuthenticationReason =
+  | "invalid-password"
+  | "invalid-two-factor-code"
+  | "disabled-account";
 export type TelemetryPlatformSurface =
   | "api"
   | "web-mobile"
@@ -2649,11 +2652,100 @@ export interface RegisterUserRequest {
   preferredSchedule?: CrewMemberSchedulePreference;
   hasOwnEquipment?: boolean;
   winterWorkEnabled?: boolean;
+  device?: AuthDeviceDescriptor;
 }
 
 export interface LoginRequest {
   email: string;
   password: string;
+  device?: AuthDeviceDescriptor;
+}
+
+export type TwoFactorMethod = "email" | "sms";
+
+export interface AuthDeviceDescriptor {
+  id: string;
+  label: string;
+  platform: "android" | "ios" | "web" | "unknown";
+}
+
+export interface TwoFactorChallengeResponse {
+  twoFactorRequired: true;
+  challengeToken: string;
+  method: TwoFactorMethod;
+  destinationHint: string;
+  expiresAtIso: string;
+  codePreview?: string;
+}
+
+export type LoginResponse = AuthenticatedUserEnvelope | TwoFactorChallengeResponse;
+
+export interface VerifyTwoFactorLoginRequest {
+  challengeToken: string;
+  code: string;
+  rememberDevice?: boolean;
+}
+
+export interface ResendTwoFactorChallengeRequest {
+  challengeToken: string;
+}
+
+export interface BeginTwoFactorSetupRequest {
+  method: TwoFactorMethod;
+  device?: AuthDeviceDescriptor;
+}
+
+export interface BeginTwoFactorSetupResponse extends TwoFactorChallengeResponse {
+  twoFactorRequired: true;
+}
+
+export interface ConfirmTwoFactorSetupRequest {
+  challengeToken: string;
+  code: string;
+  rememberDevice?: boolean;
+}
+
+export interface DisableTwoFactorRequest {
+  password: string;
+}
+
+export interface RevokeTrustedDeviceRequest {
+  trustedDeviceId: string;
+}
+
+export interface TrustedDeviceSummary {
+  id: string;
+  label: string;
+  platform: AuthDeviceDescriptor["platform"];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  expiresAtIso: string;
+  isCurrentDevice: boolean;
+}
+
+export interface SecurityActivitySummary {
+  id: string;
+  kind:
+    | "new-device-sign-in"
+    | "recognized-device-sign-in"
+    | "two-factor-enabled"
+    | "two-factor-disabled"
+    | "two-factor-method-changed"
+    | "trusted-device-revoked"
+    | "all-sessions-revoked";
+  occurredAt: string;
+  deviceLabel?: string;
+  detail: string;
+}
+
+export interface AccountSecuritySettings {
+  twoFactorEnabled: boolean;
+  method?: TwoFactorMethod;
+  destinationHint?: string;
+  enabledAt?: string;
+  newDeviceAlertsEnabled: true;
+  trustedDevices: TrustedDeviceSummary[];
+  recentActivity: SecurityActivitySummary[];
 }
 
 export interface RequestPasswordResetRequest {
@@ -2672,6 +2764,7 @@ export interface ConfirmPasswordResetRequest {
   email: string;
   resetCode: string;
   newPassword: string;
+  device?: AuthDeviceDescriptor;
 }
 
 export interface AuthenticatedSession {

@@ -312,3 +312,89 @@ test(
     }
   }
 );
+
+test(
+  "Postgres persists two-factor settings, remembered devices, and security activity",
+  { skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured" },
+  async () => {
+    const prisma = new PrismaClient({ datasourceUrl: databaseUrl! });
+    const repository = new PrismaMarketplaceRepository(prisma);
+    const suffix = randomUUID();
+    const customerId = `pg-security-customer-${suffix}`;
+    const now = new Date().toISOString();
+    const expiresAtIso = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const customer: CustomerProfile = {
+      id: customerId,
+      fullName: "Postgres Security Customer",
+      email: `${customerId}@example.com`,
+      phone: "+15558675309",
+      role: "customer",
+      address: {
+        line1: "1 Security Way",
+        city: "Barnegat",
+        state: "NJ",
+        postalCode: "08005",
+        country: "US",
+        point: { latitude: 39.7532, longitude: -74.2229 }
+      },
+      createdAt: now,
+      propertyNotes: "",
+      lawnSizeSqFt: 1000,
+      properties: [],
+      defaultPropertyId: ""
+    };
+
+    try {
+      await repository.createCustomer(customer, "test-password-hash");
+      await repository.updateAuthIdentity(customerId, {
+        twoFactorMethod: "sms",
+        twoFactorEnabledAt: now,
+        trustedDevices: [
+          {
+            id: `trusted-${suffix}`,
+            deviceIdHash: `hash-${suffix}`,
+            label: "Postgres test phone",
+            platform: "android",
+            firstSeenAt: now,
+            lastSeenAt: now,
+            expiresAtIso
+          }
+        ],
+        securityEventHistory: [
+          {
+            id: `event-${suffix}`,
+            kind: "two-factor-enabled",
+            occurredAt: now,
+            deviceLabel: "Postgres test phone",
+            detail: "Two-factor authentication was enabled by text message."
+          }
+        ]
+      });
+
+      const persisted = await repository.findAuthIdentityByUserId(customerId);
+      assert.equal(persisted?.twoFactorMethod, "sms");
+      assert.equal(persisted?.twoFactorEnabledAt, now);
+      assert.deepEqual(persisted?.trustedDevices, [
+        {
+          id: `trusted-${suffix}`,
+          deviceIdHash: `hash-${suffix}`,
+          label: "Postgres test phone",
+          platform: "android",
+          firstSeenAt: now,
+          lastSeenAt: now,
+          expiresAtIso
+        }
+      ]);
+      assert.equal(persisted?.securityEventHistory?.[0]?.kind, "two-factor-enabled");
+      assert.equal(
+        persisted?.securityEventHistory?.[0]?.detail,
+        "Two-factor authentication was enabled by text message."
+      );
+    } finally {
+      await prisma.customerProperty.deleteMany({ where: { customerId } });
+      await prisma.customerProfile.deleteMany({ where: { userId: customerId } });
+      await prisma.userAccount.deleteMany({ where: { id: customerId } });
+      await prisma.$disconnect();
+    }
+  }
+);

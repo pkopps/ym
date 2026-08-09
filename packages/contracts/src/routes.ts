@@ -2,6 +2,14 @@ export class ApiRoutes {
   public static readonly register = "/api/auth/register";
   public static readonly login = "/api/auth/login";
   public static readonly currentUser = "/api/auth/me";
+  public static readonly securitySettings = "/api/auth/security";
+  public static readonly beginTwoFactorSetup = "/api/auth/security/two-factor/setup";
+  public static readonly confirmTwoFactorSetup = "/api/auth/security/two-factor/confirm";
+  public static readonly disableTwoFactor = "/api/auth/security/two-factor/disable";
+  public static readonly verifyTwoFactorLogin = "/api/auth/two-factor/verify";
+  public static readonly resendTwoFactorChallenge = "/api/auth/two-factor/resend";
+  public static readonly revokeTrustedDevice = "/api/auth/security/devices/revoke";
+  public static readonly revokeOtherSessions = "/api/auth/security/sessions/revoke";
   public static readonly requestPasswordReset = "/api/auth/password-reset/request";
   public static readonly confirmPasswordReset = "/api/auth/password-reset/confirm";
   public static readonly opsAccounts = "/api/ops/accounts";

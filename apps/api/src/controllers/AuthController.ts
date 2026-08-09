@@ -1,4 +1,7 @@
 import {
+  BeginTwoFactorSetupRequest,
+  ConfirmTwoFactorSetupRequest,
+  DisableTwoFactorRequest,
   AuthenticatedUserEnvelope,
   CompleteSocialSignupRequest,
   ConfirmPasswordResetRequest,
@@ -10,9 +13,12 @@ import {
   OpsAuthenticationMethod,
   RotateOpsAccountSessionsRequest,
   RequestPasswordResetRequest,
+  ResendTwoFactorChallengeRequest,
+  RevokeTrustedDeviceRequest,
   RegisterUserRequest,
   UpdateOpsAccountAccessRequest,
-  UpdateOpsAccountRequest
+  UpdateOpsAccountRequest,
+  VerifyTwoFactorLoginRequest
 } from "@yardmatch/contracts";
 import {
   TOKEN_TTL_SECONDS,
@@ -26,7 +32,11 @@ import {
   verifyPassword,
   verifySessionToken
 } from "../auth";
-import { requireOpsAdminAccess } from "../controller-auth";
+import {
+  requireAuthenticatedIdentity,
+  requireFreshRole,
+  requireOpsAdminAccess
+} from "../controller-auth";
 import { ApiController, HttpError, RequestContext, sendJson, sendRedirect } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 import { SocialAuthProvider, SocialAuthService, SocialIdentity } from "../services/SocialAuthService";
@@ -63,6 +73,14 @@ export class AuthController implements ApiController {
     return (
       (context.method === "POST" && context.path === "/api/auth/register") ||
       (context.method === "POST" && context.path === "/api/auth/login") ||
+      (context.method === "POST" && context.path === "/api/auth/two-factor/verify") ||
+      (context.method === "POST" && context.path === "/api/auth/two-factor/resend") ||
+      (context.method === "GET" && context.path === "/api/auth/security") ||
+      (context.method === "POST" && context.path === "/api/auth/security/two-factor/setup") ||
+      (context.method === "POST" && context.path === "/api/auth/security/two-factor/confirm") ||
+      (context.method === "POST" && context.path === "/api/auth/security/two-factor/disable") ||
+      (context.method === "POST" && context.path === "/api/auth/security/devices/revoke") ||
+      (context.method === "POST" && context.path === "/api/auth/security/sessions/revoke") ||
       (context.method === "POST" && context.path === "/api/auth/password-reset/request") ||
       (context.method === "POST" && context.path === "/api/auth/password-reset/confirm") ||
       (context.method === "GET" && context.path === "/api/ops/accounts") ||
@@ -209,15 +227,13 @@ export class AuthController implements ApiController {
       }
 
       if (!identity?.passwordHash || !verifyPassword(payload.password, identity.passwordHash)) {
-        if (identity?.role === "ops") {
-          await this.platform.recordFailedOpsAuthentication(identity, "invalid-password");
+        if (identity) {
+          await this.platform.recordFailedAuthentication(identity, "invalid-password");
         }
         throw new HttpError(401, "Invalid email or password");
       }
       if (identity.accessDisabledAt) {
-        if (identity.role === "ops") {
-          await this.platform.recordFailedOpsAuthentication(identity, "disabled-account");
-        }
+        await this.platform.recordFailedAuthentication(identity, "disabled-account");
         throw new HttpError(403, "Account access has been disabled");
       }
 
@@ -226,7 +242,29 @@ export class AuthController implements ApiController {
         throw new HttpError(404, "User profile not found");
       }
 
+      if (this.platform.hasTwoFactorEnabled(identity) && !this.platform.isTrustedDevice(identity, payload.device)) {
+        sendJson(response, 202, await this.platform.beginLoginTwoFactorChallenge(identity, payload.device));
+        return;
+      }
+
+      await this.platform.completeDeviceSignIn(identity, payload.device);
+
       sendJson(response, 200, await this.createAuthenticatedEnvelope(identity, user, "password"));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/two-factor/verify") {
+      const verified = await this.platform.verifyLoginTwoFactor(context.body as VerifyTwoFactorLoginRequest);
+      sendJson(response, 200, await this.createAuthenticatedEnvelope(verified.identity, verified.user, "password"));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/two-factor/resend") {
+      sendJson(
+        response,
+        200,
+        await this.platform.resendTwoFactorChallenge(context.body as ResendTwoFactorChallengeRequest)
+      );
       return;
     }
 
@@ -248,7 +286,60 @@ export class AuthController implements ApiController {
         throw new HttpError(403, "Account access has been disabled");
       }
 
+      if (this.platform.hasTwoFactorEnabled(identity) && !this.platform.isTrustedDevice(identity, payload.device)) {
+        sendJson(response, 202, await this.platform.beginLoginTwoFactorChallenge(identity, payload.device));
+        return;
+      }
+
+      await this.platform.completeDeviceSignIn(identity, payload.device);
+
       sendJson(response, 200, await this.createAuthenticatedEnvelope(identity, user, "password-reset"));
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/auth/security") {
+      const identity = await requireAuthenticatedIdentity(context, this.platform);
+      sendJson(response, 200, await this.platform.getSecuritySettings(identity, context.query.get("deviceId") ?? undefined));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/security/two-factor/setup") {
+      const identity = await this.requireFreshSecuritySession(context);
+      const payload = context.body as BeginTwoFactorSetupRequest;
+      sendJson(response, 200, await this.platform.beginTwoFactorSetup(identity, payload.method, payload.device));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/security/two-factor/confirm") {
+      const identity = await this.requireFreshSecuritySession(context);
+      sendJson(
+        response,
+        200,
+        await this.platform.confirmTwoFactorSetup(identity, context.body as ConfirmTwoFactorSetupRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/security/two-factor/disable") {
+      const identity = await this.requireFreshSecuritySession(context);
+      sendJson(
+        response,
+        200,
+        await this.platform.disableTwoFactor(identity, context.body as DisableTwoFactorRequest)
+      );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/security/devices/revoke") {
+      const identity = await this.requireFreshSecuritySession(context);
+      const payload = context.body as RevokeTrustedDeviceRequest;
+      sendJson(response, 200, await this.platform.revokeTrustedDevice(identity, payload.trustedDeviceId));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/auth/security/sessions/revoke") {
+      const identity = await this.requireFreshSecuritySession(context);
+      sendJson(response, 200, await this.platform.revokeAllSessions(identity));
       return;
     }
 
@@ -337,6 +428,12 @@ export class AuthController implements ApiController {
       }
 
       if (existingIdentity?.userId) {
+        if (this.platform.hasTwoFactorEnabled(existingIdentity)) {
+          throw new HttpError(
+            409,
+            "This account uses two-factor authentication. Sign in with email and password to complete the security-code step."
+          );
+        }
         const updatedIdentity = await this.platform.updateAuthIdentity(existingIdentity.userId, {
           ...(pending.provider === "google"
             ? { googleSubject: pending.subject }
@@ -435,20 +532,34 @@ export class AuthController implements ApiController {
       hashPassword(payload.password)
     );
 
-      sendJson(
-        response,
-        201,
-        await this.createAuthenticatedEnvelope(
-          {
-            userId: user.id,
-            email: user.email,
-            role: user.role,
-            sessionVersion: 1
-          },
-          user,
-          "password"
-        )
+    if (payload.device) {
+      await this.platform.completeDeviceSignIn(
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          sessionVersion: 1
+        },
+        payload.device,
+        true,
+        true
       );
+    }
+
+    sendJson(
+      response,
+      201,
+      await this.createAuthenticatedEnvelope(
+        {
+          userId: user.id,
+          email: user.email,
+          role: user.role,
+          sessionVersion: 1
+        },
+        user,
+        "password"
+      )
+    );
   }
 
   private parseRole(value: string | null): GoogleAuthStartResponse["role"] {
@@ -499,6 +610,12 @@ export class AuthController implements ApiController {
       if (linkedIdentity.role !== state.role) {
         throw new HttpError(409, `This ${socialIdentity.provider} account is already linked to a different YardMatch role.`);
       }
+      if (this.platform.hasTwoFactorEnabled(linkedIdentity)) {
+        throw new HttpError(
+          409,
+          "This account uses two-factor authentication. Sign in with email and password to complete the security-code step."
+        );
+      }
 
       const user = await this.platform.getUserByIdentity(linkedIdentity);
       if (!user) {
@@ -512,6 +629,12 @@ export class AuthController implements ApiController {
     if (existingIdentity) {
       if (existingIdentity.role !== state.role) {
         throw new HttpError(409, "That email already belongs to a different YardMatch role.");
+      }
+      if (this.platform.hasTwoFactorEnabled(existingIdentity)) {
+        throw new HttpError(
+          409,
+          "This account uses two-factor authentication. Sign in with email and password to complete the security-code step."
+        );
       }
 
       const updatedIdentity = await this.platform.updateAuthIdentity(existingIdentity.userId, {
@@ -559,9 +682,7 @@ export class AuthController implements ApiController {
     method: OpsAuthenticationMethod
   ): Promise<AuthenticatedUserEnvelope> {
     const refreshedIdentity =
-      identity.role === "ops"
-        ? (await this.platform.recordSuccessfulAuthentication(identity.userId, method)) ?? identity
-        : identity;
+      (await this.platform.recordSuccessfulAuthentication(identity.userId, method)) ?? identity;
     return {
       session: {
         token: signSessionToken({
@@ -575,6 +696,16 @@ export class AuthController implements ApiController {
       },
       user
     };
+  }
+
+  private requireFreshSecuritySession(context: RequestContext) {
+    return requireFreshRole(
+      context,
+      this.platform,
+      ["customer", "provider", "crew-member", "ops"] as const,
+      MarketplacePlatformService.sensitiveActionFreshSessionMaxAgeSeconds,
+      "Sign in again before changing account security settings."
+    );
   }
 
   private buildRedirectUrl(redirectUri: string, params: Record<string, string>): string {

@@ -61,6 +61,19 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `POST /api/auth/register`
   - `POST /api/auth/login`
   - `GET /api/auth/me`
+- Password-backed customer, provider, crew, and ops accounts can now opt into two-factor authentication with either email or text-message codes. The shared account security center is available at `/account/security`, and the three mobile apps expose the same controls from their Security support section.
+- Two-factor and device-security routes now include:
+  - `GET /api/auth/security`
+  - `POST /api/auth/security/two-factor/setup`
+  - `POST /api/auth/security/two-factor/confirm`
+  - `POST /api/auth/security/two-factor/disable`
+  - `POST /api/auth/two-factor/verify`
+  - `POST /api/auth/two-factor/resend`
+  - `POST /api/auth/security/devices/revoke`
+  - `POST /api/auth/security/sessions/revoke`
+- Security codes expire after 10 minutes, resend requests are throttled, and five failed password or login-code attempts temporarily lock the account. Remembered devices use hashed per-install identifiers and expire after 30 days.
+- New-device sign-ins create an in-app security event and force an email warning even when ordinary account-email notifications are disabled. Users can inspect recent security activity, remove individual remembered devices, or revoke every session and remembered device.
+- Social-only accounts cannot enable YardMatch two-factor authentication yet; accounts with a linked social provider and a password must use email/password when YardMatch two-factor authentication is enabled so the second step cannot be bypassed.
 - Google and Apple social auth now use real OAuth start/callback flows plus:
   - `POST /api/auth/social/complete`
 - All three mobile apps now finish both password signup and social-first signup natively in-app instead of bouncing first-time users to the web.

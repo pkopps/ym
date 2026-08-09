@@ -9,10 +9,12 @@ import {
   Address,
   AuthenticatedUserEnvelope,
   AuthFlowMode,
-  PlaceSuggestion
+  PlaceSuggestion,
+  TwoFactorChallengeResponse
 } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { createCustomerMobileApiClient } from "../lib/api";
+import { getCustomerAuthDevice } from "../lib/sessionSecurity";
 import { getCustomerMobileTracker } from "../lib/tracking";
 
 function getModeCopy(i18n: I18nInstance, mode: AuthFlowMode) {
@@ -89,6 +91,9 @@ export function CustomerAuthScreen({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRequestingReset, setIsRequestingReset] = useState(false);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [twoFactorChallenge, setTwoFactorChallenge] = useState<TwoFactorChallengeResponse>();
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(true);
   const authCopy = getModeCopy(i18n, mode);
   const tracker = getCustomerMobileTracker();
   const isCompletingSocialSignup = pendingSignupToken.length > 0;
@@ -257,8 +262,15 @@ export function CustomerAuthScreen({
       const api = createCustomerMobileApiClient();
       const envelope = await api.login({
         email: email.trim(),
-        password
+        password,
+        device: await getCustomerAuthDevice()
       });
+
+      if ("twoFactorRequired" in envelope) {
+        setTwoFactorChallenge(envelope);
+        setTwoFactorCode("");
+        return;
+      }
 
       if (envelope.user.role !== "customer") {
         setErrorMessage(i18n.t("mobile.auth.error.customer_role"));
@@ -283,6 +295,7 @@ export function CustomerAuthScreen({
       setIsSubmitting(true);
       setErrorMessage("");
       const api = createCustomerMobileApiClient();
+      const device = await getCustomerAuthDevice();
       const normalizedAddress: Address = {
         ...address,
         state: address.state.trim().toUpperCase(),
@@ -312,6 +325,7 @@ export function CustomerAuthScreen({
             password,
             phone: phone.trim(),
             role: "customer",
+            device,
             address: normalizedAddress,
             propertyLabel: propertyLabel.trim() || i18n.t("mobile.auth.default_home_label")
           });
@@ -357,8 +371,14 @@ export function CustomerAuthScreen({
       const envelope = await api.confirmPasswordReset({
         email: email.trim(),
         resetCode: recoveryCode.trim(),
-        newPassword
+        newPassword,
+        device: await getCustomerAuthDevice()
       });
+      if ("twoFactorRequired" in envelope) {
+        setTwoFactorChallenge(envelope);
+        setShowRecovery(false);
+        return;
+      }
       if (envelope.user.role !== "customer") {
         setErrorMessage(i18n.t("mobile.auth.error.customer_role"));
         return;
@@ -369,6 +389,42 @@ export function CustomerAuthScreen({
     } finally {
       setIsResettingPassword(false);
     }
+  };
+
+  const handleVerifyTwoFactor = async () => {
+    if (!twoFactorChallenge || twoFactorCode.length !== 6) {
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      setErrorMessage("");
+      const envelope = await createCustomerMobileApiClient().verifyTwoFactorLogin({
+        challengeToken: twoFactorChallenge.challengeToken,
+        code: twoFactorCode,
+        rememberDevice
+      });
+      if (envelope.user.role !== "customer") {
+        setErrorMessage(i18n.t("mobile.auth.error.customer_role"));
+        return;
+      }
+      onAuthenticated(envelope, "login");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.login"));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResendTwoFactor = async () => {
+    if (!twoFactorChallenge) return;
+    try {
+      setIsSubmitting(true);
+      setErrorMessage("");
+      setTwoFactorChallenge(await createCustomerMobileApiClient().resendTwoFactorChallenge({ challengeToken: twoFactorChallenge.challengeToken }));
+      setTwoFactorCode("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.auth.error.login"));
+    } finally { setIsSubmitting(false); }
   };
 
   return (
@@ -598,7 +654,7 @@ export function CustomerAuthScreen({
         ) : null}
 
         <Pressable
-          disabled={isSubmitting || !canSubmitPrimary}
+          disabled={isSubmitting || !canSubmitPrimary || Boolean(twoFactorChallenge)}
           onPress={handlePrimarySubmit}
           style={[styles.primaryButton, (!canSubmitPrimary || isSubmitting) && styles.primaryButtonDisabled]}
         >
@@ -615,7 +671,7 @@ export function CustomerAuthScreen({
           </Text>
         </Pressable>
 
-        {mode === "login" ? (
+        {mode === "login" && !twoFactorChallenge ? (
           <Pressable onPress={() => void handleRequestReset()} style={styles.linkButton}>
             <Text style={styles.linkButtonLabel}>
               {isRequestingReset ? i18n.t("mobile.auth.sending_reset_code") : i18n.t("mobile.auth.forgot_password")}
@@ -625,7 +681,52 @@ export function CustomerAuthScreen({
 
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-        {showRecovery ? (
+        {twoFactorChallenge ? (
+          <View style={styles.recoveryCard}>
+            <Text style={styles.recoveryTitle}>{i18n.t("security.challenge.title")}</Text>
+            <Text style={styles.helper}>
+              {i18n.t("security.challenge.body", { destination: twoFactorChallenge.destinationHint })}
+            </Text>
+            {twoFactorChallenge.codePreview ? (
+              <Text style={styles.helper}>{i18n.t("security.setup.local_preview", { code: twoFactorChallenge.codePreview })}</Text>
+            ) : null}
+            <TextInput
+              keyboardType="number-pad"
+              maxLength={6}
+              onChangeText={(value) => setTwoFactorCode(value.replace(/\D/g, ""))}
+              placeholder={i18n.t("security.setup.code")}
+              placeholderTextColor="#6e7d71"
+              style={styles.input}
+              value={twoFactorCode}
+            />
+            <Pressable onPress={() => setRememberDevice((current) => !current)} style={styles.linkButton}>
+              <Text style={styles.linkButtonLabel}>
+                {rememberDevice ? "✓ " : ""}{i18n.t("security.challenge.remember")}
+              </Text>
+            </Pressable>
+            <Pressable
+              disabled={isSubmitting || twoFactorCode.length !== 6}
+              onPress={() => void handleVerifyTwoFactor()}
+              style={[styles.primaryButton, (isSubmitting || twoFactorCode.length !== 6) && styles.primaryButtonDisabled]}
+            >
+              <Text style={styles.primaryButtonLabel}>{i18n.t("security.challenge.verify")}</Text>
+            </Pressable>
+            <Pressable disabled={isSubmitting} onPress={() => void handleResendTwoFactor()} style={styles.linkButton}>
+              <Text style={styles.linkButtonLabel}>{i18n.t("security.challenge.resend")}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setTwoFactorChallenge(undefined);
+                setTwoFactorCode("");
+              }}
+              style={styles.linkButton}
+            >
+              <Text style={styles.linkButtonLabel}>{i18n.t("security.challenge.cancel")}</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {showRecovery && !twoFactorChallenge ? (
           <View style={styles.recoveryCard}>
             <Text style={styles.recoveryTitle}>{i18n.t("mobile.auth.reset_password_title")}</Text>
             <Text style={styles.helper}>

@@ -2,7 +2,10 @@ import {
   AddBookingEvidenceRequest,
   AssignBookingRouteLeaderRequest,
   AnalyticsEvent,
+  AccountSecuritySettings,
   AuthenticatedUserEnvelope,
+  BeginTwoFactorSetupRequest,
+  BeginTwoFactorSetupResponse,
   BookingArrivalTracking,
   Booking,
   CancelBookingRequest,
@@ -39,9 +42,12 @@ import {
   CustomerProperty,
   GoogleAuthStartRequest,
   CurrentUserResponse,
+  DisableTwoFactorRequest,
   LoginRequest,
+  LoginResponse,
   RequestPasswordResetRequest,
   RequestPasswordResetResponse,
+  ResendTwoFactorChallengeRequest,
   RequestOpsAccountPasswordResetRequest,
   RequestOpsAccountPasswordResetResponse,
   MarkNotificationsReadRequest,
@@ -116,6 +122,7 @@ import {
   ProviderReview,
   RegisterUserRequest,
   RotateOpsAccountSessionsRequest,
+  RevokeTrustedDeviceRequest,
   UpdateOpsAccountAccessRequest,
   SetBookingRouteStopRequest,
   RegisterPushDeviceRequest,
@@ -159,7 +166,9 @@ import {
   UpdateBookingAddressRequest,
   UpdateBookingPhotoMarketingUseRequest,
   UpdateOpsAccountRequest,
-  StartBookingRequest
+  StartBookingRequest,
+  ConfirmTwoFactorSetupRequest,
+  VerifyTwoFactorLoginRequest
 } from "./types";
 import { ApiRoutes } from "./routes";
 
@@ -242,8 +251,18 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.register, payload);
   }
 
-  public login(payload: LoginRequest): Promise<AuthenticatedUserEnvelope> {
+  public login(payload: LoginRequest): Promise<LoginResponse> {
     return this.postJson(ApiRoutes.login, payload);
+  }
+
+  public verifyTwoFactorLogin(payload: VerifyTwoFactorLoginRequest): Promise<AuthenticatedUserEnvelope> {
+    return this.postJson(ApiRoutes.verifyTwoFactorLogin, payload);
+  }
+
+  public resendTwoFactorChallenge(
+    payload: ResendTwoFactorChallengeRequest
+  ): Promise<BeginTwoFactorSetupResponse> {
+    return this.postJson(ApiRoutes.resendTwoFactorChallenge, payload);
   }
 
   public requestPasswordReset(
@@ -252,7 +271,7 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.requestPasswordReset, payload);
   }
 
-  public confirmPasswordReset(payload: ConfirmPasswordResetRequest): Promise<AuthenticatedUserEnvelope> {
+  public confirmPasswordReset(payload: ConfirmPasswordResetRequest): Promise<LoginResponse> {
     return this.postJson(ApiRoutes.confirmPasswordReset, payload);
   }
 
@@ -284,6 +303,35 @@ export class MarketplaceApiClient {
 
   public getCurrentUser(): Promise<CurrentUserResponse> {
     return this.getJson(ApiRoutes.currentUser);
+  }
+
+  public getSecuritySettings(deviceId?: string): Promise<AccountSecuritySettings> {
+    const suffix = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : "";
+    return this.getJson(`${ApiRoutes.securitySettings}${suffix}`);
+  }
+
+  public beginTwoFactorSetup(
+    payload: BeginTwoFactorSetupRequest
+  ): Promise<BeginTwoFactorSetupResponse> {
+    return this.postJson(ApiRoutes.beginTwoFactorSetup, payload);
+  }
+
+  public confirmTwoFactorSetup(
+    payload: ConfirmTwoFactorSetupRequest
+  ): Promise<AccountSecuritySettings> {
+    return this.postJson(ApiRoutes.confirmTwoFactorSetup, payload);
+  }
+
+  public disableTwoFactor(payload: DisableTwoFactorRequest): Promise<AccountSecuritySettings> {
+    return this.postJson(ApiRoutes.disableTwoFactor, payload);
+  }
+
+  public revokeTrustedDevice(payload: RevokeTrustedDeviceRequest): Promise<AccountSecuritySettings> {
+    return this.postJson(ApiRoutes.revokeTrustedDevice, payload);
+  }
+
+  public revokeOtherSessions(): Promise<AccountSecuritySettings> {
+    return this.postJson(ApiRoutes.revokeOtherSessions, {});
   }
 
   public getGoogleAuthStartUrl(payload: GoogleAuthStartRequest): string {
