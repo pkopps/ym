@@ -12,9 +12,9 @@ import {
   formatBookingWindowSummary,
   getBookingExceptionLabel,
   InstantQuoteResponse,
+  MarketplaceProviderProfile,
   PaymentRecord,
   PropertyPhotoArea,
-  ProviderProfile,
   RecurringServiceFrequency,
   RecurringServicePlanSummary,
   ReviewScore,
@@ -86,7 +86,7 @@ function formatOpenWindow(i18n: I18nInstance, slot?: SearchProvidersResponse["su
   return slot ? formatBookingWindowSummary(slot.startIso) : i18n.t("customer_live.no_open_slot");
 }
 
-function formatProviderTrust(i18n: I18nInstance, provider: ProviderProfile) {
+function formatProviderTrust(i18n: I18nInstance, provider: MarketplaceProviderProfile) {
   return i18n.t("market.home.provider.rating_line", {
     rating: provider.rating,
     count: provider.reviewCount
@@ -565,17 +565,16 @@ export function CustomerLiveDashboard() {
         bookingList,
         reviewResponse,
         retentionResponse,
-        payments,
         recurringPlanResponse
       ] = await Promise.all([
         api.getCurrentUser(),
         api.getCustomerProperties(),
-        api.getBookings(),
+        api.getBookings({ limit: 50 }),
         api.getCustomerReviewOpportunities(),
         api.getCustomerRetentionOpportunities(),
-        api.getPayments(),
         api.getRecurringServicePlans()
       ]);
+      const payments = await api.getPayments(bookingList.map((booking) => booking.id));
 
       const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
       const providerProfiles = await Promise.all(

@@ -68,6 +68,11 @@ import {
 } from "../controller-auth";
 import { ApiController, RequestContext, sendJson, sendText } from "../http";
 import { localizeProviderCalendarOverview } from "../i18n";
+import {
+  parseBookingListScope,
+  parseBoundedBookingIds,
+  parsePaginationInput
+} from "../pagination";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
 export class MarketplaceController implements ApiController {
@@ -255,7 +260,7 @@ export class MarketplaceController implements ApiController {
         return;
       }
 
-      sendJson(response, 200, await this.platform.getProviderProfile(providerId));
+      sendJson(response, 200, await this.platform.getMarketplaceProviderProfile(providerId));
       return;
     }
 
@@ -441,7 +446,7 @@ export class MarketplaceController implements ApiController {
         return;
       }
 
-      sendJson(response, 200, this.platform.listProviderReviews(providerId));
+      sendJson(response, 200, await this.platform.listPublicProviderReviews(providerId));
       return;
     }
 
@@ -815,13 +820,24 @@ export class MarketplaceController implements ApiController {
 
     if (context.method === "GET" && context.path === "/api/bookings") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
-      sendJson(response, 200, await this.platform.listBookingsForUser(identity));
+      sendJson(
+        response,
+        200,
+        await this.platform.listBookingsForUser(identity, {
+          ...parsePaginationInput(context.query),
+          scope: parseBookingListScope(context.query)
+        })
+      );
       return;
     }
 
     if (context.method === "GET" && context.path === "/api/payments") {
       const identity = await requireAuthenticatedIdentity(context, this.platform);
-      sendJson(response, 200, await this.platform.listPaymentsForUser(identity));
+      sendJson(
+        response,
+        200,
+        await this.platform.listPaymentsForUser(identity, parseBoundedBookingIds(context.query))
+      );
       return;
     }
 

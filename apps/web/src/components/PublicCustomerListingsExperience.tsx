@@ -179,7 +179,7 @@ function buildCustomerSignupHref({
 }
 
 function buildBoundingBox(origin: GeoPoint, results: SearchProviderResult[]) {
-  const points = [origin, ...results.map((result) => result.provider.address.point)];
+  const points = [origin, ...results.map((result) => result.provider.serviceArea.center)];
   const latitudes = points.map((point) => point.latitude);
   const longitudes = points.map((point) => point.longitude);
   const minLat = Math.min(...latitudes);
@@ -880,7 +880,7 @@ function LiveProviderCard({
         <div className="live-provider-card__identity">
           <h3>{provider.companyName}</h3>
           <p>
-            {provider.address.city}, {provider.address.state} •{" "}
+            {provider.serviceArea.city}, {provider.serviceArea.state} •{" "}
             {i18n.t("common.format.rating_reviews", {
               rating: Number(provider.rating.toFixed(1)),
               count: provider.reviewCount
@@ -1015,7 +1015,7 @@ function LiveProviderMap({
           <div
             className={`map-business-marker${index === 0 ? " map-business-marker--recommended" : ""}`}
             key={`${result.provider.id}-marker`}
-            style={buildMarkerPosition(result.provider.address.point, bbox)}
+            style={buildMarkerPosition(result.provider.serviceArea.center, bbox)}
           >
             <strong>{index + 1}</strong>
             <span>{i18n.t("common.format.miles", { count: Number(result.distanceMiles.toFixed(1)) })}</span>
@@ -1031,7 +1031,7 @@ function LiveProviderMap({
               <div>
                 <h4>{result.provider.companyName}</h4>
                 <p>
-                  {result.provider.address.city}, {result.provider.address.state}
+                  {result.provider.serviceArea.city}, {result.provider.serviceArea.state}
                   {index === 0 ? ` • ${i18n.t("customer.listings.map.recommended_first")}` : ""}
                 </p>
               </div>

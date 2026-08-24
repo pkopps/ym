@@ -113,6 +113,20 @@ export interface CompleteProviderTransferReversalInput {
   ledgerEntries: FinancialLedgerEntry[];
 }
 
+export interface RepositoryPage<T> {
+  items: T[];
+  hasMore: boolean;
+  nextCursorId?: string;
+}
+
+export interface BookingPageQuery {
+  actorId: string;
+  actorRole: "customer" | "provider";
+  scope: "active" | "history" | "all";
+  limit: number;
+  cursorId?: string;
+}
+
 export interface MarketplaceRepository {
   createCustomer(customer: CustomerProfile, passwordHash?: string): Promise<CustomerProfile>;
   createProvider(provider: ProviderProfile, passwordHash?: string): Promise<ProviderProfile>;
@@ -136,6 +150,8 @@ export interface MarketplaceRepository {
   listAllSlots(): Promise<AvailabilitySlot[]>;
   createBooking(booking: Booking): Promise<Booking>;
   listBookings(): Promise<Booking[]>;
+  listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
+  listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking | undefined>;
   createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
@@ -147,6 +163,7 @@ export interface MarketplaceRepository {
   ): Promise<RecurringServicePlan | undefined>;
   createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate>;
   listCrewMatches(): Promise<CrewMatchCandidate[]>;
+  listCrewMatchesForBookings(bookingIds: string[], crewMemberId: string): Promise<CrewMatchCandidate[]>;
   updateCrewMatch(matchId: string, updates: Partial<CrewMatchCandidate>): Promise<CrewMatchCandidate | undefined>;
   findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined>;
   createProviderReview(review: ProviderReview): Promise<ProviderReview>;
@@ -170,6 +187,7 @@ export interface MarketplaceRepository {
   findPaymentById(paymentId: string): Promise<PaymentRecord | undefined>;
   findPaymentByCheckoutSessionId(checkoutSessionId: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
+  listPaymentsForBookingIds(bookingIds: string[]): Promise<PaymentRecord[]>;
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
   settleBookingFinancials(
     input: CreateBookingFinancialSettlementInput

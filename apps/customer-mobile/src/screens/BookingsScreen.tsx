@@ -158,6 +158,8 @@ export function BookingsScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [historyNextCursor, setHistoryNextCursor] = useState<string | undefined>();
+  const [isLoadingMoreHistory, setIsLoadingMoreHistory] = useState(false);
   const [activeChatBookingId, setActiveChatBookingId] = useState<string | undefined>();
   const [chatThread, setChatThread] = useState<CustomerProviderConversationThread | undefined>();
   const [chatDraft, setChatDraft] = useState("");
@@ -212,11 +214,13 @@ export function BookingsScreen({
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
 
-      const [bookingList, reviewResponse, payments] = await Promise.all([
-        api.getBookings(),
-        api.getCustomerReviewOpportunities(),
-        api.getPayments()
+      const [activePage, historyPage, reviewResponse] = await Promise.all([
+        api.getBookingsPage({ limit: 50, scope: "active" }),
+        api.getBookingsPage({ limit: 20, scope: "history" }),
+        api.getCustomerReviewOpportunities()
       ]);
+      const bookingList = [...activePage.items, ...historyPage.items];
+      const payments = await api.getPayments(bookingList.map((booking) => booking.id));
 
       const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
       const providers = await Promise.all(
@@ -238,6 +242,7 @@ export function BookingsScreen({
         }, {})
       );
       setBookings(bookingList);
+      setHistoryNextCursor(historyPage.pageInfo.nextCursor);
       setPaymentsByBookingId(
         payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
           const current = accumulator[payment.bookingId];
@@ -256,6 +261,64 @@ export function BookingsScreen({
       setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.bookings.error.load_visits"));
     } finally {
       setIsInitialLoading(false);
+    }
+  }
+
+  async function loadMoreHistory() {
+    if (!envelope?.session.token || !historyNextCursor || isLoadingMoreHistory) {
+      return;
+    }
+
+    try {
+      setIsLoadingMoreHistory(true);
+      setErrorMessage("");
+      const api = createCustomerMobileApiClient();
+      api.setAuthToken(envelope.session.token);
+      const page = await api.getBookingsPage({
+        cursor: historyNextCursor,
+        limit: 20,
+        scope: "history"
+      });
+      const payments = await api.getPayments(page.items.map((booking) => booking.id));
+      const providerIds = [
+        ...new Set(
+          page.items
+            .map((booking) => booking.providerId)
+            .filter((providerId) => !providerNamesById[providerId])
+        )
+      ];
+      const providers = await Promise.all(
+        providerIds.map(async (providerId) => {
+          try {
+            return await api.getProviderProfile(providerId);
+          } catch {
+            return undefined;
+          }
+        })
+      );
+
+      setProviderNamesById((current) => ({
+        ...current,
+        ...providers.reduce<Record<string, string>>((accumulator, provider) => {
+          if (provider) {
+            accumulator[provider.id] = provider.companyName;
+          }
+          return accumulator;
+        }, {})
+      }));
+      setBookings((current) => [...current, ...page.items]);
+      setPaymentsByBookingId((current) => ({
+        ...current,
+        ...payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
+          accumulator[payment.bookingId] = payment;
+          return accumulator;
+        }, {})
+      }));
+      setHistoryNextCursor(page.pageInfo.nextCursor);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : i18n.t("mobile.bookings.error.load_visits"));
+    } finally {
+      setIsLoadingMoreHistory(false);
     }
   }
 
@@ -1108,6 +1171,7 @@ export function BookingsScreen({
                             <Text style={styles.bookingMeta}>{message.body}</Text>
                           </View>
                         ))}
+                        <Text style={styles.bookingMeta}>{i18n.t("chat.safety_notice")}</Text>
                         <TextInput
                           multiline
                           onChangeText={setChatDraft}
@@ -1399,6 +1463,19 @@ export function BookingsScreen({
                     </View>
                   );
                 })}
+                {historyNextCursor ? (
+                  <Pressable
+                    disabled={isLoadingMoreHistory}
+                    onPress={() => void loadMoreHistory()}
+                    style={styles.secondaryAction}
+                  >
+                    <Text style={styles.secondaryActionLabel}>
+                      {isLoadingMoreHistory
+                        ? i18n.t("customer_history.loading_more")
+                        : i18n.t("customer_history.load_more")}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
             ) : (
               <Text style={styles.emptyState}>

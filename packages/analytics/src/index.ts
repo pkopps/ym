@@ -52,10 +52,18 @@ export class DataEngineeringLogger {
   private readonly events: AnalyticsEvent[] = [];
   private readonly activeSessions = new Map<string, ActiveSession>();
   private readonly activeWindowMs = 5 * 60 * 1000;
+  private readonly maxEvents: number;
+
+  public constructor(maxEvents = Number(process.env.ANALYTICS_MAX_IN_MEMORY_EVENTS)) {
+    this.maxEvents = Number.isSafeInteger(maxEvents) && maxEvents > 0 ? maxEvents : 10_000;
+  }
 
   // Persisting to memory now makes local demos easy while preserving the ingestion shape.
   public record(event: AnalyticsEvent): AnalyticsEvent {
     this.events.push(event);
+    if (this.events.length > this.maxEvents) {
+      this.events.splice(0, this.events.length - this.maxEvents);
+    }
     return event;
   }
 
@@ -71,6 +79,7 @@ export class DataEngineeringLogger {
 
   // Session heartbeats give us an operational definition of "active users right now".
   public recordSessionHeartbeat(payload: SessionHeartbeatRequest): ActiveSession {
+    this.pruneExpiredSessions();
     const session: ActiveSession = {
       sessionId: payload.sessionId,
       actorId: payload.actorId,
@@ -258,19 +267,17 @@ export class DataEngineeringLogger {
   }
 
   private getActiveSessions(): ActiveSession[] {
-    const cutoff = Date.now() - this.activeWindowMs;
-    const sessions = [...this.activeSessions.values()].filter((session) => {
-      return new Date(session.lastSeenAt).getTime() >= cutoff;
-    });
+    this.pruneExpiredSessions();
+    return [...this.activeSessions.values()];
+  }
 
-    // Removing expired sessions keeps the in-memory store small for local development.
+  private pruneExpiredSessions(): void {
+    const cutoff = Date.now() - this.activeWindowMs;
     for (const [sessionId, session] of this.activeSessions.entries()) {
       if (new Date(session.lastSeenAt).getTime() < cutoff) {
         this.activeSessions.delete(sessionId);
       }
     }
-
-    return sessions;
   }
 
   private countPlatforms(

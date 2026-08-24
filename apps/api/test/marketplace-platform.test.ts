@@ -1028,6 +1028,24 @@ test("provider search returns ranked results with score reasons and reliability-
   assert.ok(results.rankedProviders.length >= 2);
   assert.equal(results.providers[0]?.id, nearProvider.id);
   assert.equal(results.rankedProviders[0]?.provider.id, nearProvider.id);
+  const customerSafeProvider = results.rankedProviders[0]!.provider;
+  assert.equal("email" in customerSafeProvider, false);
+  assert.equal("phone" in customerSafeProvider, false);
+  assert.equal("fullName" in customerSafeProvider, false);
+  assert.equal("address" in customerSafeProvider, false);
+  assert.equal("verificationNotes" in customerSafeProvider, false);
+  assert.equal("connectAccount" in customerSafeProvider, false);
+  assert.equal(customerSafeProvider.serviceArea.city, nearProvider.address.city);
+  assert.equal(customerSafeProvider.serviceArea.center.latitude, 30.24);
+  assert.equal(customerSafeProvider.serviceArea.center.longitude, -97.76);
+  const customerSafeProfile = await platform.getMarketplaceProviderProfile(nearProvider.id);
+  assert.deepEqual(customerSafeProfile, customerSafeProvider);
+  await assert.rejects(
+    platform.updateProviderProfile(nearProvider.id, {
+      bio: "Reliable lawn care. Text us at five five five 123 4567 for a faster quote."
+    }),
+    /keep communication in YardMatch/
+  );
   assert.ok(results.rankedProviders[0]!.score > results.rankedProviders[1]!.score);
   assert.ok(results.rankedProviders[0]!.reasons.length > 0);
   assert.ok(results.rankedProviders[0]!.reasons.includes("Close to the property"));
@@ -8506,8 +8524,21 @@ test("provider and crew can chat on a valid crew match while unrelated users are
 
 test("customer-provider chat unlocks only after an accepted crew member is on route", async () => {
   const repository = new InMemoryMarketplaceRepository();
-  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const analytics = new DataEngineeringLogger();
+  const platform = new MarketplacePlatformService(repository, analytics);
 
+  await assert.rejects(
+    platform.registerUser({
+      fullName: "Jordan 555-867-5309",
+      email: "customer-contact-name@example.com",
+      password: "Password123!",
+      phone: "555-0209",
+      role: "customer",
+      propertyLabel: "Primary home",
+      address: createAddress("119 Garden Row", 30.2438, -97.7637)
+    }),
+    /keep communication in YardMatch/
+  );
   const provider = await platform.registerUser({
     fullName: "Ariana Flores",
     email: "provider-customer-chat@example.com",
@@ -8532,6 +8563,19 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
     lawnSizeSqFt: 6400
   });
   assert.equal(customer.role, "customer");
+
+  await assert.rejects(
+    platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress("Call 555-867-5309", 30.2435, -97.7638),
+      category: "mulch-installation",
+      scheduledStartIso: futureIso(67),
+      scheduledEndIso: futureIso(69),
+      notes: "Front beds and walkway border",
+      totalCents: 9200
+    }),
+    /keep communication in YardMatch/
+  );
 
   const otherCustomer = await platform.registerUser({
     fullName: "Casey Blocked",
@@ -8570,6 +8614,20 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
   });
   assert.equal(otherCrew.role, "crew-member");
 
+  await assert.rejects(
+    platform.createBooking(customer.id, {
+      providerId: provider.id,
+      serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+      servicePropertyId: customer.defaultPropertyId,
+      category: "mulch-installation",
+      scheduledStartIso: futureIso(66),
+      scheduledEndIso: futureIso(68),
+      notes: "Please call me at (555) 867-5309 before starting.",
+      totalCents: 9200
+    }),
+    /keep communication in YardMatch/
+  );
+
   await platform.updateProviderSettings(provider.id, {
     serviceRadiusMiles: provider.serviceRadiusMiles,
     staffingMode: provider.staffingMode,
@@ -8589,6 +8647,14 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
     notes: "Front beds and walkway border",
     totalCents: 9200
   });
+
+  await assert.rejects(
+    platform.updateBookingAddress(customer.id, {
+      bookingId: booking.id,
+      newAddress: createAddress("Text 555-867-5309", 30.2436, -97.7637)
+    }),
+    /keep communication in YardMatch/
+  );
 
   const staffing = await platform.getProviderStaffingOverview(provider.id);
   const job = staffing.jobs.find((item) => item.bookingId === booking.id);
@@ -8635,10 +8701,18 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
   assert.ok(onRouteBooking.onRouteConfirmedAt);
   assert.equal(onRouteBooking.onRouteConfirmedByCrewMemberId, undefined);
 
+  const emptyThread = await platform.getCustomerProviderConversationThread(
+    { userId: provider.id, email: provider.email, role: "provider" },
+    undefined,
+    booking.id
+  );
+  assert.equal(emptyThread.messages.length, 0);
+  assert.equal(emptyThread.thread.bookingId, booking.id);
+
   const customerThread = await platform.sendCustomerProviderMessage(
     { userId: customer.id, email: customer.email, role: "customer" },
     {
-      bookingId: booking.id,
+      threadId: emptyThread.thread.id,
       body: "Thanks for the update. The side gate will be open."
     }
   );
@@ -8654,6 +8728,69 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
   );
   assert.equal(providerThread.messages.length, 2);
   assert.equal(providerThread.messages[1]?.senderRole, "provider");
+
+  await assert.rejects(
+    platform.sendCustomerProviderMessage(
+      { userId: customer.id, email: customer.email, role: "customer" },
+      {
+        threadId: customerThread.thread.id,
+        body: "Call me at 555-867-5309."
+      }
+    ),
+    /keep communication in YardMatch/
+  );
+  await assert.rejects(
+    platform.sendCustomerProviderMessage(
+      { userId: provider.id, email: provider.email, role: "provider" },
+      {
+        threadId: customerThread.thread.id,
+        body: "Email route@example.com or visit route-care.com."
+      }
+    ),
+    /keep communication in YardMatch/
+  );
+  await assert.rejects(
+    platform.sendCustomerProviderMessage(
+      { userId: customer.id, email: customer.email, role: "customer" },
+      {
+        threadId: customerThread.thread.id,
+        body: "DM me on Instagram @yardowner."
+      }
+    ),
+    /keep communication in YardMatch/
+  );
+
+  const directContactBlocks = analytics
+    .listEvents()
+    .filter((event) => event.name === MarketplaceTelemetryEventCatalog.directContactShareBlocked);
+  assert.equal(directContactBlocks.length, 7);
+  assert.ok(directContactBlocks.every((event) => !Object.values(event.properties).includes("555-867-5309")));
+
+  const legacyMessageCreatedAt = new Date().toISOString();
+  await repository.createCustomerProviderMessage({
+    id: "legacy-contact-message",
+    threadId: customerThread.thread.id,
+    senderId: provider.id,
+    senderRole: "provider",
+    body: "Legacy contact: 555-111-2222",
+    createdAt: legacyMessageCreatedAt
+  });
+  await repository.updateCustomerProviderConversation(customerThread.thread.id, {
+    lastMessagePreview: "Legacy contact: 555-111-2222",
+    updatedAt: legacyMessageCreatedAt
+  });
+  const protectedThread = await platform.getCustomerProviderConversationThread(
+    { userId: customer.id, email: customer.email, role: "customer" },
+    customerThread.thread.id
+  );
+  assert.equal(protectedThread.messages.at(-1)?.body.includes("555-111-2222"), false);
+  assert.match(protectedThread.messages.at(-1)?.body ?? "", /Contact details removed/);
+  const protectedConversationList = await platform.listCustomerProviderConversations({
+    userId: customer.id,
+    email: customer.email,
+    role: "customer"
+  });
+  assert.equal(protectedConversationList[0]?.lastMessagePreview?.includes("555-111-2222"), false);
 
   await assert.rejects(
     platform.getCustomerProviderConversationThread(

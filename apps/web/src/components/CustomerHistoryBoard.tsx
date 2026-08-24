@@ -49,6 +49,7 @@ export function CustomerHistoryBoard() {
   const [providerNamesById, setProviderNamesById] = useState<Record<string, string>>({});
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [workingBookingId, setWorkingBookingId] = useState<string | undefined>();
+  const [nextCursor, setNextCursor] = useState<string | undefined>();
 
   async function updatePhotoMarketingUse(bookingId: string, status: "granted" | "denied" | "revoked") {
     try {
@@ -66,7 +67,7 @@ export function CustomerHistoryBoard() {
     }
   }
 
-  async function loadHistory() {
+  async function loadHistory(cursor?: string) {
     if (!session || session.role !== "customer") {
       return;
     }
@@ -75,12 +76,9 @@ export function CustomerHistoryBoard() {
       setIsLoadingHistory(true);
       setErrorMessage(undefined);
       const api = createAuthenticatedWebApiClient();
-      const [bookingList, payments] = await Promise.all([api.getBookings(), api.getPayments()]);
-      const historicalBookings = bookingList
-        .filter((booking) =>
-          ["completed", "cancelled", "refunded", "disputed"].includes(booking.status)
-        )
-        .sort((left, right) => right.scheduledStartIso.localeCompare(left.scheduledStartIso));
+      const page = await api.getBookingsPage({ cursor, limit: 20, scope: "history" });
+      const historicalBookings = page.items;
+      const payments = await api.getPayments(historicalBookings.map((booking) => booking.id));
 
       const providerIds = [...new Set(historicalBookings.map((booking) => booking.providerId))];
       const providerProfiles = await Promise.all(
@@ -93,24 +91,27 @@ export function CustomerHistoryBoard() {
         })
       );
 
-      setProviderNamesById(
-        providerProfiles.reduce<Record<string, string>>((accumulator, provider) => {
+      setProviderNamesById((current) => ({
+        ...current,
+        ...providerProfiles.reduce<Record<string, string>>((accumulator, provider) => {
           if (provider) {
             accumulator[provider.id] = provider.companyName;
           }
           return accumulator;
         }, {})
-      );
-      setBookings(historicalBookings);
-      setPaymentsByBookingId(
-        payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
+      }));
+      setBookings((current) => cursor ? [...current, ...historicalBookings] : historicalBookings);
+      setPaymentsByBookingId((current) => ({
+        ...(cursor ? current : {}),
+        ...payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
           const current = accumulator[payment.bookingId];
           if (!current || current.updatedAt < payment.updatedAt) {
             accumulator[payment.bookingId] = payment;
           }
           return accumulator;
         }, {})
-      );
+      }));
+      setNextCursor(page.pageInfo.nextCursor);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_history.load_error"));
     } finally {
@@ -178,6 +179,9 @@ export function CustomerHistoryBoard() {
         </section>
       ) : (
         <section aria-label={i18n.t("nav.user.past_visits")} className="stack-lg">
+          <p aria-live="polite">
+            {i18n.t("customer_history.loaded_count", { count: bookings.length })}
+          </p>
           {bookings.map((booking) => {
             const payment = paymentsByBookingId[booking.id];
             const beforePhotos = booking.serviceEvidence.filter(
@@ -317,6 +321,20 @@ export function CustomerHistoryBoard() {
               </article>
             );
           })}
+          {nextCursor ? (
+            <div className="cta-row">
+              <button
+                className="button-secondary"
+                disabled={isLoadingHistory}
+                onClick={() => void loadHistory(nextCursor)}
+                type="button"
+              >
+                {isLoadingHistory
+                  ? i18n.t("customer_history.loading_more")
+                  : i18n.t("customer_history.load_more")}
+              </button>
+            </div>
+          ) : null}
         </section>
       )}
     </div>

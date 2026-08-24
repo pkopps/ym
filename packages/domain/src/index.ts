@@ -27,6 +27,64 @@ import {
   ProviderProfile
 } from "@yardmatch/contracts";
 
+export type DirectContactDetailKind =
+  | "phone-number"
+  | "email-address"
+  | "web-link"
+  | "social-handle"
+  | "off-platform-channel";
+
+const EMAIL_PATTERN = /\b[a-z0-9._%+-]+\s*(?:@|\bat\b)\s*[a-z0-9-]+\s*(?:\.|\bdot\b)\s*[a-z]{2,}\b/i;
+const WEB_LINK_PATTERN = /(?:https?:\/\/|www\.)\S+|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|net|org|co|io|app|biz|me|us)\b/i;
+const SOCIAL_HANDLE_PATTERN = /(^|\s)@[a-z0-9_.-]{2,}\b/i;
+const OFF_PLATFORM_CHANNEL_PATTERN =
+  /\b(?:call|text|email|dm|direct message)\s+(?:me|us)\b|\b(?:on|via|through|my|our)\s+(?:whats\s*app|telegram|signal|instagram|facebook|messenger|snapchat|tiktok|linked\s*in|cash\s*app|venmo|zelle)\b|\b(?:whats\s*app|telegram|signal|instagram|facebook|messenger|snapchat|tiktok|linked\s*in|cash\s*app|venmo|zelle)\s*(?:(?:me|us)\b|[:@])/i;
+const SPELLED_PHONE_PATTERN =
+  /\b(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|\d)(?:[\s,.;:/()-]+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|\d)){6,}\b/i;
+
+function containsPhoneNumber(value: string): boolean {
+  if (SPELLED_PHONE_PATTERN.test(value)) {
+    return true;
+  }
+
+  const candidates = value.match(/\+?\d[\d\s()./-]{5,}\d/g) ?? [];
+  return candidates.some((candidate) => {
+    const digits = candidate.replace(/\D/g, "");
+    if (digits.length < 7 || digits.length > 15) {
+      return false;
+    }
+
+    const compact = candidate.trim();
+    const looksLikeDate = /^\d{1,4}[/.\-]\d{1,2}[/.\-]\d{1,4}$/.test(compact);
+    const looksLikeEpochTimestamp = /^\d{13}$/.test(compact);
+    return !looksLikeDate && !looksLikeEpochTimestamp;
+  });
+}
+
+export function findDirectContactDetails(value: string): DirectContactDetailKind[] {
+  const detected = new Set<DirectContactDetailKind>();
+  if (containsPhoneNumber(value)) {
+    detected.add("phone-number");
+  }
+  if (EMAIL_PATTERN.test(value)) {
+    detected.add("email-address");
+  }
+  if (WEB_LINK_PATTERN.test(value)) {
+    detected.add("web-link");
+  }
+  if (SOCIAL_HANDLE_PATTERN.test(value)) {
+    detected.add("social-handle");
+  }
+  if (OFF_PLATFORM_CHANNEL_PATTERN.test(value)) {
+    detected.add("off-platform-channel");
+  }
+  return [...detected];
+}
+
+export function containsDirectContactDetails(value: string): boolean {
+  return findDirectContactDetails(value).length > 0;
+}
+
 export class GeoService {
   // Haversine math keeps provider matching deterministic across clients and the API.
   public distanceMiles(a: Address, b: Address): number {

@@ -194,6 +194,8 @@ model Booking {
   addressChangeHistory            Json
   financialSettlement             BookingFinancialSettlement?
 
+  @@index([customerId, scheduledStartIso, id])
+  @@index([providerId, scheduledStartIso, id])
   @@map("bookings")
 }
 
@@ -379,6 +381,7 @@ model PaymentRecord {
   @@unique([checkoutSessionId])
   @@unique([processorPaymentIntentId])
   @@unique([processorChargeId])
+  @@index([bookingId, updatedAt, id])
   @@map("payment_records")
 }
 

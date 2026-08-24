@@ -143,6 +143,7 @@ Exit criteria:
 - Add trustworthy conversion, reliability, and fulfillment signals only after they have enough data volume.
 - Keep service-fit weighting strong for more complex multi-service requests, now that provider search exposes complete-versus-partial service-fit summaries and can recommend full-mix providers ahead of partial category matches.
 - Preserve provider-first economics, including minimum acceptable payout thinking, now surfaced in provider search as a backend-authored estimated-net-vs-payout-floor summary for the requested category or service mix, duration, and route.
+- Keep marketplace anti-circumvention controls server-authored as new communication surfaces are added: customer-safe provider contracts must remain separate from account profiles, direct contact details must stay out of customer/provider shared text, and legitimate booking/lifecycle authorization must remain a prerequisite for in-app conversation access.
 
 ## Priority 3: Provider Operations
 

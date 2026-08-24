@@ -8,6 +8,8 @@ import {
   BeginTwoFactorSetupResponse,
   BookingArrivalTracking,
   Booking,
+  BookingListScope,
+  BookingPageResponse,
   CancelBookingRequest,
   CancelCrewMatchRequest,
   CancelRecurringServicePlanRequest,
@@ -115,7 +117,9 @@ import {
   ProviderCalendarImportsResponse,
   SyncStaleProviderCalendarImportsResponse,
   ProviderCalendarOverviewResponse,
+  MarketplaceProviderProfile,
   ProviderProfile,
+  PublicProviderReview,
   ProviderConnectOnboardingResponse,
   ProviderConnectStatusResponse,
   ProviderStaffingOverview,
@@ -180,6 +184,12 @@ export interface MarketplaceApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface BookingPageOptions {
+  cursor?: string;
+  limit?: number;
+  scope?: BookingListScope;
+}
+
 export class MarketplaceApiTimeoutError extends Error {
   public readonly code = "REQUEST_TIMEOUT";
 
@@ -190,6 +200,18 @@ export class MarketplaceApiTimeoutError extends Error {
   ) {
     super(message);
     this.name = "MarketplaceApiTimeoutError";
+  }
+}
+
+export class MarketplaceApiError extends Error {
+  public constructor(
+    public readonly path: string,
+    public readonly statusCode: number,
+    public readonly requestId: string | undefined,
+    message: string
+  ) {
+    super(requestId ? `${message} (Reference: ${requestId})` : message);
+    this.name = "MarketplaceApiError";
   }
 }
 
@@ -244,12 +266,13 @@ export class MarketplaceApiClient {
 
   private async buildError(response: Response, path: string): Promise<Error> {
     const fallback = `Request failed for ${path} with status ${response.status}`;
+    const requestId = response.headers.get("x-request-id") ?? undefined;
 
     try {
       const payload = (await response.json()) as { message?: string };
-      return new Error(payload.message || fallback);
+      return new MarketplaceApiError(path, response.status, requestId, payload.message || fallback);
     } catch {
-      return new Error(fallback);
+      return new MarketplaceApiError(path, response.status, requestId, fallback);
     }
   }
 
@@ -481,8 +504,8 @@ export class MarketplaceApiClient {
     return this.getJson(ApiRoutes.publicMarketplaceOverview);
   }
 
-  public getProviderProfile(providerId: string): Promise<ProviderProfile> {
-    return this.getJson<ProviderProfile>(
+  public getProviderProfile(providerId: string): Promise<MarketplaceProviderProfile> {
+    return this.getJson<MarketplaceProviderProfile>(
       `${ApiRoutes.providerProfile}?providerId=${encodeURIComponent(providerId)}`
     );
   }
@@ -745,8 +768,8 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.inboundGoogleBusinessProfileReviewResponse, payload);
   }
 
-  public getProviderReviews(providerId: string): Promise<ProviderReview[]> {
-    return this.getJson<ProviderReview[]>(
+  public getProviderReviews(providerId: string): Promise<PublicProviderReview[]> {
+    return this.getJson<PublicProviderReview[]>(
       `${ApiRoutes.providerReviews}?providerId=${encodeURIComponent(providerId)}`
     );
   }
@@ -761,8 +784,23 @@ export class MarketplaceApiClient {
     );
   }
 
-  public getBookings(): Promise<Booking[]> {
-    return this.getJson<Booking[]>(ApiRoutes.listBookings);
+  public getBookingsPage(options: BookingPageOptions = {}): Promise<BookingPageResponse> {
+    const query = new URLSearchParams();
+    if (options.cursor) {
+      query.set("cursor", options.cursor);
+    }
+    if (options.limit !== undefined) {
+      query.set("limit", String(options.limit));
+    }
+    if (options.scope) {
+      query.set("scope", options.scope);
+    }
+    const suffix = query.size > 0 ? `?${query.toString()}` : "";
+    return this.getJson<BookingPageResponse>(`${ApiRoutes.listBookings}${suffix}`);
+  }
+
+  public async getBookings(options: BookingPageOptions = {}): Promise<Booking[]> {
+    return (await this.getBookingsPage(options)).items;
   }
 
   public createBooking(payload: CreateBookingRequest) {
@@ -837,8 +875,15 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.updateBookingAddress, payload);
   }
 
-  public getPayments(): Promise<PaymentRecord[]> {
-    return this.getJson(ApiRoutes.listPayments);
+  public getPayments(bookingIds: string[]): Promise<PaymentRecord[]> {
+    if (bookingIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    const query = new URLSearchParams();
+    for (const bookingId of [...new Set(bookingIds)]) {
+      query.append("bookingId", bookingId);
+    }
+    return this.getJson(`${ApiRoutes.listPayments}?${query.toString()}`);
   }
 
   public getProviderPayoutLedger(): Promise<ProviderPayoutLedgerResponse> {

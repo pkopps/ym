@@ -158,6 +158,13 @@ body {
   font-size: 0.95rem;
 }
 
+.floating-chat__safety-notice {
+  margin: 0;
+  color: var(--ym-color-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 .floating-chat__close {
   appearance: none;
   border: 0;
@@ -2048,6 +2055,10 @@ body {
 .metrics {
   display: grid;
   gap: var(--ym-space-3);
+}
+
+.api-runtime-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .provider-metric-stack {
@@ -4980,6 +4991,10 @@ body {
 }
 
 @media (max-width: 900px) {
+  .api-runtime-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .marketing-project-grid,
   .before-after-grid,
   .service-history-photos__header,
@@ -5345,6 +5360,10 @@ body {
 }
 
 @media (max-width: 640px) {
+  .api-runtime-metrics {
+    grid-template-columns: 1fr;
+  }
+
   .tool-illustration-row {
     grid-template-columns: 1fr;
   }

@@ -85,6 +85,7 @@ export function FloatingChatWindow({
           </div>
 
           <div className="floating-chat__composer">
+            <p className="floating-chat__safety-notice">{i18n.t("chat.safety_notice")}</p>
             <textarea
               onChange={(event) => onDraftChange(event.target.value)}
               onKeyDown={(event) => {

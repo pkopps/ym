@@ -43,6 +43,7 @@ import {
 import { buildSettlementLedgerDraft, calculateMarketplaceSettlement } from "@yardmatch/domain";
 import {
   AuthIdentityRecord,
+  BookingPageQuery,
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
   MarketplaceRepository
@@ -540,6 +541,42 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return bookings.map((booking: any) => this.mapBooking(booking));
   }
 
+  public async listBookingsPage(query: BookingPageQuery) {
+    const historyStatuses = ["completed", "cancelled", "refunded", "disputed"];
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        ...(query.actorRole === "customer"
+          ? { customerId: query.actorId }
+          : { providerId: query.actorId }),
+        ...(query.scope === "history"
+          ? { status: { in: historyStatuses } }
+          : query.scope === "active"
+            ? { status: { notIn: historyStatuses } }
+            : {})
+      },
+      orderBy: [{ scheduledStartIso: "desc" }, { id: "desc" }],
+      take: query.limit + 1,
+      ...(query.cursorId ? { cursor: { id: query.cursorId }, skip: 1 } : {})
+    });
+    const hasMore = bookings.length > query.limit;
+    const items = bookings.slice(0, query.limit).map((booking) => this.mapBooking(booking));
+    return {
+      items,
+      hasMore,
+      nextCursorId: hasMore ? items.at(-1)?.id : undefined
+    };
+  }
+
+  public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
+    if (bookingIds.length === 0) {
+      return [];
+    }
+    const bookings = await this.prisma.booking.findMany({
+      where: { id: { in: bookingIds } }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
   public async findBookingById(bookingId: string): Promise<Booking | undefined> {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId }
@@ -792,6 +829,22 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async listCrewMatches(): Promise<CrewMatchCandidate[]> {
     const matches = await this.prisma.crewMatch.findMany({
       orderBy: { createdAt: "desc" }
+    });
+    return matches.map((match) => this.mapCrewMatch(match));
+  }
+
+  public async listCrewMatchesForBookings(
+    bookingIds: string[],
+    crewMemberId: string
+  ): Promise<CrewMatchCandidate[]> {
+    if (bookingIds.length === 0) {
+      return [];
+    }
+    const matches = await this.prisma.crewMatch.findMany({
+      where: {
+        crewMemberId,
+        bookingId: { in: bookingIds }
+      }
     });
     return matches.map((match: any) => this.mapCrewMatch(match));
   }
@@ -1139,6 +1192,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
 
   public async listPayments(): Promise<PaymentRecord[]> {
     const payments = await this.prisma.paymentRecord.findMany();
+    return payments.map((payment) => this.mapPaymentRecord(payment));
+  }
+
+  public async listPaymentsForBookingIds(bookingIds: string[]): Promise<PaymentRecord[]> {
+    if (bookingIds.length === 0) {
+      return [];
+    }
+    const payments = await this.prisma.paymentRecord.findMany({
+      where: { bookingId: { in: bookingIds } },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
+    });
     return payments.map((payment: any) => this.mapPaymentRecord(payment));
   }
 

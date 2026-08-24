@@ -2103,6 +2103,7 @@ export function ScheduleScreen() {
                               <Text style={styles.metaLine}>{message.body}</Text>
                             </View>
                           ))}
+                          <Text style={styles.metaLine}>{i18n.t("chat.safety_notice")}</Text>
                           <TextInput
                             multiline
                             onChangeText={setChatDraft}

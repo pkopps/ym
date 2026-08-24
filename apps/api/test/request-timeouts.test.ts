@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   MarketplaceApiClient,
+  MarketplaceApiError,
   MarketplaceApiTimeoutError
 } from "@yardmatch/contracts";
 import { HttpError } from "../src/http";
@@ -25,6 +26,29 @@ function createHangingFetch(onAbort?: () => void): typeof fetch {
       }, { once: true });
     })) as typeof fetch;
 }
+
+test("shared API errors preserve the server request id for incident correlation", async () => {
+  const client = new MarketplaceApiClient("http://yardmatch.test", {
+    fetchImpl: (async () => new Response(JSON.stringify({ message: "Unable to finish the request." }), {
+      status: 500,
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": "request-correlation-123"
+      }
+    })) as typeof fetch
+  });
+
+  await assert.rejects(
+    client.searchPlaces("Barnegat"),
+    (error: unknown) => {
+      assert.ok(error instanceof MarketplaceApiError);
+      assert.equal(error.statusCode, 500);
+      assert.equal(error.requestId, "request-correlation-123");
+      assert.match(error.message, /Reference: request-correlation-123/);
+      return true;
+    }
+  );
+});
 
 test("shared API client aborts stalled GET and POST requests with actionable localized errors", async () => {
   let abortCount = 0;

@@ -15,8 +15,16 @@ import { PrismaMarketplaceRepository } from "./repositories/PrismaMarketplaceRep
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
 import { validateRuntimeConfiguration } from "./config/productionConfig";
 import { ExternalRequestTimeoutError } from "./integrations/outboundRequestTimeout";
+import { createApiRuntimeObservabilityFromEnv } from "./observability/ApiRuntimeObservability";
+import {
+  captureApiException,
+  captureApiProcessException,
+  flushApiErrorReporting,
+  initializeApiErrorReporting
+} from "./observability/sentry";
 
 const runtimeConfiguration = validateRuntimeConfiguration();
+await initializeApiErrorReporting();
 const prismaClient = runtimeConfiguration.repositoryMode === "prisma-postgres"
   ? new PrismaClient()
   : undefined;
@@ -26,6 +34,7 @@ const repository = runtimeConfiguration.repositoryMode === "prisma-postgres"
 const port = Number(process.env.PORT ?? 4001);
 const repositoryMode = runtimeConfiguration.repositoryMode;
 const analytics = new DataEngineeringLogger();
+const apiRuntimeObservability = createApiRuntimeObservabilityFromEnv();
 const platform = new MarketplacePlatformService(repository, analytics);
 const controllers: ApiController[] = [
   new HealthController(runtimeConfiguration, async () => {
@@ -37,14 +46,20 @@ const controllers: ApiController[] = [
   new AuthController(platform),
   new MediaController(platform),
   new MarketplaceController(platform),
-  new ObservabilityController(platform),
+  new ObservabilityController(platform, apiRuntimeObservability),
   new SupportController(platform)
 ];
 
 const server = createServer(async (request, response) => {
   let context: Awaited<ReturnType<typeof parseRequest>> | undefined;
+  const requestId = crypto.randomUUID();
+  const startedAt = performance.now();
+  let errorType: string | undefined;
+  let errorCategory: "client-request" | "authentication" | "dependency-timeout" | "server-error" | undefined;
+  let errorFrames: string[] | undefined;
 
   try {
+    response.setHeader("X-Request-Id", requestId);
     applyCorsHeaders(request, response);
 
     if (request.method === "OPTIONS") {
@@ -67,6 +82,21 @@ const server = createServer(async (request, response) => {
     await controller.handle(parsedContext, response);
   } catch (error) {
     if (error instanceof HttpError) {
+      errorType = error.name || "HttpError";
+      errorCategory = error.statusCode === 401 || error.statusCode === 403
+        ? "authentication"
+        : error.statusCode >= 500
+          ? "server-error"
+          : "client-request";
+      if (error.statusCode >= 500) {
+        captureApiException(error, {
+          requestId,
+          method: request.method ?? "GET",
+          route: context?.path ?? "/request-parse",
+          statusCode: error.statusCode,
+          category: errorCategory
+        });
+      }
       sendJson(response, error.statusCode, {
         message: await localizeApiErrorMessage(error.message, context?.headers ?? request.headers)
       });
@@ -74,15 +104,54 @@ const server = createServer(async (request, response) => {
     }
 
     if (error instanceof ExternalRequestTimeoutError) {
+      errorType = error.name || "ExternalRequestTimeoutError";
+      errorCategory = "dependency-timeout";
+      captureApiException(error, {
+        requestId,
+        method: request.method ?? "GET",
+        route: context?.path ?? "/request-parse",
+        statusCode: 504,
+        category: errorCategory
+      });
       sendJson(response, 504, {
         message: await localizeApiErrorMessage(error.message, context?.headers ?? request.headers)
       });
       return;
     }
 
-    const fallbackMessage = error instanceof Error ? error.message : "Unknown server error";
+    errorType = error instanceof Error ? error.name : "UnknownServerError";
+    errorCategory = "server-error";
+    errorFrames = error instanceof Error
+      ? error.stack?.split("\n").slice(1, 9).map((frame) => frame.trim())
+      : undefined;
+    captureApiException(error, {
+      requestId,
+      method: request.method ?? "GET",
+      route: context?.path ?? "/request-parse",
+      statusCode: 500,
+      category: errorCategory
+    });
     sendJson(response, 500, {
-      message: await localizeApiErrorMessage(fallbackMessage, context?.headers ?? request.headers)
+      message: await localizeApiErrorMessage("Unexpected server error", context?.headers ?? request.headers)
+    });
+  } finally {
+    let route = context?.path;
+    if (!route) {
+      try {
+        route = new URL(request.url ?? "/", "http://localhost").pathname;
+      } catch {
+        route = "/unparseable-request";
+      }
+    }
+    apiRuntimeObservability.recordRequest({
+      requestId,
+      method: request.method ?? "GET",
+      route,
+      statusCode: response.statusCode,
+      durationMs: performance.now() - startedAt,
+      errorType,
+      category: errorCategory,
+      errorFrames
     });
   }
 });
@@ -93,12 +162,12 @@ server.listen(port, () => {
 });
 
 let shuttingDown = false;
-async function shutDown(signal: NodeJS.Signals): Promise<void> {
+async function shutDown(reason: string): Promise<void> {
   if (shuttingDown) {
     return;
   }
   shuttingDown = true;
-  console.log(`YardMatch API received ${signal}; draining active requests.`);
+  console.log(`YardMatch API received ${reason}; draining active requests.`);
 
   const forcedShutdown = setTimeout(() => {
     server.closeAllConnections();
@@ -113,8 +182,21 @@ async function shutDown(signal: NodeJS.Signals): Promise<void> {
       process.exitCode = 1;
     }
     await prismaClient?.$disconnect();
+    await flushApiErrorReporting();
   });
 }
 
 process.once("SIGTERM", () => void shutDown("SIGTERM"));
 process.once("SIGINT", () => void shutDown("SIGINT"));
+process.once("uncaughtException", (error) => {
+  apiRuntimeObservability.recordProcessFailure("uncaught-exception", error);
+  captureApiProcessException(error, "uncaught-exception");
+  process.exitCode = 1;
+  void shutDown("an uncaught exception");
+});
+process.once("unhandledRejection", (reason) => {
+  apiRuntimeObservability.recordProcessFailure("unhandled-rejection", reason);
+  captureApiProcessException(reason, "unhandled-rejection");
+  process.exitCode = 1;
+  void shutDown("an unhandled rejection");
+});

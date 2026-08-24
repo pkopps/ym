@@ -704,6 +704,88 @@ export function OpsDashboardClient() {
         </article>
       </section>
 
+      {overview.apiRuntime ? (
+        <section className="card" aria-label="API reliability monitoring">
+          <div className="search-result-title">
+            <div>
+              <span className="eyebrow">Production monitoring</span>
+              <h2>API reliability</h2>
+              <p>
+                Structured request health since {new Date(overview.apiRuntime.startedAt).toLocaleString()}.
+                Slow means at least {overview.apiRuntime.slowRequestThresholdMs} ms.
+              </p>
+              <p>
+                Sentry error reporting: {overview.apiRuntime.errorReportingConfigured ? "configured" : "not configured"}.
+              </p>
+            </div>
+            <span className="result-badge">{overview.apiRuntime.status}</span>
+          </div>
+          <div className="metrics api-runtime-metrics">
+            <article className="stat-card">
+              <strong>{overview.apiRuntime.requestCount}</strong>
+              <p>requests observed</p>
+            </article>
+            <article className="stat-card">
+              <strong>{overview.apiRuntime.serverErrorCount}</strong>
+              <p>server errors</p>
+            </article>
+            <article className="stat-card">
+              <strong>{overview.apiRuntime.slowRequestCount}</strong>
+              <p>slow requests</p>
+            </article>
+            <article className="stat-card">
+              <strong>{formatRate(overview.apiRuntime.failureRate)}</strong>
+              <p>five-minute failure rate</p>
+            </article>
+          </div>
+          {overview.apiRuntime.alerts.length > 0 ? (
+            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              {overview.apiRuntime.alerts.map((alert) => (
+                <article className="list-panel" key={`${alert.severity}:${alert.title}`}>
+                  <h3>{alert.title}</h3>
+                  <p>{alert.detail}</p>
+                  <p>{alert.recommendedAction}</p>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p>No active runtime alerts.</p>
+          )}
+          {overview.apiRuntime.routeMetrics.some(
+            (metric) => metric.serverErrorCount > 0 || metric.slowRequestCount > 0
+          ) ? (
+            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              <h3>Routes needing attention</h3>
+              {overview.apiRuntime.routeMetrics
+                .filter((metric) => metric.serverErrorCount > 0 || metric.slowRequestCount > 0)
+                .slice(0, 5)
+                .map((metric) => (
+                  <article className="list-panel" key={`${metric.method}:${metric.route}`}>
+                    <h3>{metric.method} {metric.route}</h3>
+                    <p>
+                      {metric.serverErrorCount} server errors • {metric.slowRequestCount} slow • {metric.averageDurationMs} ms average • {metric.maxDurationMs} ms max
+                    </p>
+                  </article>
+                ))}
+            </div>
+          ) : null}
+          {overview.apiRuntime.recentFailures.length > 0 ? (
+            <details>
+              <summary>Recent failure types and request IDs</summary>
+              <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                {overview.apiRuntime.recentFailures.slice(0, 10).map((failure) => (
+                  <article className="list-panel" key={failure.requestId}>
+                    <h3>{failure.errorType}</h3>
+                    <p>{failure.method} {failure.route} • HTTP {failure.statusCode} • {failure.durationMs} ms</p>
+                    <p>Request ID: {failure.requestId}</p>
+                  </article>
+                ))}
+              </div>
+            </details>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="grid-two">
         <article className="card">
           <h2>{i18n.t("ops_auto.ops_dashboard_client.operational_counts_sfd5zi")}</h2>

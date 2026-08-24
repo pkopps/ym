@@ -495,7 +495,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Fetch a provider profile by id",
         description:
-          "Returns the provider business profile plus backend-authored verification summary guidance, including the current checklist, onboarding automation plan, stable onboarding automation actions, provider businessControls, and any next steps the provider can handle before or during launch review. The business controls summary exposes owner-only team access, owner-managed profile/dispatch/payout controls, ops-managed visibility controls, fresh re-auth requirements, launch guardrails, and warnings.",
+          "Returns only the customer-safe marketplace profile. Email, phone, owner name, street address, payout state, verification notes, and other provider-account fields are never included; the service-area map center is intentionally approximate.",
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -515,7 +515,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Update the authenticated provider's business profile",
         description:
-          "Lets a provider update verification-relevant business details such as company name, bio, years of experience, and service categories. If a previously rejected provider makes a meaningful change, the business automatically moves back into pending review and ops users are notified to review the launch-fit queue.",
+          "Lets a provider update verification-relevant business details such as company name, bio, years of experience, and service categories. Company names and bios cannot contain phone numbers, email addresses, web links, social handles, or off-platform contact instructions. If a previously rejected provider makes a meaningful change, the business automatically moves back into pending review and ops users are notified to review the launch-fit queue.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1142,7 +1142,7 @@ export const apiSpec = {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns public marketplace results for providers that are verified, serve the requested address, and match the requested services. Results are ranked using service fit, specialization, distance, reliability history, availability, and provider-economics guardrails. Paid placement never changes recommendation order. Multi-service requests include a backend-authored service-fit summary for complete versus partial category coverage, and provider-economics summaries account for the requested service mix, duration, and route instead of only the first matched category. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
+          "Returns at most three curated, customer-safe marketplace results for providers that are verified, serve the requested address, and match the requested services. Phone, email, owner name, exact street address, exact map coordinates, payout state, verification notes, and other provider-account fields are excluded. Results are ranked using service fit, specialization, distance, reliability history, availability, and provider-economics guardrails. Paid placement never changes recommendation order. Multi-service requests include a backend-authored service-fit summary for complete versus partial category coverage, and provider-economics summaries account for the requested service mix, duration, and route instead of only the first matched category. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
         requestBody: {
           required: true,
           content: {
@@ -1292,6 +1292,8 @@ export const apiSpec = {
       get: {
         tags: ["Providers"],
         summary: "List submitted reviews for a provider",
+        description:
+          "Returns a public review shape without customer ids, booking ids, ops notes, response-channel metadata, or external response links. Legacy contact-sharing text is replaced with a YardMatch safety notice.",
         parameters: [
           {
             name: "providerId",
@@ -1690,10 +1692,18 @@ export const apiSpec = {
     "/api/bookings": {
       get: {
         tags: ["Bookings"],
-        summary: "List bookings",
+        summary: "List a cursor page of bookings",
+        description:
+          "Returns a bounded, newest-first page for the authenticated customer or provider. Use scope=history for completed/cancelled/refunded/disputed job history and follow pageInfo.nextCursor instead of loading a long-tenure account into memory.",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: "scope", in: "query", schema: { type: "string", enum: ["active", "history", "all"], default: "all" } },
+          { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 100, default: 25 } },
+          { name: "cursor", in: "query", schema: { type: "string" }, description: "Opaque nextCursor from the previous page." }
+        ],
         responses: {
-          "200": { description: "Booking list" }
+          "200": { description: "Booking page with items and pageInfo" },
+          "400": { description: "Invalid limit, scope, or cursor" }
         }
       },
       post: {
@@ -2002,7 +2012,7 @@ export const apiSpec = {
         tags: ["Chat"],
         summary: "Send a customer-provider message",
         description:
-          "Customer-to-provider chat is intentionally limited and only unlocks once an accepted crew member has confirmed they are on the way to the property.",
+          "Customer-to-provider chat is intentionally limited and only unlocks once an accepted crew member has confirmed they are on the way to the property. The API rejects phone numbers, email addresses, links, social handles, and off-platform contact instructions from either party, and masks unsafe legacy messages on read.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -2017,6 +2027,7 @@ export const apiSpec = {
         },
         responses: {
           "201": { description: "Updated customer-provider conversation thread" },
+          "400": { description: "Message is empty or attempts to share direct contact details" },
           "403": { description: "Chat is not unlocked or the user is not tied to the booking" }
         }
       }
@@ -2024,10 +2035,21 @@ export const apiSpec = {
     "/api/payments": {
       get: {
         tags: ["Payments"],
-        summary: "List payments for the authenticated user",
+        summary: "List payments for a bounded set of bookings",
+        description:
+          "Returns payments only for up to 100 supplied booking ids after checking that each booking belongs to the authenticated actor. Clients should use the booking ids from the current cursor page.",
         security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "bookingId",
+            in: "query",
+            required: true,
+            schema: { type: "array", maxItems: 100, items: { type: "string" } }
+          }
+        ],
         responses: {
-          "200": { description: "Payments returned" }
+          "200": { description: "Payments returned" },
+          "400": { description: "No booking ids supplied or request exceeds the bounded limit" }
         }
       }
     },
@@ -2573,7 +2595,7 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "Fetch the live operational telemetry summary",
         description:
-          "Returns the API-owned operations overview used by the internal dashboard, including booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, recommendation source metrics plus backend-authored recommendation insights for low-volume caveats, coverage/open-window gaps, weak handoffs, and strongest surfaces, retention prompt/source/provider metrics plus backend-authored retention insights, inbound automation health for lead and review forwarders with source-level activity plus stale-channel alerts, internal ops access-health reporting with temporary lock counts, dormant-or-never-used account counts, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, a backend-authored admin-and-operations access governance policy, a backend-authored launch operations policy with scenario rules, ZIP-level coverage pocket pressure summaries, coverage action recommendations, service-quality standards, intervention rules, escalation triggers, and live pressure warnings, recent internal auth-event history, recent internal sign-ins, and failed-sign-in reporting, a backend-authored public review-response queue with persisted response state, channel-aware posting audit fields, linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint now requires an authenticated ops session instead of loading anonymously.",
+          "Returns the API-owned operations overview used by the internal dashboard, including bounded runtime request/error/slow-route metrics with request IDs and Sentry readiness, booking funnel activity, payment milestones, launch-lead backlog metrics, review-invite requested-versus-received counts, recommendation source metrics plus backend-authored recommendation insights for low-volume caveats, coverage/open-window gaps, weak handoffs, and strongest surfaces, retention prompt/source/provider metrics plus backend-authored retention insights, inbound automation health for lead and review forwarders with source-level activity plus stale-channel alerts, internal ops access-health reporting with temporary lock counts, dormant-or-never-used account counts, backend-authored internal access alerts for temporary locks / repeated failures / disabled-account login attempts, a backend-authored admin-and-operations access governance policy, a backend-authored launch operations policy with scenario rules, ZIP-level coverage pocket pressure summaries, coverage action recommendations, service-quality standards, intervention rules, escalation triggers, and live pressure warnings, recent internal auth-event history, recent internal sign-ins, and failed-sign-in reporting, a backend-authored public review-response queue with persisted response state, channel-aware posting audit fields, linked support-follow-up context, and recent telemetry events. This internal dashboard endpoint requires an authenticated ops session.",
         security: [{ bearerAuth: [] }],
         responses: {
           "200": { description: "Operations overview" }

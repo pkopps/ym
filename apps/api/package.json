@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "@sentry/node": "^10.70.0",
     "@vercel/blob": "^2.6.1",
     "@yardmatch/analytics": "0.1.0",
     "@yardmatch/contracts": "0.1.0",

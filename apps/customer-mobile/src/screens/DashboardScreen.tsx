@@ -265,12 +265,12 @@ export function DashboardScreen({
     try {
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
-      const [bookingList, nextProperties, reviewResponse, payments] = await Promise.all([
-        api.getBookings(),
+      const [bookingList, nextProperties, reviewResponse] = await Promise.all([
+        api.getBookings({ limit: 50 }),
         api.getCustomerProperties(),
-        api.getCustomerReviewOpportunities(),
-        api.getPayments()
+        api.getCustomerReviewOpportunities()
       ]);
+      const payments = await api.getPayments(bookingList.map((booking) => booking.id));
       const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
       const providers = await Promise.all(uniqueProviderIds.map((providerId) => api.getProviderProfile(providerId)));
       setProviderNamesById(

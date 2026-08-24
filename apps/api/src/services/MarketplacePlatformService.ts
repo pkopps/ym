@@ -77,6 +77,7 @@ import {
   PublicMarketplaceOverviewResponse,
   PublicMarketplaceHighlightedReview,
   PublicMarketplaceCoverageArea,
+  PublicProviderReview,
   CrewOpportunity,
   CrewPayoutLedgerEntry,
   CrewPayoutLedgerResponse,
@@ -95,6 +96,7 @@ import {
   InstantQuoteRequest,
   InstantQuoteResponse,
   LaunchPricingPolicy,
+  MarketplaceProviderProfile,
   InboundAutomationActivityItem,
   InboundAutomationEscalationResponse,
   InboundAutomationAlertItem,
@@ -144,6 +146,8 @@ import {
   UpdateLaunchOperationsTaskResponse,
   UpdateSupportTicketRequest,
   Booking,
+  BookingListScope,
+  BookingPageResponse,
   BookingFinancialSettlement,
   BookingStatus,
   BookingServiceWindowKey,
@@ -260,6 +264,8 @@ import {
 import {
   BookingAddressPolicyService,
   BookingLifecycleService,
+  containsDirectContactDetails,
+  findDirectContactDetails,
   GeoService,
   InstantQuoteEngine,
   PropertyBookService,
@@ -284,6 +290,7 @@ import {
 } from "../auth";
 import { HttpError } from "../http";
 import { withAbortableTimeout } from "../integrations/outboundRequestTimeout";
+import { decodePageCursor, encodePageCursor } from "../pagination";
 import { ValidatedEvidenceImage, validateEvidenceImageDataUrl } from "../media/imageValidation";
 import { evaluateProviderCredentialReadiness } from "../policies/providerCredentialPolicy";
 import {
@@ -309,6 +316,10 @@ const TWO_FACTOR_RESEND_COOLDOWN_SECONDS = 60;
 const TWO_FACTOR_MAX_FAILED_ATTEMPTS = 5;
 const TRUSTED_DEVICE_TTL_DAYS = 30;
 const SECURITY_EVENT_HISTORY_LIMIT = 50;
+const PROTECTED_MARKETPLACE_MESSAGE =
+  "[Contact details removed by YardMatch. Keep booking and communication in the app.]";
+const PROTECTED_MARKETPLACE_PROFILE_COPY =
+  "Verified service details are available through YardMatch. Keep booking and communication in the app.";
 
 interface TwoFactorChallengeTokenPayload {
   userId: string;
@@ -448,6 +459,7 @@ export class MarketplacePlatformService {
     const now = new Date().toISOString();
     const validatedAddress = await this.normalizeAndValidateAddress(payload.address);
     const normalizedAddress = await this.resolveSavedPropertyAddress(validatedAddress.address, []);
+    this.assertNoDirectContactDetails(payload.fullName, "account-display-name");
 
     if (payload.role === "customer") {
       const primaryProperty = {
@@ -533,6 +545,11 @@ export class MarketplacePlatformService {
       return this.repository.createOpsUser(opsUser, passwordHash);
     }
 
+    const companyName = payload.companyName ?? `${payload.fullName} Landscaping`;
+    const bio = payload.bio ?? "Quality lawn care and landscaping services.";
+    this.assertNoDirectContactDetails(companyName, "provider-company-name");
+    this.assertNoDirectContactDetails(bio, "provider-bio");
+
     const provider: ProviderProfile = {
       id: crypto.randomUUID(),
       fullName: payload.fullName,
@@ -541,8 +558,8 @@ export class MarketplacePlatformService {
       role: "provider",
       address: normalizedAddress,
       createdAt: now,
-      companyName: payload.companyName ?? `${payload.fullName} Landscaping`,
-      bio: payload.bio ?? "Quality lawn care and landscaping services.",
+      companyName,
+      bio,
       yearsExperience: payload.yearsExperience ?? 1,
       serviceRadiusMiles: payload.serviceRadiusMiles ?? 15,
       minimumBookingLeadHours: 0,
@@ -1794,7 +1811,8 @@ export class MarketplacePlatformService {
         }
 
         return right.ranking.provider.rating - left.ranking.provider.rating;
-      });
+      })
+      .slice(0, 3);
 
     const suggestedSlots = rankedCandidates.flatMap((candidate) => candidate.matchingSlots);
     const rankedProviders = this.withCustomerSelectionSummaries(
@@ -1887,8 +1905,7 @@ export class MarketplacePlatformService {
     const providerMap = new Map(providers.map((provider) => [provider.id, provider]));
     const mapFeaturedProvider = (provider: ProviderProfile) => ({
       id: provider.id,
-      companyName: provider.companyName,
-      ownerName: provider.fullName,
+      companyName: this.sanitizeMarketplaceProfileText(provider.companyName, "Verified YardMatch provider"),
       city: provider.address.city,
       state: provider.address.state,
       rating: provider.rating,
@@ -2000,7 +2017,10 @@ export class MarketplacePlatformService {
           {
             bookingId: booking.id,
             providerId: provider.id,
-            providerCompanyName: provider.companyName,
+            providerCompanyName: this.sanitizeMarketplaceProfileText(
+              provider.companyName,
+              "Verified YardMatch provider"
+            ),
             city: booking.serviceAddress.city,
             state: booking.serviceAddress.state,
             category: booking.category,
@@ -2079,12 +2099,15 @@ export class MarketplacePlatformService {
     return {
       reviewId: review.id,
       providerId: provider.id,
-      providerCompanyName: provider.companyName,
+      providerCompanyName: this.sanitizeMarketplaceProfileText(
+        provider.companyName,
+        "Verified YardMatch provider"
+      ),
       city: provider.address.city,
       state: provider.address.state,
       primaryCategory: provider.categories[0],
       overallRating: review.overallRating,
-      reviewText: review.reviewText,
+      reviewText: this.sanitizeMarketplaceSharedText(review.reviewText),
       createdAt: review.createdAt
     };
   }
@@ -2204,6 +2227,14 @@ export class MarketplacePlatformService {
       verificationSummary: this.buildProviderVerificationStatusSummary(provider, guidance, onboardingPlan),
       businessControls: this.buildProviderBusinessControlsSummary(provider, openBookingCount)
     };
+  }
+
+  public async getMarketplaceProviderProfile(providerId: string): Promise<MarketplaceProviderProfile> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) {
+      throw new HttpError(404, "Marketplace provider not found");
+    }
+    return this.toMarketplaceProviderProfile(provider);
   }
 
   public async getProviderConnectStatus(
@@ -2716,6 +2747,8 @@ export class MarketplacePlatformService {
     if (bio.length < 10) {
       throw new Error("bio must be at least 10 characters");
     }
+    this.assertNoDirectContactDetails(companyName, "provider-company-name", provider.id, "provider");
+    this.assertNoDirectContactDetails(bio, "provider-bio", provider.id, "provider");
 
     const rawYearsExperience = payload.yearsExperience ?? provider.yearsExperience ?? 0;
     const yearsExperience = Math.round(rawYearsExperience);
@@ -2768,6 +2801,8 @@ export class MarketplacePlatformService {
     }
 
     if (payload.action === "approve") {
+      this.assertNoDirectContactDetails(provider.companyName, "provider-company-name", provider.id, "provider");
+      this.assertNoDirectContactDetails(provider.bio, "provider-bio", provider.id, "provider");
       const credentialReadiness = evaluateProviderCredentialReadiness(
         provider,
         provider.credentials ?? []
@@ -5178,6 +5213,9 @@ export class MarketplacePlatformService {
     if (lateEta.getTime() <= Date.now()) {
       throw new HttpError(400, "Updated ETA must be in the future");
     }
+    if (payload.reason?.trim()) {
+      this.assertNoDirectContactDetails(payload.reason, "booking-delay-update", providerId, "provider");
+    }
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       lateNoticeSentAt: new Date().toISOString(),
@@ -5247,6 +5285,14 @@ export class MarketplacePlatformService {
       label: item.label.trim(),
       completed: Boolean(item.completed)
     }));
+    if (note) {
+      this.assertNoDirectContactDetails(note, "booking-evidence", actor.userId, actor.role);
+    }
+    if (checklistItems) {
+      for (const item of checklistItems) {
+        this.assertNoDirectContactDetails(item.label, "booking-evidence", actor.userId, actor.role);
+      }
+    }
 
     if (actor.role === "customer") {
       if (payload.phase !== "before" || evidenceType !== "photo") {
@@ -5458,6 +5504,9 @@ export class MarketplacePlatformService {
     ) {
       throw new HttpError(400, "Service issues are only available for active bookings");
     }
+    if (payload.notes?.trim()) {
+      this.assertNoDirectContactDetails(payload.notes, "booking-exception", providerId, "provider");
+    }
 
     const exceptionLabel = getBookingExceptionLabel(payload.exceptionType);
     const updatedBooking = await this.repository.updateBooking(booking.id, {
@@ -5524,6 +5573,7 @@ export class MarketplacePlatformService {
     if (!reason) {
       throw new HttpError(400, "A dispute reason is required");
     }
+    this.assertNoDirectContactDetails(reason, "booking-dispute", requester.userId, requester.role);
 
     if (booking.status === "disputed") {
       return booking;
@@ -5986,11 +6036,13 @@ export class MarketplacePlatformService {
     actor: AuthIdentityRecord
   ): Promise<CustomerProviderConversation[]> {
     const conversations = await this.repository.listCustomerProviderConversations();
-    return conversations.filter((conversation) =>
-      actor.role === "customer"
-        ? conversation.customerId === actor.userId
-        : conversation.providerId === actor.userId
-    );
+    return conversations
+      .filter((conversation) =>
+        actor.role === "customer"
+          ? conversation.customerId === actor.userId
+          : conversation.providerId === actor.userId
+      )
+      .map((conversation) => this.sanitizeMarketplaceConversation(conversation));
   }
 
   public async getCustomerProviderConversationThread(
@@ -5998,11 +6050,49 @@ export class MarketplacePlatformService {
     threadId?: string,
     bookingId?: string
   ): Promise<CustomerProviderConversationThread> {
-    const thread = threadId
+    let thread = threadId
       ? await this.repository.findCustomerProviderConversationById(threadId)
       : bookingId
         ? await this.repository.findCustomerProviderConversationByBookingId(bookingId)
         : undefined;
+
+    if (!thread && bookingId) {
+      const booking = await this.repository.findBookingById(bookingId);
+      if (!booking) {
+        throw new HttpError(404, "Booking not found");
+      }
+      if (!booking.onRouteConfirmedAt) {
+        throw new HttpError(403, "Customer-provider chat unlocks only after the crew is on route");
+      }
+
+      const customer = await this.repository.findCustomerById(booking.customerId);
+      const provider = await this.repository.findProviderById(booking.providerId);
+      if (!customer || !provider) {
+        throw new HttpError(500, "Conversation participants could not be loaded");
+      }
+      if (
+        !(
+          (actor.role === "customer" && actor.userId === customer.id) ||
+          (actor.role === "provider" && actor.userId === provider.id)
+        )
+      ) {
+        throw new HttpError(403, "You cannot access this conversation");
+      }
+
+      thread = await this.repository.createCustomerProviderConversation({
+        id: crypto.randomUUID(),
+        bookingId: booking.id,
+        customerId: booking.customerId,
+        providerId: booking.providerId,
+        customerName: this.sanitizeMarketplaceProfileText(customer.fullName, "YardMatch customer"),
+        providerName: this.sanitizeMarketplaceProfileText(
+          provider.companyName,
+          "Verified YardMatch provider"
+        ),
+        updatedAt: new Date().toISOString(),
+        unreadCount: 0
+      });
+    }
 
     if (!thread) {
       throw new HttpError(404, "Conversation not found");
@@ -6011,8 +6101,11 @@ export class MarketplacePlatformService {
     this.assertCanAccessCustomerProviderConversation(actor, thread);
     const messages = await this.repository.listCustomerProviderMessages(thread.id);
     return {
-      thread,
-      messages
+      thread: this.sanitizeMarketplaceConversation(thread),
+      messages: messages.map((message) => ({
+        ...message,
+        body: this.sanitizeMarketplaceSharedText(message.body)
+      }))
     };
   }
 
@@ -6024,6 +6117,7 @@ export class MarketplacePlatformService {
     if (body.length === 0) {
       throw new HttpError(400, "Message body is required");
     }
+    this.assertNoDirectContactDetails(body, "customer-provider-chat", actor.userId, actor.role);
 
     let thread = payload.threadId
       ? await this.repository.findCustomerProviderConversationById(payload.threadId)
@@ -6066,7 +6160,10 @@ export class MarketplacePlatformService {
         customerId: booking.customerId,
         providerId: booking.providerId,
         customerName: customer.fullName,
-        providerName: provider.companyName,
+        providerName: this.sanitizeMarketplaceProfileText(
+          provider.companyName,
+          "Verified YardMatch provider"
+        ),
         updatedAt: new Date().toISOString(),
         lastMessagePreview: body,
         unreadCount: 0
@@ -6490,6 +6587,7 @@ export class MarketplacePlatformService {
     if (normalizedReviewText.length === 0) {
       throw new Error("reviewText is required");
     }
+    this.assertNoDirectContactDetails(normalizedReviewText, "provider-review", customerId, "customer");
 
     const review: ProviderReview = {
       id: crypto.randomUUID(),
@@ -6732,6 +6830,9 @@ export class MarketplacePlatformService {
     if (booking.status !== "requested") {
       throw new HttpError(400, "Only requested bookings can be declined");
     }
+    if (payload.reason?.trim()) {
+      this.assertNoDirectContactDetails(payload.reason, "booking-decline", providerId, "provider");
+    }
 
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       status: "cancelled",
@@ -6835,6 +6936,7 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: CreateRecurringServicePlanRequest
   ): Promise<CreateRecurringServicePlanResponse> {
+    this.assertNoDirectContactDetails(payload.notes, "recurring-booking-notes", customerId, "customer");
     const customer = await this.repository.findCustomerById(customerId);
     if (!customer) {
       throw new Error("Customer not found");
@@ -6851,6 +6953,12 @@ export class MarketplacePlatformService {
     const validatedServiceAddress = selectedProperty
       ? selectedProperty.address
       : (await this.normalizeValidateAndResolveCustomerAddress(payload.serviceAddress, customer)).address;
+    this.assertNoDirectContactDetails(
+      validatedServiceAddress.line1,
+      "booking-service-address",
+      customerId,
+      "customer"
+    );
     const { lead: linkedLaunchLead } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     const plan: RecurringServicePlan = {
@@ -7006,6 +7114,7 @@ export class MarketplacePlatformService {
       skipRequestedFunnelEvent?: boolean;
     }
   ): Promise<Booking> {
+    this.assertNoDirectContactDetails(payload.notes, "booking-notes", customerId, "customer");
     const customer = await this.repository.findCustomerById(customerId);
     if (!customer) {
       throw new Error("Customer not found");
@@ -7022,6 +7131,12 @@ export class MarketplacePlatformService {
     const validatedServiceAddress = selectedProperty
       ? selectedProperty.address
       : (await this.normalizeValidateAndResolveCustomerAddress(payload.serviceAddress, customer)).address;
+    this.assertNoDirectContactDetails(
+      validatedServiceAddress.line1,
+      "booking-service-address",
+      customerId,
+      "customer"
+    );
     const { lead: linkedLaunchLead, linkMode } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     const bookingBase = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
@@ -7089,7 +7204,7 @@ export class MarketplacePlatformService {
       title: options?.providerNotificationTitle ?? "New booking request",
       body:
         options?.providerNotificationBody ??
-        `${customer.fullName} requested ${this.titleCaseCategory(payload.category)} for ${new Date(
+        `${this.sanitizeMarketplaceProfileText(customer.fullName, "A property owner")} requested ${this.titleCaseCategory(payload.category)} for ${new Date(
           booking.scheduledStartIso
         ).toLocaleDateString()}.`,
       actionHref: "/provider/management"
@@ -9841,6 +9956,23 @@ export class MarketplacePlatformService {
     return this.repository.listProviderReviews(providerId);
   }
 
+  public async listPublicProviderReviews(providerId: string): Promise<PublicProviderReview[]> {
+    await this.getMarketplaceProviderProfile(providerId);
+    const reviews = await this.repository.listProviderReviews(providerId);
+    return reviews.map((review) => ({
+      id: review.id,
+      providerId: review.providerId,
+      overallRating: review.overallRating,
+      timelinessRating: review.timelinessRating,
+      attentionToDetailRating: review.attentionToDetailRating,
+      reviewText: this.sanitizeMarketplaceSharedText(review.reviewText),
+      publicReplyBody: review.publicReplyBody
+        ? this.sanitizeMarketplaceSharedText(review.publicReplyBody)
+        : undefined,
+      createdAt: review.createdAt
+    }));
+  }
+
   public async updateReviewResponse(payload: UpdateReviewResponseRequest): Promise<ProviderReview> {
     const review = await this.repository.findProviderReviewById(payload.reviewId);
     if (!review) {
@@ -9859,6 +9991,9 @@ export class MarketplacePlatformService {
 
     if (payload.responseStatus === "posted" && (!publicReplyBody || publicReplyBody.length < 20)) {
       throw new HttpError(400, "Add the public reply you posted so ops can audit the response.");
+    }
+    if (payload.responseStatus === "posted" && publicReplyBody) {
+      this.assertNoDirectContactDetails(publicReplyBody, "public-review-response");
     }
 
     if (payload.responseStatus === "posted" && !responseChannel) {
@@ -10593,17 +10728,32 @@ export class MarketplacePlatformService {
     return updatedCustomer;
   }
 
-  public async listBookingsForUser(actor: AuthIdentityRecord): Promise<Booking[]> {
-    const bookings = await this.repository.listBookings();
-    if (actor.role === "customer") {
-      return bookings.filter((booking) => booking.customerId === actor.userId);
+  public async listBookingsForUser(
+    actor: AuthIdentityRecord,
+    input: { cursor?: string; limit: number; scope: BookingListScope }
+  ): Promise<BookingPageResponse> {
+    if (actor.role !== "customer" && actor.role !== "provider") {
+      return {
+        items: [],
+        pageInfo: { limit: input.limit, hasMore: false }
+      };
     }
 
-    if (actor.role === "provider") {
-      return bookings.filter((booking) => booking.providerId === actor.userId);
-    }
-
-    return [];
+    const page = await this.repository.listBookingsPage({
+      actorId: actor.userId,
+      actorRole: actor.role,
+      scope: input.scope,
+      limit: input.limit,
+      cursorId: decodePageCursor(input.cursor)
+    });
+    return {
+      items: page.items.map((booking) => this.sanitizeMarketplaceBooking(booking)),
+      pageInfo: {
+        limit: input.limit,
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursorId ? encodePageCursor(page.nextCursorId) : undefined
+      }
+    };
   }
 
   public async updateBookingAddress(
@@ -10635,6 +10785,12 @@ export class MarketplacePlatformService {
     const requestedAddress = selectedProperty
       ? selectedProperty.address
       : (await this.normalizeValidateAndResolveCustomerAddress(payload.newAddress, customer)).address;
+    this.assertNoDirectContactDetails(
+      requestedAddress.line1,
+      "booking-service-address",
+      customerId,
+      "customer"
+    );
 
     const provider = await this.repository.findProviderById(booking.providerId);
     if (!provider) {
@@ -10700,36 +10856,45 @@ export class MarketplacePlatformService {
     };
   }
 
-  public async listPaymentsForUser(actor: AuthIdentityRecord): Promise<PaymentRecord[]> {
-    const [payments, bookings, matches] = await Promise.all([
-      this.repository.listPayments(),
-      this.repository.listBookings(),
-      actor.role === "crew-member" ? this.repository.listCrewMatches() : Promise.resolve([])
-    ]);
+  public async listPaymentsForUser(
+    actor: AuthIdentityRecord,
+    bookingIds?: string[]
+  ): Promise<PaymentRecord[]> {
+    const requestedBookingIds = bookingIds ?? (
+      actor.role === "customer" || actor.role === "provider"
+        ? (await this.repository.listBookingsPage({
+            actorId: actor.userId,
+            actorRole: actor.role,
+            scope: "all",
+            limit: 100
+          })).items.map((booking) => booking.id)
+        : []
+    );
+    const bookings = await this.repository.listBookingsByIds(requestedBookingIds);
+    let authorizedBookingIds: string[];
+    if (actor.role === "customer") {
+      authorizedBookingIds = bookings
+        .filter((booking) => booking.customerId === actor.userId)
+        .map((booking) => booking.id);
+    } else if (actor.role === "provider") {
+      authorizedBookingIds = bookings
+        .filter((booking) => booking.providerId === actor.userId)
+        .map((booking) => booking.id);
+    } else if (actor.role === "crew-member") {
+      const matches = await this.repository.listCrewMatchesForBookings(requestedBookingIds, actor.userId);
+      const acceptedBookingIds = new Set(
+        matches
+          .filter((match) => match.crewMemberId === actor.userId && match.status === "accepted")
+          .map((match) => match.bookingId)
+      );
+      authorizedBookingIds = bookings
+        .filter((booking) => acceptedBookingIds.has(booking.id))
+        .map((booking) => booking.id);
+    } else {
+      authorizedBookingIds = [];
+    }
 
-    return payments
-      .filter((payment) => {
-        const booking = bookings.find((candidate) => candidate.id === payment.bookingId);
-        if (!booking) {
-          return false;
-        }
-
-        if (actor.role === "customer") {
-          return booking.customerId === actor.userId;
-        }
-
-        if (actor.role === "provider") {
-          return booking.providerId === actor.userId;
-        }
-
-        return matches.some(
-          (match) =>
-            match.bookingId === booking.id &&
-            match.crewMemberId === actor.userId &&
-            match.status === "accepted"
-        );
-      })
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    return this.repository.listPaymentsForBookingIds(authorizedBookingIds);
   }
 
   public async getProviderPayoutLedger(providerId: string): Promise<ProviderPayoutLedgerResponse> {
@@ -10785,7 +10950,9 @@ export class MarketplacePlatformService {
         const entry: ProviderPayoutLedgerEntry = {
           id: `provider-payout-${booking.id}`,
           bookingId: booking.id,
-          customerName: customer?.fullName ?? "Customer",
+          customerName: customer
+            ? this.sanitizeMarketplaceProfileText(customer.fullName, "Property owner")
+            : "Customer",
           serviceDateIso: booking.scheduledStartIso,
           serviceLabel: this.titleCaseCategory(booking.category),
           addressLine: this.formatAddressLine(booking.serviceAddress),
@@ -17770,7 +17937,7 @@ export class MarketplacePlatformService {
         return {
           bookingId: booking.id,
           customerName: customer?.fullName ?? "Customer",
-          serviceAddress: booking.serviceAddress,
+          serviceAddress: this.sanitizeMarketplaceAddress(booking.serviceAddress),
           category: booking.category,
           status: booking.status,
           scheduledStartIso: booking.scheduledStartIso,
@@ -17782,18 +17949,24 @@ export class MarketplacePlatformService {
           onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
           lateNoticeSentAt: booking.lateNoticeSentAt,
           lateEtaIso: booking.lateEtaIso,
-          lateReason: booking.lateReason,
+          lateReason: booking.lateReason
+            ? this.sanitizeMarketplaceSharedText(booking.lateReason)
+            : undefined,
           activeExceptionType: booking.activeExceptionType,
           activeExceptionReportedAt: booking.activeExceptionReportedAt,
-          activeExceptionNotes: booking.activeExceptionNotes,
+          activeExceptionNotes: booking.activeExceptionNotes
+            ? this.sanitizeMarketplaceSharedText(booking.activeExceptionNotes)
+            : undefined,
           disputedAt: booking.disputedAt,
-          disputeReason: booking.disputeReason,
+          disputeReason: booking.disputeReason
+            ? this.sanitizeMarketplaceSharedText(booking.disputeReason)
+            : undefined,
           disputedByRole: booking.disputedByRole,
           beforeEvidenceCount: this.countBookingEvidence(booking, "before"),
           afterEvidenceCount: this.countBookingEvidence(booking, "after"),
           evidencePhotos: booking.serviceEvidence.filter(
             (evidence) => evidence.evidenceType === "photo" && Boolean(evidence.imageDataUrl)
-          ),
+          ).map((evidence) => this.sanitizeMarketplaceEvidence(evidence)),
           totalCents: booking.totalCents,
           requiredCrewMembers,
           assignedCrewMembers,
@@ -18190,6 +18363,110 @@ export class MarketplacePlatformService {
     return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
       new Date(iso).getDay()
     ] as CrewAvailabilityDay;
+  }
+
+  private assertNoDirectContactDetails(
+    value: string,
+    surface: string,
+    actorId?: string,
+    actorRole?: string
+  ): void {
+    const detected = findDirectContactDetails(value);
+    if (detected.length === 0) {
+      return;
+    }
+
+    this.analytics.record({
+      id: crypto.randomUUID(),
+      name: MarketplaceTelemetryEventCatalog.directContactShareBlocked,
+      actorId,
+      occurredAt: new Date().toISOString(),
+      properties: {
+        surface,
+        actorRole: actorRole ?? "unknown",
+        detectedKinds: detected.join(",")
+      }
+    });
+
+    throw new HttpError(
+      400,
+      "For privacy and marketplace safety, keep communication in YardMatch. Phone numbers, email addresses, links, and social handles cannot be shared."
+    );
+  }
+
+  private sanitizeMarketplaceSharedText(value: string): string {
+    return containsDirectContactDetails(value) ? PROTECTED_MARKETPLACE_MESSAGE : value;
+  }
+
+  private sanitizeMarketplaceEvidence(evidence: BookingEvidenceEntry): BookingEvidenceEntry {
+    return {
+      ...evidence,
+      note: evidence.note ? this.sanitizeMarketplaceSharedText(evidence.note) : undefined,
+      checklistItems: evidence.checklistItems?.map((item) => ({
+        ...item,
+        label: this.sanitizeMarketplaceSharedText(item.label)
+      })),
+      reviewNotes: evidence.reviewNotes
+        ? this.sanitizeMarketplaceSharedText(evidence.reviewNotes)
+        : undefined
+    };
+  }
+
+  private sanitizeMarketplaceBooking(booking: Booking): Booking {
+    return {
+      ...booking,
+      serviceAddress: this.sanitizeMarketplaceAddress(booking.serviceAddress),
+      notes: this.sanitizeMarketplaceSharedText(booking.notes),
+      lateReason: booking.lateReason
+        ? this.sanitizeMarketplaceSharedText(booking.lateReason)
+        : undefined,
+      activeExceptionNotes: booking.activeExceptionNotes
+        ? this.sanitizeMarketplaceSharedText(booking.activeExceptionNotes)
+        : undefined,
+      disputeReason: booking.disputeReason
+        ? this.sanitizeMarketplaceSharedText(booking.disputeReason)
+        : undefined,
+      serviceEvidence: booking.serviceEvidence.map((evidence) =>
+        this.sanitizeMarketplaceEvidence(evidence)
+      ),
+      interventions: booking.interventions.map((intervention) => ({
+        ...intervention,
+        note: this.sanitizeMarketplaceSharedText(intervention.note)
+      }))
+    };
+  }
+
+  private sanitizeMarketplaceAddress(address: Address): Address {
+    return {
+      ...address,
+      line1: this.sanitizeMarketplaceProfileText(
+        address.line1,
+        "Service address hidden; contact YardMatch support"
+      )
+    };
+  }
+
+  private sanitizeMarketplaceProfileText(value: string, fallback: string): string {
+    return containsDirectContactDetails(value) ? fallback : value;
+  }
+
+  private sanitizeMarketplaceConversation(
+    conversation: CustomerProviderConversation
+  ): CustomerProviderConversation {
+    return {
+      ...conversation,
+      customerName: this.sanitizeMarketplaceProfileText(
+        conversation.customerName,
+        "Property owner"
+      ),
+      providerName: this.sanitizeMarketplaceProfileText(
+        conversation.providerName,
+        "Verified YardMatch provider"
+      ),
+      lastMessagePreview: conversation.lastMessagePreview
+        ? this.sanitizeMarketplaceSharedText(conversation.lastMessagePreview)
+        : undefined
+    };
   }
 
   private assertCanAccessConversation(
@@ -21108,6 +21385,14 @@ export class MarketplacePlatformService {
       declines: number;
     }
   ): SearchProviderResult {
+    provider = {
+      ...provider,
+      companyName: this.sanitizeMarketplaceProfileText(
+        provider.companyName,
+        "Verified YardMatch provider"
+      ),
+      bio: this.sanitizeMarketplaceProfileText(provider.bio, PROTECTED_MARKETPLACE_PROFILE_COPY)
+    };
     const matchedCategories = payload.categories.filter((category) => provider.categories.includes(category));
     const requestedCategoryCount = Math.max(payload.categories.length, 1);
     const providerCategoryCount = Math.max(provider.categories.length, 1);
@@ -21342,10 +21627,7 @@ export class MarketplacePlatformService {
         : `${provider.companyName} serves ${payload.address.city} within a ${provider.serviceRadiusMiles}-mile route radius.`;
 
     return {
-      provider: {
-        ...provider,
-        sponsoredListingEnabled: false
-      },
+      provider: this.toMarketplaceProviderProfile(provider),
       score,
       distanceMiles: Number(distanceMiles.toFixed(1)),
       hasOpenSlot: Boolean(suggestedSlot),
@@ -21364,6 +21646,32 @@ export class MarketplacePlatformService {
       serviceFitSummary,
       providerEconomics,
       factors
+    };
+  }
+
+  private toMarketplaceProviderProfile(provider: ProviderProfile): MarketplaceProviderProfile {
+    return {
+      id: provider.id,
+      companyName: this.sanitizeMarketplaceProfileText(
+        provider.companyName,
+        "Verified YardMatch provider"
+      ),
+      bio: this.sanitizeMarketplaceProfileText(provider.bio, PROTECTED_MARKETPLACE_PROFILE_COPY),
+      yearsExperience: provider.yearsExperience,
+      serviceRadiusMiles: provider.serviceRadiusMiles,
+      categories: [...provider.categories],
+      rating: provider.rating,
+      timelinessRating: provider.timelinessRating,
+      attentionToDetailRating: provider.attentionToDetailRating,
+      reviewCount: provider.reviewCount,
+      serviceArea: {
+        city: provider.address.city,
+        state: provider.address.state,
+        center: {
+          latitude: Number(provider.address.point.latitude.toFixed(2)),
+          longitude: Number(provider.address.point.longitude.toFixed(2))
+        }
+      }
     };
   }
 

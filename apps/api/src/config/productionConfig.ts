@@ -22,6 +22,8 @@ export interface RuntimeEnvironment {
   STAGING_NOTIFICATION_ALLOWED_PUSH_TOKENS?: string;
   PHOTO_STORAGE_MODE?: string;
   BLOB_READ_WRITE_TOKEN?: string;
+  SENTRY_DSN?: string;
+  SENTRY_TRACES_SAMPLE_RATE?: string;
 }
 
 export type YardMatchDeploymentEnvironment = "local" | "staging" | "production";
@@ -72,6 +74,28 @@ function requireHttpsUrl(
     }
   } catch {
     problems.push(`${key} must be a valid absolute URL.`);
+  }
+}
+
+function requireErrorReporting(environment: RuntimeEnvironment, problems: string[]): void {
+  const configured = requireValue(environment, "SENTRY_DSN", problems);
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      if (parsed.protocol !== "https:" || !parsed.username || !parsed.hostname || parsed.pathname === "/") {
+        problems.push("SENTRY_DSN must be a valid HTTPS project DSN in staging and production.");
+      }
+    } catch {
+      problems.push("SENTRY_DSN must be a valid HTTPS project DSN in staging and production.");
+    }
+  }
+
+  const sampleRate = value(environment, "SENTRY_TRACES_SAMPLE_RATE");
+  if (sampleRate) {
+    const parsed = Number(sampleRate);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+      problems.push("SENTRY_TRACES_SAMPLE_RATE must be a number between 0 and 1.");
+    }
   }
 }
 
@@ -320,6 +344,7 @@ export function validateRuntimeConfiguration(
   requireHttpsUrl(environment, "API_BASE_URL", problems);
   requireCorsOrigins(environment, appBaseUrl, problems);
   requirePrivatePhotoStorage(environment, problems);
+  requireErrorReporting(environment, problems);
 
   requirePattern(
     environment,

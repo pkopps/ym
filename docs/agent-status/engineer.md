@@ -4,7 +4,7 @@ Agent-reported completion is checkpoint evidence only. It does not equal indepen
 
 ## Current Goal
 
-Implement YardMatch priorities 2–5: truthful local proof and expansion messaging, a faster recommendation-first conversion path, ranking and fee clarity, and a narrower Barnegat launch story.
+Improve YardMatch performance and usability for long-lived accounts, and add production-grade API failure, latency, and error-type monitoring.
 
 ## Agent Role
 
@@ -13,74 +13,72 @@ Engineer
 ## Branch And Commit
 
 - Branch: `main`
-- Baseline commit: `f2e8656b3f09176b986cde41828392761900a181`
+- Baseline commit: `5846c0547c00567d3960540156c9ac4c163a11e9`
 - State: implemented and locally verified in the working tree; changes are not committed.
 
 ## Last Updated
 
-2026-08-09 EDT
+2026-08-23 EDT
 
 ## Completed Since Previous Checkpoint
 
-- Reframed the public launch honestly as “Starting in Barnegat. Expanding town by town,” with a coverage-request path for people outside the launch area.
-- Restricted launch proof, reviews, before-and-after work, and provider stats to the requested local market. Barnegat no longer borrows seeded proof from Brooklyn or Jersey City.
-- Removed broad provider leaderboards and the three-sided marketplace pitch from the customer homepage; narrowed popular launch services to lawn mowing and seasonal cleanup.
-- Simplified customer results to one recommendation first, with curated backup providers hidden until requested and the primary action renamed “See price and request.”
-- Collapsed secondary search controls and progress details so the provider recommendation and action appear sooner on desktop and mobile.
-- Removed paid-placement influence from recommendation scoring, match reasons, seeded data, public badges, provider marketing, and active settings behavior. Legacy contract fields remain inert for compatibility.
-- Added provider pricing disclosures before signup: `$30` once after the first completed new-customer job and `$6.99` per completed job, with no lead fee or bidding for visibility.
-- Documented that recommendation order is earned by fit and that YardMatch absorbs payment-processing cost while providers remain responsible for crew compensation.
-- Improved compact public and provider headers at the 390px mobile viewport and kept the primary conversion action visible in the first provider viewport.
-- Updated English and Spanish content, API documentation, domain/API regressions, web smoke coverage, README guidance, and roadmap guardrails.
+- Added bounded opaque-cursor pagination for authenticated customer/provider booking lists, with `active`, `history`, and `all` scopes, a default page size of 25, and a maximum of 100.
+- Changed web and customer-mobile history views to load 20 past visits initially and append additional pages on demand.
+- Limited payment fan-out to the booking IDs on the current page instead of loading every payment record for a long-tenured account.
+- Added Postgres composite indexes for customer/provider booking timelines and booking-scoped payment lookups, plus a deployable migration.
+- Added per-request IDs, response correlation headers, route latency metrics, slow-request detection, error categories/types, bounded recent-failure history, structured JSON failure logs, and process-failure capture.
+- Added privacy-filtered Sentry exception reporting with environment/release tags and a production configuration gate requiring a valid project DSN.
+- Added an authenticated API reliability panel to the ops dashboard with health state, request/server-error/slow-request counts, five-minute failure rate, alerts, route hotspots, and recent request IDs.
+- Bounded the in-memory analytics event buffer so local/in-memory processes do not grow without limit.
+- Updated the API contract/client, OpenAPI descriptions, environment example, README, local runbook, tests, and locale copy.
 
 ## Currently In Progress
 
-- No repository implementation remains for priorities 2–5.
+- No implementation remains for the paginated booking-history and API monitoring slice.
 
 ## Remaining Work
 
-- Recruit and verify real Barnegat providers before replacing the honest early-market state with local supply, reviews, and completed-work proof.
-- Complete external production, legal, payment-vendor, and operational acceptance work when accounts and credentials are available.
-- Consider a separate quoting initiative if YardMatch should show a reliable property-specific price before collecting the address and property details currently required for pricing.
+- Extend cursor pagination to other high-growth collections in follow-up slices: notification/delivery history, support and launch-lead queues, conversation messages, payout/automation history, and provider review history.
+- Replace in-process route counters with retained metrics and distributed traces in the production telemetry backend after the deployment/logging vendor is selected.
+- Run the Postgres integration suite against `TEST_DATABASE_URL` and apply the new migration in staging.
 
 ## Blockers
 
-- Verified real-world Barnegat supply and completed local jobs do not yet exist in repository data.
-- Production credentials, vendor acceptance, and legal review were outside this local implementation pass.
+- `TEST_DATABASE_URL` was not configured, so the two Postgres-only integration tests were skipped.
+- A production Sentry DSN and production logging/alert-routing accounts are intentionally not present in local development.
+- Registry-backed `npm audit` could not run because sandboxed DNS failed and the requested network escalation was not approved.
 
 ## Routes Or Workflows Changed
 
-- Customer homepage -> Barnegat launch search -> honest town-by-town expansion explanation -> coverage request for unsupported towns.
-- Customer result -> one recommended provider -> price/request action; curated backups appear only when the customer asks to compare.
-- Provider landing/signup -> clear fee disclosure before account creation.
-- Provider recommendation -> fit-based score only; paid placement cannot alter order or appear as a match reason.
-- Mobile public/provider navigation -> compact headers that preserve the core conversion action above the fold.
+- `GET /api/bookings` -> accepts `scope`, `limit`, and opaque `cursor`; returns `{ items, pageInfo }`.
+- `GET /api/payments` -> requires one or more bounded `bookingId` values and returns only authorized records for those bookings.
+- Web/mobile past visits -> first 20 records -> explicit “Load more past visits” action -> append the next stable page.
+- Every API request -> request ID response header -> duration and status classification -> bounded route/failure metrics -> privacy-safe structured log and Sentry capture for actionable server failures.
+- Authenticated ops overview -> API reliability card -> current alerts, failing/slow routes, error types, and correlatable request IDs.
 
 ## Validation Results
 
-- `npm run i18n:validate`: passed 3,622 keys across English, Spanish, and pseudo locales.
 - `npm run typecheck`: passed across the monorepo.
-- `npm run test:api`: 259 runnable tests passed; 2 Postgres-specific tests skipped because `TEST_DATABASE_URL` was not configured.
+- Targeted ESLint on the changed pagination, monitoring, web, mobile, contracts, and test files: passed with zero warnings.
+- `npm run i18n:validate`: passed 3,626 keys across English, Spanish, and pseudo locales.
+- `npm run prisma:generate`: passed.
+- `npm run test:api`: 264 passed; 2 Postgres-specific tests skipped because `TEST_DATABASE_URL` was not configured.
+- `npm run test:api:smoke`: passed.
 - `npm run test:web:smoke`: 19/19 passed.
-- `npx playwright test tests/web/customer-booking-golden-path.spec.ts --config=playwright.config.ts`: 2/2 passed.
-- `npx playwright test tests/web/smoke.spec.ts --config=playwright.config.ts`: 7/7 passed after adding checkpoint captures.
-- In-app browser acceptance at 1440x900 and 390x844 confirmed clean homepage, listings, and provider layouts with no horizontal overflow or browser errors.
+- `npm run build:customer-mobile`: Expo web, iOS, and Android export passed.
+- In-app browser acceptance passed at 1440x900 for the authenticated ops reliability panel and at 390x844 for customer past-visit history.
 
 ## Screenshot Paths
 
-- `reports/agent-checkpoints/engineer/latest/honest-launch-home-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/honest-launch-home-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/customer-booking-listings-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/customer-booking-listings-mobile.png`
-- `reports/agent-checkpoints/engineer/latest/provider-pricing-desktop.png`
-- `reports/agent-checkpoints/engineer/latest/provider-landing-mobile.png`
+- `reports/agent-checkpoints/engineer/latest/api-reliability-desktop.png`
+- `reports/agent-checkpoints/engineer/latest/customer-history-mobile.png`
 
 ## Known Defects
 
-- YardMatch still has no verified real Barnegat supply; the UI intentionally reports the early-market state instead of manufacturing nationwide or nonlocal proof.
-- A customer sees the final property-specific price after continuing with the address/property-detail flow, not directly on the public provider card.
-- Exact web viewports were checked, but this checkpoint did not include physical-device acceptance.
+- Route metrics and the recent-failure ring are process-local and reset on restart; Sentry and structured production log storage provide the durable incident path for this slice.
+- The local ops panel correctly reports Sentry as not configured; production and staging now fail configuration validation without a valid DSN.
+- Older non-booking collection endpoints remain candidates for pagination as listed under Remaining Work.
 
 ## Recommended Next Task
 
-Recruit and verify the first Barnegat provider cohort, then replace the early-market proof state only with real local availability, completed jobs, customer reviews, and permissioned work photos.
+Paginate notification/delivery history and conversation messages, including “load older” controls, then move ops support, lead, payout, and automation queues to the same shared cursor contract.

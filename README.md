@@ -224,6 +224,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - The public site now includes dedicated trust pages for support expectations, cancellations, refund reviews, and booking expectations, and those pages are linked from the homepage, Help center, footer, and sitemap so launch visitors can verify how GreenRain behaves before they book.
 - The legal and provider-facing trust layer is now live too: privacy basics, launch terms, and provider standards pages are published and linked from Help, the footer, the sitemap, and the provider marketing surface so both sides of the marketplace can see clearer launch expectations before committing.
 - The homepage, Barnegat launch page, and launch service landing pages now scope public proof to the named market before showing provider counts, ratings, reviews, or completed-work evidence. Barnegat is presented as the first launch market, nationwide ambition is framed as town-by-town expansion, and customers outside active coverage can submit real demand instead of seeing borrowed city proof. The homepage focuses launch promotion on recurring mowing and seasonal cleanup, while public results show one recommendation first, keep search edits and request details progressive, and reveal only a small backup set on demand. Paid placement is dormant: it contributes zero ranking points, produces no match reason or badge, and cannot be enabled through provider settings.
+- Customer-facing provider search, provider-profile, and review payloads now use reduced marketplace-safe contracts: they exclude phone, email, owner identity, street address, exact provider coordinates, customer and booking identifiers from public reviews, verification notes, payout/connect state, and other account-only fields. Customer-provider chat remains tied to a real booking and unlocks only once the route is active; the API rejects phone numbers, email addresses, links, social handles, and off-platform contact instructions in chat, booking notes, delay/exception/dispute updates, public reviews/replies, and provider marketplace copy. Unsafe legacy shared text is masked on read, blocked attempts are recorded without the attempted contact value, and web/mobile chat explains the protected-communication policy before sending.
 - Customers can attach up to six labeled pre-service property photos to a requested or confirmed visit from web or mobile. The assigned provider can review those photos before arrival, while provider/crew arrival proof remains a separate lifecycle requirement. Providers and crews can attach completion photos, and customer service history presents the resulting before-and-after record. Photo sets stay private by default; only completed work from a verified provider appears in the homepage trust gallery after the customer explicitly grants revocable public-use permission, and the public payload withholds the customer name and street address.
 - To turn the real checkout path on locally, set:
   - `STRIPE_SECRET_KEY`
@@ -525,7 +526,11 @@ Current baseline instrumentation:
 
 ## Observability approach
 
-- `OpenTelemetry` should instrument the API for traces, metrics, and logs.
+- Every API request now receives an `X-Request-Id`; the API emits privacy-safe structured JSON for server errors and slow requests, retains a bounded in-process route/error summary, and shows five-minute reliability alerts in the authenticated ops dashboard.
+- `Sentry` is initialized when `SENTRY_DSN` is configured. It receives uncaught exceptions, unhandled rejections, dependency timeouts, and HTTP 5xx failures with request-id/route tags while request bodies, headers, query strings, cookies, user data, email addresses, and phone numbers are excluded or redacted.
+- Staging and production fail closed without a valid HTTPS Sentry project DSN. Configure alert rules in Sentry against the staging and production projects so critical issues page the on-call owner instead of relying on someone watching the dashboard.
+- Booking history is served through opaque cursor pages (25 by default, 100 maximum), payments are restricted to the booking IDs in the current page, and PostgreSQL indexes cover customer/provider chronological reads.
+- `OpenTelemetry` remains the next layer for cross-service traces and infrastructure metrics as the monolith grows beyond its current structured request telemetry.
 - `PostHog` should handle product analytics and replay on web/mobile.
 - `Sentry` should handle errors and performance on API, web, and mobile.
 - Active users are defined by a heartbeat model: a session is considered active if it has reported within the last 5 minutes.
@@ -545,6 +550,7 @@ Current baseline instrumentation:
 - Shared telemetry event names in `packages/observability`
 - Session heartbeat request/response contracts and API routes
 - API endpoint for operational dashboard summaries: `/api/observability/overview`
+- Bounded API error/latency aggregation, structured production logs, request correlation IDs, and Sentry exception delivery
 - Web heartbeat provider and an internal ops dashboard page
 - Separate customer/provider/crew-member mobile heartbeat providers for phone/tablet active-session tracking
 

@@ -9,9 +9,13 @@ import {
 import { requireOpsAccess } from "../controller-auth";
 import { ApiController, RequestContext, sendJson } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
+import { ApiRuntimeObservability } from "../observability/ApiRuntimeObservability";
 
 export class ObservabilityController implements ApiController {
-  public constructor(private readonly platform: MarketplacePlatformService) {}
+  public constructor(
+    private readonly platform: MarketplacePlatformService,
+    private readonly apiRuntimeObservability?: Pick<ApiRuntimeObservability, "getSnapshot">
+  ) {}
 
   public canHandle(context: RequestContext): boolean {
     return (
@@ -32,7 +36,11 @@ export class ObservabilityController implements ApiController {
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
     if (context.path === "/api/observability/overview") {
       await requireOpsAccess(context, this.platform);
-      sendJson(response, 200, await this.platform.getObservabilityOverview());
+      const overview = await this.platform.getObservabilityOverview();
+      sendJson(response, 200, {
+        ...overview,
+        apiRuntime: this.apiRuntimeObservability?.getSnapshot()
+      });
       return;
     }
 

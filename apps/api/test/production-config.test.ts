@@ -25,7 +25,9 @@ function completeProductionEnvironment(): RuntimeEnvironment {
     TWILIO_AUTH_TOKEN: "1234567890abcdef1234567890abcdef",
     TWILIO_FROM_NUMBER: "+15555550100",
     PHOTO_STORAGE_MODE: "vercel-blob-private",
-    BLOB_READ_WRITE_TOKEN: "vercel_blob_rw_production_secret_123456"
+    BLOB_READ_WRITE_TOKEN: "vercel_blob_rw_production_secret_123456",
+    SENTRY_DSN: "https://publickey@o123.ingest.sentry.io/456",
+    SENTRY_TRACES_SAMPLE_RATE: "0.1"
   };
 }
 
@@ -65,6 +67,7 @@ test("production runtime fails closed when durable storage and vendor configurat
       assert.match(error.message, /STRIPE_WEBHOOK_SECRET is required/);
       assert.match(error.message, /RESEND_API_KEY is required/);
       assert.match(error.message, /TWILIO_ACCOUNT_SID is required/);
+      assert.match(error.message, /SENTRY_DSN is required/);
       return true;
     }
   );
@@ -96,6 +99,8 @@ test("production runtime rejects non-Postgres storage and malformed vendor crede
   environment.TWILIO_ACCOUNT_SID = "AC_placeholder";
   environment.TWILIO_AUTH_TOKEN = "twilio-placeholder";
   environment.TWILIO_FROM_NUMBER = "555-555-0100";
+  environment.SENTRY_DSN = "http://placeholder";
+  environment.SENTRY_TRACES_SAMPLE_RATE = "2";
 
   assert.throws(
     () => validateRuntimeConfiguration(environment),
@@ -107,6 +112,8 @@ test("production runtime rejects non-Postgres storage and malformed vendor crede
       assert.match(error.message, /valid Twilio account SID/);
       assert.match(error.message, /production-shaped Twilio auth token/);
       assert.match(error.message, /approved E\.164 sender number/);
+      assert.match(error.message, /valid HTTPS project DSN/);
+      assert.match(error.message, /number between 0 and 1/);
       return true;
     }
   );
@@ -129,7 +136,8 @@ test("API process refuses to listen with unsafe production configuration", () =>
     "TWILIO_FROM_NUMBER",
     "CORS_ALLOWED_ORIGINS",
     "PHOTO_STORAGE_MODE",
-    "BLOB_READ_WRITE_TOKEN"
+    "BLOB_READ_WRITE_TOKEN",
+    "SENTRY_DSN"
   ]) {
     delete unsafeEnvironment[key];
   }
@@ -140,6 +148,8 @@ test("API process refuses to listen with unsafe production configuration", () =>
     timeout: 10_000
   });
 
+  assert.equal(result.error, undefined);
+  assert.equal(result.signal, null);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /Unsafe production configuration/);
   assert.doesNotMatch(result.stdout, /YardMatch API listening/);

@@ -37,6 +37,7 @@ import { buildSettlementLedgerDraft, calculateMarketplaceSettlement } from "@yar
 import { hashPassword } from "../auth";
 import {
   AuthIdentityRecord,
+  BookingPageQuery,
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
   MarketplaceRepository
@@ -195,6 +196,52 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return [...this.bookings];
   }
 
+  public async listBookingsPage(query: BookingPageQuery) {
+    const historyStatuses = new Set<Booking["status"]>([
+      "completed",
+      "cancelled",
+      "refunded",
+      "disputed"
+    ]);
+    const sorted = this.bookings
+      .filter((booking) =>
+        query.actorRole === "customer"
+          ? booking.customerId === query.actorId
+          : booking.providerId === query.actorId
+      )
+      .filter((booking) => {
+        if (query.scope === "all") {
+          return true;
+        }
+        const isHistory = historyStatuses.has(booking.status);
+        return query.scope === "history" ? isHistory : !isHistory;
+      })
+      .sort((left, right) => {
+        const dateOrder = right.scheduledStartIso.localeCompare(left.scheduledStartIso);
+        return dateOrder !== 0 ? dateOrder : right.id.localeCompare(left.id);
+      });
+    const cursorIndex = query.cursorId
+      ? sorted.findIndex((booking) => booking.id === query.cursorId)
+      : -1;
+    if (query.cursorId && cursorIndex < 0) {
+      return { items: [], hasMore: false };
+    }
+    const startIndex = query.cursorId ? cursorIndex + 1 : 0;
+    const candidates = sorted.slice(startIndex, startIndex + query.limit + 1);
+    const hasMore = candidates.length > query.limit;
+    const items = candidates.slice(0, query.limit);
+    return {
+      items,
+      hasMore,
+      nextCursorId: hasMore ? items.at(-1)?.id : undefined
+    };
+  }
+
+  public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
+    const requestedIds = new Set(bookingIds);
+    return this.bookings.filter((booking) => requestedIds.has(booking.id));
+  }
+
   public async findBookingById(bookingId: string): Promise<Booking | undefined> {
     return this.bookings.find((booking) => booking.id === bookingId);
   }
@@ -244,6 +291,16 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listCrewMatches(): Promise<CrewMatchCandidate[]> {
     return this.crewMatches.map((match) => ({ ...match }));
+  }
+
+  public async listCrewMatchesForBookings(
+    bookingIds: string[],
+    crewMemberId: string
+  ): Promise<CrewMatchCandidate[]> {
+    const requestedIds = new Set(bookingIds);
+    return this.crewMatches
+      .filter((match) => match.crewMemberId === crewMemberId && requestedIds.has(match.bookingId))
+      .map((match) => ({ ...match }));
   }
 
   public async updateCrewMatch(
@@ -386,6 +443,13 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listPayments(): Promise<PaymentRecord[]> {
     return [...this.payments];
+  }
+
+  public async listPaymentsForBookingIds(bookingIds: string[]): Promise<PaymentRecord[]> {
+    const requestedIds = new Set(bookingIds);
+    return this.payments
+      .filter((payment) => requestedIds.has(payment.bookingId))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
   public async updatePayment(

@@ -1184,6 +1184,21 @@ export interface Booking {
   addressChangeHistory: BookingAddressChangeRequest[];
 }
 
+export type BookingListScope = "active" | "history" | "all";
+
+export interface PaginationPageInfo {
+  limit: number;
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pageInfo: PaginationPageInfo;
+}
+
+export type BookingPageResponse = PaginatedResponse<Booking>;
+
 export interface BookingInterventionRecord {
   id: string;
   action: OpsBookingInterventionAction;
@@ -1310,6 +1325,17 @@ export interface ProviderReview {
   escalatedAt?: string;
   escalatedBy?: string;
   escalationNotes?: string;
+  createdAt: string;
+}
+
+export interface PublicProviderReview {
+  id: string;
+  providerId: string;
+  overallRating: ReviewScore;
+  timelinessRating: ReviewScore;
+  attentionToDetailRating: ReviewScore;
+  reviewText: string;
+  publicReplyBody?: string;
   createdAt: string;
 }
 
@@ -2907,11 +2933,29 @@ export interface SearchProvidersRequest {
 }
 
 export interface SearchProvidersResponse {
-  providers: ProviderProfile[];
+  providers: MarketplaceProviderProfile[];
   rankedProviders: SearchProviderResult[];
   suggestedSlots: AvailabilitySlot[];
   recommendationSessionId: string;
   recommendedProviderId?: string;
+}
+
+export interface MarketplaceProviderProfile {
+  id: string;
+  companyName: string;
+  bio: string;
+  yearsExperience: number;
+  serviceRadiusMiles: number;
+  categories: ServiceCategory[];
+  rating: number;
+  timelinessRating: number;
+  attentionToDetailRating: number;
+  reviewCount: number;
+  serviceArea: {
+    city: string;
+    state: string;
+    center: GeoPoint;
+  };
 }
 
 export interface ProviderEconomicsSearchSummary {
@@ -2934,7 +2978,6 @@ export interface ProviderServiceFitSearchSummary {
 export interface PublicMarketplaceFeaturedProvider {
   id: string;
   companyName: string;
-  ownerName: string;
   city: string;
   state: string;
   rating: number;
@@ -3008,7 +3051,7 @@ export interface PublicMarketplaceOverviewResponse {
 }
 
 export interface SearchProviderResult {
-  provider: ProviderProfile;
+  provider: MarketplaceProviderProfile;
   score: number;
   distanceMiles: number;
   hasOpenSlot: boolean;
@@ -3984,6 +4027,60 @@ export interface ActiveSession {
   lastSeenAt: string;
 }
 
+export type ApiFailureCategory =
+  | "client-request"
+  | "authentication"
+  | "dependency-timeout"
+  | "server-error"
+  | "process-error";
+
+export interface ApiRuntimeRouteMetric {
+  method: string;
+  route: string;
+  requestCount: number;
+  failureCount: number;
+  serverErrorCount: number;
+  slowRequestCount: number;
+  averageDurationMs: number;
+  maxDurationMs: number;
+}
+
+export interface ApiRuntimeFailure {
+  requestId: string;
+  occurredAt: string;
+  method: string;
+  route: string;
+  statusCode: number;
+  durationMs: number;
+  category: ApiFailureCategory;
+  errorType: string;
+}
+
+export interface ApiRuntimeAlert {
+  severity: "warning" | "critical";
+  title: string;
+  detail: string;
+  recommendedAction: string;
+}
+
+export interface ApiRuntimeObservabilitySnapshot {
+  generatedAt: string;
+  startedAt: string;
+  status: "healthy" | "watch" | "critical";
+  slowRequestThresholdMs: number;
+  errorReportingProvider: "sentry";
+  errorReportingConfigured: boolean;
+  requestCount: number;
+  failureCount: number;
+  serverErrorCount: number;
+  slowRequestCount: number;
+  failureRate: number;
+  errorCountsByType: Record<string, number>;
+  routeMetrics: ApiRuntimeRouteMetric[];
+  recentFailures: ApiRuntimeFailure[];
+  alerts: ApiRuntimeAlert[];
+}
+
 export interface RecommendationSurfaceMetrics {
   requestSource: string;
   providerSearches: number;
@@ -4200,4 +4297,5 @@ export interface ObservabilityOverview {
   recentFailedOpsSignIns: OpsFailedSignInAuditItem[];
   activeUsersByPlatform: Partial<Record<TelemetryPlatformSurface, number>>;
   recentEvents: AnalyticsEvent[];
+  apiRuntime?: ApiRuntimeObservabilitySnapshot;
 }
