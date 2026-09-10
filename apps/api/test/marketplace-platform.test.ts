@@ -1,3 +1,4 @@
+import { createWorkflowBooking, createWorkflowRecurringPlan } from "./helpers/workflowBooking";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
@@ -50,7 +51,7 @@ async function createLaunchOperationsPressureFixture(
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -72,15 +73,10 @@ async function createLaunchOperationsPressureFixture(
     city: "Marfa",
     postalCode: "79843"
   };
-  await platform.createBooking(customer.id, {
-    providerId: provider.id,
-    serviceAddress: noSupplyAddress,
-    category: "seasonal-cleanup",
-    scheduledStartIso: futureIso(12),
-    scheduledEndIso: futureIso(14),
-    notes: "Launch operations no-supply pocket coverage",
-    totalCents: 9800
-  });
+  // Historical imported request outside current coverage; current booking APIs reject it.
+  await repository.createBooking({ ...booking, id: crypto.randomUUID(), serviceAddress: noSupplyAddress,
+    category: "seasonal-cleanup", scheduledStartIso: futureIso(12), scheduledEndIso: futureIso(14),
+    status: "requested", notes: "Legacy no-supply request for ops pressure coverage", totalCents: 9800 });
 
   return {
     customer,
@@ -334,7 +330,7 @@ async function createExecutedStripeProviderTransferFixture(options?: {
     sessionVersion: 1
   };
   await platform.startProviderConnectOnboarding(provider.id);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -647,7 +643,7 @@ test("customer addresses are normalized before properties and booking snapshots 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: {
       line1: "  77  elm street ",
@@ -860,7 +856,7 @@ test("quotes and bookings reuse saved customer property geocodes for matching cu
     assert.ok(provider);
     const slot = (await repository.listSlotsByProvider(provider.id)).find((candidate) => !candidate.isBooked);
     assert.ok(slot);
-    const booking = await platform.createBooking("customer-repeat-geocode-cache", {
+    const booking = await createWorkflowBooking(platform, repository, "customer-repeat-geocode-cache", {
       providerId: provider.id,
       serviceAddress: repeatedAddress,
       category: "lawn-mowing",
@@ -951,7 +947,7 @@ test("provider search returns ranked results with score reasons and reliability-
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const nearbyCompletedBooking = await platform.createBooking(customer.id, {
+  const nearbyCompletedBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: nearProvider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -967,7 +963,7 @@ test("provider search returns ranked results with score reasons and reliability-
   });
 
   for (let index = 0; index < 5; index += 1) {
-    const acceptedBooking = await platform.createBooking(customer.id, {
+    const acceptedBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: nearProvider.id,
       serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
       servicePropertyId: customer.defaultPropertyId,
@@ -984,7 +980,7 @@ test("provider search returns ranked results with score reasons and reliability-
   }
 
   for (let index = 0; index < 5; index += 1) {
-    const declinedRequest = await platform.createBooking(customer.id, {
+    const declinedRequest = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: farProvider.id,
       serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
       servicePropertyId: customer.defaultPropertyId,
@@ -1001,7 +997,7 @@ test("provider search returns ranked results with score reasons and reliability-
     });
   }
 
-  const problemBooking = await platform.createBooking(customer.id, {
+  const problemBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: farProvider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -1255,8 +1251,10 @@ test("provider search can softly prefer a proven provider for retention-driven r
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
+  let firstRelationshipBookingId = "";
+  let retentionSourceBookingId = "";
   for (let index = 0; index < 2; index += 1) {
-    const booking = await platform.createBooking(customer.id, {
+    const booking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: priorProvider.id,
       serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
       servicePropertyId: customer.defaultPropertyId,
@@ -1271,7 +1269,20 @@ test("provider search can softly prefer a proven provider for retention-driven r
       status: "completed",
       completedAt: new Date(Date.now() - (21 - index * 14) * 24 * 60 * 60 * 1000).toISOString()
     });
+    if (index === 0) {
+      firstRelationshipBookingId = booking.id;
+    }
+    retentionSourceBookingId = booking.id;
   }
+  await repository.settleBookingFinancials({
+    bookingId: firstRelationshipBookingId,
+    paymentId: "payment-retention-ranking",
+    customerId: customer.id,
+    providerId: priorProvider.id,
+    customerChargeCents: 6200,
+    currency: "usd",
+    actualProcessorFeeCents: 0
+  });
 
   const withoutRetention = await platform.searchProviders({
     address: createAddress("112 Garden Row", 30.2435, -97.7638),
@@ -1290,7 +1301,7 @@ test("provider search can softly prefer a proven provider for retention-driven r
     requestSource: "customer-retention-nudge",
     retentionPreference: {
       priorProviderId: priorProvider.id,
-      sourceBookingId: "retention-source-booking",
+      sourceBookingId: retentionSourceBookingId,
       strategyKey: "lawn-mowing-biweekly-repeat",
       trigger: "recent-completion",
       loyaltySegment: "provider-loyal",
@@ -1314,6 +1325,161 @@ test("provider search can softly prefer a proven provider for retention-driven r
     );
   assert.ok(retentionPresentedEvent);
   assert.equal(retentionPresentedEvent?.properties.loyaltySegment, "provider-loyal");
+
+  await repository.updateBooking(retentionSourceBookingId, {
+    disputedAt: new Date().toISOString()
+  });
+  const withDispute = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "customer-retention-nudge",
+    retentionPreference: {
+      priorProviderId: priorProvider.id,
+      sourceBookingId: retentionSourceBookingId,
+      strategyKey: "lawn-mowing-biweekly-repeat",
+      trigger: "recent-completion",
+      loyaltySegment: "provider-loyal",
+      completedCategoryCount: 2,
+      sameProviderCompletedCount: 2
+    }
+  });
+  assert.equal(withDispute.rankedProviders[0]?.provider.id, challengerProvider.id);
+  assert.equal(
+    withDispute.rankedProviders.find((result) => result.provider.id === priorProvider.id)?.factors.loyalty,
+    0
+  );
+
+  await repository.updateBooking(retentionSourceBookingId, { disputedAt: undefined });
+  await repository.createProviderReview({
+    id: "review-retention-ranking-low",
+    bookingId: retentionSourceBookingId,
+    providerId: priorProvider.id,
+    customerId: customer.id,
+    overallRating: 3,
+    timelinessRating: 3,
+    attentionToDetailRating: 3,
+    reviewText: "The service did not meet expectations.",
+    responseStatus: "pending",
+    createdAt: new Date().toISOString()
+  });
+  const withLowReview = await platform.searchProviders({
+    address: createAddress("112 Garden Row", 30.2435, -97.7638),
+    categories: ["lawn-mowing"],
+    dateIso: new Date().toISOString(),
+    estimatedDurationMinutes: 60,
+    requestSource: "customer-retention-nudge",
+    retentionPreference: {
+      priorProviderId: priorProvider.id,
+      sourceBookingId: retentionSourceBookingId,
+      strategyKey: "lawn-mowing-biweekly-repeat",
+      trigger: "recent-completion",
+      loyaltySegment: "provider-loyal",
+      completedCategoryCount: 2,
+      sameProviderCompletedCount: 2
+    }
+  });
+  assert.equal(withLowReview.rankedProviders[0]?.provider.id, challengerProvider.id);
+  assert.equal(
+    withLowReview.rankedProviders.find((result) => result.provider.id === priorProvider.id)?.factors.loyalty,
+    0
+  );
+});
+
+test("provider operations show finder-fee retention relationships and pause them on poor feedback", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const provider = (await repository.listProviders())[0];
+  assert.ok(provider);
+  const customer = await platform.registerUser({
+    fullName: "Taylor Retention",
+    email: "provider-retention-summary@example.com",
+    password: "Password123!",
+    phone: "555-0209",
+    role: "customer",
+    propertyLabel: "Primary home",
+    address: createAddress()
+  });
+
+  const firstBooking = await createWorkflowBooking(platform, repository, customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "First acquired service",
+    totalCents: 6200
+  });
+  await repository.updateBooking(firstBooking.id, {
+    status: "completed",
+    completedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  });
+  const firstSettlement = await repository.settleBookingFinancials({
+    bookingId: firstBooking.id,
+    paymentId: "payment-provider-retention-first",
+    customerId: customer.id,
+    providerId: provider.id,
+    customerChargeCents: 6200,
+    currency: "usd",
+    actualProcessorFeeCents: 0
+  });
+  assert.equal(firstSettlement.finderFeeCents, 3000);
+
+  let overview = await platform.getProviderStaffingOverview(provider.id);
+  assert.equal(overview.retentionProgram.noAdditionalRetentionFee, true);
+  assert.equal(overview.retentionProgram.acquiredCustomerCount, 1);
+  assert.equal(overview.retentionProgram.eligibleCustomerCount, 1);
+  assert.equal(overview.retentionProgram.relationships[0]?.status, "eligible-for-retention");
+  assert.match(overview.retentionProgram.eligibilityRule, /review below 4 stars/i);
+
+  const repeatBooking = await createWorkflowBooking(platform, repository, customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress(),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(96),
+    scheduledEndIso: futureIso(97),
+    notes: "Repeat service",
+    totalCents: 6200
+  });
+  await repository.updateBooking(repeatBooking.id, {
+    status: "completed",
+    completedAt: new Date().toISOString()
+  });
+  const repeatSettlement = await repository.settleBookingFinancials({
+    bookingId: repeatBooking.id,
+    paymentId: "payment-provider-retention-repeat",
+    customerId: customer.id,
+    providerId: provider.id,
+    customerChargeCents: 6200,
+    currency: "usd",
+    actualProcessorFeeCents: 0
+  });
+  assert.equal(repeatSettlement.finderFeeCents, 0);
+
+  overview = await platform.getProviderStaffingOverview(provider.id);
+  assert.equal(overview.retentionProgram.repeatCustomerCount, 1);
+  assert.equal(overview.retentionProgram.relationships[0]?.status, "repeat-customer");
+
+  await repository.createProviderReview({
+    id: "review-provider-retention-summary-low",
+    bookingId: repeatBooking.id,
+    providerId: provider.id,
+    customerId: customer.id,
+    overallRating: 3,
+    timelinessRating: 3,
+    attentionToDetailRating: 3,
+    reviewText: "The repeat service needs attention.",
+    responseStatus: "pending",
+    createdAt: new Date().toISOString()
+  });
+  overview = await platform.getProviderStaffingOverview(provider.id);
+  assert.equal(overview.retentionProgram.eligibleCustomerCount, 0);
+  assert.equal(overview.retentionProgram.pausedCustomerCount, 1);
+  assert.equal(overview.retentionProgram.relationships[0]?.status, "paused");
+  assert.match(overview.retentionProgram.relationships[0]?.reason ?? "", /3-star review/i);
 });
 
 test("provider decline flow and ops overview counters cover confirms, declines, cancellations, and payment milestones", async () => {
@@ -1334,7 +1500,7 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const confirmedBooking = await platform.createBooking(customer.id, {
+  const confirmedBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -1345,7 +1511,7 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
     totalCents: 6200
   });
 
-  const declinedBooking = await platform.createBooking(customer.id, {
+  const declinedBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("113 Garden Row"),
     servicePropertyId: customer.defaultPropertyId,
@@ -1356,7 +1522,7 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
     totalCents: 7200
   });
 
-  const cancelledBooking = await platform.createBooking(customer.id, {
+  const cancelledBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("114 Garden Row"),
     servicePropertyId: customer.defaultPropertyId,
@@ -1367,7 +1533,7 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
     totalCents: 8200
   });
 
-  const authorizedBooking = await platform.createBooking(customer.id, {
+  const authorizedBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("115 Garden Row"),
     servicePropertyId: customer.defaultPropertyId,
@@ -1378,7 +1544,7 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
     totalCents: 5200
   });
 
-  const capturedBooking = await platform.createBooking(customer.id, {
+  const capturedBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("116 Garden Row"),
     servicePropertyId: customer.defaultPropertyId,
@@ -2824,7 +2990,7 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
   const recommendedResult = results.rankedProviders[0]!;
   const alternateResult = results.rankedProviders[1]!;
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: recommendedResult.provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -2841,7 +3007,7 @@ test("recommendation telemetry tracks views, alternatives, accepted recommendati
     attribution: launchAttribution
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: alternateResult.provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -3357,7 +3523,7 @@ test("converted completed launch leads surface review-request drafts instead of 
     assignedOwner: "Casey Ops"
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     launchLeadId: lead.id,
     serviceAddress: createAddress(),
@@ -3532,7 +3698,7 @@ test("ops lead queue suggests existing booking matches and can manually attach t
   const provider = providers[0];
   assert.ok(provider);
 
-  const recurring = await platform.createRecurringServicePlan(customer.id, {
+  const recurring = await createWorkflowRecurringPlan(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -3613,7 +3779,7 @@ test("manual email leads auto-link to later bookings from the same customer iden
   const provider = providers[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -3666,7 +3832,7 @@ test("converted launch leads surface booking follow-up drafts instead of requali
   const provider = providers[0];
   assert.ok(provider);
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -3715,7 +3881,7 @@ test("manual phone leads auto-link to later bookings when email is unavailable",
   const provider = providers[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -3774,7 +3940,7 @@ test("launch leads stay linked through recurring bookings and review generation"
     message: "Please help me get mowing started now and keep it going weekly."
   });
 
-  const recurring = await platform.createRecurringServicePlan(customer.id, {
+  const recurring = await createWorkflowRecurringPlan(platform, repository, customer.id, {
     providerId: provider.id,
     launchLeadId: lead.id,
     serviceAddress: createAddress(),
@@ -3878,7 +4044,7 @@ test("completed bookings unlock review invites and reject duplicate reviews", as
   const provider = providers[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -3969,7 +4135,7 @@ test("customer retention opportunities suggest recurring mowing and one-time reb
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const mowingBooking = await platform.createBooking(customer.id, {
+  const mowingBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -3984,7 +4150,7 @@ test("customer retention opportunities suggest recurring mowing and one-time reb
     completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   });
 
-  const cleanupBooking = await platform.createBooking(customer.id, {
+  const cleanupBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4034,7 +4200,7 @@ test("customer retention opportunities recommend biweekly mowing for repeat cust
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const earlierMowing = await platform.createBooking(customer.id, {
+  const earlierMowing = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4048,8 +4214,17 @@ test("customer retention opportunities recommend biweekly mowing for repeat cust
     status: "completed",
     completedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString()
   });
+  await repository.settleBookingFinancials({
+    bookingId: earlierMowing.id,
+    paymentId: "payment-retention-biweekly-first",
+    customerId: customer.id,
+    providerId: provider.id,
+    customerChargeCents: 6200,
+    currency: "usd",
+    actualProcessorFeeCents: 0
+  });
 
-  const recentMowing = await platform.createBooking(customer.id, {
+  const recentMowing = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4095,7 +4270,7 @@ test("retention rebooks and recurring plans flow into repeat-service conversion 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const mowingBooking = await platform.createBooking(customer.id, {
+  const mowingBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4110,7 +4285,7 @@ test("retention rebooks and recurring plans flow into repeat-service conversion 
     completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   });
 
-  const cleanupBooking = await platform.createBooking(customer.id, {
+  const cleanupBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4131,7 +4306,7 @@ test("retention rebooks and recurring plans flow into repeat-service conversion 
   assert.ok(mowingOpportunity);
   assert.ok(cleanupOpportunity);
 
-  await platform.createRecurringServicePlan(customer.id, {
+  await createWorkflowRecurringPlan(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4152,7 +4327,7 @@ test("retention rebooks and recurring plans flow into repeat-service conversion 
     }
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4234,7 +4409,7 @@ test("customer retention opportunities skip categories that already have future 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const completedBooking = await platform.createBooking(customer.id, {
+  const completedBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4249,7 +4424,7 @@ test("customer retention opportunities skip categories that already have future 
     completedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4281,7 +4456,7 @@ test("customer retention opportunities wait for hedge trimming reminder timing",
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const earlyBooking = await platform.createBooking(customer.id, {
+  const earlyBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4329,7 +4504,7 @@ test("customer retention opportunities use spring and fall season windows for se
     const provider = (await repository.listProviders())[0];
     assert.ok(provider);
 
-    const mulchBooking = await platform.createBooking(customer.id, {
+    const mulchBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4371,7 +4546,7 @@ test("customer retention opportunities use spring and fall season windows for se
     const provider = (await repository.listProviders())[0];
     assert.ok(provider);
 
-    const mulchBooking = await platform.createBooking(customer.id, {
+    const mulchBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4410,7 +4585,7 @@ test("customer retention opportunities use spring and fall season windows for se
     const provider = (await repository.listProviders())[0];
     assert.ok(provider);
 
-    const leafBooking = await platform.createBooking(customer.id, {
+    const leafBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4450,7 +4625,7 @@ test("customer retention opportunities use spring and fall season windows for se
     const provider = (await repository.listProviders())[0];
     assert.ok(provider);
 
-    const fertilizationBooking = await platform.createBooking(customer.id, {
+    const fertilizationBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4492,7 +4667,7 @@ test("customer retention opportunities use spring and fall season windows for se
     const provider = (await repository.listProviders())[0];
     assert.ok(provider);
 
-    const aerationBooking = await platform.createBooking(customer.id, {
+    const aerationBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4539,7 +4714,7 @@ test("customer retention opportunities use winter and gutter season windows for 
     assert.ok(blowerProvider);
     assert.ok(saltingProvider);
 
-    const snowShovelingBooking = await platform.createBooking(customer.id, {
+    const snowShovelingBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: shovelProvider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4554,7 +4729,7 @@ test("customer retention opportunities use winter and gutter season windows for 
       completedAt: "2026-01-20T12:00:00.000Z"
     });
 
-    const snowBlowingBooking = await platform.createBooking(customer.id, {
+    const snowBlowingBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: blowerProvider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4569,7 +4744,7 @@ test("customer retention opportunities use winter and gutter season windows for 
       completedAt: "2026-01-24T12:00:00.000Z"
     });
 
-    const saltingBooking = await platform.createBooking(customer.id, {
+    const saltingBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: saltingProvider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4623,7 +4798,7 @@ test("customer retention opportunities use winter and gutter season windows for 
     );
     assert.ok(provider);
 
-    const gutterBooking = await platform.createBooking(customer.id, {
+    const gutterBooking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress(),
       servicePropertyId: customer.defaultPropertyId,
@@ -4665,7 +4840,7 @@ test("customer retention opportunities fall back to a 90-day rebook for other se
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4706,7 +4881,7 @@ test("customers can change addresses only when the booking state allows it", asy
   const providers = await repository.listProviders();
   const provider = providers[0];
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: provider.address,
     servicePropertyId: customer.defaultPropertyId,
@@ -4767,7 +4942,7 @@ test("customers can cancel and reschedule future requested bookings", async () =
 
   const provider = (await repository.listProviders())[0];
 
-  const bookingToReschedule = await platform.createBooking(customer.id, {
+  const bookingToReschedule = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4788,7 +4963,7 @@ test("customers can cancel and reschedule future requested bookings", async () =
   assert.equal(rescheduledBooking.scheduledStartIso, nextStartIso);
   assert.equal(rescheduledBooking.scheduledEndIso, nextEndIso);
 
-  const bookingToCancel = await platform.createBooking(customer.id, {
+  const bookingToCancel = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4833,7 +5008,7 @@ test("customer reschedules must still respect provider booking conflicts", async
 
   const blockedStart = futureIso(96);
   const blockedEnd = futureIso(99);
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -4844,7 +5019,7 @@ test("customer reschedules must still respect provider booking conflicts", async
     totalCents: 6200
   });
 
-  const bookingToReschedule = await platform.createBooking(customer.id, {
+  const bookingToReschedule = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("117 Garden Row", 30.2437, -97.7634),
     servicePropertyId: customer.defaultPropertyId,
@@ -4885,7 +5060,7 @@ test("customers can start recurring service plans and future visits are generate
   const slot = (await repository.listSlotsByProvider(provider.id))[1];
   assert.ok(slot);
 
-  const recurring = await platform.createRecurringServicePlan(customer.id, {
+  const recurring = await createWorkflowRecurringPlan(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: customer.address,
     servicePropertyId: customer.defaultPropertyId,
@@ -4956,7 +5131,7 @@ test("providers can send one-tap late updates to customers for active bookings",
   });
 
   const provider = (await repository.listProviders())[0];
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5072,7 +5247,7 @@ test("provider acceptance windows hide too-soon slots and reject booking request
   assert.ok(response.suggestedSlots.some((slot) => slot.id === laterSlot.id));
 
   await assert.rejects(
-    platform.createBooking(customer.id, {
+    createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: customer.address,
       servicePropertyId: customer.defaultPropertyId,
@@ -5085,7 +5260,7 @@ test("provider acceptance windows hide too-soon slots and reject booking request
     /only accepts new bookings/
   );
 
-  const laterBooking = await platform.createBooking(customer.id, {
+  const laterBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: customer.address,
     servicePropertyId: customer.defaultPropertyId,
@@ -5131,7 +5306,7 @@ test("customers cannot book a provider window blocked by an outside calendar eve
   });
 
   await assert.rejects(
-    platform.createBooking(customer.id, {
+    createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: customer.address,
       servicePropertyId: customer.defaultPropertyId,
@@ -5160,7 +5335,7 @@ test("providers can log active booking exceptions and notify customers", async (
   });
 
   const provider = (await repository.listProviders())[0];
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5214,7 +5389,7 @@ test("ops support queue includes delay-update drafts for active field exceptions
   });
 
   const provider = (await repository.listProviders())[0];
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5292,7 +5467,7 @@ test("ops support queue includes weather or route delay exception scripts withou
   });
 
   const provider = (await repository.listProviders())[0];
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5356,7 +5531,7 @@ test("ops can escalate stale support tickets without mutating stable ticket fiel
   });
 
   const provider = (await repository.listProviders())[0];
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5492,7 +5667,7 @@ test("customers can dispute a booking and automatically create support context",
   });
 
   const provider = (await repository.listProviders())[0];
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5566,7 +5741,7 @@ test("ops can resolve a disputed booking and restore it to the active schedule",
   });
 
   const provider = (await repository.listProviders())[0];
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5634,7 +5809,7 @@ test("ops cannot resolve a disputed booking with submitted evidence before revie
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5708,7 +5883,7 @@ test("disputed bookings cannot start new payment attempts until support resolves
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5776,7 +5951,7 @@ test("customers can create and finalize Stripe checkout for their own bookings",
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5833,7 +6008,7 @@ test("stripe webhook capture updates pending payments without a customer redirec
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5883,7 +6058,7 @@ test("checkout finalization is idempotent when webhook capture wins the redirect
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -5944,7 +6119,7 @@ test("failed checkout finalization marks the payment failed and records payment 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6012,7 +6187,7 @@ test("expired checkout webhooks record payment failure telemetry for ops", async
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6072,7 +6247,7 @@ test("payment failure webhooks can reconcile pending Stripe payments by payment 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6131,7 +6306,7 @@ test("refund webhooks can reconcile captured Stripe payments by payment intent",
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6185,7 +6360,7 @@ test("provider payout ledger shows completed jobs waiting on customer payment", 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6254,7 +6429,7 @@ test("captured disputed bookings hold provider settlement while crew history sta
     willingToTravelMiles: 25
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -6420,7 +6595,7 @@ test("refund review requests hold payouts until ops approves the refund", async 
     willingToTravelMiles: 25
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -6554,7 +6729,7 @@ test("ops cannot approve a Stripe refund review without a saved payment intent",
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6647,7 +6822,7 @@ test("ops can deny a refund review and return payouts to the normal schedule", a
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6743,7 +6918,7 @@ test("refund-review support tickets include refund-approved drafts when reviewed
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6830,7 +7005,7 @@ test("ops cannot resolve a refund review with submitted evidence before reviewin
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -6924,7 +7099,7 @@ test("provider payout ledger exposes weekly and instant payout schedule details"
     sponsoredListingEnabled: provider.sponsoredListingEnabled
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7018,7 +7193,7 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
     sponsoredListingEnabled: providers[1]!.sponsoredListingEnabled
   });
 
-  const firstBooking = await platform.createBooking(customer.id, {
+  const firstBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: providers[0]!.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7028,7 +7203,7 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
     notes: "Ops payout preview first provider",
     totalCents: 14200
   });
-  const secondBooking = await platform.createBooking(customer.id, {
+  const secondBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: providers[1]!.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -7306,7 +7481,7 @@ test("provider Connect onboarding reuses one recipient and blocks transfers unti
     propertyLabel: "Primary home",
     address: createAddress()
   });
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7362,7 +7537,7 @@ test("provider settlements stay on hold when Stripe fee reconciliation fails", a
   });
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7564,7 +7739,7 @@ test("customer service can open a refund review override from a billing ticket",
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7645,7 +7820,7 @@ test("ops can reschedule a booking, append an intervention audit trail, and touc
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7706,7 +7881,7 @@ test("ops cannot change the final outcome of a disputed booking intervention wit
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7763,7 +7938,7 @@ test("ops cannot use booking interventions to apply a provider-favoring disputed
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -7875,7 +8050,7 @@ test("review-first staffing creates pending crew matches that providers can appr
     winterWorkEnabled: false
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -7990,7 +8165,7 @@ test("crew members can cancel accepted assignments and future staffing penalizes
     completedJobs: 24
   });
 
-  const firstBooking = await platform.createBooking(customer.id, {
+  const firstBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: customer.address,
     servicePropertyId: customer.defaultPropertyId,
@@ -8025,7 +8200,7 @@ test("crew members can cancel accepted assignments and future staffing penalizes
   const providerNotifications = await repository.listNotificationsByRecipient(provider.id);
   assert.ok(providerNotifications.some((notification) => notification.title === "Crew member cancelled"));
 
-  const secondBooking = await platform.createBooking(customer.id, {
+  const secondBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -8187,7 +8362,7 @@ test("staffing recommendations rank the best-fit crew first and exclude overlapp
     completedJobs: 8
   });
 
-  const overlappingBooking = await platform.createBooking(customer.id, {
+  const overlappingBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: otherProvider.id,
     serviceAddress: createAddress("220 Conflict Ave", 30.265, -97.782),
     servicePropertyId: undefined,
@@ -8219,7 +8394,7 @@ test("staffing recommendations rank the best-fit crew first and exclude overlapp
     reviewedAt: new Date().toISOString()
   });
 
-  const targetBooking = await platform.createBooking(customer.id, {
+  const targetBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: primaryProvider.id,
     serviceAddress: customer.address,
     servicePropertyId: customer.defaultPropertyId,
@@ -8316,7 +8491,7 @@ test("automated day-load balancing rotates crew recommendations across same-day 
 
   const createdBookings = [];
   for (const [index, slot] of jobStarts.entries()) {
-    const booking = await platform.createBooking(customer.id, {
+    const booking = await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress(`20${index} Garden Row`, 30.2435 + index * 0.001, -97.7638 - index * 0.001),
       servicePropertyId: undefined,
@@ -8395,7 +8570,7 @@ test("auto-accept staffing immediately creates accepted crew matches", async () 
   });
   assert.equal(crew.role, "crew-member");
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -8476,7 +8651,7 @@ test("provider and crew can chat on a valid crew match while unrelated users are
     sponsoredListingEnabled: provider.sponsoredListingEnabled
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -8565,7 +8740,7 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
   assert.equal(customer.role, "customer");
 
   await assert.rejects(
-    platform.createBooking(customer.id, {
+    createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress("Call 555-867-5309", 30.2435, -97.7638),
       category: "mulch-installation",
@@ -8615,7 +8790,7 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
   assert.equal(otherCrew.role, "crew-member");
 
   await assert.rejects(
-    platform.createBooking(customer.id, {
+    createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
       servicePropertyId: customer.defaultPropertyId,
@@ -8637,7 +8812,7 @@ test("customer-provider chat unlocks only after an accepted crew member is on ro
     sponsoredListingEnabled: provider.sponsoredListingEnabled
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -8842,7 +9017,7 @@ test("arrival tracking shows a live route once the crew is on route", async () =
   });
   assert.equal(crew.role, "crew-member");
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -8925,7 +9100,7 @@ test("provider-only route stops adjust ETA while customer tracking keeps stop de
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -9054,7 +9229,7 @@ test("providers confirm bookings before crew can go on route or start work", asy
     sponsoredListingEnabled: provider.sponsoredListingEnabled
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -9160,7 +9335,7 @@ test("before and after photos still gate booking start and completion while note
     willingToTravelMiles: 25
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -9359,7 +9534,7 @@ test("customers can share private property photos with the provider and explicit
     address: createAddress("114 Garden Row", 39.7534, -74.2227)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: customer.address,
     servicePropertyId: customer.defaultPropertyId,
@@ -9544,7 +9719,7 @@ test("ops can annotate booking evidence for disputes and refund reviews", async 
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -9617,7 +9792,7 @@ test("ops support tickets include evidence summaries and resolution guidance", a
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -9723,7 +9898,7 @@ test("completed disputed bookings guide ops toward keeping the booking complete"
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -9800,7 +9975,7 @@ test("paid completed disputes require refund review before cancellation resolves
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -9938,7 +10113,7 @@ test("ops cannot deny a refund review when reviewed evidence still supports the 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -10023,7 +10198,7 @@ test("ops cannot restore a disputed booking when reviewed evidence still support
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -10101,7 +10276,7 @@ test("ops require a detailed rationale before resolving a mixed-evidence refund 
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -10223,7 +10398,7 @@ test("ops can apply a mixed-evidence disputed intervention when the note is spec
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -10325,7 +10500,7 @@ test("ops support tickets include a structured audit timeline for refund, eviden
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -10435,7 +10610,7 @@ test("providers cannot complete requested bookings before confirmation", async (
   const provider = (await repository.listProviders())[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -10495,7 +10670,7 @@ test("notifications track booking, staffing, and review milestones across roles"
   });
   assert.equal(crew.role, "crew-member");
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -10587,7 +10762,7 @@ test("notifications generate external delivery records for push, email, and sms"
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: undefined,
@@ -10639,7 +10814,7 @@ test("selecting a public crew opportunity texts auto-accept providers that the o
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: undefined,
@@ -10696,7 +10871,7 @@ test("crew members can claim a selected public opportunity after signup", async 
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: undefined,
@@ -10764,7 +10939,7 @@ test("selecting a public crew opportunity texts review-first providers that revi
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: undefined,
@@ -10829,7 +11004,7 @@ test("notification preferences can disable sms and review reminder delivery", as
     }
   );
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -10907,7 +11082,7 @@ test("registered Expo push devices create retryable push deliveries", async () =
   }) as typeof globalThis.fetch;
 
   try {
-    await platform.createBooking(customer.id, {
+    await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
       servicePropertyId: customer.defaultPropertyId,
@@ -10997,7 +11172,7 @@ test("configured Resend email delivery uses the real email provider path", async
       }
     );
 
-    await platform.createBooking(customer.id, {
+    await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
       servicePropertyId: customer.defaultPropertyId,
@@ -11083,7 +11258,7 @@ test("configured Twilio SMS delivery failures create retryable records", async (
       }
     );
 
-    await platform.createBooking(customer.id, {
+    await createWorkflowBooking(platform, repository, customer.id, {
       providerId: provider.id,
       serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
       servicePropertyId: customer.defaultPropertyId,
@@ -11446,7 +11621,7 @@ test("providers can get a subscribable calendar feed and merged overview for mix
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -11539,8 +11714,8 @@ test("providers can import an external iCal feed and use it to block YardMatch a
     "VERSION:2.0",
     "BEGIN:VEVENT",
     "UID:outside-client-1@example.com",
-    `DTSTART:${importStart.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
-    `DTEND:${importEnd.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
+    `DTSTART:${importStart.replaceAll(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
+    `DTEND:${importEnd.replaceAll(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
     "SUMMARY:Outside cleanup route",
     "DESCRIPTION:Imported from Google Calendar",
     "END:VEVENT",
@@ -11648,11 +11823,8 @@ test("calendar import sync failures persist provider-facing health state", async
     externalCalendarBlocks: []
   });
 
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response("calendar unavailable", {
-      status: 503
-    })) as typeof fetch;
+  const originalFetch = platform["calendarFeedLoader"];
+  platform["calendarFeedLoader"] = async () => { throw new HttpError(503, "Calendar feed returned 503"); };
 
   try {
     const imports = await platform.createProviderCalendarImport(provider.id, {
@@ -11667,7 +11839,7 @@ test("calendar import sync failures persist provider-facing health state", async
     assert.equal(imports.syncHealth.status, "at-risk");
     assert.equal(imports.syncHealth.erroredSubscriptionCount, 1);
   } finally {
-    globalThis.fetch = originalFetch;
+    platform["calendarFeedLoader"] = originalFetch;
   }
 });
 
@@ -11695,11 +11867,8 @@ test("providers can bulk-refresh stale or errored calendar feeds", async () => {
     externalCalendarBlocks: []
   });
 
-  const brokenFetch = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response("calendar unavailable", {
-      status: 503
-    })) as typeof fetch;
+  const brokenFetch = platform["calendarFeedLoader"];
+  platform["calendarFeedLoader"] = async () => { throw new HttpError(503, "Calendar feed returned 503"); };
 
   let imports;
   try {
@@ -11709,7 +11878,7 @@ test("providers can bulk-refresh stale or errored calendar feeds", async () => {
       feedUrl: "https://calendar.example.com/recoverable.ics"
     });
   } finally {
-    globalThis.fetch = brokenFetch;
+    platform["calendarFeedLoader"] = brokenFetch;
   }
 
   assert.equal(imports.subscriptions[0]?.syncStatus, "error");
@@ -11721,21 +11890,15 @@ test("providers can bulk-refresh stale or errored calendar feeds", async () => {
     "VERSION:2.0",
     "BEGIN:VEVENT",
     "UID:outside-client-recovered@example.com",
-    `DTSTART:${importStart.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
-    `DTEND:${importEnd.replaceAll(/[-:]/g, "").replace(".000Z", "Z")}`,
+    `DTSTART:${importStart.replaceAll(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
+    `DTEND:${importEnd.replaceAll(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z")}`,
     "SUMMARY:Recovered outside route",
     "DESCRIPTION:Recovered from stale feed sync",
     "END:VEVENT",
     "END:VCALENDAR"
   ].join("\n");
 
-  globalThis.fetch = (async () =>
-    new Response(rawFeed, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/calendar"
-      }
-    })) as typeof fetch;
+  platform["calendarFeedLoader"] = async () => rawFeed;
 
   try {
     const refreshed = await platform.syncStaleProviderCalendarImports(provider.id);
@@ -11746,7 +11909,7 @@ test("providers can bulk-refresh stale or errored calendar feeds", async () => {
     assert.equal(refreshed.syncHealth.status, "healthy");
     assert.ok(refreshed.subscriptions[0]?.lastSyncedAt);
   } finally {
-    globalThis.fetch = brokenFetch;
+    platform["calendarFeedLoader"] = brokenFetch;
   }
 });
 
@@ -11815,7 +11978,7 @@ test("calendar health flags outside blocks that overlap real YardMatch jobs", as
     address: createAddress("112 Garden Row", 30.2435, -97.7638)
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -11891,7 +12054,7 @@ test("provider calendar overview includes dispatch load summaries for route plan
   const morning = atHour(8, 1);
   const afternoon = atHour(13, 2);
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -11902,7 +12065,7 @@ test("provider calendar overview includes dispatch load summaries for route plan
     totalCents: 6200
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("980 Ridge View", 30.3442, -97.6641),
     servicePropertyId: undefined,
@@ -11983,7 +12146,7 @@ test("providers receive one timed departure reminder for confirmed upcoming jobs
   });
   assert.equal(customer.role, "customer");
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12071,7 +12234,7 @@ test("provider dispatch controls tune reminder timing and route-leader permissio
   assert.equal(updatedProvider.departureReminderLeadMinutes, 30);
   assert.equal(updatedProvider.routeLeaderMode, "accepted-crew-fallback");
 
-  const upcomingBooking = await platform.createBooking(customer.id, {
+  const upcomingBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12135,7 +12298,7 @@ test("provider dispatch controls tune reminder timing and route-leader permissio
     sponsoredListingEnabled: provider.sponsoredListingEnabled
   });
 
-  const secondBooking = await platform.createBooking(customer.id, {
+  const secondBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -12235,7 +12398,7 @@ test("providers can assign a specific route leader when multiple accepted crew m
     sponsoredListingEnabled: provider.sponsoredListingEnabled
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12372,7 +12535,7 @@ test("provider assistant can assign and clear a crew route leader from plain lan
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12473,7 +12636,7 @@ test("provider assistant can preview and send a provider-crew coordination messa
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12579,7 +12742,7 @@ test("provider assistant can message the route leader and accepted crew from pla
     );
   }
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12699,7 +12862,7 @@ test("provider assistant can accept or deny crew matches from plain language", a
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12820,7 +12983,7 @@ test("provider assistant can accept the best recommended crew from plain languag
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12894,7 +13057,7 @@ test("provider assistant can summarize tomorrow's dispatch load without picking 
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 1);
   serviceDay.setHours(13, 0, 0, 0);
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12952,7 +13115,7 @@ test("provider assistant can highlight the highest-pressure window tomorrow", as
   const secondJob = new Date(firstJob);
   secondJob.setHours(13, 0, 0, 0);
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -12963,7 +13126,7 @@ test("provider assistant can highlight the highest-pressure window tomorrow", as
     totalCents: 6200
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -13021,7 +13184,7 @@ test("provider assistant can recommend which booking to move tomorrow", async ()
   const secondAfternoonJob = new Date(firstAfternoonJob);
   secondAfternoonJob.setHours(15, 30, 0, 0);
 
-  const firstBooking = await platform.createBooking(customer.id, {
+  const firstBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13032,7 +13195,7 @@ test("provider assistant can recommend which booking to move tomorrow", async ()
     totalCents: 6200
   });
 
-  const secondBooking = await platform.createBooking(customer.id, {
+  const secondBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -13099,7 +13262,7 @@ test("provider assistant recommends staffing first when crew gap is the real dis
   mulchJob.setDate(mulchJob.getDate() + 1);
   mulchJob.setHours(9, 0, 0, 0);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13201,7 +13364,7 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
     }
   );
 
-  const morningBooking = await platform.createBooking(customer.id, {
+  const morningBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13212,7 +13375,7 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
     totalCents: 6200
   });
 
-  const afternoonBooking = await platform.createBooking(customer.id, {
+  const afternoonBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -13223,7 +13386,7 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
     totalCents: 6200
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("125 Garden Row", 30.2439, -97.7641),
     servicePropertyId: customer.defaultPropertyId,
@@ -13234,7 +13397,7 @@ test("provider assistant can recommend a cross-day move when tomorrow stays tigh
     totalCents: 6200
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("130 Garden Row", 30.24395, -97.76412),
     servicePropertyId: customer.defaultPropertyId,
@@ -13294,7 +13457,7 @@ test("provider assistant can recommend where more crew is needed tomorrow", asyn
   const secondJob = new Date(firstJob);
   secondJob.setHours(14, 0, 0, 0);
 
-  const largerGapBooking = await platform.createBooking(customer.id, {
+  const largerGapBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13305,7 +13468,7 @@ test("provider assistant can recommend where more crew is needed tomorrow", asyn
     totalCents: 9200
   });
 
-  const smallerGapBooking = await platform.createBooking(customer.id, {
+  const smallerGapBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -13397,7 +13560,7 @@ test("provider assistant can recommend reviewing pending crew matches before sou
     });
   }
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13491,7 +13654,7 @@ test("provider assistant staffing plan recommends route leader assignment when c
     hasOwnEquipment: true
   });
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13569,7 +13732,7 @@ test("provider assistant can summarize the next 7 days of dispatch pressure", as
   secondDay.setDate(secondDay.getDate() + 2);
   secondDay.setHours(17, 0, 0, 0);
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13580,7 +13743,7 @@ test("provider assistant can summarize the next 7 days of dispatch pressure", as
     totalCents: 6200
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -13641,7 +13804,7 @@ test("provider assistant can highlight the highest-attention day this week", asy
   secondDay.setDate(secondDay.getDate() + 3);
   secondDay.setHours(13, 0, 0, 0);
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13652,7 +13815,7 @@ test("provider assistant can highlight the highest-attention day this week", asy
     totalCents: 6200
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -13663,7 +13826,7 @@ test("provider assistant can highlight the highest-attention day this week", asy
     totalCents: 6200
   });
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("125 Garden Row", 30.2439, -97.7641),
     servicePropertyId: customer.defaultPropertyId,
@@ -13726,7 +13889,7 @@ test("provider assistant can preview and clear an equipment pickup route stop", 
   afternoonStart.setHours(13, 0, 0, 0);
   const afternoonEnd = new Date(afternoonStart.getTime() + 2 * 60 * 60 * 1000);
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13802,7 +13965,7 @@ test("provider assistant previews and executes a reschedule command with custome
   const startIso = serviceDay.toISOString();
   const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13877,7 +14040,7 @@ test("provider assistant asks for booking selection when more than one booking m
   firstDay.setHours(13, 0, 0, 0);
   const secondDay = new Date(firstDay.getTime() + 24 * 60 * 60 * 1000);
 
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -13887,7 +14050,7 @@ test("provider assistant asks for booking selection when more than one booking m
     notes: "First afternoon booking",
     totalCents: 6200
   });
-  await platform.createBooking(customer.id, {
+  await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("118 Garden Row", 30.2437, -97.76395),
     servicePropertyId: customer.defaultPropertyId,
@@ -13941,7 +14104,7 @@ test("provider assistant can send a late update with parsed delay timing", async
   const startIso = serviceDay.toISOString();
   const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14019,7 +14182,7 @@ test("provider assistant can preview and confirm a requested booking", async () 
   const startIso = serviceDay.toISOString();
   const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14085,7 +14248,7 @@ test("provider assistant can preview and start a route from a natural-language c
   const startIso = serviceDay.toISOString();
   const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14163,7 +14326,7 @@ test("provider assistant can preview and execute a confirm-then-route multi-step
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14228,7 +14391,7 @@ test("provider assistant can send an arrived customer update without changing li
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14312,7 +14475,7 @@ test("provider assistant can preview and start work once route and before-photo 
   const startIso = serviceDay.toISOString();
   const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14394,7 +14557,7 @@ test("provider assistant can preview and execute a route-then-work multi-step co
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14481,7 +14644,7 @@ test("provider assistant can preview and execute a broader three-step same-booki
   const serviceDay = new Date();
   serviceDay.setDate(serviceDay.getDate() + 3);
   serviceDay.setHours(13, 0, 0, 0);
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14571,7 +14734,7 @@ test("provider assistant can preview and complete a booking once after-photo req
   const startIso = serviceDay.toISOString();
   const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14653,7 +14816,7 @@ test("provider assistant can preview and report a booking exception with notes",
   const startIso = serviceDay.toISOString();
   const endIso = new Date(serviceDay.getTime() + 2 * 60 * 60 * 1000).toISOString();
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14891,7 +15054,7 @@ test("provider verification guidance blocks launch approval when incident histor
   });
   assert.equal(customer.role, "customer");
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -14907,6 +15070,8 @@ test("provider verification guidance blocks launch approval when incident histor
     disputeReason: "Customer reported incomplete recovery from a prior service issue.",
     disputedByRole: "customer"
   });
+
+  await repository.updateProvider(provider.id, { verificationStatus: "pending-review" }); // Return the previously approved provider to review after the incident.
 
   const queue = await platform.listProviderVerificationQueue();
   const queuedProvider = queue.find((item) => item.provider.id === provider.id);
@@ -15349,7 +15514,7 @@ test("ops summary reports refund reviews and active booking exceptions", async (
   });
   assert.equal(customer.role, "customer");
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
     servicePropertyId: customer.defaultPropertyId,
@@ -15373,7 +15538,7 @@ test("ops summary reports refund reviews and active booking exceptions", async (
     checkoutSessionId: checkoutPayment.payment.checkoutSessionId ?? ""
   });
 
-  const exceptionBooking = await platform.createBooking(customer.id, {
+  const exceptionBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("114 Garden Row", 30.2437, -97.7637),
     servicePropertyId: customer.defaultPropertyId,
@@ -15428,7 +15593,7 @@ test("public marketplace overview returns only verified providers and live aggre
   const provider = verifiedProviders[0];
   assert.ok(provider);
 
-  const booking = await platform.createBooking(customer.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: {
       line1: "45 Bayview Ave",
@@ -15444,6 +15609,7 @@ test("public marketplace overview returns only verified providers and live aggre
     category: provider.categories[0] ?? "lawn-mowing",
     scheduledStartIso: futureIso(72),
     scheduledEndIso: futureIso(73),
+    totalCents: 6400,
     notes: "Public overview review coverage booking"
   });
 

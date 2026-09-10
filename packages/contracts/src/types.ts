@@ -991,6 +991,38 @@ export interface ProviderStaffingJobSummary {
 export interface ProviderStaffingOverview {
   provider: ProviderProfile;
   jobs: ProviderStaffingJobSummary[];
+  retentionProgram: ProviderRetentionProgramSummary;
+}
+
+export type ProviderRetentionRelationshipStatus =
+  | "awaiting-first-settlement"
+  | "eligible-for-retention"
+  | "repeat-customer"
+  | "paused";
+
+export interface ProviderRetentionRelationshipSummary {
+  customerId: string;
+  customerName: string;
+  firstCompletedBookingId?: string;
+  lastCompletedAt?: string;
+  completedBookingCount: number;
+  finderFeeRecorded: boolean;
+  latestReviewScore?: ReviewScore;
+  status: ProviderRetentionRelationshipStatus;
+  reason: string;
+}
+
+export interface ProviderRetentionProgramSummary {
+  finderFeeCents: number;
+  completedJobFeeCents: number;
+  noAdditionalRetentionFee: true;
+  promise: string;
+  eligibilityRule: string;
+  acquiredCustomerCount: number;
+  eligibleCustomerCount: number;
+  repeatCustomerCount: number;
+  pausedCustomerCount: number;
+  relationships: ProviderRetentionRelationshipSummary[];
 }
 
 export interface CrewMatchSummary {
@@ -1460,6 +1492,11 @@ export type CustomerRetentionLoyaltySegment =
   | "repeat-customer"
   | "provider-loyal";
 
+export type CustomerProviderContinuityStatus =
+  | "eligible"
+  | "paused"
+  | "awaiting-finder-fee";
+
 export interface CustomerRetentionOpportunity {
   id: string;
   sourceBookingId: string;
@@ -1472,6 +1509,8 @@ export interface CustomerRetentionOpportunity {
   completedCategoryCount: number;
   sameProviderCompletedCount: number;
   loyaltySegment: CustomerRetentionLoyaltySegment;
+  providerContinuityStatus: CustomerProviderContinuityStatus;
+  providerContinuityReason: string;
   lastServiceGapDays?: number;
   kind: CustomerRetentionOpportunityKind;
   strategyKey: CustomerRetentionStrategyKey;
@@ -1501,6 +1540,9 @@ export interface SearchRetentionPreference {
 }
 
 export interface PaymentRecord {
+  checkoutSessionExpiredAt?: string;
+  checkoutSuccessPath?: string;
+  checkoutCancelPath?: string;
   id: string;
   bookingId: string;
   amountCents: number;
@@ -3264,6 +3306,8 @@ export interface LaunchAttributionContext {
 }
 
 export interface CreateBookingRequest {
+  /** Signed server quote; old clients must match a freshly recomputed price. */
+  quoteToken?: string;
   providerId: string;
   launchLeadId?: string;
   serviceAddress: Address;
@@ -3652,6 +3696,7 @@ export interface InstantQuoteRequest {
 }
 
 export interface InstantQuoteResponse {
+  quoteToken?: string;
   address: Address;
   normalizedAddress: NormalizedAddressSummary;
   category: ServiceCategory;

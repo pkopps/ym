@@ -1,19 +1,40 @@
-# Engineer Checkpoint: Performance, Pagination, and API Reliability
+# Engineer Checkpoint: Provider Finder-Fee Retention Promise
+
+## Current checkpoint: 15-issue audit repairs
+
+- Updated: September 9, 2026.
+- Branch: `main`; baseline commit: `159219b663a2ac6199195f832dd364e8455a2f94`.
+- State: implemented and verified locally; uncommitted. Existing retention work is preserved.
+- Completed: all 15 audited recovery, OAuth, booking, recurring, calendar, and checkout/refund issues; durable security state and checkout metadata migration; web/mobile quote propagation; regression coverage; stale database seed fixture correction.
+- In progress: none for the 15 repairs.
+- Remaining work: deploy the additive migration with the API release, verify real vendor configuration in staging, and separately resolve historical clean-install migration ordering.
+- Blockers / known defects: pristine database migration replay fails because the crew-staffing migration precedes init. Existing history was preserved; initialized-baseline migration deployment and schema comparison passed. No unresolved failure remains in the 15 repair regressions.
+- Changed workflows: recovery codes are private with resend/guess limits; OAuth needs browser-bound one-time state; bookings validate server quotes, eligibility and time windows; recurring creation is atomic; calendar imports preserve all feeds and expand dates safely; checkout retries preserve attempts and refunds remain terminal.
+- Validation: API 289 passed, 3 database tests skipped in default suite and all 3 passed separately; audit regressions 24 passed; web smoke 19 passed; API smoke, lint, typecheck, Prisma generate, initialized-baseline migrations, schema diff and two seed runs passed; customer-mobile Expo export passed for iOS/Android/web. No native simulator or live vendor/production tests ran.
+- Screenshots: `reports/agent-checkpoints/engineer/latest/customer-booking-requested-desktop.png` (1440×900), `customer-booking-requested-mobile.png` (390×844), and the matching listings screenshots. Requested desktop/mobile screens were visually inspected.
+- Recommended next task: resolve the historical migration bootstrap order with a reviewed baseline procedure, then run staged vendor acceptance before release.
+
+[Repair mapping, evidence and operational notes](/Users/patrickkopps/Documents/app/reports/code-audit/2026-09-09/completion.md).
+
+Agent-reported completion is checkpoint evidence, not independent verification by Patrick or the Project Manager.
+
+## Prior retention checkpoint (preserved)
 
 ## Branch And Commit
 
 - Branch: `main`
-- Baseline commit: `5846c0547c00567d3960540156c9ac4c163a11e9`
+- Baseline commit: `159219b`
 - State: implemented and locally verified in the working tree; changes are not committed.
 
 ## Completed Work
 
-- Implemented stable, bounded cursor pages for customer/provider bookings and explicit history loading on web and customer mobile.
-- Restricted payment queries to the booking IDs currently displayed.
-- Added Postgres timeline/payment indexes and a migration.
-- Added request IDs, route latency/error metrics, bounded failure history, structured JSON logs, privacy-filtered Sentry reporting, and production configuration validation.
-- Added an authenticated ops API-reliability panel with alerts, route hotspots, error types, and request IDs.
-- Bounded in-memory analytics retention and updated contracts, docs, runbooks, locale copy, and regressions.
+- Added clear provider marketing that the $30 finder fee is charged once and includes YardMatch's ongoing review, book-again, recurring-service, and qualified prior-provider preference work.
+- Preserved the published $6.99 completed-job fee disclosure so “no additional retention cost” cannot be mistaken for fee-free future jobs.
+- Added provider web/mobile retention summaries with acquired, active, returned, awaiting, and paused relationships.
+- Enforced server-side continuity eligibility from settlements, reviews, disputes, refunds, support cases, and field exceptions.
+- Prevented stale or fabricated client loyalty context from changing recommendation ranking.
+- Preserved fresh recommendation ranking and curated alternatives.
+- Updated customer retention behavior, contracts, tests, locales, README, and roadmap.
 
 ## In-Progress Work
 
@@ -21,45 +42,45 @@
 
 ## Remaining Work
 
-- Paginate notifications, notification deliveries, conversation messages, provider reviews, support/lead queues, payout history, and automation history in follow-up slices.
-- Configure staging/production Sentry and retained metrics/log alert routing.
-- Run Postgres integration tests and deploy the new migration in staging.
+- Add approved outbound book-again cadence beyond current review invites and in-product prompts.
+- Add an ops recovery path for restoring a paused relationship after documented service recovery.
+- Validate with staging Postgres, Stripe settlements, and real notification delivery.
 
 ## Blockers
 
-- `TEST_DATABASE_URL` was unavailable, so two Postgres integration tests were skipped.
-- Production vendor credentials are not present locally.
-- Registry-backed `npm audit` was unavailable because network escalation was not approved.
+- `TEST_DATABASE_URL` was unavailable, so two Postgres-only tests were skipped.
+- Live Stripe and notification credentials are not present locally.
 
 ## Changed Workflows
 
-- Customer/provider job history -> first cursor page -> visible-page payment lookup -> explicit load-more action.
-- API request -> request ID -> latency/status/error classification -> structured monitoring and external exception capture.
-- Ops overview -> API reliability health -> alert/route/error-type/request-ID drill-down.
+- First paid completion -> one-time finder fee -> automatic retention eligibility.
+- Repeat search -> server good-standing check -> soft prior-provider preference or fresh recommendation.
+- Provider web/mobile -> relationship-level retention status and fee-policy explanation.
+- Public provider page -> included retention work and exact guardrails before signup.
 
 ## Validation Results
 
 - Typecheck passed.
-- Targeted ESLint passed with zero warnings.
-- Locale validation passed for 3,626 English, Spanish, and pseudo-locale keys.
-- Prisma client generation passed.
-- API tests: 264 passed, 2 Postgres-only tests skipped.
-- API smoke passed.
+- ESLint passed with zero warnings.
+- Locale validation passed for 3,659 English, Spanish, and pseudo-locale keys.
+- Targeted retention tests: 10/10 passed.
+- API tests: 265 passed, 2 Postgres-only tests skipped.
 - Web smoke: 19/19 passed.
-- Customer mobile Expo export passed for web, iOS, and Android.
-- Browser acceptance passed at desktop 1440x900 and mobile 390x844.
+- Provider mobile Expo export passed for web, iOS, and Android.
+- Browser acceptance passed at 1440x900 and 390x844; a discovered mobile overflow was fixed and reverified.
 
 ## Known Defects
 
-- In-process route counters reset on API restart; durable production history depends on Sentry and the production logging backend.
-- Sentry is intentionally not configured in local development.
-- Other high-growth collections remain on the follow-up pagination list above.
+- Seeded local provider summaries start at zero because no paid customer relationship settlement exists yet.
+- Book-again prompts are in-product; broader outbound retention notifications remain future work.
+- Paused relationships do not yet have an ops-authored recovery action.
 
 ## Screenshot Paths
 
-- `api-reliability-desktop.png`
-- `customer-history-mobile.png`
+- `provider-retention-marketing-desktop.png`
+- `provider-retention-marketing-mobile.png`
+- `provider-retention-operations-mobile.png`
 
 ## Recommended Next Task
 
-Apply the shared opaque-cursor contract to notification/delivery and conversation histories, then to ops support, lead, payout, and automation queues.
+Build the audited ops recovery workflow for paused retention relationships.

@@ -128,6 +128,11 @@ export interface BookingPageQuery {
 }
 
 export interface MarketplaceRepository {
+  /** Serialize a bounded operation across API instances; database writes use one transaction. */
+  withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T>;
+  getSecurityState(key: string): Promise<Record<string, unknown> | undefined>;
+  putSecurityState(key: string, value: Record<string, unknown>, expiresAt: string): Promise<void>;
+  createRecurringPlanWithBooking(plan: RecurringServicePlan, booking: Booking): Promise<Booking>;
   createCustomer(customer: CustomerProfile, passwordHash?: string): Promise<CustomerProfile>;
   createProvider(provider: ProviderProfile, passwordHash?: string): Promise<ProviderProfile>;
   createCrewMember(crewMember: CrewMemberProfile, passwordHash?: string): Promise<CrewMemberProfile>;

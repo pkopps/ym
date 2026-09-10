@@ -1,0 +1,15 @@
+
+> @yardmatch/api@0.1.0 test:postgres
+> node --test --import tsx test/postgres-repository.integration.test.ts
+
+✔ Postgres atomically claims first-match economics and persists a balanced idempotent ledger (100.63025ms)
+✔ Postgres persists two-factor settings, remembered devices, and security activity (15.578958ms)
+✔ Postgres serializes recovery and checkout across service instances and rolls back recurring creation (943.748292ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1287.365042

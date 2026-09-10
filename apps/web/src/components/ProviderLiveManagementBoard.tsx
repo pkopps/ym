@@ -125,6 +125,22 @@ function formatVerificationChecklistStatus(i18n: I18nInstance, status: "ready" |
   }
 }
 
+function formatRetentionRelationshipStatus(
+  i18n: I18nInstance,
+  status: ProviderStaffingOverview["retentionProgram"]["relationships"][number]["status"]
+) {
+  switch (status) {
+    case "awaiting-first-settlement":
+      return i18n.t("provider_live.retention.status.awaiting");
+    case "eligible-for-retention":
+      return i18n.t("provider_live.retention.status.eligible");
+    case "repeat-customer":
+      return i18n.t("provider_live.retention.status.repeat");
+    case "paused":
+      return i18n.t("provider_live.retention.status.paused");
+  }
+}
+
 type ProviderJobSummary = ProviderStaffingOverview["jobs"][number];
 type ProviderJobPrimaryAction = "confirm" | "start-route" | "start-work" | "complete";
 type ProviderRouteStepStatus = "complete" | "current" | "pending";
@@ -300,6 +316,7 @@ export function ProviderLiveManagementBoard() {
 
   const provider = overview?.provider;
   const jobs = overview?.jobs ?? [];
+  const retentionProgram = overview?.retentionProgram;
   const dispatchDays = calendarOverview?.dispatchDays ?? [];
   const calendarHealth = calendarOverview?.syncHealth ?? calendarImports?.syncHealth;
   const calendarBlocks = provider?.calendarConnection.externalBlocks ?? [];
@@ -1125,6 +1142,56 @@ export function ProviderLiveManagementBoard() {
           <p>{i18n.t("provider_live.no_jobs.body")}</p>
         </section>
       )}
+
+      {retentionProgram ? (
+        <section className="card">
+          <span className="eyebrow">{i18n.t("provider_live.retention.eyebrow")}</span>
+          <h2>{i18n.t("provider_live.retention.title")}</h2>
+          <p>{retentionProgram.promise}</p>
+          <div className="provider-route-summary" aria-label={i18n.t("provider_live.retention.summary_aria")}>
+            <div>
+              <span>{i18n.t("provider_live.retention.acquired")}</span>
+              <strong>{retentionProgram.acquiredCustomerCount}</strong>
+            </div>
+            <div>
+              <span>{i18n.t("provider_live.retention.eligible")}</span>
+              <strong>{retentionProgram.eligibleCustomerCount}</strong>
+            </div>
+            <div>
+              <span>{i18n.t("provider_live.retention.returned")}</span>
+              <strong>{retentionProgram.repeatCustomerCount}</strong>
+            </div>
+            <div>
+              <span>{i18n.t("provider_live.retention.paused")}</span>
+              <strong>{retentionProgram.pausedCustomerCount}</strong>
+            </div>
+          </div>
+          <p>{retentionProgram.eligibilityRule}</p>
+          <p>
+            {i18n.t("provider_live.retention.fee_detail", {
+              finderFee: i18n.formatCurrency(retentionProgram.finderFeeCents),
+              jobFee: i18n.formatCurrency(retentionProgram.completedJobFeeCents, "USD", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })
+            })}
+          </p>
+          {retentionProgram.relationships.length > 0 ? (
+            <ul className="timeline">
+              {retentionProgram.relationships.map((relationship) => (
+                <li key={relationship.customerId}>
+                  <strong>{relationship.customerName}</strong>
+                  <span>
+                    {formatRetentionRelationshipStatus(i18n, relationship.status)} • {relationship.reason}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>{i18n.t("provider_live.retention.empty")}</p>
+          )}
+        </section>
+      ) : null}
 
       {provider ? (
         <section className="card">

@@ -1,0 +1,7 @@
+Environment variables loaded from .env
+Prisma schema loaded from apps/api/prisma/schema.prisma
+Datasource "db": PostgreSQL database "yardmatch_repair_validation", schema "public" at "127.0.0.1:55439"
+
+36 migrations found in prisma/migrations
+
+Database schema is up to date!

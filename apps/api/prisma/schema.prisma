@@ -349,7 +349,19 @@ model ReviewInvite {
   @@map("review_invites")
 }
 
+model SecurityState {
+  key       String   @id
+  value     Json
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("security_states")
+}
+
 model PaymentRecord {
+  checkoutSessionExpiredAt DateTime?
+  checkoutSuccessPath      String?
+  checkoutCancelPath       String?
   id                       String                      @id
   bookingId                String
   amountCents              Int

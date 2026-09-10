@@ -4,6 +4,7 @@ const DEFAULT_MAX_REQUEST_BODY_BYTES = 2_500_000;
 
 export interface RequestContext {
   method: string;
+  clientAddress?: string;
   path: string;
   body: unknown;
   rawBody?: string;
@@ -173,6 +174,7 @@ export async function parseRequest(
 
   return {
     method: request.method ?? "GET",
+    clientAddress: request.socket?.remoteAddress,
     path: url.pathname,
     body: parsedBody,
     rawBody,

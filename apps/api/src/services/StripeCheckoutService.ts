@@ -1,10 +1,12 @@
 import Stripe from "stripe";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { Address, Booking, CustomerProfile } from "@yardmatch/contracts";
 import { HttpError } from "../http";
 import { createStripeClient, runStripeRequest } from "../integrations/stripeRequest";
 
 export interface CreateStripeCheckoutSessionInput {
+  idempotencyKey?: string;
+  paymentId?: string;
   booking: Booking;
   customer: CustomerProfile;
   appBaseUrl: string;
@@ -26,6 +28,8 @@ export interface VerifiedStripeCheckoutSession {
 }
 
 export interface StripeWebhookEvent {
+  id?: string;
+  paymentId?: string;
   type: string;
   checkoutSessionId?: string;
   paymentIntentId?: string;
@@ -76,8 +80,8 @@ function buildServiceAddress(address: Address): string {
   return [address.line1, address.city, address.state, address.postalCode].filter(Boolean).join(", ");
 }
 
-function createIntegrationIdentifier(): string {
-  const suffix = Array.from(randomBytes(8), (byte) => String.fromCharCode(97 + (byte % 26))).join("");
+function createIntegrationIdentifier(key?: string): string {
+  const suffix = Array.from(key ? createHash("sha256").update(key).digest().subarray(0, 8) : randomBytes(8), (byte) => String.fromCharCode(97 + (byte % 26))).join("");
   return `yardmatch_${suffix}`;
 }
 
@@ -117,7 +121,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     const session = await runStripeRequest(
       () => this.stripe!.checkout.sessions.create({
         mode: "payment",
-        integration_identifier: createIntegrationIdentifier(),
+        integration_identifier: createIntegrationIdentifier(input.idempotencyKey),
         success_url: buildReturnUrl(input.appBaseUrl, input.successPath, true),
         cancel_url: buildReturnUrl(input.appBaseUrl, input.cancelPath, false),
         client_reference_id: input.booking.id,
@@ -127,13 +131,15 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
           enabled: true
         },
         metadata: {
+          paymentId: input.paymentId ?? "",
           bookingId: input.booking.id,
           customerId: input.customer.id,
           providerId: input.booking.providerId
         },
         payment_intent_data: {
           metadata: {
-            bookingId: input.booking.id,
+            paymentId: input.paymentId ?? "",
+          bookingId: input.booking.id,
             customerId: input.customer.id,
             providerId: input.booking.providerId
           }
@@ -151,7 +157,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
             }
           }
         ]
-      }),
+      }, { idempotencyKey: input.idempotencyKey }),
       "Stripe checkout did not respond in time. Refresh the booking before trying again."
     );
 
@@ -241,7 +247,9 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     ) {
       const session = event.data.object;
       return {
+        id: event.id,
         type: event.type,
+        paymentId: session.metadata?.paymentId,
         checkoutSessionId: session.id,
         paymentIntentId:
           typeof session.payment_intent === "string" ? session.payment_intent : undefined,
@@ -254,6 +262,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     if (event.type === "payment_intent.payment_failed") {
       const intent = event.data.object;
       return {
+        id: event.id,
         type: event.type,
         paymentIntentId: intent.id,
         failureReason: intent.last_payment_error?.message ?? "Stripe payment failed."
@@ -263,6 +272,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     if (event.type === "charge.refunded") {
       const charge = event.data.object;
       return {
+        id: event.id,
         type: event.type,
         paymentIntentId:
           typeof charge.payment_intent === "string" ? charge.payment_intent : undefined
@@ -272,6 +282,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     if (event.type === "charge.dispute.created") {
       const dispute = event.data.object;
       return {
+        id: event.id,
         type: event.type,
         disputeId: dispute.id,
         disputedAmountCents: dispute.amount,
@@ -282,6 +293,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     }
 
     return {
+      id: event.id,
       type: event.type
     };
   }

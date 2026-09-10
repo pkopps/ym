@@ -1,0 +1,15 @@
+
+> yardmatch-monorepo@0.1.0 prisma:seed
+> npm --workspace @yardmatch/api run prisma:seed
+
+
+> @yardmatch/api@0.1.0 prisma:seed
+> tsx prisma/seed.ts
+
+
+> yardmatch-monorepo@0.1.0 prisma:seed
+> npm --workspace @yardmatch/api run prisma:seed
+
+
+> @yardmatch/api@0.1.0 prisma:seed
+> tsx prisma/seed.ts

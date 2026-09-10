@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import {
   BeginTwoFactorSetupRequest,
   ConfirmTwoFactorSetupRequest,
@@ -25,6 +26,7 @@ import {
   getSessionExpiryIso,
   getBearerToken,
   hashPassword,
+  hashDeviceIdentifier,
   signScopedToken,
   signSessionToken,
   validatePasswordStrength,
@@ -51,11 +53,14 @@ interface OAuthStatePayload {
   role: GoogleAuthStartResponse["role"];
   mode: GoogleAuthStartResponse["mode"];
   redirectUri: string;
+  nonce?: string;
+  bindingHash?: string;
 }
 
 interface PendingSocialSignupPayload {
   provider: SocialAuthProvider;
   subject: string;
+  emailVerified: true;
   email: string;
   fullName: string;
   role: GoogleAuthStartResponse["role"];
@@ -90,6 +95,7 @@ export class AuthController implements ApiController {
       (context.method === "POST" && context.path === "/api/ops/accounts/password-reset/request") ||
       (context.method === "POST" && context.path === "/api/ops/accounts/access") ||
       (context.method === "POST" && context.path === "/api/auth/social/complete") ||
+      (context.method === "POST" && context.path === "/api/auth/apple/callback") ||
       (context.method === "GET" && context.path === "/api/auth/me") ||
       (context.method === "GET" &&
         (context.path === "/api/auth/google/start" ||
@@ -128,13 +134,18 @@ export class AuthController implements ApiController {
         return;
       }
 
+      const browserBinding = this.readOAuthCookie(context) ?? randomBytes(32).toString("hex");
+      const deployed = process.env.NODE_ENV === "production" || ["production", "staging"].includes(process.env.YARDMATCH_ENV ?? "");
+      response.setHeader("Set-Cookie", `${this.oauthCookieName()}=${browserBinding}; HttpOnly; Path=/; Max-Age=600; SameSite=${deployed ? "None; Secure" : "Lax"}`);
       const state = signScopedToken<OAuthStatePayload>(
         oauthStatePurpose,
         {
           provider,
           role,
           mode,
-          redirectUri
+          redirectUri,
+          nonce: randomBytes(32).toString("hex"),
+          bindingHash: hashDeviceIdentifier(browserBinding)
         },
         oauthStateTtlSeconds
       );
@@ -154,11 +165,17 @@ export class AuthController implements ApiController {
     }
 
     if (
-      context.method === "GET" &&
-      (context.path === "/api/auth/google/callback" || context.path === "/api/auth/apple/callback")
+      (context.method === "GET" &&
+        (context.path === "/api/auth/google/callback" || context.path === "/api/auth/apple/callback")) ||
+      (context.method === "POST" && context.path === "/api/auth/apple/callback")
     ) {
       const provider = this.getProviderFromPath(context.path);
-      const stateToken = context.query.get("state");
+      const callbackValue = (key: string): string | null => {
+        if (context.method === "GET") return context.query.get(key);
+        const value = (context.body as Record<string, unknown> | undefined)?.[key];
+        return typeof value === "string" ? value : null;
+      };
+      const stateToken = callbackValue("state");
       const fallbackState: OAuthStatePayload = {
         provider,
         role: "customer",
@@ -167,9 +184,20 @@ export class AuthController implements ApiController {
       };
 
       let state = fallbackState;
+      if (!stateToken) {
+        this.redirectWithError(response, fallbackState, "OAuth state is required. Start sign-in again.");
+        return;
+      }
       if (stateToken) {
         try {
           state = verifyScopedToken<OAuthStatePayload>(stateToken, oauthStatePurpose);
+          const binding = this.readOAuthCookie(context);
+          if (state.provider !== provider || !state.nonce || !binding || state.bindingHash !== hashDeviceIdentifier(binding)) {
+            throw new Error("OAuth state does not match this sign-in. Start sign-in again.");
+          }
+          if (!(await this.platform.consumeSecurityLimit(`oauth-state:${state.nonce}`, 1, oauthStateTtlSeconds))) {
+            throw new Error("OAuth state has already been used. Start sign-in again.");
+          }
         } catch (error) {
           this.redirectWithError(
             response,
@@ -180,13 +208,13 @@ export class AuthController implements ApiController {
         }
       }
 
-      const providerError = context.query.get("error") ?? context.query.get("error_description");
+      const providerError = callbackValue("error") ?? callbackValue("error_description");
       if (providerError) {
         this.redirectWithError(response, state, providerError);
         return;
       }
 
-      const code = context.query.get("code");
+      const code = callbackValue("code");
       if (!code) {
         this.redirectWithError(response, state, "The authentication provider did not return an authorization code.");
         return;
@@ -270,14 +298,14 @@ export class AuthController implements ApiController {
 
     if (context.method === "POST" && context.path === "/api/auth/password-reset/request") {
       const payload = context.body as RequestPasswordResetRequest;
-      const result = await this.platform.requestPasswordReset(payload);
+      const result = await this.platform.requestPasswordReset(payload, context.clientAddress);
       sendJson(response, 200, result);
       return;
     }
 
     if (context.method === "POST" && context.path === "/api/auth/password-reset/confirm") {
       const payload = context.body as ConfirmPasswordResetRequest;
-      const user = await this.platform.confirmPasswordReset(payload);
+      const user = await this.platform.confirmPasswordReset(payload, context.clientAddress);
       const identity = await this.platform.findAuthIdentityByUserId(user.id);
       if (!identity) {
         throw new HttpError(404, "User profile not found");
@@ -398,6 +426,7 @@ export class AuthController implements ApiController {
         throw new HttpError(401, error instanceof Error ? error.message : "The social signup session has expired.");
       }
 
+      if (pending.emailVerified !== true) throw new HttpError(401, "A verified email is required. Start social sign-in again.");
       if (pending.role !== payload.role) {
         throw new HttpError(409, "Finish signup from the same YardMatch role you started with.");
       }
@@ -562,6 +591,17 @@ export class AuthController implements ApiController {
     );
   }
 
+  private readOAuthCookie(context: RequestContext): string | undefined {
+    const prefix = `${this.oauthCookieName()}=`;
+    const value = context.headers.cookie?.split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length);
+    return value && /^[a-f0-9]{64}$/.test(value) ? value : undefined;
+  }
+
+  private oauthCookieName(): string {
+    return process.env.NODE_ENV === "production" || ["staging", "production"].includes(process.env.YARDMATCH_ENV ?? "")
+      ? "__Host-ym-oauth-binding" : "ym-oauth-binding";
+  }
+
   private parseRole(value: string | null): GoogleAuthStartResponse["role"] {
     return value === "provider" || value === "crew-member" || value === "customer" ? value : "customer";
   }
@@ -605,6 +645,7 @@ export class AuthController implements ApiController {
     state: OAuthStatePayload,
     socialIdentity: SocialIdentity
   ): Promise<AuthenticatedUserEnvelope | PendingSocialSignupPayload & { pendingToken: string; expiresAtIso: string }> {
+    if (socialIdentity.emailVerified !== true) throw new HttpError(401, "Verify your email with the sign-in provider before continuing.");
     const linkedIdentity = await this.platform.findAuthIdentityByProvider(socialIdentity.provider, socialIdentity.subject);
     if (linkedIdentity) {
       if (linkedIdentity.role !== state.role) {
@@ -659,6 +700,7 @@ export class AuthController implements ApiController {
     const pendingPayload: PendingSocialSignupPayload = {
       provider: socialIdentity.provider,
       subject: socialIdentity.subject,
+      emailVerified: true,
       email: socialIdentity.email,
       fullName: socialIdentity.fullName,
       role: state.role,
@@ -681,6 +723,7 @@ export class AuthController implements ApiController {
     user: NonNullable<Awaited<ReturnType<MarketplacePlatformService["getUserByIdentity"]>>>,
     method: OpsAuthenticationMethod
   ): Promise<AuthenticatedUserEnvelope> {
+    if (identity.accessDisabledAt) throw new HttpError(403, "Account access has been disabled");
     const refreshedIdentity =
       (await this.platform.recordSuccessfulAuthentication(identity.userId, method)) ?? identity;
     return {

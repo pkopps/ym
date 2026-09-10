@@ -1,0 +1,23 @@
+✔ 01 public reset reveals a usable code under NODE_ENV=production (203.126541ms)
+✔ 02 reset requests and wrong-code attempts are not throttled (198.837833ms)
+✔ 03 unverified OAuth email links to an existing password account (164.888208ms)
+✔ 04 OAuth callback succeeds without state (143.322416ms)
+✔ 05 booking HTTP controller accepts an injected customerId (161.006917ms)
+✔ 06 client-selected price reaches checkout unchanged (145.943709ms)
+✔ 07 rejected provider with no credentials accepts and confirms booking (147.517542ms)
+✔ 08 booking accepts an end before its start (144.372334ms)
+✔ 09 failed initial booking leaves an active recurring plan (143.852791ms)
+✔ 10 importing calendar B deletes calendar A blocks (148.8815ms)
+✔ 11 calendar import passes a loopback URL directly to fetch (151.848458ms)
+✔ 12 ICS TZID is ignored on a UTC server (149.404167ms)
+✔ 13 recurring ICS event yields only its first block (150.968834ms)
+✔ 14 second checkout overwrites the first and drops its completion webhook (167.168125ms)
+✔ 15 delayed checkout completion changes refunded payment back to captured (150.323666ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3032.532875

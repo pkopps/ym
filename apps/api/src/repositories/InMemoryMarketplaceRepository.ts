@@ -44,6 +44,38 @@ import {
 } from "./MarketplaceRepository";
 
 export class InMemoryMarketplaceRepository implements MarketplaceRepository {
+  private readonly locks = new Map<string, Promise<void>>();
+  private readonly securityStates = new Map<string, { value: Record<string, unknown>; expiresAt: number }>();
+
+  public async withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T> {
+    const previous = this.locks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    this.locks.set(key, current);
+    await previous;
+    try { return await work(this); }
+    finally {
+      release();
+      if (this.locks.get(key) === current) this.locks.delete(key);
+    }
+  }
+
+  public async getSecurityState(key: string): Promise<Record<string, unknown> | undefined> {
+    const entry = this.securityStates.get(key);
+    return entry && entry.expiresAt > Date.now() ? structuredClone(entry.value) : undefined;
+  }
+
+  public async putSecurityState(key: string, value: Record<string, unknown>, expiresAt: string): Promise<void> {
+    for (const [id, entry] of this.securityStates) if (entry.expiresAt <= Date.now()) this.securityStates.delete(id);
+    this.securityStates.set(key, { value: structuredClone(value), expiresAt: Date.parse(expiresAt) });
+  }
+
+  public async createRecurringPlanWithBooking(plan: RecurringServicePlan, booking: Booking): Promise<Booking> {
+    // Both records become visible synchronously; no await or side effect between writes.
+    this.recurringServicePlans.push(plan);
+    this.bookings.push(booking);
+    return booking;
+  }
   private readonly customers: CustomerProfile[] = [];
   private readonly providers: ProviderProfile[] = [];
   private readonly crewMembers: CrewMemberProfile[] = [];
@@ -462,6 +494,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       return undefined;
     }
 
+    if (payment.status === "refunded" && updates.status && updates.status !== "refunded") return payment;
     Object.assign(payment, updates);
     return payment;
   }

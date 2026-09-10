@@ -1,3 +1,4 @@
+import { createWorkflowBooking } from "./helpers/workflowBooking";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
@@ -1140,8 +1141,8 @@ test("ops users can prepare invite-style password resets for new and existing op
   const resetExisting = resetExistingResponse.readJson();
   assert.equal(resetExisting.account.profile.id, created.account.profile.id);
   assert.equal(resetExisting.passwordReset.success, true);
-  assert.ok(resetExisting.passwordReset.resetCodePreview);
-  assert.ok(resetExisting.passwordReset.resetUrlPreview);
+  assert.equal(resetExisting.passwordReset.resetCodePreview, undefined);
+  assert.equal(resetExisting.passwordReset.resetUrlPreview, undefined); // Resend cooldown also applies to ops invitations.
   assert.deepEqual(resetExisting.account.accessHistory.map((entry: { kind: string }) => entry.kind), [
     "created",
     "password-reset-invited",
@@ -2812,7 +2813,7 @@ test("support tickets list only the authenticated user's tickets and reject unre
 
   const [provider] = await repository.listProviders();
   assert.ok(provider);
-  const booking = await platform.createBooking(customer.user.id, {
+  const booking = await createWorkflowBooking(platform, repository, customer.user.id, {
     providerId: provider.id,
     serviceAddress: customerProfile.address,
     servicePropertyId: customerProfile.defaultPropertyId,

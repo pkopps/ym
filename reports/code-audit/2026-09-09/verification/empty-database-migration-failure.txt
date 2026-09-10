@@ -1,0 +1,35 @@
+
+> yardmatch-monorepo@0.1.0 prisma:deploy
+> npm --workspace @yardmatch/api run prisma:deploy
+
+
+> @yardmatch/api@0.1.0 prisma:deploy
+> prisma migrate deploy --schema prisma/schema.prisma
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "yardmatch_audit", schema "public" at "127.0.0.1:55439"
+
+36 migrations found in prisma/migrations
+
+Applying migration `20260528123000_crew_staffing_chat`
+Error: P3018
+
+A migration failed to apply. New migrations cannot be applied before the error is recovered from. Read more about how to resolve migration issues in a production database: https://pris.ly/d/migrate-resolve
+
+Migration name: 20260528123000_crew_staffing_chat
+
+Database error code: 42P01
+
+Database error:
+ERROR: relation "crew_member_profiles" does not exist
+
+DbError { severity: "ERROR", parsed_severity: Some(Error), code: SqlState(E42P01), message: "relation \"crew_member_profiles\" does not exist", detail: None, hint: None, position: None, where_: None, schema: None, table: None, column: None, datatype: None, constraint: None, file: Some("namespace.c"), line: Some(437), routine: Some("RangeVarGetRelidExtended") }
+
+
+npm error Lifecycle script `prisma:deploy` failed with error:
+npm error code 1
+npm error path /Users/patrickkopps/Documents/app/apps/api
+npm error workspace @yardmatch/api@0.1.0
+npm error location /Users/patrickkopps/Documents/app/apps/api
+npm error command failed
+npm error command sh -c prisma migrate deploy --schema prisma/schema.prisma

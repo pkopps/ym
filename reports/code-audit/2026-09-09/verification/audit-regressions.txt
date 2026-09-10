@@ -1,0 +1,32 @@
+✔ 01 deployed reset hides secrets and delivers them privately (210.786458ms)
+✔ 02 reset requests have a cooldown and wrong attempts exhaust the challenge (140.187542ms)
+✔ 03 unverified OAuth email cannot link to an existing account (137.246959ms)
+✔ 04 OAuth callback rejects missing state (138.598917ms)
+✔ 05 booking ignores injected customerId and retains authenticated ownership (142.761958ms)
+✔ 06 signed quote rejects client price, property, and service tampering (136.663542ms)
+✔ 07 rejected, uncredentialed, unsupported, and distant providers cannot accept bookings (136.442584ms)
+✔ 08 invalid and past booking windows are rejected before persistence (136.028291ms)
+✔ 09 failed initial booking leaves no active recurring plan (136.671208ms)
+✔ 10 concurrent calendar imports and refreshes preserve every feed (301.463291ms)
+✔ 11 calendar destinations reject private IP forms and DNS results (2.612458ms)
+✔ 12 calendar TZID, floating and all-day values use New York time on a UTC server (130.231209ms)
+✔ 13 calendar recurrence expands all occurrences and respects EXDATE (46.469417ms)
+✔ 14 repeated checkout reuses its active session and retains completion tracking (137.575459ms)
+✔ 15 delayed completion cannot resurrect refunded payments (136.529333ms)
+✔ recovery codes are consumed once under concurrent confirmations (182.128666ms)
+✔ OAuth state is browser-bound, provider-bound and consumed exactly once (137.131584ms)
+✔ concurrent checkout requests and a transport retry retain the same attempt key (136.35275ms)
+✔ expired checkout replacement preserves the old attempt and its event mapping (135.652542ms)
+✔ concurrent initial recurring requests produce one plan and one first occurrence (136.661541ms)
+✔ calendar expands RDATE and moved occurrences across daylight saving changes (53.448584ms)
+✔ all-day calendar series preserve local midnights through the DST transition (50.089625ms)
+✔ Apple form-post callback requires the deployed host-only browser binding (136.921417ms)
+✔ recovery delivery failure does not disclose account existence (135.789ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3721.786291

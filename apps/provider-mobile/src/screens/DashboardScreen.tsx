@@ -207,6 +207,22 @@ function getTodayJobActionLabel(i18n: I18nInstance, action: ProviderTodayJobActi
   }
 }
 
+function formatRetentionStatus(
+  i18n: I18nInstance,
+  status: ProviderStaffingOverview["retentionProgram"]["relationships"][number]["status"]
+) {
+  switch (status) {
+    case "awaiting-first-settlement":
+      return i18n.t("provider_mobile.dashboard.retention.status.awaiting");
+    case "eligible-for-retention":
+      return i18n.t("provider_mobile.dashboard.retention.status.eligible");
+    case "repeat-customer":
+      return i18n.t("provider_mobile.dashboard.retention.status.repeat");
+    case "paused":
+      return i18n.t("provider_mobile.dashboard.retention.status.paused");
+  }
+}
+
 export function DashboardScreen({
   onOpenCrew,
   onOpenSchedule
@@ -440,6 +456,53 @@ export function DashboardScreen({
           <Text style={styles.opsSummaryMeta}>{i18n.t("provider_mobile.dashboard.no_route_work")}</Text>
         )}
       </View>
+
+      {overview?.retentionProgram ? (
+        <InfoCard
+          title={i18n.t("provider_mobile.dashboard.retention.title")}
+          description={overview.retentionProgram.promise}
+        >
+          <View style={styles.jobSummaryGrid}>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.retention.acquired")}</Text>
+              <Text style={styles.jobSummaryValue}>{overview.retentionProgram.acquiredCustomerCount}</Text>
+            </View>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.retention.eligible")}</Text>
+              <Text style={styles.jobSummaryValue}>{overview.retentionProgram.eligibleCustomerCount}</Text>
+            </View>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.retention.returned")}</Text>
+              <Text style={styles.jobSummaryValue}>{overview.retentionProgram.repeatCustomerCount}</Text>
+            </View>
+            <View style={styles.jobSummaryItem}>
+              <Text style={styles.jobSummaryLabel}>{i18n.t("provider_mobile.dashboard.retention.paused")}</Text>
+              <Text style={styles.jobSummaryValue}>{overview.retentionProgram.pausedCustomerCount}</Text>
+            </View>
+          </View>
+          <Text style={styles.alertText}>{overview.retentionProgram.eligibilityRule}</Text>
+          <Text style={styles.alertText}>
+            {i18n.t("provider_mobile.dashboard.retention.fee_detail", {
+              finderFee: formatCurrency(i18n, overview.retentionProgram.finderFeeCents),
+              jobFee: i18n.formatCurrency(overview.retentionProgram.completedJobFeeCents, "USD", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })
+            })}
+          </Text>
+          {overview.retentionProgram.relationships.slice(0, 3).map((relationship) => (
+            <View key={relationship.customerId} style={styles.jobRow}>
+              <View style={styles.jobCopy}>
+                <Text style={styles.jobTitle}>{relationship.customerName}</Text>
+                <Text style={styles.jobMeta}>{relationship.reason}</Text>
+              </View>
+              <Text style={relationship.status === "paused" ? styles.warningBadge : styles.successBadge}>
+                {formatRetentionStatus(i18n, relationship.status)}
+              </Text>
+            </View>
+          ))}
+        </InfoCard>
+      ) : null}
 
       {shouldShowPayouts && payoutLedger ? (
         <InfoCard

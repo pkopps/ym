@@ -1,3 +1,5 @@
+import { fetchCalendarFeed } from "../integrations/calendarFeed";
+import { parseCalendarFeed } from "./calendarParser";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
@@ -189,6 +191,7 @@ import {
   ExternalCalendarSubscription,
   ProviderReview,
   ReviewBookingEvidenceForOpsRequest,
+  ProviderRetentionProgramSummary,
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
   ProviderCalendarSubscriptionResponse,
@@ -262,6 +265,7 @@ import {
   VerifyTwoFactorLoginRequest
 } from "@yardmatch/contracts";
 import {
+  ACTIVE_MARKETPLACE_ECONOMICS_POLICY,
   BookingAddressPolicyService,
   BookingLifecycleService,
   containsDirectContactDetails,
@@ -289,7 +293,6 @@ import {
   verifyTwoFactorCode
 } from "../auth";
 import { HttpError } from "../http";
-import { withAbortableTimeout } from "../integrations/outboundRequestTimeout";
 import { decodePageCursor, encodePageCursor } from "../pagination";
 import { ValidatedEvidenceImage, validateEvidenceImageDataUrl } from "../media/imageValidation";
 import { evaluateProviderCredentialReadiness } from "../policies/providerCredentialPolicy";
@@ -320,6 +323,20 @@ const PROTECTED_MARKETPLACE_MESSAGE =
   "[Contact details removed by YardMatch. Keep booking and communication in the app.]";
 const PROTECTED_MARKETPLACE_PROFILE_COPY =
   "Verified service details are available through YardMatch. Keep booking and communication in the app.";
+
+interface CustomerProviderRetentionState {
+  customerId: string;
+  providerId: string;
+  firstCompletedBookingId?: string;
+  lastCompletedAt?: string;
+  completedBookingCount: number;
+  finderFeeRecorded: boolean;
+  latestReviewScore?: ProviderReview["overallRating"];
+  status: ProviderRetentionProgramSummary["relationships"][number]["status"];
+  qualifiesForContinuity: boolean;
+  reason: string;
+  customerMessage: string;
+}
 
 interface TwoFactorChallengeTokenPayload {
   userId: string;
@@ -431,6 +448,7 @@ export class MarketplacePlatformService {
   );
   private readonly notificationDelivery = new NotificationDeliveryService();
   private readonly stripeCheckout: PaymentCheckoutGateway;
+  private readonly calendarFeedLoader = fetchCalendarFeed;
   private readonly stripeConnect: StripeConnectGateway;
   private readonly appBaseUrl: string;
   private readonly apiBaseUrl: string;
@@ -590,43 +608,63 @@ export class MarketplacePlatformService {
     return this.repository.createProvider(provider, passwordHash);
   }
 
+  private withRepository(repository: MarketplaceRepository): MarketplacePlatformService {
+    return Object.assign(Object.create(Object.getPrototypeOf(this)), this, { repository });
+  }
+
+  public async consumeSecurityLimit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+    const digest = hashDeviceIdentifier(key);
+    return this.repository.withLock(`security:${digest}`, async (repository) => {
+      const state = await repository.getSecurityState(digest);
+      const count = Number(state?.count ?? 0);
+      if (count >= limit) return false;
+      const expiresAt = typeof state?.expiresAt === "string" ? state.expiresAt : new Date(Date.now() + windowSeconds * 1000).toISOString();
+      await repository.putSecurityState(digest, { count: count + 1, expiresAt }, expiresAt);
+      return true;
+    });
+  }
+
   public async requestPasswordReset(
-    payload: RequestPasswordResetRequest
+    payload: RequestPasswordResetRequest,
+    sourceAddress?: string
   ): Promise<RequestPasswordResetResponse> {
+    if (typeof payload?.email !== "string" || !payload.email.trim()) throw new HttpError(400, "Email is required.");
     const email = payload.email.trim().toLowerCase();
-    const identity = await this.repository.findAuthIdentityByEmail(email);
-
-    if (!identity?.passwordHash) {
-      return {
-        success: true,
-        message: "If that account exists, YardMatch has prepared a password reset code."
-      };
+    const generic: RequestPasswordResetResponse = { success: true, message: "If that account exists, YardMatch has sent password recovery instructions." };
+    if (sourceAddress && !(await this.consumeSecurityLimit(`reset-source:${sourceAddress}`, 300, 600))) {
+      throw new HttpError(429, "Too many recovery requests. Try again later.");
     }
-
-    const resetCode = generatePasswordResetCode();
-    const expiresAtIso = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000).toISOString();
-    await this.repository.updateAuthIdentity(identity.userId, {
-      resetPasswordCodeHash: hashPasswordResetCode(email, resetCode),
-      resetPasswordExpiresAt: expiresAtIso,
-      resetPasswordRequestedAt: new Date().toISOString()
+    // Identical cooldown behavior for real and nonexistent accounts; no account enumeration.
+    if (!(await this.consumeSecurityLimit(`reset-send:${email}`, 1, 60)) ||
+        !(await this.consumeSecurityLimit(`reset-hour:${email}`, 5, 3600))) return generic;
+    const issued = await this.repository.withLock(`recovery:${hashDeviceIdentifier(email)}`, async (repository) => {
+      const identity = await repository.findAuthIdentityByEmail(email);
+      if (!identity?.passwordHash || identity.accessDisabledAt) return undefined;
+      const code = generatePasswordResetCode();
+      const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60000).toISOString();
+      await repository.updateAuthIdentity(identity.userId, {
+        resetPasswordCodeHash: hashPasswordResetCode(email, code),
+        resetPasswordExpiresAt: expiresAt,
+        resetPasswordRequestedAt: new Date().toISOString()
+      });
+      return { code, expiresAt, email: identity.email };
     });
-
-    await this.createNotification({
-      recipientId: identity.userId,
-      recipientRole: identity.role,
-      category: "account",
-      title: "Password reset requested",
-      body: "Use the latest YardMatch password reset code to finish securing your account.",
-      actionHref: "/login"
-    });
-
-    return {
-      success: true,
-      message: "If that account exists, YardMatch has prepared a password reset code.",
-      expiresAtIso,
-      resetCodePreview: resetCode,
-      resetUrlPreview: `${this.appBaseUrl}/login?resetCode=${encodeURIComponent(resetCode)}&email=${encodeURIComponent(email)}`
-    };
+    if (!issued) return generic;
+    // Recovery delivery is independent of marketing/notification preferences, and its secret
+    // is never persisted in general-purpose notification previews or returned by deployed APIs.
+    try {
+      await this.notificationDelivery.dispatch({ channel: "email", destination: issued.email,
+        title: "Reset your YardMatch password",
+        body: `Your YardMatch password reset code is ${issued.code}. It expires in ${PASSWORD_RESET_TTL_MINUTES} minutes. If you did not request this, ignore this email.` });
+    } catch {
+      // Vendor errors can include message bodies; record only a sanitized failure signal.
+      this.analytics.record({ id: crypto.randomUUID(), name: "password_reset_delivery_failed",
+        occurredAt: new Date().toISOString(), properties: { channel: "email" } });
+      return generic;
+    }
+    const local = process.env.NODE_ENV !== "production" && !["staging", "production"].includes(process.env.YARDMATCH_ENV ?? "");
+    return local ? { ...generic, expiresAtIso: issued.expiresAt, resetCodePreview: issued.code,
+      resetUrlPreview: `${this.appBaseUrl}/login?resetCode=${encodeURIComponent(issued.code)}&email=${encodeURIComponent(email)}` } : generic;
   }
 
   public async listOpsAccounts(): Promise<OpsAccountSummary[]> {
@@ -929,13 +967,39 @@ export class MarketplacePlatformService {
     );
   }
 
-  public async confirmPasswordReset(
+  public async confirmPasswordReset(payload: ConfirmPasswordResetRequest, sourceAddress?: string) {
+    if (typeof payload?.email !== "string" || typeof payload.resetCode !== "string" || typeof payload.newPassword !== "string") {
+      throw new HttpError(400, "Email, reset code, and new password are required.");
+    }
+    validatePasswordStrength(payload.newPassword);
+    if (sourceAddress && !(await this.consumeSecurityLimit(`reset-verify-source:${sourceAddress}`, 300, 600))) {
+      throw new HttpError(429, "Too many recovery attempts. Try again later.");
+    }
+    const email = payload.email.trim().toLowerCase();
+    const result = await this.repository.withLock(`recovery:${hashDeviceIdentifier(email)}`, async (repository) => {
+      const identity = await repository.findAuthIdentityByEmail(email);
+      const key = hashDeviceIdentifier(`reset-attempt:${email}:${identity?.resetPasswordCodeHash ?? "none"}`);
+      const attempts = Number((await repository.getSecurityState(key))?.count ?? 0);
+      if (attempts >= 5) return { error: new HttpError(429, "Too many recovery attempts. Request a new code later.") };
+      await repository.putSecurityState(key, { count: attempts + 1 }, new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60000).toISOString());
+      try { return { user: await this.withRepository(repository).confirmPasswordResetRecord(payload) }; }
+      catch (error) {
+        // Commit the failed-attempt count, but only convert expected validation failures.
+        if (error instanceof HttpError) return { error };
+        throw error;
+      }
+    });
+    if (result.error) throw result.error;
+    return result.user;
+  }
+
+  private async confirmPasswordResetRecord(
     payload: ConfirmPasswordResetRequest
   ): Promise<CustomerProfile | CrewMemberProfile | ProviderProfile | OpsProfile> {
     const email = payload.email.trim().toLowerCase();
     const identity = await this.repository.findAuthIdentityByEmail(email);
 
-    if (!identity?.passwordHash) {
+    if (!identity?.passwordHash || identity.accessDisabledAt) {
       throw new HttpError(400, "Invalid password reset code");
     }
 
@@ -1727,10 +1791,96 @@ export class MarketplacePlatformService {
     return { success: true };
   }
 
+  private async resolveEligibleSearchRetentionPreference(
+    preference: SearchProvidersRequest["retentionPreference"],
+    bookings: Booking[],
+    address: Address
+  ): Promise<SearchProvidersRequest["retentionPreference"]> {
+    if (!preference) {
+      return undefined;
+    }
+
+    const sourceBooking = bookings.find((booking) => booking.id === preference.sourceBookingId);
+    if (
+      !sourceBooking ||
+      sourceBooking.providerId !== preference.priorProviderId ||
+      sourceBooking.status !== "completed" ||
+      !sourceBooking.completedAt ||
+      !this.isSameRetentionProperty(sourceBooking.serviceAddress, address)
+    ) {
+      return undefined;
+    }
+
+    const relationshipBookings = bookings.filter(
+      (booking) =>
+        booking.customerId === sourceBooking.customerId &&
+        booking.providerId === sourceBooking.providerId
+    );
+    const retentionState = (
+      await this.buildCustomerProviderRetentionStates(relationshipBookings)
+    ).get(`${sourceBooking.customerId}:${sourceBooking.providerId}`);
+    if (!retentionState?.qualifiesForContinuity) {
+      return undefined;
+    }
+
+    const propertyCategoryHistory = bookings.filter(
+      (booking) =>
+        booking.customerId === sourceBooking.customerId &&
+        booking.status === "completed" &&
+        booking.completedAt &&
+        booking.category === sourceBooking.category &&
+        this.isSameRetentionProperty(booking.serviceAddress, sourceBooking.serviceAddress)
+    );
+    const sameProviderCompletedCount = propertyCategoryHistory.filter(
+      (booking) => booking.providerId === sourceBooking.providerId
+    ).length;
+    const completedCategoryCount = propertyCategoryHistory.length;
+    const loyaltySegment =
+      sameProviderCompletedCount >= 2
+        ? "provider-loyal"
+        : completedCategoryCount >= 2
+          ? "repeat-customer"
+          : "new-repeat";
+
+    return {
+      ...preference,
+      priorProviderId: sourceBooking.providerId,
+      sourceBookingId: sourceBooking.id,
+      loyaltySegment,
+      completedCategoryCount,
+      sameProviderCompletedCount
+    };
+  }
+
+  private isSameRetentionProperty(left: Address, right: Address): boolean {
+    const normalize = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+    return (
+      normalize(left.line1) === normalize(right.line1) &&
+      normalize(left.city) === normalize(right.city) &&
+      normalize(left.state) === normalize(right.state) &&
+      normalize(left.postalCode) === normalize(right.postalCode)
+    );
+  }
+
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
     const normalizedAddress = (await this.normalizeAndValidateAddress(payload.address)).address;
     const recommendationSessionId = crypto.randomUUID();
     const providerDecisionMetrics = this.buildProviderDecisionMetrics();
+
+    const [providers, bookings] = await Promise.all([
+      this.repository.listProviders(),
+      this.repository.listBookings()
+    ]);
+    const effectiveRetentionPreference = await this.resolveEligibleSearchRetentionPreference(
+      payload.retentionPreference,
+      bookings,
+      normalizedAddress
+    );
+    const rankingPayload: SearchProvidersRequest = {
+      ...payload,
+      address: normalizedAddress,
+      retentionPreference: effectiveRetentionPreference
+    };
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.providerSearchPerformed, "anonymous", {
       recommendationSessionId,
@@ -1738,14 +1888,9 @@ export class MarketplacePlatformService {
       categoryCount: payload.categories.length,
       city: normalizedAddress.city,
       requestSource: payload.requestSource ?? "unknown",
-      ...this.buildSearchRetentionAnalyticsProperties(payload.retentionPreference),
+      ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
       ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
     });
-
-    const [providers, bookings] = await Promise.all([
-      this.repository.listProviders(),
-      this.repository.listBookings()
-    ]);
 
     const rankedCandidates = (
       await Promise.all(
@@ -1782,7 +1927,7 @@ export class MarketplacePlatformService {
             const suggestedSlot = matchingSlots[0];
             const providerBookings = bookings.filter((booking) => booking.providerId === provider.id);
             const ranking = this.buildSearchProviderRanking(
-              payload,
+              rankingPayload,
               provider,
               providerBookings,
               distanceMiles,
@@ -1832,7 +1977,7 @@ export class MarketplacePlatformService {
         slotCount: suggestedSlots.length,
         city: normalizedAddress.city,
         requestSource: payload.requestSource ?? "unknown",
-        ...this.buildSearchRetentionAnalyticsProperties(payload.retentionPreference),
+        ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
         ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
       }
     });
@@ -1848,7 +1993,7 @@ export class MarketplacePlatformService {
           slotCount: 0,
           city: normalizedAddress.city,
           requestSource: payload.requestSource ?? "unknown",
-          ...this.buildSearchRetentionAnalyticsProperties(payload.retentionPreference),
+          ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
         }
       });
@@ -1863,7 +2008,7 @@ export class MarketplacePlatformService {
           slotCount: 0,
           city: normalizedAddress.city,
           requestSource: payload.requestSource ?? "unknown",
-          ...this.buildSearchRetentionAnalyticsProperties(payload.retentionPreference),
+          ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
         }
       });
@@ -1881,7 +2026,7 @@ export class MarketplacePlatformService {
           city: normalizedAddress.city,
           hasOpenSlot: Boolean(rankedProviders[0]?.hasOpenSlot),
           requestSource: payload.requestSource ?? "unknown",
-          ...this.buildSearchRetentionAnalyticsProperties(payload.retentionPreference),
+          ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
         }
       });
@@ -4110,10 +4255,14 @@ export class MarketplacePlatformService {
 
   public async getProviderStaffingOverview(providerId: string): Promise<ProviderStaffingOverview> {
     const provider = await this.getProviderProfile(providerId);
-    const jobs = await this.buildProviderStaffingSummaries(provider);
+    const [jobs, retentionProgram] = await Promise.all([
+      this.buildProviderStaffingSummaries(provider),
+      this.buildProviderRetentionProgramSummary(provider)
+    ]);
     return {
       provider,
-      jobs
+      jobs,
+      retentionProgram
     };
   }
 
@@ -6419,7 +6568,11 @@ export class MarketplacePlatformService {
     return match;
   }
 
-  public async updateProviderSettings(
+  public async updateProviderSettings(providerId: string, payload: UpdateProviderSettingsRequest): Promise<ProviderProfile> {
+    return this.repository.withLock(`calendar:${providerId}`, (repository) => this.withRepository(repository).updateProviderSettingsRecord(providerId, payload));
+  }
+
+  private async updateProviderSettingsRecord(
     providerId: string,
     payload: UpdateProviderSettingsRequest
   ): Promise<ProviderProfile> {
@@ -6779,6 +6932,10 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Only requested bookings can be confirmed");
     }
 
+    await this.assertBookingProviderEligible(booking.providerId, booking.category, booking.serviceAddress);
+    this.validateBookingWindow(booking.scheduledStartIso, booking.scheduledEndIso);
+    await this.assertProviderWindowIsAvailable(booking.providerId, booking.scheduledStartIso, booking.scheduledEndIso);
+
     const updatedBooking = await this.repository.updateBooking(booking.id, {
       status: "confirmed"
     });
@@ -6921,6 +7078,14 @@ export class MarketplacePlatformService {
 
     return {
       ...quote,
+      quoteToken: signScopedToken("yardmatch-booking-quote-v1", {
+        customerId: payload.customerId,
+        propertyId: payload.propertyId,
+        addressKey: this.quoteAddressKey(normalizedAddress),
+        category: payload.category,
+        totalCents: quote.estimatedPriceCents,
+        pricingVersion: 1
+      }, 30 * 60),
       launchPricingPolicy: this.buildLaunchPricingPolicy(payload.category)
     };
   }
@@ -6929,12 +7094,88 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: CreateBookingRequest
   ): Promise<Booking> {
-    return this.createBookingRecord(customerId, payload);
+    return this.createBookingRecord(customerId, this.parseBookingRequest(payload));
   }
 
-  public async createRecurringServicePlan(
+  private quoteAddressKey(address: Address): string {
+    return [address.line1, address.city, address.state, address.postalCode, address.country]
+      .map((part) => part.trim().toLowerCase().replace(/\s+/g, " ")).join("|");
+  }
+
+  private parseBookingRequest(payload: CreateBookingRequest): CreateBookingRequest {
+    if (!payload || typeof payload.providerId !== "string" || !payload.serviceAddress || typeof payload.category !== "string") {
+      throw new HttpError(400, "Provider, service, and address are required.");
+    }
+    const { quoteToken, providerId, launchLeadId, serviceAddress, servicePropertyId, category,
+      scheduledStartIso, scheduledEndIso, totalCents, recommendationSessionId, recommendedProviderId,
+      selectedProviderRank, viewedAlternativeProviders, requestSource, recommendationSource, retentionContext, attribution } = payload;
+    if (!Number.isSafeInteger(totalCents) || totalCents <= 0) throw new HttpError(400, "Price must be a positive whole number of cents.");
+    return { quoteToken, providerId, launchLeadId, serviceAddress, servicePropertyId, category,
+      scheduledStartIso, scheduledEndIso, totalCents, notes: typeof payload.notes === "string" ? payload.notes : "",
+      recommendationSessionId, recommendedProviderId, selectedProviderRank, viewedAlternativeProviders,
+      requestSource, recommendationSource, retentionContext, attribution };
+  }
+
+  private validateBookingWindow(startIso: string, endIso: string): void {
+    const start = typeof startIso === "string" ? Date.parse(startIso) : NaN;
+    const end = typeof endIso === "string" ? Date.parse(endIso) : NaN;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start <= Date.now() || end <= start || end - start > 24 * 3600000) {
+      throw new HttpError(400, "Choose a future service window that ends after it starts and lasts no more than 24 hours.");
+    }
+  }
+
+  private async assertBookingProviderEligible(providerId: string, category: Booking["category"], address: Address): Promise<void> {
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) throw new HttpError(404, "Provider not found");
+    if (provider.verificationStatus !== "verified" || !provider.categories.includes(category) ||
+        !evaluateProviderCredentialReadiness({ categories: [category] }, provider.credentials ?? []).ready) {
+      throw new HttpError(409, "This provider is not currently approved for the requested service. Choose another recommendation.");
+    }
+    if (!Number.isFinite(address.point?.latitude) || !Number.isFinite(address.point?.longitude) ||
+        this.geoService.distanceMiles(provider.address, address) > provider.serviceRadiusMiles) {
+      throw new HttpError(409, "This property is outside the provider's service area.");
+    }
+  }
+
+  private async resolveBookingPrice(customerId: string, payload: CreateBookingRequest, address: Address): Promise<number> {
+    let amount: number;
+    if (payload.quoteToken) {
+      let quote: { customerId?: string; propertyId?: string; addressKey: string; category: string; totalCents: number; pricingVersion: number };
+      try { quote = verifyScopedToken(payload.quoteToken, "yardmatch-booking-quote-v1"); }
+      catch { throw new HttpError(409, "Your price has expired. Refresh the quote before booking."); }
+      if ((quote.customerId && quote.customerId !== customerId) || quote.propertyId !== payload.servicePropertyId ||
+          quote.addressKey !== this.quoteAddressKey(address) || quote.category !== payload.category || quote.pricingVersion !== 1) {
+        throw new HttpError(409, "This quote does not match the service and property. Refresh the quote.");
+      }
+      amount = quote.totalCents;
+    } else {
+      amount = (await this.createInstantQuote({ customerId, propertyId: payload.servicePropertyId, address, category: payload.category })).estimatedPriceCents;
+    }
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount !== payload.totalCents) {
+      throw new HttpError(409, "The booking price does not match the current quote. Refresh the quote before booking.");
+    }
+    return amount;
+  }
+
+  public async createRecurringServicePlan(customerId: string, input: CreateRecurringServicePlanRequest): Promise<CreateRecurringServicePlanResponse> {
+    if (!["weekly", "biweekly"].includes(input?.frequency)) throw new HttpError(400, "Choose a supported recurring frequency.");
+    const payload = { ...this.parseBookingRequest(input), frequency: input.frequency };
+    const key = hashDeviceIdentifier(JSON.stringify([customerId, payload.providerId, payload.servicePropertyId ?? this.quoteAddressKey(payload.serviceAddress), payload.category, payload.scheduledStartIso, payload.scheduledEndIso, payload.frequency]));
+    return this.repository.withLock(`recurring:${key}`, async (repository) => {
+      const existing = (await repository.listRecurringServicePlans()).find((plan) => plan.id === key);
+      const scoped = this.withRepository(repository);
+      if (existing) {
+        const initialBooking = (await repository.listBookings()).find((booking) => booking.recurringPlanId === existing.id && booking.recurringOccurrenceIndex === 1);
+        if (initialBooking) return { plan: await scoped.buildRecurringServicePlanSummary(existing.id), initialBooking };
+      }
+      return scoped.createRecurringServicePlanRecord(customerId, payload, key);
+    });
+  }
+
+  private async createRecurringServicePlanRecord(
     customerId: string,
-    payload: CreateRecurringServicePlanRequest
+    payload: CreateRecurringServicePlanRequest,
+    planId: string
   ): Promise<CreateRecurringServicePlanResponse> {
     this.assertNoDirectContactDetails(payload.notes, "recurring-booking-notes", customerId, "customer");
     const customer = await this.repository.findCustomerById(customerId);
@@ -6962,7 +7203,7 @@ export class MarketplacePlatformService {
     const { lead: linkedLaunchLead } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     const plan: RecurringServicePlan = {
-      id: crypto.randomUUID(),
+      id: planId,
       customerId,
       providerId: payload.providerId,
       launchLeadId: linkedLaunchLead?.id,
@@ -6978,11 +7219,12 @@ export class MarketplacePlatformService {
       anchorScheduledEndIso: payload.scheduledEndIso
     };
 
-    await this.repository.createRecurringServicePlan(plan);
+    plan.totalCents = await this.resolveBookingPrice(customerId, payload, validatedServiceAddress);
 
     const initialBooking = await this.createBookingRecord(
       customerId,
       {
+        quoteToken: payload.quoteToken,
         providerId: payload.providerId,
         serviceAddress: validatedServiceAddress,
         servicePropertyId: payload.servicePropertyId,
@@ -7002,6 +7244,7 @@ export class MarketplacePlatformService {
         attribution: payload.attribution
       },
       {
+        initialPlan: plan,
         recurringPlanId: plan.id,
         recurringOccurrenceIndex: 1,
         providerNotificationTitle: "New recurring booking request",
@@ -7106,6 +7349,8 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: CreateBookingRequest,
     options?: {
+      initialPlan?: RecurringServicePlan;
+      agreedRecurringPrice?: number;
       recurringPlanId?: string;
       recurringOccurrenceIndex?: number;
       providerNotificationTitle?: string;
@@ -7114,6 +7359,8 @@ export class MarketplacePlatformService {
       skipRequestedFunnelEvent?: boolean;
     }
   ): Promise<Booking> {
+    payload = this.parseBookingRequest(payload);
+    this.validateBookingWindow(payload.scheduledStartIso, payload.scheduledEndIso);
     this.assertNoDirectContactDetails(payload.notes, "booking-notes", customerId, "customer");
     const customer = await this.repository.findCustomerById(customerId);
     if (!customer) {
@@ -7139,9 +7386,12 @@ export class MarketplacePlatformService {
     );
     const { lead: linkedLaunchLead, linkMode } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
+    await this.assertBookingProviderEligible(payload.providerId, payload.category, validatedServiceAddress);
+    const totalCents = options?.agreedRecurringPrice ?? await this.resolveBookingPrice(customerId, payload, validatedServiceAddress);
     const bookingBase = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
-      customerId,
       ...payload,
+      customerId,
+      totalCents,
       launchLeadId: linkedLaunchLead?.id,
       serviceAddress: validatedServiceAddress
     });
@@ -7160,7 +7410,9 @@ export class MarketplacePlatformService {
       );
     }
 
-    const result = await this.repository.createBooking(booking);
+    const result = options?.initialPlan
+      ? await this.repository.createRecurringPlanWithBooking(options.initialPlan, booking)
+      : await this.repository.createBooking(booking);
     const linkedLead = result.launchLeadId
       ? await this.syncLaunchLeadAfterBooking(result.launchLeadId, result)
       : undefined;
@@ -10251,6 +10503,190 @@ export class MarketplacePlatformService {
     };
   }
 
+  private async buildCustomerProviderRetentionStates(
+    bookings: Booking[]
+  ): Promise<Map<string, CustomerProviderRetentionState>> {
+    const providerIds = [...new Set(bookings.map((booking) => booking.providerId))];
+    const completedBookingIds = bookings
+      .filter((booking) => Boolean(booking.completedAt))
+      .map((booking) => booking.id);
+    const [supportTickets, reviewEntries, settlementEntries] = await Promise.all([
+      this.repository.listSupportTickets(),
+      Promise.all(
+        providerIds.map(async (providerId) => [
+          providerId,
+          await this.repository.listProviderReviews(providerId)
+        ] as const)
+      ),
+      Promise.all(
+        completedBookingIds.map(async (bookingId) => [
+          bookingId,
+          await this.repository.findBookingFinancialSettlement(bookingId)
+        ] as const)
+      )
+    ]);
+    const reviewsByProviderId = new Map(reviewEntries);
+    const settlementsByBookingId = new Map(settlementEntries);
+    const relationships = new Map<string, Booking[]>();
+
+    for (const booking of bookings) {
+      const key = `${booking.customerId}:${booking.providerId}`;
+      const existing = relationships.get(key) ?? [];
+      existing.push(booking);
+      relationships.set(key, existing);
+    }
+
+    const states = new Map<string, CustomerProviderRetentionState>();
+    for (const [key, relationshipBookings] of relationships) {
+      const completedHistory = relationshipBookings
+        .filter((booking) => Boolean(booking.completedAt))
+        .sort((left, right) => (left.completedAt ?? "").localeCompare(right.completedAt ?? ""));
+      if (completedHistory.length === 0) {
+        continue;
+      }
+
+      const bookingIds = new Set(relationshipBookings.map((booking) => booking.id));
+      const reviews = (reviewsByProviderId.get(relationshipBookings[0].providerId) ?? [])
+        .filter((review) => bookingIds.has(review.bookingId))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      const finderFeeSettlement = completedHistory
+        .map((booking) => settlementsByBookingId.get(booking.id))
+        .find((settlement) => Boolean(settlement && settlement.finderFeeCents > 0));
+      const hasDisputeHistory = relationshipBookings.some(
+        (booking) => Boolean(booking.disputedAt) || booking.status === "disputed"
+      );
+      const hasRefundHistory = relationshipBookings.some(
+        (booking) =>
+          booking.status === "refunded" ||
+          settlementsByBookingId.get(booking.id)?.status === "reversed"
+      );
+      const lowReview = reviews.find((review) => review.overallRating < 4);
+      const hasOpenServiceQualityCase = supportTickets.some(
+        (ticket) =>
+          ticket.bookingId &&
+          bookingIds.has(ticket.bookingId) &&
+          ticket.issueType === "service-quality" &&
+          ticket.status !== "resolved"
+      );
+      const hasActiveFieldException = relationshipBookings.some(
+        (booking) => Boolean(booking.activeExceptionType)
+      );
+      const cleanCompletedBookingCount = completedHistory.filter(
+        (booking) => booking.status === "completed"
+      ).length;
+      const finderFeeRecorded = Boolean(finderFeeSettlement);
+
+      let status: CustomerProviderRetentionState["status"];
+      let reason: string;
+      let customerMessage: string;
+
+      if (hasDisputeHistory) {
+        status = "paused";
+        reason = "Automatic retention is paused because a dispute was filed in this customer relationship.";
+        customerMessage =
+          "YardMatch will make a fresh recommendation because the prior relationship is not eligible for automatic continuity after a dispute.";
+      } else if (hasRefundHistory) {
+        status = "paused";
+        reason = "Automatic retention is paused because this customer relationship includes a refund or reversed settlement.";
+        customerMessage =
+          "YardMatch will make a fresh recommendation because the prior relationship is not eligible for automatic continuity after a refund.";
+      } else if (lowReview) {
+        status = "paused";
+        reason = `Automatic retention is paused because a ${lowReview.overallRating}-star review is below the 4-star good-standing threshold.`;
+        customerMessage =
+          "YardMatch will make a fresh recommendation because the prior service feedback does not meet the good-standing threshold.";
+      } else if (hasOpenServiceQualityCase || hasActiveFieldException) {
+        status = "paused";
+        reason = hasOpenServiceQualityCase
+          ? "Automatic retention is paused while an unresolved service-quality case is open."
+          : "Automatic retention is paused while an active field exception is unresolved.";
+        customerMessage =
+          "YardMatch will make a fresh recommendation while the prior service issue is being resolved.";
+      } else if (!finderFeeRecorded) {
+        status = "awaiting-first-settlement";
+        reason = "The first completed-service settlement and one-time finder fee have not been recorded yet.";
+        customerMessage =
+          "YardMatch will make a fresh recommendation until the first completed-service settlement is recorded.";
+      } else if (cleanCompletedBookingCount >= 2) {
+        status = "repeat-customer";
+        reason =
+          "This customer has returned, the one-time finder fee is already covered, and the relationship remains in good standing.";
+        customerMessage =
+          "YardMatch will prioritize the proven provider again while rechecking service fit, availability, price, and route health.";
+      } else {
+        status = "eligible-for-retention";
+        reason =
+          "The one-time finder fee is recorded and the first service has no negative review, dispute, refund, or unresolved quality issue.";
+        customerMessage =
+          "YardMatch will prioritize the prior provider again while rechecking service fit, availability, price, and route health.";
+      }
+
+      states.set(key, {
+        customerId: relationshipBookings[0].customerId,
+        providerId: relationshipBookings[0].providerId,
+        firstCompletedBookingId: finderFeeSettlement?.bookingId ?? completedHistory[0]?.id,
+        lastCompletedAt: completedHistory.at(-1)?.completedAt,
+        completedBookingCount: cleanCompletedBookingCount,
+        finderFeeRecorded,
+        latestReviewScore: reviews[0]?.overallRating,
+        status,
+        qualifiesForContinuity:
+          status === "eligible-for-retention" || status === "repeat-customer",
+        reason,
+        customerMessage
+      });
+    }
+
+    return states;
+  }
+
+  private async buildProviderRetentionProgramSummary(
+    provider: ProviderProfile
+  ): Promise<ProviderRetentionProgramSummary> {
+    const [bookings, customers] = await Promise.all([
+      this.repository.listBookings(),
+      this.repository.listCustomers()
+    ]);
+    const providerBookings = bookings.filter((booking) => booking.providerId === provider.id);
+    const retentionStates = await this.buildCustomerProviderRetentionStates(providerBookings);
+    const customerNames = new Map(customers.map((customer) => [customer.id, customer.fullName]));
+    const relationships = [...retentionStates.values()]
+      .sort((left, right) => (right.lastCompletedAt ?? "").localeCompare(left.lastCompletedAt ?? ""))
+      .map((state) => ({
+        customerId: state.customerId,
+        customerName: customerNames.get(state.customerId) ?? "Customer",
+        firstCompletedBookingId: state.firstCompletedBookingId,
+        lastCompletedAt: state.lastCompletedAt,
+        completedBookingCount: state.completedBookingCount,
+        finderFeeRecorded: state.finderFeeRecorded,
+        latestReviewScore: state.latestReviewScore,
+        status: state.status,
+        reason: state.reason
+      }));
+
+    return {
+      finderFeeCents: ACTIVE_MARKETPLACE_ECONOMICS_POLICY.finderFeeCents,
+      completedJobFeeCents: ACTIVE_MARKETPLACE_ECONOMICS_POLICY.completedJobFeeCents,
+      noAdditionalRetentionFee: true,
+      promise:
+        "After the one-time finder fee is recorded, YardMatch keeps running review requests, book-again reminders, recurring-service prompts, and qualified prior-provider preference at no extra retention charge.",
+      eligibilityRule:
+        "Continuity stays active when there is no dispute, refund, review below 4 stars, unresolved service-quality case, or active field exception. Standard completed-job fees still apply to future completed work.",
+      acquiredCustomerCount: relationships.filter((relationship) => relationship.finderFeeRecorded).length,
+      eligibleCustomerCount: relationships.filter(
+        (relationship) =>
+          relationship.status === "eligible-for-retention" || relationship.status === "repeat-customer"
+      ).length,
+      repeatCustomerCount: relationships.filter(
+        (relationship) => relationship.status === "repeat-customer"
+      ).length,
+      pausedCustomerCount: relationships.filter(
+        (relationship) => relationship.status === "paused"
+      ).length,
+      relationships: relationships.slice(0, 8)
+    };
+  }
+
   public async listCustomerRetentionOpportunities(
     customerId: string
   ): Promise<ListCustomerRetentionOpportunitiesResponse> {
@@ -10260,6 +10696,7 @@ export class MarketplacePlatformService {
     ]);
 
     const relevantBookings = bookings.filter((booking) => booking.customerId === customerId);
+    const retentionStates = await this.buildCustomerProviderRetentionStates(relevantBookings);
     const providerNames = new Map(
       (
         await Promise.all(
@@ -10316,15 +10753,35 @@ export class MarketplacePlatformService {
       }
 
       const providerName = providerNames.get(booking.providerId) ?? "Landscaping business";
-      const opportunity = this.buildCustomerRetentionOpportunityForBooking(
+      const retentionState = retentionStates.get(`${booking.customerId}:${booking.providerId}`);
+      const opportunityDraft = this.buildCustomerRetentionOpportunityForBooking(
         booking,
         providerName,
         activeRecurringPlanKeys.has(groupKey),
-        completedBookingsByKey.get(groupKey) ?? [booking]
+        completedBookingsByKey.get(groupKey) ?? [booking],
+        retentionState?.qualifiesForContinuity ?? false
       );
-      if (!opportunity) {
+      if (!opportunityDraft) {
         continue;
       }
+
+      const providerContinuityStatus = retentionState?.qualifiesForContinuity
+        ? "eligible"
+        : retentionState?.status === "paused"
+          ? "paused"
+          : "awaiting-finder-fee";
+      const providerContinuityReason =
+        retentionState?.reason ??
+        "The first completed-service settlement and one-time finder fee have not been recorded yet.";
+      const opportunity: CustomerRetentionOpportunity = {
+        ...opportunityDraft,
+        providerContinuityStatus,
+        providerContinuityReason,
+        message: `${opportunityDraft.message} ${
+          retentionState?.customerMessage ??
+          "YardMatch will make a fresh recommendation until the first completed-service settlement is recorded."
+        }`
+      };
 
       opportunitiesByKey.set(groupKey, opportunity);
     }
@@ -10340,8 +10797,12 @@ export class MarketplacePlatformService {
     booking: Booking,
     providerName: string,
     hasActiveRecurringPlan: boolean,
-    completedBookingsForCategory: Booking[]
-  ): CustomerRetentionOpportunity | undefined {
+    completedBookingsForCategory: Booking[],
+    providerContinuityEligible: boolean
+  ): Omit<
+    CustomerRetentionOpportunity,
+    "providerContinuityStatus" | "providerContinuityReason"
+  > | undefined {
     if (!booking.servicePropertyId || !booking.completedAt) {
       return undefined;
     }
@@ -10358,7 +10819,7 @@ export class MarketplacePlatformService {
       (candidate) => candidate.providerId === booking.providerId
     ).length;
     const loyaltySegment =
-      sameProviderCompletedCount >= 2
+      providerContinuityEligible && sameProviderCompletedCount >= 2
         ? "provider-loyal"
         : completedCategoryCount >= 2
           ? "repeat-customer"
@@ -12126,125 +12587,63 @@ export class MarketplacePlatformService {
     };
   }
 
-  public async createCheckoutSession(
-    customerId: string,
-    payload: CreateCheckoutSessionRequest
-  ): Promise<CreateCheckoutSessionResponse> {
-    const booking = await this.repository.findBookingById(payload.bookingId);
-    if (!booking) {
-      throw new HttpError(404, "Booking not found");
-    }
-
-    if (booking.customerId !== customerId) {
-      throw new HttpError(403, "Customers can only pay for their own bookings");
-    }
-
-    if (booking.status === "cancelled" || booking.status === "refunded") {
-      throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
-    }
-
-    if (booking.status === "disputed") {
-      throw new HttpError(409, "Disputed bookings must be resolved by support before payment can continue");
-    }
-
-    const customer = await this.repository.findCustomerById(customerId);
-    if (!customer) {
-      throw new HttpError(404, "Customer not found");
-    }
-
-    const existingPayments = (await this.repository.listPayments()).filter(
-      (payment) => payment.bookingId === booking.id
-    );
-    const paidPayment = existingPayments.find((payment) => payment.status === "captured");
-    if (paidPayment) {
-      throw new HttpError(409, "This booking has already been paid.");
-    }
-
-    const session = await this.stripeCheckout.createCheckoutSession({
-      booking,
-      customer,
-      appBaseUrl: this.appBaseUrl,
-      successPath: payload.successPath ?? "/customer/dashboard?payment=stripe-success",
-      cancelPath: payload.cancelPath ?? "/customer/dashboard?payment=stripe-cancelled"
+  public async createCheckoutSession(customerId: string, payload: CreateCheckoutSessionRequest): Promise<CreateCheckoutSessionResponse> {
+    const reservation = await this.repository.withLock(`payment:${payload.bookingId}`, async (repository) => {
+      const booking = await repository.findBookingById(payload.bookingId);
+      if (!booking) throw new HttpError(404, "Booking not found");
+      if (booking.customerId !== customerId) throw new HttpError(403, "Customers can only pay for their own bookings");
+      if (booking.status === "disputed") throw new HttpError(409, "Disputed bookings must be resolved by support before payment can continue");
+      if (["cancelled", "refunded"].includes(booking.status)) throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
+      const payments = (await repository.listPayments()).filter((payment) => payment.bookingId === booking.id);
+      if (payments.some((payment) => payment.status === "captured" || payment.status === "refunded")) throw new HttpError(409, "This booking has already been paid.");
+      const customer = await repository.findCustomerById(customerId);
+      if (!customer) throw new HttpError(404, "Customer not found");
+      const active = payments.find((payment) => payment.processor === "stripe" && !payment.checkoutSessionExpiredAt);
+      if (active) return { booking, customer, payment: active };
+      const now = new Date().toISOString();
+      const payment = await repository.createPayment({ id: crypto.randomUUID(), bookingId: booking.id,
+        amountCents: booking.totalCents, currency: "usd", status: "pending", processor: "stripe", refundable: false,
+        processorFeeStatus: "pending", createdAt: now, updatedAt: now,
+        checkoutSuccessPath: payload.successPath ?? "/customer/dashboard?payment=stripe-success",
+        checkoutCancelPath: payload.cancelPath ?? "/customer/dashboard?payment=stripe-cancelled" });
+      return { booking, customer, payment };
     });
-
-    const now = new Date().toISOString();
-    const currentPayment = existingPayments[0];
-    const paymentBase: PaymentRecord = {
-      id: currentPayment?.id ?? crypto.randomUUID(),
-      bookingId: booking.id,
-      amountCents: booking.totalCents,
-      currency: "usd",
-      status: "pending",
-      processor: "stripe",
-      refundable: false,
-      checkoutSessionId: session.checkoutSessionId,
-      checkoutSessionUrl: session.checkoutUrl,
-      processorPaymentIntentId: session.paymentIntentId,
-      processorChargeId: undefined,
-      actualProcessorFeeCents: undefined,
-      processorFeeStatus: "pending",
-      processorFeeUpdatedAt: undefined,
-      processorFeeFailureReason: undefined,
-      refundReason: currentPayment?.refundReason,
-      refundReviewStatus: currentPayment?.refundReviewStatus,
-      refundRequestedAt: currentPayment?.refundRequestedAt,
-      refundRequestedByRole: currentPayment?.refundRequestedByRole,
-      refundReviewedAt: currentPayment?.refundReviewedAt,
-      refundReviewedByRole: currentPayment?.refundReviewedByRole,
-      refundDecisionNotes: currentPayment?.refundDecisionNotes,
-      failureReason: undefined,
-      paidAt: undefined,
-      createdAt: currentPayment?.createdAt ?? now,
-      updatedAt: now
-    };
-
-    const payment = currentPayment
-      ? await this.repository.updatePayment(currentPayment.id, {
-          amountCents: paymentBase.amountCents,
-          currency: paymentBase.currency,
-          status: paymentBase.status,
-          processor: paymentBase.processor,
-          refundable: paymentBase.refundable,
-          checkoutSessionId: paymentBase.checkoutSessionId,
-          checkoutSessionUrl: paymentBase.checkoutSessionUrl,
-          processorPaymentIntentId: paymentBase.processorPaymentIntentId,
-          processorChargeId: paymentBase.processorChargeId,
-          actualProcessorFeeCents: paymentBase.actualProcessorFeeCents,
-          processorFeeStatus: paymentBase.processorFeeStatus,
-          processorFeeUpdatedAt: paymentBase.processorFeeUpdatedAt,
-          processorFeeFailureReason: paymentBase.processorFeeFailureReason,
-          refundReason: paymentBase.refundReason,
-          refundReviewStatus: paymentBase.refundReviewStatus,
-          refundRequestedAt: paymentBase.refundRequestedAt,
-          refundRequestedByRole: paymentBase.refundRequestedByRole,
-          refundReviewedAt: paymentBase.refundReviewedAt,
-          refundReviewedByRole: paymentBase.refundReviewedByRole,
-          refundDecisionNotes: paymentBase.refundDecisionNotes,
-          failureReason: paymentBase.failureReason,
-          paidAt: paymentBase.paidAt,
-          updatedAt: paymentBase.updatedAt
-        })
-      : await this.repository.createPayment(paymentBase);
-
-    if (!payment) {
-      throw new HttpError(500, "Payment record could not be created");
+    if (reservation.payment.checkoutSessionUrl) return { checkoutUrl: reservation.payment.checkoutSessionUrl, payment: reservation.payment };
+    // Commit the reservation BEFORE calling Stripe. After a timeout/restart we retry the
+    // same attempt/key instead of creating an untracked second payable session.
+    if (Date.now() - Date.parse(reservation.payment.createdAt) > 23 * 3600000) {
+      throw new HttpError(409, "This payment attempt needs support reconciliation before retrying.");
     }
-
-    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCheckoutStarted, booking.id, {
-      paymentId: payment.id,
-      processor: payment.processor,
-      amountCents: payment.amountCents,
-      bookingStatus: booking.status
+    const session = await this.stripeCheckout.createCheckoutSession({ ...reservation,
+      booking: { ...reservation.booking, totalCents: reservation.payment.amountCents },
+      appBaseUrl: this.appBaseUrl, paymentId: reservation.payment.id,
+      idempotencyKey: `checkout:${reservation.payment.id}:v1`,
+      successPath: reservation.payment.checkoutSuccessPath ?? "/customer/dashboard?payment=stripe-success",
+      cancelPath: reservation.payment.checkoutCancelPath ?? "/customer/dashboard?payment=stripe-cancelled" });
+    const payment = await this.repository.withLock(`payment:${payload.bookingId}`, async (repository) => {
+      const current = await repository.findPaymentById(reservation.payment.id);
+      if (!current) throw new HttpError(500, "Payment attempt not found");
+      if (current.checkoutSessionId && current.checkoutSessionId !== session.checkoutSessionId) throw new HttpError(409, "Payment attempt needs reconciliation.");
+      return repository.updatePayment(current.id, { checkoutSessionId: session.checkoutSessionId,
+        checkoutSessionUrl: session.checkoutUrl, processorPaymentIntentId: session.paymentIntentId ?? current.processorPaymentIntentId,
+        updatedAt: new Date().toISOString() });
     });
-
-    return {
-      checkoutUrl: session.checkoutUrl,
-      payment
-    };
+    if (!payment) throw new HttpError(500, "Payment attempt could not be saved");
+    this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCheckoutStarted, payload.bookingId, { paymentId: payment.id, processor: payment.processor, amountCents: payment.amountCents });
+    return { checkoutUrl: session.checkoutUrl, payment };
   }
 
-  public async finalizeCheckoutSession(
+  public async finalizeCheckoutSession(customerId: string, payload: FinalizeCheckoutSessionRequest): Promise<PaymentRecord> {
+    let payment = await this.repository.findPaymentByCheckoutSessionId(payload.checkoutSessionId);
+    if (!payment) {
+      const verified = await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId);
+      if (verified.paymentIntentId) payment = (await this.repository.listPayments()).find((candidate) => candidate.processorPaymentIntentId === verified.paymentIntentId);
+    }
+    if (!payment) throw new HttpError(404, "Payment session not found");
+    return this.repository.withLock(`payment:${payment.bookingId}`, (repository) => this.withRepository(repository).finalizeCheckoutSessionRecord(customerId, payload));
+  }
+
+  private async finalizeCheckoutSessionRecord(
     customerId: string,
     payload: FinalizeCheckoutSessionRequest
   ): Promise<PaymentRecord> {
@@ -12298,6 +12697,18 @@ export class MarketplacePlatformService {
   }> {
     const event = await this.stripeCheckout.parseWebhookEvent(rawBody, signatureHeader);
     const payment = await this.findPaymentForStripeWebhookEvent(event);
+    if (!payment) return { received: true, eventType: event.type };
+    return this.repository.withLock(`payment:${payment.bookingId}`, async (repository) => {
+      const eventKey = `stripe-event:${event.id}`;
+      if (event.id && await repository.getSecurityState(eventKey)) return { received: true as const, eventType: event.type, paymentId: payment.id };
+      const result = await this.withRepository(repository).processStripeEvent(event);
+      if (event.id) await repository.putSecurityState(eventKey, { processed: true }, new Date(Date.now() + 365 * 86400000).toISOString());
+      return result;
+    });
+  }
+
+  private async processStripeEvent(event: StripeWebhookEvent): Promise<{ received: true; eventType: string; paymentId?: string }> {
+    const payment = await this.findPaymentForStripeWebhookEvent(event);
     if (!payment) {
       return {
         received: true,
@@ -12320,6 +12731,7 @@ export class MarketplacePlatformService {
     }
 
     if (event.type === "checkout.session.expired") {
+      await this.repository.updatePayment(payment.id, { checkoutSessionExpiredAt: new Date().toISOString() });
       const updatedPayment = await this.failPaymentRecord(
         payment,
         booking,
@@ -12384,9 +12796,14 @@ export class MarketplacePlatformService {
     event: StripeWebhookEvent
   ): Promise<PaymentRecord | undefined> {
     if (event.checkoutSessionId) {
-      return this.repository.findPaymentByCheckoutSessionId(event.checkoutSessionId);
+      const payment = await this.repository.findPaymentByCheckoutSessionId(event.checkoutSessionId);
+      if (payment) return payment;
     }
 
+    if (event.paymentId) {
+      const payment = await this.repository.findPaymentById(event.paymentId);
+      if (payment) return payment;
+    }
     if (event.paymentIntentId) {
       return (await this.repository.listPayments()).find(
         (payment) => payment.processorPaymentIntentId === event.paymentIntentId
@@ -15453,7 +15870,11 @@ export class MarketplacePlatformService {
     };
   }
 
-  public async createProviderCalendarImport(
+  public async createProviderCalendarImport(providerId: string, payload: CreateExternalCalendarImportRequest): Promise<ProviderCalendarImportsResponse> {
+    return this.repository.withLock(`calendar:${providerId}`, (repository) => this.withRepository(repository).createProviderCalendarImportRecord(providerId, payload));
+  }
+
+  private async createProviderCalendarImportRecord(
     providerId: string,
     payload: CreateExternalCalendarImportRequest
   ): Promise<ProviderCalendarImportsResponse> {
@@ -15504,7 +15925,11 @@ export class MarketplacePlatformService {
     };
   }
 
-  public async syncProviderCalendarImport(
+  public async syncProviderCalendarImport(providerId: string, payload: SyncExternalCalendarImportRequest): Promise<ProviderCalendarImportsResponse> {
+    return this.repository.withLock(`calendar:${providerId}`, (repository) => this.withRepository(repository).syncProviderCalendarImportRecord(providerId, payload));
+  }
+
+  private async syncProviderCalendarImportRecord(
     providerId: string,
     payload: SyncExternalCalendarImportRequest
   ): Promise<ProviderCalendarImportsResponse> {
@@ -15567,11 +15992,8 @@ export class MarketplacePlatformService {
       }
 
       const beforeStatus = currentSubscription.syncStatus;
-      currentProvider = await this.syncExternalCalendarSubscription(
-        currentProvider,
-        currentSubscription,
-        currentProvider.calendarConnection.externalSubscriptions ?? []
-      );
+      await this.syncProviderCalendarImport(providerId, { subscriptionId: currentSubscription.id });
+      currentProvider = (await this.repository.findProviderById(providerId))!;
       const afterStatus = (currentProvider.calendarConnection.externalSubscriptions ?? []).find(
         (item) => item.id === target.id
       )?.syncStatus;
@@ -15597,7 +16019,11 @@ export class MarketplacePlatformService {
     };
   }
 
-  public async removeProviderCalendarImport(
+  public async removeProviderCalendarImport(providerId: string, payload: RemoveExternalCalendarImportRequest): Promise<ProviderCalendarImportsResponse> {
+    return this.repository.withLock(`calendar:${providerId}`, (repository) => this.withRepository(repository).removeProviderCalendarImportRecord(providerId, payload));
+  }
+
+  private async removeProviderCalendarImportRecord(
     providerId: string,
     payload: RemoveExternalCalendarImportRequest
   ): Promise<ProviderCalendarImportsResponse> {
@@ -15919,14 +16345,14 @@ export class MarketplacePlatformService {
     allSubscriptions: ExternalCalendarSubscription[]
   ): Promise<ProviderProfile> {
     try {
-      const icsBody = await this.fetchExternalCalendarFeed(subscription.feedUrl);
-      const importedBlocks = this.parseExternalCalendarFeed({
+      const icsBody = await this.calendarFeedLoader(subscription.feedUrl);
+      const importedBlocks = await parseCalendarFeed({
         icsBody,
         subscriptionId: subscription.id,
         title: subscription.title
       });
       const manualBlocks = (provider.calendarConnection.externalBlocks ?? []).filter(
-        (block) => block.source !== "calendar-import" && block.subscriptionId !== subscription.id
+        (block) => block.subscriptionId !== subscription.id
       );
       const nextBlocks = this.normalizeExternalCalendarBlocks([...manualBlocks, ...importedBlocks]);
       const nextSubscriptions = allSubscriptions.map((item) =>
@@ -15972,102 +16398,6 @@ export class MarketplacePlatformService {
         allSubscriptions
       );
     }
-  }
-
-  private async fetchExternalCalendarFeed(feedUrl: string): Promise<string> {
-    const normalizedUrl = feedUrl.replace(/^webcal:\/\//i, "https://");
-    return withAbortableTimeout(async (signal) => {
-      const response = await fetch(normalizedUrl, { signal });
-      if (!response.ok) {
-        throw new HttpError(400, `Calendar feed returned ${response.status}`);
-      }
-
-      return response.text();
-    }, {
-      timeoutMessage: "Calendar feed did not respond in time. Check the feed URL and try syncing again."
-    });
-  }
-
-  private parseExternalCalendarFeed(input: {
-    icsBody: string;
-    subscriptionId: string;
-    title: string;
-  }): ExternalCalendarBlock[] {
-    const unfolded = input.icsBody.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "");
-    const events = unfolded.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) ?? [];
-    const now = Date.now();
-    const oneYearFromNow = now + 366 * 24 * 60 * 60 * 1000;
-
-    const importedBlocks: ExternalCalendarBlock[] = [];
-
-    for (const event of events) {
-        const summary = this.readIcsValue(event, "SUMMARY") ?? input.title;
-        const description = this.readIcsValue(event, "DESCRIPTION");
-        const dtStart = this.readIcsDate(event, "DTSTART");
-        const dtEnd = this.readIcsDate(event, "DTEND");
-        if (!dtStart || !dtEnd || dtEnd.getTime() <= dtStart.getTime()) {
-          continue;
-        }
-
-        if (dtEnd.getTime() < now - 24 * 60 * 60 * 1000 || dtStart.getTime() > oneYearFromNow) {
-          continue;
-        }
-
-        const normalizedTitle = summary.trim() || input.title;
-        importedBlocks.push({
-          id: `${input.subscriptionId}:${this.readIcsValue(event, "UID") ?? crypto.randomUUID()}`,
-          title: normalizedTitle,
-          blockType: "off-platform-client" as const,
-          startIso: dtStart.toISOString(),
-          endIso: dtEnd.toISOString(),
-          notes: description?.trim() || `Imported from ${input.title}`,
-          source: "calendar-import" as const,
-          createdAt: new Date().toISOString(),
-          subscriptionId: input.subscriptionId
-        } satisfies ExternalCalendarBlock);
-    }
-
-    return importedBlocks.sort((left, right) => left.startIso.localeCompare(right.startIso));
-  }
-
-  private readIcsValue(eventBlock: string, propertyName: string): string | undefined {
-    const match = eventBlock.match(new RegExp(`^${propertyName}(?:;[^:]+)?:([^\r\n]+)$`, "m"));
-    return match?.[1]
-      ?.replaceAll("\\n", "\n")
-      .replaceAll("\\,", ",")
-      .replaceAll("\\;", ";")
-      .replaceAll("\\\\", "\\");
-  }
-
-  private readIcsDate(eventBlock: string, propertyName: "DTSTART" | "DTEND"): Date | undefined {
-    const match = eventBlock.match(new RegExp(`^${propertyName}((?:;[^:]+)?):([^\r\n]+)$`, "m"));
-    if (!match) {
-      return undefined;
-    }
-
-    const parameters = match[1] ?? "";
-    const rawValue = match[2]?.trim();
-    if (!rawValue) {
-      return undefined;
-    }
-
-    if (parameters.includes("VALUE=DATE")) {
-      const year = Number(rawValue.slice(0, 4));
-      const month = Number(rawValue.slice(4, 6)) - 1;
-      const day = Number(rawValue.slice(6, 8));
-      return new Date(Date.UTC(year, month, day));
-    }
-
-    const normalized = rawValue.endsWith("Z") ? rawValue.slice(0, -1) : rawValue;
-    const year = Number(normalized.slice(0, 4));
-    const month = Number(normalized.slice(4, 6)) - 1;
-    const day = Number(normalized.slice(6, 8));
-    const hour = Number(normalized.slice(9, 11) || "0");
-    const minute = Number(normalized.slice(11, 13) || "0");
-    const second = Number(normalized.slice(13, 15) || "0");
-    return rawValue.endsWith("Z")
-      ? new Date(Date.UTC(year, month, day, hour, minute, second))
-      : new Date(year, month, day, hour, minute, second);
   }
 
   private normalizeExternalCalendarBlocks(
@@ -16201,6 +16531,7 @@ export class MarketplacePlatformService {
     scheduledStartIso: string,
     scheduledEndIso: string
   ): Promise<void> {
+    this.validateBookingWindow(scheduledStartIso, scheduledEndIso);
     const provider = await this.repository.findProviderById(providerId);
     if (!provider) {
       throw new HttpError(404, "Provider not found");
@@ -18760,7 +19091,7 @@ export class MarketplacePlatformService {
           providerNotificationBody: `The next ${this.describeRecurringFrequency(plan.frequency)} ${this.titleCaseCategory(
             plan.category
           ).toLowerCase()} visit was queued for ${this.formatBookingWindowWithDate(nextStartIso)}.`,
-          skipProviderAvailabilityCheck: true,
+          agreedRecurringPrice: plan.totalCents,
           skipRequestedFunnelEvent: true
         }
       );
@@ -22982,6 +23313,7 @@ export class MarketplacePlatformService {
     booking: Booking,
     paymentIntentId?: string
   ): Promise<PaymentRecord> {
+    if (payment.status === "refunded" || booking.status === "refunded") return payment;
     if (payment.status === "captured") {
       return this.reconcileProcessorFee(payment);
     }
@@ -22999,6 +23331,7 @@ export class MarketplacePlatformService {
     if (!updatedPayment) {
       throw new HttpError(500, "Payment record could not be updated");
     }
+    if (updatedPayment.status === "refunded") return updatedPayment;
     const reconciledPayment = await this.reconcileProcessorFee(updatedPayment);
 
     this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.paymentCaptured, booking.id, {

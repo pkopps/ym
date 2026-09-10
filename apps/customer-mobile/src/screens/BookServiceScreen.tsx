@@ -394,6 +394,7 @@ export function BookServiceScreen({
         scheduledEndIso: slot.endIso,
         notes: i18n.t("mobile.book.booking_note"),
         totalCents: quote.estimatedPriceCents,
+          quoteToken: quote.quoteToken,
         recommendationSessionId: recommendationContext?.recommendationSessionId,
         recommendedProviderId: recommendationContext?.recommendedProviderId,
         selectedProviderRank: rank,

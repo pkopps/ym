@@ -124,12 +124,26 @@ test.describe("YardMatch web smoke", () => {
     await expect(page.getByRole("heading", { name: "$30 once" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "$6.99 per completed job" })).toBeVisible();
     await expect(page.getByText(/paid placement never changes recommendation order/i)).toBeVisible();
+    const retentionHeading = page.getByRole("heading", {
+      name: "Pay once for the introduction. We keep working on the relationship."
+    });
+    await expect(retentionHeading).toBeVisible();
+    await expect(page.getByText(/no second \$30 finder fee and no separate fee/i)).toBeVisible();
+    await expect(page.getByText(/review below 4 stars/i)).toBeVisible();
+    await retentionHeading.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-desktop.png` });
+
     await pricingHeading.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-pricing-desktop.png` });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/provider");
     await expect(page.getByRole("heading", { name: "Grow local routes without losing control of your calendar or margins." })).toBeVisible();
+    await retentionHeading.scrollIntoViewIfNeeded();
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 390);
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-mobile.png` });
+
+    await page.getByRole("heading", { name: "Grow local routes without losing control of your calendar or margins." }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png` });
 
     await page.goto("/auth/provider/create");

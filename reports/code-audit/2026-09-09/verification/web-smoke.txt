@@ -1,0 +1,48 @@
+
+> yardmatch-monorepo@0.1.0 test:web:smoke
+> playwright test --config=playwright.config.ts
+
+[WebServer] (node:86266) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:86307) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:86308) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 19 tests using 1 worker
+
+(node:86312) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓   1 [chromium] › tests/web/crew-assignment-flow.spec.ts:14:5 › crew selects a fit, creates preferences, receives work, routes, and sees completed assignment history (4.4s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓   2 [chromium] › tests/web/customer-booking-golden-path.spec.ts:69:7 › customer booking golden path › homepage search carries signup intent through quote, recommendation, and booking state (3.4s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓   3 [chromium] › tests/web/customer-booking-golden-path.spec.ts:140:7 › customer booking golden path › spanish mobile path keeps selected request through existing-customer login (4.3s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓   4 [chromium] › tests/web/i18n-workflow.spec.ts:28:5 › spanish provider, crew, and ops workflow routes remain localized (1.8s)
+  ✓   5 [chromium] › tests/web/i18n-workflow.spec.ts:54:5 › pseudo locale expands core workflow copy without mobile or desktop overflow (1.3s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓   6 [chromium] › tests/web/ops-workspace-flow.spec.ts:12:5 › ops workspace exposes and audits verification, support, leads, payouts, and automation (3.6s)
+  ✓   7 [chromium] › tests/web/ops-workspace-flow.spec.ts:75:5 › provider session cannot enter the internal ops workspace (1.4s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓   8 [chromium] › tests/web/provider-job-lifecycle.spec.ts:12:5 › provider confirms, routes, proves, completes, and can decline a second request (4.8s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓   9 [chromium] › tests/web/provider-onboarding-flow.spec.ts:10:5 › provider signup reaches a complete, verified management profile (4.7s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓  10 [chromium] › tests/web/security-flow.spec.ts:47:5 › customer can enable email 2FA and verify a new mobile-sized device (5.5s)
+  ✓  11 [chromium] › tests/web/skeleton-loading.spec.ts:3:5 › provider matching uses card skeletons without stacking the route loader (663ms)
+  ✓  12 [chromium] › tests/web/smoke.spec.ts:37:7 › YardMatch web smoke › public marketplace loads and shows recommendation-first positioning (1.0s)
+  ✓  13 [chromium] › tests/web/smoke.spec.ts:56:7 › YardMatch web smoke › spanish public marketplace route renders localized shell (983ms)
+  ✓  14 [chromium] › tests/web/smoke.spec.ts:68:7 › YardMatch web smoke › public listings can request a seeded provider match with carried intent (1.2s)
+  ✓  15 [chromium] › tests/web/smoke.spec.ts:113:7 › YardMatch web smoke › Barnegat launch proof stays local and provider pricing is disclosed before signup (1.9s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓  16 [chromium] › tests/web/smoke.spec.ts:153:7 › YardMatch web smoke › ops login opens the authenticated operations workspace (1.1s)
+  ✓  17 [chromium] › tests/web/smoke.spec.ts:166:7 › YardMatch web smoke › customer auth social links carry stable redirect URIs (1.2s)
+  ✓  18 [chromium] › tests/web/smoke.spec.ts:211:7 › YardMatch web smoke › protected dashboards show the expected login gates when signed out (1.4s)
+  ✓  19 [chromium] › tests/web/timeout-handling.spec.ts:3:5 › stalled place search stops loading and shows retry guidance (11.5s)
+
+  19 passed (1.1m)

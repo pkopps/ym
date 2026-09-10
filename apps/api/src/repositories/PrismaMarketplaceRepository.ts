@@ -86,13 +86,42 @@ function mapCustomerProperty(record: {
 }
 
 export class PrismaMarketplaceRepository implements MarketplaceRepository {
-  public constructor(private readonly prisma: PrismaClient) {}
+  public constructor(private readonly prisma: PrismaClient, private readonly inTransaction = false) {}
+
+  private transaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.inTransaction ? work(this.prisma) : this.prisma.$transaction(work, { maxWait: 10000, timeout: 30000 });
+  }
+
+  public async withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T> {
+    return this.transaction(async (tx) => {
+      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text`;
+      return work(new PrismaMarketplaceRepository(tx as PrismaClient, true));
+    });
+  }
+
+  public async getSecurityState(key: string): Promise<Record<string, unknown> | undefined> {
+    const entry = await this.prisma.securityState.findUnique({ where: { key } });
+    return entry && entry.expiresAt.getTime() > Date.now() ? entry.value as Record<string, unknown> : undefined;
+  }
+
+  public async putSecurityState(key: string, value: Record<string, unknown>, expiresAt: string): Promise<void> {
+    await this.prisma.securityState.deleteMany({ where: { expiresAt: { lt: new Date() } } });
+    await this.prisma.securityState.upsert({ where: { key }, create: { key, value: asJson(value), expiresAt: new Date(expiresAt) }, update: { value: asJson(value), expiresAt: new Date(expiresAt) } });
+  }
+
+  public async createRecurringPlanWithBooking(plan: RecurringServicePlan, booking: Booking): Promise<Booking> {
+    return this.transaction(async (tx) => {
+      const repository = new PrismaMarketplaceRepository(tx as PrismaClient, true);
+      await repository.createRecurringServicePlan(plan);
+      return repository.createBooking(booking);
+    });
+  }
 
   public async createCustomer(
     customer: CustomerProfile,
     passwordHash?: string
   ): Promise<CustomerProfile> {
-    await this.prisma.$transaction(async (tx: any) => {
+    await this.transaction(async (tx: any) => {
       await tx.userAccount.create({
         data: {
           id: customer.id,
@@ -142,7 +171,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     provider: ProviderProfile,
     passwordHash?: string
   ): Promise<ProviderProfile> {
-    await this.prisma.$transaction(async (tx: any) => {
+    await this.transaction(async (tx: any) => {
       await tx.userAccount.create({
         data: {
           id: provider.id,
@@ -196,7 +225,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     crewMember: CrewMemberProfile,
     passwordHash?: string
   ): Promise<CrewMemberProfile> {
-    await this.prisma.$transaction(async (tx: any) => {
+    await this.transaction(async (tx: any) => {
       await tx.userAccount.create({
         data: {
           id: crewMember.id,
@@ -346,7 +375,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       return undefined;
     }
 
-    await this.prisma.$transaction(async (tx: any) => {
+    await this.transaction(async (tx: any) => {
       await tx.userAccount.update({
         where: { id: crewMemberId },
         data: this.buildUserAccountUpdate(updates)
@@ -390,7 +419,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       return undefined;
     }
 
-    await this.prisma.$transaction(async (tx: any) => {
+    await this.transaction(async (tx: any) => {
       await tx.userAccount.update({
         where: { id: customerId },
         data: this.buildUserAccountUpdate(updates)
@@ -1110,7 +1139,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       return undefined;
     }
 
-    await this.prisma.$transaction(async (tx: any) => {
+    await this.transaction(async (tx: any) => {
       await tx.userAccount.update({
         where: { id: providerId },
         data: this.buildUserAccountUpdate(updates)
@@ -1161,6 +1190,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     await this.prisma.paymentRecord.create({
       data: {
         ...payment,
+        checkoutSessionExpiredAt: payment.checkoutSessionExpiredAt ? new Date(payment.checkoutSessionExpiredAt) : undefined,
         refundRequestedAt: payment.refundRequestedAt ? new Date(payment.refundRequestedAt) : undefined,
         refundReviewedAt: payment.refundReviewedAt ? new Date(payment.refundReviewedAt) : undefined,
         processorFeeUpdatedAt: payment.processorFeeUpdatedAt
@@ -1217,10 +1247,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       return undefined;
     }
 
-    const payment = await this.prisma.paymentRecord.update({
-      where: { id: paymentId },
+    await this.prisma.paymentRecord.updateMany({
+      where: { id: paymentId, ...(updates.status && updates.status !== "refunded" ? { status: { not: "refunded" } } : {}) },
       data: {
         ...updates,
+        checkoutSessionExpiredAt: updates.checkoutSessionExpiredAt ? new Date(updates.checkoutSessionExpiredAt) : undefined,
         refundRequestedAt:
           updates.refundRequestedAt
             ? new Date(updates.refundRequestedAt)
@@ -1243,7 +1274,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         updatedAt: updates.updatedAt ? new Date(updates.updatedAt) : undefined
       }
     });
-    return this.mapPaymentRecord(payment);
+    return this.findPaymentById(paymentId);
   }
 
   public async settleBookingFinancials(
@@ -1257,7 +1288,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     }
 
     try {
-      const settlement = await this.prisma.$transaction(async (tx: any) => {
+      const settlement = await this.transaction(async (tx: any) => {
         const claim = await tx.customerProviderRelationship.createMany({
           data: {
             customerId: input.customerId,
@@ -1604,7 +1635,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async completeProviderTransfer(
     input: CompleteProviderTransferInput
   ): Promise<ProviderTransferRecord> {
-    const record = await this.prisma.$transaction(async (tx: any) => {
+    const record = await this.transaction(async (tx: any) => {
       const current = await tx.providerTransferRecord.findUnique({
         where: { id: input.transferRecordId }
       });
@@ -1642,7 +1673,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async completeProviderTransferReversal(
     input: CompleteProviderTransferReversalInput
   ): Promise<ProviderTransferRecord> {
-    const record = await this.prisma.$transaction(async (tx: any) => {
+    const record = await this.transaction(async (tx: any) => {
       const current = await tx.providerTransferRecord.findUnique({
         where: { id: input.transferRecordId }
       });
@@ -3330,6 +3361,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   }
 
   private mapPaymentRecord(record: {
+    checkoutSessionExpiredAt: Date | null;
+    checkoutSuccessPath: string | null;
+    checkoutCancelPath: string | null;
     id: string;
     bookingId: string;
     amountCents: number;
@@ -3358,6 +3392,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     updatedAt: Date;
   }): PaymentRecord {
     return {
+      checkoutSessionExpiredAt: record.checkoutSessionExpiredAt?.toISOString(),
+      checkoutSuccessPath: record.checkoutSuccessPath ?? undefined,
+      checkoutCancelPath: record.checkoutCancelPath ?? undefined,
       id: record.id,
       bookingId: record.bookingId,
       amountCents: record.amountCents,

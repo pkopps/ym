@@ -101,7 +101,7 @@ export class SocialAuthService {
     url.searchParams.set("client_id", process.env.APPLE_CLIENT_ID!.trim());
     url.searchParams.set("redirect_uri", this.getCallbackUrl("apple"));
     url.searchParams.set("response_type", "code");
-    url.searchParams.set("response_mode", "query");
+    url.searchParams.set("response_mode", "form_post");
     url.searchParams.set("scope", "name email");
     url.searchParams.set("state", state);
     return url.toString();
@@ -229,7 +229,7 @@ export class SocialAuthService {
       provider: "apple",
       subject: identityPayload.sub,
       email: identityPayload.email.trim().toLowerCase(),
-      emailVerified: identityPayload.email_verified !== false,
+      emailVerified: identityPayload.email_verified === true,
       fullName: deriveDisplayNameFromEmail(identityPayload.email)
     };
   }

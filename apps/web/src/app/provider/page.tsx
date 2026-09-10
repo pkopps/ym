@@ -160,6 +160,31 @@ export default async function ProviderPage() {
         <p className="provider-pricing-section__note">{i18n.t("provider_landing.pricing.note")}</p>
       </section>
 
+      <section className="container stack-lg" id="provider-retention">
+        <div className="section-header">
+          <div>
+            <span className="eyebrow">{i18n.t("provider_landing.retention.eyebrow")}</span>
+            <h2>{i18n.t("provider_landing.retention.title")}</h2>
+          </div>
+          <p>{i18n.t("provider_landing.retention.body")}</p>
+        </div>
+        <div className="grid-three">
+          <article className="card">
+            <h3>{i18n.t("provider_landing.retention.follow_up.title")}</h3>
+            <p>{i18n.t("provider_landing.retention.follow_up.body")}</p>
+          </article>
+          <article className="card">
+            <h3>{i18n.t("provider_landing.retention.priority.title")}</h3>
+            <p>{i18n.t("provider_landing.retention.priority.body")}</p>
+          </article>
+          <article className="card">
+            <h3>{i18n.t("provider_landing.retention.guardrail.title")}</h3>
+            <p>{i18n.t("provider_landing.retention.guardrail.body")}</p>
+          </article>
+        </div>
+        <p className="provider-pricing-section__note">{i18n.t("provider_landing.retention.note")}</p>
+      </section>
+
       <section className="container stack-lg">
         <div className="provider-strip">
           <div>

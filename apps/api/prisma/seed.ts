@@ -372,7 +372,9 @@ async function main() {
           status: "confirmed",
           notes: "Seeded YardMatch booking",
           totalCents: 6800,
-          addressChangeHistory: []
+          addressChangeHistory: [],
+          serviceEvidence: [],
+          interventions: []
         }
       });
     }

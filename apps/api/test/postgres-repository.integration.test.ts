@@ -398,3 +398,84 @@ test(
     }
   }
 );
+
+test('Postgres serializes recovery and checkout across service instances and rolls back recurring creation',
+  {skip: databaseUrl ? false : 'TEST_DATABASE_URL is not configured'}, async () => {
+    const {DataEngineeringLogger} = await import('@yardmatch/analytics');
+    const {InMemoryMarketplaceRepository} = await import('../src/repositories/InMemoryMarketplaceRepository');
+    const {MarketplacePlatformService} = await import('../src/services/MarketplacePlatformService');
+    const {hashPassword} = await import('../src/auth');
+    const prisma = new PrismaClient({datasourceUrl:databaseUrl!});
+    const secondClient = new PrismaClient({datasourceUrl:databaseUrl!});
+    const repository = new PrismaMarketplaceRepository(prisma);
+    const secondRepository = new PrismaMarketplaceRepository(secondClient);
+    const suffix=randomUUID();
+    const memory=new InMemoryMarketplaceRepository();
+    const template=(await memory.listProviders())[0];
+    const provider={...template,id:`audit-provider-${suffix}`,email:`audit-provider-${suffix}@example.com`};
+    const keys = new Set<string>();
+    const gateway = {
+      isConfigured:()=>true,
+      createCheckoutSession:async (input: {idempotencyKey?:string;paymentId?:string})=>{
+        keys.add(input.idempotencyKey!);
+        return {checkoutSessionId:`cs_${input.paymentId}`,checkoutUrl:`https://checkout.example/${input.paymentId}`,paymentIntentId:`pi_${input.paymentId}`};
+      },
+      verifyCheckoutSession:async (id:string)=>({checkoutSessionId:id,paid:true,paymentIntentId:id.replace('cs_','pi_')}),
+      retrieveChargeFinancials:async (id:string)=>({chargeId:`ch_${id}`,actualProcessorFeeCents:50}),
+      parseWebhookEvent:async (raw:string)=>JSON.parse(raw),
+      createRefund:async()=>({refundId:'re_fixture',status:'succeeded'})
+    };
+    const first = new MarketplacePlatformService(repository,new DataEngineeringLogger(),gateway);
+    const second = new MarketplacePlatformService(secondRepository,new DataEngineeringLogger(),gateway);
+    let customerId='';
+    try {
+      await repository.createProvider(provider);
+      for (const credential of template.credentials ?? []) await repository.upsertProviderCredential({...credential,id:randomUUID(),providerId:provider.id});
+      const customer=await first.registerUser({fullName:'Audit Customer',email:`audit-customer-${suffix}@example.com`,phone:'555-0200',role:'customer',address:template.address},hashPassword('Password123!'));
+      customerId=customer.id;
+      const reset=await first.requestPasswordReset({email:customer.email});
+      assert.ok(reset.resetCodePreview);
+      const confirmations=await Promise.allSettled([first,second].map(service=>service.confirmPasswordReset({email:customer.email,resetCode:reset.resetCodePreview!,newPassword:'Changed123!'})));
+      assert.equal(confirmations.filter(result=>result.status==='fulfilled').length,1);
+      assert.equal((await repository.findAuthIdentityByUserId(customer.id))?.sessionVersion,2);
+      const quota=await Promise.all(Array.from({length:12},(_,index)=>(index%2?first:second).consumeSecurityLimit(`pg-quota-${suffix}`,3,60)));
+      assert.equal(quota.filter(Boolean).length,3);
+      const quote=await first.createInstantQuote({customerId:customer.id,address:template.address,category:'lawn-mowing'});
+      const payload={providerId:provider.id,serviceAddress:template.address,category:'lawn-mowing' as const,scheduledStartIso:new Date(Date.now()+72*3600000).toISOString(),scheduledEndIso:new Date(Date.now()+73*3600000).toISOString(),notes:'Database audit fixture',totalCents:quote.estimatedPriceCents,quoteToken:quote.quoteToken};
+      const booking=await first.createBooking(customer.id,payload);
+      const replies=await Promise.all([first,second,first,second].map(service=>service.createCheckoutSession(customer.id,{bookingId:booking.id})));
+      assert.equal(keys.size,1);
+      assert.equal(new Set(replies.map(reply=>reply.payment.id)).size,1);
+      const payment=replies[0].payment;
+      await first.processStripeWebhook(JSON.stringify({id:`evt_refund_${suffix}`,type:'charge.refunded',paymentIntentId:payment.processorPaymentIntentId}),'stub');
+      await second.processStripeWebhook(JSON.stringify({id:`evt_completed_${suffix}`,type:'checkout.session.completed',checkoutSessionId:payment.checkoutSessionId,paid:true}),'stub');
+      assert.equal((await repository.findPaymentById(payment.id))?.status,'refunded');
+      // Even a writer that misses the service lock cannot overwrite a refunded payment.
+      await repository.updatePayment(payment.id,{status:'captured',refundable:true});
+      assert.equal((await repository.findPaymentById(payment.id))?.status,'refunded');
+      const plans=await Promise.all([first,second].map(service=>service.createRecurringServicePlan(customer.id,{...payload,frequency:'weekly'})));
+      assert.equal(plans[0].plan.plan.id,plans[1].plan.plan.id);
+      const orphanId=`rollback-${suffix}`;
+      await assert.rejects(repository.createRecurringPlanWithBooking({...plans[0].plan.plan,id:orphanId}, {...booking,recurringPlanId:orphanId})); // Duplicate booking ID forces a write failure.
+      assert.equal(await repository.findRecurringServicePlanById(orphanId),undefined);
+      const feed=(uid:string,day:number)=>`data:text/calendar,${encodeURIComponent(`BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:${uid}\nDTSTART:${new Date(Date.now()+day*86400000).toISOString().replaceAll(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z')}\nDTEND:${new Date(Date.now()+day*86400000+3600000).toISOString().replaceAll(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z')}\nEND:VEVENT\nEND:VCALENDAR`)}`;
+      await Promise.all([first,second].map((service,index)=>service.createProviderCalendarImport(provider.id,{title:`Feed ${index}`,provider:'google',feedUrl:feed(`pg-feed-${index}`,10+index)})));
+      assert.equal((await repository.findProviderById(provider.id))?.calendarConnection.externalBlocks?.length,2);
+    } finally {
+      // Delete only rows owned by this test's random fixture IDs.
+      const recipients=[customerId,provider.id].filter(Boolean);
+      await prisma.notificationDelivery.deleteMany({where:{recipientId:{in:recipients}}});
+      await prisma.appNotification.deleteMany({where:{recipientId:{in:recipients}}});
+      await prisma.notificationPreference.deleteMany({where:{userId:{in:recipients}}});
+      await prisma.paymentRecord.deleteMany({where:{bookingId:{in:(await prisma.booking.findMany({where:{customerId},select:{id:true}})).map(b=>b.id)}}});
+      await prisma.booking.deleteMany({where:{customerId}});
+      await prisma.recurringServicePlan.deleteMany({where:{customerId}});
+      await prisma.providerCredential.deleteMany({where:{providerId:provider.id}});
+      await prisma.customerProperty.deleteMany({where:{customerId}});
+      await prisma.customerProfile.deleteMany({where:{userId:customerId}});
+      await prisma.providerBusinessProfile.deleteMany({where:{userId:provider.id}});
+      await prisma.userAccount.deleteMany({where:{id:{in:recipients}}});
+      await prisma.$disconnect();
+      await secondClient.$disconnect();
+    }
+});

@@ -521,7 +521,7 @@ export function CustomerLiveDashboard() {
   }
 
   function getActiveRetentionPreference() {
-    if (!activeRetentionOpportunity) {
+    if (!activeRetentionOpportunity || activeRetentionOpportunity.providerContinuityStatus !== "eligible") {
       return undefined;
     }
 
@@ -866,15 +866,18 @@ export function CustomerLiveDashboard() {
         dateIso: buildDateIsoForCustomerTiming("tomorrow-morning"),
         estimatedDurationMinutes: nextQuote.estimatedDurationMinutes,
         requestSource: "customer-retention-nudge",
-        retentionPreference: {
-          priorProviderId: opportunity.providerId,
-          sourceBookingId: opportunity.sourceBookingId,
-          strategyKey: opportunity.strategyKey,
-          trigger: opportunity.trigger,
-          loyaltySegment: opportunity.loyaltySegment,
-          completedCategoryCount: opportunity.completedCategoryCount,
-          sameProviderCompletedCount: opportunity.sameProviderCompletedCount
-        },
+        retentionPreference:
+          opportunity.providerContinuityStatus === "eligible"
+            ? {
+                priorProviderId: opportunity.providerId,
+                sourceBookingId: opportunity.sourceBookingId,
+                strategyKey: opportunity.strategyKey,
+                trigger: opportunity.trigger,
+                loyaltySegment: opportunity.loyaltySegment,
+                completedCategoryCount: opportunity.completedCategoryCount,
+                sameProviderCompletedCount: opportunity.sameProviderCompletedCount
+              }
+            : undefined,
         attribution: getLaunchAttributionContext()
       });
 
@@ -992,6 +995,7 @@ export function CustomerLiveDashboard() {
           scheduledEndIso: slot.endIso,
           notes: "Requested from the live YardMatch customer dashboard.",
           totalCents: quote.estimatedPriceCents,
+          quoteToken: quote.quoteToken,
           recommendationSessionId: providerResults?.recommendationSessionId,
           recommendedProviderId: providerResults?.recommendedProviderId,
           selectedProviderRank: rank,
@@ -1018,6 +1022,7 @@ export function CustomerLiveDashboard() {
           scheduledEndIso: slot.endIso,
           notes: "Recurring service plan started from the live YardMatch customer dashboard.",
           totalCents: quote.estimatedPriceCents,
+          quoteToken: quote.quoteToken,
           frequency: selectedCadence,
           recommendationSessionId: providerResults?.recommendationSessionId,
           recommendedProviderId: providerResults?.recommendedProviderId,

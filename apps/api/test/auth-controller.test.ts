@@ -712,6 +712,7 @@ test("social signup completion creates a new customer account", async () => {
     {
       provider: "google",
       subject: "google-subject-123",
+      emailVerified: true,
       email: "social@example.com",
       fullName: "Jordan Social",
       role: "customer",
@@ -779,6 +780,7 @@ test("social signup completion links an existing account with the same email", a
     {
       provider: "apple",
       subject: "apple-subject-456",
+      emailVerified: true,
       email: "jordan@example.com",
       fullName: "Jordan Rivera",
       role: "customer",

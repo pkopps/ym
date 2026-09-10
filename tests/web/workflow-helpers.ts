@@ -166,6 +166,9 @@ export async function createBooking(
   input: { customerToken: string; providerId: string; customerName?: string; hoursFromNow?: number }
 ) {
   const window = futureServiceWindow(input.hoursFromNow);
+  const quote = await postJson<{ estimatedPriceCents: number; quoteToken: string }>(request, "/api/quotes/instant", {
+    address: { ...barnegatAddress, line1: "22 Bay Ave" }, category: "lawn-mowing"
+  }, input.customerToken);
   return postJson<{ id: string; status: string }>(request, "/api/bookings", {
     providerId: input.providerId,
     serviceAddress: { ...barnegatAddress, line1: "22 Bay Ave" },
@@ -173,7 +176,8 @@ export async function createBooking(
     scheduledStartIso: window.startIso,
     scheduledEndIso: window.endIso,
     notes: `Launch workflow request for ${input.customerName ?? "customer"}`,
-    totalCents: 7200,
+    totalCents: quote.estimatedPriceCents,
+    quoteToken: quote.quoteToken,
     recommendedProviderId: input.providerId,
     selectedProviderRank: 1,
     viewedAlternativeProviders: false,
