@@ -1,5 +1,23 @@
 # Engineer Status
 
+## Current checkpoint: SEO and CodeRabbit setup
+
+- Updated: September 14, 2026 (local).
+- Branch and baseline commit: `codex/seo-quality-upkeep`, `7fbfe0279c9b041d250f1c2d943b5be72cc50b83`.
+- Completed: stable English/Spanish URLs; distinct general and Barnegat service content/metadata; reciprocal sitemap language alternates without fabricated dates; pseudo noindex headers; organic landing attribution; optional Search Console token; CodeRabbit PR configuration and upkeep note; refreshed SEO/launch docs; scoped bilingual booking-test history selectors.
+- In progress: none for local implementation.
+- Remaining work: select production domain, deploy/verify SEO, verify Search Console and submit sitemap, establish traffic baseline, confirm CodeRabbit GitHub app and a live review, obtain approved real local photos/testimonials.
+- Blockers: production domain does not exist yet (confirmed by Patrick); live CodeRabbit activation is unverified.
+- Changed workflows: URL controls page language; first-page search attribution persists through navigation; main-bound PRs and their pushes use CodeRabbit review once the app is enabled.
+- Validation in the shared working tree before isolating this branch: lint, typecheck, translation validation, production web build, 289 API tests (3 PostgreSQL-dependent skips), and all 26 web tests passed, including 7 SEO tests. CodeRabbit YAML parsed and configured fields validated against the official schema subset. Diff check passed.
+- Scope: the separate uncommitted navigation redesign and its header-specific fixes are excluded from this commit.
+- Isolated branch validation: lint, typecheck, 3,675-key translation validation, and all 9 SEO/booking browser regressions passed with the navigation redesign excluded.
+- Known defects: no remaining SEO test failures; organic attribution has documented referrer/ad-tag limitations. No live domain/indexing/review verification performed.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/seo/*-{1440,390}.png` (10 captures; English desktop and Spanish mobile visually inspected).
+- Recommended next task: choose the production domain and follow `SEO_PLAN.md`; confirm CodeRabbit connection on the next main-bound PR.
+
+[SEO checkpoint and verification evidence](/Users/patrickkopps/Documents/app/reports/agent-checkpoints/engineer/latest/seo/checkpoint.md)
+
 ## Current checkpoint: 15-issue audit repairs
 
 - Updated: September 9, 2026.

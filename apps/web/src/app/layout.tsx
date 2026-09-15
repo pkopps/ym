@@ -24,6 +24,9 @@ export const metadata: Metadata = {
     "landscaper staffing marketplace"
   ],
   metadataBase: new URL(`${publicSiteUrl}/`),
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION?.trim() || undefined
+  },
   openGraph: {
     title: sourceMessages["metadata.og.title"],
     description: sourceMessages["metadata.og.description"],
