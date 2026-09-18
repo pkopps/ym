@@ -1,5 +1,65 @@
 # Engineer Status
 
+## Current checkpoint: cross-task main consolidation
+
+- Updated: September 18, 2026.
+- Branch: `codex/consolidate-main-2026-09-18`; verified implementation commit: `b02c12a` (this checkpoint follows in a documentation commit).
+- Completed: reconciled every local/remote feature branch and the shared working tree; preserved SEO PR #2 and cloud hardening PR #1 history; included the implemented compact header/footer/heading/card UX slice; kept newer audit fixes and payout contracts; enforced crew credentials in automatic matching and public claims; fixed the passing API smoke process hanging CI.
+- In progress: main integration through [PR #3](https://github.com/pkopps/ym/pull/3). Its checks are the authoritative final CI/merge record.
+- Remaining work: unfinished UX roadmap items; production domain and Search Console; real vendor acceptance; confirm CodeRabbit GitHub app activation and an actual review.
+- Blockers: no code consolidation blocker. No CodeRabbit review has appeared, and no CodeRabbit tool/CLI is available in this session.
+- CI follow-up: the clean browser job exposed missing compiled workspace dependencies (`@yardmatch/analytics/dist`). Added the existing TypeScript project build before starting Playwright. All three mobile exports and the API/Postgres jobs passed on `9a8bb55`; final browser/combined status remains linked from PR #3.
+- Changed workflows: automatic crew acceptance requires current credential readiness; otherwise matches and notifications require review. Smoke runs start Node directly and await server shutdown; CI verifies both successful and failed startup release their ports.
+- Validation: lint, typecheck, 3,748 locale keys, API build, web production build, 291 API tests (3 database-only skips), all 26 browser tests, four targeted crew coverage regressions, and two smoke lifecycle tests passed. Eight route/viewport checks returned 200 without horizontal page overflow at 1440x900 and 390x844. Desktop homepage and mobile service screenshots were visually inspected. The consolidated PR's Postgres migration/drift/integration job also passed before this documentation commit; final full CI is linked above.
+- Known defects: broader UX work remains as documented in its task; mobile compact navigation intentionally scrolls horizontally. The first local browser attempt hit a stale Next dev process; restarting it produced a clean full pass. A screenshot probe initially used nonexistent `/listings`; the corrected `/customer/listings` route passed.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/consolidation/{home,services-lawn-mowing,es-barnegat-nj-lawn-mowing,customer-listings}-{1440,390}.png`; readable viewport captures: `viewport-1440.png`, `viewport-390.png`.
+- Recommended next task: activate/verify CodeRabbit on a main-bound PR and continue the prioritized UX backlog after choosing the production domain.
+
+### Consolidation accounting
+
+- SEO: `6b9f0f3`, merged through `6910d37`.
+- Shared UX and SEO working-tree checkpoint: `d0256aa`; pre-consolidation backup is at `/private/tmp/yardmatch-main-consolidation-backup-20260918/`.
+- Older cloud branch: `146efb5`, reconciled through `5b0d98e`; retain the new credential gates and adapt old test fixtures to current booking protections. Historical cloud status text does not overwrite newer checkpoints.
+- API smoke teardown and credential regression reconciliation: `b02c12a`.
+- Account security, launch hardening, property photos, honest Barnegat, skeleton loading, retention, and the 15-issue audit were already ancestors of main `7fbfe02`.
+- “Share iOS app before launch” contained guidance only. The unfinished UX plan and launch/vendor setup are backlog, not missing commits.
+
+## Historical checkpoints (preserved)
+
+## Current checkpoint: SEO and CodeRabbit setup
+
+- Updated: September 14, 2026 (local).
+- Branch and baseline commit: `main`, `7fbfe0279c9b041d250f1c2d943b5be72cc50b83`; uncommitted.
+- Completed: stable English/Spanish URLs; distinct general and Barnegat service content/metadata; reciprocal sitemap language alternates without fabricated dates; pseudo noindex headers; organic landing attribution; optional Search Console token; CodeRabbit PR configuration and upkeep note; refreshed SEO/launch docs; mobile header overflow and logo lint fixes; scoped bilingual booking-test history selectors.
+- In progress: none for local implementation.
+- Remaining work: select production domain, deploy/verify SEO, verify Search Console and submit sitemap, establish traffic baseline, confirm CodeRabbit GitHub app and a live review, obtain approved real local photos/testimonials.
+- Blockers: production domain does not exist yet (confirmed by Patrick); live CodeRabbit activation is unverified.
+- Changed workflows: URL controls page language; first-page search attribution persists through navigation; main-bound PRs and their pushes use CodeRabbit review once the app is enabled.
+- Validation: lint, typecheck, 3,748-key translation validation, production web build, 289 API tests (3 PostgreSQL-dependent skips), and all 26 web tests passed, including 7 SEO tests. CodeRabbit YAML parsed and configured fields validated against the official schema subset. Diff check passed.
+- Known defects: no remaining SEO test failures; organic attribution has documented referrer/ad-tag limitations. No live domain/indexing/review verification performed.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/seo/*-{1440,390}.png` (10 captures; English desktop and Spanish mobile visually inspected).
+- Recommended next task: choose the production domain and follow `SEO_PLAN.md`; confirm CodeRabbit connection on the next main-bound PR.
+
+[SEO checkpoint and verification evidence](/Users/patrickkopps/Documents/app/reports/agent-checkpoints/engineer/latest/seo/checkpoint.md)
+
+## Current checkpoint: web card surfaces
+
+- Updated: September 10, 2026 (local checkpoint).
+- Branch and baseline commit: `main`, `7fbfe02`; CSS changes are uncommitted.
+- Completed: replaced oversized web card and panel corners with shared 6px card / 4px inner-panel and field radii; reduced surface shadows; normalized hardcoded component radii across public, auth, customer, provider, crew, and ops surfaces.
+- Scope: Patrick explicitly included the homepage for this CSS pass. Homepage copy, layout, and workflows remain unchanged. Web-only token overrides leave native styles unchanged; functional pills, round indicators, avatars, and device illustrations retain their shapes.
+- In progress: none for this CSS pass.
+- Remaining work: broader UX plan, including typography, content density, nested containers, and navigation. UX-19 is only partially complete.
+- Blockers: none.
+- Changed workflows: none; presentation only.
+- Validation: `npm run typecheck` passed; before/after Chromium capture on seven public/auth routes at 1440×900 and 390×844 (14 captures per phase) completed without page errors or horizontal overflow; representative desktop/mobile screenshots visually inspected. Sampled computed card radii changed from 16–28px to 4–6px (intentional zero-radius nested search surfaces remain).
+- Checks not run: API suite, full web smoke, production build, native exports, live vendor checks. No business logic or native code changed; responsive browser verification was used for this CSS-only change.
+- Known defects: pre-existing long headings, nested card structure, and navigation crowding remain outside this pass. Authenticated operational workflows were not re-exercised.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/card-surfaces/{before,after}-{home,listings,signup,provider,crew,help,spanish-home}-{desktop,mobile}.png`.
+- Recommended next task: compact app-page headings and mobile navigation from UX-01/02, with broader homepage redesign still deferred.
+
+[Card styling evidence](/Users/patrickkopps/Documents/app/reports/agent-checkpoints/engineer/latest/card-surfaces/checkpoint.md)
+
 ## Current checkpoint: 15-issue audit repairs
 
 - Updated: September 9, 2026.

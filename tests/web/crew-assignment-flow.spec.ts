@@ -16,7 +16,7 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
     companyName: `Crew Route Partner ${Date.now()}`,
     staffingMode: "auto-accept"
   });
-  await approveProvider(request, provider.providerId);
+  await approveProvider(request, provider.providerId, provider.token);
   const customer = await registerCustomer(request, "Crew Route Customer");
   const booking = await createBooking(request, {
     customerToken: customer.token,

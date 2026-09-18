@@ -217,7 +217,6 @@ async function attachEvidence(
     imageDataUrl: testImageDataUrl(`${phase}-photo`)
   });
 }
-
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+Av7czgAAAABJRU5ErkJggg==",
   "base64"
@@ -6546,7 +6545,7 @@ test("captured disputed bookings hold provider settlement while crew history sta
   assert.equal(resolvedSummary.payoutHolds.length, 0);
 });
 
-test("refund review requests hold payouts until ops approves the refund", async () => {
+test("refund reviews hold and reverse provider payout without creating YardMatch crew wages", async () => {
   const repository = new InMemoryMarketplaceRepository();
   let refundedPaymentIntentId: string | undefined;
   const platform = new MarketplacePlatformService(
@@ -7295,16 +7294,13 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
   assert.equal(firstProviderBatch?.recipientIds.includes(crewMember.id), false);
 
   const opsActor = {
-    userId: "ops-payout-run-reviewer",
-    email: "ops-payout-run-reviewer@yardmatch.test",
-    role: "ops" as const,
-    sessionVersion: 1
+    userId: "ops-payout-run-reviewer", email: "ops-payout-run-reviewer@yardmatch.test",
+    role: "ops" as const, sessionVersion: 1
   };
   const createdRun = await platform.createOpsPayoutDisbursementRun(opsActor, {
     previewBatchId: firstProviderBatch!.id,
     operatorNotes: "Prepared for manual provider-settlement review."
   });
-
   assert.equal(createdRun.created, true);
   assert.equal(createdRun.matchedPreviewBatch.id, firstProviderBatch?.id);
   assert.equal(createdRun.run.previewBatchId, firstProviderBatch?.id);
@@ -7317,12 +7313,9 @@ test("ops payout preview groups ready balances into upcoming payout runs", async
   assert.equal(createdRun.run.entries[0]?.paymentId, firstProviderBatch?.entries[0]?.paymentId);
   assert.equal(createdRun.run.createdByOpsUserId, opsActor.userId);
   assert.match(createdRun.run.entryFingerprint, /^[a-f0-9]{64}$/);
-  assert.ok(
-    createdRun.run.auditInstructions.some((instruction) =>
-      /external bank or payout-provider reference/i.test(instruction)
-    )
-  );
-
+  assert.ok(createdRun.run.auditInstructions.some(
+    (instruction) => /external bank or payout-provider reference/i.test(instruction)
+  ));
   const duplicateRun = await platform.createOpsPayoutDisbursementRun(opsActor, {
     previewBatchId: firstProviderBatch!.id,
     operatorNotes: "Second click should reuse the same audit record."
@@ -8522,7 +8515,7 @@ test("automated day-load balancing rotates crew recommendations across same-day 
   );
 });
 
-test("auto-accept staffing immediately creates accepted crew matches", async () => {
+test("auto-accept staffing engages crew only after workers-compensation readiness", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
 
@@ -8557,6 +8550,22 @@ test("auto-accept staffing immediately creates accepted crew matches", async () 
   });
   assert.equal(customer.role, "customer");
 
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Weekly service",
+    totalCents: 6200
+  });
+
+  const readyProvider = await repository.findProviderById(provider.id);
+  await repository.updateProvider(provider.id, {
+    credentials: readyProvider!.credentials!.filter((credential) => credential.type !== "workers-compensation")
+  });
+
   const crew = await platform.registerUser({
     fullName: "Alex Mower",
     email: "crew-auto@example.com",
@@ -8570,22 +8579,39 @@ test("auto-accept staffing immediately creates accepted crew matches", async () 
   });
   assert.equal(crew.role, "crew-member");
 
-  const booking = await createWorkflowBooking(platform, repository, customer.id, {
-    providerId: provider.id,
-    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
-    servicePropertyId: customer.defaultPropertyId,
-    category: "lawn-mowing",
-    scheduledStartIso: futureIso(72),
-    scheduledEndIso: futureIso(73),
-    notes: "Weekly service",
-    totalCents: 6200
-  });
-
   const staffing = await platform.getProviderStaffingOverview(provider.id);
   const job = staffing.jobs.find((item) => item.bookingId === booking.id);
+  const pendingMatch = job?.matches.find((match) => match.crewMemberId === crew.id);
   assert.ok(job);
+  assert.ok(pendingMatch);
   assert.equal(staffing.provider.staffingMode, "auto-accept");
-  assert.ok(job.matches.some((match) => match.crewMemberId === crew.id && match.status === "accepted"));
+  assert.equal(pendingMatch?.status, "pending-provider-review");
+  assert.equal(pendingMatch?.autoAccepted, false);
+  await assert.rejects(
+    () => platform.reviewCrewMatch(provider.id, {
+      crewMatchId: pendingMatch?.id ?? "", action: "accept"
+    }),
+    (error: unknown) => error instanceof HttpError && error.statusCode === 409 &&
+      /workers-compensation coverage|counsel-approved exemption/i.test(error.message)
+  );
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: true });
+  const acceptedMatch = await platform.reviewCrewMatch(provider.id, {
+    crewMatchId: pendingMatch?.id ?? "", action: "accept"
+  });
+  assert.equal(acceptedMatch.status, "accepted");
+  const secondBooking = await createWorkflowBooking(platform, repository, customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("114 Garden Row", 30.2436, -97.7637),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(96), scheduledEndIso: futureIso(97),
+    notes: "Insured auto-accept service", totalCents: 6200
+  });
+  const refreshedStaffing = await platform.getProviderStaffingOverview(provider.id);
+  const secondJob = refreshedStaffing.jobs.find((item) => item.bookingId === secondBooking.id);
+  assert.ok(secondJob?.matches.some(
+    (match) => match.crewMemberId === crew.id && match.status === "accepted" && match.autoAccepted
+  ));
 });
 
 test("provider and crew can chat on a valid crew match while unrelated users are blocked", async () => {
@@ -10799,6 +10825,8 @@ test("selecting a public crew opportunity texts auto-accept providers that the o
     serviceRadiusMiles: 25,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: true });
+
   await platform.updateProviderSettings(provider.id, {
     serviceRadiusMiles: provider.serviceRadiusMiles,
     staffingMode: "auto-accept"
@@ -10841,7 +10869,9 @@ test("selecting a public crew opportunity texts auto-accept providers that the o
   assert.match(sms.bodyPreview, /auto-accept setting marked the opening as filled/i);
 });
 
-test("crew members can claim a selected public opportunity after signup", async () => {
+for (const coverageState of ["missing", "expired", "verified"] as const) {
+const hasCrewCoverage = coverageState === "verified";
+test(`public crew claims require verified coverage for auto-accept (${coverageState})`, async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
 
@@ -10856,6 +10886,8 @@ test("crew members can claim a selected public opportunity after signup", async 
     serviceRadiusMiles: 25,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: hasCrewCoverage });
+
   await platform.updateProviderSettings(provider.id, {
     serviceRadiusMiles: provider.serviceRadiusMiles,
     staffingMode: "auto-accept"
@@ -10882,6 +10914,17 @@ test("crew members can claim a selected public opportunity after signup", async 
     totalCents: 6200
   });
 
+  if (!hasCrewCoverage) {
+    const readyProvider = await repository.findProviderById(provider.id);
+    await repository.updateProvider(provider.id, {
+      credentials: readyProvider!.credentials!
+        .filter((credential) => coverageState !== "missing" || credential.type !== "workers-compensation")
+        .map((credential) => credential.type === "workers-compensation"
+          ? { ...credential, expiresAt: "2000-01-01T00:00:00Z" }
+          : credential)
+    });
+  }
+
   const crewMember = await platform.registerUser({
     fullName: "Riley Crew",
     email: "crew-claim-select@example.com",
@@ -10897,21 +10940,26 @@ test("crew members can claim a selected public opportunity after signup", async 
     winterWorkEnabled: true
   });
 
+  const selection = await platform.selectPublicCrewOpportunity({ opportunityId: booking.id });
+  assert.equal(selection.notificationTitle, hasCrewCoverage ? "Your crew opening was filled" : "Crew opening needs review");
+
   const match = await platform.claimPublicCrewOpportunity(crewMember.id, {
     opportunityId: booking.id
   });
 
   assert.equal(match.bookingId, booking.id);
   assert.equal(match.crewMemberId, crewMember.id);
-  assert.equal(match.status, "accepted");
-  assert.equal(match.autoAccepted, true);
-  assert.ok(match.reviewedAt);
+  assert.equal(match.status, hasCrewCoverage ? "accepted" : "pending-provider-review");
+  assert.equal(match.autoAccepted, hasCrewCoverage);
+  assert.equal(Boolean(match.reviewedAt), hasCrewCoverage);
 
   const crewMatches = await platform.getCrewMatchesForCrew(crewMember.id);
   assert.equal(crewMatches.matches.length, 1);
   assert.equal(crewMatches.matches[0]?.providerCompanyName, "Claim Select Lawn Co.");
-  assert.equal(crewMatches.matches[0]?.status, "accepted");
+  assert.equal(crewMatches.matches[0]?.status, hasCrewCoverage ? "accepted" : "pending-provider-review");
 });
+
+}
 
 test("selecting a public crew opportunity texts review-first providers that review is needed", async () => {
   const repository = new InMemoryMarketplaceRepository();
@@ -12699,6 +12747,8 @@ test("provider assistant can message the route leader and accepted crew from pla
     serviceRadiusMiles: 20,
     address: createAddress("1400 Provider Way", 30.244, -97.764)
   });
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: true });
+
   await platform.updateProviderSettings(provider.id, {
     serviceRadiusMiles: provider.serviceRadiusMiles,
     staffingMode: "auto-accept",

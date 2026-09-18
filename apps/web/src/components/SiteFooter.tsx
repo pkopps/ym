@@ -1,6 +1,7 @@
 "use client";
 
-import { addLocalePrefix, TranslationKey } from "@yardmatch/i18n";
+import { addLocalePrefix, stripLocalePrefix, TranslationKey } from "@yardmatch/i18n";
+import { usePathname } from "next/navigation";
 import { useI18n } from "@yardmatch/i18n/react";
 
 const footerColumns: Array<{
@@ -118,7 +119,17 @@ function SocialIcon({ icon }: { icon: (typeof socialLinks)[number]["icon"] }) {
 
 export function SiteFooter() {
   const i18n = useI18n();
+  const pathname = stripLocalePrefix(usePathname()).path;
   const localizedHref = (href: string) => addLocalePrefix(href, i18n.locale);
+
+  if (pathname !== "/") {
+    return <footer className="compact-footer"><div className="container">
+      <span>{i18n.t("footer.copyright", { year: "2026" })}</span>
+      <nav aria-label={i18n.t("ux.policies")}>
+        {[{href:"/help",label:"ux.help"},{href:"/privacy-policy",label:"footer.legal.privacy"},{href:"/terms-of-service",label:"footer.legal.terms"},{href:"/refund-policy",label:"footer.legal.refunds"}].map(link => <a key={link.href} href={localizedHref(link.href)}>{i18n.t(link.label as TranslationKey)}</a>)}
+      </nav>
+    </div></footer>;
+  }
 
   return (
     <footer className="site-footer">

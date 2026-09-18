@@ -17,7 +17,8 @@ export async function generateMetadata(): Promise<Metadata> {
       canonical: buildSiteUrl(localizedPath),
       languages: {
         en: buildSiteUrl("/"),
-        es: buildSiteUrl("/es")
+        es: buildSiteUrl("/es"),
+        "x-default": buildSiteUrl("/")
       }
     },
     openGraph: {

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { MarketplaceApiClient } from "@yardmatch/contracts";
 import { SessionHeartbeatFactory } from "@yardmatch/observability";
 import { getWebApiBaseUrl } from "../lib/api";
+import { getLaunchAttributionContext } from "../lib/launchAttribution";
 
 function getOrCreateSessionId(): string {
   const storageKey = "yardmatch-session-id";
@@ -23,6 +24,8 @@ function getPlatformSurface(): "web-mobile" | "web-desktop" {
 
 export function ObservabilityProvider() {
   useEffect(() => {
+    // Persist the landing source before internal navigation replaces the referrer.
+    getLaunchAttributionContext();
     const api = new MarketplaceApiClient(getWebApiBaseUrl());
     const sessionId = getOrCreateSessionId();
 

@@ -1,29 +1,10 @@
 "use client";
 
-import { Suspense } from "react";
+import { stripLocalePrefix } from "@yardmatch/i18n";
 import { usePathname } from "next/navigation";
-import { CustomerAppHeader } from "./CustomerAppHeader";
 import { NavBar } from "./NavBar";
-import { ProviderSiteHeader } from "./ProviderSiteHeader";
+import { CompactSiteHeader } from "./CompactSiteHeader";
 
 export function SiteHeader() {
-  const pathname = usePathname();
-
-  if (pathname.startsWith("/customer/dashboard") || pathname.startsWith("/customer/history")) {
-    return (
-      <Suspense fallback={null}>
-        <CustomerAppHeader />
-      </Suspense>
-    );
-  }
-
-  if (
-    pathname.startsWith("/provider") ||
-    pathname.startsWith("/auth/provider") ||
-    pathname.startsWith("/login/provider")
-  ) {
-    return <ProviderSiteHeader />;
-  }
-
-  return <NavBar />;
+  return stripLocalePrefix(usePathname()).path === "/" ? <NavBar /> : <CompactSiteHeader />;
 }

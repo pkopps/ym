@@ -24,6 +24,9 @@ export const metadata: Metadata = {
     "landscaper staffing marketplace"
   ],
   metadataBase: new URL(`${publicSiteUrl}/`),
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION?.trim() || undefined
+  },
   openGraph: {
     title: sourceMessages["metadata.og.title"],
     description: sourceMessages["metadata.og.description"],
@@ -48,7 +51,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <I18nProvider fallbackMessages={fallbackMessages} locale={locale} messages={messages}>
           <ObservabilityProvider />
           <SiteHeader />
-          {children}
+          <div id="main-content" tabIndex={-1}>{children}</div>
           <SiteFooter />
         </I18nProvider>
       </body>

@@ -19,6 +19,9 @@ type LaunchLandingServiceContent = {
   townPath: string;
   metadataTitleKey: TranslationKey;
   metadataDescriptionKey: TranslationKey;
+  serviceMetadataTitleKey: TranslationKey;
+  serviceMetadataDescriptionKey: TranslationKey;
+  localPlanningKey: TranslationKey;
   introKey: TranslationKey;
   includeKeys: TranslationKey[];
   bestForKeys: TranslationKey[];
@@ -38,6 +41,9 @@ export const launchServiceContent: Record<LaunchLandingServiceKey, LaunchLanding
     townPath: "/barnegat-nj/lawn-mowing",
     metadataTitleKey: "launch_service.lawn_mowing.metadata.title",
     metadataDescriptionKey: "launch_service.lawn_mowing.metadata.description",
+    serviceMetadataTitleKey: "launch_service.lawn_mowing.general_metadata.title",
+    serviceMetadataDescriptionKey: "launch_service.lawn_mowing.general_metadata.description",
+    localPlanningKey: "launch_service.lawn_mowing.local_planning",
     introKey: "launch_service.lawn_mowing.intro",
     includeKeys: [
       "launch_service.lawn_mowing.includes.routine",
@@ -78,6 +84,9 @@ export const launchServiceContent: Record<LaunchLandingServiceKey, LaunchLanding
     townPath: "/barnegat-nj/yard-cleanup",
     metadataTitleKey: "launch_service.yard_cleanup.metadata.title",
     metadataDescriptionKey: "launch_service.yard_cleanup.metadata.description",
+    serviceMetadataTitleKey: "launch_service.yard_cleanup.general_metadata.title",
+    serviceMetadataDescriptionKey: "launch_service.yard_cleanup.general_metadata.description",
+    localPlanningKey: "launch_service.yard_cleanup.local_planning",
     introKey: "launch_service.yard_cleanup.intro",
     includeKeys: [
       "launch_service.yard_cleanup.includes.debris",
