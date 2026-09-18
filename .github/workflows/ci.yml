@@ -9,6 +9,7 @@ on:
 jobs:
   checks:
     name: Lint, typecheck, and API tests
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -44,8 +45,9 @@ jobs:
       - name: API tests
         run: npm run test:api
 
-      - name: API smoke
-        run: npm run test:api:smoke
+      - name: API smoke and process cleanup
+        timeout-minutes: 3
+        run: node --test scripts/api-smoke.test.mjs
 
   postgres-integration:
     name: Postgres migrations and repository integration

@@ -5,6 +5,8 @@ const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4001";
 const startApi = process.env.YARDMATCH_SMOKE_START_API !== "0";
 const timeoutMs = Number(process.env.YARDMATCH_SMOKE_TIMEOUT_MS ?? 30_000);
 let apiProcess;
+let apiClosed;
+let startupError;
 const apiStartupOutput = [];
 
 function log(message) {
@@ -18,6 +20,7 @@ async function sleep(ms) {
 async function request(path, options = {}) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
+    signal: options.signal ?? AbortSignal.timeout(timeoutMs),
     headers: {
       "Content-Type": "application/json",
       ...(options.headers ?? {})
@@ -45,7 +48,7 @@ async function isApiReachable() {
 
 function startLocalApi() {
   log(`starting API at ${apiBaseUrl}`);
-  apiProcess = spawn("npm", ["run", "dev:api"], {
+  apiProcess = spawn(process.execPath, ["--import", "tsx", "apps/api/src/index.ts"], {
     cwd: new URL("..", import.meta.url),
     env: {
       ...process.env,
@@ -55,6 +58,9 @@ function startLocalApi() {
     },
     stdio: ["ignore", "pipe", "pipe"]
   });
+
+  apiClosed = new Promise((resolve) => apiProcess.once("close", resolve));
+  apiProcess.on("error", (error) => { startupError = error; });
 
   apiProcess.stdout.on("data", (chunk) => {
     apiStartupOutput.push(chunk.toString());
@@ -74,6 +80,8 @@ async function waitForApi() {
   const startedAt = Date.now();
 
   while (Date.now() - startedAt < timeoutMs) {
+    if (startupError) throw startupError;
+    if (apiProcess.exitCode !== null || apiProcess.signalCode !== null) break;
     if (await isApiReachable()) {
       return;
     }
@@ -208,5 +216,11 @@ try {
 } finally {
   if (apiProcess) {
     apiProcess.kill("SIGTERM");
+    const forceStop = setTimeout(() => apiProcess.kill("SIGKILL"), 5_000);
+    try {
+      await apiClosed;
+    } finally {
+      clearTimeout(forceStop);
+    }
   }
 }

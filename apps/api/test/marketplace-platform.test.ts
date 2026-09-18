@@ -8550,6 +8550,22 @@ test("auto-accept staffing engages crew only after workers-compensation readines
   });
   assert.equal(customer.role, "customer");
 
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
+    providerId: provider.id,
+    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId,
+    category: "lawn-mowing",
+    scheduledStartIso: futureIso(72),
+    scheduledEndIso: futureIso(73),
+    notes: "Weekly service",
+    totalCents: 6200
+  });
+
+  const readyProvider = await repository.findProviderById(provider.id);
+  await repository.updateProvider(provider.id, {
+    credentials: readyProvider!.credentials!.filter((credential) => credential.type !== "workers-compensation")
+  });
+
   const crew = await platform.registerUser({
     fullName: "Alex Mower",
     email: "crew-auto@example.com",
@@ -8562,17 +8578,6 @@ test("auto-accept staffing engages crew only after workers-compensation readines
     willingToTravelMiles: 30
   });
   assert.equal(crew.role, "crew-member");
-
-  const booking = await createWorkflowBooking(platform, repository, customer.id, {
-    providerId: provider.id,
-    serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
-    servicePropertyId: customer.defaultPropertyId,
-    category: "lawn-mowing",
-    scheduledStartIso: futureIso(72),
-    scheduledEndIso: futureIso(73),
-    notes: "Weekly service",
-    totalCents: 6200
-  });
 
   const staffing = await platform.getProviderStaffingOverview(provider.id);
   const job = staffing.jobs.find((item) => item.bookingId === booking.id);
@@ -8594,7 +8599,7 @@ test("auto-accept staffing engages crew only after workers-compensation readines
     crewMatchId: pendingMatch?.id ?? "", action: "accept"
   });
   assert.equal(acceptedMatch.status, "accepted");
-  const secondBooking = await platform.createBooking(customer.id, {
+  const secondBooking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress("114 Garden Row", 30.2436, -97.7637),
     servicePropertyId: customer.defaultPropertyId,
@@ -10864,8 +10869,9 @@ test("selecting a public crew opportunity texts auto-accept providers that the o
   assert.match(sms.bodyPreview, /auto-accept setting marked the opening as filled/i);
 });
 
-for (const hasCrewCoverage of [false, true]) {
-test(`public crew claims require verified coverage for auto-accept (${hasCrewCoverage})`, async () => {
+for (const coverageState of ["missing", "expired", "verified"] as const) {
+const hasCrewCoverage = coverageState === "verified";
+test(`public crew claims require verified coverage for auto-accept (${coverageState})`, async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
 
@@ -10907,6 +10913,17 @@ test(`public crew claims require verified coverage for auto-accept (${hasCrewCov
     notes: "Public crew claim auto accept test",
     totalCents: 6200
   });
+
+  if (!hasCrewCoverage) {
+    const readyProvider = await repository.findProviderById(provider.id);
+    await repository.updateProvider(provider.id, {
+      credentials: readyProvider!.credentials!
+        .filter((credential) => coverageState !== "missing" || credential.type !== "workers-compensation")
+        .map((credential) => credential.type === "workers-compensation"
+          ? { ...credential, expiresAt: "2000-01-01T00:00:00Z" }
+          : credential)
+    });
+  }
 
   const crewMember = await platform.registerUser({
     fullName: "Riley Crew",
