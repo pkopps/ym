@@ -1,5 +1,30 @@
 # Engineer Status
 
+## Current checkpoint: cross-task main consolidation
+
+- Updated: September 18, 2026.
+- Branch: `codex/consolidate-main-2026-09-18`; verified implementation commit: `b02c12a` (this checkpoint follows in a documentation commit).
+- Completed: reconciled every local/remote feature branch and the shared working tree; preserved SEO PR #2 and cloud hardening PR #1 history; included the implemented compact header/footer/heading/card UX slice; kept newer audit fixes and payout contracts; enforced crew credentials in automatic matching and public claims; fixed the passing API smoke process hanging CI.
+- In progress: main integration through [PR #3](https://github.com/pkopps/ym/pull/3). Its checks are the authoritative final CI/merge record.
+- Remaining work: unfinished UX roadmap items; production domain and Search Console; real vendor acceptance; confirm CodeRabbit GitHub app activation and an actual review.
+- Blockers: no code consolidation blocker. No CodeRabbit review has appeared, and no CodeRabbit tool/CLI is available in this session.
+- Changed workflows: automatic crew acceptance requires current credential readiness; otherwise matches and notifications require review. Smoke runs start Node directly and await server shutdown; CI verifies both successful and failed startup release their ports.
+- Validation: lint, typecheck, 3,748 locale keys, API build, web production build, 291 API tests (3 database-only skips), all 26 browser tests, four targeted crew coverage regressions, and two smoke lifecycle tests passed. Eight route/viewport checks returned 200 without horizontal page overflow at 1440x900 and 390x844. Desktop homepage and mobile service screenshots were visually inspected. The consolidated PR's Postgres migration/drift/integration job also passed before this documentation commit; final full CI is linked above.
+- Known defects: broader UX work remains as documented in its task; mobile compact navigation intentionally scrolls horizontally. The first local browser attempt hit a stale Next dev process; restarting it produced a clean full pass. A screenshot probe initially used nonexistent `/listings`; the corrected `/customer/listings` route passed.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/consolidation/{home,services-lawn-mowing,es-barnegat-nj-lawn-mowing,customer-listings}-{1440,390}.png`; readable viewport captures: `viewport-1440.png`, `viewport-390.png`.
+- Recommended next task: activate/verify CodeRabbit on a main-bound PR and continue the prioritized UX backlog after choosing the production domain.
+
+### Consolidation accounting
+
+- SEO: `6b9f0f3`, merged through `6910d37`.
+- Shared UX and SEO working-tree checkpoint: `d0256aa`; pre-consolidation backup is at `/private/tmp/yardmatch-main-consolidation-backup-20260918/`.
+- Older cloud branch: `146efb5`, reconciled through `5b0d98e`; retain the new credential gates and adapt old test fixtures to current booking protections. Historical cloud status text does not overwrite newer checkpoints.
+- API smoke teardown and credential regression reconciliation: `b02c12a`.
+- Account security, launch hardening, property photos, honest Barnegat, skeleton loading, retention, and the 15-issue audit were already ancestors of main `7fbfe02`.
+- “Share iOS app before launch” contained guidance only. The unfinished UX plan and launch/vendor setup are backlog, not missing commits.
+
+## Historical checkpoints (preserved)
+
 ## Current checkpoint: SEO and CodeRabbit setup
 
 - Updated: September 14, 2026 (local).
