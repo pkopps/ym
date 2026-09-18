@@ -67,7 +67,8 @@ export async function getLocalizedPageMetadata({
       canonical: buildSiteUrl(localizedPath),
       languages: {
         en: buildSiteUrl(path),
-        es: buildSiteUrl(addLocalePrefix(path, "es"))
+        es: buildSiteUrl(addLocalePrefix(path, "es")),
+        "x-default": buildSiteUrl(path)
       }
     },
     openGraph: {

@@ -15,7 +15,7 @@ function formatRelativeDate(i18n: I18nInstance, iso: string) {
   });
 }
 
-export function NotificationMenu({ session }: { session?: StoredWebSession }) {
+export function NotificationMenu({ session, legacyIcon = false }: { session?: StoredWebSession; legacyIcon?: boolean }) {
   const i18n = useI18n();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -133,7 +133,7 @@ export function NotificationMenu({ session }: { session?: StoredWebSession }) {
         type="button"
       >
         <span className="app-header__notification-icon" aria-hidden="true">
-          &#128276;
+          {legacyIcon ? "🔔" : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z" /><path d="M10 21h4" /></svg>}
         </span>
         {unreadCount > 0 ? <span className="app-header__notification-count">{unreadCount}</span> : null}
       </button>

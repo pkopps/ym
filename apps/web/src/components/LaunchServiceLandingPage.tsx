@@ -40,7 +40,7 @@ export function LaunchServiceLandingPage({
   const summary =
     variant === "town-service"
       ? i18n.t(service.metadataDescriptionKey, values)
-      : i18n.t("launch_service.summary.service", values);
+      : i18n.t(service.serviceMetadataDescriptionKey, values);
   const preferredCategory = service.category;
   const ctaHref = addLocalePrefix(
     `/customer?service=${service.key}&area=${encodeURIComponent(launchAreaLabel)}`,
@@ -68,32 +68,54 @@ export function LaunchServiceLandingPage({
         </div>
       </section>
 
-      <section className="grid-two">
-        <article className="card">
-          <h2>{i18n.t("launch_service.section.what_for")}</h2>
-          <p>{i18n.t(service.introKey, values)}</p>
-          <ul className="timeline">
-            {service.includeKeys.map((key) => (
-              <li key={key}>
-                <strong>•</strong>
-                <span>{i18n.t(key, values)}</span>
-              </li>
-            ))}
-          </ul>
-        </article>
+      {variant === "town-service" ? (
+        <section className="grid-two">
+          <article className="card">
+            <h2>{i18n.t("launch_service.local.planning_title", values)}</h2>
+            <p>{i18n.t(service.localPlanningKey, values)}</p>
+            <p>{i18n.t("launch_service.local.access", values)}</p>
+          </article>
+          <article className="card">
+            <h2>{i18n.t("launch_service.local.coverage_title", values)}</h2>
+            <p>{i18n.t("launch_service.local.coverage", values)}</p>
+            <div className="cta-row">
+              <Link href={addLocalePrefix("/barnegat-nj", i18n.locale)}>
+                {i18n.t("launch_service.local.area_link", values)}
+              </Link>
+              <Link href={addLocalePrefix("/provider-verification", i18n.locale)}>
+                {i18n.t("launch_service.local.verification_link")}
+              </Link>
+            </div>
+          </article>
+        </section>
+      ) : (
+        <section className="grid-two">
+          <article className="card">
+            <h2>{i18n.t("launch_service.section.what_for")}</h2>
+            <p>{i18n.t(service.introKey, values)}</p>
+            <ul className="timeline">
+              {service.includeKeys.map((key) => (
+                <li key={key}>
+                  <strong>•</strong>
+                  <span>{i18n.t(key, values)}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
 
-        <article className="card">
-          <h2>{i18n.t("launch_service.section.best_fit")}</h2>
-          <ul className="timeline">
-            {service.bestForKeys.map((key) => (
-              <li key={key}>
-                <strong>•</strong>
-                <span>{i18n.t(key, values)}</span>
-              </li>
-            ))}
-          </ul>
-        </article>
-      </section>
+          <article className="card">
+            <h2>{i18n.t("launch_service.section.best_fit")}</h2>
+            <ul className="timeline">
+              {service.bestForKeys.map((key) => (
+                <li key={key}>
+                  <strong>•</strong>
+                  <span>{i18n.t(key, values)}</span>
+                </li>
+              ))}
+            </ul>
+          </article>
+        </section>
+      )}
 
       <section className="grid-two">
         <article className="card">
@@ -172,7 +194,10 @@ export function LaunchServiceLandingPage({
           <p>{i18n.t("launch_service.faq.body")}</p>
         </div>
         <div className="grid-two">
-          {service.faqKeys.map((item) => (
+          {(variant === "town-service" ? [
+            { questionKey: "launch_service.local.faq.coverage_question", answerKey: "launch_service.local.faq.coverage_answer" },
+            { questionKey: "launch_service.local.faq.away_question", answerKey: "launch_service.local.faq.away_answer" }
+          ] as const : service.faqKeys).map((item) => (
             <article className="card" key={item.questionKey}>
               <h3>{i18n.t(item.questionKey, values)}</h3>
               <p>{i18n.t(item.answerKey, values)}</p>

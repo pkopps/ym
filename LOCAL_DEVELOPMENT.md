@@ -2,6 +2,23 @@
 
 This is the practical runbook for getting YardMatch running locally and for giving agents a stable baseline.
 
+## CodeRabbit Quality Upkeep
+
+Patrick's standing preference: use CodeRabbit for quality upkeep on pull requests and changes going into `main`.
+
+- Use CodeRabbit to review PRs targeting `main`, including subsequent pushes to those PR branches. Check that the latest changes have been reviewed before merging; automatic reviews can pause or skip drafts.
+- Address actionable findings and record the rationale for dismissed findings. Continue running the repository's required tests and CI checks.
+- For an explicitly authorized direct push to `main`, arrange a CodeRabbit review of the proposed changes before pushing. Do not assume PR auto-review covers a direct push to `main`.
+- If CodeRabbit is unavailable or not connected, report that gap explicitly; do not describe the changes as CodeRabbit-reviewed.
+
+The repository's `.coderabbit.yaml` enables reviews for PRs targeting `main`, incremental reviews on subsequent pushes, and no automatic pause after a commit count. Draft PRs remain excluded until marked ready. It includes YardMatch product and verification guidance. The configuration requires the CodeRabbit GitHub app to be installed and enabled for `pkopps/ym`; adding the file does not install the app, review the current working tree, or set required checks/branch protection. Confirm an actual review on the latest PR commit before counting the check as complete. See [CodeRabbit automatic review controls](https://docs.coderabbit.ai/configuration/auto-review).
+
+## SEO Setup
+
+Patrick has not selected a production domain yet. Use `NEXT_PUBLIC_SITE_URL=http://localhost:3000` locally (or the actual local web origin). Before production, replace it with the real HTTPS canonical origin and rebuild; do not use an invented placeholder domain. `GOOGLE_SITE_VERIFICATION` is an optional public Search Console meta-tag token and remains empty until supplied by the real property. See `SEO_PLAN.md` for the domain, verification, sitemap submission, and baseline checklist.
+
+English web URLs are unprefixed, Spanish URLs use `/es`, and the language picker navigates between them. Cookies and browser preferences do not change a URL's rendered language. SEO regressions run with `npm run test:web:smoke -- tests/web/seo.spec.ts`.
+
 ## Defaults
 
 - Web app: `http://localhost:3000`

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  review_status: true
+  auto_review:
+    enabled: true
+    base_branches:
+      - "^main$"
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+  path_instructions:
+    - path: "**/*"
+      instructions: >-
+        Follow AGENTS.md and ROADMAP.md. Preserve recommendation-first booking,
+        curated backups, provider economics, and authenticated, role-aware,
+        auditable operations. Prioritize correctness and launch reliability.
+        Require relevant regression coverage for auth, payments, payouts,
+        disputes, provider verification, notifications, and launch leads.
+    - path: "apps/web/**"
+      instructions: >-
+        Check English and Spanish URL consistency, canonical URLs, indexability,
+        honest local coverage claims, accessibility, and mobile layout. Preserve
+        shared brand patterns and require typecheck plus relevant browser checks.

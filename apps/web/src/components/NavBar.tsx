@@ -83,7 +83,7 @@ export function NavBar() {
         <div className="site-header__actions">
           {session ? (
             <>
-              <NotificationMenu session={session} />
+              <NotificationMenu session={session} legacyIcon />
               <details className="profile-menu">
                 <summary className="profile-menu__summary">{session.fullName}</summary>
                 <div className="profile-menu__panel">

@@ -3,6 +3,13 @@ import { AnalyticsEvent, LaunchAttributionContext } from "@yardmatch/contracts";
 const launchAttributionStorageKey = "yardmatch-launch-attribution";
 const launchLeadStorageKey = "yardmatch-launch-lead-id";
 
+// Deliberately bounded: unknown search engines remain referrals. Match domain
+// boundaries so names such as google.com.example.org cannot count as search.
+const searchReferrerDomains = [
+  "google.com", "google.co.uk", "google.ca", "google.com.mx",
+  "bing.com", "search.yahoo.com", "duckduckgo.com", "ecosia.org", "search.brave.com"
+];
+
 function sanitizeToken(value: string | null | undefined): string | undefined {
   if (!value) {
     return undefined;
@@ -91,7 +98,13 @@ function detectLaunchAttribution(): LaunchAttributionContext {
     }
   })();
   const source = sanitizeToken(params.get("utm_source")) ?? referrerHost ?? "direct";
-  const medium = sanitizeToken(params.get("utm_medium")) ?? (referrerHost ? "referral" : "none");
+  const isSearchReferrer = referrerHost && searchReferrerDomains.some(
+    (domain) => referrerHost === domain || referrerHost.endsWith(`.${domain}`)
+  );
+  const hasPaidClickId = ["gclid", "dclid", "gbraid", "wbraid", "msclkid"].some((key) => params.has(key));
+  const inferredMedium = hasPaidClickId ? "paid" :
+    isSearchReferrer && !params.has("utm_source") ? "organic" : referrerHost ? "referral" : "none";
+  const medium = sanitizeToken(params.get("utm_medium")) ?? inferredMedium;
 
   return {
     source,

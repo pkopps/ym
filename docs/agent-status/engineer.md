@@ -1,5 +1,39 @@
 # Engineer Status
 
+## Current checkpoint: SEO and CodeRabbit setup
+
+- Updated: September 14, 2026 (local).
+- Branch and baseline commit: `main`, `7fbfe0279c9b041d250f1c2d943b5be72cc50b83`; uncommitted.
+- Completed: stable English/Spanish URLs; distinct general and Barnegat service content/metadata; reciprocal sitemap language alternates without fabricated dates; pseudo noindex headers; organic landing attribution; optional Search Console token; CodeRabbit PR configuration and upkeep note; refreshed SEO/launch docs; mobile header overflow and logo lint fixes; scoped bilingual booking-test history selectors.
+- In progress: none for local implementation.
+- Remaining work: select production domain, deploy/verify SEO, verify Search Console and submit sitemap, establish traffic baseline, confirm CodeRabbit GitHub app and a live review, obtain approved real local photos/testimonials.
+- Blockers: production domain does not exist yet (confirmed by Patrick); live CodeRabbit activation is unverified.
+- Changed workflows: URL controls page language; first-page search attribution persists through navigation; main-bound PRs and their pushes use CodeRabbit review once the app is enabled.
+- Validation: lint, typecheck, 3,748-key translation validation, production web build, 289 API tests (3 PostgreSQL-dependent skips), and all 26 web tests passed, including 7 SEO tests. CodeRabbit YAML parsed and configured fields validated against the official schema subset. Diff check passed.
+- Known defects: no remaining SEO test failures; organic attribution has documented referrer/ad-tag limitations. No live domain/indexing/review verification performed.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/seo/*-{1440,390}.png` (10 captures; English desktop and Spanish mobile visually inspected).
+- Recommended next task: choose the production domain and follow `SEO_PLAN.md`; confirm CodeRabbit connection on the next main-bound PR.
+
+[SEO checkpoint and verification evidence](/Users/patrickkopps/Documents/app/reports/agent-checkpoints/engineer/latest/seo/checkpoint.md)
+
+## Current checkpoint: web card surfaces
+
+- Updated: September 10, 2026 (local checkpoint).
+- Branch and baseline commit: `main`, `7fbfe02`; CSS changes are uncommitted.
+- Completed: replaced oversized web card and panel corners with shared 6px card / 4px inner-panel and field radii; reduced surface shadows; normalized hardcoded component radii across public, auth, customer, provider, crew, and ops surfaces.
+- Scope: Patrick explicitly included the homepage for this CSS pass. Homepage copy, layout, and workflows remain unchanged. Web-only token overrides leave native styles unchanged; functional pills, round indicators, avatars, and device illustrations retain their shapes.
+- In progress: none for this CSS pass.
+- Remaining work: broader UX plan, including typography, content density, nested containers, and navigation. UX-19 is only partially complete.
+- Blockers: none.
+- Changed workflows: none; presentation only.
+- Validation: `npm run typecheck` passed; before/after Chromium capture on seven public/auth routes at 1440×900 and 390×844 (14 captures per phase) completed without page errors or horizontal overflow; representative desktop/mobile screenshots visually inspected. Sampled computed card radii changed from 16–28px to 4–6px (intentional zero-radius nested search surfaces remain).
+- Checks not run: API suite, full web smoke, production build, native exports, live vendor checks. No business logic or native code changed; responsive browser verification was used for this CSS-only change.
+- Known defects: pre-existing long headings, nested card structure, and navigation crowding remain outside this pass. Authenticated operational workflows were not re-exercised.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/card-surfaces/{before,after}-{home,listings,signup,provider,crew,help,spanish-home}-{desktop,mobile}.png`.
+- Recommended next task: compact app-page headings and mobile navigation from UX-01/02, with broader homepage redesign still deferred.
+
+[Card styling evidence](/Users/patrickkopps/Documents/app/reports/agent-checkpoints/engineer/latest/card-surfaces/checkpoint.md)
+
 ## Current checkpoint: 15-issue audit repairs
 
 - Updated: September 9, 2026.

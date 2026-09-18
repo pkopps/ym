@@ -7,8 +7,8 @@ const content = launchServiceContent["lawn-mowing"];
 
 export function generateMetadata(): Promise<Metadata> {
   return getLocalizedPageMetadata({
-    titleKey: content.metadataTitleKey,
-    descriptionKey: content.metadataDescriptionKey,
+    titleKey: content.serviceMetadataTitleKey,
+    descriptionKey: content.serviceMetadataDescriptionKey,
     path: content.path,
     values: {
       area: launchAreaLabel

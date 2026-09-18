@@ -165,6 +165,16 @@ Minimum launch metrics:
 - review request rate
 - review completion rate
 
+### Production SEO Activation
+
+Current status: Patrick has not selected a production website domain. Local SEO improvements are implemented; production indexing and search performance are unverified.
+
+- Select the canonical HTTPS domain, set `NEXT_PUBLIC_SITE_URL`, rebuild, and verify canonical URLs, sitemap, and robots output on the deployed site.
+- Verify a Search Console property through DNS or the optional `GOOGLE_SITE_VERIFICATION` meta token; submit `/sitemap.xml` and inspect the English/Spanish launch pages.
+- Establish search impressions/clicks and organic lead/booking baselines once real traffic exists.
+- Obtain publication consent for real local job photos and testimonials before adding them to the Barnegat pages.
+- Follow `SEO_PLAN.md` for detailed checks and measurement limits.
+
 ## 4. Google Business Profile And Reviews
 
 This is a launch system, not just a profile setup task.

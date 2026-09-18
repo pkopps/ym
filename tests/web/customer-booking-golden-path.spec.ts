@@ -123,7 +123,7 @@ test.describe.serial("customer booking golden path", () => {
     await expect(page.getByRole("heading", { name: "Waiting on confirmation" })).toBeVisible();
     await expect(page.getByText(/GreenStride Lawn Co\. is reviewing this request/)).toBeVisible();
     await expect(page.getByText("After provider confirms")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Past visits" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Customer account sections" }).getByRole("link", { name: "Past visits" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Track crew" })).toHaveCount(0);
     await page.getByText("More options").click();
     await expect(page.getByRole("link", { name: "Get help" }).first()).toBeVisible();
@@ -177,7 +177,7 @@ test.describe.serial("customer booking golden path", () => {
 
     await expect(page.getByRole("heading", { name: "Esperando confirmacion" })).toBeVisible();
     await expect(page.getByText("Despues de que el proveedor confirme")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Visitas anteriores" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Secciones de cuenta de cliente" }).getByRole("link", { name: "Visitas anteriores" })).toBeVisible();
     await page.screenshot({
       path: `${evidenceRoot}/customer-booking-spanish-mobile.png`
     });
