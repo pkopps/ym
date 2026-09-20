@@ -1,5 +1,8 @@
 "use client";
 
+import { PaymentMethodGuide } from "./PaymentMethodGuide";
+import { BookingSchedulePanel } from "./BookingSchedulePanel";
+
 import {
   BookingArrivalTracking,
   Booking,
@@ -206,6 +209,8 @@ function getRequestStepStatus(stepIndex: number, activeStepIndex: number): Reque
 }
 
 function formatBookingStatusTitle(i18n: I18nInstance, booking: Booking) {
+  const update = booking.scheduleUpdates?.at(-1);
+  if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather" : update.kind === "reschedule" ? "schedule.proposal" : "schedule.late");
   if (booking.onRouteConfirmedAt) {
     return i18n.t("customer_live.status.crew_on_way");
   }
@@ -238,6 +243,9 @@ function formatSentenceTail(value: string) {
 }
 
 function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerName: string, payment?: PaymentRecord) {
+  if (payment?.status === "processing") return i18n.t("payments.processing.body");
+  const update = booking.scheduleUpdates?.at(-1);
+  if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather_body" : update.kind === "reschedule" ? "schedule.proposal_body" : "customer_live.state.late", { provider: providerName });
   if (booking.onRouteConfirmedAt) {
     return i18n.t("customer_live.state.on_way", { provider: providerName });
   }
@@ -265,11 +273,13 @@ function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerNa
 }
 
 function getPriorityBookingCardTitle(i18n: I18nInstance, booking: Booking, payment?: PaymentRecord) {
+  if (payment?.status === "processing") return i18n.t("payments.processing.title");
+  if (booking.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state))) return formatBookingStatusTitle(i18n, booking);
   if (booking.status === "confirmed" && payment?.status !== "captured") {
     return i18n.t("customer_live.finish_booking");
   }
 
-  if (booking.status === "confirmed" && !booking.onRouteConfirmedAt && !booking.activeExceptionType && !booking.lateEtaIso) {
+  if (booking.status === "confirmed" && !booking.onRouteConfirmedAt && !booking.activeExceptionType && !booking.lateEtaIso && !booking.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state))) {
     return i18n.t("customer_live.youre_set");
   }
 
@@ -403,7 +413,7 @@ export function CustomerLiveDashboard() {
     providerSearchState === "loading";
   const providerStepActive = providerSearchState !== "idle" || Boolean(providerResults);
   const hasAccountHistory = recurringPlans.length > 0 || bookings.length > 0 || reviewOpportunities.length > 0;
-  const nextBooking = [...activeBookings].sort((left, right) =>
+  const nextBooking = activeBookings.find(booking => booking.id === searchParams.get("bookingId")) ?? [...activeBookings].sort((left, right) =>
     left.scheduledStartIso.localeCompare(right.scheduledStartIso)
   )[0];
   const nextBookingProviderName = nextBooking
@@ -411,9 +421,10 @@ export function CustomerLiveDashboard() {
     : undefined;
   const nextBookingPayment = nextBooking ? paymentsByBookingId[nextBooking.id] : undefined;
   const nextBookingNeedsCheckout =
+    !nextBooking?.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state)) &&
     Boolean(nextBooking) &&
     nextBooking.status === "confirmed" &&
-    nextBookingPayment?.status !== "captured";
+    !(["captured", "processing", "refunded"].includes(nextBookingPayment?.status ?? ""));
   const nextBookingHasTracking = Boolean(nextBooking?.onRouteConfirmedAt);
   const nextBookingNeedsPrimarySupport = Boolean(
     nextBooking?.activeExceptionType || (nextBooking?.lateEtaIso && !nextBooking?.onRouteConfirmedAt)
@@ -613,7 +624,7 @@ export function CustomerLiveDashboard() {
       setPaymentsByBookingId(
         payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
           const current = accumulator[payment.bookingId];
-          if (!current || current.updatedAt < payment.updatedAt) {
+          if (!current || current.createdAt < payment.createdAt) {
             accumulator[payment.bookingId] = payment;
           }
           return accumulator;
@@ -648,6 +659,32 @@ export function CustomerLiveDashboard() {
     void loadDashboard().catch((error) => {
       setDashboardLoadError(error instanceof Error ? error.message : "We couldn't load your account right now.");
     });
+  }, [historyOnlyView, sessionReady, session?.token, session?.role]);
+
+  useEffect(() => {
+    if (!sessionReady || session?.role !== "customer" || historyOnlyView) return;
+    let stopped = false;
+    let fetching = false;
+    const refreshTiming = async () => {
+      if (document.visibilityState !== "visible" || fetching) return;
+      fetching = true;
+      try {
+        const api = createAuthenticatedWebApiClient();
+        const updated = await api.getBookings({ limit: 50 });
+        const payments = await api.getPayments(updated.map(booking => booking.id));
+        if (!stopped) {
+          setBookings(updated);
+          setPaymentsByBookingId(payments.reduce<Record<string, PaymentRecord>>((result, payment) => {
+            if (!result[payment.bookingId] || result[payment.bookingId].createdAt < payment.createdAt) result[payment.bookingId] = payment;
+            return result;
+          }, {}));
+        }
+      } catch { /* Preserve the last known schedule; the next refresh can recover. */ }
+      finally { fetching = false; }
+    };
+    const timer = window.setInterval(() => void refreshTiming(), 30000);
+    document.addEventListener("visibilitychange", refreshTiming);
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshTiming); };
   }, [historyOnlyView, sessionReady, session?.token, session?.role]);
 
   useEffect(() => {
@@ -717,11 +754,19 @@ export function CustomerLiveDashboard() {
     void (async () => {
       try {
         const api = createAuthenticatedWebApiClient();
-        await api.finalizeCheckoutSession({
+        const payment = await api.finalizeCheckoutSession({
           checkoutSessionId
         });
         await loadDashboard();
-        setBookingMessage(i18n.t("customer_live.message.stripe_received"));
+        if (payment.status === "failed") {
+          setErrorMessage(i18n.t("customer_live.payment.needs_attention"));
+        } else {
+          // Processing stays on the live booking card so refresh can replace it with the final result.
+          setBookingMessage(payment.status === "processing" ? undefined : i18n.t(
+            payment.status === "captured" ? "customer_live.message.stripe_received" :
+              payment.status === "refunded" ? "customer_history.payment.refunded" : "payments.pending.body"
+          ));
+        }
       } catch (error) {
         setErrorMessage(
           error instanceof Error ? error.message : i18n.t("customer_live.error.confirm_stripe")
@@ -751,8 +796,7 @@ export function CustomerLiveDashboard() {
         propertyId: activeProperty.id
       });
       setQuote(nextQuote);
-      setProviderResults(undefined);
-      setProviderSearchState("idle");
+      await runProviderSearch(selectedTiming, nextQuote.estimatedDurationMinutes);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.build_quote"));
     } finally {
@@ -760,7 +804,7 @@ export function CustomerLiveDashboard() {
     }
   }
 
-  async function runProviderSearch(timingPreference: CustomerTimingPreference) {
+  async function runProviderSearch(timingPreference: CustomerTimingPreference, durationMinutes = quote?.estimatedDurationMinutes) {
     if (!activeProperty) {
       setErrorMessage(i18n.t("customer_live.error.choose_property"));
       return;
@@ -789,7 +833,7 @@ export function CustomerLiveDashboard() {
         address: activeProperty.address,
         categories: [selectedCategory],
         dateIso: buildDateIsoForCustomerTiming(timingPreference, selectedCustomDate, selectedCustomWindow),
-        estimatedDurationMinutes: quote?.estimatedDurationMinutes,
+        estimatedDurationMinutes: durationMinutes,
         requestSource: activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard",
         retentionPreference: getActiveRetentionPreference(),
         attribution: getLaunchAttributionContext()
@@ -1454,7 +1498,7 @@ export function CustomerLiveDashboard() {
           </label>
         </div>
         <div className="cta-row" style={{ marginTop: "1rem" }}>
-          <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} type="button">
+          <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} data-analytics-action="request-price-and-match" type="button">
             {loadingState === "loading" ? i18n.t("customer_live.working") : buttonLabel}
           </button>
         </div>
@@ -1481,11 +1525,12 @@ export function CustomerLiveDashboard() {
               <span className="customer-request-spine__index">{index + 1}</span>
               <div>
                 <strong>{step.label}</strong>
-                <small>{step.value}</small>
+
               </div>
             </li>
           ))}
         </ol>
+        <details><summary>{selectedServiceLabel} · {timingLabel} — {i18n.t("journey.change_details")}</summary>
         <div className="customer-request-spine__summary" aria-label={i18n.t("customer_listings_hero.current_request")}>
           <div>
             <span>{i18n.t("customer_live.label.service")}</span>
@@ -1503,7 +1548,7 @@ export function CustomerLiveDashboard() {
             <span>{i18n.t("customer_live.progress.price")}</span>
             <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.after_details")}</strong>
           </div>
-        </div>
+        </div></details>
       </section>
     );
   }
@@ -1513,7 +1558,7 @@ export function CustomerLiveDashboard() {
     const paymentRecord = getPaymentRecord(booking.id);
     const paymentLabel = getBookingPaymentLabel(booking, paymentRecord);
     const canEditVisit = booking.status === "requested" || booking.status === "confirmed";
-    const canStartCheckout = booking.status === "confirmed" && paymentRecord?.status !== "captured";
+    const canStartCheckout = booking.status === "confirmed" && !["captured", "processing", "refunded"].includes(paymentRecord?.status ?? "");
     const canOpenDispute = booking.status !== "requested";
     const canReviewRefund =
       canRequestRefundReview(booking, paymentRecord) ||
@@ -1537,12 +1582,13 @@ export function CustomerLiveDashboard() {
           </span>
           <span className="result-badge result-badge--neutral">{paymentLabel}</span>
         </div>
+        {canStartCheckout ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}
         <div className="cta-row">
           {canEditVisit && canStartCheckout ? (
             <button
               className="button"
               disabled={loadingState === "loading"}
-              onClick={() => void handleStartCheckout(booking)}
+              data-analytics-action="start-checkout" onClick={() => void handleStartCheckout(booking)}
               type="button"
             >
               {paymentRecord?.status === "pending"
@@ -1588,7 +1634,8 @@ export function CustomerLiveDashboard() {
             {i18n.t("crew_live.action.get_help")}
           </a>
         </div>
-        {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
+        <BookingSchedulePanel booking={booking} bookingId={booking.id} onUpdated={loadDashboard} />
+        {!booking.scheduleUpdates?.length && booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
           <div className="list-panel" style={{ marginTop: "1rem" }}>
             <h3>{i18n.t("customer_live.active_booking.delay_update")}</h3>
             <p>{i18n.t("customer_live.active_booking.running_behind", { provider: providerName })}</p>
@@ -2127,6 +2174,8 @@ export function CustomerLiveDashboard() {
       return i18n.t("customer_history.payment.paid");
     }
 
+    if (payment.status === "processing") return i18n.t("payments.processing.title");
+
     if (payment.status === "pending") {
       return i18n.t("customer_live.payment.awaiting_checkout");
     }
@@ -2227,7 +2276,7 @@ export function CustomerLiveDashboard() {
         <section className="card">
           <div className="search-result-title">
             <div>
-              <h2>{i18n.t("customer_live.done")}</h2>
+              <h2>{i18n.t(bookingMessage === i18n.t("payments.pending.body") ? "customer_live.payment.awaiting_checkout" : "customer_live.done")}</h2>
               <p>{bookingMessage}</p>
             </div>
             <button className="button-secondary" onClick={() => setBookingMessage(undefined)} type="button">
@@ -2370,6 +2419,7 @@ export function CustomerLiveDashboard() {
             ) : null}
           </section>
 
+          {requestedProviderId && providerSearchState === "loaded" && !selectedProviderWasRequested ? <p role="status">{i18n.t("journey.match_changed")}</p> : null}
           {providerStepActive ? (
             <section className="card">
               <div className="search-result-title">
@@ -2401,7 +2451,7 @@ export function CustomerLiveDashboard() {
                       <h3>{i18n.t("customer_live.provider.no_verified.title")}</h3>
                       <p>{i18n.t("customer_live.provider.no_verified.body")}</p>
                       <div className="cta-row">
-                        <button className="button" onClick={handleEditRequestDetails} type="button">
+                        <button className="button" data-analytics-action="edit-request" onClick={handleEditRequestDetails} type="button">
                           {i18n.t("customer_live.action.change_details")}
                         </button>
                         <a
@@ -2537,7 +2587,7 @@ export function CustomerLiveDashboard() {
                         <button
                           className="button"
                           disabled={!recommendedProviderCard.slot || loadingState === "loading"}
-                          onClick={() =>
+                          data-analytics-action="request-booking" onClick={() =>
                             void handleCreateBooking(
                               recommendedProviderCard,
                               getProviderSelectionRank(recommendedProviderCard.provider.id, 1)
@@ -2727,13 +2777,17 @@ export function CustomerLiveDashboard() {
                 </div>
               </div>
 
+              <BookingSchedulePanel booking={nextBooking} bookingId={nextBooking.id} onUpdated={loadDashboard} />
+
+              {nextBookingNeedsCheckout ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}
+
               {nextBookingHasPrimaryAction ? (
                 <div className="cta-row">
                   {nextBookingNeedsCheckout ? (
                     <button
                       className="button"
                       disabled={loadingState === "loading"}
-                      onClick={() => void handleStartCheckout(nextBooking)}
+                      data-analytics-action="start-checkout" onClick={() => void handleStartCheckout(nextBooking)}
                       type="button"
                     >
                       {nextBookingPayment?.status === "pending"

@@ -130,7 +130,7 @@ export function ProviderPaymentsBoard() {
   );
   const blockedAmountCents = (ledger?.pendingCustomerPaymentCents ?? 0) + heldProviderNetCents;
   const payoutStateLabel =
-    blockedAmountCents > 0 ? "Needs attention" : (ledger?.totalNetReadyCents ?? 0) > 0 ? "Ready now" : "On track";
+    !connectStatus?.transferReady ? i18n.t("payout.setup_required") : !ledger?.entries.length ? i18n.t("payout.empty") : blockedAmountCents > 0 ? i18n.t("payout.attention") : (ledger?.totalNetReadyCents ?? 0) > 0 ? i18n.t("payout.ready") : i18n.t("payout.recorded");
   const paidEntries = ledger?.entries.filter((entry) => entry.status === "paid") ?? [];
   const activePayoutStepIndex = (() => {
     if (blockedAmountCents > 0) {
@@ -277,8 +277,8 @@ export function ProviderPaymentsBoard() {
           </div>
           <div>
             <span>{i18n.t("ops_auto.provider_payments_board.next_payout_lkuj71")}</span>
-            <strong>{ledger?.payoutSchedule ? formatDateTime(ledger.payoutSchedule.nextWeeklyPayoutDateIso) : "—"}</strong>
-            <p>{ledger?.payoutSchedule ? `${ledger.payoutSchedule.holdPeriodHours}h standard hold` : "Schedule pending"}</p>
+            <strong>{connectStatus?.transferReady && (ledger?.totalNetScheduledCents ?? 0) > 0 && ledger?.payoutSchedule ? formatDateTime(ledger.payoutSchedule.nextWeeklyPayoutDateIso) : i18n.t("payout.unscheduled")}</strong>
+            <p>{i18n.t("payout.rule_only")}</p>
           </div>
           <div>
             <span>{i18n.t("ops_auto.provider_payments_board.blocked_r6bt1o")}</span>
@@ -286,7 +286,7 @@ export function ProviderPaymentsBoard() {
             <p>
               {blockedAmountCents > 0
                 ? `${formatCurrency(ledger?.pendingCustomerPaymentCents ?? 0)} awaiting customer payment`
-                : "No payout blockers"}
+                : i18n.t("payout.no_holds")}
             </p>
           </div>
           <div>

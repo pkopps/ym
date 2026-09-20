@@ -1,0 +1,1 @@
+ALTER TABLE "bookings" ADD COLUMN "scheduleUpdates" JSONB NOT NULL DEFAULT '[]', ADD COLUMN "scheduleVersion" INTEGER NOT NULL DEFAULT 0;

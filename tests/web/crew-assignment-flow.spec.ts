@@ -52,6 +52,7 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
   await expect(assignment).toBeVisible();
   await expect(assignment.getByText("accepted", { exact: true })).toBeVisible();
   await expect(assignment.getByRole("link", { name: "Get help" })).toBeVisible();
+  await page.locator('a[href="#crew-preferences"]').click();
   await page.getByRole("button", { name: "+5 miles" }).first().click();
   await expect(page.getByText("Availability updated.")).toBeVisible();
 

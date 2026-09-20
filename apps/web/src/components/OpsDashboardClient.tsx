@@ -1,5 +1,9 @@
 "use client";
 
+import { WorkspaceSection } from "./WorkspaceSection";
+import { ReadinessBoard } from "./ReadinessBoard";
+import { ProductAnalyticsBoard } from "./ProductAnalyticsBoard";
+
 import { InboundAutomationEscalationResponse, ObservabilityOverview } from "@yardmatch/contracts";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
@@ -251,6 +255,20 @@ export function OpsDashboardClient() {
         {errorMessage ? <p>{errorMessage}</p> : null}
       </section>
 
+      <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
+        {["support", "providers", "leads", "payouts", "reports", "administration"].map(key => <a key={key} href={`#ops-${key}`} data-analytics-action={`ops-${key}`}>{i18n.t(`workspace.${key}` as Parameters<typeof i18n.t>[0])}</a>)}
+      </nav>
+      <section className="grid-three">
+        <article className="card"><h2>{overview.overdueLaunchLeads}</h2><a href="#ops-leads">{i18n.t("workspace.overdue_leads")}</a></article>
+        <article className="card"><h2>{overview.urgentReviewResponses}</h2><a href="#ops-reviews">{i18n.t("workspace.urgent_reviews")}</a></article>
+        <article className="card"><h2>{overview.paymentFailures}</h2><a href="#ops-payouts">{i18n.t("workspace.payment_followup")}</a></article>
+      </section>
+      <WorkspaceSection id="ops-support" title={i18n.t("workspace.support")} defaultOpen><OpsSupportQueue /></WorkspaceSection>
+      <WorkspaceSection id="ops-providers" title={i18n.t("workspace.providers")}><OpsProviderVerificationQueue /></WorkspaceSection>
+      <WorkspaceSection id="ops-leads" title={i18n.t("workspace.leads")}><OpsLaunchLeadBoard /></WorkspaceSection>
+      <WorkspaceSection id="ops-payouts" title={i18n.t("workspace.payouts")}><OpsPayoutRunBoard /><OpsFinancialExceptionBoard /></WorkspaceSection>
+      <WorkspaceSection id="ops-reviews" title={i18n.t("workspace.reviews")}><OpsReviewResponseBoard initialItems={overview.recentReviewResponses} /></WorkspaceSection>
+      <WorkspaceSection id="ops-reports" title={i18n.t("workspace.reports")}><ProductAnalyticsBoard />
       <section className="grid-three">
         <article className="card">
           <h2>{overview.totalBookings}</h2>
@@ -612,7 +630,7 @@ export function OpsDashboardClient() {
         </article>
       </section>
 
-      <OpsReviewResponseBoard initialItems={overview.recentReviewResponses} />
+
 
       <section className="card">
         <h2>{i18n.t("ops_auto.ops_dashboard_client.retention_strategy_performance_5z8ov9")}</h2>
@@ -1089,6 +1107,8 @@ export function OpsDashboardClient() {
         </article>
       </section>
 
+      </WorkspaceSection>
+      <WorkspaceSection id="ops-administration" title={i18n.t("workspace.administration")}><ReadinessBoard />
       <OpsLaunchPlaybook />
       {hasOpsAdminAccess ? (
         <OpsAccountManagementBoard currentOpsUserId={session?.userId} />
@@ -1100,11 +1120,7 @@ export function OpsDashboardClient() {
       )}
       <NotificationOpsBoard />
       <OpsAutomationBoard />
-      <OpsPayoutRunBoard />
-      <OpsFinancialExceptionBoard />
-      <OpsLaunchLeadBoard />
-      <OpsProviderVerificationQueue />
-      <OpsSupportQueue />
+      </WorkspaceSection>
     </main>
   );
 }

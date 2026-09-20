@@ -158,7 +158,7 @@ export interface MarketplaceRepository {
   listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
   listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
-  updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking | undefined>;
+  updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined>;
   createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
   listRecurringServicePlans(): Promise<RecurringServicePlan[]>;
   findRecurringServicePlanById(planId: string): Promise<RecurringServicePlan | undefined>;
@@ -248,6 +248,7 @@ export interface MarketplaceRepository {
   listSupportTickets(): Promise<SupportTicket[]>;
   updateSupportTicket(ticketId: string, updates: Partial<SupportTicket>): Promise<SupportTicket | undefined>;
   createNotification(notification: AppNotification): Promise<AppNotification>;
+  createNotificationIfAbsent(notification: AppNotification): Promise<boolean>;
   listNotificationsByRecipient(recipientId: string): Promise<AppNotification[]>;
   updateNotification(
     notificationId: string,

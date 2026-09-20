@@ -23,6 +23,11 @@ concurrency:
   group: yardmatch-staging-acceptance
   cancel-in-progress: false
 
+# Explicit bash enables pipefail so archived logs cannot hide failed checks.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   acceptance:
     name: Hosted API, web, and photo lifecycle

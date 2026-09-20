@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { MobileAnalyticsTracker } from "@yardmatch/observability";
+import { getCrewMobileTracker } from "../lib/tracking";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
@@ -26,6 +28,11 @@ export function CrewAppNavigator({ languageSettings }: { languageSettings: Langu
   const i18n = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("today");
 
+  useEffect(() => {
+    MobileAnalyticsTracker.screen("crew-member", activeTab);
+    void getCrewMobileTracker().track("screen_viewed", {screen: activeTab});
+  }, [activeTab]);
+
   const screen = {
     today: (
       <DashboardScreen
@@ -48,7 +55,7 @@ export function CrewAppNavigator({ languageSettings }: { languageSettings: Langu
             <Pressable
               accessibilityRole="button"
               key={tab.key}
-              onPress={() => setActiveTab(tab.key)}
+              onPress={() => { void getCrewMobileTracker().track("action_clicked", {action: `nav-${tab.key}`}); setActiveTab(tab.key); }}
               style={[styles.navButton, isActive && styles.navButtonActive]}
             >
               <Feather

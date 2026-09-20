@@ -14,8 +14,7 @@ import {
   CustomerCustomTimingWindow,
   CustomerTimingPreference,
   customerCustomTimingWindowOptions,
-  customerTimingOptions,
-  getCustomerTimingLabel
+  customerTimingOptions
 } from "./PublicMarketplaceSearchShell";
 
 type AccountSignupRole = "customer" | "provider";
@@ -273,49 +272,12 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
 
   return (
     <section className="card auth-signup-card">
-      <form className="auth-form-stack" onSubmit={handleSubmit}>
-        {shouldShowCustomerIntent ? (
-          <div className="auth-intent-panel">
-            <div className="auth-intent-panel__header">
-              <div>
-                <span className="eyebrow">{i18n.t("auth_signup.intent.eyebrow")}</span>
-                <h2>{carriedProviderName || i18n.t("auth_signup.intent.default_title")}</h2>
-              </div>
-              {carriedProviderRank ? (
-                <span className="result-badge">
-                  {i18n.t("auth_signup.intent.match_rank", { rank: carriedProviderRank })}
-                </span>
-              ) : null}
-            </div>
-            <div className="auth-intent-panel__grid" aria-label={i18n.t("auth_signup.intent.summary_aria")}>
-              {carriedService ? (
-                <div>
-                  <span>{i18n.t("auth_signup.intent.service")}</span>
-                  <strong>{i18n.t(serviceCategoryToI18nKey(carriedService))}</strong>
-                </div>
-              ) : null}
-              {carriedTiming ? (
-                <div>
-                  <span>{i18n.t("auth_signup.intent.when")}</span>
-                  <strong>{getCustomerTimingLabel(carriedTiming, carriedCustomDate, carriedCustomWindow, i18n)}</strong>
-                </div>
-              ) : null}
-              {carriedSlotLabel ? (
-                <div>
-                  <span>{i18n.t("auth_signup.intent.opening")}</span>
-                  <strong>{carriedSlotLabel}</strong>
-                </div>
-              ) : null}
-              {carriedArea ? (
-                <div>
-                  <span>{i18n.t("auth_signup.intent.area")}</span>
-                  <strong>{carriedArea}</strong>
-                </div>
-              ) : null}
-            </div>
-            <p className="auth-intent-panel__note">{i18n.t("auth_signup.intent.note")}</p>
-          </div>
-        ) : null}
+      <form data-analytics-form="signup" className="auth-form-stack" onSubmit={handleSubmit}>
+        {shouldShowCustomerIntent ? <details className="auth-intent-compact">
+          <summary>{carriedProviderName || i18n.t("journey.review_request")} · {carriedService ? i18n.t(serviceCategoryToI18nKey(carriedService)) : carriedArea}</summary>
+          <p>{carriedSlotLabel} · {carriedArea}</p><p>{i18n.t("journey.saved_details")}</p>
+        </details> : null}
+        <SignupIdentityOptions redirectUri={socialRedirectUri} role={role} />
         <div className="form-grid">
           <label className="form-field form-field--full">
             <span>{i18n.t("auth_signup.field.full_name")}</span>
@@ -421,7 +383,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
           </a>
         </div>
 
-        <SignupIdentityOptions redirectUri={socialRedirectUri} role={role} />
+
       </form>
     </section>
   );

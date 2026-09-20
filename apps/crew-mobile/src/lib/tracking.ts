@@ -16,7 +16,6 @@ export function getCrewMobileTracker() {
   return new MobileAnalyticsTracker(
     createCrewMobileApiClient(),
     "crew-member",
-    getPlatformSurface(),
-    "crew-mobile-live"
+    getPlatformSurface()
   );
 }

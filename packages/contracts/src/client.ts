@@ -1,4 +1,6 @@
 import {
+  UpdateBookingScheduleRequest,
+  RespondBookingScheduleRequest,
   AddBookingEvidenceRequest,
   AssignBookingRouteLeaderRequest,
   AnalyticsEvent,
@@ -228,7 +230,14 @@ export function isMarketplaceApiTimeoutError(error: unknown): error is Marketpla
 
 export class MarketplaceApiClient {
   private authToken?: string;
+  private analyticsContext?: () => Record<string, unknown> | undefined;
+  public setAnalyticsContext(read: () => Record<string, unknown> | undefined) { this.analyticsContext = read; }
   private locale?: string;
+  private mobileClient?: {app: "customer" | "provider" | "crew"; version: string};
+
+  public setMobileClient(app: "customer" | "provider" | "crew", version: string): void {
+    this.mobileClient = {app, version};
+  }
   private onUnauthorized?: (error: Error) => void;
   private readonly requestTimeoutMs: number;
   private readonly fetchImpl: typeof fetch;
@@ -259,6 +268,8 @@ export class MarketplaceApiClient {
   private buildHeaders(): Record<string, string> {
     return {
       "Content-Type": "application/json",
+      ...(this.analyticsContext?.() ? {"X-YardMatch-Analytics": JSON.stringify(this.analyticsContext())} : {}),
+      ...(this.mobileClient ? {"X-YardMatch-App": this.mobileClient.app, "X-YardMatch-App-Version": this.mobileClient.version} : {}),
       ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
       ...(this.locale ? { "X-YardMatch-Locale": this.locale } : {})
     };
@@ -809,6 +820,14 @@ export class MarketplaceApiClient {
 
   public cancelBooking(payload: CancelBookingRequest) {
     return this.postJson<Booking>(ApiRoutes.cancelBooking, payload);
+  }
+
+  public updateBookingSchedule(payload: UpdateBookingScheduleRequest) {
+    return this.postJson<Booking>(ApiRoutes.updateBookingSchedule, payload);
+  }
+
+  public respondBookingSchedule(payload: RespondBookingScheduleRequest) {
+    return this.postJson<Booking>(ApiRoutes.respondBookingSchedule, payload);
   }
 
   public rescheduleBooking(payload: RescheduleBookingRequest) {

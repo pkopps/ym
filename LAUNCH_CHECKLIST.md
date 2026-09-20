@@ -14,7 +14,7 @@
 - [ ] Verify workers-compensation coverage or a counsel-approved exemption before any provider engages crew through YardMatch.
 - [ ] Have New Jersey counsel approve the category credential matrix, including fertilization and weed-control/pesticide work.
 - [x] Apply all committed migrations locally, confirm an empty Prisma schema diff, and pass the PostgreSQL atomic-settlement/balanced-ledger integration test.
-- [ ] Run the PostgreSQL migration/integration CI job and archive its passing result before production deployment.
+- [x] Run the PostgreSQL migration/integration CI job and archive its passing result before production deployment. Reviewed the corrected [September 19 CI artifact](https://github.com/pkopps/ym/actions/runs/35480045314): migrations current, no schema drift, five integration tests passed.
 - [x] Confirm staging and production startup fail without Postgres, a strong JWT, HTTPS URLs, exact CORS origins, private Blob photo storage, environment-appropriate Stripe credentials, and real email/SMS configuration; require notification allowlists and test-mode Stripe in staging.
 - [x] Add required API/web production builds, customer/provider/crew cross-platform exports, mobile release-config validation, and retained CI metadata before Git-connected deployment.
 - [ ] Provision the Vercel web/Blob and Render API/Postgres staging resources, run the safe staging seed, and archive passing remote API/web/photo-lifecycle smoke evidence.
@@ -25,9 +25,9 @@
 
 The repository now requests the approved Accounts v2 recipient configuration, reuses one Connect account per provider, blocks inactive capabilities or missing provider credentials, reconciles Stripe's actual balance-transaction fee, executes provider-only transfers from the originating charge, and records idempotent transfer/reversal ledger entries. The open Stripe items require a real Stripe account and credentials, so they remain deployment evidence rather than unfinished repository behavior.
 
-The CI workflow creates a 90-day PostgreSQL launch-gate artifact containing migration deployment, migration status, schema-drift, and repository-test logs. The CI checkbox stays open until a passing remote run is archived and reviewed. Production startup is covered at the validator and real API process boundary, including rejection of non-PostgreSQL storage and malformed vendor configuration before the server listens.
+The CI workflow creates a 90-day PostgreSQL launch-gate artifact containing migration deployment, migration status, schema-drift, and repository-test logs. The corrected September 19 artifact has been downloaded and reviewed; its migration, drift, and five integration tests pass. Production startup is covered at the validator and real API process boundary, including rejection of non-PostgreSQL storage and malformed vendor configuration before the server listens.
 
-Last updated: August 9, 2026
+Last updated: September 19, 2026
 
 This is the working checklist for launch readiness beyond product code.
 
@@ -422,3 +422,20 @@ The remaining launch steps now require business, legal, vendor, or production ow
 5. Select and configure production media storage/CDN, malware scanning, moderation, retention, and deletion controls for property and proof-of-work photos.
 6. Activate the production email, SMS, push, direct-inbox, Google Business Profile, referral, review-response, and recurring scheduler integrations.
 7. Rehearse the launch operations playbook with named owners before turning on traffic.
+
+
+## Analytics, continuity, and recovery checkpoint
+
+- [x] Optional web navigation/actions, mobile screen/actions, privacy controls, validated ingestion and persisted analytics with bounded retries.
+- [x] Ops funnel/segments/clicks/performance/supply/economics reports with sample-size and collection-health context.
+- [x] Context-preserving booking/signup and no-coverage inquiries; jobs-first workspaces and honest payout setup status.
+- [x] Authenticated scheduler, read-only missed-run health probe, mobile version/pause controls, and reversible local configuration.
+- [x] Synthetic local backup/restore rehearsal: 35 tables verified, no schema drift, and financial/security/analytics integration tests passed on the restore.
+- [x] Authenticated privacy intake and append-only review audit; count-only photo review inventory holds disputed bookings and never deletes data.
+- [ ] Activate PostHog and verify real event delivery and account linking.
+- [ ] Configure an independent scheduler monitor and archive a delivered test alert.
+- [ ] Approve data/photo retention and implement verified account/vendor erasure and secure export fulfillment.
+- [ ] Rehearse production-like backup recovery, coordinated deployment rollback, and supported-version recovery on distributed mobile builds.
+- [ ] Confirm an actual CodeRabbit review of the latest main-bound PR commit.
+
+Evidence correction: the September 18 CI run's Postgres artifact contains migration and test failures despite a green job badge; logging pipelines masked their exit codes. The September 19 implementation fixes empty-database bootstrap and enables explicit Bash/pipefail in CI and staging verification. The corrected [run and artifact](https://github.com/pkopps/ym/actions/runs/35480045314) have now passed direct log review: all migrations applied, database current, no difference detected, five tests passed with zero failures.

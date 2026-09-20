@@ -1,3 +1,4 @@
+import { BookingScheduleCard } from "../components/BookingScheduleCard";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
@@ -1527,7 +1528,8 @@ export function ScheduleScreen() {
                   {job.onRouteConfirmedAt ? (
                     <Text style={styles.metaLine}>{i18n.t("provider_mobile.schedule.message.route_chat_open")}</Text>
                   ) : null}
-                  {job.lateEtaIso && !job.onRouteConfirmedAt ? (
+                  <BookingScheduleCard job={job} token={envelope?.session.token} onUpdated={loadOverview} />
+                  {!job.scheduleUpdates?.length && job.lateEtaIso && !job.onRouteConfirmedAt ? (
                     <Text style={styles.metaLine}>
                       {i18n.t("provider_mobile.schedule.message.delay_notice_sent", {
                         time: i18n.formatDate(job.lateEtaIso, { timeStyle: "short" })

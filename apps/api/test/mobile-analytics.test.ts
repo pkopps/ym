@@ -1,0 +1,31 @@
+import assert from "node:assert/strict";
+import {test} from "node:test";
+import {MarketplaceApiClient} from "@yardmatch/contracts";
+import {MobileAnalyticsTracker} from "../../../packages/observability/src/mobile-analytics";
+test("mobile queue survives tracker replacement and cannot deliver a prior account's events",async()=>{
+  const saved=new Map<string,string>();
+  MobileAnalyticsTracker.storage("customer",{get:async key=>saved.get(key)??null,set:async(key,value)=>{saved.set(key,value);},remove:async key=>{saved.delete(key);}});
+  let fail=true;
+  const deliveries:Array<{id:string;headers:Headers}>=[];
+  const api=new MarketplaceApiClient("https://api.example.invalid",{fetchImpl:async(_input,init)=>{
+    deliveries.push({id:JSON.parse(String(init?.body)).id,headers:new Headers(init?.headers)});
+    return new Response(JSON.stringify({accepted:true}),{status:fail?503:201});
+  }});
+  const context={allowed:true,anonymousId:"visitor123",sessionId:"session123",actorId:"customer123",token:"token-a",locale:"en"};
+  MobileAnalyticsTracker.configure("customer",context);
+  const tracker=new MobileAnalyticsTracker(api,"customer","ios-phone");
+  await tracker.track("screen_viewed");
+  assert.equal(JSON.parse(saved.get("ym-analytics-index")!).length,1);
+  fail=false;
+  await new MobileAnalyticsTracker(api,"customer","ios-phone").flush();
+  assert.equal(deliveries[0].id,deliveries[1].id);
+  assert.equal(deliveries[1].headers.get("Authorization"),"Bearer token-a");
+  fail=true;await tracker.track("action_clicked",{action:"request-price"});
+  const before=deliveries.length;
+  MobileAnalyticsTracker.configure("customer",{...context,actorId:"another-user",token:"token-b"});
+  fail=false;await tracker.flush();
+  assert.equal(deliveries.length,before);
+  MobileAnalyticsTracker.configure("customer",{...context,allowed:false});
+  await tracker.track("screen_viewed");assert.equal(deliveries.length,before);
+  await tracker.clear();assert.equal(saved.size,0);
+});

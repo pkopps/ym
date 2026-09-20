@@ -53,7 +53,7 @@ export type BookingStatus =
 export type RecurringServiceFrequency = "weekly" | "biweekly";
 export type RecurringServicePlanStatus = "active" | "cancelled";
 
-export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "failed";
+export type PaymentStatus = "pending" | "processing" | "authorized" | "captured" | "refunded" | "failed";
 export type PaymentProcessor = "manual" | "stripe";
 export type ProcessorFeeReconciliationStatus =
   | "not-applicable"
@@ -827,6 +827,7 @@ export interface LaunchOperationsPolicy {
 }
 
 export type OpsAutomationSweepKey =
+  | "booking-schedule-follow-ups"
   | "provider-onboarding"
   | "support-ticket-escalations"
   | "launch-operations-task-notifications"
@@ -852,6 +853,7 @@ export interface OpsAutomationSweepRunItem {
   supportTicketEscalations?: SupportOpsTicketEscalationSweepResponse;
   launchOperationsTaskNotifications?: LaunchOperationsTaskNotificationSweepResponse;
   launchOperationsTaskEscalations?: LaunchOperationsTaskEscalationSweepResponse;
+  bookingScheduleFollowUps?: { sentNotificationCount: number; alreadySentCount: number; skippedCount: number };
   errorMessage?: string;
 }
 
@@ -966,6 +968,8 @@ export interface ProviderStaffingJobSummary {
   lateNoticeSentAt?: string;
   lateEtaIso?: string;
   lateReason?: string;
+  scheduleUpdates?: BookingScheduleUpdate[];
+  scheduleVersion?: number;
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
@@ -1043,6 +1047,8 @@ export interface CrewMatchSummary {
   lateNoticeSentAt?: string;
   lateEtaIso?: string;
   lateReason?: string;
+  scheduleUpdates?: BookingScheduleUpdate[];
+  scheduleVersion?: number;
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
@@ -1175,6 +1181,51 @@ export interface AvailabilitySlot {
   isBooked: boolean;
 }
 
+/** Launch service dates and arrival windows use America/New_York, including DST. */
+export function bookingScheduleStartIso(date: string, hour: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || ![7, 12, 16].includes(hour)) throw new Error("Choose a service date and arrival window");
+  const utc = new Date(`${date}T${String(hour).padStart(2, "0")}:00:00Z`);
+  if (!Number.isFinite(utc.getTime()) || utc.toISOString().slice(0, 10) !== date) throw new Error("Choose a valid service date");
+  const localHour = Number(utc.toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }));
+  return new Date(utc.getTime() + (hour - localHour) * 3600000).toISOString();
+}
+
+export function bookingScheduleWindowHour(iso: string): 7 | 12 | 16 {
+  const hour = Number(new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }));
+  return hour < 12 ? 7 : hour < 16 ? 12 : 16;
+}
+
+export interface BookingScheduleUpdate {
+  id: string;
+  kind: "running-late" | "weather" | "reschedule";
+  state: "active" | "accepted" | "declined" | "resolved";
+  createdAt: string;
+  updatedAt: string;
+  reason: string;
+  nextUpdateByIso: string;
+  expectedArrivalIso?: string;
+  proposedStartIso?: string;
+  proposedEndIso?: string;
+  originalStartIso: string;
+  originalEndIso: string;
+}
+
+export interface UpdateBookingScheduleRequest {
+  bookingId: string;
+  kind: BookingScheduleUpdate["kind"];
+  reason: string;
+  nextUpdateByIso: string;
+  expectedArrivalIso?: string;
+  proposedStartIso?: string;
+  proposedEndIso?: string;
+}
+
+export interface RespondBookingScheduleRequest {
+  bookingId: string;
+  updateId: string;
+  action: "accept" | "decline";
+}
+
 export interface Booking {
   id: string;
   customerId: string;
@@ -1195,6 +1246,8 @@ export interface Booking {
   lateNoticeSentAt?: string;
   lateEtaIso?: string;
   lateReason?: string;
+  scheduleUpdates?: BookingScheduleUpdate[];
+  scheduleVersion?: number;
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
@@ -4343,4 +4396,30 @@ export interface ObservabilityOverview {
   activeUsersByPlatform: Partial<Record<TelemetryPlatformSurface, number>>;
   recentEvents: AnalyticsEvent[];
   apiRuntime?: ApiRuntimeObservabilitySnapshot;
+}
+
+export interface ProductAnalyticsReport {
+  actions: Record<string, number>;
+  performance: Record<string, {samples: number; p75: number}>;
+  supply?: {registered: number; verified: number; withAvailability: number; withFirstBooking: number; withCompletedJob: number};
+  since: string;
+  environment: string;
+  durable: boolean;
+  events: number;
+  truncated: boolean;
+  lowSample: boolean;
+  counts: Record<string, {events: number; people: number}>;
+  segments: Record<string, Record<string, number>>;
+  funnel: {
+    steps: Array<{name: string; people: number; previousStepPeople: number; conversionRate: number | null}>;
+    segments: Record<string, {visitors: number; requested: number; completed: number}>;
+    reasons: Record<string, number>;
+    returningCustomers: number;
+    lowSample: boolean;
+  };
+  economics: Array<{status: string; _count: {_all: number}; _sum: {
+    customerChargeCents: number | null; actualProcessorFeeCents: number | null;
+    platformNetRevenueCents: number | null; providerNetCents: number | null;
+  }}>;
+  health: {pendingWrites: number; dropped: number; lastFailureAt?: string; exportConfigured: boolean; exportBacklog: number; lastEventAt?: string};
 }

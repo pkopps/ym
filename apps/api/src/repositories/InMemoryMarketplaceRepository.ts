@@ -1,3 +1,4 @@
+import { resolveScheduleUpdates } from "../policies/bookingSchedulePolicy";
 import {
   AppNotification,
   Address,
@@ -278,14 +279,15 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.bookings.find((booking) => booking.id === bookingId);
   }
 
-  public async updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking | undefined> {
+  public async updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined> {
     const booking = this.bookings.find((item) => item.id === bookingId);
 
     if (!booking) {
       return undefined;
     }
 
-    Object.assign(booking, updates);
+    if (expectedVersion !== undefined && (booking.scheduleVersion ?? 0) !== expectedVersion) return undefined;
+    Object.assign(booking, updates, { scheduleUpdates: resolveScheduleUpdates(booking, updates), scheduleVersion: (booking.scheduleVersion ?? 0) + 1 });
     return booking;
   }
 
@@ -869,6 +871,12 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
     Object.assign(ticket, updates);
     return ticket;
+  }
+
+  public async createNotificationIfAbsent(notification: AppNotification): Promise<boolean> {
+    if (this.notifications.some(item => item.id === notification.id)) return false;
+    this.notifications.push(notification);
+    return true;
   }
 
   public async createNotification(notification: AppNotification): Promise<AppNotification> {

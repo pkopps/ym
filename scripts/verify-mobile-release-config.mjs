@@ -101,6 +101,10 @@ for (const application of applications) {
     ? configuredProjectId
     : `00000000-0000-4000-8000-00000000000${allApplications.indexOf(application) + 1}`;
   const config = loadAppConfig(application, projectId);
+  const apiSource = readFileSync(resolve(repositoryRoot, application.directory, "src/lib/api.ts"), "utf8");
+  const gateSource = readFileSync(resolve(repositoryRoot, application.directory, "src/providers/ReleaseGate.tsx"), "utf8");
+  check(apiSource.includes(`setMobileClient("${application.key}", "${config.version}")`), `${application.key}: API version header must match Expo version.`);
+  check(gateSource.includes(`currentVersion = "${config.version}"`), `${application.key}: release gate version must match Expo version.`);
   const eas = JSON.parse(
     readFileSync(resolve(repositoryRoot, application.directory, "eas.json"), "utf8")
   );

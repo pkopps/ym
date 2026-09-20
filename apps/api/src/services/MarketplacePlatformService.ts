@@ -5,6 +5,9 @@ import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
   AccountSecuritySettings,
+  bookingScheduleWindowHour,
+  UpdateBookingScheduleRequest,
+  RespondBookingScheduleRequest,
   AddBookingEvidenceRequest,
   AssignBookingRouteLeaderRequest,
   AppNotification,
@@ -1887,6 +1890,8 @@ export class MarketplacePlatformService {
       dateIso: payload.dateIso,
       categoryCount: payload.categories.length,
       city: normalizedAddress.city,
+      area: normalizedAddress.city,
+      category: payload.categories[0],
       requestSource: payload.requestSource ?? "unknown",
       ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
       ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -1976,6 +1981,8 @@ export class MarketplacePlatformService {
         providerCount: matchingProviders.length,
         slotCount: suggestedSlots.length,
         city: normalizedAddress.city,
+        area: normalizedAddress.city,
+        category: payload.categories[0],
         requestSource: payload.requestSource ?? "unknown",
         ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
         ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -1992,6 +1999,8 @@ export class MarketplacePlatformService {
           providerCount: 0,
           slotCount: 0,
           city: normalizedAddress.city,
+          area: normalizedAddress.city,
+          category: payload.categories[0],
           requestSource: payload.requestSource ?? "unknown",
           ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -2007,6 +2016,8 @@ export class MarketplacePlatformService {
           providerCount: matchingProviders.length,
           slotCount: 0,
           city: normalizedAddress.city,
+          area: normalizedAddress.city,
+          category: payload.categories[0],
           requestSource: payload.requestSource ?? "unknown",
           ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -2024,6 +2035,8 @@ export class MarketplacePlatformService {
           recommendedProviderId,
           providerCount: matchingProviders.length,
           city: normalizedAddress.city,
+          area: normalizedAddress.city,
+          category: payload.categories[0],
           hasOpenSlot: Boolean(rankedProviders[0]?.hasOpenSlot),
           requestSource: payload.requestSource ?? "unknown",
           ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
@@ -2580,6 +2593,8 @@ export class MarketplacePlatformService {
 
   private getOpsAutomationSweepLabel(sweepKey: OpsAutomationSweepKey) {
     switch (sweepKey) {
+      case "booking-schedule-follow-ups":
+        return "Booking schedule follow-ups";
       case "provider-onboarding":
         return "Provider onboarding automation";
       case "support-ticket-escalations":
@@ -2645,6 +2660,7 @@ export class MarketplacePlatformService {
     }
     const asOfIso = new Date(asOfMs).toISOString();
     const supportedSweepKeys: OpsAutomationSweepKey[] = [
+      "booking-schedule-follow-ups",
       "provider-onboarding",
       "support-ticket-escalations",
       "launch-operations-task-notifications",
@@ -2664,6 +2680,12 @@ export class MarketplacePlatformService {
     for (const sweepKey of requestedSweepKeys) {
       const startedAt = new Date().toISOString();
       try {
+        if (sweepKey === "booking-schedule-follow-ups") {
+          const result = await this.processBookingScheduleFollowUps(asOfIso, Boolean(payload.dryRun));
+          items.push({ sweepKey, label: this.getOpsAutomationSweepLabel(sweepKey), status: "completed", startedAt,
+            completedAt: new Date().toISOString(), dryRun: Boolean(payload.dryRun), ...result, bookingScheduleFollowUps: result });
+          continue;
+        }
         if (sweepKey === "provider-onboarding") {
           const response = await this.processProviderOnboardingAutomation(actor, {
             asOfIso,
@@ -4588,6 +4610,8 @@ export class MarketplacePlatformService {
       isAssignedRouteLeader: resolvedRouteLeaderCrewMemberId === match.crewMemberId,
       requiresRouteLeaderAssignment,
       onRouteConfirmedAt: booking.onRouteConfirmedAt,
+      scheduleUpdates: booking.scheduleUpdates,
+      scheduleVersion: booking.scheduleVersion,
       lateNoticeSentAt: booking.lateNoticeSentAt,
       lateEtaIso: booking.lateEtaIso,
       lateReason: booking.lateReason,
@@ -5086,6 +5110,9 @@ export class MarketplacePlatformService {
       );
     }
 
+    if (booking.scheduleUpdates?.at(-1)?.kind === "reschedule" && ["active", "declined"].includes(booking.scheduleUpdates.at(-1)!.state)) {
+      throw new HttpError(409, "Agree on a new window with the customer before starting the route");
+    }
     if (booking.onRouteConfirmedAt) {
       return booking;
     }
@@ -5333,64 +5360,183 @@ export class MarketplacePlatformService {
     return this.getBookingArrivalTracking(actor, booking.id, capturedAtIso);
   }
 
+  private scheduleWindow(iso: string): string {
+    const hour = bookingScheduleWindowHour(iso);
+    const day = new Date(iso).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" });
+    return `${day}, ${hour === 7 ? "7 a.m.–noon" : hour === 12 ? "noon–4 p.m." : "4–8 p.m."} Eastern time`;
+  }
+
+  private scheduleTime(iso: string): string {
+    return new Date(iso).toLocaleString("en-US", {
+      timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short"
+    });
+  }
+
+  public async updateBookingSchedule(providerId: string, payload: UpdateBookingScheduleRequest): Promise<Booking> {
+    const found = await this.repository.findBookingById(payload.bookingId);
+    if (!found) throw new HttpError(404, "Booking not found");
+    const booking = structuredClone(found);
+    if (booking.providerId !== providerId) throw new HttpError(403, "Only the booking provider can update the schedule");
+    if (!["confirmed", "in-progress"].includes(booking.status)) throw new HttpError(400, "Schedule updates require a confirmed or in-progress visit");
+    if (!["running-late", "weather", "reschedule"].includes(payload.kind)) throw new HttpError(400, "Choose a valid schedule update");
+    const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+    if (reason.length < 3 || reason.length > 500) throw new HttpError(400, "Add a reason between 3 and 500 characters");
+    this.assertNoDirectContactDetails(reason, "booking-schedule-update", providerId, "provider");
+    const now = Date.now();
+    const nextUpdate = Date.parse(payload.nextUpdateByIso);
+    if (!Number.isFinite(nextUpdate) || nextUpdate <= now || nextUpdate > now + 24 * 60 * 60 * 1000) {
+      throw new HttpError(400, "Promise the next update within the next 24 hours");
+    }
+    let expectedArrivalIso: string | undefined;
+    let proposedStartIso: string | undefined;
+    let proposedEndIso: string | undefined;
+    if (payload.kind === "running-late") {
+      const eta = Date.parse(payload.expectedArrivalIso ?? "");
+      const localDay = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+      if (!Number.isFinite(eta) || eta <= now || nextUpdate > eta) throw new HttpError(400, "Set a future arrival estimate and an update deadline no later than arrival");
+      if (localDay(new Date(eta).toISOString()) !== localDay(booking.scheduledStartIso)) throw new HttpError(400, "For a different service day, propose a reschedule for customer approval");
+      expectedArrivalIso = new Date(eta).toISOString();
+    }
+    if (payload.kind === "reschedule") {
+      this.validateBookingWindow(payload.proposedStartIso ?? "", payload.proposedEndIso ?? "");
+      const start = Date.parse(payload.proposedStartIso ?? "");
+      const end = Date.parse(payload.proposedEndIso ?? "");
+      if (start <= now || nextUpdate > start) throw new HttpError(400, "Choose a future window after the next update deadline");
+      const duration = Date.parse(booking.scheduledEndIso) - Date.parse(booking.scheduledStartIso);
+      if (end - start !== duration) throw new HttpError(400, "Keep the existing service duration when moving this visit");
+      proposedStartIso = new Date(start).toISOString();
+      proposedEndIso = new Date(end).toISOString();
+      await this.assertProviderRescheduleWindowIsAvailable(providerId, booking.id, proposedStartIso, proposedEndIso);
+    }
+    const timestamp = new Date(now).toISOString();
+    const update: NonNullable<Booking["scheduleUpdates"]>[number] = {
+      id: crypto.randomUUID(), kind: payload.kind, state: "active", createdAt: timestamp, updatedAt: timestamp,
+      reason, nextUpdateByIso: new Date(nextUpdate).toISOString(), expectedArrivalIso, proposedStartIso, proposedEndIso,
+      originalStartIso: booking.scheduledStartIso, originalEndIso: booking.scheduledEndIso
+    };
+    const updated = await this.repository.updateBooking(booking.id, {
+      scheduleUpdates: [...(booking.scheduleUpdates ?? []).map(item => item.state === "active" || item.state === "declined" ? { ...item, state: "resolved" as const, updatedAt: timestamp } : item), update],
+      lateNoticeSentAt: timestamp, lateEtaIso: expectedArrivalIso, lateReason: reason,
+      // A weather hold or proposed move must not keep advertising an active route.
+      ...(payload.kind !== "running-late" ? { onRouteConfirmedAt: undefined, onRouteConfirmedByCrewMemberId: undefined, routeLivePoint: undefined, routeLiveUpdatedAt: undefined } : {})
+    }, booking.scheduleVersion ?? 0);
+    if (!updated) throw new HttpError(409, "This booking changed. Refresh before sending an update");
+    const title = payload.kind === "weather" ? "Weather delay: your visit is on hold" : payload.kind === "reschedule" ? "Please review a new service window" : "Your provider is running late";
+    const timing = expectedArrivalIso ? `Still planning to complete this visit, with an estimated arrival of ${this.scheduleTime(expectedArrivalIso)}.`
+      : proposedStartIso ? `Proposed visit: ${this.scheduleWindow(proposedStartIso)}. Your booking has not moved. Accept this window or ask for another.`
+      : "Arrival is not confirmed while the provider checks safe working conditions.";
+    await this.createNotification({ recipientId: booking.customerId, recipientRole: "customer", category: "booking", title,
+      body: `${reason} ${timing} Next update by ${this.scheduleTime(update.nextUpdateByIso)}.`, actionHref: `/customer/dashboard?bookingId=${booking.id}` });
+    return updated;
+  }
+
+  public async respondBookingSchedule(customerId: string, payload: RespondBookingScheduleRequest): Promise<Booking> {
+    const booking = await this.repository.findBookingById(payload.bookingId);
+    if (!booking) throw new HttpError(404, "Booking not found");
+    if (booking.customerId !== customerId) throw new HttpError(403, "Only the customer can respond to this proposal");
+    const result = await this.repository.withLock(`calendar:${booking.providerId}`, repository =>
+      this.withRepository(repository).respondBookingScheduleRecord(customerId, payload));
+    // Dispatch after the new window, crew review state and in-app notices commit together.
+    for (const notification of result.notifications) await this.queueNotificationDeliveries(notification);
+    return result.booking;
+  }
+
+  private async respondBookingScheduleRecord(customerId: string, payload: RespondBookingScheduleRequest): Promise<{ booking: Booking; notifications: AppNotification[] }> {
+    const found = await this.repository.findBookingById(payload.bookingId);
+    if (!found) throw new HttpError(404, "Booking not found");
+    const booking = structuredClone(found);
+    if (booking.customerId !== customerId) throw new HttpError(403, "Only the customer can respond to this proposal");
+    if (!["accept", "decline"].includes(payload.action)) throw new HttpError(400, "Choose accept or decline");
+    if (!["confirmed", "in-progress"].includes(booking.status)) throw new HttpError(409, "This visit can no longer be moved");
+    const proposal = booking.scheduleUpdates?.at(-1);
+    if (!proposal || proposal.id !== payload.updateId || proposal.kind !== "reschedule") throw new HttpError(409, "This proposal has been replaced. Refresh to see the latest update");
+    const state = payload.action === "accept" ? "accepted" : "declined";
+    if (proposal.state === state) return { booking, notifications: [] };
+    if (proposal.state !== "active" || proposal.originalStartIso !== booking.scheduledStartIso || proposal.originalEndIso !== booking.scheduledEndIso) throw new HttpError(409, "This proposal is no longer current");
+    if (Date.parse(proposal.proposedStartIso!) <= Date.now()) throw new HttpError(409, "This proposed window has passed. Ask for another window");
+    if (payload.action === "accept") await this.assertProviderRescheduleWindowIsAvailable(booking.providerId, booking.id, proposal.proposedStartIso!, proposal.proposedEndIso!);
+    const timestamp = new Date().toISOString();
+    const updated = await this.repository.updateBooking(booking.id, {
+      scheduleUpdates: booking.scheduleUpdates!.map(item => item.id === proposal.id ? { ...item, state, updatedAt: timestamp } : item),
+      ...(payload.action === "accept" ? {
+        scheduledStartIso: proposal.proposedStartIso, scheduledEndIso: proposal.proposedEndIso, status: "confirmed" as const,
+        lateNoticeSentAt: undefined, lateEtaIso: undefined, lateReason: undefined, onRouteConfirmedAt: undefined,
+        onRouteConfirmedByCrewMemberId: undefined, assignedRouteLeaderCrewMemberId: undefined, routeActiveStop: undefined,
+        routeLivePoint: undefined, routeLiveUpdatedAt: undefined, routeLiveSource: undefined, routeLiveSpeedMph: undefined, routeLiveAccuracyMeters: undefined
+      } : {})
+    }, booking.scheduleVersion ?? 0);
+    if (!updated) throw new HttpError(409, "The booking changed while you responded. Refresh and try again");
+    const body = payload.action === "accept" ? `New visit confirmed: ${this.scheduleWindow(proposal.proposedStartIso!)}. This moves only this visit; the recurring plan and price are unchanged.`
+      : "The proposed window does not work for the customer. The provider needs to offer another window. The visit has not been cancelled.";
+    const recipients: Array<{ recipientId: string; recipientRole: "customer" | "provider" | "crew-member" }> = [
+      { recipientId: booking.customerId, recipientRole: "customer" }, { recipientId: booking.providerId, recipientRole: "provider" }
+    ];
+    if (payload.action === "accept") {
+      for (const match of await this.repository.listCrewMatches()) {
+        if (match.bookingId === booking.id && match.status === "accepted") {
+          await this.repository.updateCrewMatch(match.id, { status: "pending-provider-review", reviewedAt: undefined, autoAccepted: false });
+          recipients.push({ recipientId: match.crewMemberId, recipientRole: "crew-member" });
+        }
+      }
+    }
+    const notifications: AppNotification[] = [];
+    for (const recipient of recipients) notifications.push(await this.repository.createNotification({
+      id: crypto.randomUUID(), createdAt: timestamp, isRead: false, ...recipient, category: "booking",
+      title: payload.action === "accept" ? "New service window confirmed" : "Another service window requested",
+      body: recipient.recipientRole === "crew-member" ? `${body} Your assignment needs provider reconfirmation before you travel to this visit.` : body,
+      actionHref: recipient.recipientRole === "customer" ? `/customer/dashboard?bookingId=${booking.id}` : recipient.recipientRole === "provider" ? "/provider/management" : "/crew/schedule"
+    }));
+    return { booking: updated, notifications };
+  }
+
+  private async processBookingScheduleFollowUps(asOfIso: string, dryRun: boolean) {
+    const result = { sentNotificationCount: 0, alreadySentCount: 0, skippedCount: 0 };
+    const asOfMs = Date.parse(asOfIso);
+    for (const booking of await this.repository.listBookings()) {
+      if (!["confirmed", "in-progress"].includes(booking.status)) { result.skippedCount++; continue; }
+      const update = booking.scheduleUpdates?.at(-1);
+      const active = update && ["active", "declined"].includes(update.state);
+      // Without an update, detect a missed arrival window, not the exact internal job start.
+      const hour = Number(new Date(booking.scheduledStartIso).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }));
+      const endHour = hour < 12 ? 12 : hour < 16 ? 16 : 20;
+      const start = new Date(booking.scheduledStartIso);
+      const minutes = Number(start.toLocaleString("en-US", { timeZone: "America/New_York", minute: "numeric" }));
+      const windowEnd = start.getTime() + ((endHour - hour) * 60 - minutes) * 60000 - start.getUTCSeconds() * 1000 - start.getUTCMilliseconds();
+      const due = active ? Date.parse(update.nextUpdateByIso) : booking.lateEtaIso ? Date.parse(booking.lateEtaIso) : windowEnd;
+      if ((!active && (booking.onRouteConfirmedAt || booking.status === "in-progress")) || asOfMs < due) { result.skippedCount++; continue; }
+      const marker = `schedule-follow-up=${encodeURIComponent(active ? update.id + ":" + update.updatedAt : booking.scheduledStartIso + ":" + (booking.lateEtaIso ?? "window"))}`;
+      const recipients: Array<{recipientId: string; recipientRole: "customer" | "provider" | "ops"}> = [
+        { recipientId: booking.customerId, recipientRole: "customer" }, { recipientId: booking.providerId, recipientRole: "provider" },
+        ...(await this.repository.listOpsUsers()).map(user => ({recipientId: user.id, recipientRole: "ops" as const}))
+      ];
+      for (const recipient of recipients) {
+        const href = `${recipient.recipientRole === "customer" ? "/customer/dashboard" : recipient.recipientRole === "provider" ? "/provider/management" : "/ops"}?bookingId=${booking.id}&${marker}`;
+        if ((await this.repository.listNotificationsByRecipient(recipient.recipientId)).some(n => n.actionHref === href)) { result.alreadySentCount++; continue; }
+        if (dryRun) { result.skippedCount++; continue; }
+        const notice: AppNotification = { id: `schedule-${createHash("sha256").update(recipient.recipientId + ":" + href).digest("hex")}`,
+          createdAt: new Date().toISOString(), isRead: false,
+          ...recipient, category: "booking", title: "Your visit needs a fresh timing update",
+          body: recipient.recipientRole === "customer" ? "The last timing update is overdue. Arrival is not confirmed. We have alerted your provider and operations; your booking is still open. Check your visit or contact support for help."
+            : `Booking ${booking.id} has passed its arrival or update deadline. Contact the customer with a realistic arrival, weather hold, or proposed new window.`, actionHref: href };
+        if (await this.repository.createNotificationIfAbsent(notice)) {
+          await this.queueNotificationDeliveries(notice);
+          result.sentNotificationCount++;
+        } else result.alreadySentCount++;
+      }
+    }
+    return result;
+  }
+
   public async markBookingLate(
     providerId: string,
     payload: MarkBookingLateRequest
   ): Promise<Booking> {
-    const booking = await this.repository.findBookingById(payload.bookingId);
-    if (!booking) {
-      throw new HttpError(404, "Booking not found");
-    }
-
-    if (booking.providerId !== providerId) {
-      throw new HttpError(403, "Only the booking provider can send a delay update");
-    }
-
-    if (
-      booking.status === "completed" ||
-      booking.status === "cancelled" ||
-      booking.status === "refunded"
-    ) {
-      throw new HttpError(400, "Delay updates are only available for active bookings");
-    }
-
-    const lateEta = new Date(payload.lateEtaIso);
-    if (Number.isNaN(lateEta.getTime())) {
-      throw new HttpError(400, "A valid updated ETA is required");
-    }
-
-    if (lateEta.getTime() <= Date.now()) {
-      throw new HttpError(400, "Updated ETA must be in the future");
-    }
-    if (payload.reason?.trim()) {
-      this.assertNoDirectContactDetails(payload.reason, "booking-delay-update", providerId, "provider");
-    }
-
-    const updatedBooking = await this.repository.updateBooking(booking.id, {
-      lateNoticeSentAt: new Date().toISOString(),
-      lateEtaIso: lateEta.toISOString(),
-      lateReason: payload.reason?.trim() || undefined
+    if (!Number.isFinite(Date.parse(payload.lateEtaIso))) throw new HttpError(400, "A valid updated ETA is required");
+    return this.updateBookingSchedule(providerId, {
+      bookingId: payload.bookingId, kind: "running-late", reason: payload.reason?.trim() || "The previous visit is taking longer than expected.",
+      expectedArrivalIso: payload.lateEtaIso,
+      nextUpdateByIso: new Date(Math.min(Date.parse(payload.lateEtaIso), Date.now() + 60 * 60 * 1000)).toISOString()
     });
-
-    if (!updatedBooking) {
-      throw new HttpError(500, "Booking could not be updated");
-    }
-
-    const provider = await this.repository.findProviderById(booking.providerId);
-    const window = getBookingServiceWindow(booking.scheduledStartIso);
-    const etaText = lateEta.toLocaleTimeString([], { timeStyle: "short" });
-    const reasonText = payload.reason?.trim() ? ` Reason: ${payload.reason.trim()}` : "";
-
-    await this.createNotification({
-      recipientId: booking.customerId,
-      recipientRole: "customer",
-      category: "booking",
-      title: "Your provider is running late",
-      body: `${provider?.companyName ?? "Your landscaping business"} now expects to arrive in the ${window.label.toLowerCase()} window, around ${etaText}.${reasonText}`,
-      actionHref: `/customer/dashboard?bookingId=${booking.id}&late=1`
-    });
-
-    return updatedBooking;
   }
 
   public async addBookingEvidence(
@@ -7430,6 +7576,7 @@ export class MarketplacePlatformService {
 
     if (!options?.skipRequestedFunnelEvent) {
       this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, customerId, {
+        bookingId: result.id,
         providerId: payload.providerId,
         totalCents: payload.totalCents,
         category: payload.category,
@@ -9799,7 +9946,7 @@ export class MarketplacePlatformService {
       targetWindow.endIso
     );
 
-    const customerNotificationPreview = `Updated to ${this.formatBookingWindowWithDate(targetWindow.startIso)} for ${
+    const customerNotificationPreview = `Please approve ${this.formatBookingWindowWithDate(targetWindow.startIso)} for ${
       customer?.fullName ?? "the customer"
     }.`;
 
@@ -9820,8 +9967,8 @@ export class MarketplacePlatformService {
         targetWindowLabel: this.providerAssistantWindowLabel(targetWindowKey),
         suggestedStartIso: targetWindow.startIso,
         suggestedEndIso: targetWindow.endIso,
-        previewLabel: "Ready to reschedule",
-        previewMessage: `Move ${customer?.fullName ?? "this customer"} to ${this.providerAssistantWindowLabel(
+        previewLabel: "Ready to propose a new window",
+        previewMessage: `Ask ${customer?.fullName ?? "this customer"} to approve ${this.providerAssistantWindowLabel(
           targetWindowKey
         )} on ${new Date(targetWindow.startIso).toLocaleDateString()}.`,
         customerNotificationPreview,
@@ -9829,66 +9976,10 @@ export class MarketplacePlatformService {
       };
     }
 
-    const now = new Date().toISOString();
-    const intervention: BookingInterventionRecord = {
-      id: crypto.randomUUID(),
-      action: "provider-assistant-reschedule",
-      createdAt: now,
-      actorRole: "provider-assistant",
-      actorUserId: providerId,
-      note: `Provider assistant command: ${originalCommand}`,
-      previousStatus: booking.status,
-      nextStatus: booking.status === "requested" ? "requested" : "confirmed",
-      previousScheduledStartIso: booking.scheduledStartIso,
-      previousScheduledEndIso: booking.scheduledEndIso,
-      nextScheduledStartIso: targetWindow.startIso,
-      nextScheduledEndIso: targetWindow.endIso
-    };
-
-    const updatedBooking = await this.repository.updateBooking(booking.id, {
-      scheduledStartIso: targetWindow.startIso,
-      scheduledEndIso: targetWindow.endIso,
-      status: booking.status === "requested" ? "requested" : "confirmed",
-      onRouteConfirmedAt: undefined,
-      onRouteConfirmedByCrewMemberId: undefined,
-      lateNoticeSentAt: undefined,
-      lateEtaIso: undefined,
-      lateReason: undefined,
-      activeExceptionType: undefined,
-      activeExceptionReportedAt: undefined,
-      activeExceptionNotes: undefined,
-      disputedAt: undefined,
-      disputeReason: undefined,
-      disputedByRole: undefined,
-      completedAt: undefined,
-      interventions: [...booking.interventions, intervention]
-    });
-
-    if (!updatedBooking) {
-      throw new HttpError(500, "Provider assistant could not reschedule the booking");
-    }
-
-    await this.createNotification({
-      recipientId: booking.customerId,
-      recipientRole: "customer",
-      category: "booking",
-      title: "Your service window was updated",
-      body: `Your provider moved this job to ${this.formatBookingWindowWithDate(targetWindow.startIso)}.`,
-      actionHref: `/customer/dashboard?bookingId=${booking.id}`
-    });
-
-    this.analytics.record({
-      id: crypto.randomUUID(),
-      name: MarketplaceTelemetryEventCatalog.bookingRescheduled,
-      actorId: providerId,
-      occurredAt: now,
-      properties: {
-        bookingId: booking.id,
-        providerId,
-        previousStartIso: booking.scheduledStartIso,
-        nextStartIso: targetWindow.startIso,
-        source: "provider-assistant"
-      }
+    const updatedBooking = await this.updateBookingSchedule(providerId, {
+      bookingId: booking.id, kind: "reschedule", reason: "The provider needs to adjust the route and is asking you to approve a new window.",
+      proposedStartIso: targetWindow.startIso, proposedEndIso: targetWindow.endIso,
+      nextUpdateByIso: new Date(Math.min(Date.now() + 3600000, Date.parse(targetWindow.startIso) - 60000)).toISOString()
     });
 
     return {
@@ -9908,9 +9999,9 @@ export class MarketplacePlatformService {
       suggestedStartIso: targetWindow.startIso,
       suggestedEndIso: targetWindow.endIso,
       previewLabel: "Command executed",
-      previewMessage: `Moved ${customer?.fullName ?? "the customer"} to ${this.providerAssistantWindowLabel(
+      previewMessage: `Asked ${customer?.fullName ?? "the customer"} to approve ${this.providerAssistantWindowLabel(
         targetWindowKey
-      )} and sent an update.`,
+      )}. The schedule changes only after customer acceptance.`,
       customerNotificationPreview,
       bookingCandidates: [this.toProviderAssistantBookingCandidate(updatedBooking)],
       updatedBooking
@@ -10013,25 +10104,7 @@ export class MarketplacePlatformService {
       };
     }
 
-    const targetWindow = this.buildProviderAssistantTargetWindow(booking, action.targetWindowKey!);
-    return {
-      ...booking,
-      scheduledStartIso: targetWindow.startIso,
-      scheduledEndIso: targetWindow.endIso,
-      status: booking.status === "requested" ? "requested" : "confirmed",
-      onRouteConfirmedAt: undefined,
-      onRouteConfirmedByCrewMemberId: undefined,
-      lateNoticeSentAt: undefined,
-      lateEtaIso: undefined,
-      lateReason: undefined,
-      activeExceptionType: undefined,
-      activeExceptionReportedAt: undefined,
-      activeExceptionNotes: undefined,
-      disputedAt: undefined,
-      disputeReason: undefined,
-      disputedByRole: undefined,
-      completedAt: undefined
-    };
+    return { ...booking };
   }
 
   private projectCrewMatchesAfterProviderAssistantAction(
@@ -12607,6 +12680,7 @@ export class MarketplacePlatformService {
       if (["cancelled", "refunded"].includes(booking.status)) throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
       const payments = (await repository.listPayments()).filter((payment) => payment.bookingId === booking.id);
       if (payments.some((payment) => payment.status === "captured" || payment.status === "refunded")) throw new HttpError(409, "This booking has already been paid.");
+      if (payments.some((payment) => payment.status === "processing")) throw new HttpError(409, "Your payment is still processing. Please wait for confirmation before trying again.");
       const customer = await repository.findCustomerById(customerId);
       if (!customer) throw new HttpError(404, "Customer not found");
       const active = payments.find((payment) => payment.processor === "stripe" && !payment.checkoutSessionExpiredAt);
@@ -12692,6 +12766,12 @@ export class MarketplacePlatformService {
       return this.capturePaymentRecord(payment, booking, session.paymentIntentId);
     }
 
+    if (session.processing) {
+      return this.markPaymentProcessing(payment, session.paymentIntentId);
+    }
+    // Returning from an open checkout is not proof of a failed payment.
+    if (!session.failureReason) return payment;
+
     await this.failPaymentRecord(
       payment,
       booking,
@@ -12732,13 +12812,26 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    if (event.type === "checkout.session.completed" && event.paid) {
+    if ((event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && event.paid) {
       const updatedPayment = await this.capturePaymentRecord(payment, booking, event.paymentIntentId);
       return {
         received: true,
         eventType: event.type,
         paymentId: updatedPayment.id
       };
+    }
+
+    if (event.processing) {
+      const updatedPayment = await this.markPaymentProcessing(payment, event.paymentIntentId);
+      return { received: true, eventType: event.type, paymentId: updatedPayment.id };
+    }
+
+    if (event.type === "checkout.session.async_payment_failed") {
+      // A completed bank checkout cannot be reused after its delayed failure.
+      await this.repository.updatePayment(payment.id, { checkoutSessionExpiredAt: new Date().toISOString() });
+      const updatedPayment = await this.failPaymentRecord(payment, booking,
+        event.failureReason ?? "Your bank payment did not complete. Please try another payment method.", "webhook");
+      return { received: true, eventType: event.type, paymentId: updatedPayment.id };
     }
 
     if (event.type === "checkout.session.expired") {
@@ -18289,7 +18382,9 @@ export class MarketplacePlatformService {
           requiresRouteLeaderAssignment,
           onRouteConfirmedAt: booking.onRouteConfirmedAt,
           onRouteConfirmedByCrewMemberId: booking.onRouteConfirmedByCrewMemberId,
-          lateNoticeSentAt: booking.lateNoticeSentAt,
+          scheduleUpdates: booking.scheduleUpdates,
+      scheduleVersion: booking.scheduleVersion,
+      lateNoticeSentAt: booking.lateNoticeSentAt,
           lateEtaIso: booking.lateEtaIso,
           lateReason: booking.lateReason
             ? this.sanitizeMarketplaceSharedText(booking.lateReason)
@@ -22950,11 +23045,16 @@ export class MarketplacePlatformService {
     const attemptCount = delivery.attemptCount + 1;
     const lastAttemptAt = new Date().toISOString();
     try {
+      const notification = (await this.repository.listNotificationsByRecipient(delivery.recipientId)).find(item => item.id === delivery.notificationId);
+      const actionUrl = notification?.actionHref?.startsWith("/") && !notification.actionHref.startsWith("//")
+        ? new URL(notification.actionHref, this.appBaseUrl).toString() : undefined;
+      const fullBody = notification?.body ?? delivery.bodyPreview;
       const dispatch = await this.notificationDelivery.dispatch({
         channel: delivery.channel,
         destination: delivery.destination,
         title: delivery.title,
-        body: delivery.bodyPreview
+        body: actionUrl && ["email", "sms"].includes(delivery.channel) ? `${fullBody}\n\n${actionUrl}` : fullBody,
+        data: notification ? { notificationId: notification.id, actionHref: notification.actionHref } : undefined
       });
 
       await this.repository.updateNotificationDelivery(delivery.id, {
@@ -23323,6 +23423,21 @@ export class MarketplacePlatformService {
     }
 
     return updatedProvider;
+  }
+
+  private async markPaymentProcessing(payment: PaymentRecord, paymentIntentId?: string): Promise<PaymentRecord> {
+    // A card decline can be retried with bank payment inside the same open checkout.
+    // Expired attempts and captured/refunded payments must not move backwards.
+    if (payment.checkoutSessionExpiredAt || !["pending", "authorized", "processing", "failed"].includes(payment.status)) return payment;
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      status: "processing",
+      processorPaymentIntentId: paymentIntentId ?? payment.processorPaymentIntentId,
+      refundable: false,
+      failureReason: undefined,
+      updatedAt: new Date().toISOString()
+    });
+    if (!updatedPayment) throw new HttpError(500, "Payment record could not be updated");
+    return updatedPayment;
   }
 
   private async capturePaymentRecord(

@@ -1,3 +1,4 @@
+import { PrivacyRequestPanel } from "../../../components/PrivacyRequestPanel";
 import type { Metadata } from "next";
 import { SecuritySettingsPanel } from "../../../components/SecuritySettingsPanel";
 import { getLocalizedPageMetadata, getRequestI18n } from "../../../lib/i18n-server";
@@ -20,6 +21,7 @@ export default async function AccountSecurityPage() {
         <p>{i18n.t("security.description")}</p>
       </section>
       <SecuritySettingsPanel />
+      <PrivacyRequestPanel />
     </main>
   );
 }

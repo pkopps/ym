@@ -1,4 +1,8 @@
-import { useState } from "react";
+import * as Notifications from "expo-notifications";
+import { parseTrackingBookingId } from "../lib/arrivalTracking";
+import { MobileAnalyticsTracker } from "@yardmatch/observability";
+import { getCustomerMobileTracker } from "../lib/tracking";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
@@ -25,6 +29,25 @@ const tabs: Array<{ key: TabKey; labelKey: TranslationKey; icon: React.Component
 export function CustomerAppNavigator({ languageSettings }: { languageSettings: LanguageSettings }) {
   const i18n = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
+  const [focusedBookingId, setFocusedBookingId] = useState<string>();
+  const openBooking = (bookingId: string) => { setFocusedBookingId(bookingId); setActiveTab("bookings"); };
+  useEffect(() => {
+    let stopped = false;
+    const openResponse = (response: Notifications.NotificationResponse | null) => {
+      const href = response?.notification.request.content.data?.actionHref;
+      if (stopped || typeof href !== "string" || !href.startsWith("/customer/dashboard?")) return;
+      const bookingId = parseTrackingBookingId(href);
+      if (bookingId) { setFocusedBookingId(bookingId); setActiveTab("bookings"); }
+    };
+    const subscription = Notifications.addNotificationResponseReceivedListener(openResponse);
+    void Notifications.getLastNotificationResponseAsync().then(openResponse).catch(() => undefined);
+    return () => { stopped = true; subscription.remove(); };
+  }, []);
+
+  useEffect(() => {
+    MobileAnalyticsTracker.screen("customer", activeTab);
+    void getCustomerMobileTracker().track("screen_viewed", {screen: activeTab});
+  }, [activeTab]);
 
   const screen = {
     dashboard: (
@@ -34,8 +57,8 @@ export function CustomerAppNavigator({ languageSettings }: { languageSettings: L
       />
     ),
     book: <BookServiceScreen onOpenBookings={() => setActiveTab("bookings")} />,
-    bookings: <BookingsScreen onOpenAccount={() => setActiveTab("account")} />,
-    account: <SupportScreen languageSettings={languageSettings} />
+    bookings: <BookingsScreen focusedBookingId={focusedBookingId} onOpenAccount={() => setActiveTab("account")} />,
+    account: <SupportScreen languageSettings={languageSettings} onOpenBooking={openBooking} />
   }[activeTab];
 
   return (
@@ -48,7 +71,7 @@ export function CustomerAppNavigator({ languageSettings }: { languageSettings: L
             <Pressable
               accessibilityRole="button"
               key={tab.key}
-              onPress={() => setActiveTab(tab.key)}
+              onPress={() => { void getCustomerMobileTracker().track("action_clicked", {action: `nav-${tab.key}`}); setActiveTab(tab.key); }}
               style={[styles.navButton, isActive && styles.navButtonActive]}
             >
               <Feather

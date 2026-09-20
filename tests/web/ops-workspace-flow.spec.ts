@@ -24,6 +24,7 @@ test("ops workspace exposes and audits verification, support, leads, payouts, an
   await expect(page).toHaveURL(/\/ops$/);
   await expect(page.getByText("Live from the authenticated API.")).toBeVisible();
 
+  await page.locator('.workspace-nav a[href="#ops-providers"]').click();
   const verificationItem = page.locator("article.list-panel").filter({ hasText: pendingProvider.companyName });
   await expect(verificationItem).toBeVisible();
   const override = verificationItem.locator("textarea");
@@ -44,6 +45,7 @@ test("ops workspace exposes and audits verification, support, leads, payouts, an
   await supportItem.getByRole("button", { name: "Mark triaged" }).click();
   await expect(page.getByText("Ticket triaged.")).toBeVisible();
 
+  await page.locator('.workspace-nav a[href="#ops-leads"]').click();
   const leadComposer = page.locator("article.card").filter({ hasText: "Create a manual lead" }).first();
   await leadComposer.getByLabel("Name", { exact: true }).fill("Jamie Launch Lead");
   await leadComposer.getByLabel("Email", { exact: true }).fill("jamie-launch@example.com");
@@ -53,12 +55,14 @@ test("ops workspace exposes and audits verification, support, leads, payouts, an
   await expect(page.getByText("Launch lead created.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Jamie Launch Lead" }).first()).toBeVisible();
 
+  await page.locator('.workspace-nav a[href="#ops-administration"]').click();
   const automationBoard = page.getByTestId("ops-automation-board");
   await expect(automationBoard).toBeVisible();
   await automationBoard.getByRole("button", { name: "Run due sweeps" }).click();
   await expect(automationBoard.getByRole("status")).toContainText("Automation finished");
   await expect(automationBoard.getByRole("heading", { name: "Dry-run automation audit" }).first()).toBeVisible();
 
+  await page.locator('.workspace-nav a[href="#ops-payouts"]').click();
   await expect(page.getByTestId("ops-payout-batches")).toBeVisible();
   await expect(page.getByText("Crew transfer records (must stay 0)")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Provider business" })).toBeVisible();

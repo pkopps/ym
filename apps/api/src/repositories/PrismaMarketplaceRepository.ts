@@ -1,3 +1,4 @@
+import { resolveScheduleUpdates } from "../policies/bookingSchedulePolicy";
 import { Prisma, PrismaClient } from "@prisma/client";
 import {
   AppNotification,
@@ -537,6 +538,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         lateNoticeSentAt: booking.lateNoticeSentAt ? new Date(booking.lateNoticeSentAt) : undefined,
         lateEtaIso: booking.lateEtaIso ? new Date(booking.lateEtaIso) : undefined,
         lateReason: booking.lateReason,
+        scheduleUpdates: asJson(booking.scheduleUpdates ?? []),
+        scheduleVersion: booking.scheduleVersion ?? 0,
         activeExceptionType: booking.activeExceptionType,
         activeExceptionReportedAt: booking.activeExceptionReportedAt
           ? new Date(booking.activeExceptionReportedAt)
@@ -613,15 +616,18 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return booking ? this.mapBooking(booking) : undefined;
   }
 
-  public async updateBooking(bookingId: string, updates: Partial<Booking>): Promise<Booking | undefined> {
+  public async updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined> {
     const current = await this.findBookingById(bookingId);
     if (!current) {
       return undefined;
     }
 
     const booking = await this.prisma.booking.update({
-      where: { id: bookingId },
+      where: { id: bookingId, scheduleVersion: expectedVersion },
       data: {
+        scheduleVersion: { increment: 1 },
+        scheduleUpdates: updates.scheduleUpdates || resolveScheduleUpdates(current, updates) !== current.scheduleUpdates
+          ? asJson(resolveScheduleUpdates(current, updates) ?? []) : undefined,
         customerId: updates.customerId,
         providerId: updates.providerId,
         launchLeadId: "launchLeadId" in updates ? updates.launchLeadId ?? null : undefined,
@@ -718,9 +724,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         interventions: updates.interventions ? asJson(updates.interventions) : undefined,
         addressChangeHistory: updates.addressChangeHistory ? asJson(updates.addressChangeHistory) : undefined
       }
+    }).catch((error: { code?: string }) => {
+      if (error.code === "P2025" && expectedVersion !== undefined) return undefined;
+      throw error;
     });
 
-    return this.mapBooking(booking);
+    return booking ? this.mapBooking(booking) : undefined;
   }
 
   public async createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan> {
@@ -2053,6 +2062,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapSupportTicket(ticket);
   }
 
+  public async createNotificationIfAbsent(notification: AppNotification): Promise<boolean> {
+    const result = await this.prisma.appNotification.createMany({
+      data: [{ ...notification, createdAt: new Date(notification.createdAt), readAt: notification.readAt ? new Date(notification.readAt) : null }],
+      skipDuplicates: true
+    });
+    return result.count === 1;
+  }
+
   public async createNotification(notification: AppNotification): Promise<AppNotification> {
     await this.prisma.appNotification.create({
       data: {
@@ -2946,6 +2963,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     lateNoticeSentAt: Date | null;
     lateEtaIso: Date | null;
     lateReason: string | null;
+    scheduleUpdates: unknown;
+    scheduleVersion: number;
     activeExceptionType: string | null;
     activeExceptionReportedAt: Date | null;
     activeExceptionNotes: string | null;
@@ -2986,6 +3005,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       lateNoticeSentAt: record.lateNoticeSentAt?.toISOString(),
       lateEtaIso: record.lateEtaIso?.toISOString(),
       lateReason: record.lateReason ?? undefined,
+      scheduleUpdates: readJson<Booking["scheduleUpdates"]>(record.scheduleUpdates),
+      scheduleVersion: record.scheduleVersion,
       activeExceptionType: record.activeExceptionType as Booking["activeExceptionType"],
       activeExceptionReportedAt: record.activeExceptionReportedAt?.toISOString(),
       activeExceptionNotes: record.activeExceptionNotes ?? undefined,

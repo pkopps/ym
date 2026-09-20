@@ -2,7 +2,7 @@
 
 import { CreateLaunchLeadRequest, LaunchLeadContactPreference, ServiceCategory } from "@yardmatch/contracts";
 import { type TranslationKey } from "@yardmatch/i18n";
-import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
+import { serviceCategoryLabelKeys, serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createWebApiClient } from "../lib/api";
@@ -15,27 +15,22 @@ const contactMethodLabelKeys: Record<LaunchLeadContactPreference, TranslationKey
   phone: "launch_lead.contact.phone",
   text: "launch_lead.contact.text"
 };
-const serviceOptions: ServiceCategory[] = [
-  "lawn-mowing",
-  "seasonal-cleanup",
-  "hedge-trimming",
-  "mulch-installation",
-  "weed-control",
-  "gutter-cleaning"
-];
+const serviceOptions = Object.keys(serviceCategoryLabelKeys) as ServiceCategory[];
 
 export function LaunchLeadCaptureCard({
   requestSource,
   title,
   description,
   defaultAreaLabel,
-  defaultServiceCategory
+  defaultServiceCategory,
+  defaultMessage
 }: {
   requestSource: string;
   title?: string;
   description?: string;
   defaultAreaLabel?: string;
   defaultServiceCategory?: ServiceCategory;
+  defaultMessage?: string;
 }) {
   const i18n = useI18n();
   const api = createWebApiClient();
@@ -45,7 +40,7 @@ export function LaunchLeadCaptureCard({
   const [preferredContactMethod, setPreferredContactMethod] = useState<LaunchLeadContactPreference>("email");
   const [areaLabel, setAreaLabel] = useState(defaultAreaLabel ?? "");
   const [serviceCategory, setServiceCategory] = useState<ServiceCategory | "">(defaultServiceCategory ?? "");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(defaultMessage ?? "");
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
@@ -161,7 +156,7 @@ export function LaunchLeadCaptureCard({
         </label>
       </div>
       <div className="cta-row" style={{ marginTop: "1rem" }}>
-        <button className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
+        <button data-analytics-action="send-coverage-inquiry" className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
           {isWorking ? i18n.t("chat.sending") : i18n.t("launch_lead.request_follow_up")}
         </button>
       </div>

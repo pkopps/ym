@@ -140,7 +140,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `NOTIFICATION_ALERT_EMAILS` as a comma-separated list
   - `NOTIFICATION_ALERT_SMS_NUMBERS` as a comma-separated list
 - Prisma/Postgres scaffolding is in place under [`apps/api/prisma`](</Users/patrickkopps/Documents/app/apps/api/prisma>).
-- The committed migration chain now includes launch leads, internal authentication/access audit state, public review-response fields, versioned booking settlements, and balanced financial ledger constraints. After `npm run prisma:migrate`, verify local schema parity with Prisma migrate diff and run the repository gate with `TEST_DATABASE_URL=... npm run test:api`.
+- The committed migration chain now includes launch leads, internal authentication/access audit state, public review-response fields, versioned booking settlements, and balanced financial ledger constraints. After `npm run prisma:deploy`, verify local schema parity with Prisma migrate diff and run the repository gate with `TEST_DATABASE_URL=... npm run test:api`.
 - CI applies the complete migration chain to an isolated PostgreSQL 16 database, verifies migration status, rejects schema drift that is not represented by a migration, runs the repository integration suite, and retains the resulting logs for 90 days as a `postgres-launch-gate-<commit>` artifact.
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
@@ -243,7 +243,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 
 ```bash
 npm run prisma:generate
-npm run prisma:migrate
+npm run prisma:deploy
 npm run prisma:seed
 ```
 
@@ -614,3 +614,14 @@ npm run dev:crew-mobile
 Recovery secrets are private in deployed environments; reset attempts and OAuth state consumption use durable security state. Booking writes validate ownership, signed server quotes, provider eligibility and future time windows. Web and customer-mobile booking requests carry the quote token. Initial recurring plans and bookings persist together. Calendar imports preserve other subscriptions, validate outbound destinations and expand timezone-aware recurrence. Checkout retries retain payment attempts, and refunds remain terminal.
 
 Generate Prisma and apply `20260909010000_security_states` before releasing this API version. See the [repair completion report](reports/code-audit/2026-09-09/completion.md) for verification, operating limits, and the separate pre-existing empty-database migration-order blocker.
+
+
+## Product analytics and launch operations
+
+Optional web/mobile usage analytics now has validated collection, PostgreSQL persistence, bounded retries, retention, account linking, and a permission-gated PostHog exporter. Ops → Reports shows journeys, clicks/destinations, performance, supply activation, and settlement economics. Ops workspaces now open on action queues; provider/crew workspaces put jobs ahead of advanced settings. Customer quotes proceed directly to a revalidated recommendation.
+
+See [analytics and operations](docs/ANALYTICS_AND_OPERATIONS.md) for setup, monitoring, mobile release controls, privacy intake, database restore rehearsal, and the remaining external activation gates. The first-party store works locally; live PostHog, independent alerts, vendor acceptance, and irreversible privacy fulfillment still require account/policy setup.
+
+## Visit delays and rescheduling
+
+Providers can report late arrivals or weather holds with a next-update deadline and propose a new service window for customer approval. Web and native booking screens expose the updates; the existing ops scheduler alerts customers, providers, and ops when an update or arrival window is overdue. See [the schedule recovery guide](docs/BOOKING_SCHEDULE_RECOVERY.md) for behavior, API routes, rollout, and limits.

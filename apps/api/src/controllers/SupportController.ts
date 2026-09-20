@@ -2,7 +2,6 @@ import {
   CreateInboundEmailLaunchLeadRequest,
   CreateInboundGoogleBusinessProfileLeadRequest,
   CreateInboundReferralLaunchLeadRequest,
-  AnalyticsEvent,
   CreateInboundLaunchLeadRequest,
   CreateLaunchLeadRequest,
   CreateOpsBookingInterventionRequest,
@@ -13,12 +12,15 @@ import {
   UpdateLaunchLeadRequest,
   UpdateSupportTicketRequest
 } from "@yardmatch/contracts";
-import { requireOpsAccess, requireRole } from "../controller-auth";
+import { getOptionalAuthenticatedIdentity, requireOpsAccess, requireRole } from "../controller-auth";
 import { ApiController, RequestContext, sendJson } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 
+import { AnalyticsRateLimit, ProductAnalytics, validateClientEvent } from "../observability/ProductAnalytics";
+
 export class SupportController implements ApiController {
-  public constructor(private readonly platform: MarketplacePlatformService) {}
+  private readonly analyticsLimit = new AnalyticsRateLimit();
+  public constructor(private readonly platform: MarketplacePlatformService, private readonly analytics?: ProductAnalytics) {}
 
   public canHandle(context: RequestContext): boolean {
     return (
@@ -200,7 +202,12 @@ export class SupportController implements ApiController {
       return;
     }
 
-    sendJson(response, 201, this.platform.createAnalyticsEvent(context.body as AnalyticsEvent));
+    this.analyticsLimit.check(context);
+    const identity = await getOptionalAuthenticatedIdentity(context, this.platform);
+    const event = validateClientEvent(context.body, identity);
+    this.platform.createAnalyticsEvent(event);
+    await this.analytics?.flush();
+    sendJson(response, 201, {id: event.id, accepted: true});
   }
 
   private normalizeInboundEmailLaunchLeadRequest(body: unknown): CreateInboundEmailLaunchLeadRequest {

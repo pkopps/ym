@@ -479,3 +479,39 @@ test('Postgres serializes recovery and checkout across service instances and rol
       await secondClient.$disconnect();
     }
 });
+
+test("Postgres preserves timing history and atomically rejects stale schedule responses and duplicate follow-ups",
+  { skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured" }, async () => {
+    const prisma = new PrismaClient({ datasourceUrl: databaseUrl! });
+    const repository = new PrismaMarketplaceRepository(prisma);
+    const id = `schedule-pg-${randomUUID()}`;
+    const now = new Date().toISOString();
+    const booking: Booking = { id, customerId: `${id}-customer`, providerId: `${id}-provider`, serviceAddress: {
+      line1: "18 Bay Ave", city: "Barnegat", state: "NJ", postalCode: "08005", country: "US", point: { latitude: 39.75, longitude: -74.22 }
+    }, category: "lawn-mowing", requestedAt: now, scheduledStartIso: "2027-05-01T16:00:00.000Z", scheduledEndIso: "2027-05-01T18:00:00.000Z", status: "confirmed", notes: "Timing integration", totalCents: 6200,
+    serviceEvidence: [], interventions: [], addressChangeHistory: [], scheduleUpdates: [{ id: `${id}-update`, kind: "weather", state: "active", reason: "Wet ground", createdAt: now, updatedAt: now, nextUpdateByIso: "2027-05-01T17:00:00.000Z", originalStartIso: "2027-05-01T16:00:00.000Z", originalEndIso: "2027-05-01T18:00:00.000Z" }] };
+    try {
+      await repository.createBooking(booking);
+      const saved = (await repository.findBookingById(id))!;
+      assert.deepEqual(saved.scheduleUpdates, booking.scheduleUpdates);
+      assert.equal(saved.scheduleVersion, 0);
+      const updates = await Promise.all([
+        repository.updateBooking(id, { lateReason: "First responder" }, 0),
+        repository.updateBooking(id, { lateReason: "Stale responder" }, 0)
+      ]);
+      assert.equal(updates.filter(Boolean).length, 1);
+      const after = (await repository.findBookingById(id))!;
+      assert.equal(after.scheduleVersion, 1);
+      assert.deepEqual(after.scheduleUpdates, booking.scheduleUpdates);
+      await repository.updateBooking(id, { scheduledStartIso: "2027-05-02T16:00:00.000Z" }, 1);
+      assert.equal((await repository.findBookingById(id))!.scheduleUpdates![0].state, "resolved");
+      const notification = { id, recipientId: booking.customerId, recipientRole: "customer" as const, category: "booking" as const, title: "Timing follow-up", body: "Arrival needs confirmation", isRead: false, createdAt: now };
+      const claimed = await Promise.all([repository.createNotificationIfAbsent(notification), repository.createNotificationIfAbsent(notification)]);
+      assert.deepEqual(claimed.sort(), [false, true]);
+      assert.equal((await repository.listNotificationsByRecipient(booking.customerId)).length, 1);
+    } finally {
+      await prisma.appNotification.deleteMany({ where: { id } });
+      await prisma.booking.deleteMany({ where: { id } });
+      await prisma.$disconnect();
+    }
+  });

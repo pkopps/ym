@@ -24,6 +24,7 @@ export interface VerifiedStripeCheckoutSession {
   checkoutSessionId: string;
   paymentIntentId?: string;
   paid: boolean;
+  processing?: boolean;
   failureReason?: string;
 }
 
@@ -37,6 +38,7 @@ export interface StripeWebhookEvent {
   disputedAmountCents?: number;
   disputeReason?: string;
   paid?: boolean;
+  processing?: boolean;
   failureReason?: string;
 }
 
@@ -99,7 +101,8 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
 
   public constructor(
     secretKey = process.env.STRIPE_SECRET_KEY,
-    webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+    webhookSecret = process.env.STRIPE_WEBHOOK_SECRET,
+    private readonly paymentMethodConfiguration = process.env.STRIPE_CHECKOUT_PAYMENT_METHOD_CONFIGURATION
   ) {
     if (secretKey) {
       this.stripe = createStripeClient(secretKey);
@@ -121,6 +124,15 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     const session = await runStripeRequest(
       () => this.stripe!.checkout.sessions.create({
         mode: "payment",
+        // Hosted Checkout puts eligible wallets in express checkout. Configure
+        // cards and US bank accounts together in Stripe; never force a bank link.
+        payment_method_configuration: this.paymentMethodConfiguration || undefined,
+        payment_method_options: {
+          us_bank_account: {
+            verification_method: "automatic",
+            financial_connections: { permissions: ["payment_method"] }
+          }
+        },
         integration_identifier: createIntegrationIdentifier(input.idempotencyKey),
         success_url: buildReturnUrl(input.appBaseUrl, input.successPath, true),
         cancel_url: buildReturnUrl(input.appBaseUrl, input.cancelPath, false),
@@ -139,7 +151,7 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
         payment_intent_data: {
           metadata: {
             paymentId: input.paymentId ?? "",
-          bookingId: input.booking.id,
+            bookingId: input.booking.id,
             customerId: input.customer.id,
             providerId: input.booking.providerId
           }
@@ -191,8 +203,9 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       checkoutSessionId: session.id,
       paymentIntentId,
       paid: session.payment_status === "paid",
+      processing: session.status === "complete" && session.payment_status === "unpaid",
       failureReason:
-        session.payment_status === "unpaid" ? "Stripe checkout has not been completed yet." : undefined
+        session.status === "expired" ? "Stripe checkout expired." : undefined
     };
   }
 
@@ -243,6 +256,8 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
     const event = await this.stripe.webhooks.constructEventAsync(rawBody, signature, this.webhookSecret);
     if (
       event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded" ||
+      event.type === "checkout.session.async_payment_failed" ||
       event.type === "checkout.session.expired"
     ) {
       const session = event.data.object;
@@ -254,18 +269,23 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
         paymentIntentId:
           typeof session.payment_intent === "string" ? session.payment_intent : undefined,
         paid: session.payment_status === "paid",
+        processing: event.type === "checkout.session.completed" && session.payment_status === "unpaid",
         failureReason:
-          event.type === "checkout.session.expired" ? "Stripe checkout expired." : undefined
+          event.type === "checkout.session.expired" ? "Stripe checkout expired." :
+            event.type === "checkout.session.async_payment_failed" ? "Your bank payment did not complete. Please try another payment method." : undefined
       };
     }
 
-    if (event.type === "payment_intent.payment_failed") {
+    if (event.type === "payment_intent.payment_failed" || event.type === "payment_intent.processing") {
       const intent = event.data.object;
       return {
         id: event.id,
         type: event.type,
+        paymentId: intent.metadata?.paymentId,
         paymentIntentId: intent.id,
-        failureReason: intent.last_payment_error?.message ?? "Stripe payment failed."
+        processing: event.type === "payment_intent.processing",
+        failureReason: event.type === "payment_intent.payment_failed"
+          ? intent.last_payment_error?.message ?? "Stripe payment failed." : undefined
       };
     }
 

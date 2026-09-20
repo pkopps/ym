@@ -40,6 +40,7 @@ test("provider signup reaches a complete, verified management profile", async ({
   await page.getByRole("button", { name: "Save business profile" }).click();
   await expect(page.getByText("Business profile updated.")).toBeVisible();
 
+  await page.locator('a[href="#provider-settings"]').click();
   await page.getByRole("button", { name: "+5 miles" }).first().click();
   await expect(page.getByText("Service radius updated.")).toBeVisible();
   await page.getByRole("button", { name: "Auto-accept" }).click();
@@ -48,6 +49,7 @@ test("provider signup reaches a complete, verified management profile", async ({
   const login = await loginApi(request, email);
   await approveProvider(request, login.user.id, login.session.token);
   await page.reload();
+  await page.locator('a[href="#provider-setup"]').click();
   await expect(page.getByText(/Status: verified/i)).toBeVisible();
   await expect(page.getByText(/verified and visible in search/i)).toBeVisible();
 

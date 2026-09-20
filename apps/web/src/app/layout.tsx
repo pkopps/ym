@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { AnalyticsPreferences } from "../components/AnalyticsPreferences";
 import type { Metadata } from "next";
 import { sourceMessages } from "@yardmatch/i18n";
 import { I18nProvider } from "@yardmatch/i18n/react";
@@ -49,10 +51,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang={localeToHtmlLang(locale)}>
       <body>
         <I18nProvider fallbackMessages={fallbackMessages} locale={locale} messages={messages}>
-          <ObservabilityProvider />
+          <Suspense fallback={null}><ObservabilityProvider /></Suspense>
           <SiteHeader />
           <div id="main-content" tabIndex={-1}>{children}</div>
           <SiteFooter />
+          <AnalyticsPreferences />
         </I18nProvider>
       </body>
     </html>

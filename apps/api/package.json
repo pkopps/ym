@@ -10,12 +10,12 @@
     "build": "tsc -p tsconfig.json",
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
-    "prisma:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "prisma:deploy": "node ../../scripts/deploy-database.mjs",
     "prisma:seed": "tsx prisma/seed.ts",
     "ops:create-user": "tsx src/scripts/createOpsUser.ts",
     "verify:production-config": "node --import tsx src/scripts/verifyProductionConfig.ts",
     "test": "node --test --import tsx test/**/*.test.ts",
-    "test:postgres": "node --test --import tsx test/postgres-repository.integration.test.ts"
+    "test:postgres": "node --test --import tsx test/*.integration.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

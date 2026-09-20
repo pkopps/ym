@@ -1,3 +1,4 @@
+import { loginApi, opsEmail, opsPassword } from "./workflow-helpers";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? 4001}`;
@@ -66,9 +67,10 @@ async function registerExistingCustomer(request: APIRequestContext, email: strin
 }
 
 test.describe.serial("customer booking golden path", () => {
-  test("homepage search carries signup intent through quote, recommendation, and booking state", async ({ page }) => {
+  test("homepage search carries signup intent through quote, recommendation, and booking state", async ({ page, request }) => {
     test.setTimeout(90_000);
     await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => localStorage.setItem("yardmatch-analytics-permission", "yes"));
     await searchSeededBrooklyn(page, "en");
 
     await page.screenshot({
@@ -85,8 +87,8 @@ test.describe.serial("customer booking golden path", () => {
     const signupUrl = new URL(page.url());
     expect(signupUrl.searchParams.get("lat")).toBe("40.6782");
     expect(signupUrl.searchParams.get("lng")).toBe("-73.9442");
-    await expect(page.getByText("Selected request")).toBeVisible();
-    await expect(page.getByRole("heading", { level: 2, name: "GreenStride Lawn Co." })).toBeVisible();
+    await expect(page.locator(".auth-intent-compact summary")).toContainText("GreenStride Lawn Co.");
+    await page.locator(".auth-intent-compact summary").click();
     await expect(page.getByRole("link", { name: "Log in and continue" })).toBeVisible();
 
     const email = `golden-path-${Date.now()}@example.com`;
@@ -107,10 +109,9 @@ test.describe.serial("customer booking golden path", () => {
     await expect(page.getByText("170 5th Ave, Brooklyn, NY")).toBeVisible();
 
     await page.getByRole("button", { name: "Get price" }).click();
-    await expect(page.getByRole("button", { name: "See provider" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "See provider" })).toHaveCount(0);
     await page.getByText("Estimate details").click();
     await expect(page.getByText("Confidence notes")).toBeVisible();
-    await page.getByRole("button", { name: "See provider" }).click();
 
     await expect(page.getByText("Selected match", { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("heading", { level: 3, name: "GreenStride Lawn Co." })).toBeVisible();
@@ -123,6 +124,13 @@ test.describe.serial("customer booking golden path", () => {
     await expect(page.getByRole("heading", { name: "Waiting on confirmation" })).toBeVisible();
     await expect(page.getByText(/GreenStride Lawn Co\. is reviewing this request/)).toBeVisible();
     await expect(page.getByText("After provider confirms")).toBeVisible();
+    const ops = await loginApi(request, opsEmail, opsPassword);
+    await expect.poll(async () => {
+      const report = await request.get(`${apiBaseUrl}/api/observability/product-analytics`, {headers: {Authorization: `Bearer ${ops.session.token}`}});
+      expect(report.ok()).toBeTruthy();
+      const data = await report.json();
+      return data.funnel.steps.find((step: {name: string; people: number}) => step.name === "booking_requested").people;
+    }).toBeGreaterThan(0);
     await expect(page.getByRole("navigation", { name: "Customer account sections" }).getByRole("link", { name: "Past visits" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Track crew" })).toHaveCount(0);
     await page.getByText("More options").click();
@@ -171,7 +179,6 @@ test.describe.serial("customer booking golden path", () => {
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
     await expect(page.getByLabel("Servicio").first()).toHaveValue("lawn-mowing");
     await page.getByRole("button", { name: "Obtener precio" }).click();
-    await page.getByRole("button", { name: "Ver proveedor" }).click();
     await expect(page.getByText("Recomendacion seleccionada", { exact: true }).first()).toBeVisible();
     await page.getByRole("button", { name: "Solicitar este horario" }).click();
 

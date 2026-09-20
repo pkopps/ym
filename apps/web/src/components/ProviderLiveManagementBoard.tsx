@@ -1,5 +1,8 @@
 "use client";
 
+import { BookingSchedulePanel } from "./BookingSchedulePanel";
+import { WorkspaceSection } from "./WorkspaceSection";
+
 import {
   BookingEvidencePhase,
   BookingArrivalTracking,
@@ -1143,56 +1146,10 @@ export function ProviderLiveManagementBoard() {
         </section>
       )}
 
-      {retentionProgram ? (
-        <section className="card">
-          <span className="eyebrow">{i18n.t("provider_live.retention.eyebrow")}</span>
-          <h2>{i18n.t("provider_live.retention.title")}</h2>
-          <p>{retentionProgram.promise}</p>
-          <div className="provider-route-summary" aria-label={i18n.t("provider_live.retention.summary_aria")}>
-            <div>
-              <span>{i18n.t("provider_live.retention.acquired")}</span>
-              <strong>{retentionProgram.acquiredCustomerCount}</strong>
-            </div>
-            <div>
-              <span>{i18n.t("provider_live.retention.eligible")}</span>
-              <strong>{retentionProgram.eligibleCustomerCount}</strong>
-            </div>
-            <div>
-              <span>{i18n.t("provider_live.retention.returned")}</span>
-              <strong>{retentionProgram.repeatCustomerCount}</strong>
-            </div>
-            <div>
-              <span>{i18n.t("provider_live.retention.paused")}</span>
-              <strong>{retentionProgram.pausedCustomerCount}</strong>
-            </div>
-          </div>
-          <p>{retentionProgram.eligibilityRule}</p>
-          <p>
-            {i18n.t("provider_live.retention.fee_detail", {
-              finderFee: i18n.formatCurrency(retentionProgram.finderFeeCents),
-              jobFee: i18n.formatCurrency(retentionProgram.completedJobFeeCents, "USD", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            })}
-          </p>
-          {retentionProgram.relationships.length > 0 ? (
-            <ul className="timeline">
-              {retentionProgram.relationships.map((relationship) => (
-                <li key={relationship.customerId}>
-                  <strong>{relationship.customerName}</strong>
-                  <span>
-                    {formatRetentionRelationshipStatus(i18n, relationship.status)} • {relationship.reason}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>{i18n.t("provider_live.retention.empty")}</p>
-          )}
-        </section>
-      ) : null}
-
+      <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
+        <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
+      </nav>
+      <WorkspaceSection id="provider-setup" title={i18n.t("workspace.setup")} defaultOpen={provider?.verificationStatus !== "verified"}>
       {provider ? (
         <section className="card">
           <span className="eyebrow">{i18n.t("provider_live.verification.eyebrow")}</span>
@@ -1311,6 +1268,591 @@ export function ProviderLiveManagementBoard() {
         </section>
       ) : null}
 
+      </WorkspaceSection>
+      {visibleJobs.length ? (
+        <section className="stack-lg" id="provider-jobs">
+        {visibleJobs.map((job) => (
+          <article className="history-card" key={job.bookingId}>
+            <div className="history-card__header">
+              <div>
+                <span className="eyebrow">{formatServiceCategoryLabel(i18n, job.category)}</span>
+                <h2>{job.customerName}</h2>
+              </div>
+              <strong>{i18n.formatCurrency(job.totalCents)}</strong>
+            </div>
+            <div className="history-card__grid">
+              <div>
+                <h3>{i18n.t("provider_live.job.schedule")}</h3>
+                <p>{formatBookingWindowSummary(job.scheduledStartIso)}</p>
+                <p>{formatDateTime(i18n, job.scheduledStartIso)}</p>
+              </div>
+              <div>
+                <h3>{i18n.t("provider_live.job.address")}</h3>
+                <p>{job.serviceAddress.line1}</p>
+                <p>
+                  {job.serviceAddress.city}, {job.serviceAddress.state} {job.serviceAddress.postalCode}
+                </p>
+              </div>
+              <div>
+                <h3>{i18n.t("provider_live.job.staffing")}</h3>
+                <p>{i18n.t("provider_live.job.required_crew", { count: job.requiredCrewMembers })}</p>
+                <p>{i18n.t("provider_live.job.assigned_crew", { count: job.assignedCrewMembers })}</p>
+                <p>{i18n.t("provider_live.job.open_crew", { count: job.crewGap })}</p>
+                <p>{i18n.t("provider_live.job.status", { status: getProviderJobStatusLabel(i18n, job) })}</p>
+                {provider?.routeLeaderMode === "accepted-crew-fallback" ? (
+                  <p>
+                    {i18n.t("provider_live.job.route_leader", {
+                      name: job.assignedRouteLeaderCrewMemberName ?? i18n.t("provider_live.job.provider")
+                    })}
+                    {job.requiresRouteLeaderAssignment ? ` • ${i18n.t("provider_live.job.route_leader_pick_hint")}` : ""}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            {job.evidencePhotos.some(
+              (evidence) => evidence.phase === "before" && evidence.capturedByRole === "customer"
+            ) ? (
+              <section className="service-photo-panel">
+                <div>
+                  <h3>{i18n.t("provider_live.customer_photos.title")}</h3>
+                  <p>{i18n.t("provider_live.customer_photos.body")}</p>
+                </div>
+                <div className="service-photo-strip">
+                  {job.evidencePhotos
+                    .filter(
+                      (evidence) =>
+                        evidence.phase === "before" &&
+                        evidence.capturedByRole === "customer" &&
+                        evidence.imageDataUrl
+                    )
+                    .map((evidence) => (
+                      <figure key={evidence.id}>
+                        <img alt={i18n.t("provider_live.customer_photos.alt")} src={evidence.imageDataUrl} />
+                        <figcaption>
+                          {evidence.photoArea?.replaceAll("-", " ") ?? i18n.t("photo.area.other")}
+                          {evidence.note ? ` • ${evidence.note}` : ""}
+                        </figcaption>
+                      </figure>
+                    ))}
+                </div>
+              </section>
+            ) : null}
+
+            {(job.status === "confirmed" && job.onRouteConfirmedAt) || job.status === "in-progress" ? (
+              <section className="evidence-capture-panel" id={`provider-evidence-${job.bookingId}`}>
+                <div>
+                  <strong>{i18n.t("provider_live.evidence.title")}</strong>
+                  <p>
+                    {job.status === "in-progress"
+                      ? i18n.t("provider_live.evidence.after_help", { count: job.afterEvidenceCount })
+                      : i18n.t("provider_live.evidence.before_help", { count: job.beforeEvidenceCount })}
+                  </p>
+                </div>
+                <label className="button-secondary evidence-upload-button">
+                  <span>
+                    {job.status === "in-progress"
+                      ? i18n.t("provider_live.evidence.add_after")
+                      : i18n.t("provider_live.evidence.add_before")}
+                  </span>
+                  <input
+                    accept="image/*"
+                    aria-label={
+                      job.status === "in-progress"
+                        ? i18n.t("provider_live.evidence.after_label")
+                        : i18n.t("provider_live.evidence.before_label")
+                    }
+                    capture="environment"
+                    className="visually-hidden"
+                    disabled={isWorking}
+                    onChange={(event) => {
+                      const input = event.currentTarget;
+                      const file = input.files?.[0];
+                      if (!file) {
+                        return;
+                      }
+                      void handleEvidencePhoto(
+                        job.bookingId,
+                        job.status === "in-progress" ? "after" : "before",
+                        file
+                      ).finally(() => {
+                        input.value = "";
+                      });
+                    }}
+                    type="file"
+                  />
+                </label>
+              </section>
+            ) : null}
+
+            <div className="cta-row">
+              {job.status === "requested" ? (
+                <>
+                  <button
+                    className="button"
+                    disabled={isWorking}
+                    onClick={() => void handleConfirmBooking(job.bookingId)}
+                    type="button"
+                  >
+                    {i18n.t("provider_live.action.confirm_booking")}
+                  </button>
+                </>
+              ) : null}
+              {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+                <>
+                  <button
+                    className="button"
+                    disabled={isWorking}
+                    onClick={() => void handleStartRoute(job.bookingId)}
+                    type="button"
+                  >
+                    {i18n.t("provider_live.action.start_route")}
+                  </button>
+                </>
+              ) : null}
+              {job.status === "confirmed" && job.onRouteConfirmedAt ? (
+                <button
+                  className="button"
+                  disabled={isWorking || job.beforeEvidenceCount === 0}
+                  onClick={() => void handleStartWork(job.bookingId)}
+                  type="button"
+                >
+                  {i18n.t("provider_live.action.start_work")}
+                </button>
+              ) : null}
+              {job.status === "in-progress" ? (
+                <button
+                  className="button"
+                  disabled={isWorking || job.afterEvidenceCount === 0}
+                  onClick={() => void completeJob(job.bookingId)}
+                  type="button"
+                >
+                  {i18n.t("provider_live.action.complete_job")}
+                </button>
+              ) : null}
+            </div>
+
+            {job.status === "requested" ? (
+              <details className="service-card-disclosure">
+                <summary className="service-card-disclosure__summary">{i18n.t("customer_live.more_options")}</summary>
+                <div className="service-card-disclosure__body">
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() => void handleDeclineBooking(job.bookingId)}
+                      type="button"
+                    >
+                      {i18n.t("provider_live.action.decline_request")}
+                    </button>
+                  </div>
+                </div>
+              </details>
+            ) : null}
+
+            {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
+              <details className="service-card-disclosure">
+                <summary className="service-card-disclosure__summary">{i18n.t("provider_live.action.report_issue")}</summary>
+                <div className="service-card-disclosure__body">
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleMarkLate(
+                          job.bookingId,
+                          buildLateEta(job.scheduledStartIso, 15),
+                          i18n.t("provider_live.issue.late_15_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("provider_live.issue.late_15")}
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleMarkLate(
+                          job.bookingId,
+                          buildLateEta(job.scheduledStartIso, 30),
+                          i18n.t("provider_live.issue.late_30_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("provider_live.issue.late_30")}
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-no-show",
+                          i18n.t("provider_live.issue.customer_no_show_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("booking.exception.customer_no_show")}
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-not-ready",
+                          i18n.t("provider_live.issue.customer_not_ready_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("booking.exception.customer_not_ready")}
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "unable-to-access-property",
+                          i18n.t("provider_live.issue.no_access_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("booking.exception.unable_to_access_property")}
+                    </button>
+                  </div>
+                </div>
+              </details>
+            ) : null}
+
+            {job.status === "in-progress" ? (
+              <details className="service-card-disclosure">
+                <summary className="service-card-disclosure__summary">{i18n.t("provider_live.action.report_issue")}</summary>
+                <div className="service-card-disclosure__body">
+                  <div className="cta-row">
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-no-show",
+                          i18n.t("provider_live.issue.customer_no_show_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("booking.exception.customer_no_show")}
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "customer-not-ready",
+                          i18n.t("provider_live.issue.customer_not_ready_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("booking.exception.customer_not_ready")}
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "unable-to-access-property",
+                          i18n.t("provider_live.issue.no_access_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("booking.exception.unable_to_access_property")}
+                    </button>
+                    <button
+                      className="button-secondary"
+                      disabled={isWorking}
+                      onClick={() =>
+                        void handleReportIssue(
+                          job.bookingId,
+                          "service-could-not-be-completed",
+                          i18n.t("provider_live.issue.could_not_complete_reason")
+                        )
+                      }
+                      type="button"
+                    >
+                      {i18n.t("provider_live.issue.could_not_complete")}
+                    </button>
+                  </div>
+                </div>
+              </details>
+            ) : null}
+
+            <BookingSchedulePanel booking={job} bookingId={job.bookingId} provider onUpdated={loadProviderView} />
+
+            {!job.scheduleUpdates?.length && job.lateEtaIso && !job.onRouteConfirmedAt ? (
+              <div className="list-panel">
+                <strong>{i18n.t("provider_live.job.delay_notice_sent")}</strong>
+                <p>
+                  {i18n.t("provider_live.job.delay_expected", { date: formatDateTime(i18n, job.lateEtaIso) })}
+                  {job.lateReason ? ` ${job.lateReason}` : ""}
+                </p>
+              </div>
+            ) : null}
+
+            {job.activeExceptionType ? (
+              <div className="list-panel">
+                <strong>{getBookingExceptionLabel(job.activeExceptionType)}</strong>
+                <p>
+                  {i18n.t("provider_live.job.logged", {
+                    date: job.activeExceptionReportedAt
+                      ? formatDateTime(i18n, job.activeExceptionReportedAt)
+                      : i18n.t("provider_live.just_now")
+                  })}
+                  {job.activeExceptionNotes ? ` ${job.activeExceptionNotes}` : ""}
+                </p>
+                <div className="cta-row">
+                  <a
+                    className="button-secondary"
+                    href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(
+                      getBookingExceptionLabel(job.activeExceptionType)
+                    )}`}
+                  >
+                    {i18n.t("provider_live.job.open_support")}
+                  </a>
+                </div>
+              </div>
+            ) : null}
+            {job.status === "disputed" ? (
+              <div className="list-panel">
+                <strong>{i18n.t("provider_live.job.booking_disputed")}</strong>
+                <p>
+                  {job.disputeReason ?? i18n.t("provider_live.job.dispute_default")}
+                </p>
+                <div className="cta-row">
+                  <a
+                    className="button-secondary"
+                    href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(i18n.t("provider_live.subject.disputed_booking_support"))}`, i18n.locale)}
+                  >
+                    {i18n.t("provider_live.job.open_support")}
+                  </a>
+                </div>
+              </div>
+            ) : null}
+
+            {job.requiresRouteLeaderAssignment ? (
+              <div className="list-panel">
+                <strong>{i18n.t("provider_live.job.route_leader_needed_title")}</strong>
+                <p>{i18n.t("provider_live.job.route_leader_needed_body")}</p>
+              </div>
+            ) : null}
+            {job.crewGap > 0 ? (
+              <div className="list-panel">
+                <strong>{i18n.t("provider_live.job.crew_slots_open", { count: job.crewGap })}</strong>
+                <p>{i18n.t("provider_live.job.staffing_options_warning")}</p>
+              </div>
+            ) : null}
+            <details className="service-card-disclosure">
+              <summary className="service-card-disclosure__summary">
+                {i18n.t("provider_live.job.staffing")}
+                {job.matches.length
+                  ? ` • ${i18n.t("provider_live.job.staffing_match_count", { count: job.matches.length })}`
+                  : ""}
+              </summary>
+              <div className="service-card-disclosure__body">
+                <div className="stack-md">
+                  {job.matches.length === 0 ? (
+                    <div className="list-panel">
+                      <strong>{i18n.t("provider_live.crew.no_matches_title")}</strong>
+                      <p>{i18n.t("provider_live.crew.no_matches_body")}</p>
+                    </div>
+                  ) : (
+                    job.matches.map((match) => {
+                      return (
+                        <div className="list-panel" key={match.id}>
+                          <div className="search-result-title">
+                            <div>
+                              <h3>{match.crewMemberName}</h3>
+                              <p>
+                                {match.categories.map((category) => formatServiceCategoryLabel(i18n, category)).join(" • ")}
+                              </p>
+                            </div>
+                            <span className="result-badge">{match.status.replaceAll("-", " ")}</span>
+                          </div>
+                          <p>
+                            {i18n.t("provider_live.crew.distance_schedule", {
+                              distance: match.distanceMiles,
+                              schedule: match.preferredSchedule,
+                              days: match.availableWeekdays.join(", ")
+                            })}
+                          </p>
+                          {match.recommendationLabel ? (
+                            <p>
+                              {formatCrewRecommendationLabel(i18n, match.recommendationLabel)}
+                              {typeof match.recommendationScore === "number"
+                                ? ` • ${i18n.t("provider_live.crew.score", { score: match.recommendationScore })}`
+                                : ""}
+                            </p>
+                          ) : null}
+                          {match.recommendationReasons?.length ? (
+                            <p>{match.recommendationReasons.join(" • ")}</p>
+                          ) : null}
+                          {match.status === "cancelled-by-crew" && match.cancellationReason ? (
+                            <p className="warning-copy">{i18n.t("provider_live.crew.note", { note: match.cancellationReason })}</p>
+                          ) : null}
+                          {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
+                            <p>{i18n.t("provider_live.crew.assigned_route_leader")}</p>
+                          ) : null}
+                          <p>{i18n.t("provider_live.crew.hourly_rate", { rate: i18n.formatCurrency(match.hourlyRateCents) })}</p>
+                          <div className="cta-row">
+                            {match.status === "pending-provider-review" ? (
+                              <>
+                                <button
+                                  className="button"
+                                  disabled={isWorking}
+                                  onClick={() => void handleReviewMatch(match.id, "accept")}
+                                  type="button"
+                                >
+                                  {i18n.t("provider_live.crew.accept")}
+                                </button>
+                                <button
+                                  className="button-secondary"
+                                  disabled={isWorking}
+                                  onClick={() => void handleReviewMatch(match.id, "deny")}
+                                  type="button"
+                                >
+                                  {i18n.t("provider_live.crew.deny")}
+                                </button>
+                              </>
+                            ) : null}
+                            {provider?.routeLeaderMode === "accepted-crew-fallback" &&
+                            match.status === "accepted" &&
+                            !job.onRouteConfirmedAt ? (
+                              <button
+                                className={
+                                  job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? "button" : "button-secondary"
+                                }
+                                disabled={isWorking}
+                                onClick={() => void handleAssignRouteLeader(job.bookingId, match.crewMemberId)}
+                                type="button"
+                              >
+                                {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
+                                  ? i18n.t("provider_live.crew.assigned_route_leader_button")
+                                  : i18n.t("provider_live.crew.lead_this_route")}
+                              </button>
+                            ) : null}
+                            <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
+                              {i18n.t("provider_live.crew.call")}
+                            </a>
+                            <a
+                              className="button-secondary"
+                              href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=general&subject=${encodeURIComponent(i18n.t("provider_live.subject.crew_staffing_support"))}`, i18n.locale)}
+                            >
+                              {i18n.t("crew_live.action.get_help")}
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  {provider?.routeLeaderMode === "accepted-crew-fallback" &&
+                  job.assignedRouteLeaderCrewMemberId &&
+                  !job.onRouteConfirmedAt ? (
+                    <div className="cta-row">
+                      <button
+                        className="button-secondary"
+                        disabled={isWorking}
+                        onClick={() => void handleAssignRouteLeader(job.bookingId)}
+                        type="button"
+                      >
+                        {i18n.t("provider_live.crew.clear_route_leader")}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </details>
+
+            {job.onRouteConfirmedAt ? (
+              <div className="list-panel">
+                <div className="search-result-title">
+                  <div>
+                    <h3>{i18n.t("provider_live.chat.title")}</h3>
+                    <p>{i18n.t("provider_live.chat.body")}</p>
+                  </div>
+                </div>
+                <div className="cta-row">
+                  <button
+                    className="button-secondary"
+                    onClick={() => void openCustomerChat(job.bookingId)}
+                    type="button"
+                  >
+                    {i18n.t("provider_live.chat.message_customer")}
+                  </button>
+                  <button
+                    className="button-secondary"
+                    onClick={() => void openArrivalTracking(job.bookingId)}
+                    type="button"
+                  >
+                    {i18n.t("customer_live.action.track_crew")}
+                  </button>
+                  <a
+                    className="button-secondary"
+                    href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(i18n.t("provider_live.subject.customer_job_support"))}`, i18n.locale)}
+                  >
+                    {i18n.t("crew_live.action.get_help")}
+                  </a>
+                </div>
+                {activeTrackingBookingId === job.bookingId && activeTracking ? (
+                  <ArrivalTrackingPanel
+                    showProviderRouteDetails
+                    subtitle={job.customerName}
+                    title={i18n.t("provider_live.chat.arrival_route_title")}
+                    tracking={activeTracking}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </article>
+          ))}
+        </section>
+      ) : null}
+      {activeBookingId && activeCustomerThread ? (
+        <FloatingChatWindow
+          busy={isWorking}
+          draft={chatDraft}
+          inputPlaceholder={i18n.t("provider_live.chat.input_placeholder")}
+          isOpen={Boolean(activeBookingId)}
+          launcherLabel={i18n.t("provider_live.chat.open_customer_chat")}
+          messages={activeCustomerThread.messages.map((message) => ({
+            id: message.id,
+            body: message.body,
+            createdAt: message.createdAt,
+            senderLabel:
+              message.senderRole === "provider" ? i18n.t("customer_live.chat.you") : activeCustomerThread.thread.customerName,
+            isCurrentUser: message.senderRole === "provider"
+          }))}
+          onClose={() => {
+            setActiveBookingId(undefined);
+            setActiveCustomerThread(undefined);
+            setChatDraft("");
+          }}
+          onDraftChange={setChatDraft}
+          onOpen={() => undefined}
+          onSend={() => void handleSendCustomerChat()}
+          subtitle={activeCustomerThread.thread.customerName}
+          title={i18n.t("provider_live.chat.title")}
+        />
+      ) : null}
+      <WorkspaceSection id="provider-settings" title={i18n.t("workspace.settings")}>
       <section className="card">
         <span className="eyebrow">{i18n.t("provider_live.assistant.eyebrow")}</span>
         <h2>{i18n.t("provider_live.assistant.title")}</h2>
@@ -2061,587 +2603,59 @@ export function ProviderLiveManagementBoard() {
         </div>
       </section>
 
-      {visibleJobs.length ? (
-        <section className="stack-lg" id="provider-jobs">
-        {visibleJobs.map((job) => (
-          <article className="history-card" key={job.bookingId}>
-            <div className="history-card__header">
-              <div>
-                <span className="eyebrow">{formatServiceCategoryLabel(i18n, job.category)}</span>
-                <h2>{job.customerName}</h2>
-              </div>
-              <strong>{i18n.formatCurrency(job.totalCents)}</strong>
+      </WorkspaceSection>
+      <WorkspaceSection id="provider-retention" title={i18n.t("workspace.retention")}>
+      {retentionProgram ? (
+        <section className="card">
+          <span className="eyebrow">{i18n.t("provider_live.retention.eyebrow")}</span>
+          <h2>{i18n.t("provider_live.retention.title")}</h2>
+          <p>{retentionProgram.promise}</p>
+          <div className="provider-route-summary" aria-label={i18n.t("provider_live.retention.summary_aria")}>
+            <div>
+              <span>{i18n.t("provider_live.retention.acquired")}</span>
+              <strong>{retentionProgram.acquiredCustomerCount}</strong>
             </div>
-            <div className="history-card__grid">
-              <div>
-                <h3>{i18n.t("provider_live.job.schedule")}</h3>
-                <p>{formatBookingWindowSummary(job.scheduledStartIso)}</p>
-                <p>{formatDateTime(i18n, job.scheduledStartIso)}</p>
-              </div>
-              <div>
-                <h3>{i18n.t("provider_live.job.address")}</h3>
-                <p>{job.serviceAddress.line1}</p>
-                <p>
-                  {job.serviceAddress.city}, {job.serviceAddress.state} {job.serviceAddress.postalCode}
-                </p>
-              </div>
-              <div>
-                <h3>{i18n.t("provider_live.job.staffing")}</h3>
-                <p>{i18n.t("provider_live.job.required_crew", { count: job.requiredCrewMembers })}</p>
-                <p>{i18n.t("provider_live.job.assigned_crew", { count: job.assignedCrewMembers })}</p>
-                <p>{i18n.t("provider_live.job.open_crew", { count: job.crewGap })}</p>
-                <p>{i18n.t("provider_live.job.status", { status: getProviderJobStatusLabel(i18n, job) })}</p>
-                {provider?.routeLeaderMode === "accepted-crew-fallback" ? (
-                  <p>
-                    {i18n.t("provider_live.job.route_leader", {
-                      name: job.assignedRouteLeaderCrewMemberName ?? i18n.t("provider_live.job.provider")
-                    })}
-                    {job.requiresRouteLeaderAssignment ? ` • ${i18n.t("provider_live.job.route_leader_pick_hint")}` : ""}
-                  </p>
-                ) : null}
-              </div>
+            <div>
+              <span>{i18n.t("provider_live.retention.eligible")}</span>
+              <strong>{retentionProgram.eligibleCustomerCount}</strong>
             </div>
-
-            {job.evidencePhotos.some(
-              (evidence) => evidence.phase === "before" && evidence.capturedByRole === "customer"
-            ) ? (
-              <section className="service-photo-panel">
-                <div>
-                  <h3>{i18n.t("provider_live.customer_photos.title")}</h3>
-                  <p>{i18n.t("provider_live.customer_photos.body")}</p>
-                </div>
-                <div className="service-photo-strip">
-                  {job.evidencePhotos
-                    .filter(
-                      (evidence) =>
-                        evidence.phase === "before" &&
-                        evidence.capturedByRole === "customer" &&
-                        evidence.imageDataUrl
-                    )
-                    .map((evidence) => (
-                      <figure key={evidence.id}>
-                        <img alt={i18n.t("provider_live.customer_photos.alt")} src={evidence.imageDataUrl} />
-                        <figcaption>
-                          {evidence.photoArea?.replaceAll("-", " ") ?? i18n.t("photo.area.other")}
-                          {evidence.note ? ` • ${evidence.note}` : ""}
-                        </figcaption>
-                      </figure>
-                    ))}
-                </div>
-              </section>
-            ) : null}
-
-            {(job.status === "confirmed" && job.onRouteConfirmedAt) || job.status === "in-progress" ? (
-              <section className="evidence-capture-panel" id={`provider-evidence-${job.bookingId}`}>
-                <div>
-                  <strong>{i18n.t("provider_live.evidence.title")}</strong>
-                  <p>
-                    {job.status === "in-progress"
-                      ? i18n.t("provider_live.evidence.after_help", { count: job.afterEvidenceCount })
-                      : i18n.t("provider_live.evidence.before_help", { count: job.beforeEvidenceCount })}
-                  </p>
-                </div>
-                <label className="button-secondary evidence-upload-button">
+            <div>
+              <span>{i18n.t("provider_live.retention.returned")}</span>
+              <strong>{retentionProgram.repeatCustomerCount}</strong>
+            </div>
+            <div>
+              <span>{i18n.t("provider_live.retention.paused")}</span>
+              <strong>{retentionProgram.pausedCustomerCount}</strong>
+            </div>
+          </div>
+          <p>{retentionProgram.eligibilityRule}</p>
+          <p>
+            {i18n.t("provider_live.retention.fee_detail", {
+              finderFee: i18n.formatCurrency(retentionProgram.finderFeeCents),
+              jobFee: i18n.formatCurrency(retentionProgram.completedJobFeeCents, "USD", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })
+            })}
+          </p>
+          {retentionProgram.relationships.length > 0 ? (
+            <ul className="timeline">
+              {retentionProgram.relationships.map((relationship) => (
+                <li key={relationship.customerId}>
+                  <strong>{relationship.customerName}</strong>
                   <span>
-                    {job.status === "in-progress"
-                      ? i18n.t("provider_live.evidence.add_after")
-                      : i18n.t("provider_live.evidence.add_before")}
+                    {formatRetentionRelationshipStatus(i18n, relationship.status)} • {relationship.reason}
                   </span>
-                  <input
-                    accept="image/*"
-                    aria-label={
-                      job.status === "in-progress"
-                        ? i18n.t("provider_live.evidence.after_label")
-                        : i18n.t("provider_live.evidence.before_label")
-                    }
-                    capture="environment"
-                    className="visually-hidden"
-                    disabled={isWorking}
-                    onChange={(event) => {
-                      const input = event.currentTarget;
-                      const file = input.files?.[0];
-                      if (!file) {
-                        return;
-                      }
-                      void handleEvidencePhoto(
-                        job.bookingId,
-                        job.status === "in-progress" ? "after" : "before",
-                        file
-                      ).finally(() => {
-                        input.value = "";
-                      });
-                    }}
-                    type="file"
-                  />
-                </label>
-              </section>
-            ) : null}
-
-            <div className="cta-row">
-              {job.status === "requested" ? (
-                <>
-                  <button
-                    className="button"
-                    disabled={isWorking}
-                    onClick={() => void handleConfirmBooking(job.bookingId)}
-                    type="button"
-                  >
-                    {i18n.t("provider_live.action.confirm_booking")}
-                  </button>
-                </>
-              ) : null}
-              {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
-                <>
-                  <button
-                    className="button"
-                    disabled={isWorking}
-                    onClick={() => void handleStartRoute(job.bookingId)}
-                    type="button"
-                  >
-                    {i18n.t("provider_live.action.start_route")}
-                  </button>
-                </>
-              ) : null}
-              {job.status === "confirmed" && job.onRouteConfirmedAt ? (
-                <button
-                  className="button"
-                  disabled={isWorking || job.beforeEvidenceCount === 0}
-                  onClick={() => void handleStartWork(job.bookingId)}
-                  type="button"
-                >
-                  {i18n.t("provider_live.action.start_work")}
-                </button>
-              ) : null}
-              {job.status === "in-progress" ? (
-                <button
-                  className="button"
-                  disabled={isWorking || job.afterEvidenceCount === 0}
-                  onClick={() => void completeJob(job.bookingId)}
-                  type="button"
-                >
-                  {i18n.t("provider_live.action.complete_job")}
-                </button>
-              ) : null}
-            </div>
-
-            {job.status === "requested" ? (
-              <details className="service-card-disclosure">
-                <summary className="service-card-disclosure__summary">{i18n.t("customer_live.more_options")}</summary>
-                <div className="service-card-disclosure__body">
-                  <div className="cta-row">
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() => void handleDeclineBooking(job.bookingId)}
-                      type="button"
-                    >
-                      {i18n.t("provider_live.action.decline_request")}
-                    </button>
-                  </div>
-                </div>
-              </details>
-            ) : null}
-
-            {job.status === "confirmed" && !job.onRouteConfirmedAt ? (
-              <details className="service-card-disclosure">
-                <summary className="service-card-disclosure__summary">{i18n.t("provider_live.action.report_issue")}</summary>
-                <div className="service-card-disclosure__body">
-                  <div className="cta-row">
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleMarkLate(
-                          job.bookingId,
-                          buildLateEta(job.scheduledStartIso, 15),
-                          i18n.t("provider_live.issue.late_15_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("provider_live.issue.late_15")}
-                    </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleMarkLate(
-                          job.bookingId,
-                          buildLateEta(job.scheduledStartIso, 30),
-                          i18n.t("provider_live.issue.late_30_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("provider_live.issue.late_30")}
-                    </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-no-show",
-                          i18n.t("provider_live.issue.customer_no_show_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("booking.exception.customer_no_show")}
-                    </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-not-ready",
-                          i18n.t("provider_live.issue.customer_not_ready_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("booking.exception.customer_not_ready")}
-                    </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "unable-to-access-property",
-                          i18n.t("provider_live.issue.no_access_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("booking.exception.unable_to_access_property")}
-                    </button>
-                  </div>
-                </div>
-              </details>
-            ) : null}
-
-            {job.status === "in-progress" ? (
-              <details className="service-card-disclosure">
-                <summary className="service-card-disclosure__summary">{i18n.t("provider_live.action.report_issue")}</summary>
-                <div className="service-card-disclosure__body">
-                  <div className="cta-row">
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-no-show",
-                          i18n.t("provider_live.issue.customer_no_show_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("booking.exception.customer_no_show")}
-                    </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "customer-not-ready",
-                          i18n.t("provider_live.issue.customer_not_ready_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("booking.exception.customer_not_ready")}
-                    </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "unable-to-access-property",
-                          i18n.t("provider_live.issue.no_access_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("booking.exception.unable_to_access_property")}
-                    </button>
-                    <button
-                      className="button-secondary"
-                      disabled={isWorking}
-                      onClick={() =>
-                        void handleReportIssue(
-                          job.bookingId,
-                          "service-could-not-be-completed",
-                          i18n.t("provider_live.issue.could_not_complete_reason")
-                        )
-                      }
-                      type="button"
-                    >
-                      {i18n.t("provider_live.issue.could_not_complete")}
-                    </button>
-                  </div>
-                </div>
-              </details>
-            ) : null}
-
-            {job.lateEtaIso && !job.onRouteConfirmedAt ? (
-              <div className="list-panel">
-                <strong>{i18n.t("provider_live.job.delay_notice_sent")}</strong>
-                <p>
-                  {i18n.t("provider_live.job.delay_expected", { date: formatDateTime(i18n, job.lateEtaIso) })}
-                  {job.lateReason ? ` ${job.lateReason}` : ""}
-                </p>
-              </div>
-            ) : null}
-
-            {job.activeExceptionType ? (
-              <div className="list-panel">
-                <strong>{getBookingExceptionLabel(job.activeExceptionType)}</strong>
-                <p>
-                  {i18n.t("provider_live.job.logged", {
-                    date: job.activeExceptionReportedAt
-                      ? formatDateTime(i18n, job.activeExceptionReportedAt)
-                      : i18n.t("provider_live.just_now")
-                  })}
-                  {job.activeExceptionNotes ? ` ${job.activeExceptionNotes}` : ""}
-                </p>
-                <div className="cta-row">
-                  <a
-                    className="button-secondary"
-                    href={`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(
-                      getBookingExceptionLabel(job.activeExceptionType)
-                    )}`}
-                  >
-                    {i18n.t("provider_live.job.open_support")}
-                  </a>
-                </div>
-              </div>
-            ) : null}
-            {job.status === "disputed" ? (
-              <div className="list-panel">
-                <strong>{i18n.t("provider_live.job.booking_disputed")}</strong>
-                <p>
-                  {job.disputeReason ?? i18n.t("provider_live.job.dispute_default")}
-                </p>
-                <div className="cta-row">
-                  <a
-                    className="button-secondary"
-                    href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(i18n.t("provider_live.subject.disputed_booking_support"))}`, i18n.locale)}
-                  >
-                    {i18n.t("provider_live.job.open_support")}
-                  </a>
-                </div>
-              </div>
-            ) : null}
-
-            {job.requiresRouteLeaderAssignment ? (
-              <div className="list-panel">
-                <strong>{i18n.t("provider_live.job.route_leader_needed_title")}</strong>
-                <p>{i18n.t("provider_live.job.route_leader_needed_body")}</p>
-              </div>
-            ) : null}
-            {job.crewGap > 0 ? (
-              <div className="list-panel">
-                <strong>{i18n.t("provider_live.job.crew_slots_open", { count: job.crewGap })}</strong>
-                <p>{i18n.t("provider_live.job.staffing_options_warning")}</p>
-              </div>
-            ) : null}
-            <details className="service-card-disclosure">
-              <summary className="service-card-disclosure__summary">
-                {i18n.t("provider_live.job.staffing")}
-                {job.matches.length
-                  ? ` • ${i18n.t("provider_live.job.staffing_match_count", { count: job.matches.length })}`
-                  : ""}
-              </summary>
-              <div className="service-card-disclosure__body">
-                <div className="stack-md">
-                  {job.matches.length === 0 ? (
-                    <div className="list-panel">
-                      <strong>{i18n.t("provider_live.crew.no_matches_title")}</strong>
-                      <p>{i18n.t("provider_live.crew.no_matches_body")}</p>
-                    </div>
-                  ) : (
-                    job.matches.map((match) => {
-                      return (
-                        <div className="list-panel" key={match.id}>
-                          <div className="search-result-title">
-                            <div>
-                              <h3>{match.crewMemberName}</h3>
-                              <p>
-                                {match.categories.map((category) => formatServiceCategoryLabel(i18n, category)).join(" • ")}
-                              </p>
-                            </div>
-                            <span className="result-badge">{match.status.replaceAll("-", " ")}</span>
-                          </div>
-                          <p>
-                            {i18n.t("provider_live.crew.distance_schedule", {
-                              distance: match.distanceMiles,
-                              schedule: match.preferredSchedule,
-                              days: match.availableWeekdays.join(", ")
-                            })}
-                          </p>
-                          {match.recommendationLabel ? (
-                            <p>
-                              {formatCrewRecommendationLabel(i18n, match.recommendationLabel)}
-                              {typeof match.recommendationScore === "number"
-                                ? ` • ${i18n.t("provider_live.crew.score", { score: match.recommendationScore })}`
-                                : ""}
-                            </p>
-                          ) : null}
-                          {match.recommendationReasons?.length ? (
-                            <p>{match.recommendationReasons.join(" • ")}</p>
-                          ) : null}
-                          {match.status === "cancelled-by-crew" && match.cancellationReason ? (
-                            <p className="warning-copy">{i18n.t("provider_live.crew.note", { note: match.cancellationReason })}</p>
-                          ) : null}
-                          {match.status === "accepted" && job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? (
-                            <p>{i18n.t("provider_live.crew.assigned_route_leader")}</p>
-                          ) : null}
-                          <p>{i18n.t("provider_live.crew.hourly_rate", { rate: i18n.formatCurrency(match.hourlyRateCents) })}</p>
-                          <div className="cta-row">
-                            {match.status === "pending-provider-review" ? (
-                              <>
-                                <button
-                                  className="button"
-                                  disabled={isWorking}
-                                  onClick={() => void handleReviewMatch(match.id, "accept")}
-                                  type="button"
-                                >
-                                  {i18n.t("provider_live.crew.accept")}
-                                </button>
-                                <button
-                                  className="button-secondary"
-                                  disabled={isWorking}
-                                  onClick={() => void handleReviewMatch(match.id, "deny")}
-                                  type="button"
-                                >
-                                  {i18n.t("provider_live.crew.deny")}
-                                </button>
-                              </>
-                            ) : null}
-                            {provider?.routeLeaderMode === "accepted-crew-fallback" &&
-                            match.status === "accepted" &&
-                            !job.onRouteConfirmedAt ? (
-                              <button
-                                className={
-                                  job.assignedRouteLeaderCrewMemberId === match.crewMemberId ? "button" : "button-secondary"
-                                }
-                                disabled={isWorking}
-                                onClick={() => void handleAssignRouteLeader(job.bookingId, match.crewMemberId)}
-                                type="button"
-                              >
-                                {job.assignedRouteLeaderCrewMemberId === match.crewMemberId
-                                  ? i18n.t("provider_live.crew.assigned_route_leader_button")
-                                  : i18n.t("provider_live.crew.lead_this_route")}
-                              </button>
-                            ) : null}
-                            <a className="button-secondary" href={`tel:${match.crewMemberPhone}`}>
-                              {i18n.t("provider_live.crew.call")}
-                            </a>
-                            <a
-                              className="button-secondary"
-                              href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=general&subject=${encodeURIComponent(i18n.t("provider_live.subject.crew_staffing_support"))}`, i18n.locale)}
-                            >
-                              {i18n.t("crew_live.action.get_help")}
-                            </a>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                  {provider?.routeLeaderMode === "accepted-crew-fallback" &&
-                  job.assignedRouteLeaderCrewMemberId &&
-                  !job.onRouteConfirmedAt ? (
-                    <div className="cta-row">
-                      <button
-                        className="button-secondary"
-                        disabled={isWorking}
-                        onClick={() => void handleAssignRouteLeader(job.bookingId)}
-                        type="button"
-                      >
-                        {i18n.t("provider_live.crew.clear_route_leader")}
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </details>
-
-            {job.onRouteConfirmedAt ? (
-              <div className="list-panel">
-                <div className="search-result-title">
-                  <div>
-                    <h3>{i18n.t("provider_live.chat.title")}</h3>
-                    <p>{i18n.t("provider_live.chat.body")}</p>
-                  </div>
-                </div>
-                <div className="cta-row">
-                  <button
-                    className="button-secondary"
-                    onClick={() => void openCustomerChat(job.bookingId)}
-                    type="button"
-                  >
-                    {i18n.t("provider_live.chat.message_customer")}
-                  </button>
-                  <button
-                    className="button-secondary"
-                    onClick={() => void openArrivalTracking(job.bookingId)}
-                    type="button"
-                  >
-                    {i18n.t("customer_live.action.track_crew")}
-                  </button>
-                  <a
-                    className="button-secondary"
-                    href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(job.bookingId)}&issueType=service-quality&subject=${encodeURIComponent(i18n.t("provider_live.subject.customer_job_support"))}`, i18n.locale)}
-                  >
-                    {i18n.t("crew_live.action.get_help")}
-                  </a>
-                </div>
-                {activeTrackingBookingId === job.bookingId && activeTracking ? (
-                  <ArrivalTrackingPanel
-                    showProviderRouteDetails
-                    subtitle={job.customerName}
-                    title={i18n.t("provider_live.chat.arrival_route_title")}
-                    tracking={activeTracking}
-                  />
-                ) : null}
-              </div>
-            ) : null}
-          </article>
-          ))}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>{i18n.t("provider_live.retention.empty")}</p>
+          )}
         </section>
       ) : null}
-      {activeBookingId && activeCustomerThread ? (
-        <FloatingChatWindow
-          busy={isWorking}
-          draft={chatDraft}
-          inputPlaceholder={i18n.t("provider_live.chat.input_placeholder")}
-          isOpen={Boolean(activeBookingId)}
-          launcherLabel={i18n.t("provider_live.chat.open_customer_chat")}
-          messages={activeCustomerThread.messages.map((message) => ({
-            id: message.id,
-            body: message.body,
-            createdAt: message.createdAt,
-            senderLabel:
-              message.senderRole === "provider" ? i18n.t("customer_live.chat.you") : activeCustomerThread.thread.customerName,
-            isCurrentUser: message.senderRole === "provider"
-          }))}
-          onClose={() => {
-            setActiveBookingId(undefined);
-            setActiveCustomerThread(undefined);
-            setChatDraft("");
-          }}
-          onDraftChange={setChatDraft}
-          onOpen={() => undefined}
-          onSend={() => void handleSendCustomerChat()}
-          subtitle={activeCustomerThread.thread.customerName}
-          title={i18n.t("provider_live.chat.title")}
-        />
-      ) : null}
+
+      </WorkspaceSection>
     </div>
   );
 }

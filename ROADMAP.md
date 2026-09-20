@@ -75,6 +75,8 @@ Exit criteria:
 
 ### Notification Delivery
 
+- Verify weather/late/reschedule delivery on staging devices and all configured channels, and confirm the live operations scheduler runs `booking-schedule-follow-ups` at the required cadence. Consider route-wide weather updates and owned repeated escalation after an ignored alert after this first recovery flow is accepted.
+
 - Finish production push rollout beyond development Expo tokens.
 - Decide whether production push should stay on Expo push or move to direct APNs / FCM.
 - Confirm production email and SMS sender setup for Resend and Twilio.
@@ -195,3 +197,10 @@ Exit criteria:
 - Every customer-facing feature should reduce effort unless added choice materially improves trust or outcomes.
 - Every provider-facing feature should make operations easier, not create more admin work.
 - Docs should stay current by removing completed backlog items instead of accumulating victory laps.
+
+
+## September 19 implementation checkpoint
+
+Implemented: durable validated analytics and permission controls; first-party journey/action/performance/supply/economics reports; optional PostHog outbox; compact booking/signup progression and contextual coverage inquiries; task-first ops/provider/crew workspaces; payout-readiness copy; scheduler endpoint/workflow and health probe; mobile minimum-version/pause controls; privacy-request audit trail and non-destructive photo inventory; safe local database restore tooling. See `docs/ANALYTICS_AND_OPERATIONS.md` and the engineer checkpoint for validation and limits.
+
+Next owner-dependent gates remain: real PostHog activation, production/staging accounts and vendor acceptance, independent missed-run monitor plus delivered alert, approved account/photo retention and irreversible fulfillment, physical-device/store release and coordinated staging rollback, production SEO/domain/Search Console, actual CodeRabbit review. Keep these open; local tooling is not live launch evidence. True contribution margin additionally needs support, acquisition, incentives, and tax costs entered into the operating model.
