@@ -1,5 +1,6 @@
+import { PaymentMethodGuide } from "../components/PaymentMethodGuide";
 import { useEffect, useMemo, useState } from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { AppState, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
 import {
   Booking,
@@ -90,6 +91,8 @@ function getPaymentLabel(i18n: I18nInstance, payment?: PaymentRecord) {
     return i18n.t("mobile.bookings.payment.paid");
   }
 
+  if (payment.status === "processing") return i18n.t("payments.processing.title");
+
   if (payment.status === "pending") {
     return i18n.t("mobile.dashboard.payment.ready");
   }
@@ -121,6 +124,7 @@ function needsCheckout(booking: Booking, payment?: PaymentRecord) {
   return (
     booking.status === "confirmed" &&
     payment?.status !== "captured" &&
+    payment?.status !== "processing" &&
     payment?.status !== "refunded"
   );
 }
@@ -285,7 +289,7 @@ export function DashboardScreen({
       setPaymentsByBookingId(
         payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
           const current = accumulator[payment.bookingId];
-          if (!current || current.updatedAt < payment.updatedAt) {
+          if (!current || current.createdAt < payment.createdAt) {
             accumulator[payment.bookingId] = payment;
           }
           return accumulator;
@@ -326,6 +330,29 @@ export function DashboardScreen({
 
     return () => clearInterval(intervalId);
   }, [activeTrackingBookingId, envelope?.session.token]);
+
+  useEffect(() => {
+    const token = envelope?.session.token;
+    if (!token) return;
+    let stopped = false;
+    let fetching = false;
+    const refresh = async () => {
+      if (AppState.currentState !== "active" || fetching) return;
+      fetching = true;
+      try {
+        const api = createCustomerMobileApiClient(); api.setAuthToken(token);
+        const payments = await api.getPayments(bookings.map(booking => booking.id));
+        if (!stopped) setPaymentsByBookingId(payments.reduce<Record<string, PaymentRecord>>((result, payment) => {
+          if (!result[payment.bookingId] || result[payment.bookingId].createdAt < payment.createdAt) result[payment.bookingId] = payment;
+          return result;
+        }, {}));
+      } catch { /* Keep the last known payment status until the next refresh. */ }
+      finally { fetching = false; }
+    };
+    const subscription = AppState.addEventListener("change", () => void refresh());
+    const timer = setInterval(() => void refresh(), 30000);
+    return () => { stopped = true; clearInterval(timer); subscription.remove(); };
+  }, [envelope?.session.token, bookings]);
 
   async function payWithStripe(booking: Booking) {
     if (!envelope?.session.token) {
@@ -431,7 +458,7 @@ export function DashboardScreen({
 
       {primaryCardKind === "booking" && nextBooking ? (
         <InfoCard
-          title={nextBookingNeedsCheckout ? getCheckoutActionLabel(i18n, nextBookingPayment) : formatBookingStatusLabel(i18n, nextBooking)}
+          title={nextBookingPayment?.status === "processing" ? i18n.t("payments.processing.title") : nextBookingNeedsCheckout ? getCheckoutActionLabel(i18n, nextBookingPayment) : formatBookingStatusLabel(i18n, nextBooking)}
           description={formatBookingWindow(i18n, nextBooking.scheduledStartIso)}
         >
           <Text style={styles.primaryLine}>
@@ -452,6 +479,8 @@ export function DashboardScreen({
               })}
             </Text>
           ) : null}
+          {nextBookingNeedsCheckout ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}
+          {nextBookingPayment?.status === "processing" ? <Text style={styles.noteLine}>{i18n.t("payments.processing.body")}</Text> : null}
           <View style={styles.actionStack}>
             {nextBookingNeedsCheckout ? (
               <Pressable

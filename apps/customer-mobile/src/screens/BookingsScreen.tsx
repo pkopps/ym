@@ -1,3 +1,4 @@
+import { PaymentMethodGuide } from "../components/PaymentMethodGuide";
 import { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { AppState, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
@@ -247,7 +248,7 @@ export function BookingsScreen({
       setPaymentsByBookingId(
         payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
           const current = accumulator[payment.bookingId];
-          if (!current || current.updatedAt < payment.updatedAt) {
+          if (!current || current.createdAt < payment.createdAt) {
             accumulator[payment.bookingId] = payment;
           }
           return accumulator;
@@ -276,7 +277,14 @@ export function BookingsScreen({
       try {
         const api = createCustomerMobileApiClient(); api.setAuthToken(token);
         const page = await api.getBookingsPage({ scope: "active", limit: 50 });
-        if (!stopped) setBookings(current => [...page.items, ...current.filter(item => ["completed", "cancelled", "refunded"].includes(item.status))]);
+        const payments = await api.getPayments(page.items.map(booking => booking.id));
+        if (!stopped) {
+          setBookings(current => [...page.items, ...current.filter(item => ["completed", "cancelled", "refunded"].includes(item.status))]);
+          setPaymentsByBookingId(current => ({ ...current, ...payments.reduce<Record<string, PaymentRecord>>((result, payment) => {
+            if (!result[payment.bookingId] || result[payment.bookingId].createdAt < payment.createdAt) result[payment.bookingId] = payment;
+            return result;
+          }, {}) }));
+        }
       } catch { /* Keep the last known visit during a temporary network interruption. */ }
       finally { fetching = false; }
     };
@@ -599,6 +607,8 @@ export function BookingsScreen({
       return i18n.t("mobile.bookings.payment.paid");
     }
 
+    if (payment.status === "processing") return i18n.t("payments.processing.title");
+
     if (payment.status === "pending") {
       return i18n.t("mobile.bookings.payment.checkout_started");
     }
@@ -740,7 +750,11 @@ export function BookingsScreen({
       };
     }
 
-    if (booking.status === "confirmed" && payment?.status !== "captured") {
+    if (payment?.status === "processing") {
+      return { label: i18n.t("payments.processing.title"), detail: i18n.t("payments.processing.body") };
+    }
+
+    if (booking.status === "confirmed" && !["captured", "refunded"].includes(payment?.status ?? "")) {
       if (payment?.status === "failed") {
         return {
           action: "checkout",
@@ -965,6 +979,7 @@ export function BookingsScreen({
                           <Text style={styles.nextPrimaryActionLabel}>{nextStep.label}</Text>
                         </Pressable>
                       ) : null}
+                      {primaryActionKind === "checkout" ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}
                       {primaryActionKind === "checkout" ? (
                         <Pressable
                           disabled={isWorking}

@@ -3875,5 +3875,14 @@
   "schedule.saved": "Timing update saved.",
   "schedule.error": "Could not update the visit. Please try again.",
   "schedule.history": "Earlier timing updates",
-  "schedule.provider_proposal_body": "The visit has not moved yet. The customer must accept the new arrival window."
+  "schedule.provider_proposal_body": "The visit has not moved yet. The customer must accept the new arrival window.",
+  "payments.choice.title": "Apple Pay, Google Pay or card",
+  "payments.choice.body": "Choose your preferred way to pay in secure checkout. Available wallets appear first; a US bank account is also an option.",
+  "payments.bank.option": "Prefer to pay by bank?",
+  "payments.bank.returning": "Booking again? Consider paying by bank",
+  "payments.bank.body": "Choose US bank account in checkout and follow the secure verification steps. You approve each payment; linking your bank does not enroll you in autopay.",
+  "payments.bank.timing": "Bank payments can take several business days to confirm. For an upcoming visit, choose a wallet or card. Check your payment status here before trying again.",
+  "payments.processing.title": "Payment processing",
+  "payments.processing.body": "Your payment was submitted and is awaiting confirmation. Bank payments can take several business days. Please do not pay again.",
+  "payments.pending.body": "Checkout has not been completed. You can continue when you are ready."
 }

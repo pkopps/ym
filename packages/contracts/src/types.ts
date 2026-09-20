@@ -53,7 +53,7 @@ export type BookingStatus =
 export type RecurringServiceFrequency = "weekly" | "biweekly";
 export type RecurringServicePlanStatus = "active" | "cancelled";
 
-export type PaymentStatus = "pending" | "authorized" | "captured" | "refunded" | "failed";
+export type PaymentStatus = "pending" | "processing" | "authorized" | "captured" | "refunded" | "failed";
 export type PaymentProcessor = "manual" | "stripe";
 export type ProcessorFeeReconciliationStatus =
   | "not-applicable"

@@ -12680,6 +12680,7 @@ export class MarketplacePlatformService {
       if (["cancelled", "refunded"].includes(booking.status)) throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
       const payments = (await repository.listPayments()).filter((payment) => payment.bookingId === booking.id);
       if (payments.some((payment) => payment.status === "captured" || payment.status === "refunded")) throw new HttpError(409, "This booking has already been paid.");
+      if (payments.some((payment) => payment.status === "processing")) throw new HttpError(409, "Your payment is still processing. Please wait for confirmation before trying again.");
       const customer = await repository.findCustomerById(customerId);
       if (!customer) throw new HttpError(404, "Customer not found");
       const active = payments.find((payment) => payment.processor === "stripe" && !payment.checkoutSessionExpiredAt);
@@ -12765,6 +12766,12 @@ export class MarketplacePlatformService {
       return this.capturePaymentRecord(payment, booking, session.paymentIntentId);
     }
 
+    if (session.processing) {
+      return this.markPaymentProcessing(payment, session.paymentIntentId);
+    }
+    // Returning from an open checkout is not proof of a failed payment.
+    if (!session.failureReason) return payment;
+
     await this.failPaymentRecord(
       payment,
       booking,
@@ -12805,13 +12812,26 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    if (event.type === "checkout.session.completed" && event.paid) {
+    if ((event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") && event.paid) {
       const updatedPayment = await this.capturePaymentRecord(payment, booking, event.paymentIntentId);
       return {
         received: true,
         eventType: event.type,
         paymentId: updatedPayment.id
       };
+    }
+
+    if (event.processing) {
+      const updatedPayment = await this.markPaymentProcessing(payment, event.paymentIntentId);
+      return { received: true, eventType: event.type, paymentId: updatedPayment.id };
+    }
+
+    if (event.type === "checkout.session.async_payment_failed") {
+      // A completed bank checkout cannot be reused after its delayed failure.
+      await this.repository.updatePayment(payment.id, { checkoutSessionExpiredAt: new Date().toISOString() });
+      const updatedPayment = await this.failPaymentRecord(payment, booking,
+        event.failureReason ?? "Your bank payment did not complete. Please try another payment method.", "webhook");
+      return { received: true, eventType: event.type, paymentId: updatedPayment.id };
     }
 
     if (event.type === "checkout.session.expired") {
@@ -23403,6 +23423,21 @@ export class MarketplacePlatformService {
     }
 
     return updatedProvider;
+  }
+
+  private async markPaymentProcessing(payment: PaymentRecord, paymentIntentId?: string): Promise<PaymentRecord> {
+    // A card decline can be retried with bank payment inside the same open checkout.
+    // Expired attempts and captured/refunded payments must not move backwards.
+    if (payment.checkoutSessionExpiredAt || !["pending", "authorized", "processing", "failed"].includes(payment.status)) return payment;
+    const updatedPayment = await this.repository.updatePayment(payment.id, {
+      status: "processing",
+      processorPaymentIntentId: paymentIntentId ?? payment.processorPaymentIntentId,
+      refundable: false,
+      failureReason: undefined,
+      updatedAt: new Date().toISOString()
+    });
+    if (!updatedPayment) throw new HttpError(500, "Payment record could not be updated");
+    return updatedPayment;
   }
 
   private async capturePaymentRecord(

@@ -3875,5 +3875,14 @@
   "schedule.saved": "Actualización de horario guardada.",
   "schedule.error": "No se pudo actualizar la visita. Inténtalo de nuevo.",
   "schedule.history": "Actualizaciones anteriores",
-  "schedule.provider_proposal_body": "La visita aún no ha cambiado. El cliente debe aceptar el nuevo horario de llegada."
+  "schedule.provider_proposal_body": "La visita aún no ha cambiado. El cliente debe aceptar el nuevo horario de llegada.",
+  "payments.choice.title": "Apple Pay, Google Pay o tarjeta",
+  "payments.choice.body": "Elige cómo pagar en el proceso de pago seguro. Las billeteras disponibles aparecen primero; también puedes usar una cuenta bancaria de EE. UU.",
+  "payments.bank.option": "¿Prefieres pagar con tu banco?",
+  "payments.bank.returning": "¿Vuelves a reservar? Considera pagar con tu banco",
+  "payments.bank.body": "Elige una cuenta bancaria de EE. UU. en el proceso de pago y sigue los pasos de verificación segura. Apruebas cada pago; vincular tu banco no activa pagos automáticos.",
+  "payments.bank.timing": "Los pagos bancarios pueden tardar varios días hábiles en confirmarse. Para una visita próxima, elige una billetera digital o tarjeta. Revisa aquí el estado del pago antes de volver a intentarlo.",
+  "payments.processing.title": "Pago en proceso",
+  "payments.processing.body": "Tu pago se envió y está pendiente de confirmación. Los pagos bancarios pueden tardar varios días hábiles. No vuelvas a pagar.",
+  "payments.pending.body": "El proceso de pago no se ha completado. Puedes continuar cuando estés listo."
 }

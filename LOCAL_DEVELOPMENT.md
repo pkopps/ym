@@ -203,3 +203,21 @@ The September 18 Postgres CI job appeared green because `tee` masked command fai
 ## Schedule recovery verification
 
 See `docs/BOOKING_SCHEDULE_RECOVERY.md`. After Prisma generation and migration, run `npm --workspace @yardmatch/api exec -- node --test --import tsx test/booking-schedule.test.ts`, `npm run test:api`, and `npm run test:web:smoke -- tests/web/booking-schedule.spec.ts`. PostgreSQL integration coverage uses `TEST_DATABASE_URL`. The normal ops runner includes schedule follow-ups; use a dry run with `sweepKeys: ["booking-schedule-follow-ups"]` to inspect due counts before live execution. Local notifications use mock vendors unless the development sender configuration is explicitly supplied.
+
+
+## Customer payment methods
+
+Web and customer mobile use Stripe-hosted Checkout for individually approved payments. The app introduces Apple Pay, Google Pay, and cards first, with optional US bank-account guidance. Eligible wallets appear in Stripe's express checkout; availability depends on the customer's browser/device, wallet setup, currency, and Stripe configuration. After a completed visit, the same bank disclosure becomes a gentle returning-customer suggestion. Linking a bank account does not enroll the customer in autopay. No future-use setup, recurring charging, PayPal integration, or fee changes are part of this release.
+
+Before enabling this in a deployed environment:
+
+1. In the platform Stripe Dashboard, enable cards, Apple Pay/Google Pay, and US bank account (ACH Direct Debit) for USD Checkout. Keep cards enabled. The API uses dynamic payment methods, so Stripe's enabled methods and eligibility determine what actually appears.
+2. Optionally create a dedicated payment-method configuration and set `STRIPE_CHECKOUT_PAYMENT_METHOD_CONFIGURATION` to its `pmc_...` ID. Without it, Checkout uses the account's default configuration. Check both sandbox and live-mode configurations separately.
+3. Deliver signed `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.processing`, and `payment_intent.payment_failed` events to `/api/payments/webhook`, in addition to the existing refund and dispute events. Set the corresponding `STRIPE_WEBHOOK_SECRET`.
+4. In Stripe test mode, verify a card payment, eligible-device Apple Pay/Google Pay presentation, bank verification (including microdeposit instructions when required), delayed bank success/failure, browser/app return, retry after failure, and duplicate webhook delivery. Local tests use vendor stubs and do not prove account enablement or real wallet eligibility.
+
+An unpaid completed bank Checkout is `processing`, not paid or failed. The app suppresses another payment action, refreshes payment status, and the API refuses another checkout while processing. Only Stripe's paid result captures payment, reconciles the actual processing fee, and permits the existing completed-job settlement rules. Delayed failure closes that attempt and permits a new checkout; declined cards can still be retried inside an open Checkout. Expired and refunded attempts cannot return to processing. The `PaymentRecord.status` database field is already a string, so this status addition requires no schema migration.
+
+Bank confirmation can take several business days. Customers with an imminent visit should use a wallet or card. The booking schedule is not automatically moved while payment is processing; ops must resolve a visit that cannot safely proceed before funds clear. Cancellation and refund requests continue through the existing support/refund-review workflow, including a bank payment that settles after cancellation. Do not treat the return URL, bank linkage, or a completed Checkout alone as proof of settled funds.
+
+Verification: `node --import tsx --test apps/api/test/bank-payments.test.ts`, `npm run test:api`, `npm run typecheck`, `npm run i18n:validate`, `npm run build:customer-mobile`, and `npm run test:web:smoke -- tests/web/customer-payment-methods.spec.ts`.

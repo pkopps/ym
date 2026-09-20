@@ -1,5 +1,6 @@
 "use client";
 
+import { PaymentMethodGuide } from "./PaymentMethodGuide";
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
 
 import {
@@ -242,6 +243,7 @@ function formatSentenceTail(value: string) {
 }
 
 function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerName: string, payment?: PaymentRecord) {
+  if (payment?.status === "processing") return i18n.t("payments.processing.body");
   const update = booking.scheduleUpdates?.at(-1);
   if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather_body" : update.kind === "reschedule" ? "schedule.proposal_body" : "customer_live.state.late", { provider: providerName });
   if (booking.onRouteConfirmedAt) {
@@ -271,6 +273,7 @@ function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerNa
 }
 
 function getPriorityBookingCardTitle(i18n: I18nInstance, booking: Booking, payment?: PaymentRecord) {
+  if (payment?.status === "processing") return i18n.t("payments.processing.title");
   if (booking.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state))) return formatBookingStatusTitle(i18n, booking);
   if (booking.status === "confirmed" && payment?.status !== "captured") {
     return i18n.t("customer_live.finish_booking");
@@ -421,7 +424,7 @@ export function CustomerLiveDashboard() {
     !nextBooking?.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state)) &&
     Boolean(nextBooking) &&
     nextBooking.status === "confirmed" &&
-    nextBookingPayment?.status !== "captured";
+    !(["captured", "processing", "refunded"].includes(nextBookingPayment?.status ?? ""));
   const nextBookingHasTracking = Boolean(nextBooking?.onRouteConfirmedAt);
   const nextBookingNeedsPrimarySupport = Boolean(
     nextBooking?.activeExceptionType || (nextBooking?.lateEtaIso && !nextBooking?.onRouteConfirmedAt)
@@ -621,7 +624,7 @@ export function CustomerLiveDashboard() {
       setPaymentsByBookingId(
         payments.reduce<Record<string, PaymentRecord>>((accumulator, payment) => {
           const current = accumulator[payment.bookingId];
-          if (!current || current.updatedAt < payment.updatedAt) {
+          if (!current || current.createdAt < payment.createdAt) {
             accumulator[payment.bookingId] = payment;
           }
           return accumulator;
@@ -666,8 +669,16 @@ export function CustomerLiveDashboard() {
       if (document.visibilityState !== "visible" || fetching) return;
       fetching = true;
       try {
-        const updated = await createAuthenticatedWebApiClient().getBookings({ limit: 50 });
-        if (!stopped) setBookings(updated);
+        const api = createAuthenticatedWebApiClient();
+        const updated = await api.getBookings({ limit: 50 });
+        const payments = await api.getPayments(updated.map(booking => booking.id));
+        if (!stopped) {
+          setBookings(updated);
+          setPaymentsByBookingId(payments.reduce<Record<string, PaymentRecord>>((result, payment) => {
+            if (!result[payment.bookingId] || result[payment.bookingId].createdAt < payment.createdAt) result[payment.bookingId] = payment;
+            return result;
+          }, {}));
+        }
       } catch { /* Preserve the last known schedule; the next refresh can recover. */ }
       finally { fetching = false; }
     };
@@ -743,11 +754,19 @@ export function CustomerLiveDashboard() {
     void (async () => {
       try {
         const api = createAuthenticatedWebApiClient();
-        await api.finalizeCheckoutSession({
+        const payment = await api.finalizeCheckoutSession({
           checkoutSessionId
         });
         await loadDashboard();
-        setBookingMessage(i18n.t("customer_live.message.stripe_received"));
+        if (payment.status === "failed") {
+          setErrorMessage(i18n.t("customer_live.payment.needs_attention"));
+        } else {
+          // Processing stays on the live booking card so refresh can replace it with the final result.
+          setBookingMessage(payment.status === "processing" ? undefined : i18n.t(
+            payment.status === "captured" ? "customer_live.message.stripe_received" :
+              payment.status === "refunded" ? "customer_history.payment.refunded" : "payments.pending.body"
+          ));
+        }
       } catch (error) {
         setErrorMessage(
           error instanceof Error ? error.message : i18n.t("customer_live.error.confirm_stripe")
@@ -1539,7 +1558,7 @@ export function CustomerLiveDashboard() {
     const paymentRecord = getPaymentRecord(booking.id);
     const paymentLabel = getBookingPaymentLabel(booking, paymentRecord);
     const canEditVisit = booking.status === "requested" || booking.status === "confirmed";
-    const canStartCheckout = booking.status === "confirmed" && paymentRecord?.status !== "captured";
+    const canStartCheckout = booking.status === "confirmed" && !["captured", "processing", "refunded"].includes(paymentRecord?.status ?? "");
     const canOpenDispute = booking.status !== "requested";
     const canReviewRefund =
       canRequestRefundReview(booking, paymentRecord) ||
@@ -1563,6 +1582,7 @@ export function CustomerLiveDashboard() {
           </span>
           <span className="result-badge result-badge--neutral">{paymentLabel}</span>
         </div>
+        {canStartCheckout ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}
         <div className="cta-row">
           {canEditVisit && canStartCheckout ? (
             <button
@@ -2154,6 +2174,8 @@ export function CustomerLiveDashboard() {
       return i18n.t("customer_history.payment.paid");
     }
 
+    if (payment.status === "processing") return i18n.t("payments.processing.title");
+
     if (payment.status === "pending") {
       return i18n.t("customer_live.payment.awaiting_checkout");
     }
@@ -2254,7 +2276,7 @@ export function CustomerLiveDashboard() {
         <section className="card">
           <div className="search-result-title">
             <div>
-              <h2>{i18n.t("customer_live.done")}</h2>
+              <h2>{i18n.t(bookingMessage === i18n.t("payments.pending.body") ? "customer_live.payment.awaiting_checkout" : "customer_live.done")}</h2>
               <p>{bookingMessage}</p>
             </div>
             <button className="button-secondary" onClick={() => setBookingMessage(undefined)} type="button">
@@ -2756,6 +2778,8 @@ export function CustomerLiveDashboard() {
               </div>
 
               <BookingSchedulePanel booking={nextBooking} bookingId={nextBooking.id} onUpdated={loadDashboard} />
+
+              {nextBookingNeedsCheckout ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}
 
               {nextBookingHasPrimaryAction ? (
                 <div className="cta-row">

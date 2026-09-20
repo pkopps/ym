@@ -1,5 +1,25 @@
 # Engineer Status
 
+## Current checkpoint: wallet, card, and optional bank checkout
+
+- Updated: September 20, 2026 (America/New_York).
+- Branch and baseline commit: `codex/analytics-launch-readiness` at `b141eda`; implementation is uncommitted. Existing provider-client and pitch-document work was preserved.
+- Completed: wallet/card-first checkout guidance on customer web and native home/visits; optional US bank disclosure; returning-customer bank suggestion after a completed visit; English/Spanish copy; explicit per-payment consent and no autopay enrollment. Hosted Checkout uses dynamic payment methods and supports an optional dedicated Stripe payment-method configuration.
+- Payment safety: unpaid completed Checkout and processing intents remain processing; duplicate checkout is blocked; delayed success captures and reconciles once; delayed failure permits a new attempt; terminal attempts cannot regress to processing. Customer status refreshes while the app is active and on return. Newer payment attempts take display precedence over late updates to older attempts. Processing payments do not produce financial settlement or transfers.
+- Changed workflows: confirm visit → wallet/card-first guidance → hosted Checkout with bank option → paid or processing result; completed-visit customers get a gentle bank suggestion on their next checkout. Bank linking does not save authorization for future automatic charges. Pricing and fee rules are unchanged.
+- In progress: none locally.
+- Remaining work / external blockers: enable and validate cards/wallets/ACH in the platform Stripe Dashboard (or dedicated `pmc_...` configuration), configure asynchronous webhook subscriptions, and run Stripe test-mode bank and real-device wallet acceptance before live launch. No live Stripe charge, bank link, or Dashboard change was made. Autopay enrollment is deferred by Patrick's explicit choice.
+- Validation: monorepo `npm run typecheck` passed; `npm run i18n:validate` passed 3,930 keys; scoped ESLint passed; full `npm run test:api` passed 327 tests with six PostgreSQL integration tests skipped because `TEST_DATABASE_URL` is absent. Seven targeted bank-payment regressions passed (the seventh financial-settlement regression was added after the full suite). Browser payment/booking regressions passed 3/3, including real authenticated booking setup and stubbed Stripe outcomes. Customer Expo export passed web, iOS, and Android. Payment-related source diff whitespace check passed.
+- Browser evidence: reviewed at 1440×900 and 390×844; no mobile horizontal overflow. Payment method guide, processing/no-retry state, eventual status refresh, failed-payment retry, returning-customer wording, checkout redirect, and Spanish copy were checked. A misleading generic “Done” banner during processing was removed during visual review.
+- Known limits: Stripe wallet/device eligibility and ACH activation have not been exercised against a configured Stripe account. Native app was exported, not run in a simulator. Bank payments may take several business days; existing visit scheduling and support/refund review remain in force, including settlement after cancellation. The app does not automatically postpone a visit for bank settlement. No known failing local checks in this slice; unrelated Next development smooth-scroll warnings remain.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/payment-methods-desktop.png`, `reports/agent-checkpoints/engineer/latest/payment-methods-mobile.png`, and `reports/agent-checkpoints/engineer/latest/payment-processing-mobile.png`.
+- Setup instructions: `LOCAL_DEVELOPMENT.md`, “Customer payment methods”; `.env.example` documents `STRIPE_CHECKOUT_PAYMENT_METHOD_CONFIGURATION`.
+- Recommended next task: Stripe sandbox acceptance with eligible Apple/Google Pay devices, bank verification including microdeposits, delayed success/failure and webhook replay; then independently review the diff before deployment. CodeRabbit/merge review was not performed in this implementation task.
+
+Agent-reported completion is checkpoint evidence only; it does not equal independent verification by Patrick or the Project Manager.
+
+
+
 ## Current checkpoint: weather, late arrivals, and schedule recovery
 
 - Updated: September 19, 2026 (America/New_York).
