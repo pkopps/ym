@@ -23,6 +23,7 @@ export default async function ProviderManagementPage() {
             <p>{i18n.t("provider_management.hero.body")}</p>
           </div>
           <div className="cta-row">
+            <a className="button-secondary" href={addLocalePrefix("/provider/clients", i18n.locale)}>{i18n.t("provider_clients.nav")}</a>
             <a className="button" href={addLocalePrefix("/crew", i18n.locale)}>
               {i18n.t("provider_management.find_crew")}
             </a>

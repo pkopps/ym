@@ -1,5 +1,27 @@
 # Engineer Status
 
+## Current checkpoint: service complaints and partial refunds
+
+- Updated: September 20, 2026 (America/New_York).
+- Branch and commit: `codex/analytics-launch-readiness`, `3327f50`; this implementation is uncommitted. Pre-existing provider-client, branding, and pitch-document work was preserved.
+- Completed: responsive customer complaint form with booking ownership, issue/task/remedy selection, two validated photos or no-photo explanation, duplicate suppression, follow-up history, and human-review/reopening path. Customer complaint photos use private booking evidence and remain excluded from marketing consent. Provider and crew web capture includes property-area labels and matched-angle guidance.
+- Completed support automation: deterministic triage/checklist and update targets; damage bypasses AI and receives the urgent support escalation profile; optional consented OpenAI Responses image assessment with structured output validation, no money tools, internal-only notes, and failure fallback. Customer status refreshes while Help is visible.
+- Completed payment work: ops-approved YardMatch-funded partial goodwill refunds, one successful refund per case, integer-cent/remaining-balance and evidence guards, durable reservations, stable Stripe keys, pending/uncertain/failed reconciliation, immutable approver identity, balanced expense entries, and in-app customer status notifications. Provider earnings/transfers are unchanged. Full refund after a partial refund uses only the remaining balance; submitted full refunds cannot be denied or followed by another partial refund until reconciled. A pending charge refund does not declare the booking refunded.
+- Changed workflows: Help leads with the complaint form; the completed-visit refund panel links to it. Ops compares customer/provider evidence, reads advisory assessments, approves goodwill amounts, and can open the existing full-refund review from service complaints. Model results cannot approve refunds or satisfy human evidence review.
+- In-progress work: none for this local first-release slice.
+- Remaining work: deploy migration/API/web, configure `OPENAI_API_KEY` plus a compatible `SUPPORT_AI_MODEL` if AI assistance is desired, enable signed refund events in Stripe test mode, and run staging acceptance. Calibrate image assessments on consented cases before financial automation. Automatic allowances, provider-funded partial deductions/appeals, automatic return-visit scheduling, and native complaint-form parity remain future policy/product work.
+- Blockers: no local implementation blocker. Live Stripe/OpenAI acceptance requires configured credentials and staging; no production deployment was performed.
+- Validation: Prisma generation passed. The documented `npm run prisma:deploy` bootstrap applied all migrations to a fresh disposable PostgreSQL 16 database; seed passed; `prisma migrate diff --exit-code` reported no difference. `npm run typecheck`, `npm run lint`, and locale validation passed (3,985 keys). Removed an obsolete lint suppression after correcting support-loading hook dependencies.
+- API validation: `npm run test:api` passed 339 tests; seven database-dependent tests were skipped in that invocation and all seven passed separately with `npm run test:api:postgres`. New regressions cover ownership, photo exceptions, duplicate/reopened reports, consent, invalid AI output, balanced partial refunds, concurrent/retried requests, failed/pending refunds, webhook ordering, remaining-balance full refunds, full-refund uncertainty, and photo marketing exclusion. PostgreSQL test covers concurrent API instances, durable reservations, ledger deduplication, and rollback.
+- Browser validation: `npm run test:web:smoke` ran 39 tests: 38 passed, and the new refund test exposed currency formatting that omitted cents. Exact-cent formatting was corrected; both tests in `tests/web/service-complaints.spec.ts` then passed (including the formerly failing test). Existing customer/provider/crew/ops flows passed in the full run. The complaint test uses real local authenticated APIs; the ops refund display test uses an explicitly mocked payment response, while money-state behavior is covered by API/PostgreSQL tests. Screens were checked at 1440×900 and 390×844 with no horizontal overflow; final screenshots were visually inspected.
+- Known defects: no unresolved defect found in this slice's checks. AI accuracy has not been calibrated; live vendor calls and real fund movement were not tested. Out-of-band Stripe refunds update cumulative balances but require separate financial-allocation review. Standard marketplace fee snapshots exclude goodwill expense; the dedicated ledger expense account is the source for that cost.
+- Initial environment issues: sandbox restrictions blocked local listeners/Chromium; approved local execution succeeded. Direct Prisma deploy on an empty database hit the repository's known historical migration order; the documented bootstrap workflow passed on a fresh database. Initial browser test login path and PostgreSQL test cleanup model were corrected. Unrelated pre-existing PDF whitespace was excluded from the code diff check.
+- Screenshot paths: `complaint-form-desktop.png`, `complaint-form-mobile.png`, `complaint-review-desktop.png`, `complaint-review-mobile.png`, `partial-refund-desktop.png`, and `partial-refund-mobile.png`, all beside this report. Images contain disposable test data; the one-pixel photo is an upload fixture, not evidence of image-analysis accuracy.
+- Recommended next task: independent staging acceptance of consented photo comparison and test-mode partial/full refunds, including pending/failure delivery and provider-transfer recovery. Then set an explicit financial automation policy.
+
+Agent-reported completion is checkpoint evidence only; it does not equal independent verification by Patrick or the Project Manager.
+
+
 ## Current checkpoint: wallet, card, and optional bank checkout
 
 - Updated: September 20, 2026 (America/New_York).
@@ -18,6 +40,23 @@
 
 Agent-reported completion is checkpoint evidence only; it does not equal independent verification by Patrick or the Project Manager.
 
+
+## Previous checkpoint: provider client map
+
+- Updated: September 20, 2026 (America/New_York).
+- Branch and baseline commit: `codex/analytics-launch-readiness`, `b141eda838ec7bd29fafa23a4cb8f9f7fa3fd740`; implementation is uncommitted in the shared working tree.
+- Completed work: authenticated provider web Clients navigation and `/provider/clients`; responsive searchable list and interactive map; active recurring/one-time filters; next-7/30-day filters; current and historical booked properties; selected-property visit details and directions; shared-location chooser; missing-coordinate, tile-failure, loading, empty, retry, and signed-out states; English/Spanish copy; private API response and robots/noindex protection.
+- In-progress work: none for this local implementation.
+- Remaining work: independent staging acceptance with real provider accounts, stored property geocodes, and external tile connectivity before launch.
+- Blockers: none for local delivery; staging credentials/deployment were not part of this task. Six existing PostgreSQL-dependent tests skipped because `TEST_DATABASE_URL` was not configured.
+- Changed workflows: providers open Clients from navigation or Jobs; select a property in the list or map; inspect upcoming/completed visits; open directions. Server identity controls the entire client inventory and caller-supplied provider IDs cannot expand it. Non-cancelled bookings are grouped by customer and booked address including unit; unrelated saved properties and private contact/access notes are excluded. Active service plans determine recurrence. Past clients remain visible.
+- Validation results: targeted API suite 38/38 passed; full API suite 321 passed, 6 skipped; full web smoke suite 36/36 passed; new provider-client browser suite passed again 4/4 after final screenshot timing improvements; `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (3,921 keys), `npm run build:web`, final browser-test-file lint, and scoped diff whitespace checks passed. Screenshots visually reviewed at 1440×900 and 390×844; English/Spanish responsive checks assert no horizontal overflow. Tests cover isolation, pagination beyond 200 bookings, deduplication, separate units/customers, active/cancelled recurrence, historical clients, filter/pin synchronization, co-located pins, unavailable coordinates/tiles, errors/retry, anonymous access, and session removal.
+- Verification limitations: no live staging/production deployment, PostgreSQL integration, native app export/simulator, or CodeRabbit review ran. No schema/repository or native app code changed. Initial sandbox server binding failed; authorized local-server checks subsequently passed. The final focused run logged a Next development-server cancelled-stream message during navigation; all tests and the production build passed.
+- Known limits: map tiles require network access; the list and pins remain available during a tile outage. Coordinates come from booked addresses; city/postal-code precision is marked approximate. This screen covers YardMatch-booked properties, not external-calendar clients. Native provider app changes, route optimization, and unassigned nearby-opportunity overlays are outside this screen's implementation. No known unresolved failure in this milestone's checks.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-clients-desktop.png` and `reports/agent-checkpoints/engineer/latest/provider-clients-mobile.png`. Screenshots use explicitly mocked Barnegat test fixtures with real map tiles; a separate browser test exercises real authenticated API bookings.
+- Recommended next task: independently accept this feature on staging with two distinct provider accounts, real geocoded bookings, and active/cancelled recurring plans, then verify map access on desktop and a mobile browser.
+
+Agent-reported completion is checkpoint evidence only; it does not equal independent verification by Patrick or the Project Manager.
 
 
 ## Current checkpoint: weather, late arrivals, and schedule recovery

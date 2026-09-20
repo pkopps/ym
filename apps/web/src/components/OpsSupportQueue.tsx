@@ -9,6 +9,7 @@ import {
   SupportTicket,
   SupportTicketStatus
 } from "@yardmatch/contracts";
+import { ComplaintReviewPanel } from "./ComplaintReviewPanel";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useI18n } from "@yardmatch/i18n/react";
@@ -92,14 +93,16 @@ export function OpsSupportQueue() {
       setStatusMessage(undefined);
       setErrorMessage(undefined);
       const api = createAuthenticatedWebApiClient();
-      await api.updateOpsSupportTicket({
+      const updatedTicket = await api.updateOpsSupportTicket({
         ticketId,
         status,
         resolutionAction,
         resolutionNotes
       });
       setStatusMessage(
-        status === "triaged"
+        updatedTicket.status !== "resolved" && status === "resolved"
+          ? updatedTicket.resolutionNotes ?? "The case remains open for payment reconciliation."
+          : status === "triaged"
           ? "Ticket triaged."
           : resolutionAction === "approve-refund"
             ? "Refund approved and payment reversed."
@@ -580,6 +583,7 @@ export function OpsSupportQueue() {
                       })}
                     </div>
                   ) : null}
+                  <ComplaintReviewPanel item={supportTicket} onChanged={loadQueue} />
                   {payment ? (
                     <p>
                       {i18n.t("ops_auto.ops_support_queue.payment_nxp89g")} {payment.status}
@@ -787,7 +791,7 @@ export function OpsSupportQueue() {
                   >
                     {i18n.t("ops_auto.ops_support_queue.mark_triaged_fwxbnh")} </button>
                 ) : null}
-                {ticket.status !== "resolved" && ticket.issueType === "billing" && payment?.refundReviewStatus === "requested" ? (
+                {ticket.status !== "resolved" && (ticket.issueType === "billing" || Boolean(ticket.complaint)) && payment?.refundReviewStatus === "requested" ? (
                   <>
                   <button
                     className="button-secondary"
@@ -830,7 +834,7 @@ export function OpsSupportQueue() {
                   </>
                 ) : null}
                 {ticket.status !== "resolved" &&
-                ticket.issueType === "billing" &&
+                (ticket.issueType === "billing" || Boolean(ticket.complaint && ticket.complaint.kind !== "property-damage")) &&
                 payment?.status === "captured" &&
                 payment.refundReviewStatus !== "requested" ? (
                   <div className="stack-md">

@@ -1199,6 +1199,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     await this.prisma.paymentRecord.create({
       data: {
         ...payment,
+        fullRefundAttempt: payment.fullRefundAttempt as unknown as Prisma.InputJsonValue | undefined,
+        partialRefunds: payment.partialRefunds as unknown as Prisma.InputJsonValue | undefined,
         checkoutSessionExpiredAt: payment.checkoutSessionExpiredAt ? new Date(payment.checkoutSessionExpiredAt) : undefined,
         refundRequestedAt: payment.refundRequestedAt ? new Date(payment.refundRequestedAt) : undefined,
         refundReviewedAt: payment.refundReviewedAt ? new Date(payment.refundReviewedAt) : undefined,
@@ -1260,6 +1262,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       where: { id: paymentId, ...(updates.status && updates.status !== "refunded" ? { status: { not: "refunded" } } : {}) },
       data: {
         ...updates,
+        fullRefundAttempt: updates.fullRefundAttempt as unknown as Prisma.InputJsonValue | undefined,
+        partialRefunds: updates.partialRefunds as unknown as Prisma.InputJsonValue | undefined,
         checkoutSessionExpiredAt: updates.checkoutSessionExpiredAt ? new Date(updates.checkoutSessionExpiredAt) : undefined,
         refundRequestedAt:
           updates.refundRequestedAt
@@ -1390,6 +1394,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       where: { bookingId }
     });
     return settlement ? this.mapBookingFinancialSettlement(settlement) : undefined;
+  }
+
+  public async appendFinancialLedgerEntries(entries: FinancialLedgerEntry[]): Promise<void> {
+    await this.prisma.financialLedgerEntry.createMany({ data: entries.map(entry => ({ ...entry, createdAt: new Date(entry.createdAt) })), skipDuplicates: true });
   }
 
   public async listFinancialLedgerEntries(bookingId?: string): Promise<FinancialLedgerEntry[]> {
@@ -1999,6 +2007,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     await this.prisma.supportTicket.create({
       data: {
         ...ticket,
+        complaint: ticket.complaint as unknown as Prisma.InputJsonValue | undefined,
         launchLeadId: ticket.launchLeadId,
         createdAt: new Date(ticket.createdAt),
         updatedAt: new Date(ticket.updatedAt),
@@ -2033,6 +2042,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     const ticket = await this.prisma.supportTicket.update({
       where: { id: ticketId },
       data: {
+        complaint: updates.complaint as unknown as Prisma.InputJsonValue | undefined,
         bookingId: updates.bookingId,
         launchLeadId: updates.launchLeadId,
         requesterId: updates.requesterId,
@@ -3108,6 +3118,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   }
 
   private mapSupportTicket(record: {
+    complaint?: unknown;
     id: string;
     bookingId: string | null;
     launchLeadId: string | null;
@@ -3124,6 +3135,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     resolutionAction: string | null;
   }): SupportTicket {
     return {
+      complaint: (record.complaint ?? undefined) as SupportTicket["complaint"],
       id: record.id,
       bookingId: record.bookingId ?? undefined,
       launchLeadId: record.launchLeadId ?? undefined,
@@ -3382,6 +3394,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   }
 
   private mapPaymentRecord(record: {
+    fullRefundAttempt?: unknown;
+    partialRefunds?: unknown;
+    refundedAmountCents?: number;
     checkoutSessionExpiredAt: Date | null;
     checkoutSuccessPath: string | null;
     checkoutCancelPath: string | null;
@@ -3413,6 +3428,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     updatedAt: Date;
   }): PaymentRecord {
     return {
+      fullRefundAttempt: (record.fullRefundAttempt ?? undefined) as PaymentRecord["fullRefundAttempt"],
+      partialRefunds: (record.partialRefunds ?? []) as PaymentRecord["partialRefunds"],
+      refundedAmountCents: record.refundedAmountCents ?? 0,
       checkoutSessionExpiredAt: record.checkoutSessionExpiredAt?.toISOString(),
       checkoutSuccessPath: record.checkoutSuccessPath ?? undefined,
       checkoutCancelPath: record.checkoutCancelPath ?? undefined,

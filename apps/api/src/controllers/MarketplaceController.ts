@@ -105,6 +105,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/crew/opportunities/public") ||
       (context.method === "POST" && context.path === "/api/crew/opportunities/public/select") ||
       (context.method === "POST" && context.path === "/api/crew/opportunities/claim") ||
+      (context.method === "GET" && context.path === "/api/providers/clients") ||
       (context.method === "GET" && context.path === "/api/providers/staffing") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/review") ||
       (context.method === "POST" && context.path === "/api/providers/staffing/route-leader") ||
@@ -387,6 +388,13 @@ export class MarketplaceController implements ApiController {
           context.body as ClaimPublicCrewOpportunityRequest
         )
       );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/providers/clients") {
+      const identity = await requireRole(context, this.platform, "provider");
+      response.setHeader("Cache-Control", "private, no-store");
+      sendJson(response, 200, await this.platform.getProviderClients(identity.userId));
       return;
     }
 

@@ -2968,3 +2968,25 @@ test("authenticated customers can build instant quotes with their saved property
   assert.equal(quote.category, "lawn-mowing");
   assert.ok(quote.estimatedPriceCents > 0);
 });
+
+test("client map denies anonymous, customer, and crew access and ignores provider-id query overrides", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const auth = new AuthController(platform);
+  const controller = new MarketplaceController(platform);
+  const context = { method: "GET", path: "/api/providers/clients", body: undefined, query: new URLSearchParams("providerId=another-provider"), headers: {} };
+  assert.equal(controller.canHandle(context), true);
+  await assert.rejects(() => controller.handle(context, createMockResponse() as never));
+  for (const role of ["customer", "crew-member", "provider"] as const) {
+    const user = await registerUser(auth, { fullName: `Map ${role}`, email: `map-${role}@example.com`, password: "Password123!", phone: "555-0245", role });
+    const response = createMockResponse();
+    const request = { ...context, headers: { authorization: `Bearer ${user.session.token}` } };
+    if (role !== "provider") {
+      await assert.rejects(() => controller.handle(request, response as never), /role|provider|forbidden/i);
+    } else {
+      await controller.handle(request, response as never);
+      assert.equal(response.getStatusCode(), 200);
+      assert.deepEqual(response.readJson().properties, []);
+    }
+  }
+});

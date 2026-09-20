@@ -625,3 +625,21 @@ See [analytics and operations](docs/ANALYTICS_AND_OPERATIONS.md) for setup, moni
 ## Visit delays and rescheduling
 
 Providers can report late arrivals or weather holds with a next-update deadline and propose a new service window for customer approval. Web and native booking screens expose the updates; the existing ops scheduler alerts customers, providers, and ops when an update or arrival window is overdue. See [the schedule recovery guide](docs/BOOKING_SCHEDULE_RECOVERY.md) for behavior, API routes, rollout, and limits.
+
+## Provider client map
+
+Providers can open **Clients** from the authenticated web navigation or `/provider/clients` (Spanish: `/es/provider/clients`). The responsive screen combines a searchable property list with a pan/zoom map, recurring/one-time and next-7/30-day filters, selected-property visit details, completed-visit history, and external directions. It works on desktop and mobile browsers; the native provider app is unchanged.
+
+`GET /api/providers/clients` derives the provider identity from authentication, reads every page of that business's booking history, and groups non-cancelled bookings by customer and normalized booked address including unit. Only booked addresses are exposed; unrelated saved properties, gate codes, contact details, and job notes are excluded. Recurring means an active plan for that provider/customer/address. Past clients remain visible; cancelled-only properties are excluded. Shared coordinates have a single pin with a client chooser. Missing/invalid coordinates stay in the list, and city/postal-code locations are labeled approximate in property details.
+
+The map uses bundled Leaflet with attributed OpenStreetMap tiles. Client labels stay in the application; the tile service receives viewport tile requests. Tile failures leave pins and the list usable. Map data is not an optimized driving route, and no unassigned nearby leads are exposed. Background tiles require network access and follow the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/); do not add bulk/offline prefetch. See the [Leaflet API](https://leafletjs.com/reference.html) when changing map behavior.
+
+Validation: `node --test --import tsx apps/api/test/provider-clients.test.ts apps/api/test/authorization-controller.test.ts apps/api/test/marketplace-controller-routing.test.ts` and `npm run test:web:smoke -- tests/web/provider-clients.spec.ts`. Browser tests use both real authenticated bookings and explicitly mocked Barnegat map fixtures for visual and recovery coverage.
+
+### Structured service recovery
+
+- Customer Help now leads with a booking-linked problem form: missed visit, incomplete work, quality, damage, or billing; affected area; preferred remedy; photos or a missing-photo explanation. Customers can add details and request human review without repeating their report.
+- Customer complaint photos remain private, are attached to the booking for ops review, and are excluded from marketing consent. Provider/crew web photos can be labeled by property area.
+- Optional, consented OpenAI image comparison produces internal advisory notes and a follow-up suggestion. Missing configuration or failed analysis falls back to a rule-based checklist. Damage and human-review requests bypass AI. Decisions remain with ops.
+- Ops can approve YardMatch-funded partial goodwill refunds without reducing provider earnings. Durable reservations, stable processor keys, cumulative refund amounts, balanced expense entries, and signed refund-event reconciliation protect retries and pending/failed outcomes. A later full refund covers only the remaining balance.
+- See `LOCAL_DEVELOPMENT.md` for migration, model configuration, webhook events, recovery instructions, and the deliberate launch limits. Automatic financial approval and provider-funded partial deductions are not enabled.

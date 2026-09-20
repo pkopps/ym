@@ -361,6 +361,9 @@ model SecurityState {
 }
 
 model PaymentRecord {
+  fullRefundAttempt       Json?
+  partialRefunds           Json @default("[]")
+  refundedAmountCents      Int @default(0)
   checkoutSessionExpiredAt DateTime?
   checkoutSuccessPath      String?
   checkoutCancelPath       String?
@@ -616,6 +619,7 @@ model OpsAutomationRun {
 }
 
 model SupportTicket {
+  complaint        Json?
   id               String    @id
   bookingId        String?
   launchLeadId     String?

@@ -66,21 +66,20 @@ def brand_logo(x,y,w,icon=False):
     c.restoreState()
     return h
 
-def header(kicker):
+def header(kicker,abbreviated=False):
     rect(0,0,W,59,'#edf1e8')
-    brand_logo(44,18,130)
+    if abbreviated: ym_logo(44,12,38)
+    else: brand_logo(44,18,130)
     heading=kicker.upper()
     heading_width=pdfmetrics.stringWidth(heading,'Bold',8)
     text(heading,568-heading_width,27,8,'Bold',DEEP)
     line(44,59,568,59,'#c4d0bf',0.8)
 
-def footer(n):
-    line(44,749,568,749)
+def ym_logo(x,y,w):
     source=OUT/'assets'/'yardmatch-ym-mower-logo.png'
     # Clip source whitespace in PDF layout; keep original artwork unchanged.
     sx,sy,sw,sh=215,250,824,769
     iw,ih=Image.open(source).size
-    x,y,w=44,755,28
     scale=w/sw; h=sh*scale
     c.saveState()
     c.setBlendMode('Darken')
@@ -88,6 +87,10 @@ def footer(n):
     c.clipPath(clip,stroke=0,fill=0)
     c.drawImage(str(source),x-sx*scale,H-y-(ih-sy)*scale,iw*scale,ih*scale,mask='auto')
     c.restoreState()
+
+def footer(n):
+    line(44,749,568,749)
+    ym_logo(44,755,28)
     text('BARNEGAT AREA PARTNER BRIEF',84,764,8,'Bold',MUTED)
     text(f'{n:02d} / 09',528,764,8,'Body',MUTED)
 
@@ -125,7 +128,7 @@ def phone(asset):
 
 # 1 - cover
 rect(0,0,W,H,PAPER)
-header('Local business partner brief')
+header('Local business partner brief',abbreviated=True)
 brand_logo(44,78,294)
 text('Barnegat, NJ + surrounding area',44,144,10,'Body',MUTED)
 copy.append('# YardMatch\n\nBarnegat, NJ + surrounding area\n')
@@ -274,7 +277,7 @@ para('<b>$45 once. Years of potential value.</b> One customer retained for all t
 c.showPage()
 
 # 9 - new-provider first-client offer
-page(9,'New service provider offer','Your first new client is on us!','Join YardMatch and grow your landscaping business with the first finder\'s fee covered.')
+page(9,'New service provider offer','Your first new client is free!','Join YardMatch and grow your landscaping business with the first finder\'s fee covered.')
 rect(44,181,524,157,DEEP,14)
 # Coupon-style perforation, kept inside the offer card.
 c.saveState()

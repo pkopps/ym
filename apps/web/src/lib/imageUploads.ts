@@ -17,7 +17,7 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   });
 }
 
-export async function readEvidenceImage(file: File): Promise<string> {
+export async function readEvidenceImage(file: File, maxDataUrlLength = MAX_DATA_URL_LENGTH): Promise<string> {
   if (!file.type.startsWith("image/")) {
     throw new Error("Choose a photo file to continue.");
   }
@@ -35,7 +35,7 @@ export async function readEvidenceImage(file: File): Promise<string> {
   context.drawImage(image, 0, 0, canvas.width, canvas.height);
   for (const quality of [0.8, 0.65, 0.5, 0.35]) {
     const dataUrl = canvas.toDataURL("image/jpeg", quality);
-    if (dataUrl.length <= MAX_DATA_URL_LENGTH) {
+    if (dataUrl.length <= maxDataUrlLength) {
       return dataUrl;
     }
   }

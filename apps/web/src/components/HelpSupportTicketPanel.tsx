@@ -8,9 +8,10 @@ import {
 } from "@yardmatch/contracts";
 import { addLocalePrefix, type I18nInstance, type TranslationKey } from "@yardmatch/i18n";
 import { useI18n } from "@yardmatch/i18n/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { ServiceComplaintPanel } from "./ServiceComplaintPanel";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 
 const issueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
@@ -54,7 +55,7 @@ export function HelpSupportTicketPanel() {
     return accumulator;
   }, {});
 
-  async function loadSupportView() {
+  const loadSupportView = useCallback(async () => {
     if (!session) {
       return;
     }
@@ -89,7 +90,7 @@ export function HelpSupportTicketPanel() {
     } finally {
       setIsLoadingSupport(false);
     }
-  }
+  }, [session, i18n]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -99,7 +100,7 @@ export function HelpSupportTicketPanel() {
       const subjectParam = query.get("subject");
       if (bookingId) {
         setSelectedBookingId(bookingId);
-        setShowComposer(true);
+        setShowComposer(session?.role !== "customer");
       }
       if (
         issueTypeParam &&
@@ -118,7 +119,14 @@ export function HelpSupportTicketPanel() {
     }
 
     void loadSupportView();
-  }, [sessionReady, session?.token, session?.role]);
+  }, [sessionReady, session?.role, loadSupportView]);
+
+  const hasOpenComplaints = tickets.some(ticket => ticket.complaint && ticket.status !== "resolved");
+  useEffect(() => {
+    if (!session || !hasOpenComplaints) return;
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void loadSupportView(); }, 30000);
+    return () => window.clearInterval(timer);
+  }, [session, hasOpenComplaints, loadSupportView]);
 
   async function handleSubmit() {
     if (!session || subject.trim().length === 0 || description.trim().length === 0) {
@@ -172,6 +180,8 @@ export function HelpSupportTicketPanel() {
   }
 
   return (
+    <>
+    {session.role === "customer" ? <ServiceComplaintPanel bookings={bookingOptions} tickets={tickets} initialBookingId={selectedBookingId} onChanged={loadSupportView} /> : null}
     <article className="card">
       <h2>{i18n.t("support.open_ticket")}</h2>
       <p>{i18n.t("support.body")}</p>
@@ -259,7 +269,7 @@ export function HelpSupportTicketPanel() {
             </button>
           </div>
           {showRecentTickets ? (
-            tickets.slice(0, 4).map((ticket) => (
+            tickets.filter(ticket => !ticket.complaint).slice(0, 4).map((ticket) => (
               <article className="list-panel" key={ticket.id}>
                 <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                   <h3>{ticket.subject}</h3>
@@ -284,5 +294,6 @@ export function HelpSupportTicketPanel() {
         </div>
       ) : null}
     </article>
+    </>
   );
 }

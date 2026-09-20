@@ -1,4 +1,5 @@
 "use client";
+import type { PropertyPhotoArea } from "@yardmatch/contracts";
 import { WorkspaceSection } from "./WorkspaceSection";
 
 import {
@@ -202,6 +203,7 @@ export function CrewLiveDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
+  const [evidenceAreas, setEvidenceAreas] = useState<Record<string, PropertyPhotoArea>>({});
   const [selectedPublicOpportunityId, setSelectedPublicOpportunityId] = useState<string | undefined>();
   const [notifyingOpportunityId, setNotifyingOpportunityId] = useState<string | undefined>();
 
@@ -369,7 +371,7 @@ export function CrewLiveDashboard() {
     try {
       const imageDataUrl = await readEvidenceImage(file);
       const api = createAuthenticatedWebApiClient();
-      await api.addBookingEvidence({ bookingId, phase, imageDataUrl });
+      await api.addBookingEvidence({ bookingId, phase, imageDataUrl, photoArea: evidenceAreas[bookingId] ?? "lawn" });
       setStatusMessage(
         phase === "before"
           ? i18n.t("crew_live.status.before_photo_saved")
@@ -791,6 +793,8 @@ export function CrewLiveDashboard() {
                     <section className="evidence-capture-panel">
                       <div>
                         <strong>{i18n.t("crew_live.evidence.title")}</strong>
+                        <p>{i18n.t("complaint.provider_capture")}</p>
+                  <label className="form-field"><span>{i18n.t("customer_live.photos.area_label")}</span><select value={evidenceAreas[match.bookingId] ?? "lawn"} onChange={event => setEvidenceAreas(current => ({ ...current, [match.bookingId]: event.target.value as PropertyPhotoArea }))}>{(["lawn", "shrubs", "garden-beds", "trees", "driveway", "walkways", "gutters", "other"] as const).map(area => <option key={area} value={area}>{i18n.t(`photo.area.${area.replaceAll("-", "_")}` as "photo.area.lawn")}</option>)}</select></label>
                         <p>
                           {match.bookingStatus === "in-progress"
                             ? i18n.t("crew_live.evidence.after_help", { count: match.afterEvidenceCount })

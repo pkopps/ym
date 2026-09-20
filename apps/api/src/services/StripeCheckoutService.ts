@@ -29,6 +29,12 @@ export interface VerifiedStripeCheckoutSession {
 }
 
 export interface StripeWebhookEvent {
+  refundedAmountCents?: number;
+  refundId?: string;
+  partialRefundId?: string;
+  fullRefundKey?: string;
+  refundStatus?: string;
+  chargeRefunds?: { id: string; partialRefundId?: string; status: string }[];
   id?: string;
   paymentId?: string;
   type: string;
@@ -48,6 +54,9 @@ export interface StripeChargeFinancials {
 }
 
 export interface CreateStripeRefundInput {
+  fullRefundKey?: string;
+  idempotencyKey?: string;
+  partialRefundId?: string;
   paymentIntentId: string;
   amountCents: number;
   reason: string;
@@ -289,11 +298,19 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
       };
     }
 
+    if (event.type === "refund.created" || event.type === "refund.updated" || event.type === "refund.failed") {
+      const refund = event.data.object;
+      return { id: event.id, type: event.type, paymentId: refund.metadata?.paymentId,
+        paymentIntentId: typeof refund.payment_intent === "string" ? refund.payment_intent : refund.payment_intent?.id,
+        refundId: refund.id, partialRefundId: refund.metadata?.partialRefundId, fullRefundKey: refund.metadata?.fullRefundKey, refundStatus: refund.status ?? "pending" };
+    }
     if (event.type === "charge.refunded") {
       const charge = event.data.object;
       return {
         id: event.id,
         type: event.type,
+        refundedAmountCents: charge.amount_refunded,
+        chargeRefunds: charge.refunds?.data.map(refund => ({ id: refund.id, partialRefundId: refund.metadata?.partialRefundId, status: refund.status ?? "pending" })),
         paymentIntentId:
           typeof charge.payment_intent === "string" ? charge.payment_intent : undefined
       };
@@ -331,9 +348,11 @@ export class StripeCheckoutService implements PaymentCheckoutGateway {
         metadata: {
           bookingId: input.bookingId,
           paymentId: input.paymentId,
-          refundReason: input.reason
+          refundReason: input.reason.slice(0, 500),
+          ...(input.partialRefundId ? { partialRefundId: input.partialRefundId } : {}),
+          ...(input.fullRefundKey ? { fullRefundKey: input.fullRefundKey } : {})
         }
-      }),
+      }, { idempotencyKey: input.idempotencyKey }),
       "Stripe refund processing did not respond in time. Refresh the payment before trying again."
     );
 

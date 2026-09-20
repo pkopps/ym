@@ -9,6 +9,9 @@ import {
   ProcessSupportOpsTicketEscalationsRequest,
   ReviewBookingEvidenceForOpsRequest,
   CreateSupportTicketRequest,
+  CreateServiceComplaintRequest,
+  ReplyServiceComplaintRequest,
+  IssuePartialRefundRequest,
   UpdateLaunchLeadRequest,
   UpdateSupportTicketRequest
 } from "@yardmatch/contracts";
@@ -33,6 +36,10 @@ export class SupportController implements ApiController {
       (context.method === "POST" && context.path === "/api/launch/ops/leads/update") ||
       (context.method === "GET" && context.path === "/api/support/tickets") ||
       (context.method === "POST" && context.path === "/api/support/tickets") ||
+      (context.method === "POST" && context.path === "/api/support/complaints") ||
+      (context.method === "POST" && context.path === "/api/support/complaints/reply") ||
+      (context.method === "POST" && context.path === "/api/support/ops/complaints/assess") ||
+      (context.method === "POST" && context.path === "/api/support/ops/partial-refund") ||
       (context.method === "GET" && context.path === "/api/support/ops/summary") ||
       (context.method === "GET" && context.path === "/api/support/ops/tickets") ||
       (context.method === "POST" && context.path === "/api/support/ops/tickets/update") ||
@@ -45,6 +52,22 @@ export class SupportController implements ApiController {
   }
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
+    if (context.path === "/api/support/complaints" || context.path === "/api/support/complaints/reply") {
+      const identity = await requireRole(context, this.platform, "customer");
+      const result = context.path.endsWith("/reply")
+        ? await this.platform.replyServiceComplaint(identity.userId, context.body as ReplyServiceComplaintRequest)
+        : await this.platform.createServiceComplaint(identity.userId, context.body as CreateServiceComplaintRequest);
+      sendJson(response, 200, result);
+      return;
+    }
+    if (context.path === "/api/support/ops/complaints/assess" || context.path === "/api/support/ops/partial-refund") {
+      const identity = await requireOpsAccess(context, this.platform);
+      const result = context.path.endsWith("/partial-refund")
+        ? await this.platform.issuePartialRefund(identity.userId, context.body as IssuePartialRefundRequest)
+        : await this.platform.assessServiceComplaint((context.body as { ticketId: string }).ticketId);
+      sendJson(response, 200, result);
+      return;
+    }
     if (context.path === "/api/launch/ops/leads") {
       await requireOpsAccess(context, this.platform);
       sendJson(response, 200, await this.platform.listOpsLaunchLeads());
