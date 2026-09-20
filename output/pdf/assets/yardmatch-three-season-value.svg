@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE svg
+  PUBLIC '-//W3C//DTD SVG 1.0//EN'
+  'http://www.w3.org/TR/2001/REC-SVG-20010904/DTD/svg10.dtd'>
+<svg width="524" height="225" preserveAspectRatio="xMinYMin meet" viewBox="0 0 524 225" xmlns="http://www.w3.org/2000/svg" version="1.0" fill-rule="evenodd" xmlns:xlink="http://www.w3.org/1999/xlink">
+	<title>...</title>
+	<desc>...</desc>
+	<clipPath id="clip">
+		<rect x="0" y="0" width="524" height="225"/>
+	</clipPath>
+	<g id="group" transform="scale(1,-1) translate(0,-225)" style="clip-path: url(#clip)">
+		<g transform="">
+			<path d="M 16,208 L 37,208 Z" style="stroke: rgb(12%,34%,21%); stroke-linecap: butt; stroke-width: 2.6;"/>
+			<text x="43" y="205" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,410) scale(1,-1)">Revenue</text>
+			<path d="M 121,208 L 142,208 Z" style="stroke: rgb(60%,40%,27%); stroke-linecap: butt; stroke-width: 2; stroke-dasharray: 4, 3;"/>
+			<text x="148" y="205" style="font-family: Bold; font-size: 9px;fill: rgb(60%,40%,27%); stroke:none;" transform="translate(0,410) scale(1,-1)">YardMatch fees</text>
+			<rect x="247" y="202" width="15" height="12" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(86%,92%,83%); fill-rule: evenodd;"/>
+			<text x="270" y="205" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,410) scale(1,-1)">Shaded gap = revenue after fees</text>
+			<polygon points="89.11864 95.5, 262 133, 434.8814 170.5, 434.8814 60.8125, 262 60.8125, 89.11864 60.8125" style="stroke: none; stroke-linecap: butt; stroke-width: 1; fill: rgb(86%,92%,83%); fill-rule: evenodd;"/>
+			<g transform="">
+				<g transform="">
+					<g transform="">
+						<path d="M 58,58 L 466,58 Z" style="stroke: rgb(76%,81%,74%); stroke-linecap: butt; stroke-width: 1;"/>
+					</g>
+					<g transform=""/>
+					<g transform="">
+						<g transform=" matrix(1,0,0,1,89.118644,53)">
+							<text x="-13.510986328125002" y="-9.0" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,-18) scale(1,-1)">Year 1</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,262,53)">
+							<text x="-13.510986328125002" y="-9.0" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,-18) scale(1,-1)">Year 2</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,434.881356,53)">
+							<text x="-13.510986328125002" y="-9.0" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,-18) scale(1,-1)">Year 3</text>
+						</g>
+					</g>
+				</g>
+				<g transform="">
+					<g transform=""/>
+					<g transform=""/>
+					<g transform="">
+						<g transform=" matrix(1,0,0,1,53,58)">
+							<text x="-8.8984375" y="-3.2" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,-6) scale(1,-1)">$0</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,53,89.25)">
+							<text x="-24.46875" y="-3.2" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,-6) scale(1,-1)">$5,000</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,53,120.5)">
+							<text x="-28.91796875" y="-3.2" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,-6) scale(1,-1)">$10,000</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,53,151.75)">
+							<text x="-28.91796875" y="-3.2" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,-6) scale(1,-1)">$15,000</text>
+						</g>
+						<g transform=" matrix(1,0,0,1,53,183)">
+							<text x="-28.91796875" y="-3.2" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,-6) scale(1,-1)">$20,000</text>
+						</g>
+					</g>
+				</g>
+				<path d="M 58,89.25 L 466,89.25 Z" style="stroke: rgb(87%,90%,85%); stroke-linecap: butt; stroke-width: 0.6;"/>
+				<path d="M 58,120.5 L 466,120.5 Z" style="stroke: rgb(87%,90%,85%); stroke-linecap: butt; stroke-width: 0.6;"/>
+				<path d="M 58,151.75 L 466,151.75 Z" style="stroke: rgb(87%,90%,85%); stroke-linecap: butt; stroke-width: 0.6;"/>
+				<path d="M 58,183 L 466,183 Z" style="stroke: rgb(87%,90%,85%); stroke-linecap: butt; stroke-width: 0.6;"/>
+				<g transform="">
+					<polyline points="89.11864 95.5, 262 133, 434.8814 170.5" style="stroke: rgb(12%,34%,21%); stroke-linecap: round; stroke-width: 2.6; fill: None; fill-rule: evenodd;"/>
+					<circle cx="89.11864406779662" cy="95.5" r="2.5" style="stroke: rgb(12%,34%,21%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(12%,34%,21%); fill-rule: evenodd;"/>
+					<circle cx="262.0" cy="133.0" r="2.5" style="stroke: rgb(12%,34%,21%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(12%,34%,21%); fill-rule: evenodd;"/>
+					<circle cx="434.8813559322034" cy="170.5" r="2.5" style="stroke: rgb(12%,34%,21%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(12%,34%,21%); fill-rule: evenodd;"/>
+					<polyline points="89.11864 60.8125, 262 60.8125, 434.8814 60.8125" style="stroke: rgb(60%,40%,27%); stroke-linecap: round; stroke-width: 2; fill: None; fill-rule: evenodd; stroke-dasharray: 4, 3;"/>
+					<circle cx="89.11864406779662" cy="60.8125" r="2.5" style="stroke: rgb(60%,40%,27%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(60%,40%,27%); fill-rule: evenodd;"/>
+					<circle cx="262.0" cy="60.8125" r="2.5" style="stroke: rgb(60%,40%,27%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(60%,40%,27%); fill-rule: evenodd;"/>
+					<circle cx="434.8813559322034" cy="60.8125" r="2.5" style="stroke: rgb(60%,40%,27%); stroke-linecap: butt; stroke-width: 0.1; fill: rgb(60%,40%,27%); fill-rule: evenodd;"/>
+				</g>
+			</g>
+			<text x="75.35497219279662" y="103.5" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,207) scale(1,-1)">$6,000</text>
+			<text x="80.22020656779662" y="67.8125" style="font-family: Body; font-size: 8px;fill: rgb(60%,40%,27%); stroke:none;" transform="translate(0,135) scale(1,-1)">$450</text>
+			<text x="45.17333156779662" y="28" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,56) scale(1,-1)">10 customers | 100 visits</text>
+			<text x="51.848624536546616" y="10" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,20) scale(1,-1)">After fees: $5,550</text>
+			<text x="245.73364257812506" y="141.0" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,282) scale(1,-1)">$12,000</text>
+			<text x="253.10156250000006" y="67.8125" style="font-family: Body; font-size: 8px;fill: rgb(60%,40%,27%); stroke:none;" transform="translate(0,135) scale(1,-1)">$450</text>
+			<text x="218.05468750000006" y="28" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,56) scale(1,-1)">20 customers | 200 visits</text>
+			<text x="222.22729492187506" y="10" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,20) scale(1,-1)">After fees: $11,550</text>
+			<text x="418.6149985103284" y="178.5" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,357) scale(1,-1)">$18,000</text>
+			<text x="425.9829184322034" y="67.8125" style="font-family: Body; font-size: 8px;fill: rgb(60%,40%,27%); stroke:none;" transform="translate(0,135) scale(1,-1)">$450</text>
+			<text x="390.9360434322034" y="28" style="font-family: Body; font-size: 8px;fill: rgb(40%,45%,41%); stroke:none;" transform="translate(0,56) scale(1,-1)">30 customers | 300 visits</text>
+			<text x="395.1086508540784" y="10" style="font-family: Bold; font-size: 9px;fill: rgb(12%,34%,21%); stroke:none;" transform="translate(0,20) scale(1,-1)">After fees: $17,550</text>
+		</g>
+	</g>
+</svg>
