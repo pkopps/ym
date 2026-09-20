@@ -751,8 +751,7 @@ export function CustomerLiveDashboard() {
         propertyId: activeProperty.id
       });
       setQuote(nextQuote);
-      setProviderResults(undefined);
-      setProviderSearchState("idle");
+      await runProviderSearch(selectedTiming, nextQuote.estimatedDurationMinutes);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("customer_live.error.build_quote"));
     } finally {
@@ -760,7 +759,7 @@ export function CustomerLiveDashboard() {
     }
   }
 
-  async function runProviderSearch(timingPreference: CustomerTimingPreference) {
+  async function runProviderSearch(timingPreference: CustomerTimingPreference, durationMinutes = quote?.estimatedDurationMinutes) {
     if (!activeProperty) {
       setErrorMessage(i18n.t("customer_live.error.choose_property"));
       return;
@@ -789,7 +788,7 @@ export function CustomerLiveDashboard() {
         address: activeProperty.address,
         categories: [selectedCategory],
         dateIso: buildDateIsoForCustomerTiming(timingPreference, selectedCustomDate, selectedCustomWindow),
-        estimatedDurationMinutes: quote?.estimatedDurationMinutes,
+        estimatedDurationMinutes: durationMinutes,
         requestSource: activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard",
         retentionPreference: getActiveRetentionPreference(),
         attribution: getLaunchAttributionContext()
@@ -1454,7 +1453,7 @@ export function CustomerLiveDashboard() {
           </label>
         </div>
         <div className="cta-row" style={{ marginTop: "1rem" }}>
-          <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} type="button">
+          <button className="button" disabled={loadingState === "loading"} onClick={handleQuote} data-analytics-action="request-price-and-match" type="button">
             {loadingState === "loading" ? i18n.t("customer_live.working") : buttonLabel}
           </button>
         </div>
@@ -1481,11 +1480,12 @@ export function CustomerLiveDashboard() {
               <span className="customer-request-spine__index">{index + 1}</span>
               <div>
                 <strong>{step.label}</strong>
-                <small>{step.value}</small>
+
               </div>
             </li>
           ))}
         </ol>
+        <details><summary>{selectedServiceLabel} · {timingLabel} — {i18n.t("journey.change_details")}</summary>
         <div className="customer-request-spine__summary" aria-label={i18n.t("customer_listings_hero.current_request")}>
           <div>
             <span>{i18n.t("customer_live.label.service")}</span>
@@ -1503,7 +1503,7 @@ export function CustomerLiveDashboard() {
             <span>{i18n.t("customer_live.progress.price")}</span>
             <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.after_details")}</strong>
           </div>
-        </div>
+        </div></details>
       </section>
     );
   }
@@ -1542,7 +1542,7 @@ export function CustomerLiveDashboard() {
             <button
               className="button"
               disabled={loadingState === "loading"}
-              onClick={() => void handleStartCheckout(booking)}
+              data-analytics-action="start-checkout" onClick={() => void handleStartCheckout(booking)}
               type="button"
             >
               {paymentRecord?.status === "pending"
@@ -2370,6 +2370,7 @@ export function CustomerLiveDashboard() {
             ) : null}
           </section>
 
+          {requestedProviderId && providerSearchState === "loaded" && !selectedProviderWasRequested ? <p role="status">{i18n.t("journey.match_changed")}</p> : null}
           {providerStepActive ? (
             <section className="card">
               <div className="search-result-title">
@@ -2401,7 +2402,7 @@ export function CustomerLiveDashboard() {
                       <h3>{i18n.t("customer_live.provider.no_verified.title")}</h3>
                       <p>{i18n.t("customer_live.provider.no_verified.body")}</p>
                       <div className="cta-row">
-                        <button className="button" onClick={handleEditRequestDetails} type="button">
+                        <button className="button" data-analytics-action="edit-request" onClick={handleEditRequestDetails} type="button">
                           {i18n.t("customer_live.action.change_details")}
                         </button>
                         <a
@@ -2537,7 +2538,7 @@ export function CustomerLiveDashboard() {
                         <button
                           className="button"
                           disabled={!recommendedProviderCard.slot || loadingState === "loading"}
-                          onClick={() =>
+                          data-analytics-action="request-booking" onClick={() =>
                             void handleCreateBooking(
                               recommendedProviderCard,
                               getProviderSelectionRank(recommendedProviderCard.provider.id, 1)
@@ -2733,7 +2734,7 @@ export function CustomerLiveDashboard() {
                     <button
                       className="button"
                       disabled={loadingState === "loading"}
-                      onClick={() => void handleStartCheckout(nextBooking)}
+                      data-analytics-action="start-checkout" onClick={() => void handleStartCheckout(nextBooking)}
                       type="button"
                     >
                       {nextBookingPayment?.status === "pending"

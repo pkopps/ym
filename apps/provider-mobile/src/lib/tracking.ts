@@ -16,7 +16,6 @@ export function getProviderMobileTracker() {
   return new MobileAnalyticsTracker(
     createProviderMobileApiClient(),
     "provider",
-    getPlatformSurface(),
-    "provider-mobile-live"
+    getPlatformSurface()
   );
 }

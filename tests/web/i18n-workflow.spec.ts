@@ -46,6 +46,7 @@ test("spanish provider, crew, and ops workflow routes remain localized", async (
   await opsPasswordInput.press("Enter");
   await expect(page).toHaveURL(/\/es\/ops$/);
   await expect(page.locator("html")).toHaveAttribute("lang", "es");
+  await page.locator('.workspace-nav a[href="#ops-administration"]').click();
   await expect(page.getByText("Control de automatizacion")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: `${evidenceRoot}/i18n-spanish-ops-mobile.png` });

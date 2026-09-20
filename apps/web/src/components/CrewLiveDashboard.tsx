@@ -1,4 +1,5 @@
 "use client";
+import { WorkspaceSection } from "./WorkspaceSection";
 
 import {
   BookingEvidencePhase,
@@ -452,6 +453,7 @@ export function CrewLiveDashboard() {
   if (accessDenied) {
     return (
       <div className="stack-lg">
+        <h1>{i18n.t("crew_dashboard.hero.title")}</h1>
         <section className="card crew-fit-panel">
           <div className="search-result-title">
             <div>
@@ -745,114 +747,8 @@ export function CrewLiveDashboard() {
         </section>
       ) : null}
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{matches.length}</h2>
-          <p>{i18n.t("crew_live.metric.matched_jobs")}</p>
-        </article>
-        <article className="card">
-          <h2>{acceptedMatches.length}</h2>
-          <p>{i18n.t("crew_live.metric.accepted_jobs")}</p>
-        </article>
-        <article className="card">
-          <h2>{crewMember?.cancellationCount ?? 0}</h2>
-          <p>{i18n.t("crew_live.metric.calloffs")}</p>
-        </article>
-      </section>
-
-      <section className="card">
-        <div className="search-result-title">
-          <div>
-            <h2>{crewMember?.fullName}</h2>
-            <p>{i18n.t("crew_live.profile_help")}</p>
-          </div>
-        </div>
-        <div className="chip-row">
-          {skillOptions.map((skill) => {
-            const active = crewMember?.categories.includes(skill);
-            return (
-              <button
-                className={active ? "button" : "button-secondary"}
-                disabled={isWorking || !crewMember}
-                key={skill}
-                onClick={() =>
-                  void handleSavePreferences({
-                    categories: active
-                      ? crewMember!.categories.filter((category) => category !== skill)
-                      : [...(crewMember?.categories ?? []), skill]
-                  })
-                }
-                type="button"
-              >
-                {formatCategory(i18n, skill)}
-              </button>
-            );
-          })}
-        </div>
-        <div className="chip-row">
-          {allDays.map((day) => {
-            const active = crewMember?.availableWeekdays?.includes(day);
-            return (
-              <button
-                className={active ? "button" : "button-secondary"}
-                disabled={isWorking || !crewMember}
-                key={day}
-                onClick={() =>
-                  void handleSavePreferences({
-                    availableWeekdays: active
-                      ? (crewMember?.availableWeekdays ?? []).filter((item) => item !== day)
-                      : [...(crewMember?.availableWeekdays ?? []), day]
-                  })
-                }
-                type="button"
-              >
-                {formatDay(i18n, day)}
-              </button>
-            );
-          })}
-        </div>
-        <div className="cta-row">
-          <button
-            className="button-secondary"
-            disabled={isWorking || !crewMember}
-            onClick={() =>
-              void handleSavePreferences({
-                willingToTravelMiles: Math.max(5, (crewMember?.willingToTravelMiles ?? 20) - 5)
-              })
-            }
-            type="button"
-          >
-            {i18n.t("crew_signup.minus_miles")}
-          </button>
-          <span>{i18n.t("crew_live.travel_miles", { distance: crewMember?.willingToTravelMiles ?? 0 })}</span>
-          <button
-            className="button-secondary"
-            disabled={isWorking || !crewMember}
-            onClick={() =>
-              void handleSavePreferences({
-                willingToTravelMiles: Math.min(60, (crewMember?.willingToTravelMiles ?? 20) + 5)
-              })
-            }
-            type="button"
-          >
-            {i18n.t("crew_signup.plus_miles")}
-          </button>
-          <button
-            className={crewMember?.winterWorkEnabled ? "button" : "button-secondary"}
-            disabled={isWorking || !crewMember}
-            onClick={() =>
-              void handleSavePreferences({
-                winterWorkEnabled: !(crewMember?.winterWorkEnabled ?? false)
-              })
-            }
-            type="button"
-          >
-            {crewMember?.winterWorkEnabled ? i18n.t("crew_live.winter_on") : i18n.t("crew_live.winter_off")}
-          </button>
-        </div>
-        <p className="muted-copy">{i18n.t("crew_live.reliability_warning")}</p>
-      </section>
-
+      <h1>{i18n.t("workspace.jobs")}</h1>
+      <nav className="workspace-nav"><a href={i18n.locale === "es" ? "/es/crew/schedule" : "/crew/schedule"}>{i18n.t("workspace.today")}</a><a href="#crew-preferences">{i18n.t("workspace.settings")}</a></nav>
       <section className="stack-lg">
         {matches.map((match) => {
           return (
@@ -996,6 +892,116 @@ export function CrewLiveDashboard() {
           );
         })}
       </section>
+      <WorkspaceSection id="crew-preferences" title={i18n.t("workspace.settings")}>
+      <section className="grid-three">
+        <article className="card">
+          <h2>{matches.length}</h2>
+          <p>{i18n.t("crew_live.metric.matched_jobs")}</p>
+        </article>
+        <article className="card">
+          <h2>{acceptedMatches.length}</h2>
+          <p>{i18n.t("crew_live.metric.accepted_jobs")}</p>
+        </article>
+        <article className="card">
+          <h2>{crewMember?.cancellationCount ?? 0}</h2>
+          <p>{i18n.t("crew_live.metric.calloffs")}</p>
+        </article>
+      </section>
+
+      <section className="card">
+        <div className="search-result-title">
+          <div>
+            <h2>{crewMember?.fullName}</h2>
+            <p>{i18n.t("crew_live.profile_help")}</p>
+          </div>
+        </div>
+        <div className="chip-row">
+          {skillOptions.map((skill) => {
+            const active = crewMember?.categories.includes(skill);
+            return (
+              <button
+                className={active ? "button" : "button-secondary"}
+                disabled={isWorking || !crewMember}
+                key={skill}
+                onClick={() =>
+                  void handleSavePreferences({
+                    categories: active
+                      ? crewMember!.categories.filter((category) => category !== skill)
+                      : [...(crewMember?.categories ?? []), skill]
+                  })
+                }
+                type="button"
+              >
+                {formatCategory(i18n, skill)}
+              </button>
+            );
+          })}
+        </div>
+        <div className="chip-row">
+          {allDays.map((day) => {
+            const active = crewMember?.availableWeekdays?.includes(day);
+            return (
+              <button
+                className={active ? "button" : "button-secondary"}
+                disabled={isWorking || !crewMember}
+                key={day}
+                onClick={() =>
+                  void handleSavePreferences({
+                    availableWeekdays: active
+                      ? (crewMember?.availableWeekdays ?? []).filter((item) => item !== day)
+                      : [...(crewMember?.availableWeekdays ?? []), day]
+                  })
+                }
+                type="button"
+              >
+                {formatDay(i18n, day)}
+              </button>
+            );
+          })}
+        </div>
+        <div className="cta-row">
+          <button
+            className="button-secondary"
+            disabled={isWorking || !crewMember}
+            onClick={() =>
+              void handleSavePreferences({
+                willingToTravelMiles: Math.max(5, (crewMember?.willingToTravelMiles ?? 20) - 5)
+              })
+            }
+            type="button"
+          >
+            {i18n.t("crew_signup.minus_miles")}
+          </button>
+          <span>{i18n.t("crew_live.travel_miles", { distance: crewMember?.willingToTravelMiles ?? 0 })}</span>
+          <button
+            className="button-secondary"
+            disabled={isWorking || !crewMember}
+            onClick={() =>
+              void handleSavePreferences({
+                willingToTravelMiles: Math.min(60, (crewMember?.willingToTravelMiles ?? 20) + 5)
+              })
+            }
+            type="button"
+          >
+            {i18n.t("crew_signup.plus_miles")}
+          </button>
+          <button
+            className={crewMember?.winterWorkEnabled ? "button" : "button-secondary"}
+            disabled={isWorking || !crewMember}
+            onClick={() =>
+              void handleSavePreferences({
+                winterWorkEnabled: !(crewMember?.winterWorkEnabled ?? false)
+              })
+            }
+            type="button"
+          >
+            {crewMember?.winterWorkEnabled ? i18n.t("crew_live.winter_on") : i18n.t("crew_live.winter_off")}
+          </button>
+        </div>
+        <p className="muted-copy">{i18n.t("crew_live.reliability_warning")}</p>
+      </section>
+
+      </WorkspaceSection>
     </div>
   );
 }

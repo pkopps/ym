@@ -1,5 +1,24 @@
 # Engineer Status
 
+## Current checkpoint: analytics and launch readiness
+
+- Updated: September 19, 2026.
+- Branch: `codex/analytics-launch-readiness`; base commit `63202bc`. Implementation commit recorded in the follow-up checkpoint after committing this batch.
+- Completed: validated PostgreSQL analytics with identity correlation, bounded queues, consent/privacy signals, retention and optional PostHog delivery; web/mobile navigation and authored actions; ops funnel/segments/actions/performance/supply/economics reports; compact booking/signup and contextual help; jobs-first provider/crew and queue-first ops sections; payout readiness; scheduler/health probe; mobile version/pause controls; audited privacy intake and non-destructive photo inventory; database restore tooling.
+- Additional reliability fixes: historical crew migration predates init; fresh deployment now bootstraps init safely without changing applied migration history. CI and staging pipelines explicitly use Bash/pipefail because old `tee` pipelines reported success despite failed commands.
+- In progress: final PR/CI and CodeRabbit status verification.
+- Remaining work: real PostHog/service activation, independent missed-run monitor and delivered alert, policy-approved account/photo/vendor fulfillment, staging backup/deployment rollback, distributed mobile/device acceptance, production domain/Search Console, actual CodeRabbit review.
+- Blockers: Stripe Projects account preflight could not confirm the authenticated account; existing credentials were preserved. No real PostHog project, external monitor, or production activation was performed. Legal/retention policy and vendor access remain required for irreversible data fulfillment.
+- Changed workflows: quote proceeds directly to recommendation; signup keeps the match in a compact disclosure; Help receives selected service/area/timing; provider/crew settings and ops reports/admin use explicit sections; payout account setup is distinguished from earnings and an actual scheduled payout; users can choose optional analytics and submit privacy requests.
+- Validation: 303 API tests passed (five database-only skips), all five Postgres integration tests passed separately, all 31 browser tests passed, including an actual consenting booking reaching the API funnel and identity rotation after account expiry, three smoke/CI-pipeline tests passed, lint/typecheck and 3,844 locale keys passed, API/web builds and customer/provider/crew iOS/Android/web exports passed. Synthetic restore verified 35 tables in approximately 3.6 seconds; restored database had no schema drift and passed financial/security/analytics tests. Photo-inventory integration preserves disputed evidence and deletes nothing.
+- Evidence correction: reviewed the September 18 Postgres artifact from CI run `35386638892`; it contains failed migrations/tests despite its green status. The prior checkpoint's green-job claim is not valid database launch evidence. The corrected remote PR artifact remains the gate.
+- Known limits: server analytics writes can be lost before asynchronous flush during a process crash; client queues are intentionally bounded. Reports warn on low samples and the 50,000-event cap. Consent means observed journeys are a subset of traffic. Mobile version enforcement cannot identify older unmarked builds. Privacy intake does not claim completed erasure/export. Real vendor ingestion, alerts, payment acceptance, store builds and production rollback remain unverified.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/product-analytics-{desktop,mobile}.png`, `payout-empty-readiness-{desktop,mobile}.png`, `customer-booking-requested-{desktop,mobile}.png`, `customer-booking-spanish-mobile.png`, `ops-workspace-{desktop,mobile}.png`, provider/crew lifecycle captures. Desktop/mobile analytics and payout screenshots were visually inspected at 1440×900 and 390×844; no overflow in the automated checks.
+- Validation logs: `reports/agent-checkpoints/engineer/latest/analytics-readiness/`.
+- Recommended next task: complete the account/policy activation checklist in `docs/ANALYTICS_AND_OPERATIONS.md`, starting with actual CodeRabbit review and independent monitoring/PostHog verification.
+
+## Historical checkpoints (preserved)
+
 ## Current checkpoint: cross-task main consolidation
 
 - Updated: September 18, 2026.

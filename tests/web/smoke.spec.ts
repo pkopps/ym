@@ -111,6 +111,15 @@ test.describe("YardMatch web smoke", () => {
   });
 
   test("Barnegat launch proof stays local and provider pricing is disclosed before signup", async ({ page }) => {
+    // Keep this empty-local-supply case independent of providers created by other workflow tests.
+    await page.route("**/api/providers/public-overview", async route => {
+      const response = await route.fetch();
+      const data = await response.json();
+      for (const key of ["featuredProviders", "topRatedProviders", "mostOnTimeProviders", "highlightedReviews", "coverageAreas", "beforeAfterProjects"]) {
+        data[key] = data[key].filter((item: {city?: string}) => item.city?.toLowerCase() !== "barnegat");
+      }
+      await route.fulfill({response, json: data});
+    });
     await page.goto("/barnegat-nj");
 
     await expect(page.getByText("Barnegat, NJ", { exact: true }).first()).toBeVisible();
@@ -160,6 +169,7 @@ test.describe("YardMatch web smoke", () => {
     await expect(page).toHaveURL(/\/ops$/);
     await expect(page.getByRole("heading", { name: "Bookings, activity, and support." })).toBeVisible();
     await expect(page.getByText("Live from the authenticated API.")).toBeVisible();
+    await page.locator('.workspace-nav a[href="#ops-reports"]').click();
     await expect(page.getByText("Total bookings recorded")).toBeVisible();
   });
 

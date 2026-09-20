@@ -97,7 +97,7 @@ export function applyCorsHeaders(
   }
 
   response.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-YardMatch-Locale");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-YardMatch-Locale, X-YardMatch-App, X-YardMatch-App-Version, X-YardMatch-Analytics");
   response.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
   response.setHeader("Access-Control-Max-Age", "600");
 }

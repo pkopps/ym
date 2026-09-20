@@ -614,3 +614,10 @@ npm run dev:crew-mobile
 Recovery secrets are private in deployed environments; reset attempts and OAuth state consumption use durable security state. Booking writes validate ownership, signed server quotes, provider eligibility and future time windows. Web and customer-mobile booking requests carry the quote token. Initial recurring plans and bookings persist together. Calendar imports preserve other subscriptions, validate outbound destinations and expand timezone-aware recurrence. Checkout retries retain payment attempts, and refunds remain terminal.
 
 Generate Prisma and apply `20260909010000_security_states` before releasing this API version. See the [repair completion report](reports/code-audit/2026-09-09/completion.md) for verification, operating limits, and the separate pre-existing empty-database migration-order blocker.
+
+
+## Product analytics and launch operations
+
+Optional web/mobile usage analytics now has validated collection, PostgreSQL persistence, bounded retries, retention, account linking, and a permission-gated PostHog exporter. Ops → Reports shows journeys, clicks/destinations, performance, supply activation, and settlement economics. Ops workspaces now open on action queues; provider/crew workspaces put jobs ahead of advanced settings. Customer quotes proceed directly to a revalidated recommendation.
+
+See [analytics and operations](docs/ANALYTICS_AND_OPERATIONS.md) for setup, monitoring, mobile release controls, privacy intake, database restore rehearsal, and the remaining external activation gates. The first-party store works locally; live PostHog, independent alerts, vendor acceptance, and irreversible privacy fulfillment still require account/policy setup.

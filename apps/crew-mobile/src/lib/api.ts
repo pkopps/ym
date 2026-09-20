@@ -1,3 +1,4 @@
+import { MobileAnalyticsTracker } from "@yardmatch/observability";
 import { MarketplaceApiClient } from "@yardmatch/contracts";
 import { getCrewMobileLocale } from "./i18n";
 
@@ -16,6 +17,8 @@ export function getCrewMobileApiBaseUrl() {
 
 export function createCrewMobileApiClient() {
   const api = new MarketplaceApiClient(getCrewMobileApiBaseUrl());
+  api.setAnalyticsContext(() => MobileAnalyticsTracker.context("crew-member"));
+  api.setMobileClient("crew", "0.1.0");
   api.setLocale(getCrewMobileLocale());
   return api;
 }

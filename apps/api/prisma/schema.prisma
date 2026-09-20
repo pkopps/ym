@@ -736,3 +736,35 @@ model PushDevice {
   @@index([userId, role, isActive])
   @@map("push_devices")
 }
+
+model ProductAnalyticsEvent {
+  id          String   @id
+  name        String
+  actorId     String?
+  occurredAt  DateTime
+  receivedAt  DateTime @default(now())
+  environment String
+  source      String
+  properties  Json
+  exportedAt  DateTime?
+  attempts    Int      @default(0)
+  nextAttemptAt DateTime @default(now())
+
+  @@index([environment, occurredAt])
+  @@index([actorId, occurredAt])
+  @@index([exportedAt, nextAttemptAt])
+}
+
+model PrivacyRequest {
+  id            String   @id
+  userId        String
+  kind          String
+  status        String   @default("requested")
+  requestedAt   DateTime @default(now())
+  updatedAt     DateTime @default(now())
+  reviewedBy    String?
+  reviewNotes   String?
+  audit         Json     @default("[]")
+  @@index([status, requestedAt])
+  @@index([userId, requestedAt])
+}

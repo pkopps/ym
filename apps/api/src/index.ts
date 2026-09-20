@@ -1,6 +1,11 @@
+import { getOptionalAuthenticatedIdentity } from "./controller-auth";
+import { analyticsRequestContext, parseAnalyticsContext } from "./observability/analyticsContext";
+import { PrivacyController } from "./controllers/PrivacyController";
+import { ReadinessController } from "./controllers/ReadinessController";
+import { enforceMobileRelease } from "./observability/mobileReleasePolicy";
 import { createServer } from "node:http";
 import { PrismaClient } from "@prisma/client";
-import { DataEngineeringLogger } from "@yardmatch/analytics";
+import { ProductAnalytics } from "./observability/ProductAnalytics";
 import { AuthController } from "./controllers/AuthController";
 import { DocsController } from "./controllers/DocsController";
 import { MarketplaceController } from "./controllers/MarketplaceController";
@@ -33,7 +38,12 @@ const repository = runtimeConfiguration.repositoryMode === "prisma-postgres"
   : new InMemoryMarketplaceRepository();
 const port = Number(process.env.PORT ?? 4001);
 const repositoryMode = runtimeConfiguration.repositoryMode;
-const analytics = new DataEngineeringLogger();
+const analytics = new ProductAnalytics(prismaClient);
+await analytics.restore();
+const analyticsMaintenance = setInterval(() => {
+  void analytics.maintenance().catch(() => console.error("Analytics maintenance failed; inspect collection health."));
+}, 30_000);
+analyticsMaintenance.unref();
 const apiRuntimeObservability = createApiRuntimeObservabilityFromEnv();
 const platform = new MarketplacePlatformService(repository, analytics);
 const controllers: ApiController[] = [
@@ -43,11 +53,13 @@ const controllers: ApiController[] = [
     }
   }),
   new DocsController(),
+  new ReadinessController(platform, analytics, prismaClient),
+  new PrivacyController(platform, prismaClient),
   new AuthController(platform),
   new MediaController(platform),
   new MarketplaceController(platform),
-  new ObservabilityController(platform, apiRuntimeObservability),
-  new SupportController(platform)
+  new ObservabilityController(platform, apiRuntimeObservability, analytics),
+  new SupportController(platform, analytics)
 ];
 
 const server = createServer(async (request, response) => {
@@ -70,6 +82,7 @@ const server = createServer(async (request, response) => {
 
     const parsedContext = await parseRequest(request, runtimeConfiguration.maxRequestBodyBytes);
     context = parsedContext;
+    enforceMobileRelease(parsedContext);
     const controller = controllers.find((item) => item.canHandle(parsedContext));
 
     if (!controller) {
@@ -79,7 +92,10 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    await controller.handle(parsedContext, response);
+    const analyticsActor = await getOptionalAuthenticatedIdentity(parsedContext, platform);
+    await analyticsRequestContext.run({...parseAnalyticsContext(parsedContext.headers["x-yardmatch-analytics"]), role: analyticsActor?.role ?? "anonymous",
+      internal: analyticsActor?.role === "ops" || (process.env.ANALYTICS_EXCLUDED_USER_IDS ?? "").split(",").includes(analyticsActor?.userId ?? "__anonymous__")},
+      () => controller.handle(parsedContext, response));
   } catch (error) {
     if (error instanceof HttpError) {
       errorType = error.name || "HttpError";
@@ -181,6 +197,8 @@ async function shutDown(reason: string): Promise<void> {
       console.error("YardMatch API shutdown failed", error);
       process.exitCode = 1;
     }
+    clearInterval(analyticsMaintenance);
+    await analytics.flush().catch(() => { process.exitCode = 1; });
     await prismaClient?.$disconnect();
     await flushApiErrorReporting();
   });

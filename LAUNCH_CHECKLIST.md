@@ -27,7 +27,7 @@ The repository now requests the approved Accounts v2 recipient configuration, re
 
 The CI workflow creates a 90-day PostgreSQL launch-gate artifact containing migration deployment, migration status, schema-drift, and repository-test logs. The CI checkbox stays open until a passing remote run is archived and reviewed. Production startup is covered at the validator and real API process boundary, including rejection of non-PostgreSQL storage and malformed vendor configuration before the server listens.
 
-Last updated: August 9, 2026
+Last updated: September 19, 2026
 
 This is the working checklist for launch readiness beyond product code.
 
@@ -422,3 +422,20 @@ The remaining launch steps now require business, legal, vendor, or production ow
 5. Select and configure production media storage/CDN, malware scanning, moderation, retention, and deletion controls for property and proof-of-work photos.
 6. Activate the production email, SMS, push, direct-inbox, Google Business Profile, referral, review-response, and recurring scheduler integrations.
 7. Rehearse the launch operations playbook with named owners before turning on traffic.
+
+
+## Analytics, continuity, and recovery checkpoint
+
+- [x] Optional web navigation/actions, mobile screen/actions, privacy controls, validated ingestion and persisted analytics with bounded retries.
+- [x] Ops funnel/segments/clicks/performance/supply/economics reports with sample-size and collection-health context.
+- [x] Context-preserving booking/signup and no-coverage inquiries; jobs-first workspaces and honest payout setup status.
+- [x] Authenticated scheduler, read-only missed-run health probe, mobile version/pause controls, and reversible local configuration.
+- [x] Synthetic local backup/restore rehearsal: 35 tables verified, no schema drift, and financial/security/analytics integration tests passed on the restore.
+- [x] Authenticated privacy intake and append-only review audit; count-only photo review inventory holds disputed bookings and never deletes data.
+- [ ] Activate PostHog and verify real event delivery and account linking.
+- [ ] Configure an independent scheduler monitor and archive a delivered test alert.
+- [ ] Approve data/photo retention and implement verified account/vendor erasure and secure export fulfillment.
+- [ ] Rehearse production-like backup recovery, coordinated deployment rollback, and supported-version recovery on distributed mobile builds.
+- [ ] Confirm an actual CodeRabbit review of the latest main-bound PR commit.
+
+Evidence correction: the September 18 CI run's Postgres artifact contains migration and test failures despite a green job badge; logging pipelines masked their exit codes. The September 19 implementation fixes empty-database bootstrap and enables explicit Bash/pipefail in CI and staging verification. The remote database gate remains open until the corrected run and artifact pass review.

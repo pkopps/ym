@@ -1,3 +1,4 @@
+import { AnalyticsPreferences } from "../providers/ObservabilityProvider";
 import { useEffect, useState } from "react";
 import { StyleSheet, Switch, Text, View, Pressable, TextInput } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
@@ -473,6 +474,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       title={i18n.t("mobile.support.title")}
       description={i18n.t("mobile.support.description")}
     >
+      <AnalyticsPreferences />
       {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 

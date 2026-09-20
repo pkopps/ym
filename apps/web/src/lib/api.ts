@@ -1,3 +1,4 @@
+import { analyticsAllowed, analyticsIdentity } from "./productAnalytics";
 import type { AuthDeviceDescriptor, OpsInternalScope } from "@yardmatch/contracts";
 import { MarketplaceApiClient } from "@yardmatch/contracts";
 import { resolveLocale, SupportedLocale } from "@yardmatch/i18n";
@@ -61,6 +62,9 @@ function resolveWebClientLocale(explicitLocale?: SupportedLocale): SupportedLoca
 export function createWebApiClient(locale?: SupportedLocale): MarketplaceApiClient {
   const api = new MarketplaceApiClient(getWebApiBaseUrl());
   api.setLocale(resolveWebClientLocale(locale));
+  api.setAnalyticsContext(() => {
+    try { return typeof window !== "undefined" && analyticsAllowed() ? {...analyticsIdentity(), consent: true} : undefined; } catch { return undefined; }
+  });
   return api;
 }
 

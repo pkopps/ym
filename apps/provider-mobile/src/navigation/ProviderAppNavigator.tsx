@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { MobileAnalyticsTracker } from "@yardmatch/observability";
+import { getProviderMobileTracker } from "../lib/tracking";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
@@ -26,6 +28,11 @@ export function ProviderAppNavigator({ languageSettings }: { languageSettings: L
   const i18n = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
 
+  useEffect(() => {
+    MobileAnalyticsTracker.screen("provider", activeTab);
+    void getProviderMobileTracker().track("screen_viewed", {screen: activeTab});
+  }, [activeTab]);
+
   const screen = {
     dashboard: (
       <DashboardScreen
@@ -48,7 +55,7 @@ export function ProviderAppNavigator({ languageSettings }: { languageSettings: L
             <Pressable
               accessibilityRole="button"
               key={tab.key}
-              onPress={() => setActiveTab(tab.key)}
+              onPress={() => { void getProviderMobileTracker().track("action_clicked", {action: `nav-${tab.key}`}); setActiveTab(tab.key); }}
               style={[styles.navButton, isActive && styles.navButtonActive]}
             >
               <Feather

@@ -1887,6 +1887,8 @@ export class MarketplacePlatformService {
       dateIso: payload.dateIso,
       categoryCount: payload.categories.length,
       city: normalizedAddress.city,
+      area: normalizedAddress.city,
+      category: payload.categories[0],
       requestSource: payload.requestSource ?? "unknown",
       ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
       ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -1976,6 +1978,8 @@ export class MarketplacePlatformService {
         providerCount: matchingProviders.length,
         slotCount: suggestedSlots.length,
         city: normalizedAddress.city,
+        area: normalizedAddress.city,
+        category: payload.categories[0],
         requestSource: payload.requestSource ?? "unknown",
         ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
         ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -1992,6 +1996,8 @@ export class MarketplacePlatformService {
           providerCount: 0,
           slotCount: 0,
           city: normalizedAddress.city,
+          area: normalizedAddress.city,
+          category: payload.categories[0],
           requestSource: payload.requestSource ?? "unknown",
           ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -2007,6 +2013,8 @@ export class MarketplacePlatformService {
           providerCount: matchingProviders.length,
           slotCount: 0,
           city: normalizedAddress.city,
+          area: normalizedAddress.city,
+          category: payload.categories[0],
           requestSource: payload.requestSource ?? "unknown",
           ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
@@ -2024,6 +2032,8 @@ export class MarketplacePlatformService {
           recommendedProviderId,
           providerCount: matchingProviders.length,
           city: normalizedAddress.city,
+          area: normalizedAddress.city,
+          category: payload.categories[0],
           hasOpenSlot: Boolean(rankedProviders[0]?.hasOpenSlot),
           requestSource: payload.requestSource ?? "unknown",
           ...this.buildSearchRetentionAnalyticsProperties(effectiveRetentionPreference),
@@ -7430,6 +7440,7 @@ export class MarketplacePlatformService {
 
     if (!options?.skipRequestedFunnelEvent) {
       this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.bookingRequested, customerId, {
+        bookingId: result.id,
         providerId: payload.providerId,
         totalCents: payload.totalCents,
         category: payload.category,

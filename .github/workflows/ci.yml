@@ -6,6 +6,11 @@ on:
     branches:
       - main
 
+# Explicit bash enables pipefail so archived logs cannot hide failed checks.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   checks:
     name: Lint, typecheck, and API tests
@@ -47,7 +52,7 @@ jobs:
 
       - name: API smoke and process cleanup
         timeout-minutes: 3
-        run: node --test scripts/api-smoke.test.mjs
+        run: node --test scripts/api-smoke.test.mjs scripts/ci-pipelines.test.mjs
 
   postgres-integration:
     name: Postgres migrations and repository integration

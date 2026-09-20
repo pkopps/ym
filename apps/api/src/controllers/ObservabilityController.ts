@@ -6,21 +6,26 @@ import {
   SessionHeartbeatRequest,
   UpdateLaunchOperationsTaskRequest
 } from "@yardmatch/contracts";
-import { requireOpsAccess } from "../controller-auth";
-import { ApiController, RequestContext, sendJson } from "../http";
+import { getOptionalAuthenticatedIdentity, requireOpsAccess } from "../controller-auth";
+import { ApiController, HttpError, RequestContext, sendJson } from "../http";
 import { MarketplacePlatformService } from "../services/MarketplacePlatformService";
 import { ApiRuntimeObservability } from "../observability/ApiRuntimeObservability";
 
+import { ProductAnalytics, AnalyticsRateLimit } from "../observability/ProductAnalytics";
+
 export class ObservabilityController implements ApiController {
+  private readonly heartbeatLimit = new AnalyticsRateLimit();
   public constructor(
     private readonly platform: MarketplacePlatformService,
-    private readonly apiRuntimeObservability?: Pick<ApiRuntimeObservability, "getSnapshot">
+    private readonly apiRuntimeObservability?: Pick<ApiRuntimeObservability, "getSnapshot">,
+    private readonly analytics?: ProductAnalytics
   ) {}
 
   public canHandle(context: RequestContext): boolean {
     return (
       (context.method === "POST" && context.path === "/api/observability/session-heartbeat") ||
       (context.method === "GET" && context.path === "/api/observability/overview") ||
+      (context.method === "GET" && context.path === "/api/observability/product-analytics") ||
       (context.method === "GET" && context.path === "/api/observability/launch-operations/tasks") ||
       (context.method === "POST" && context.path === "/api/observability/launch-operations/tasks") ||
       (context.method === "POST" && context.path === "/api/observability/launch-operations/tasks/update") ||
@@ -34,6 +39,11 @@ export class ObservabilityController implements ApiController {
   }
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
+    if (context.path === "/api/observability/product-analytics") {
+      await requireOpsAccess(context, this.platform);
+      sendJson(response, 200, await this.analytics?.report(Number(context.query.get("days")) || 30));
+      return;
+    }
     if (context.path === "/api/observability/overview") {
       await requireOpsAccess(context, this.platform);
       const overview = await this.platform.getObservabilityOverview();
@@ -130,10 +140,15 @@ export class ObservabilityController implements ApiController {
       return;
     }
 
-    sendJson(
-      response,
-      201,
-      this.platform.recordSessionHeartbeat(context.body as SessionHeartbeatRequest)
-    );
+    this.heartbeatLimit.check(context);
+    const payload = context.body as SessionHeartbeatRequest;
+    if (!payload || !/^[a-zA-Z0-9_-]{8,100}$/.test(payload.sessionId ?? "") ||
+      typeof payload.path !== "string" || payload.path.length > 160 || payload.path.includes("?") ||
+      !["web-mobile", "web-desktop", "ios-phone", "ios-tablet", "android-phone", "android-tablet"].includes(payload.platform)) {
+      throw new HttpError(400, "Invalid presence heartbeat");
+    }
+    const identity = await getOptionalAuthenticatedIdentity(context, this.platform);
+    sendJson(response, 201, this.platform.recordSessionHeartbeat({...payload,
+      actorId: identity?.userId, role: identity?.role, occurredAt: new Date().toISOString()}));
   }
 }

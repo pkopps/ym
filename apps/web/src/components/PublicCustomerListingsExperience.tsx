@@ -739,8 +739,8 @@ export function PublicCustomerListingsExperience({
                   {i18n.t("customer.listings.empty.try_area", { area: launchAreaLabel })}
                 </button>
               ) : null}
-              <a className="button-secondary" href={addLocalePrefix("/help?issueType=general&subject=Need service in my area", i18n.locale)}>
-                {i18n.t("customer.listings.empty.no_businesses.cta")}
+              <a className="button-secondary" href={addLocalePrefix(`/help?${new URLSearchParams({service: selectedService, area: selectedSuggestion?.label ?? "", timing: selectedTiming, source: "coverage-inquiry"}).toString()}#contact-us`, i18n.locale)}>
+                {i18n.t("journey.coverage")}
               </a>
             </div>
           </article>

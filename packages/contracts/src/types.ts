@@ -4344,3 +4344,29 @@ export interface ObservabilityOverview {
   recentEvents: AnalyticsEvent[];
   apiRuntime?: ApiRuntimeObservabilitySnapshot;
 }
+
+export interface ProductAnalyticsReport {
+  actions: Record<string, number>;
+  performance: Record<string, {samples: number; p75: number}>;
+  supply?: {registered: number; verified: number; withAvailability: number; withFirstBooking: number; withCompletedJob: number};
+  since: string;
+  environment: string;
+  durable: boolean;
+  events: number;
+  truncated: boolean;
+  lowSample: boolean;
+  counts: Record<string, {events: number; people: number}>;
+  segments: Record<string, Record<string, number>>;
+  funnel: {
+    steps: Array<{name: string; people: number; previousStepPeople: number; conversionRate: number | null}>;
+    segments: Record<string, {visitors: number; requested: number; completed: number}>;
+    reasons: Record<string, number>;
+    returningCustomers: number;
+    lowSample: boolean;
+  };
+  economics: Array<{status: string; _count: {_all: number}; _sum: {
+    customerChargeCents: number | null; actualProcessorFeeCents: number | null;
+    platformNetRevenueCents: number | null; providerNetCents: number | null;
+  }}>;
+  health: {pendingWrites: number; dropped: number; lastFailureAt?: string; exportConfigured: boolean; exportBacklog: number; lastEventAt?: string};
+}

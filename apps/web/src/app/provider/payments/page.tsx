@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { addLocalePrefix } from "@yardmatch/i18n";
 import { ProviderPaymentsBoard } from "../../../components/ProviderPaymentsBoard";
 import { getLocalizedPageMetadata, getRequestI18n } from "../../../lib/i18n-server";
 
@@ -23,14 +22,7 @@ export default async function ProviderPaymentsPage() {
             <h1>{i18n.t("provider_payments.hero.title")}</h1>
             <p>{i18n.t("provider_payments.hero.body")}</p>
           </div>
-          <div className="cta-row">
-            <a className="button" href={addLocalePrefix("/provider/management", i18n.locale)}>
-              {i18n.t("provider_payments.open_management")}
-            </a>
-            <a className="button-secondary" href={addLocalePrefix("/provider", i18n.locale)}>
-              {i18n.t("provider_management.back")}
-            </a>
-          </div>
+
         </div>
       </section>
 

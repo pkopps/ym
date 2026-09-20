@@ -190,3 +190,12 @@ Transfers use the original Stripe charge as `source_transaction`. Refund and dis
 ## Smoke-Test Notes
 
 The launch default remains Barnegat, NJ, but local smoke tests use Brooklyn, NY because the in-memory provider dataset has verified providers there with available route windows. That keeps smoke tests deterministic without requiring production seed data.
+
+
+## September analytics and operations batch
+
+See [the implementation/runbook](docs/ANALYTICS_AND_OPERATIONS.md). Run `npm run prisma:generate` and `npm run prisma:deploy` before starting a PostgreSQL API. The deployment command safely bootstraps init on a new empty database because one historical crew migration predates it; existing migration history is preserved. Do not reset an existing database to work around this ordering issue.
+
+Enable usage analytics from the footer or mobile Help to exercise optional events. Web privacy signals take precedence. Sign in as ops and open Reports for the new dashboard or Administration for scheduler/credential/privacy review. `npm run test:api:postgres` now includes analytics durability/export retry and photo-review safety in addition to financial/security integration tests.
+
+The September 18 Postgres CI job appeared green because `tee` masked command failures. Its archived logs contain migration errors and failed tests. It is not a passed launch gate. Explicit Bash/pipefail now protects CI and staging log pipelines; use the new PR's actual artifact, not the old green badge.

@@ -9,7 +9,6 @@ import {
 import { I18nInstance } from "@yardmatch/i18n";
 import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
-import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { SkeletonCard } from "../components/SkeletonCard";
@@ -595,7 +594,7 @@ export function DashboardScreen({
           </Text>
           <Pressable
             onPress={() => {
-              void tracker.track(MarketplaceTelemetryEventCatalog.providerSearchPerformed, {
+              void tracker.track("action_clicked", {
                 app: "provider",
                 action: "find-crew-members",
                 crewGap: totalCrewGap

@@ -1,3 +1,5 @@
+import { serviceCategoryLabelKeys } from "@yardmatch/i18n/service-labels";
+import type { ServiceCategory } from "@yardmatch/contracts";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { addLocalePrefix } from "@yardmatch/i18n";
@@ -15,7 +17,11 @@ export function generateMetadata(): Promise<Metadata> {
   });
 }
 
-export default async function HelpPage() {
+export default async function HelpPage({searchParams}: {searchParams: Promise<Record<string, string | string[] | undefined>>}) {
+  const params = await searchParams;
+  const area = typeof params.area === "string" ? params.area.slice(0,120) : "Barnegat, NJ";
+  const service = typeof params.service === "string" && Object.hasOwn(serviceCategoryLabelKeys, params.service) ? params.service as ServiceCategory : undefined;
+  const timing = typeof params.timing === "string" ? params.timing.slice(0,100).replaceAll("-", " ") : "";
   const i18n = await getRequestI18n();
   const collections = Object.values(helpCollections);
   const helpPolicyPages = trustPolicyPages.filter((page) => page.surfaces.includes("help"));
@@ -27,18 +33,23 @@ export default async function HelpPage() {
         <p>{i18n.t("help.hero.body")}</p>
       </section>
 
+      <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
+        <a href="#booking-help">{i18n.t("journey.existing_booking")}</a>
+        <a href="#contact-us">{i18n.t("journey.before_booking")}</a>
+        <a href={addLocalePrefix("/account/security", i18n.locale)}>{i18n.t("journey.account_help")}</a>
+      </nav>
+      <section id="booking-help"><HelpSupportTicketPanel /></section>
       <section id="contact-us">
         <LaunchLeadCaptureCard
-          defaultAreaLabel="Barnegat, NJ"
+          defaultAreaLabel={area}
+          defaultServiceCategory={service}
+          defaultMessage={timing ? `${i18n.t("customer_live.label.when")}: ${timing}` : undefined}
           description={i18n.t("help.contact.body")}
           requestSource="help-contact-email-form"
           title={i18n.t("help.contact.title")}
         />
       </section>
 
-      <section>
-        <HelpSupportTicketPanel />
-      </section>
 
       <section className="card">
         <div className="page-hero" style={{ paddingBottom: "1.5rem" }}>

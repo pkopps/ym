@@ -19,7 +19,6 @@ import {
   PropertyPhotoArea,
   ReviewScore
 } from "@yardmatch/contracts";
-import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
@@ -348,7 +347,7 @@ export function BookingsScreen({
         attentionToDetailRating: showReviewDetails ? detailRating : overallRating,
         reviewText: reviewText.trim()
       });
-      void tracker.track(MarketplaceTelemetryEventCatalog.providerReviewSubmitted, {
+      void tracker.track("action_clicked", {action: "providerReviewSubmitted",
         app: "customer",
         bookingId: readyOpportunity.bookingId,
         overallRating,
