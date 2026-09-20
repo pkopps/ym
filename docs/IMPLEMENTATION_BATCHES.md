@@ -14,7 +14,7 @@ Authorized September 19, 2026: implement the full recommended analytics, custome
 - [x] Minimum supported mobile versions and recoverable release controls; physical-device/store rollout remains external.
 - [x] Local backup/restore rehearsal, audited privacy intake, and photo review inventory. Irreversible erasure/vendor fulfillment remains policy-gated.
 - [x] Reconciled roadmap/checklist and documented superseded UX observations; CodeRabbit configuration exists, but actual activation/review remains unverified.
-- [x] Local regression suites, browser checks at 1440x900 and 390x844, production builds, and all three mobile exports. Remote CI and actual CodeRabbit review are tracked in the PR.
+- [x] Local regression suites, browser checks at 1440x900 and 390x844, production builds, and all three mobile exports. All six [remote CI jobs passed](https://github.com/pkopps/ym/actions/runs/35480194207) on `2514cf8`; actual CodeRabbit review is still unverified.
 
 ## External activation dependencies
 

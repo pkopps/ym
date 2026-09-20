@@ -140,7 +140,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
   - `NOTIFICATION_ALERT_EMAILS` as a comma-separated list
   - `NOTIFICATION_ALERT_SMS_NUMBERS` as a comma-separated list
 - Prisma/Postgres scaffolding is in place under [`apps/api/prisma`](</Users/patrickkopps/Documents/app/apps/api/prisma>).
-- The committed migration chain now includes launch leads, internal authentication/access audit state, public review-response fields, versioned booking settlements, and balanced financial ledger constraints. After `npm run prisma:migrate`, verify local schema parity with Prisma migrate diff and run the repository gate with `TEST_DATABASE_URL=... npm run test:api`.
+- The committed migration chain now includes launch leads, internal authentication/access audit state, public review-response fields, versioned booking settlements, and balanced financial ledger constraints. After `npm run prisma:deploy`, verify local schema parity with Prisma migrate diff and run the repository gate with `TEST_DATABASE_URL=... npm run test:api`.
 - CI applies the complete migration chain to an isolated PostgreSQL 16 database, verifies migration status, rejects schema drift that is not represented by a migration, runs the repository integration suite, and retains the resulting logs for 90 days as a `postgres-launch-gate-<commit>` artifact.
 - If `DATABASE_URL` is present, the API selects the Prisma-backed repository at runtime.
 - If `DATABASE_URL` is absent, the monolith falls back to the in-memory repository so frontend work can still run locally without a database.
@@ -243,7 +243,7 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 
 ```bash
 npm run prisma:generate
-npm run prisma:migrate
+npm run prisma:deploy
 npm run prisma:seed
 ```
 

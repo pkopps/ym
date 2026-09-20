@@ -42,7 +42,7 @@ For Postgres-backed development, set `DATABASE_URL`, then run:
 
 ```bash
 npm run prisma:generate
-npm run prisma:migrate
+npm run prisma:deploy
 npm run prisma:seed
 ```
 
