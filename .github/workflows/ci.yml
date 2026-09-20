@@ -88,6 +88,9 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Build workspace dependencies for integration tests
+        run: npm run typecheck
+
       - name: Prepare archived verification evidence
         run: mkdir -p reports/ci/postgres-integration
 

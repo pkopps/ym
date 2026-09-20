@@ -3,10 +3,10 @@
 ## Current checkpoint: analytics and launch readiness
 
 - Updated: September 19, 2026.
-- Branch: `codex/analytics-launch-readiness`; base commit `63202bc`. Implementation commit recorded in the follow-up checkpoint after committing this batch.
+- Branch: `codex/analytics-launch-readiness`; verified implementation commit `b6df8b3`; the current follow-up adds the clean-checkout dependency build for PostgreSQL CI.
 - Completed: validated PostgreSQL analytics with identity correlation, bounded queues, consent/privacy signals, retention and optional PostHog delivery; web/mobile navigation and authored actions; ops funnel/segments/actions/performance/supply/economics reports; compact booking/signup and contextual help; jobs-first provider/crew and queue-first ops sections; payout readiness; scheduler/health probe; mobile version/pause controls; audited privacy intake and non-destructive photo inventory; database restore tooling.
 - Additional reliability fixes: historical crew migration predates init; fresh deployment now bootstraps init safely without changing applied migration history. CI and staging pipelines explicitly use Bash/pipefail because old `tee` pipelines reported success despite failed commands.
-- In progress: final PR/CI and CodeRabbit status verification.
+- In progress: remote verification on [PR #4](https://github.com/pkopps/ym/pull/4); verify actual CodeRabbit review rather than configuration alone.
 - Remaining work: real PostHog/service activation, independent missed-run monitor and delivered alert, policy-approved account/photo/vendor fulfillment, staging backup/deployment rollback, distributed mobile/device acceptance, production domain/Search Console, actual CodeRabbit review.
 - Blockers: Stripe Projects account preflight could not confirm the authenticated account; existing credentials were preserved. No real PostHog project, external monitor, or production activation was performed. Legal/retention policy and vendor access remain required for irreversible data fulfillment.
 - Changed workflows: quote proceeds directly to recommendation; signup keeps the match in a compact disclosure; Help receives selected service/area/timing; provider/crew settings and ops reports/admin use explicit sections; payout account setup is distinguished from earnings and an actual scheduled payout; users can choose optional analytics and submit privacy requests.
