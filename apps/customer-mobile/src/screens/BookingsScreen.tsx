@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppState, Image, Linking, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { BrandTokens } from "@yardmatch/branding";
 import {
@@ -20,6 +20,7 @@ import {
   ReviewScore
 } from "@yardmatch/contracts";
 import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
+import { BookingScheduleCard } from "../components/BookingScheduleCard";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { SkeletonCard } from "../components/SkeletonCard";
@@ -133,8 +134,9 @@ function canOpenDisputeForBooking(booking: Booking) {
 }
 
 export function BookingsScreen({
-  onOpenAccount
+  onOpenAccount, focusedBookingId
 }: {
+  focusedBookingId?: string;
   onOpenAccount?: () => void;
 }) {
   const i18n = useI18n();
@@ -180,8 +182,8 @@ export function BookingsScreen({
             (booking.status === "disputed" &&
               new Date(booking.scheduledStartIso).getTime() >= Date.now())
         )
-        .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso)),
-    [bookings]
+        .sort((left, right) => Number(right.id === focusedBookingId) - Number(left.id === focusedBookingId) || left.scheduledStartIso.localeCompare(right.scheduledStartIso)),
+    [bookings, focusedBookingId]
   );
 
   const pastBookings = useMemo(
@@ -262,6 +264,26 @@ export function BookingsScreen({
       setIsInitialLoading(false);
     }
   }
+
+  useEffect(() => {
+    const token = envelope?.session.token;
+    if (!token) return;
+    let stopped = false;
+    let fetching = false;
+    const refresh = async () => {
+      if (AppState.currentState !== "active" || fetching) return;
+      fetching = true;
+      try {
+        const api = createCustomerMobileApiClient(); api.setAuthToken(token);
+        const page = await api.getBookingsPage({ scope: "active", limit: 50 });
+        if (!stopped) setBookings(current => [...page.items, ...current.filter(item => ["completed", "cancelled", "refunded"].includes(item.status))]);
+      } catch { /* Keep the last known visit during a temporary network interruption. */ }
+      finally { fetching = false; }
+    };
+    const subscription = AppState.addEventListener("change", () => void refresh());
+    const timer = setInterval(() => void refresh(), 30000);
+    return () => { stopped = true; clearInterval(timer); subscription.remove(); };
+  }, [envelope?.session.token]);
 
   async function loadMoreHistory() {
     if (!envelope?.session.token || !historyNextCursor || isLoadingMoreHistory) {
@@ -609,6 +631,8 @@ export function BookingsScreen({
   }
 
   function getBookingStatusLabel(booking: Booking) {
+    const update = booking.scheduleUpdates?.at(-1);
+    if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather" : update.kind === "reschedule" ? "schedule.proposal" : "schedule.late");
     if (booking.status === "confirmed") {
       return i18n.t("mobile.bookings.status.confirmed");
     }
@@ -637,6 +661,8 @@ export function BookingsScreen({
   }
 
   function getBookingStatusSummary(booking: Booking) {
+    const update = booking.scheduleUpdates?.at(-1);
+    if (update && ["active", "declined"].includes(update.state)) return update.reason;
     if (booking.onRouteConfirmedAt) {
       if (activeTrackingBookingId === booking.id && tracking) {
         return i18n.t("mobile.bookings.status.tracking_chat_open", {
@@ -689,6 +715,8 @@ export function BookingsScreen({
   }
 
   function getVisitNextStep(booking: Booking, payment?: PaymentRecord): VisitNextStep {
+    const update = booking.scheduleUpdates?.at(-1);
+    if (update && ["active", "declined"].includes(update.state)) return { action: "support", label: i18n.t("schedule.help"), detail: i18n.t("schedule.next_update", { time: i18n.formatDate(update.nextUpdateByIso, { timeZone: "America/New_York", dateStyle: "short", timeStyle: "short" }) }) };
     if (booking.activeExceptionType || booking.status === "disputed") {
       return {
         action: "support",
@@ -921,6 +949,7 @@ export function BookingsScreen({
                       />
                     </View>
 
+                    <BookingScheduleCard booking={booking} token={envelope?.session.token} onUpdated={loadBookings} />
                     <VisitLifecycle booking={booking} payment={payment} paymentLabel={paymentLabel} i18n={i18n} />
 
                     <View style={styles.nextActionCard}>

@@ -621,3 +621,7 @@ Generate Prisma and apply `20260909010000_security_states` before releasing this
 Optional web/mobile usage analytics now has validated collection, PostgreSQL persistence, bounded retries, retention, account linking, and a permission-gated PostHog exporter. Ops → Reports shows journeys, clicks/destinations, performance, supply activation, and settlement economics. Ops workspaces now open on action queues; provider/crew workspaces put jobs ahead of advanced settings. Customer quotes proceed directly to a revalidated recommendation.
 
 See [analytics and operations](docs/ANALYTICS_AND_OPERATIONS.md) for setup, monitoring, mobile release controls, privacy intake, database restore rehearsal, and the remaining external activation gates. The first-party store works locally; live PostHog, independent alerts, vendor acceptance, and irreversible privacy fulfillment still require account/policy setup.
+
+## Visit delays and rescheduling
+
+Providers can report late arrivals or weather holds with a next-update deadline and propose a new service window for customer approval. Web and native booking screens expose the updates; the existing ops scheduler alerts customers, providers, and ops when an update or arrival window is overdue. See [the schedule recovery guide](docs/BOOKING_SCHEDULE_RECOVERY.md) for behavior, API routes, rollout, and limits.

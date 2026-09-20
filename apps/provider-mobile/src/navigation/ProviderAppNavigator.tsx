@@ -1,3 +1,4 @@
+import * as Notifications from "expo-notifications";
 import { MobileAnalyticsTracker } from "@yardmatch/observability";
 import { getProviderMobileTracker } from "../lib/tracking";
 import { useEffect, useState } from "react";
@@ -27,6 +28,16 @@ const tabs: Array<{ key: TabKey; labelKey: TranslationKey; icon: React.Component
 export function ProviderAppNavigator({ languageSettings }: { languageSettings: LanguageSettings }) {
   const i18n = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
+  useEffect(() => {
+    let stopped = false;
+    const openResponse = (response: Notifications.NotificationResponse | null) => {
+      const href = response?.notification.request.content.data?.actionHref;
+      if (!stopped && typeof href === "string" && href.startsWith("/provider/management")) setActiveTab("schedule");
+    };
+    const subscription = Notifications.addNotificationResponseReceivedListener(openResponse);
+    void Notifications.getLastNotificationResponseAsync().then(openResponse).catch(() => undefined);
+    return () => { stopped = true; subscription.remove(); };
+  }, []);
 
   useEffect(() => {
     MobileAnalyticsTracker.screen("provider", activeTab);

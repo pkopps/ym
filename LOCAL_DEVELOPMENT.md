@@ -199,3 +199,7 @@ See [the implementation/runbook](docs/ANALYTICS_AND_OPERATIONS.md). Run `npm run
 Enable usage analytics from the footer or mobile Help to exercise optional events. Web privacy signals take precedence. Sign in as ops and open Reports for the new dashboard or Administration for scheduler/credential/privacy review. `npm run test:api:postgres` now includes analytics durability/export retry and photo-review safety in addition to financial/security integration tests.
 
 The September 18 Postgres CI job appeared green because `tee` masked command failures. Its archived logs contain migration errors and failed tests. It is not a passed launch gate. Explicit Bash/pipefail now protects CI and staging log pipelines; use the new PR's actual artifact, not the old green badge.
+
+## Schedule recovery verification
+
+See `docs/BOOKING_SCHEDULE_RECOVERY.md`. After Prisma generation and migration, run `npm --workspace @yardmatch/api exec -- node --test --import tsx test/booking-schedule.test.ts`, `npm run test:api`, and `npm run test:web:smoke -- tests/web/booking-schedule.spec.ts`. PostgreSQL integration coverage uses `TEST_DATABASE_URL`. The normal ops runner includes schedule follow-ups; use a dry run with `sweepKeys: ["booking-schedule-follow-ups"]` to inspect due counts before live execution. Local notifications use mock vendors unless the development sender configuration is explicitly supplied.

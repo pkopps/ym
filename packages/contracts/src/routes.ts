@@ -70,6 +70,8 @@ export class ApiRoutes {
   public static readonly recurringServicePlans = "/api/bookings/recurring-plans";
   public static readonly cancelRecurringServicePlan = "/api/bookings/recurring-plans/cancel";
   public static readonly cancelBooking = "/api/bookings/cancel";
+  public static readonly updateBookingSchedule = "/api/bookings/schedule-update";
+  public static readonly respondBookingSchedule = "/api/bookings/schedule-response";
   public static readonly rescheduleBooking = "/api/bookings/reschedule";
   public static readonly confirmBooking = "/api/bookings/confirm";
   public static readonly declineBooking = "/api/bookings/decline";

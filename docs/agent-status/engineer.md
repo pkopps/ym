@@ -1,5 +1,22 @@
 # Engineer Status
 
+## Current checkpoint: weather, late arrivals, and schedule recovery
+
+- Updated: September 19, 2026 (America/New_York).
+- Branch and baseline commit: `codex/analytics-launch-readiness`, `f57ca5e`; this checkpoint accompanies the scheduling implementation commit. Existing `output/` and `tmp/` contents were preserved.
+- Completed: provider-reported weather holds, same-service-day late ETAs, explicit next-update deadlines, immutable update IDs and retained timing history, customer acceptance/decline of provider proposals, stale-response protection, provider calendar locking, crew reconfirmation, route reset, and preserved pricing/recurrence. Added web/provider/customer mobile controls, native notification navigation, foreground customer timing refresh, and operations schedule-follow-up sweeps with atomic duplicate suppression. Existing provider assistant rescheduling uses the proposal flow. External delivery uses complete messages with visit links rather than truncated previews.
+- In progress: none for this implementation checkpoint.
+- Remaining work: deploy migration/API/web/mobile, verify real staging push/email/SMS and native taps, confirm live scheduler cadence and independent monitoring; consider route-wide weather batches and owned repeated escalation after an ignored alert.
+- Blockers: no local implementation blocker. Production/staging credentials, deployment and physical-device acceptance were not part of this local verification.
+- Changed workflows: timing issues take precedence over payment in the primary customer card; providers must confirm a visit before sending delay updates; provider proposals leave the schedule unchanged until the customer accepts; decline keeps the visit open; accepting returns crew to provider review; normal customer reschedule policy remains unchanged. Weather reports do not infer a forecast or guarantee arrival.
+- Validation results: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, locale validation (3,877 keys), `npm run test:api` (316 passed; six database-dependent tests skipped), PostgreSQL integration (all six passed separately), clean isolated migration deployment, seed, and no schema drift. All 32 web smoke tests passed on the isolated preview; the schedule browser regression passed again against the final API after the transaction/delivery refinements. Customer and provider Expo exports passed for iOS, Android, and web. Final desktop and mobile screenshots were visually inspected; responsive tests assert no horizontal overflow at 1440×900 and 390×844.
+- Checks not run: real vendor delivery, physical-device/simulator acceptance, production deployment, and CodeRabbit review. The local browser and PostgreSQL checks initially hit sandbox process restrictions, then passed with approved local process access.
+- Known limits: new scheduling date/window conversion is Eastern time for launch. Morning remains 7 a.m.–noon; afternoon/evening remain four hours. Proposed windows are not reservations and acceptance can fail if capacity changes. Automatic follow-ups require the existing scheduler to run; alerts do not prove human ops has responded. Mobile exports validate bundling rather than real device delivery.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/schedule-provider-weather-{desktop,mobile}.png`, `schedule-customer-proposal-{desktop,mobile}.png`, `schedule-customer-confirmed-{desktop,mobile}.png`.
+- Validation logs: `reports/agent-checkpoints/engineer/latest/scheduling/`.
+- Recommended next task: follow `docs/BOOKING_SCHEDULE_RECOVERY.md` to deploy to staging, deliver a real weather/late/proposal notice to each supported channel, tap the native notification, and record the first automatic overdue follow-up from the deployed scheduler.
+
+
 ## Current checkpoint: analytics and launch readiness
 
 - Updated: September 19, 2026.

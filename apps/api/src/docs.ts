@@ -831,6 +831,24 @@ export const apiSpec = {
         }
       }
     },
+    "/api/bookings/schedule-update": {
+      post: {
+        tags: ["Bookings"], summary: "Send a weather hold, late ETA, or customer-approved reschedule proposal",
+        description: "Provider-only. Requires a confirmed or in-progress visit, a reason, and nextUpdateByIso within 24 hours. Running-late updates require a future same-service-day expectedArrivalIso. Reschedule proposals preserve duration, validate availability, and do not move the visit until accepted. Arrival windows use America/New_York. History is retained.",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { bookingId: "booking_123", kind: "weather", reason: "Saturated ground after rain", nextUpdateByIso: "2026-09-21T17:00:00Z" } } } },
+        responses: { "200": { description: "Timing update saved and customer notified" }, "400": { description: "Invalid timing or booking status" }, "403": { description: "Provider does not own booking" }, "409": { description: "Schedule changed or window unavailable" } }
+      }
+    },
+    "/api/bookings/schedule-response": {
+      post: {
+        tags: ["Bookings"], summary: "Accept a proposed service window or ask for another",
+        description: "Customer-only. Send bookingId, updateId and action accept or decline. Acceptance rechecks provider availability, bypasses the ordinary customer 24-hour restriction for this provider-initiated recovery, preserves price and recurrence, clears route tracking and returns accepted crew matches to provider review. Decline leaves the visit open. Repeated matching responses are idempotent; stale and terminal responses are rejected.",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { bookingId: "booking_123", updateId: "update_123", action: "accept" } } } },
+        responses: { "200": { description: "Response saved and participants notified" }, "403": { description: "Customer does not own booking" }, "409": { description: "Expired, superseded, conflicting, or concurrently changed booking" } }
+      }
+    },
     "/api/bookings/late": {
       post: {
         tags: ["Bookings"],
@@ -2607,7 +2625,7 @@ export const apiSpec = {
         tags: ["Observability"],
         summary: "Run due backend operations automation sweeps",
         description:
-          "Runs an ops-authenticated orchestration pass over dry-run capable backend automation sweeps: provider onboarding automation, stale support ticket SLA escalations, launch operations due-task notifications, and launch operations overdue-task escalations. Callers can request a subset of stable sweep keys, pass a shared asOfIso timestamp, and use dryRun to preview the same sweep payloads without creating notifications. The response includes a persisted run id, per-sweep nested results, and aggregate sent, already-sent, and skipped counts so an external scheduler or ops workspace can audit each run without reimplementing backend rules.",
+          "Runs an ops-authenticated orchestration pass over dry-run capable backend automation sweeps: booking schedule follow-ups, provider onboarding automation, stale support ticket SLA escalations, launch operations due-task notifications, and launch operations overdue-task escalations. Callers can request a subset of stable sweep keys, pass a shared asOfIso timestamp, and use dryRun to preview the same sweep payloads without creating notifications. The response includes a persisted run id, per-sweep nested results, and aggregate sent, already-sent, and skipped counts so an external scheduler or ops workspace can audit each run without reimplementing backend rules.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: false,

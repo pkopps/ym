@@ -1,4 +1,6 @@
 "use client";
+
+import { BookingSchedulePanel } from "./BookingSchedulePanel";
 import { WorkspaceSection } from "./WorkspaceSection";
 
 import {
@@ -1594,7 +1596,9 @@ export function ProviderLiveManagementBoard() {
               </details>
             ) : null}
 
-            {job.lateEtaIso && !job.onRouteConfirmedAt ? (
+            <BookingSchedulePanel booking={job} bookingId={job.bookingId} provider onUpdated={loadProviderView} />
+
+            {!job.scheduleUpdates?.length && job.lateEtaIso && !job.onRouteConfirmedAt ? (
               <div className="list-panel">
                 <strong>{i18n.t("provider_live.job.delay_notice_sent")}</strong>
                 <p>

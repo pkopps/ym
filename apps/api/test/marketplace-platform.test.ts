@@ -14026,6 +14026,8 @@ test("provider assistant previews and executes a reschedule command with custome
     totalCents: 6200
   });
 
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
+
   const preview = await platform.runProviderAssistantCommand(provider.id, {
     command: "Change my afternoon appointment to evening and notify the customer",
     bookingId: booking.id,
@@ -14036,7 +14038,7 @@ test("provider assistant previews and executes a reschedule command with custome
   assert.equal(preview.requiresConfirmation, true);
   assert.equal(preview.executed, false);
   assert.equal(preview.targetWindowKey, "late-afternoon-night");
-  assert.match(preview.previewMessage, /Move Jordan Rivera to Late afternoon \/ evening/i);
+  assert.match(preview.previewMessage, /Ask Jordan Rivera to approve Late afternoon \/ evening/i);
 
   const executed = await platform.runProviderAssistantCommand(provider.id, {
     command: "Change my afternoon appointment to evening and notify the customer",
@@ -14046,8 +14048,9 @@ test("provider assistant previews and executes a reschedule command with custome
 
   assert.equal(executed.executed, true);
   assert.ok(executed.updatedBooking);
-  assert.equal(getBookingServiceWindow(executed.updatedBooking!.scheduledStartIso).key, "late-afternoon-night");
-  assert.equal(executed.updatedBooking?.interventions.at(-1)?.action, "provider-assistant-reschedule");
+  assert.equal(executed.updatedBooking!.scheduledStartIso, startIso);
+  assert.equal(executed.updatedBooking!.scheduleUpdates?.at(-1)?.kind, "reschedule");
+  assert.equal(getBookingServiceWindow(executed.updatedBooking!.scheduleUpdates!.at(-1)!.proposedStartIso!).key, "late-afternoon-night");
 
   const notifications = await platform.listNotifications({
     userId: customer.id,
@@ -14055,7 +14058,7 @@ test("provider assistant previews and executes a reschedule command with custome
     role: "customer"
   });
   assert.ok(
-    notifications.notifications.some((notification) => notification.title === "Your service window was updated")
+    notifications.notifications.some((notification) => notification.title === "Please review a new service window")
   );
 });
 
@@ -14164,6 +14167,8 @@ test("provider assistant can send a late update with parsed delay timing", async
     notes: "Assistant late update test",
     totalCents: 6200
   });
+
+  await platform.confirmBooking(provider.id, { bookingId: booking.id });
 
   const preview = await platform.runProviderAssistantCommand(provider.id, {
     command: "Tell my afternoon customer I am 30 minutes late because traffic",

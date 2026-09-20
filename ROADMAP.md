@@ -75,6 +75,8 @@ Exit criteria:
 
 ### Notification Delivery
 
+- Verify weather/late/reschedule delivery on staging devices and all configured channels, and confirm the live operations scheduler runs `booking-schedule-follow-ups` at the required cadence. Consider route-wide weather updates and owned repeated escalation after an ignored alert after this first recovery flow is accepted.
+
 - Finish production push rollout beyond development Expo tokens.
 - Decide whether production push should stay on Expo push or move to direct APNs / FCM.
 - Confirm production email and SMS sender setup for Resend and Twilio.

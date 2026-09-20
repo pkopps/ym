@@ -109,7 +109,7 @@ function getPropertyMeasurementLabel(i18n: I18nInstance, property: CustomerPrope
   return i18n.t("mobile.support.property.measurements_saved", { count: savedMeasurements });
 }
 
-export function SupportScreen({ languageSettings }: { languageSettings: LanguageSettings }) {
+export function SupportScreen({ languageSettings, onOpenBooking }: { languageSettings: LanguageSettings; onOpenBooking?: (bookingId: string) => void }) {
   const i18n = useI18n();
   const [preferences, setPreferences] = useState<NotificationPreferences | undefined>();
   const [properties, setProperties] = useState<CustomerProperty[]>([]);
@@ -359,6 +359,10 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       (notification.title.toLowerCase().includes("on the way") ? fallbackBookingId : undefined);
 
     if (!bookingId) {
+      return;
+    }
+    if (notification.actionHref?.startsWith("/customer/dashboard?") && onOpenBooking) {
+      onOpenBooking(bookingId);
       return;
     }
 
@@ -692,7 +696,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
                   <Text style={styles.meta}>{notification.body}</Text>
                   {parseTrackingBookingId(notification.actionHref) ||
                   notification.title.toLowerCase().includes("on the way") ? (
-                    <Text style={styles.notificationLink}>{i18n.t("mobile.support.open_live_map")}</Text>
+                    <Text style={styles.notificationLink}>{i18n.t(notification.actionHref?.startsWith("/customer/dashboard?") ? "schedule.title" : "mobile.support.open_live_map")}</Text>
                   ) : null}
                 </View>
                 <Text style={styles.badge}>{notification.isRead ? i18n.t("mobile.support.notification.read") : i18n.t("common.state.new")}</Text>

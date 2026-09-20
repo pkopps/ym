@@ -1,5 +1,7 @@
 "use client";
 
+import { BookingSchedulePanel } from "./BookingSchedulePanel";
+
 import {
   BookingArrivalTracking,
   Booking,
@@ -206,6 +208,8 @@ function getRequestStepStatus(stepIndex: number, activeStepIndex: number): Reque
 }
 
 function formatBookingStatusTitle(i18n: I18nInstance, booking: Booking) {
+  const update = booking.scheduleUpdates?.at(-1);
+  if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather" : update.kind === "reschedule" ? "schedule.proposal" : "schedule.late");
   if (booking.onRouteConfirmedAt) {
     return i18n.t("customer_live.status.crew_on_way");
   }
@@ -238,6 +242,8 @@ function formatSentenceTail(value: string) {
 }
 
 function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerName: string, payment?: PaymentRecord) {
+  const update = booking.scheduleUpdates?.at(-1);
+  if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather_body" : update.kind === "reschedule" ? "schedule.proposal_body" : "customer_live.state.late", { provider: providerName });
   if (booking.onRouteConfirmedAt) {
     return i18n.t("customer_live.state.on_way", { provider: providerName });
   }
@@ -265,11 +271,12 @@ function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerNa
 }
 
 function getPriorityBookingCardTitle(i18n: I18nInstance, booking: Booking, payment?: PaymentRecord) {
+  if (booking.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state))) return formatBookingStatusTitle(i18n, booking);
   if (booking.status === "confirmed" && payment?.status !== "captured") {
     return i18n.t("customer_live.finish_booking");
   }
 
-  if (booking.status === "confirmed" && !booking.onRouteConfirmedAt && !booking.activeExceptionType && !booking.lateEtaIso) {
+  if (booking.status === "confirmed" && !booking.onRouteConfirmedAt && !booking.activeExceptionType && !booking.lateEtaIso && !booking.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state))) {
     return i18n.t("customer_live.youre_set");
   }
 
@@ -403,7 +410,7 @@ export function CustomerLiveDashboard() {
     providerSearchState === "loading";
   const providerStepActive = providerSearchState !== "idle" || Boolean(providerResults);
   const hasAccountHistory = recurringPlans.length > 0 || bookings.length > 0 || reviewOpportunities.length > 0;
-  const nextBooking = [...activeBookings].sort((left, right) =>
+  const nextBooking = activeBookings.find(booking => booking.id === searchParams.get("bookingId")) ?? [...activeBookings].sort((left, right) =>
     left.scheduledStartIso.localeCompare(right.scheduledStartIso)
   )[0];
   const nextBookingProviderName = nextBooking
@@ -411,6 +418,7 @@ export function CustomerLiveDashboard() {
     : undefined;
   const nextBookingPayment = nextBooking ? paymentsByBookingId[nextBooking.id] : undefined;
   const nextBookingNeedsCheckout =
+    !nextBooking?.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state)) &&
     Boolean(nextBooking) &&
     nextBooking.status === "confirmed" &&
     nextBookingPayment?.status !== "captured";
@@ -648,6 +656,24 @@ export function CustomerLiveDashboard() {
     void loadDashboard().catch((error) => {
       setDashboardLoadError(error instanceof Error ? error.message : "We couldn't load your account right now.");
     });
+  }, [historyOnlyView, sessionReady, session?.token, session?.role]);
+
+  useEffect(() => {
+    if (!sessionReady || session?.role !== "customer" || historyOnlyView) return;
+    let stopped = false;
+    let fetching = false;
+    const refreshTiming = async () => {
+      if (document.visibilityState !== "visible" || fetching) return;
+      fetching = true;
+      try {
+        const updated = await createAuthenticatedWebApiClient().getBookings({ limit: 50 });
+        if (!stopped) setBookings(updated);
+      } catch { /* Preserve the last known schedule; the next refresh can recover. */ }
+      finally { fetching = false; }
+    };
+    const timer = window.setInterval(() => void refreshTiming(), 30000);
+    document.addEventListener("visibilitychange", refreshTiming);
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshTiming); };
   }, [historyOnlyView, sessionReady, session?.token, session?.role]);
 
   useEffect(() => {
@@ -1588,7 +1614,8 @@ export function CustomerLiveDashboard() {
             {i18n.t("crew_live.action.get_help")}
           </a>
         </div>
-        {booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
+        <BookingSchedulePanel booking={booking} bookingId={booking.id} onUpdated={loadDashboard} />
+        {!booking.scheduleUpdates?.length && booking.lateEtaIso && !booking.onRouteConfirmedAt ? (
           <div className="list-panel" style={{ marginTop: "1rem" }}>
             <h3>{i18n.t("customer_live.active_booking.delay_update")}</h3>
             <p>{i18n.t("customer_live.active_booking.running_behind", { provider: providerName })}</p>
@@ -2727,6 +2754,8 @@ export function CustomerLiveDashboard() {
                   <strong>{i18n.formatCurrency(nextBooking.totalCents)}</strong>
                 </div>
               </div>
+
+              <BookingSchedulePanel booking={nextBooking} bookingId={nextBooking.id} onUpdated={loadDashboard} />
 
               {nextBookingHasPrimaryAction ? (
                 <div className="cta-row">

@@ -1,4 +1,6 @@
 import {
+  UpdateBookingScheduleRequest,
+  RespondBookingScheduleRequest,
   AddBookingEvidenceRequest,
   AssignBookingRouteLeaderRequest,
   ClearBookingRouteStopRequest,
@@ -130,6 +132,8 @@ export class MarketplaceController implements ApiController {
       (context.method === "POST" && context.path === "/api/bookings/recurring-plans") ||
       (context.method === "POST" && context.path === "/api/bookings/recurring-plans/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
+      (context.method === "POST" && context.path === "/api/bookings/schedule-update") ||
+      (context.method === "POST" && context.path === "/api/bookings/schedule-response") ||
       (context.method === "POST" && context.path === "/api/bookings/reschedule") ||
       (context.method === "POST" && context.path === "/api/bookings/confirm") ||
       (context.method === "POST" && context.path === "/api/bookings/decline") ||
@@ -639,6 +643,17 @@ export class MarketplaceController implements ApiController {
         200,
         await this.platform.cancelBooking(identity.userId, context.body as CancelBookingRequest)
       );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/schedule-update") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.updateBookingSchedule(identity.userId, context.body as UpdateBookingScheduleRequest));
+      return;
+    }
+    if (context.method === "POST" && context.path === "/api/bookings/schedule-response") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.respondBookingSchedule(identity.userId, context.body as RespondBookingScheduleRequest));
       return;
     }
 

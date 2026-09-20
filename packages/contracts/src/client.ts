@@ -1,4 +1,6 @@
 import {
+  UpdateBookingScheduleRequest,
+  RespondBookingScheduleRequest,
   AddBookingEvidenceRequest,
   AssignBookingRouteLeaderRequest,
   AnalyticsEvent,
@@ -818,6 +820,14 @@ export class MarketplaceApiClient {
 
   public cancelBooking(payload: CancelBookingRequest) {
     return this.postJson<Booking>(ApiRoutes.cancelBooking, payload);
+  }
+
+  public updateBookingSchedule(payload: UpdateBookingScheduleRequest) {
+    return this.postJson<Booking>(ApiRoutes.updateBookingSchedule, payload);
+  }
+
+  public respondBookingSchedule(payload: RespondBookingScheduleRequest) {
+    return this.postJson<Booking>(ApiRoutes.respondBookingSchedule, payload);
   }
 
   public rescheduleBooking(payload: RescheduleBookingRequest) {

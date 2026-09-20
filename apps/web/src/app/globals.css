@@ -5473,3 +5473,12 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
   .customer-request-spine__steps { gap: .4rem; }
   .customer-request-spine__step { gap: 0; }
 }
+
+.booking-schedule-panel { margin-top: 1rem; }
+.booking-schedule-panel form { display: grid; gap: 1rem; }
+.booking-schedule-panel label { display: grid; gap: .4rem; min-width: 0; }
+.booking-schedule-panel input, .booking-schedule-panel select, .booking-schedule-panel textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.booking-schedule-panel small { display: block; margin-top: .75rem; }
+.booking-schedule-panel > details { margin-top: .75rem; }
+.booking-schedule-panel form { max-width: 42rem; }
+.booking-schedule-panel form > button { justify-self: start; }
