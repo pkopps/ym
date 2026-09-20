@@ -31,4 +31,4 @@ Engineering implements the selected UX-03–06, UX-07–09, and UX-14 direction 
 
 ## CI evidence correction
 
-Reviewed artifact `postgres-launch-gate-3c35343bfb7078059be94eae67093608fee2f50e` from run `35386638892`: migration failure, non-empty schema diff, and three failed integration tests despite the green job. Do not use that run as database launch approval. Empty-database bootstrap and explicit Bash/pipefail are now fixed and verified locally; corrected remote evidence must replace the old badge.
+Reviewed artifact `postgres-launch-gate-3c35343bfb7078059be94eae67093608fee2f50e` from run `35386638892`: migration failure, non-empty schema diff, and three failed integration tests despite the green job. Do not use that run as database launch approval. Empty-database bootstrap and explicit Bash/pipefail are now fixed and verified locally; corrected remote evidence now replaces the old badge: [run 35480045314](https://github.com/pkopps/ym/actions/runs/35480045314), PostgreSQL job passed, artifact downloaded and all four logs reviewed (migrations current, no drift, five tests passed).
