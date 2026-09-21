@@ -1,0 +1,50 @@
+{
+  "dataset": {
+    "providers": 601,
+    "bookings": 20000,
+    "properties": 1000,
+    "analyticsEvents": 10000,
+    "notifications": 250
+  },
+  "concurrency": 12,
+  "databaseConnections": 8,
+  "operations": 200,
+  "elapsedMs": 2247,
+  "latency": {
+    "route-write": {
+      "operations": 40,
+      "p95Ms": 31,
+      "p99Ms": 48
+    },
+    "password": {
+      "operations": 40,
+      "p95Ms": 114,
+      "p99Ms": 161
+    },
+    "search": {
+      "operations": 40,
+      "p95Ms": 249,
+      "p99Ms": 304
+    },
+    "clients": {
+      "operations": 40,
+      "p95Ms": 401,
+      "p99Ms": 572
+    },
+    "analytics": {
+      "operations": 40,
+      "p95Ms": 447,
+      "p99Ms": 467
+    }
+  },
+  "queries": {
+    "count": 2564,
+    "p95Ms": 7,
+    "p99Ms": 269
+  },
+  "eventLoopP99Ms": 32,
+  "heapGrowthMb": 65,
+  "rssMb": 599,
+  "delivered": 250,
+  "errors": []
+}

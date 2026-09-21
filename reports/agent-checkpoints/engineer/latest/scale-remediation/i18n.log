@@ -1,0 +1,9 @@
+
+> yardmatch-monorepo@0.1.0 i18n:validate
+> npm --workspace @yardmatch/i18n run validate
+
+
+> @yardmatch/i18n@0.1.0 validate
+> node scripts/validate-locales.mjs
+
+Validated 3992 i18n keys across en, es, pseudo.

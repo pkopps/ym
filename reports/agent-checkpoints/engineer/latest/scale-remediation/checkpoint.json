@@ -1,0 +1,51 @@
+{
+  "branch": "main",
+  "commit": "691df2d367a8d7fb3837dc7cf83295e7422feade",
+  "updated": "2026-09-21",
+  "completed": [
+    "All six scale-review findings remediated",
+    "Database-scoped provider profiles, calendar conflicts, and reminder polling",
+    "Regression and capacity gates added to CI",
+    "Upgrade and fresh-database migration validation"
+  ],
+  "inProgress": [],
+  "remaining": [
+    "Staging capacity acceptance on the intended topology and sustained traffic",
+    "Live vendor quota/outage acceptance before production sizing"
+  ],
+  "blockers": [
+    "Production topology and vendor behavior were not available for local validation"
+  ],
+  "changedWorkflows": [
+    "Notifications are queued durably and processed by bounded workers",
+    "Calendar feeds download before taking booking locks",
+    "Client lists paginate and large maps cluster",
+    "Analytics reports count the entire requested period and show export backlog health",
+    "Authentication uses bounded asynchronous password derivation"
+  ],
+  "validation": {
+    "verify": "passed: Prisma generation, lint, typecheck, mobile release configuration, 347 API tests; 11 database tests skipped here",
+    "postgres": "11 passed separately",
+    "smoke": "API smoke and 40 browser tests passed",
+    "webBuild": "passed",
+    "translations": "3992 keys validated",
+    "ciLogPropagation": "passed",
+    "migrations": "41 applied fresh and on upgrade; migration status current; no schema drift; seed passed",
+    "capacity": "passed: 200 operations at concurrency 12, 0 errors, 250 stubbed deliveries; final p95 249ms search, 401ms clients, 114ms password, 31ms route writes, 447ms analytics; event-loop p99 32ms"
+  },
+  "knownDefects": [
+    "Residual at-least-once delivery boundary after vendor acceptance and before database acknowledgement; email uses vendor idempotency",
+    "Local capacity gate does not establish a production user ceiling; very large single-provider property payloads and infrequent broad ops reports may need further workload-specific tuning"
+  ],
+  "screenshotPaths": [
+    "reports/agent-checkpoints/engineer/latest/scale-clients-desktop.png",
+    "reports/agent-checkpoints/engineer/latest/scale-clients-mobile.png"
+  ],
+  "recommendedNextTask": "Apply both migrations and run staging capacity acceptance with production-shaped data and measured vendor recovery before deployment sizing",
+  "notRun": [
+    "production or live vendor acceptance",
+    "native simulators",
+    "fresh mobile exports"
+  ],
+  "git": "All known local and fetched remote branches are merged into main; no push or deployment; unrelated investor work preserved"
+}

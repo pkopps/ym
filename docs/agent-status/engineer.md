@@ -1,6 +1,22 @@
 # Engineer Status
 
-## Current checkpoint: main consolidation and scaling review
+## Current checkpoint: scale remediation
+
+- Updated: September 21, 2026 (America/New_York).
+- Branch and source commit: `main`, `691df2d367a8d7fb3837dc7cf83295e7422feade`. This status/evidence is recorded in a following documentation commit.
+- Completed: all six scale-review findings; durable notification/export leases and bounded workers, asynchronous password work, scoped search/provider/history queries, calendar synchronization outside transactions, property summaries and clustered/paginated client maps, full-period analytics aggregation, UTC-safe SQL/defaults, and a repeatable CI capacity gate. See [the remediation report](../../reports/scale-review/2026-09-21-remediation.md).
+- In progress: none for this implementation scope.
+- Remaining: capacity acceptance on the intended staging topology, sustained memory/pool/lock measurement, and live vendor outage/quota validation before advertising a supported user count.
+- Blockers: no local implementation blocker. Production topology/vendor access was not part of local verification; no push or deployment performed.
+- Changed workflows: ordinary notifications enqueue atomically and send asynchronously; stale calendar results reject safely; client lists paginate 50 rows and maps cluster; analytics acknowledges durable events and warns on old/exhausted export backlog. Recommendation-first ranking and curated alternatives remain in place.
+- Validation: `npm run verify` passed (Prisma generation, lint, typecheck, mobile release configuration, 347 API tests; 11 database tests skipped here). `npm run test:api:postgres` passed all 11. API smoke and all 40 browser tests passed. Production web build, 3992-key translation validation, CI log-failure propagation, fresh/upgrade migrations (41), migration status/schema diff, and seed passed.
+- Capacity: final mixed workload passed with 200 operations at concurrency 12, 601 providers, 20,000 bookings, 1,000 properties, 10,000 analytics events, and 250 stubbed notifications. Zero errors; search p95 249 ms, clients 401 ms, password 114 ms, route writes 31 ms, analytics 447 ms; event-loop p99 32 ms. These are local measurements, not production capacity claims.
+- Known defects/limits: SMS/push retain an at-least-once boundary if a process crashes after vendor acceptance but before database acknowledgement. Huge property populations and broad infrequent ops reports still require workload-specific profiling. No live vendor test, production benchmark, native simulator, or fresh Expo export was run.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/scale-clients-desktop.png` (1440×900) and `scale-clients-mobile.png` (390×844), visually inspected. Checkpoint, capacity JSON, and logs: `reports/agent-checkpoints/engineer/latest/scale-remediation/`.
+- Recommended next task: follow the documented maintenance-window migration sequence and run staging capacity acceptance against the intended production topology.
+- All previously unmerged branches remain integrated into main. Investor artifacts and their newer working copies are preserved separately. Agent-reported evidence does not replace independent release acceptance.
+
+## Previous checkpoint: main consolidation and scaling review
 
 - Updated: September 20, 2026 (America/New_York).
 - Branch and commit: `main`, merged source baseline `4d5b2dd3be3fc2e067f975f65872c4ca3ccadae5`; this checkpoint is recorded in a subsequent documentation commit.

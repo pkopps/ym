@@ -1,0 +1,65 @@
+{
+  "dataset": {
+    "providers": 601,
+    "bookings": 20000,
+    "properties": 1000,
+    "analyticsEvents": 10000,
+    "notifications": 250
+  },
+  "concurrency": 12,
+  "databaseConnections": 8,
+  "operations": 200,
+  "elapsedMs": 16613,
+  "latency": {
+    "route-write": {
+      "operations": 40,
+      "p95Ms": 940,
+      "p99Ms": 1634
+    },
+    "password": {
+      "operations": 40,
+      "p95Ms": 125,
+      "p99Ms": 336
+    },
+    "search": {
+      "operations": 40,
+      "p95Ms": 3241,
+      "p99Ms": 3910
+    },
+    "analytics": {
+      "operations": 40,
+      "p95Ms": 1577,
+      "p99Ms": 2182
+    },
+    "clients": {
+      "operations": 40,
+      "p95Ms": 4133,
+      "p99Ms": 5834
+    }
+  },
+  "queries": {
+    "count": 2628,
+    "p95Ms": 8,
+    "p99Ms": 154
+  },
+  "eventLoopP99Ms": 1067,
+  "heapGrowthMb": 414,
+  "rssMb": 3083,
+  "delivered": 250,
+  "errors": []
+}
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: Operation p95 exceeded 2500ms
+    at <anonymous> (/Users/patrickkopps/Documents/app/scripts/scale-smoke.mts:86:10) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v25.9.0

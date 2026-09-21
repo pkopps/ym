@@ -1,0 +1,22 @@
+
+> yardmatch-monorepo@0.1.0 prisma:deploy
+> npm --workspace @yardmatch/api run prisma:deploy
+
+
+> @yardmatch/api@0.1.0 prisma:deploy
+> node ../../scripts/deploy-database.mjs
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "yardmatch_scale_review", schema "public" at "127.0.0.1:55491"
+
+41 migrations found in prisma/migrations
+
+Applying migration `20260921011000_analytics_utc_defaults`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20260921011000_analytics_utc_defaults/
+    └─ migration.sql
+
+All migrations have been successfully applied.

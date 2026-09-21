@@ -1,0 +1,71 @@
+
+> yardmatch-monorepo@0.1.0 build:web
+> next build apps/web
+
+▲ Next.js 16.3.0 (Turbopack)
+✓ Running next.config.mjs took 15ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1328ms
+  Running TypeScript ...
+  Finished TypeScript in 10.1s ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/45) ...
+  Generating static pages using 9 workers (11/45)
+  Generating static pages using 9 workers (22/45)
+  Generating static pages using 9 workers (33/45)
+✓ Generating static pages using 9 workers (45/45) in 349ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /about
+├ ƒ /account/security
+├ ƒ /api/healthz
+├ ƒ /auth
+├ ƒ /auth/complete
+├ ƒ /auth/crew
+├ ƒ /auth/customer
+├ ƒ /auth/provider
+├ ƒ /auth/provider/create
+├ ƒ /barnegat-nj
+├ ƒ /barnegat-nj/lawn-mowing
+├ ƒ /barnegat-nj/yard-cleanup
+├ ƒ /booking-expectations
+├ ƒ /cancellation-policy
+├ ƒ /crew
+├ ƒ /crew/schedule
+├ ƒ /crew/schedule/history
+├ ƒ /customer
+├ ƒ /customer/dashboard
+├ ƒ /customer/history
+├ ƒ /customer/listings
+├ ƒ /help
+├ ƒ /login
+├ ƒ /login/crew
+├ ƒ /login/customer
+├ ƒ /login/ops
+├ ƒ /login/provider
+├ ƒ /ops
+├ ƒ /privacy-policy
+├ ƒ /provider
+├ ƒ /provider-standards
+├ ƒ /provider-verification
+├ ƒ /provider/clients
+├ ƒ /provider/management
+├ ƒ /provider/partnerships
+├ ƒ /provider/payments
+├ ƒ /refund-policy
+├ ○ /robots.txt
+├ ƒ /services/lawn-mowing
+├ ƒ /services/yard-cleanup
+├ ○ /sitemap.xml
+├ ƒ /support
+└ ƒ /terms-of-service
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
