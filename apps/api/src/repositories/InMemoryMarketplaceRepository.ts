@@ -563,6 +563,12 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return settlement ? { ...settlement } : undefined;
   }
 
+  public async appendFinancialLedgerEntries(entries: FinancialLedgerEntry[]): Promise<void> {
+    for (const entry of entries) {
+      if (!this.financialLedgerEntries.some(candidate => candidate.idempotencyKey === entry.idempotencyKey)) this.financialLedgerEntries.push({ ...entry });
+    }
+  }
+
   public async listFinancialLedgerEntries(bookingId?: string): Promise<FinancialLedgerEntry[]> {
     return this.financialLedgerEntries
       .filter((entry) => !bookingId || entry.bookingId === bookingId)

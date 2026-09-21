@@ -116,6 +116,7 @@ export const internalRobotsDisallowPaths = [
   "/customer/history",
   "/customer/listings",
   "/provider/management",
+  "/provider/clients",
   "/provider/payments",
   "/provider/partnerships",
   "/crew/schedule",

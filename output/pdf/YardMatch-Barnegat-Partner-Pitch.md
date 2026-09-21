@@ -208,7 +208,7 @@ Annual figures assume 100% retention. YardMatch fees are $450 per year: $45 once
 $45 once. Years of potential value. One customer retained for all three years generates $1,800 in this example; the finder fee is just 2.5%. Across all 30 customers: $36,000 in revenue and only $1,350 in finder fees.
 
 
-## Your first new client is on us!
+## Your first new client is free!
 
 Join YardMatch and grow your landscaping business with the first finder's fee covered.
 

@@ -1,3 +1,7 @@
+import { ServiceComplaintService } from "./ServiceComplaintService";
+import { PartialRefundService, hasPendingPartialRefund } from "./PartialRefundService";
+import type { CreateServiceComplaintRequest, ReplyServiceComplaintRequest, IssuePartialRefundRequest } from "@yardmatch/contracts";
+import { buildProviderClientProperties } from "./providerClients";
 import { fetchCalendarFeed } from "../integrations/calendarFeed";
 import { parseCalendarFeed } from "./calendarParser";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -197,6 +201,7 @@ import {
   ProviderRetentionProgramSummary,
   ProviderStaffingJobSummary,
   ProviderStaffingOverview,
+  ProviderClientsOverview,
   ProviderCalendarSubscriptionResponse,
   ProviderCalendarSubscriptionAction,
   ProviderCalendarImportsResponse,
@@ -4275,6 +4280,30 @@ export class MarketplacePlatformService {
     return updatedCrewMember;
   }
 
+  public async getProviderClients(providerId: string): Promise<ProviderClientsOverview> {
+    const provider = await this.getProviderProfile(providerId);
+    const bookings: Booking[] = [];
+    let cursorId: string | undefined;
+    do {
+      const page = await this.repository.listBookingsPage({
+        actorId: providerId, actorRole: "provider", scope: "all", limit: 200, cursorId
+      });
+      bookings.push(...page.items);
+      cursorId = page.hasMore ? page.nextCursorId : undefined;
+    } while (cursorId);
+    const customers = await Promise.all(
+      [...new Set(bookings.map((booking) => booking.customerId))]
+        .map((id) => this.repository.findCustomerById(id))
+    );
+    const plans = await this.repository.listRecurringServicePlans();
+    return {
+      companyName: provider.companyName,
+      properties: buildProviderClientProperties(providerId, bookings, customers.filter(
+        (customer): customer is CustomerProfile => Boolean(customer)
+      ), plans)
+    };
+  }
+
   public async getProviderStaffingOverview(providerId: string): Promise<ProviderStaffingOverview> {
     const provider = await this.getProviderProfile(providerId);
     const [jobs, retentionProgram] = await Promise.all([
@@ -5763,7 +5792,7 @@ export class MarketplacePlatformService {
 
     const updatedAt = new Date().toISOString();
     const serviceEvidence = booking.serviceEvidence.map((evidence) =>
-      evidence.evidenceType === "photo"
+      evidence.evidenceType === "photo" && !evidence.complaintTicketId
         ? {
             ...evidence,
             marketingUseStatus: payload.status,
@@ -12863,7 +12892,31 @@ export class MarketplacePlatformService {
       };
     }
 
+    if (event.refundId && event.refundStatus) {
+      const attempt = payment.fullRefundAttempt;
+      if (attempt && (attempt.processorRefundId === event.refundId || attempt.idempotencyKey === event.fullRefundKey)) {
+        const status = event.refundStatus === "succeeded" ? "succeeded" : ["failed", "canceled"].includes(event.refundStatus) ? "failed" : "pending";
+        if (attempt.status !== "succeeded" && attempt.status !== "failed") await this.repository.updatePayment(payment.id, { fullRefundAttempt: { ...attempt, processorRefundId: event.refundId, status } });
+        if (status === "succeeded" && attempt.status !== "failed") {
+          await this.reverseProviderTransferIfNeeded(booking);
+          await this.markPaymentRefundedFromProcessor(payment, booking);
+        }
+        return { received: true, eventType: event.type, paymentId: payment.id };
+      }
+      await new PartialRefundService(this.repository, this.stripeCheckout).reconcile(payment.id, event.partialRefundId, event.refundId, event.refundStatus);
+      return { received: true, eventType: event.type, paymentId: payment.id };
+    }
     if (event.type === "charge.refunded") {
+      for (const refund of event.chargeRefunds ?? []) {
+        await new PartialRefundService(this.repository, this.stripeCheckout).reconcile(payment.id, refund.partialRefundId, refund.id, refund.status);
+      }
+      // An aggregate charge event is not proof that a pending refund settled.
+      if (event.chargeRefunds?.some(refund => !["succeeded", "failed", "canceled"].includes(refund.status))) return { received: true, eventType: event.type, paymentId: payment.id };
+      if (event.refundedAmountCents !== undefined && event.refundedAmountCents < payment.amountCents) {
+        const current = (await this.repository.findPaymentById(payment.id))!;
+        await this.repository.updatePayment(payment.id, { refundedAmountCents: Math.max(current.refundedAmountCents ?? 0, event.refundedAmountCents), updatedAt: new Date().toISOString() });
+        return { received: true, eventType: event.type, paymentId: payment.id };
+      }
       await this.reverseProviderTransferIfNeeded(booking);
       const updatedPayment = await this.markPaymentRefundedFromProcessor(payment, booking);
       return {
@@ -13084,13 +13137,15 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Support ticket not found");
     }
 
-    if (ticket.issueType !== "billing") {
+    if (ticket.issueType !== "billing" && !ticket.complaint) {
       throw new HttpError(400, "Refund overrides can only start from billing tickets");
     }
 
     if (ticket.status === "resolved") {
       throw new HttpError(409, "Resolved tickets cannot open a new refund review");
     }
+
+    if (ticket.complaint?.kind === "property-damage") throw new HttpError(409, "Use the human incident process for property damage.");
 
     const payment = await this.repository.findPaymentById(payload.paymentId);
     if (!payment) {
@@ -13451,6 +13506,27 @@ export class MarketplacePlatformService {
     }
 
     return updatedBooking;
+  }
+
+  public async createServiceComplaint(customerId: string, payload: CreateServiceComplaintRequest): Promise<SupportTicket> {
+    const service = new ServiceComplaintService(this.repository, this.photoStorage);
+    const ticket = await service.create(customerId, payload);
+    if (!ticket.complaint?.assessment) {
+      try { const assessed = await service.assess(ticket.id); return this.customerComplaintView(assessed); } catch { /* Saved reports remain available if assessment fails. */ }
+    }
+    return this.customerComplaintView(ticket);
+  }
+  private customerComplaintView(ticket: SupportTicket): SupportTicket {
+    return ticket.complaint ? { ...ticket, complaint: { ...ticket.complaint, assessment: undefined } } : ticket;
+  }
+  public async replyServiceComplaint(customerId: string, payload: ReplyServiceComplaintRequest): Promise<SupportTicket> {
+    return this.customerComplaintView(await new ServiceComplaintService(this.repository, this.photoStorage).reply(customerId, payload));
+  }
+  public assessServiceComplaint(ticketId: string): Promise<SupportTicket> {
+    return new ServiceComplaintService(this.repository, this.photoStorage).assess(ticketId);
+  }
+  public issuePartialRefund(actorUserId: string, payload: IssuePartialRefundRequest): Promise<PaymentRecord> {
+    return new PartialRefundService(this.repository, this.stripeCheckout).issue(actorUserId, payload);
   }
 
   public async createSupportTicket(
@@ -14047,6 +14123,7 @@ export class MarketplacePlatformService {
   ): Promise<SupportTicket[]> {
     return (await this.repository.listSupportTickets())
       .filter((ticket) => ticket.requesterId === requester.userId)
+      .map(ticket => this.customerComplaintView(ticket))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
@@ -14069,7 +14146,7 @@ export class MarketplacePlatformService {
           ? bookings.find((candidate) => candidate.id === ticket.bookingId)
           : undefined;
         const payment = booking
-          ? payments.find((candidate) => candidate.bookingId === booking.id)
+          ? payments.filter(candidate => candidate.bookingId === booking.id).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
           : undefined;
         const customer = booking
           ? customerById.get(booking.customerId)
@@ -14264,6 +14341,7 @@ export class MarketplacePlatformService {
       ? this.getPayoutHoldReason(input.booking, input.payment)
       : undefined;
 
+    if (input.ticket.complaint?.kind === "property-damage") return { priority: "urgent", thresholdHours: 2, signal: "property damage incident" };
     if (input.booking?.activeExceptionType) {
       return {
         priority: "urgent",
@@ -14502,7 +14580,13 @@ export class MarketplacePlatformService {
     };
   }
 
-  public async updateSupportTicketForOps(
+  public async updateSupportTicketForOps(payload: UpdateSupportTicketRequest): Promise<SupportTicket> {
+    const ticket = (await this.repository.listSupportTickets()).find(item => item.id === payload.ticketId);
+    return this.repository.withLock(`payment:${ticket?.bookingId ?? payload.ticketId}`, repository =>
+      this.withRepository(repository).updateSupportTicketForOpsRecord(payload));
+  }
+
+  private async updateSupportTicketForOpsRecord(
     payload: UpdateSupportTicketRequest
   ): Promise<SupportTicket> {
     const ticket = (await this.repository.listSupportTickets()).find(
@@ -14523,6 +14607,8 @@ export class MarketplacePlatformService {
       if (booking) {
         if (payload.status === "resolved") {
           const latestPayment = await this.findLatestPaymentForBooking(booking.id);
+          if (latestPayment?.fullRefundAttempt && latestPayment.fullRefundAttempt.status !== "failed" && latestPayment.status !== "refunded" && payload.resolutionAction !== "approve-refund") throw new HttpError(409, "Reconcile the submitted full refund before changing this case outcome.");
+          if (latestPayment && hasPendingPartialRefund(latestPayment)) throw new HttpError(409, "A partial refund is still processing. Wait for payment reconciliation before resolving this case.");
           this.assertEvidenceReviewedBeforeSensitiveSupportResolution(
             ticket,
             booking,
@@ -14541,6 +14627,10 @@ export class MarketplacePlatformService {
           );
           if (payload.resolutionAction === "approve-refund" || payload.resolutionAction === "deny-refund") {
             await this.applySupportResolutionToRefund(booking, payload.resolutionAction, resolutionNotes as string);
+            const refreshedPayment = await this.findLatestPaymentForBooking(booking.id);
+            if (payload.resolutionAction === "approve-refund" && refreshedPayment?.status !== "refunded") {
+              return (await this.repository.updateSupportTicket(ticket.id, { status: "triaged", updatedAt: now, resolutionNotes: "The full refund is awaiting processor confirmation or settlement reconciliation. This case remains open." }))!;
+            }
           } else {
             await this.applySupportResolutionToBooking(booking, payload.resolutionAction);
           }
@@ -14578,6 +14668,7 @@ export class MarketplacePlatformService {
     }
 
     const updatedTicket = await this.repository.updateSupportTicket(ticket.id, {
+      ...(ticket.complaint && payload.status === "resolved" ? { complaint: { ...ticket.complaint, customerMessage: resolutionNotes ?? "Support reviewed your report. You can request another review here." } } : {}),
       status: payload.status,
       updatedAt: now,
       triagedAt: payload.status === "triaged" ? ticket.triagedAt ?? now : ticket.triagedAt,
@@ -14885,9 +14976,11 @@ export class MarketplacePlatformService {
     const now = new Date().toISOString();
 
     if (resolutionAction === "approve-refund") {
-      await this.syncApprovedRefundIfNeeded(payment, booking);
+      if (hasPendingPartialRefund(payment)) throw new HttpError(409, "A partial refund is still processing.");
+      if (!await this.syncApprovedRefundIfNeeded(payment, booking)) return;
       const updatedPayment = await this.repository.updatePayment(payment.id, {
         status: "refunded",
+        refundedAmountCents: payment.amountCents,
         refundable: false,
         refundReviewStatus: "approved",
         refundReviewedAt: now,
@@ -14961,27 +15054,37 @@ export class MarketplacePlatformService {
     ]);
   }
 
-  private async syncApprovedRefundIfNeeded(payment: PaymentRecord, booking: Booking): Promise<void> {
-    if (payment.processor !== "stripe") {
-      return;
+  private async syncApprovedRefundIfNeeded(payment: PaymentRecord, booking: Booking): Promise<boolean> {
+    if (payment.processor !== "stripe") return true;
+    if (!payment.processorPaymentIntentId) throw new HttpError(409, "Stripe refund sync requires a saved payment intent before ops can approve this refund.");
+    const remaining = payment.amountCents - (payment.refundedAmountCents ?? 0);
+    if (remaining <= 0) return true;
+    const canReplaceFailed = payment.fullRefundAttempt?.status === "failed" && payment.refundRequestedAt && payment.refundRequestedAt > payment.fullRefundAttempt.createdAt;
+    const attempt = (!canReplaceFailed ? payment.fullRefundAttempt : undefined) ?? {
+      amountCents: remaining, idempotencyKey: `full-refund:${payment.id}:${remaining}${canReplaceFailed ? `:${payment.refundRequestedAt}` : ""}`,
+      status: "submitting" as const, createdAt: new Date().toISOString()
+    };
+    if (attempt.status === "pending" || attempt.status === "failed") return false;
+    if (attempt.status === "submitting" && Date.now() - Date.parse(attempt.createdAt) > 23 * 3600000) throw new HttpError(409, "Reconcile this full refund in Stripe before retrying; its safe retry window has expired.");
+    await this.repository.updatePayment(payment.id, { fullRefundAttempt: attempt });
+    if (attempt.status !== "succeeded") {
+      try {
+        const result = await this.stripeCheckout.createRefund({ idempotencyKey: attempt.idempotencyKey,
+          fullRefundKey: attempt.idempotencyKey, paymentIntentId: payment.processorPaymentIntentId, amountCents: attempt.amountCents,
+          reason: payment.refundReason ?? "Refund review approved by YardMatch support.", bookingId: booking.id, paymentId: payment.id });
+        attempt.processorRefundId = result.refundId;
+        attempt.status = result.status === "succeeded" ? "succeeded" : ["failed", "canceled"].includes(result.status) ? "failed" : "pending";
+      } catch {
+        // A timeout is uncertain, not a failed refund. Commit the reservation and keep the case open.
+        await this.repository.updatePayment(payment.id, { fullRefundAttempt: attempt });
+        return false;
+      }
+      await this.repository.updatePayment(payment.id, { fullRefundAttempt: attempt });
     }
-
-    if (!payment.processorPaymentIntentId) {
-      throw new HttpError(
-        409,
-        "Stripe refund sync requires a saved payment intent before ops can approve this refund."
-      );
-    }
-
-    await this.reverseProviderTransferIfNeeded(booking);
-
-    await this.stripeCheckout.createRefund({
-      paymentIntentId: payment.processorPaymentIntentId,
-      amountCents: payment.amountCents,
-      reason: payment.refundReason ?? "Refund review approved by YardMatch support.",
-      bookingId: booking.id,
-      paymentId: payment.id
-    });
+    if (attempt.status !== "succeeded") return false;
+    try { await this.reverseProviderTransferIfNeeded(booking); }
+    catch { return false; } // Retry settlement recovery with the same refund, never a second charge reversal.
+    return true;
   }
 
   private async reverseProviderTransferIfNeeded(booking: Booking): Promise<void> {
@@ -15048,6 +15151,7 @@ export class MarketplacePlatformService {
     const refundReviewResolved = payment.refundReviewStatus === "requested";
     const updatedPayment = await this.repository.updatePayment(payment.id, {
       status: "refunded",
+      refundedAmountCents: payment.amountCents,
       refundable: false,
       refundReviewStatus: refundReviewResolved ? "approved" : payment.refundReviewStatus,
       refundReviewedAt: refundReviewResolved ? payment.refundReviewedAt ?? now : payment.refundReviewedAt,
@@ -15070,6 +15174,9 @@ export class MarketplacePlatformService {
       }
     }
 
+    for (const ticket of (await this.repository.listSupportTickets()).filter(item => item.bookingId === booking.id && item.complaint && item.status !== "resolved")) {
+      await this.repository.updateSupportTicket(ticket.id, { complaint: { ...ticket.complaint!, customerMessage: "Your payment has been fully refunded to its original payment method. Your bank may take additional time to display it. You can still ask for help with this report." } });
+    }
     if (!wasAlreadyRefunded) {
       this.analytics.recordFunnelStep(MarketplaceTelemetryEventCatalog.refundCompleted, booking.id, {
         paymentId: updatedPayment.id,
@@ -20078,6 +20185,10 @@ export class MarketplacePlatformService {
       }
     ];
 
+    for (const refund of payment?.partialRefunds ?? []) {
+      if (refund.ticketId === ticket.id) timeline.push({ id: refund.id, occurredAt: refund.updatedAt, actorRole: "ops", kind: "partial-refund", title: `Partial refund ${refund.status}`,
+        detail: `${refund.amountCents} ${payment!.currency} cents; funded by YardMatch; approved by ${refund.actorUserId}. ${refund.reason}` });
+    }
     if (payment?.refundRequestedAt) {
       timeline.push({
         id: `${ticket.id}-refund-requested`,

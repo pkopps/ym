@@ -992,6 +992,29 @@ export interface ProviderStaffingJobSummary {
   matches: CrewMatchCandidate[];
 }
 
+export interface ProviderClientVisit {
+  bookingId: string;
+  category: ServiceCategory;
+  status: BookingStatus;
+  scheduledStartIso: string;
+  scheduledEndIso: string;
+}
+
+export interface ProviderClientProperty {
+  id: string;
+  customerName: string;
+  address: Address;
+  recurring: boolean;
+  completedVisitCount: number;
+  lastCompletedAt?: string;
+  upcomingVisits: ProviderClientVisit[];
+}
+
+export interface ProviderClientsOverview {
+  companyName: string;
+  properties: ProviderClientProperty[];
+}
+
 export interface ProviderStaffingOverview {
   provider: ProviderProfile;
   jobs: ProviderStaffingJobSummary[];
@@ -1306,6 +1329,7 @@ export interface BookingEvidenceChecklistItem {
 }
 
 export interface BookingEvidenceEntry {
+  complaintTicketId?: string;
   id: string;
   phase: BookingEvidencePhase;
   evidenceType: BookingEvidenceType;
@@ -1592,7 +1616,83 @@ export interface SearchRetentionPreference {
   sameProviderCompletedCount: number;
 }
 
+export interface PartialRefundRecord {
+  refundedBeforeCents: number;
+  id: string;
+  ticketId: string;
+  amountCents: number;
+  funding: "platform";
+  status: "submitting" | "pending" | "succeeded" | "failed";
+  reason: string;
+  actorUserId: string;
+  idempotencyKey: string;
+  processorRefundId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ServiceComplaintKind = "missed-visit" | "incomplete-work" | "quality" | "property-damage" | "billing";
+export interface ComplaintAssessment {
+  source: "rules" | "ai";
+  status: "ready" | "unavailable";
+  summary: string;
+  observations: string[];
+  limitations: string[];
+  suggestedQuestion: string;
+  evidenceIds: string[];
+  createdAt: string;
+  model?: string;
+  policyVersion: "complaints-v1";
+}
+export interface ServiceComplaint {
+  kind: ServiceComplaintKind;
+  affectedArea: string;
+  preferredRemedy: "refund" | "return-visit" | "help-decide";
+  noPhotoReason?: string;
+  evidenceIds: string[];
+  aiConsent: boolean;
+  humanReviewRequested: boolean;
+  nextUpdateDueAt: string;
+  customerMessage: string;
+  assessment?: ComplaintAssessment;
+  replies: { message: string; createdAt: string; actorUserId: string }[];
+}
+export interface CreateServiceComplaintRequest {
+  bookingId: string;
+  kind: ServiceComplaintKind;
+  affectedArea: string;
+  description: string;
+  preferredRemedy: ServiceComplaint["preferredRemedy"];
+  noPhotoReason?: string;
+  photos?: string[];
+  aiConsent?: boolean;
+}
+export interface ReplyServiceComplaintRequest {
+  ticketId: string;
+  message: string;
+  requestHumanReview?: boolean;
+}
+export interface IssuePartialRefundRequest {
+  ticketId: string;
+  paymentId: string;
+  amountCents: number;
+  reason: string;
+  idempotencyKey: string;
+}
+
+export interface FullRefundAttempt {
+  amountCents: number;
+  idempotencyKey: string;
+  status: "submitting" | "pending" | "succeeded" | "failed";
+  processorRefundId?: string;
+  createdAt: string;
+}
+
 export interface PaymentRecord {
+  fullRefundAttempt?: FullRefundAttempt;
+  partialRefunds?: PartialRefundRecord[];
+  refundedAmountCents?: number;
+
   checkoutSessionExpiredAt?: string;
   checkoutSuccessPath?: string;
   checkoutCancelPath?: string;
@@ -1689,7 +1789,8 @@ export type FinancialLedgerAccount =
   | "provider-payable"
   | "platform-finder-fee-revenue"
   | "platform-job-fee-revenue"
-  | "payment-processing-expense";
+  | "payment-processing-expense"
+  | "customer-remedy-expense";
 
 export interface FinancialLedgerEntry {
   id: string;
@@ -1701,7 +1802,7 @@ export interface FinancialLedgerEntry {
   amountCents: number;
   currency: string;
   idempotencyKey: string;
-  source: "booking-settlement" | "processor-fee" | "reversal" | "provider-transfer";
+  source: "booking-settlement" | "processor-fee" | "reversal" | "provider-transfer" | "partial-refund";
   reversalOfEntryId?: string;
   createdAt: string;
 }
@@ -1965,6 +2066,7 @@ export interface OpsPayoutRunPreviewResponse {
 }
 
 export interface SupportTicket {
+  complaint?: ServiceComplaint;
   id: string;
   bookingId?: string;
   launchLeadId?: string;
@@ -2093,7 +2195,8 @@ export type SupportTimelineEntryKind =
   | "refund-review-opened"
   | "refund-review-resolved"
   | "booking-intervention"
-  | "evidence-reviewed";
+  | "evidence-reviewed"
+  | "partial-refund";
 
 export interface SupportTimelineEntry {
   id: string;

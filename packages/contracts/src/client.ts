@@ -111,6 +111,9 @@ import {
   CreateRefundRequest,
   CreateLaunchLeadRequest,
   CreateSupportTicketRequest,
+  CreateServiceComplaintRequest,
+  ReplyServiceComplaintRequest,
+  IssuePartialRefundRequest,
   LaunchLead,
   ObservabilityOverview,
   OpsLaunchLead,
@@ -125,6 +128,7 @@ import {
   ProviderConnectOnboardingResponse,
   ProviderConnectStatusResponse,
   ProviderStaffingOverview,
+  ProviderClientsOverview,
   ProviderReview,
   RegisterUserRequest,
   RotateOpsAccountSessionsRequest,
@@ -571,6 +575,10 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.claimPublicCrewOpportunity, payload);
   }
 
+  public getProviderClients(): Promise<ProviderClientsOverview> {
+    return this.getJson(ApiRoutes.providerClients);
+  }
+
   public getProviderStaffingOverview(): Promise<ProviderStaffingOverview> {
     return this.getJson(ApiRoutes.providerStaffingOverview);
   }
@@ -949,6 +957,19 @@ export class MarketplaceApiClient {
 
   public createRefund(payload: CreateRefundRequest) {
     return this.postJson(ApiRoutes.createRefund, payload);
+  }
+
+  public createServiceComplaint(payload: CreateServiceComplaintRequest): Promise<SupportTicket> {
+    return this.postJson(ApiRoutes.serviceComplaints, payload);
+  }
+  public replyServiceComplaint(payload: ReplyServiceComplaintRequest): Promise<SupportTicket> {
+    return this.postJson(ApiRoutes.serviceComplaintReply, payload);
+  }
+  public assessServiceComplaint(ticketId: string): Promise<SupportTicket> {
+    return this.postJson(ApiRoutes.serviceComplaintAssessment, { ticketId });
+  }
+  public issuePartialRefund(payload: IssuePartialRefundRequest): Promise<PaymentRecord> {
+    return this.postJson(ApiRoutes.partialRefund, payload);
   }
 
   public createSupportTicket(payload: CreateSupportTicketRequest): Promise<SupportTicket> {

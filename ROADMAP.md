@@ -58,6 +58,10 @@ Exit criteria:
 
 ## Priority 1: Launch-Critical
 
+### Provider Client Map — Owner-Approved Launch Requirement
+
+Patrick explicitly prioritized the provider client map for launch on September 20, 2026. Independently accept the authenticated `/provider/clients` workflow against staging bookings on desktop and mobile browsers, including historical clients, recurring-plan status, provider isolation, geocoded locations, and map-tile availability. Current local behavior and verification commands are documented in `README.md`.
+
 ### Test Deployment And Distribution
 
 - Provision the repository-defined Vercel web/private Blob and Render API/PostgreSQL staging environment, inject the documented secrets, and retain the first green revision-matched `staging-acceptance-<commit>-<attempt>` artifact. The repository now waits for web/API health, rejects revision drift or a non-staging/non-PostgreSQL target, exercises API and ops access, and proves customer-private upload through consent grant and revocation.
@@ -90,6 +94,7 @@ Exit criteria:
 
 ### Production Operations
 
+- Validate the new structured complaint intake and human-approved, YardMatch-funded partial refunds in staging, including signed refund events and failed-transfer recovery. Calibrate the optional consented AI photo assessment against human-reviewed cases; decide a goodwill allowance and provider-deduction/appeal policy before enabling automatic financial decisions. Native complaint-form parity and a customer-approved return-visit workflow remain future work.
 - Keep extending support and financial exception tooling beyond the current structured ticket timeline, payout-hold queue, refund review history, booking intervention history, evidence-review history, the new evidence-before-resolution guard for disputes and refund reviews, backend-authored customer update drafts for delays, cancellations, refund approvals or denials, issue-resolution follow-up, provider coordination templates, structured exception-handling scripts for weather/route delays, no-shows, not-ready customers, access blockers, and incomplete-service cases, and the ops-authenticated stale-ticket escalation sweep that notifies ops when unresolved launch-sensitive support cases pass backend-owned SLA thresholds.
 - Keep testing completed-job dispute scenarios now that provider-favoring resolutions should return those bookings to `completed` and release payout holds cleanly, while customer-favoring cancellation of completed paid disputes is blocked until a refund review is open or approved so settlement state stays reconciled.
 - Keep tightening dispute evidence workflows beyond the current before/after photos, notes, and checklists now that ops must review at least one submitted evidence item before resolving dispute/service-quality/refund-review tickets, the final resolution direction must match the reviewed evidence signal, mixed evidence requires a specific written rationale before the case can close, and the ops UI now reads those guardrails from a backend-authored resolution policy instead of client-side heuristics.
@@ -167,6 +172,13 @@ Exit criteria:
 - Property owners should continue to see only the business/provider route status, not individual crew members.
 
 ## Priority 4: Post-Launch Growth
+
+### Potential Revenue Stream: Provider Sponsorship
+
+- Explore optional provider-paid sponsorship that increases recommendation likelihood as a potential future feature and additional business revenue stream. This is an idea for evaluation, not an approved implementation or launch commitment.
+- Sponsorship is currently dormant: it adds zero ranking points and cannot be enabled through provider settings. Activating paid recommendation influence would require an explicit product decision to revisit the current no-paid-placement ranking guardrail.
+- Before implementation, define pricing and billing, clear customer-facing sponsorship disclosure, and a capped boost among qualified providers that preserves service fit, availability, verification, reliability, and provider economics. Keep the recommendation-first flow and limited curated backups.
+- Evaluate incremental sponsorship revenue alongside provider return on spend, customer recommendation acceptance, fulfillment quality, and retention before deciding whether to proceed.
 
 ### Customer Experience
 

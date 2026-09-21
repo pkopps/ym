@@ -201,6 +201,7 @@ export interface MarketplaceRepository {
     bookingId: string
   ): Promise<BookingFinancialSettlement | undefined>;
   listFinancialLedgerEntries(bookingId?: string): Promise<FinancialLedgerEntry[]>;
+  appendFinancialLedgerEntries(entries: FinancialLedgerEntry[]): Promise<void>;
   listProviderCredentials(providerId: string): Promise<ProviderCredential[]>;
   upsertProviderCredential(credential: ProviderCredential): Promise<ProviderCredential>;
   findProviderConnectAccount(providerId: string): Promise<ProviderConnectAccount | undefined>;

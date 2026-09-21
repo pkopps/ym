@@ -18,7 +18,7 @@ export function CompactSiteHeader() {
   const crew = path.startsWith("/crew") || path.endsWith("/crew");
   const role = session?.role;
   const links: NavItem[] = role === "provider" ? [
-    { href: "/provider/management", label: "ux.jobs" }, { href: "/provider/payments", label: "ux.payouts" }, { href: "/crew", label: "ux.crew" }, { href: "/help", label: "ux.help" }
+    { href: "/provider/management", label: "ux.jobs" }, { href: "/provider/clients", label: "provider_clients.nav" }, { href: "/provider/payments", label: "ux.payouts" }, { href: "/crew", label: "ux.crew" }, { href: "/help", label: "ux.help" }
   ] : role === "crew-member" ? [
     { href: "/crew", label: "ux.jobs" }, { href: "/crew/schedule", label: "ux.schedule" }, { href: "/crew/schedule/history", label: "nav.user.past_visits" }, { href: "/help", label: "ux.help" }
   ] : role === "ops" ? [

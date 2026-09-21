@@ -1,4 +1,5 @@
 "use client";
+import type { PropertyPhotoArea } from "@yardmatch/contracts";
 
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
 import { WorkspaceSection } from "./WorkspaceSection";
@@ -312,6 +313,7 @@ export function ProviderLiveManagementBoard() {
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [isWorking, setIsWorking] = useState(false);
+  const [evidenceAreas, setEvidenceAreas] = useState<Record<string, PropertyPhotoArea>>({});
   const [profileCompanyName, setProfileCompanyName] = useState("");
   const [profileBio, setProfileBio] = useState("");
   const [profileYearsExperience, setProfileYearsExperience] = useState("1");
@@ -885,7 +887,7 @@ export function ProviderLiveManagementBoard() {
     try {
       const imageDataUrl = await readEvidenceImage(file);
       const api = createAuthenticatedWebApiClient();
-      await api.addBookingEvidence({ bookingId, phase, imageDataUrl });
+      await api.addBookingEvidence({ bookingId, phase, imageDataUrl, photoArea: evidenceAreas[bookingId] ?? "lawn" });
       setStatusMessage(
         phase === "before"
           ? i18n.t("provider_live.message.before_photo_saved")
@@ -1343,6 +1345,8 @@ export function ProviderLiveManagementBoard() {
               <section className="evidence-capture-panel" id={`provider-evidence-${job.bookingId}`}>
                 <div>
                   <strong>{i18n.t("provider_live.evidence.title")}</strong>
+                  <p>{i18n.t("complaint.provider_capture")}</p>
+                  <label className="form-field"><span>{i18n.t("customer_live.photos.area_label")}</span><select value={evidenceAreas[job.bookingId] ?? "lawn"} onChange={event => setEvidenceAreas(current => ({ ...current, [job.bookingId]: event.target.value as PropertyPhotoArea }))}>{(["lawn", "shrubs", "garden-beds", "trees", "driveway", "walkways", "gutters", "other"] as const).map(area => <option key={area} value={area}>{i18n.t(`photo.area.${area.replaceAll("-", "_")}` as "photo.area.lawn")}</option>)}</select></label>
                   <p>
                     {job.status === "in-progress"
                       ? i18n.t("provider_live.evidence.after_help", { count: job.afterEvidenceCount })

@@ -42,6 +42,7 @@ export class ApiRoutes {
   public static readonly publicCrewOpportunities = "/api/crew/opportunities/public";
   public static readonly selectPublicCrewOpportunity = "/api/crew/opportunities/public/select";
   public static readonly claimPublicCrewOpportunity = "/api/crew/opportunities/claim";
+  public static readonly providerClients = "/api/providers/clients";
   public static readonly providerStaffingOverview = "/api/providers/staffing";
   public static readonly providerReviewCrewMatch = "/api/providers/staffing/review";
   public static readonly providerAssignBookingRouteLeader = "/api/providers/staffing/route-leader";
@@ -109,6 +110,10 @@ export class ApiRoutes {
   public static readonly createPaymentIntent = "/api/payments/intent";
   public static readonly createRefund = "/api/payments/refund";
   public static readonly supportTickets = "/api/support/tickets";
+  public static readonly serviceComplaints = "/api/support/complaints";
+  public static readonly serviceComplaintReply = "/api/support/complaints/reply";
+  public static readonly serviceComplaintAssessment = "/api/support/ops/complaints/assess";
+  public static readonly partialRefund = "/api/support/ops/partial-refund";
   public static readonly createSupportTicket = "/api/support/tickets";
   public static readonly launchLeads = "/api/launch/leads";
   public static readonly inboundLaunchLeads = "/api/launch/inbound";

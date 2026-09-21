@@ -14,6 +14,7 @@ function paymentLabelKey(payment?: PaymentRecord): TranslationKey {
   }
 
   if (payment.status === "captured") {
+    if (payment.refundedAmountCents) return "complaint.partially_refunded";
     return "customer_history.payment.paid";
   }
 

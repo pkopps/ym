@@ -130,11 +130,6 @@
       "count": 2
     }
   },
-  "apps/web/src/components/HelpSupportTicketPanel.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    }
-  },
   "apps/web/src/components/NavBar.tsx": {
     "@next/next/no-img-element": {
       "count": 1

@@ -36,6 +36,44 @@ export const apiSpec = {
     }
   },
   paths: {
+    "/api/support/complaints": {
+      post: {
+        tags: ["Support"], summary: "Submit a structured service complaint", security: [{ bearerAuth: [] }],
+        description: "Customer ownership required. Captures problem, affected task, preferred remedy, up to two validated photos or a no-photo explanation. One open report per booking/problem is reused. Optional consented AI assessment is internal and advisory; no automatic refund. Photos stay private and cannot be approved for marketing.",
+        requestBody: { required: true, content: { "application/json": { example: { bookingId: "booking_123", kind: "incomplete-work", affectedArea: "Backyard edging", description: "The grass beside the fence was not trimmed.", preferredRemedy: "refund", noPhotoReason: "I am away from the property.", aiConsent: false } } } },
+        responses: { "200": { description: "Saved or existing report, including next update target" }, "400": { description: "Invalid report or missing relevant evidence" }, "403": { description: "Not the booking customer" } }
+      }
+    },
+    "/api/support/complaints/reply": {
+      post: { tags: ["Support"], summary: "Add details or request human review", security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { ticketId: "ticket_123", message: "Please review the backyard photo.", requestHumanReview: true } } } },
+        responses: { "200": { description: "Updated report; resolved reports reopen" }, "403": { description: "Not the requester" } } }
+    },
+    "/api/support/ops/complaints/assess": {
+      post: { tags: ["Support"], summary: "Refresh an internal advisory evidence assessment", security: [{ bearerAuth: [] }],
+        description: "Ops only. Rules fallback without consent, model configuration, or available AI. Never authorizes a refund or marks evidence reviewed.",
+        requestBody: { required: true, content: { "application/json": { example: { ticketId: "ticket_123" } } } },
+        responses: { "200": { description: "Report with advisory assessment" }, "403": { description: "Ops required" } } }
+    },
+    "/api/support/ops/partial-refund": {
+      post: { tags: ["Support"], summary: "Approve or retry a YardMatch-funded partial refund", security: [{ bearerAuth: [] }],
+        description: "Ops only. Positive integer cents less than remaining balance; completed captured booking, matching open case, reviewed evidence and financial settlement required. Durable reservation precedes Stripe. Retry the same key and payload after uncertainty. Provider transfers are unchanged. Pending is not success; refund webhooks reconcile the balanced ledger. Damage and disputed bookings require separate human handling.",
+        requestBody: { required: true, content: { "application/json": { example: { ticketId: "ticket_123", paymentId: "payment_123", amountCents: 1500, reason: "YardMatch goodwill for missed edging.", idempotencyKey: "unique-request-key" } } } },
+        responses: { "200": { description: "Payment with durable refund status and cumulative refunded amount" }, "400": { description: "Invalid amount or rationale" }, "403": { description: "Ops required" }, "409": { description: "Review, reconciliation, or existing request conflict" } } }
+    },
+    "/api/providers/clients": {
+      get: {
+        tags: ["Providers"],
+        summary: "List this provider's current and past booked client properties",
+        description: "Provider authentication required. Groups non-cancelled booking history by customer and service address (including unit). Recurring means an active plan at that address. Returns customer name, booked address, completed visit count, last completion, and upcoming visit summaries. No unrelated saved properties or customer contact details are returned. Responses are private and no-store.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          "200": { description: "ProviderClientsOverview: companyName and properties" },
+          "401": { description: "Authentication required" },
+          "403": { description: "Provider role required" }
+        }
+      }
+    },
     "/healthz": {
       get: {
         tags: ["Operations"],

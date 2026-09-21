@@ -1874,6 +1874,7 @@ export function CustomerLiveDashboard() {
               {canReviewRefund ? (
                 <div className="list-panel">
                   <h3>{i18n.t("customer_live.refund.title")}</h3>
+                  <a className="button" href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(booking.id)}`, i18n.locale)}>{i18n.t("complaint.title")}</a>
                   <p>
                     {paymentRecord?.refundReviewStatus === "requested"
                       ? i18n.t("customer_live.refund.reviewing")
@@ -2171,6 +2172,7 @@ export function CustomerLiveDashboard() {
     }
 
     if (payment.status === "captured") {
+      if (payment.refundedAmountCents) return `${i18n.t("complaint.partially_refunded")} · ${i18n.formatCurrency(payment.refundedAmountCents, payment.currency, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       return i18n.t("customer_history.payment.paid");
     }
 
