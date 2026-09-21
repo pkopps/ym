@@ -40,7 +40,7 @@ async function fixture() {
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger(), gateway);
   const provider = (await repository.listProviders())[0];
   await repository.updateProvider(provider.id, { minimumBookingLeadHours: 0 });
-  const customer = await platform.registerUser({ fullName: 'Audit Customer', email: 'audit-customer@example.com', phone: '555-0200', role: 'customer', address: provider.address }, hashPassword('Password123!'));
+  const customer = await platform.registerUser({ fullName: 'Audit Customer', email: 'audit-customer@example.com', phone: '555-0200', role: 'customer', address: provider.address }, await hashPassword('Password123!'));
   const payload = { providerId: provider.id, serviceAddress: provider.address, category: 'lawn-mowing', scheduledStartIso: future(72), scheduledEndIso: future(74), totalCents: 6400, notes: 'Audit service request' };
   const quote = await platform.createInstantQuote({ customerId:customer.id, address:provider.address, category:'lawn-mowing' });
   payload.totalCents = quote.estimatedPriceCents;

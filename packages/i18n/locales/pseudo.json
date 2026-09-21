@@ -232,5 +232,12 @@
   "schedule.saved": "Timing update saved.",
   "schedule.error": "Could not update the visit. Please try again.",
   "schedule.history": "Earlier timing updates",
-  "schedule.provider_proposal_body": "The visit has not moved yet. The customer must accept the new arrival window."
+  "schedule.provider_proposal_body": "The visit has not moved yet. The customer must accept the new arrival window.",
+  "provider_clients.previous_page": "[!! Previous !!]",
+  "provider_clients.next_page": "[!! Next !!]",
+  "provider_clients.page_summary": "[!! Page {page} of {pages} !!]",
+  "provider_clients.cluster": "[!! {count} properties — zoom in or choose a client !!]",
+  "analytics.export_delayed": "[!! Analytics export is delayed. Review collection health and the export service. !!]",
+  "analytics.export_age": "[!! Oldest queued event (seconds) !!]",
+  "analytics.export_exhausted": "[!! Events needing retry review !!]"
 }

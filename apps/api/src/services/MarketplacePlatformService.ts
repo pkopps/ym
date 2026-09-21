@@ -1,7 +1,8 @@
+import { bookingMetrics, type ProviderBookingMetrics } from "../repositories/searchQueries";
+import type { ClaimedNotificationDelivery } from "../repositories/MarketplaceRepository";
 import { ServiceComplaintService } from "./ServiceComplaintService";
 import { PartialRefundService, hasPendingPartialRefund } from "./PartialRefundService";
 import type { CreateServiceComplaintRequest, ReplyServiceComplaintRequest, IssuePartialRefundRequest } from "@yardmatch/contracts";
-import { buildProviderClientProperties } from "./providerClients";
 import { fetchCalendarFeed } from "../integrations/calendarFeed";
 import { parseCalendarFeed } from "./calendarParser";
 import { createHash, timingSafeEqual } from "node:crypto";
@@ -723,7 +724,7 @@ export class MarketplacePlatformService {
         address: payload.address ?? this.getDefaultOpsAccountAddress(),
         internalScope
       },
-      hashPassword(passwordToStore)
+      await hashPassword(passwordToStore)
     );
 
     const identity = await this.repository.findAuthIdentityByUserId(created.id);
@@ -829,7 +830,7 @@ export class MarketplacePlatformService {
     const newPassword = payload.newPassword?.trim();
     if (newPassword) {
       validatePasswordStrength(newPassword);
-      nextUpdates.passwordHash = hashPassword(newPassword);
+      nextUpdates.passwordHash = await hashPassword(newPassword);
       nextUpdates.resetPasswordCodeHash = undefined;
       nextUpdates.resetPasswordExpiresAt = undefined;
       nextUpdates.resetPasswordRequestedAt = undefined;
@@ -1027,7 +1028,7 @@ export class MarketplacePlatformService {
     validatePasswordStrength(payload.newPassword);
     const nextSessionVersion = (identity.sessionVersion ?? 1) + 1;
     await this.repository.updateAuthIdentity(identity.userId, {
-      passwordHash: hashPassword(payload.newPassword),
+      passwordHash: await hashPassword(payload.newPassword),
       sessionVersion: nextSessionVersion,
       failedAuthenticationCount: 0,
       lastFailedAuthenticationAt: undefined,
@@ -1217,7 +1218,7 @@ export class MarketplacePlatformService {
     if (!this.hasTwoFactorEnabled(identity)) {
       throw new HttpError(409, "Two-factor authentication is already off.");
     }
-    if (!identity.passwordHash || !verifyPassword(payload.password, identity.passwordHash)) {
+    if (!identity.passwordHash || !(await verifyPassword(payload.password, identity.passwordHash))) {
       throw new HttpError(401, "Enter your current password to turn off two-factor authentication.");
     }
 
@@ -1402,7 +1403,6 @@ export class MarketplacePlatformService {
 
   public async listNotifications(identity: AuthIdentityRecord): Promise<NotificationListResponse> {
     await this.ensureTimedNotifications(identity);
-    await this.retryDueNotificationDeliveries(identity);
     const notifications = (await this.repository.listNotificationsByRecipient(identity.userId))
       .filter((notification) => notification.recipientRole === identity.role)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -1418,7 +1418,6 @@ export class MarketplacePlatformService {
     payload: MarkNotificationsReadRequest
   ): Promise<NotificationListResponse> {
     await this.ensureTimedNotifications(identity);
-    await this.retryDueNotificationDeliveries(identity);
     const notifications = (await this.repository.listNotificationsByRecipient(identity.userId)).filter(
       (notification) => notification.recipientRole === identity.role
     );
@@ -1467,7 +1466,6 @@ export class MarketplacePlatformService {
     identity: AuthIdentityRecord
   ): Promise<NotificationDeliveriesResponse> {
     await this.ensureTimedNotifications(identity);
-    await this.retryDueNotificationDeliveries(identity);
     const deliveries = (await this.repository.listNotificationDeliveriesByRecipient(identity.userId))
       .filter((delivery) => delivery.recipientRole === identity.role)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -1478,86 +1476,34 @@ export class MarketplacePlatformService {
   }
 
   public async getNotificationOpsHealth(): Promise<NotificationOpsHealthResponse> {
-    const now = Date.now();
-    const last24Hours = now - 24 * 60 * 60 * 1000;
-    const deliveries = (await this.repository.listAllNotificationDeliveries()).sort((left, right) =>
-      right.createdAt.localeCompare(left.createdAt)
-    );
-    const deliveriesLast24Hours = deliveries.filter((delivery) => Date.parse(delivery.createdAt) >= last24Hours);
-    const failedDeliveries = deliveries.filter((delivery) => delivery.status === "failed");
-    const queuedCount = deliveries.filter((delivery) => delivery.status === "queued").length;
-    const pendingRetryDeliveries = failedDeliveries.filter((delivery) => Boolean(delivery.nextRetryAt));
-    const overdueRetryDeliveries = pendingRetryDeliveries.filter(
-      (delivery) => Date.parse(delivery.nextRetryAt as string) <= now
-    );
-    const exhaustedFailureCount = failedDeliveries.filter((delivery) => !delivery.nextRetryAt).length;
-    const sentLast24Hours = deliveries.filter((delivery) => {
-      const sentAt = delivery.sentAt ?? delivery.lastAttemptAt;
-      return Boolean(sentAt) && Date.parse(sentAt as string) >= last24Hours && delivery.status === "sent";
-    }).length;
-    const failedLast24Hours = failedDeliveries.filter((delivery) => {
-      const failedAt = delivery.lastAttemptAt ?? delivery.createdAt;
-      return Date.parse(failedAt) >= last24Hours;
-    }).length;
-    const channels = this.buildNotificationOpsChannelHealth(deliveries, now, last24Hours);
+    const snapshot = await this.repository.getNotificationHealth(new Date().toISOString());
     const deliveryPolicy = this.notificationDelivery.getOpsDeliveryPolicy();
-    const alerts = this.buildNotificationOpsAlerts({
-      deliveriesLast24Hours: deliveriesLast24Hours.length,
-      failedLast24Hours,
-      pendingRetryCount: pendingRetryDeliveries.length,
-      overdueRetryCount: overdueRetryDeliveries.length,
-      exhaustedFailureCount,
-      channels,
-      deliveryPolicy
-    });
-
-    return {
-      generatedAt: new Date().toISOString(),
-      totalDeliveries: deliveries.length,
-      deliveriesLast24Hours: deliveriesLast24Hours.length,
-      sentLast24Hours,
-      failedLast24Hours,
-      queuedCount,
-      pendingRetryCount: pendingRetryDeliveries.length,
-      overdueRetryCount: overdueRetryDeliveries.length,
-      exhaustedFailureCount,
-      channels,
-      recentFailures: failedDeliveries.slice(0, 8),
-      alerts,
-      deliveryPolicy
-    };
+    return { ...snapshot, generatedAt: new Date().toISOString(), deliveryPolicy,
+      alerts: this.buildNotificationOpsAlerts({ ...snapshot, deliveryPolicy }) };
   }
 
+  private notificationSweep?: Promise<NotificationOpsRetrySweepResponse>;
+
   public async retryDueNotificationDeliveriesForOps(): Promise<NotificationOpsRetrySweepResponse> {
-    const dueDeliveries = await this.listDueNotificationDeliveries();
-    if (dueDeliveries.length === 0) {
-      return {
-        retriedCount: 0,
-        sentCount: 0,
-        failedCount: 0,
-        remainingOverdueCount: 0
-      };
+    if (this.notificationSweep) return this.notificationSweep;
+    this.notificationSweep = this.drainNotificationDeliveries();
+    try { return await this.notificationSweep; } finally { this.notificationSweep = undefined; }
+  }
+
+  private async drainNotificationDeliveries(): Promise<NotificationOpsRetrySweepResponse> {
+    const result = { retriedCount: 0, sentCount: 0, failedCount: 0, remainingOverdueCount: 0 };
+    const deadline = Date.now() + 20_000;
+    while (result.retriedCount < 100 && Date.now() < deadline) {
+      // Claim only immediately available worker slots, so leases never expire in a local queue.
+      const jobs = await this.repository.claimNotificationDeliveries(5, new Date().toISOString(), 60);
+      if (!jobs.length) break;
+      const completed = await Promise.all(jobs.map(job => this.dispatchNotificationDelivery(job)));
+      result.retriedCount += jobs.length;
+      result.sentCount += completed.filter(row => row?.status === "sent").length;
+      result.failedCount += completed.filter(row => row?.status === "failed").length;
     }
-
-    await Promise.all(dueDeliveries.map((delivery) => this.dispatchNotificationDelivery(delivery)));
-
-    const updatedDeliveries = await this.repository.listAllNotificationDeliveries();
-    const updatedById = new Map(updatedDeliveries.map((delivery) => [delivery.id, delivery]));
-    const retried = dueDeliveries
-      .map((delivery) => updatedById.get(delivery.id))
-      .filter((delivery): delivery is NotificationDeliveryRecord => Boolean(delivery));
-
-    return {
-      retriedCount: retried.length,
-      sentCount: retried.filter((delivery) => delivery.status === "sent").length,
-      failedCount: retried.filter((delivery) => delivery.status === "failed").length,
-      remainingOverdueCount: updatedDeliveries.filter(
-        (delivery) =>
-          delivery.status === "failed" &&
-          delivery.nextRetryAt &&
-          Date.parse(delivery.nextRetryAt) <= Date.now()
-      ).length
-    };
+    result.remainingOverdueCount = await this.repository.countDueNotificationDeliveries(new Date().toISOString());
+    return result;
   }
 
   public async escalateNotificationOpsAlerts(): Promise<NotificationOpsEscalationResponse> {
@@ -1875,10 +1821,9 @@ export class MarketplacePlatformService {
     const recommendationSessionId = crypto.randomUUID();
     const providerDecisionMetrics = this.buildProviderDecisionMetrics();
 
-    const [providers, bookings] = await Promise.all([
-      this.repository.listProviders(),
-      this.repository.listBookings()
-    ]);
+    const sourceBooking = payload.retentionPreference
+      ? await this.repository.findBookingById(payload.retentionPreference.sourceBookingId) : undefined;
+    const bookings = sourceBooking ? await this.repository.listScopedBookings({ customerId: sourceBooking.customerId }) : [];
     const effectiveRetentionPreference = await this.resolveEligibleSearchRetentionPreference(
       payload.retentionPreference,
       bookings,
@@ -1902,72 +1847,34 @@ export class MarketplacePlatformService {
       ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
     });
 
-    const rankedCandidates = (
-      await Promise.all(
-        providers
-          .filter(
-            (provider) =>
-              provider.verificationStatus === "verified" &&
-              payload.categories.some((category) => provider.categories.includes(category))
-          )
-          .map(async (provider) => {
-            const distanceMiles = this.geoService.distanceMiles(normalizedAddress, provider.address);
-            if (distanceMiles > provider.serviceRadiusMiles) {
-              return undefined;
-            }
-
-            const providerSlots = this.filterProviderSlotsAgainstExternalBlocks(
-              provider,
-              await this.repository.listSlotsByProvider(provider.id)
-            );
-            const acceptanceReadySlots = providerSlots.filter((slot) =>
-              this.isWithinProviderAcceptanceWindow(provider, slot.startIso)
-            );
-
-            const matchingSlots = payload.estimatedDurationMinutes
-              ? (() => {
-                  const firstMatchingSlot = this.schedulingService.findFirstAvailableSlot(
-                    acceptanceReadySlots,
-                    payload.estimatedDurationMinutes
-                  );
-                  return firstMatchingSlot ? [firstMatchingSlot] : [];
-                })()
-              : acceptanceReadySlots.filter((slot) => !slot.isBooked);
-
-            const suggestedSlot = matchingSlots[0];
-            const providerBookings = bookings.filter((booking) => booking.providerId === provider.id);
-            const ranking = this.buildSearchProviderRanking(
-              rankingPayload,
-              provider,
-              providerBookings,
-              distanceMiles,
-              suggestedSlot,
-              providerDecisionMetrics.get(provider.id)
-            );
-
-            return {
-              ranking,
-              matchingSlots
-            };
-          })
-      )
-    )
-      .filter(
-        (candidate): candidate is { ranking: SearchProviderResult; matchingSlots: AvailabilitySlot[] } =>
-          Boolean(candidate)
-      )
-      .sort((left, right) => {
-        if (right.ranking.score !== left.ranking.score) {
-          return right.ranking.score - left.ranking.score;
-        }
-
-        if (left.ranking.distanceMiles !== right.ranking.distanceMiles) {
-          return left.ranking.distanceMiles - right.ranking.distanceMiles;
-        }
-
-        return right.ranking.provider.rating - left.ranking.provider.rating;
-      })
-      .slice(0, 3);
+    const rankedCandidates: Array<{ ranking: SearchProviderResult; matchingSlots: AvailabilitySlot[] }> = [];
+    let cursorId: string | undefined;
+    do {
+      const page = await this.repository.searchProvidersPage({ categories: payload.categories, address: normalizedAddress, cursorId });
+      const providers = page.items.filter(provider => this.geoService.distanceMiles(normalizedAddress, provider.address) <= provider.serviceRadiusMiles);
+      const ids = providers.map(provider => provider.id);
+      const [metrics, slots] = await Promise.all([
+        this.repository.getProviderBookingMetrics(ids, normalizedAddress),
+        this.repository.listSearchSlots(ids, payload.estimatedDurationMinutes)
+      ]);
+      const metricsById = new Map(metrics.map(item => [item.providerId, item]));
+      const slotsById = new Map<string, AvailabilitySlot[]>();
+      for (const slot of slots) {
+        const group = slotsById.get(slot.providerId) ?? []; group.push(slot); slotsById.set(slot.providerId, group);
+      }
+      for (const provider of providers) {
+        const matchingSlots = (slotsById.get(provider.id) ?? []).slice(0, payload.estimatedDurationMinutes ? 1 : 3);
+        const ranking = this.buildSearchProviderRanking(rankingPayload, provider,
+          metricsById.get(provider.id) ?? bookingMetrics(provider.id, [], normalizedAddress),
+          this.geoService.distanceMiles(normalizedAddress, provider.address), matchingSlots[0], providerDecisionMetrics.get(provider.id));
+        rankedCandidates.push({ ranking, matchingSlots });
+      }
+      rankedCandidates.sort((left, right) => right.ranking.score - left.ranking.score ||
+        left.ranking.distanceMiles - right.ranking.distanceMiles || right.ranking.provider.rating - left.ranking.provider.rating ||
+        left.ranking.provider.id.localeCompare(right.ranking.provider.id));
+      rankedCandidates.splice(3);
+      cursorId = page.hasMore ? page.nextCursorId : undefined;
+    } while (cursorId);
 
     const suggestedSlots = rankedCandidates.flatMap((candidate) => candidate.matchingSlots);
     const rankedProviders = this.withCustomerSelectionSummaries(
@@ -2371,12 +2278,12 @@ export class MarketplacePlatformService {
       throw new Error("Provider not found");
     }
 
-    const bookings = await this.repository.listBookings();
-    const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
+    const [history = bookingMetrics(provider.id, [], provider.address)] = await this.repository.getProviderBookingMetrics([provider.id], provider.address);
+    const openBookingCount = history.open;
     const guidance = this.buildProviderVerificationGuidance(
       provider,
       openBookingCount,
-      this.buildProviderVerificationOperationalHistory(provider.id, bookings)
+      { totalBookingCount: history.total, disputedBookingCount: history.disputed, refundedBookingCount: history.refunded, activeExceptionCount: history.exceptions }
     );
     const onboardingPlan = this.buildProviderOnboardingAutomationPlan(provider, guidance);
     const credentialReadiness = evaluateProviderCredentialReadiness(
@@ -4281,27 +4188,10 @@ export class MarketplacePlatformService {
   }
 
   public async getProviderClients(providerId: string): Promise<ProviderClientsOverview> {
-    const provider = await this.getProviderProfile(providerId);
-    const bookings: Booking[] = [];
-    let cursorId: string | undefined;
-    do {
-      const page = await this.repository.listBookingsPage({
-        actorId: providerId, actorRole: "provider", scope: "all", limit: 200, cursorId
-      });
-      bookings.push(...page.items);
-      cursorId = page.hasMore ? page.nextCursorId : undefined;
-    } while (cursorId);
-    const customers = await Promise.all(
-      [...new Set(bookings.map((booking) => booking.customerId))]
-        .map((id) => this.repository.findCustomerById(id))
-    );
-    const plans = await this.repository.listRecurringServicePlans();
-    return {
-      companyName: provider.companyName,
-      properties: buildProviderClientProperties(providerId, bookings, customers.filter(
-        (customer): customer is CustomerProfile => Boolean(customer)
-      ), plans)
-    };
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) throw new HttpError(404, "Provider not found");
+    return { companyName: provider.companyName,
+      properties: await this.repository.getProviderClientProperties(providerId, new Date().toISOString()) };
   }
 
   public async getProviderStaffingOverview(providerId: string): Promise<ProviderStaffingOverview> {
@@ -5463,10 +5353,12 @@ export class MarketplacePlatformService {
     const booking = await this.repository.findBookingById(payload.bookingId);
     if (!booking) throw new HttpError(404, "Booking not found");
     if (booking.customerId !== customerId) throw new HttpError(403, "Only the customer can respond to this proposal");
-    const result = await this.repository.withLock(`calendar:${booking.providerId}`, repository =>
-      this.withRepository(repository).respondBookingScheduleRecord(customerId, payload));
-    // Dispatch after the new window, crew review state and in-app notices commit together.
-    for (const notification of result.notifications) await this.queueNotificationDeliveries(notification);
+    const result = await this.repository.withLock(`calendar:${booking.providerId}`, async repository => {
+      const scoped = this.withRepository(repository);
+      const response = await scoped.respondBookingScheduleRecord(customerId, payload);
+      for (const notification of response.notifications) await scoped.queueNotificationDeliveries(notification);
+      return response;
+    });
     return result.booking;
   }
 
@@ -5547,10 +5439,12 @@ export class MarketplacePlatformService {
           ...recipient, category: "booking", title: "Your visit needs a fresh timing update",
           body: recipient.recipientRole === "customer" ? "The last timing update is overdue. Arrival is not confirmed. We have alerted your provider and operations; your booking is still open. Check your visit or contact support for help."
             : `Booking ${booking.id} has passed its arrival or update deadline. Contact the customer with a realistic arrival, weather hold, or proposed new window.`, actionHref: href };
-        if (await this.repository.createNotificationIfAbsent(notice)) {
-          await this.queueNotificationDeliveries(notice);
-          result.sentNotificationCount++;
-        } else result.alreadySentCount++;
+        const created = await this.repository.withLock(`notification:${notice.id}`, async repository => {
+          if (!await repository.createNotificationIfAbsent(notice)) return false;
+          await this.withRepository(repository).queueNotificationDeliveries(notice);
+          return true;
+        });
+        if (created) result.sentNotificationCount++; else result.alreadySentCount++;
       }
     }
     return result;
@@ -10619,27 +10513,13 @@ export class MarketplacePlatformService {
   private async buildCustomerProviderRetentionStates(
     bookings: Booking[]
   ): Promise<Map<string, CustomerProviderRetentionState>> {
-    const providerIds = [...new Set(bookings.map((booking) => booking.providerId))];
-    const completedBookingIds = bookings
-      .filter((booking) => Boolean(booking.completedAt))
-      .map((booking) => booking.id);
-    const [supportTickets, reviewEntries, settlementEntries] = await Promise.all([
-      this.repository.listSupportTickets(),
-      Promise.all(
-        providerIds.map(async (providerId) => [
-          providerId,
-          await this.repository.listProviderReviews(providerId)
-        ] as const)
-      ),
-      Promise.all(
-        completedBookingIds.map(async (bookingId) => [
-          bookingId,
-          await this.repository.findBookingFinancialSettlement(bookingId)
-        ] as const)
-      )
-    ]);
-    const reviewsByProviderId = new Map(reviewEntries);
-    const settlementsByBookingId = new Map(settlementEntries);
+    const evidence = await this.repository.getRetentionEvidence(bookings.map(booking => booking.id));
+    const supportTickets = evidence.tickets;
+    const reviewsByProviderId = new Map<string, ProviderReview[]>();
+    for (const review of evidence.reviews) {
+      const group = reviewsByProviderId.get(review.providerId) ?? []; group.push(review); reviewsByProviderId.set(review.providerId, group);
+    }
+    const settlementsByBookingId = new Map(evidence.settlements.map(row => [row.bookingId, row]));
     const relationships = new Map<string, Booking[]>();
 
     for (const booking of bookings) {
@@ -16082,94 +15962,55 @@ export class MarketplacePlatformService {
   }
 
   public async createProviderCalendarImport(providerId: string, payload: CreateExternalCalendarImportRequest): Promise<ProviderCalendarImportsResponse> {
-    return this.repository.withLock(`calendar:${providerId}`, (repository) => this.withRepository(repository).createProviderCalendarImportRecord(providerId, payload));
-  }
-
-  private async createProviderCalendarImportRecord(
-    providerId: string,
-    payload: CreateExternalCalendarImportRequest
-  ): Promise<ProviderCalendarImportsResponse> {
-    const provider = await this.repository.findProviderById(providerId);
-    if (!provider) {
-      throw new HttpError(404, "Provider not found");
-    }
-
-    const title = payload.title.trim();
-    const feedUrl = payload.feedUrl.trim();
-    if (!title) {
-      throw new HttpError(400, "Calendar import title is required");
-    }
-
+    if (!await this.repository.findProviderById(providerId)) throw new HttpError(404, "Provider not found");
+    const title = payload.title.trim(), feedUrl = payload.feedUrl.trim();
+    if (!title) throw new HttpError(400, "Calendar import title is required");
     if (!/^https?:\/\/|^webcal:\/\//i.test(feedUrl) && !/^data:text\/calendar/i.test(feedUrl)) {
       throw new HttpError(400, "Calendar import feedUrl must be an http, https, webcal, or data URL");
     }
-
-    const subscription: ExternalCalendarSubscription = {
-      id: crypto.randomUUID(),
-      title,
-      provider: payload.provider,
-      feedUrl,
-      importedEventCount: 0,
-      syncStatus: "active"
-    };
-
-    const nextSubscriptions = [...(provider.calendarConnection.externalSubscriptions ?? []), subscription];
-    const savedProvider = await this.repository.updateProvider(provider.id, {
-      calendarConnection: {
-        ...provider.calendarConnection,
-        externalSubscriptions: nextSubscriptions
-      }
+    const subscription: ExternalCalendarSubscription = { id: crypto.randomUUID(), title, provider: payload.provider,
+      feedUrl, importedEventCount: 0, syncStatus: "active" };
+    const prepared = await this.prepareExternalCalendar(subscription);
+    const imported = await this.repository.withLock(`calendar:${providerId}`, async repository => {
+      const provider = await repository.findProviderById(providerId);
+      if (!provider) throw new HttpError(404, "Provider not found");
+      return this.withRepository(repository).applyExternalCalendarSubscription(provider, subscription,
+        [...(provider.calendarConnection.externalSubscriptions ?? []), subscription], prepared);
     });
-    if (!savedProvider) {
-      throw new HttpError(500, "Calendar import could not be created");
-    }
-
-    const imported = await this.syncExternalCalendarSubscription(savedProvider, subscription, nextSubscriptions);
-    const bookings = await this.listFutureProviderCalendarConflictBookings(imported.id);
-    return {
-      providerId,
-      subscriptions: imported.calendarConnection.externalSubscriptions ?? [],
-      importedBlockCount: (imported.calendarConnection.externalBlocks ?? []).filter(
-        (block) => block.source === "calendar-import"
-      ).length,
-      syncHealth: this.buildProviderCalendarSyncHealth(imported, bookings)
-    };
+    return this.calendarImportResponse(imported);
   }
 
   public async syncProviderCalendarImport(providerId: string, payload: SyncExternalCalendarImportRequest): Promise<ProviderCalendarImportsResponse> {
-    return this.repository.withLock(`calendar:${providerId}`, (repository) => this.withRepository(repository).syncProviderCalendarImportRecord(providerId, payload));
+    const provider = await this.repository.findProviderById(providerId);
+    if (!provider) throw new HttpError(404, "Provider not found");
+    const found = (provider.calendarConnection.externalSubscriptions ?? []).find(item => item.id === payload.subscriptionId);
+    if (!found) throw new HttpError(404, "Calendar import not found");
+    const subscription = structuredClone(found);
+    // No connection or calendar lock is held while fetching and parsing the feed.
+    const prepared = await this.prepareExternalCalendar(subscription);
+    const imported = await this.repository.withLock(`calendar:${providerId}`, async repository => {
+      const current = await repository.findProviderById(providerId);
+      if (!current) throw new HttpError(404, "Provider not found");
+      const subscriptions = current.calendarConnection.externalSubscriptions ?? [];
+      const latest = subscriptions.find(item => item.id === subscription.id);
+      if (!latest) throw new HttpError(404, "Calendar import not found");
+      if (JSON.stringify(latest) !== JSON.stringify(subscription)) throw new HttpError(409, "This calendar changed during synchronization. Refresh and try again.");
+      return this.withRepository(repository).applyExternalCalendarSubscription(current, latest, subscriptions, prepared);
+    });
+    return this.calendarImportResponse(imported);
   }
 
-  private async syncProviderCalendarImportRecord(
-    providerId: string,
-    payload: SyncExternalCalendarImportRequest
-  ): Promise<ProviderCalendarImportsResponse> {
-    const provider = await this.repository.findProviderById(providerId);
-    if (!provider) {
-      throw new HttpError(404, "Provider not found");
-    }
+  private async calendarImportResponse(provider: ProviderProfile): Promise<ProviderCalendarImportsResponse> {
+    return { providerId: provider.id, subscriptions: provider.calendarConnection.externalSubscriptions ?? [],
+      importedBlockCount: (provider.calendarConnection.externalBlocks ?? []).filter(block => block.source === "calendar-import").length,
+      syncHealth: this.buildProviderCalendarSyncHealth(provider, await this.listFutureProviderCalendarConflictBookings(provider.id)) };
+  }
 
-    const subscription = (provider.calendarConnection.externalSubscriptions ?? []).find(
-      (item) => item.id === payload.subscriptionId
-    );
-    if (!subscription) {
-      throw new HttpError(404, "Calendar import not found");
-    }
-
-    const updatedProvider = await this.syncExternalCalendarSubscription(
-      provider,
-      subscription,
-      provider.calendarConnection.externalSubscriptions ?? []
-    );
-    const bookings = await this.listFutureProviderCalendarConflictBookings(updatedProvider.id);
-    return {
-      providerId,
-      subscriptions: updatedProvider.calendarConnection.externalSubscriptions ?? [],
-      importedBlockCount: (updatedProvider.calendarConnection.externalBlocks ?? []).filter(
-        (block) => block.source === "calendar-import"
-      ).length,
-      syncHealth: this.buildProviderCalendarSyncHealth(updatedProvider, bookings)
-    };
+  private async prepareExternalCalendar(subscription: ExternalCalendarSubscription): Promise<{ blocks?: ExternalCalendarBlock[]; error?: string }> {
+    try {
+      const icsBody = await this.calendarFeedLoader(subscription.feedUrl);
+      return { blocks: await parseCalendarFeed({ icsBody, subscriptionId: subscription.id, title: subscription.title }) };
+    } catch (error) { return { error: error instanceof Error ? error.message : "Calendar import could not be synced" }; }
   }
 
   public async syncStaleProviderCalendarImports(
@@ -16508,14 +16349,7 @@ export class MarketplacePlatformService {
   }
 
   private async listFutureProviderCalendarConflictBookings(providerId: string) {
-    return (await this.repository.listBookings()).filter(
-      (booking) =>
-        booking.providerId === providerId &&
-        booking.status !== "cancelled" &&
-        booking.status !== "completed" &&
-        booking.status !== "refunded" &&
-        Date.parse(booking.scheduledEndIso) > Date.now()
-    );
+    return this.repository.listScopedBookings({ providerId, endAfter: new Date().toISOString(), excludeStatuses: ["cancelled", "completed", "refunded"] });
   }
 
   private async persistExternalCalendarSubscriptionError(
@@ -16530,6 +16364,7 @@ export class MarketplacePlatformService {
             ...item,
             lastSyncedAt: new Date().toISOString(),
             syncStatus: "error" as const,
+            syncRevision: crypto.randomUUID(),
             lastError: errorMessage
           }
         : item
@@ -16550,18 +16385,15 @@ export class MarketplacePlatformService {
     return updatedProvider;
   }
 
-  private async syncExternalCalendarSubscription(
+  private async applyExternalCalendarSubscription(
     provider: ProviderProfile,
     subscription: ExternalCalendarSubscription,
-    allSubscriptions: ExternalCalendarSubscription[]
+    allSubscriptions: ExternalCalendarSubscription[],
+    prepared: { blocks?: ExternalCalendarBlock[]; error?: string }
   ): Promise<ProviderProfile> {
     try {
-      const icsBody = await this.calendarFeedLoader(subscription.feedUrl);
-      const importedBlocks = await parseCalendarFeed({
-        icsBody,
-        subscriptionId: subscription.id,
-        title: subscription.title
-      });
+      if (prepared.error) throw new Error(prepared.error);
+      const importedBlocks = prepared.blocks ?? [];
       const manualBlocks = (provider.calendarConnection.externalBlocks ?? []).filter(
         (block) => block.subscriptionId !== subscription.id
       );
@@ -16573,6 +16405,7 @@ export class MarketplacePlatformService {
               importedEventCount: importedBlocks.length,
               lastSyncedAt: new Date().toISOString(),
               syncStatus: "active" as const,
+              syncRevision: crypto.randomUUID(),
               lastError: undefined
             }
           : item
@@ -16647,8 +16480,9 @@ export class MarketplacePlatformService {
   }
 
   private async listProviderCalendarBookings(providerId: string) {
-    const customers = await this.repository.listCustomers();
-    return (await this.repository.listBookings())
+    const scoped = await this.repository.listScopedBookings({ providerId, excludeStatuses: ["cancelled", "refunded"] });
+    const customers = await this.repository.listCustomers([...new Set(scoped.map(booking => booking.customerId))]);
+    return scoped
       .filter(
         (booking) =>
           booking.providerId === providerId &&
@@ -16679,7 +16513,7 @@ export class MarketplacePlatformService {
       return;
     }
 
-    const bookings = (await this.repository.listBookings()).filter(
+    const bookings = (await this.repository.listScopedBookings({ providerId: provider.id, excludeStatuses: ["cancelled", "completed", "refunded"] })).filter(
       (booking) =>
         booking.providerId === provider.id &&
         booking.status !== "cancelled" &&
@@ -16714,7 +16548,7 @@ export class MarketplacePlatformService {
   ): Promise<void> {
     await this.assertProviderWindowIsAvailable(providerId, scheduledStartIso, scheduledEndIso);
 
-    const overlappingBooking = (await this.repository.listBookings()).find(
+    const overlappingBooking = (await this.repository.listScopedBookings({ providerId, endAfter: scheduledStartIso, excludeStatuses: ["cancelled", "completed", "refunded"] })).find(
       (booking) =>
         booking.providerId === providerId &&
         booking.id !== bookingId &&
@@ -21931,7 +21765,7 @@ export class MarketplacePlatformService {
   private buildSearchProviderRanking(
     payload: SearchProvidersRequest,
     provider: ProviderProfile,
-    providerBookings: Booking[],
+    metrics: ProviderBookingMetrics,
     distanceMiles: number,
     suggestedSlot?: AvailabilitySlot,
     providerDecisionMetrics?: {
@@ -21950,21 +21784,13 @@ export class MarketplacePlatformService {
     const matchedCategories = payload.categories.filter((category) => provider.categories.includes(category));
     const requestedCategoryCount = Math.max(payload.categories.length, 1);
     const providerCategoryCount = Math.max(provider.categories.length, 1);
-    const completedBookings = providerBookings.filter((booking) => booking.status === "completed").length;
-    const nearbyCompletedBookings = providerBookings.filter(
-      (booking) =>
-        booking.status === "completed" &&
-        booking.serviceAddress.city === payload.address.city &&
-        booking.serviceAddress.state === payload.address.state
-    ).length;
-    const disputedBookings = providerBookings.filter((booking) => booking.status === "disputed").length;
-    const refundedBookings = providerBookings.filter((booking) => booking.status === "refunded").length;
-    const activeExceptionBookings = providerBookings.filter((booking) => Boolean(booking.activeExceptionType)).length;
-    const nonRequestedActiveBookings = providerBookings.filter(
-      (booking) => booking.status !== "requested" && booking.status !== "cancelled"
-    );
-    const lateNoticeCount = providerBookings.filter((booking) => Boolean(booking.lateNoticeSentAt)).length;
-    const lateNoticeRate = lateNoticeCount / Math.max(nonRequestedActiveBookings.length, 1);
+    const completedBookings = metrics.completed;
+    const nearbyCompletedBookings = metrics.nearbyCompleted;
+    const disputedBookings = metrics.disputed;
+    const refundedBookings = metrics.refunded;
+    const activeExceptionBookings = metrics.exceptions;
+    const lateNoticeCount = metrics.late;
+    const lateNoticeRate = lateNoticeCount / Math.max(metrics.nonRequestedActive, 1);
     const providerConfirmations = providerDecisionMetrics?.confirmations ?? 0;
     const providerDeclines = providerDecisionMetrics?.declines ?? 0;
     const providerDecisionCount = providerConfirmations + providerDeclines;
@@ -21978,12 +21804,12 @@ export class MarketplacePlatformService {
           : providerAcceptanceRate ?? 0.78;
     const rawLateScore = Math.max(0, 1 - lateNoticeRate);
     const adjustedLateScore =
-      nonRequestedActiveBookings.length < 5
-        ? 0.84 + (rawLateScore - 0.84) * (nonRequestedActiveBookings.length / 5)
+      metrics.nonRequestedActive < 5
+        ? 0.84 + (rawLateScore - 0.84) * (metrics.nonRequestedActive / 5)
         : rawLateScore;
     const issueRate =
       (disputedBookings + refundedBookings + activeExceptionBookings) /
-      Math.max(providerBookings.length, 1);
+      Math.max(metrics.total, 1);
     const specializationFocus =
       matchedCategories.length === 0
         ? 0
@@ -22087,7 +21913,7 @@ export class MarketplacePlatformService {
     if (providerDecisionCount >= 5 && (providerAcceptanceRate ?? 0) >= 0.9) {
       reasons.push("Usually accepts matching requests");
     }
-    if (nonRequestedActiveBookings.length >= 5 && lateNoticeRate <= 0.08) {
+    if (metrics.nonRequestedActive >= 5 && lateNoticeRate <= 0.08) {
       reasons.push("Rarely sends late updates");
     }
     if (providerEconomics.status === "healthy") {
@@ -22119,7 +21945,7 @@ export class MarketplacePlatformService {
     const hasWeakOperationalSignals =
       providerDecisionCount >= 5 && (providerAcceptanceRate ?? 1) < 0.75
         ? true
-        : nonRequestedActiveBookings.length >= 5 && lateNoticeRate > 0.2;
+        : metrics.nonRequestedActive >= 5 && lateNoticeRate > 0.2;
     const reliabilityLabel =
       factors.issuePenalty >= 5 ||
       provider.timelinessRating < 4.4 ||
@@ -22146,7 +21972,7 @@ export class MarketplacePlatformService {
         ? `${provider.companyName} still qualifies for the area, but GreenRain ranks it below the top recommendation because its recent reliability signals are weaker${
             providerDecisionCount >= 5 && (providerAcceptanceRate ?? 1) < 0.75
               ? ", including a higher recent request-decline rate"
-              : nonRequestedActiveBookings.length >= 5 && lateNoticeRate > 0.2
+              : metrics.nonRequestedActive >= 5 && lateNoticeRate > 0.2
                 ? ", including more late updates than the strongest matches"
                 : ""
           }.`
@@ -22968,23 +22794,16 @@ export class MarketplacePlatformService {
 
   private async createNotification(
     payload: Omit<AppNotification, "id" | "isRead" | "createdAt">,
-    forcedChannels: NotificationChannel[] = []
+    forcedChannels: NotificationChannel[] = [],
+    id: string = crypto.randomUUID()
   ): Promise<AppNotification> {
-    const notification = await this.repository.createNotification({
-      id: crypto.randomUUID(),
-      recipientId: payload.recipientId,
-      recipientRole: payload.recipientRole,
-      category: payload.category,
-      title: payload.title,
-      body: payload.body,
-      actionHref: payload.actionHref,
-      isRead: false,
-      createdAt: new Date().toISOString(),
-      readAt: undefined
+    return this.repository.withLock(`notification:${id}`, async repository => {
+      const existing = await repository.findNotificationById(id);
+      if (existing) return existing;
+      const notification = await repository.createNotification({ ...payload, id, isRead: false, createdAt: new Date().toISOString() });
+      await this.withRepository(repository).queueNotificationDeliveries(notification, forcedChannels);
+      return notification;
     });
-
-    await this.queueNotificationDeliveries(notification, forcedChannels);
-    return notification;
   }
 
   private async ensureNotificationPreferences(
@@ -23034,7 +22853,7 @@ export class MarketplacePlatformService {
 
     await Promise.all(
       channels.map(async (channel) => {
-        const delivery = await this.repository.createNotificationDelivery({
+        await this.repository.createNotificationDelivery({
           id: crypto.randomUUID(),
           notificationId: notification.id,
           recipientId: notification.recipientId,
@@ -23054,7 +22873,6 @@ export class MarketplacePlatformService {
           errorMessage: undefined
         });
 
-        await this.dispatchNotificationDelivery(delivery);
       })
     );
   }
@@ -23152,15 +22970,15 @@ export class MarketplacePlatformService {
     return profile.pushTokens[0] ?? "local-device";
   }
 
-  private async dispatchNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<void> {
-    const attemptCount = delivery.attemptCount + 1;
-    const lastAttemptAt = new Date().toISOString();
+  private async dispatchNotificationDelivery(delivery: ClaimedNotificationDelivery): Promise<NotificationDeliveryRecord | undefined> {
+    const attemptCount = delivery.attemptCount;
     try {
-      const notification = (await this.repository.listNotificationsByRecipient(delivery.recipientId)).find(item => item.id === delivery.notificationId);
+      const notification = await this.repository.findNotificationById(delivery.notificationId);
       const actionUrl = notification?.actionHref?.startsWith("/") && !notification.actionHref.startsWith("//")
         ? new URL(notification.actionHref, this.appBaseUrl).toString() : undefined;
       const fullBody = notification?.body ?? delivery.bodyPreview;
       const dispatch = await this.notificationDelivery.dispatch({
+        idempotencyKey: `notification/${delivery.id}`,
         channel: delivery.channel,
         destination: delivery.destination,
         title: delivery.title,
@@ -23168,11 +22986,10 @@ export class MarketplacePlatformService {
         data: notification ? { notificationId: notification.id, actionHref: notification.actionHref } : undefined
       });
 
-      await this.repository.updateNotificationDelivery(delivery.id, {
+      return await this.repository.completeNotificationDelivery(delivery.id, delivery.leaseToken, {
         provider: dispatch.provider,
         status: "sent",
         attemptCount,
-        lastAttemptAt,
         nextRetryAt: undefined,
         sentAt: dispatch.sentAt,
         errorMessage: undefined
@@ -23180,11 +22997,10 @@ export class MarketplacePlatformService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Notification delivery failed.";
       const shouldRetry = this.shouldRetryNotificationDelivery(delivery.channel, delivery.destination, attemptCount);
-      await this.repository.updateNotificationDelivery(delivery.id, {
+      return this.repository.completeNotificationDelivery(delivery.id, delivery.leaseToken, {
         provider: this.getFailedDeliveryProvider(delivery.channel, delivery.destination),
         status: "failed",
         attemptCount,
-        lastAttemptAt,
         nextRetryAt: shouldRetry ? this.buildNotificationRetryAt(attemptCount) : undefined,
         errorMessage
       });
@@ -23206,81 +23022,6 @@ export class MarketplacePlatformService {
   private buildNotificationRetryAt(attemptCount: number): string {
     const retryMinutes = attemptCount === 1 ? 1 : attemptCount === 2 ? 5 : 15;
     return new Date(Date.now() + retryMinutes * 60 * 1000).toISOString();
-  }
-
-  private async listDueNotificationDeliveries(): Promise<NotificationDeliveryRecord[]> {
-    return (await this.repository.listAllNotificationDeliveries()).filter(
-      (delivery) =>
-        delivery.status === "failed" &&
-        delivery.nextRetryAt &&
-        Date.parse(delivery.nextRetryAt) <= Date.now()
-    );
-  }
-
-  private async retryDueNotificationDeliveries(identity: AuthIdentityRecord): Promise<void> {
-    const deliveries = (await this.listDueNotificationDeliveries()).filter(
-      (delivery) => delivery.recipientId === identity.userId && delivery.recipientRole === identity.role
-    );
-
-    await Promise.all(deliveries.map((delivery) => this.dispatchNotificationDelivery(delivery)));
-  }
-
-  private buildNotificationOpsChannelHealth(
-    deliveries: NotificationDeliveryRecord[],
-    now: number,
-    last24Hours: number
-  ): NotificationOpsChannelHealth[] {
-    const groups = new Map<string, NotificationOpsChannelHealth>();
-
-    for (const delivery of deliveries) {
-      const key = `${delivery.channel}:${delivery.provider}`;
-      const existing = groups.get(key) ?? {
-        channel: delivery.channel,
-        provider: delivery.provider,
-        totalDeliveries: 0,
-        deliveriesLast24Hours: 0,
-        sentCount: 0,
-        failedCount: 0,
-        queuedCount: 0,
-        pendingRetryCount: 0,
-        overdueRetryCount: 0,
-        lastAttemptAt: undefined
-      };
-
-      existing.totalDeliveries += 1;
-      if (Date.parse(delivery.createdAt) >= last24Hours) {
-        existing.deliveriesLast24Hours += 1;
-      }
-      if (delivery.status === "sent") {
-        existing.sentCount += 1;
-      }
-      if (delivery.status === "failed") {
-        existing.failedCount += 1;
-      }
-      if (delivery.status === "queued") {
-        existing.queuedCount += 1;
-      }
-      if (delivery.nextRetryAt) {
-        existing.pendingRetryCount += 1;
-        if (Date.parse(delivery.nextRetryAt) <= now) {
-          existing.overdueRetryCount += 1;
-        }
-      }
-
-      const candidateAttemptAt = delivery.lastAttemptAt ?? delivery.sentAt ?? delivery.createdAt;
-      if (!existing.lastAttemptAt || candidateAttemptAt > existing.lastAttemptAt) {
-        existing.lastAttemptAt = candidateAttemptAt;
-      }
-
-      groups.set(key, existing);
-    }
-
-    return [...groups.values()].sort((left, right) => {
-      if (right.failedCount !== left.failedCount) {
-        return right.failedCount - left.failedCount;
-      }
-      return right.totalDeliveries - left.totalDeliveries;
-    });
   }
 
   private buildNotificationOpsAlerts(input: {
@@ -23390,7 +23131,7 @@ export class MarketplacePlatformService {
   private async ensureProviderDepartureReminders(providerId: string): Promise<void> {
     const [provider, bookings, notifications] = await Promise.all([
       this.repository.findProviderById(providerId),
-      this.repository.listBookings(),
+      this.repository.listScopedBookings({ providerId, endAfter: new Date().toISOString(), excludeStatuses: ["completed", "cancelled", "refunded"] }),
       this.repository.listNotificationsByRecipient(providerId)
     ]);
 
@@ -23439,23 +23180,25 @@ export class MarketplacePlatformService {
             title: "Time to head out soon",
             body: `${leadText} ${booking.serviceAddress.line1} • ${this.formatBookingWindowWithDate(booking.scheduledStartIso)}`,
             actionHref
-          });
+          }, [], `provider-reminder:${providerId}:${actionHref}`);
         })
     );
   }
 
   private async ensureProviderStaffingReviewReminders(providerId: string): Promise<void> {
-    const [provider, bookings, notifications, matches, customers] = await Promise.all([
+    const [provider, bookings, notifications] = await Promise.all([
       this.repository.findProviderById(providerId),
-      this.repository.listBookings(),
-      this.repository.listNotificationsByRecipient(providerId),
-      this.repository.listCrewMatches(),
-      this.repository.listCustomers()
+      this.repository.listScopedBookings({ providerId, endAfter: new Date().toISOString(), excludeStatuses: ["completed", "cancelled", "refunded"] }),
+      this.repository.listNotificationsByRecipient(providerId)
     ]);
 
     if (!provider || provider.staffingMode !== "review-first") {
       return;
     }
+    const [matches, customers] = await Promise.all([
+      this.repository.listCrewMatchesForBookings(bookings.map(booking => booking.id)),
+      this.repository.listCustomers([...new Set(bookings.map(booking => booking.customerId))])
+    ]);
 
     const now = Date.now();
     const existingReminderActions = new Set(
@@ -23506,7 +23249,7 @@ export class MarketplacePlatformService {
             title: "Review crew staffing soon",
             body: `${pendingCount} pending crew match${pendingCount === 1 ? "" : "es"} still need review for ${customer?.fullName ?? "this customer"} • ${crewGap} open slot${crewGap === 1 ? "" : "s"} remaining.`,
             actionHref
-          });
+          }, [], `provider-reminder:${providerId}:${actionHref}`);
         })
     );
   }

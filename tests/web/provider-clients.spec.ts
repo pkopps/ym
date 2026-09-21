@@ -134,3 +134,31 @@ test("anonymous client map does not fetch client data", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Your client map is private" })).toBeVisible();
   expect(requested).toBe(false);
 });
+
+test("5,000 client properties keep map markers and list rows bounded while every property remains reachable", async ({ page, request }) => {
+  const provider = await registerProvider(request);
+  await loginUi(page, "provider", provider.email);
+  const template = fixture().properties[0];
+  const properties = Array.from({ length: 5000 }, (_, index) => ({ ...template, id: `scale-property-${index}`,
+    customerName: `Scale Client ${String(index).padStart(4, "0")}`, address: { ...template.address,
+      line1: `${index + 1} Scale Street`, point: { latitude: 39.74 + (index % 100) * 0.001, longitude: -74.26 + Math.floor(index / 100) * 0.001 } } }));
+  await page.route("**/api/providers/clients", route => route.fulfill({ json: { companyName: "Scale Fixture", properties } }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/provider/clients");
+  await expect(page.locator(".provider-client-row")).toHaveCount(50);
+  await expect.poll(() => page.locator(".client-map-pin").count()).toBeGreaterThan(0);
+  expect(await page.locator(".client-map-pin").count()).toBeLessThan(250);
+  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(page.locator(".provider-client-row").first()).toContainText("Scale Client 0050");
+  await page.getByRole("searchbox").fill("Scale Client 4999");
+  await expect(page.locator(".provider-client-row")).toHaveCount(1);
+  await page.locator(".provider-client-row").click();
+  await expect(page.getByRole("heading", { name: "Scale Client 4999" })).toBeVisible();
+  await page.getByRole("searchbox").fill("");
+  await expect(page.locator(".provider-client-row")).toHaveCount(50);
+  for (const viewport of [{ width: 1440, height: 900, name: "desktop" }, { width: 390, height: 844, name: "mobile" }]) {
+    await page.setViewportSize(viewport);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+    await page.screenshot({ path: `reports/agent-checkpoints/engineer/latest/scale-clients-${viewport.name}.png`, fullPage: false });
+  }
+});

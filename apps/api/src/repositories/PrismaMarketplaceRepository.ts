@@ -1,5 +1,10 @@
+import type { NotificationHealthSnapshot } from "./notificationHealth";
+import { utcTimestamp } from "./sqlTime";
+import { providerClientQuery } from "./providerClientQuery";
+import type { ProviderClientProperty } from "@yardmatch/contracts";
+import { searchBounds, type ProviderSearchQuery, type ProviderBookingMetrics } from "./searchQueries";
 import { resolveScheduleUpdates } from "../policies/bookingSchedulePolicy";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient, type NotificationDelivery } from "@prisma/client";
 import {
   AppNotification,
   Address,
@@ -285,6 +290,88 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return (await this.findOpsUserById(opsUser.id))!;
   }
 
+  public async searchProvidersPage(query: ProviderSearchQuery) {
+    if (!query.categories.length) return { items: [], hasMore: false };
+    const bounds = searchBounds(query.address);
+    const longitude = Prisma.sql`(u.address->'point'->>'longitude')::double precision`;
+    const longitudeCondition = bounds.west <= bounds.east
+      ? Prisma.sql`${longitude} BETWEEN ${bounds.west} AND ${bounds.east}`
+      : Prisma.sql`(${longitude} >= ${bounds.west} OR ${longitude} <= ${bounds.east})`;
+    const ids = await this.prisma.$queryRaw<Array<{ userId: string }>>`
+      SELECT p."userId" FROM provider_business_profiles p JOIN user_accounts u ON u.id = p."userId"
+      WHERE p."verificationStatus" = 'verified' AND p.categories && ARRAY[${Prisma.join(query.categories)}]::text[]
+        AND (u.address->'point'->>'latitude')::double precision BETWEEN ${bounds.south} AND ${bounds.north}
+        AND ${longitudeCondition} ${query.cursorId ? Prisma.sql`AND p."userId" > ${query.cursorId}` : Prisma.empty}
+      ORDER BY p."userId" LIMIT 101`;
+    const pageIds = ids.slice(0, 100).map(row => row.userId);
+    const rows = await this.prisma.providerBusinessProfile.findMany({ where: { userId: { in: pageIds } },
+      include: { user: true, credentials: true, connectAccount: true }, orderBy: { userId: "asc" } });
+    return { items: rows.map(row => this.mapProviderProfile(row.user, row)), hasMore: ids.length > 100,
+      nextCursorId: ids.length > 100 ? pageIds.at(-1) : undefined };
+  }
+
+  public async getProviderBookingMetrics(providerIds: string[], address: Address): Promise<ProviderBookingMetrics[]> {
+    if (!providerIds.length) return [];
+    return this.prisma.$queryRaw<ProviderBookingMetrics[]>`
+      SELECT "providerId", COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE status NOT IN ('completed', 'cancelled', 'refunded'))::int AS open,
+        COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
+        COUNT(*) FILTER (WHERE status = 'completed' AND "serviceAddress"->>'city' = ${address.city}
+          AND "serviceAddress"->>'state' = ${address.state})::int AS "nearbyCompleted",
+        COUNT(*) FILTER (WHERE status = 'disputed')::int AS disputed,
+        COUNT(*) FILTER (WHERE status = 'refunded')::int AS refunded,
+        COUNT(*) FILTER (WHERE COALESCE("activeExceptionType", '') <> '')::int AS exceptions,
+        COUNT(*) FILTER (WHERE status NOT IN ('requested', 'cancelled'))::int AS "nonRequestedActive",
+        COUNT(*) FILTER (WHERE "lateNoticeSentAt" IS NOT NULL)::int AS late
+      FROM bookings WHERE "providerId" IN (${Prisma.join(providerIds)}) GROUP BY "providerId"`;
+  }
+
+  public async listSearchSlots(providerIds: string[], minimumDurationMinutes = 0): Promise<AvailabilitySlot[]> {
+    if (!providerIds.length) return [];
+    const rows = await this.prisma.$queryRaw<Array<{ id: string; providerId: string; startIso: Date; endIso: Date; isBooked: boolean }>>`
+      SELECT slot.* FROM provider_business_profiles provider CROSS JOIN LATERAL (
+        SELECT candidate.* FROM availability_slots candidate
+        WHERE candidate."providerId" = provider."userId" AND NOT candidate."isBooked"
+          AND candidate."startIso" >= ${utcTimestamp(new Date())} + provider."minimumBookingLeadHours" * interval '1 hour'
+          AND candidate."endIso" - candidate."startIso" >= ${minimumDurationMinutes} * interval '1 minute'
+          AND (COALESCE(provider."calendarConnection"->>'externalEventsBlockingEnabled', 'false') <> 'true' OR NOT EXISTS (
+            SELECT 1 FROM jsonb_array_elements(COALESCE(provider."calendarConnection"->'externalBlocks', '[]'::jsonb)) block
+            WHERE candidate."startIso" < ((block->>'endIso')::timestamptz AT TIME ZONE 'UTC')
+              AND candidate."endIso" > ((block->>'startIso')::timestamptz AT TIME ZONE 'UTC')
+          ))
+        ORDER BY candidate."startIso", candidate.id LIMIT 3
+      ) slot WHERE provider."userId" IN (${Prisma.join(providerIds)})`;
+    return rows.map(row => ({ ...row, startIso: row.startIso.toISOString(), endIso: row.endIso.toISOString() }));
+  }
+
+  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }) {
+    if (!query.providerId && !query.customerId) throw new Error("Booking queries require an owner scope");
+    const rows = await this.prisma.booking.findMany({ where: {
+      providerId: query.providerId, customerId: query.customerId,
+      ...(query.endAfter ? { scheduledEndIso: { gt: new Date(query.endAfter) } } : {}),
+      ...(query.excludeStatuses ? { status: { notIn: query.excludeStatuses } } : {})
+    }, orderBy: [{ scheduledStartIso: "asc" }, { id: "asc" }] });
+    return rows.map(row => this.mapBooking(row));
+  }
+
+  public async getRetentionEvidence(bookingIds: string[]) {
+    const tickets: SupportTicket[] = [], reviews: ProviderReview[] = [], settlements: BookingFinancialSettlement[] = [];
+    for (let offset = 0; offset < bookingIds.length; offset += 1000) {
+      const where = { bookingId: { in: bookingIds.slice(offset, offset + 1000) } };
+      const [t, r, f] = await Promise.all([this.prisma.supportTicket.findMany({ where }),
+        this.prisma.providerReview.findMany({ where }), this.prisma.bookingFinancialSettlement.findMany({ where })]);
+      tickets.push(...t.map(row => this.mapSupportTicket(row)));
+      reviews.push(...r.map(row => this.mapProviderReview(row)));
+      settlements.push(...f.map(row => this.mapBookingFinancialSettlement(row)));
+    }
+    return { tickets, reviews, settlements };
+  }
+
+  public async getProviderClientProperties(providerId: string, nowIso: string): Promise<ProviderClientProperty[]> {
+    const rows = await this.prisma.$queryRaw<Array<Omit<ProviderClientProperty, "lastCompletedAt"> & { lastCompletedAt: Date | null }>>(providerClientQuery(providerId, nowIso));
+    return rows.map(row => ({ ...row, lastCompletedAt: row.lastCompletedAt?.toISOString() }));
+  }
+
   public async listProviders(): Promise<ProviderProfile[]> {
     const providers = await this.prisma.providerBusinessProfile.findMany({
       include: {
@@ -297,8 +384,9 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return providers.map((record: any) => this.mapProviderProfile(record.user, record));
   }
 
-  public async listCustomers(): Promise<CustomerProfile[]> {
+  public async listCustomers(customerIds?: string[]): Promise<CustomerProfile[]> {
     const customers = await this.prisma.customerProfile.findMany({
+      where: customerIds ? { userId: { in: customerIds } } : undefined,
       include: {
         user: true,
         properties: true
@@ -873,7 +961,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
 
   public async listCrewMatchesForBookings(
     bookingIds: string[],
-    crewMemberId: string
+    crewMemberId?: string
   ): Promise<CrewMatchCandidate[]> {
     if (bookingIds.length === 0) {
       return [];
@@ -2169,6 +2257,54 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapNotificationPreferences(record);
   }
 
+  public async findNotificationById(id: string): Promise<AppNotification | undefined> {
+    const row = await this.prisma.appNotification.findUnique({ where: { id } });
+    return row ? this.mapAppNotification(row) : undefined;
+  }
+
+  public async claimNotificationDeliveries(limit: number, nowIso: string, leaseSeconds: number) {
+    const now = new Date(nowIso);
+    const token = crypto.randomUUID();
+    const expires = new Date(now.getTime() + leaseSeconds * 1000);
+    // Exhausted abandoned jobs remain visible to ops, without an endless crash/retry loop.
+    await this.prisma.notificationDelivery.updateMany({
+      where: { leaseExpiresAt: { lte: now }, attemptCount: { gte: 3 }, status: { in: ["queued", "failed"] } },
+      data: { status: "failed", leaseToken: null, leaseExpiresAt: null, nextRetryAt: null,
+        errorMessage: "Delivery repeatedly interrupted; manual review required." }
+    });
+    const rows = await this.prisma.$queryRaw<NotificationDelivery[]>`
+      WITH due AS (
+        SELECT id FROM notification_deliveries
+        WHERE (status = 'queued' OR (status = 'failed' AND "nextRetryAt" <= ${utcTimestamp(now)}))
+          AND ("leaseExpiresAt" IS NULL OR "leaseExpiresAt" <= ${utcTimestamp(now)}) AND "attemptCount" < 3
+        ORDER BY "createdAt", id LIMIT ${Math.max(1, Math.min(100, limit))}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE notification_deliveries AS delivery SET "leaseToken" = ${token}, "leaseExpiresAt" = ${utcTimestamp(expires)},
+        "attemptCount" = "attemptCount" + 1, "lastAttemptAt" = ${utcTimestamp(now)}
+      FROM due WHERE delivery.id = due.id RETURNING delivery.*`;
+    return rows.map(row => ({ ...this.mapNotificationDelivery(row), leaseToken: token }));
+  }
+
+  public async countDueNotificationDeliveries(nowIso: string): Promise<number> {
+    const now = new Date(nowIso);
+    return this.prisma.notificationDelivery.count({ where: {
+      AND: [{ OR: [{ status: "queued" }, { status: "failed", nextRetryAt: { lte: now } }] },
+        { OR: [{ leaseExpiresAt: null }, { leaseExpiresAt: { lte: now } }] }], attemptCount: { lt: 3 }
+    } });
+  }
+
+  public async completeNotificationDelivery(id: string, leaseToken: string, updates: Partial<NotificationDeliveryRecord>) {
+    const result = await this.prisma.notificationDelivery.updateMany({ where: { id, leaseToken }, data: {
+      provider: updates.provider, status: updates.status, errorMessage: updates.errorMessage ?? null,
+      nextRetryAt: updates.nextRetryAt ? new Date(updates.nextRetryAt) : null,
+      sentAt: updates.sentAt ? new Date(updates.sentAt) : null, leaseToken: null, leaseExpiresAt: null
+    } });
+    if (!result.count) return undefined;
+    const row = await this.prisma.notificationDelivery.findUniqueOrThrow({ where: { id } });
+    return this.mapNotificationDelivery(row);
+  }
+
   public async createNotificationDelivery(
     delivery: NotificationDeliveryRecord
   ): Promise<NotificationDeliveryRecord> {
@@ -2204,6 +2340,30 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       orderBy: { createdAt: "desc" }
     });
     return deliveries.map((delivery: any) => this.mapNotificationDelivery(delivery));
+  }
+
+  public async getNotificationHealth(nowIso: string): Promise<NotificationHealthSnapshot> {
+    const now = new Date(nowIso), since = new Date(now.getTime() - 86400_000);
+    const [totals, groups, recent] = await Promise.all([
+      this.prisma.$queryRaw<Array<Omit<NotificationHealthSnapshot, "channels" | "recentFailures">>>`SELECT
+        count(*)::int AS "totalDeliveries", count(*) FILTER (WHERE "createdAt" >= ${utcTimestamp(since)})::int AS "deliveriesLast24Hours",
+        count(*) FILTER (WHERE status = 'sent' AND COALESCE("sentAt", "lastAttemptAt") >= ${utcTimestamp(since)})::int AS "sentLast24Hours",
+        count(*) FILTER (WHERE status = 'failed' AND COALESCE("lastAttemptAt", "createdAt") >= ${utcTimestamp(since)})::int AS "failedLast24Hours",
+        count(*) FILTER (WHERE status = 'queued')::int AS "queuedCount",
+        count(*) FILTER (WHERE status = 'failed' AND "nextRetryAt" IS NOT NULL)::int AS "pendingRetryCount",
+        count(*) FILTER (WHERE status = 'failed' AND "nextRetryAt" <= ${utcTimestamp(now)})::int AS "overdueRetryCount",
+        count(*) FILTER (WHERE status = 'failed' AND "nextRetryAt" IS NULL)::int AS "exhaustedFailureCount" FROM notification_deliveries`,
+      this.prisma.$queryRaw<Array<Omit<NotificationHealthSnapshot["channels"][number], "lastAttemptAt"> & { lastAttemptAt: Date }>>`SELECT channel, provider,
+        count(*)::int AS "totalDeliveries", count(*) FILTER (WHERE "createdAt" >= ${utcTimestamp(since)})::int AS "deliveriesLast24Hours",
+        count(*) FILTER (WHERE status = 'sent')::int AS "sentCount", count(*) FILTER (WHERE status = 'failed')::int AS "failedCount",
+        count(*) FILTER (WHERE status = 'queued')::int AS "queuedCount", count(*) FILTER (WHERE "nextRetryAt" IS NOT NULL)::int AS "pendingRetryCount",
+        count(*) FILTER (WHERE "nextRetryAt" <= ${utcTimestamp(now)})::int AS "overdueRetryCount",
+        max(COALESCE("lastAttemptAt", "sentAt", "createdAt")) AS "lastAttemptAt"
+        FROM notification_deliveries GROUP BY channel, provider ORDER BY "failedCount" DESC, "totalDeliveries" DESC`,
+      this.prisma.notificationDelivery.findMany({ where: { status: "failed" }, orderBy: { createdAt: "desc" }, take: 8 })
+    ]);
+    return { ...totals[0], channels: groups.map(row => ({ ...row, lastAttemptAt: row.lastAttemptAt.toISOString() })),
+      recentFailures: recent.map(row => this.mapNotificationDelivery(row)) };
   }
 
   public async listAllNotificationDeliveries(): Promise<NotificationDeliveryRecord[]> {

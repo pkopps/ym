@@ -5523,6 +5523,8 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
 .client-map-pin span { display: grid; place-items: center; width: 36px; height: 36px; background: #246341; color: white; border: 2px solid white; border-radius: 50% 50% 50% 4px; transform: rotate(-45deg); box-shadow: 0 2px 5px #20362655; font-size: 22px; }
 .client-map-pin b { font-size: 23px; font-weight: 500; transform: rotate(45deg); }
 .client-map-pin--selected span { background: #967019; }
+.client-map-pin--cluster span { border-radius: 50%; transform: none; }
+.client-map-pin--cluster b { font-size: 13px; font-weight: 700; transform: none; }
 .client-map-pin:focus-visible { outline: 3px solid #bd932c; outline-offset: 4px; }
 .client-map-shared { display: grid; gap: 8px; }
 .client-map-shared button { text-align: left; border: 1px solid #dce3dc; background: white; padding: 10px; color: #23563b; cursor: pointer; border-radius: 4px; }
@@ -5566,3 +5568,6 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
 }
 
 @media (max-width: 760px) { .provider-clients-search input, .provider-clients-period select { font-size: 16px; } }
+
+.provider-clients-pagination { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 12px; font-size: 12px; }
+.provider-clients-pagination .button-secondary { padding: 8px 10px; }

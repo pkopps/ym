@@ -152,12 +152,14 @@ test("late updates remain visible while en route and legacy rescheduling resolve
 test("external notification delivery preserves the next-update deadline and a booking link beyond the ops preview", async (context) => {
   const { NotificationDeliveryService } = await import("../src/services/NotificationDeliveryService");
   const { platform, provider, booking } = await fixture();
+  await platform.retryDueNotificationDeliveriesForOps();
   const sent: Array<{ body: string; data?: Record<string, unknown>; channel: string }> = [];
   context.mock.method(NotificationDeliveryService.prototype, "dispatch", async (input: { body: string; data?: Record<string, unknown>; channel: string }) => {
     sent.push(input);
     return { provider: "test", sentAt: new Date().toISOString(), externalId: crypto.randomUUID() };
   });
   await platform.updateBookingSchedule(provider.id, { ...weather(booking.id), reason: "The soil is saturated and we are checking safe working conditions before bringing equipment onto the lawn. We want to avoid rutting the ground or damaging the property while the storm passes." });
+  await platform.retryDueNotificationDeliveriesForOps();
   assert.ok(sent.length > 0);
   assert.ok(sent.every(input => input.body.includes("Next update by")));
   assert.ok(sent.every(input => input.data?.actionHref === `/customer/dashboard?bookingId=${booking.id}`));

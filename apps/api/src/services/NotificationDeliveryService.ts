@@ -10,6 +10,7 @@ export interface OpsAlertTarget {
 }
 
 export interface NotificationDispatchInput {
+  idempotencyKey?: string;
   channel: NotificationChannel;
   destination: string;
   title: string;
@@ -283,7 +284,8 @@ export class NotificationDeliveryService {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${this.resendApiKey}`
+          Authorization: `Bearer ${this.resendApiKey}`,
+          ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {})
         },
         body: JSON.stringify({
           from: this.notificationEmailFrom,

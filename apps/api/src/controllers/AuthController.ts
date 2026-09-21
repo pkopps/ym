@@ -254,7 +254,7 @@ export class AuthController implements ApiController {
         );
       }
 
-      if (!identity?.passwordHash || !verifyPassword(payload.password, identity.passwordHash)) {
+      if (!identity?.passwordHash || !(await verifyPassword(payload.password, identity.passwordHash))) {
         if (identity) {
           await this.platform.recordFailedAuthentication(identity, "invalid-password");
         }
@@ -558,7 +558,7 @@ export class AuthController implements ApiController {
         ...payload,
         email: payload.email.trim().toLowerCase()
       },
-      hashPassword(payload.password)
+      await hashPassword(payload.password)
     );
 
     if (payload.device) {

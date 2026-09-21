@@ -3983,5 +3983,12 @@
   "complaint.no_bookings": "Tus visitas aparecerán aquí cuando tengas una reserva.",
   "complaint.followup_hint": "Puedes añadir detalles o pedir una revisión, incluso después de una resolución.",
   "complaint.provider_capture": "Para documentar el trabajo, toma una vista general de cada área y primeros planos de los bordes y la limpieza. Usa los mismos ángulos que antes cuando sea posible.",
-  "complaint.partially_refunded": "Reembolso parcial"
+  "complaint.partially_refunded": "Reembolso parcial",
+  "provider_clients.previous_page": "Anterior",
+  "provider_clients.next_page": "Siguiente",
+  "provider_clients.page_summary": "Página {page} de {pages}",
+  "provider_clients.cluster": "{count} propiedades — acerca el mapa o elige un cliente",
+  "analytics.export_delayed": "La exportación de análisis está retrasada. Revisa el estado de recopilación y el servicio de exportación.",
+  "analytics.export_age": "Evento en cola más antiguo (segundos)",
+  "analytics.export_exhausted": "Eventos que necesitan revisión de reintentos"
 }

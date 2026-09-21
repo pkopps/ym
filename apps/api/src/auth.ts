@@ -1,4 +1,5 @@
-import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt, scrypt, timingSafeEqual } from "node:crypto";
+import { BoundedExecutor } from "./concurrency";
 import type { RequestContext } from "./http";
 import { resolveJwtSecret } from "./config/productionConfig";
 
@@ -54,20 +55,27 @@ function verifyHmacSignature(unsignedToken: string, providedSignature: string): 
   }
 }
 
-export function hashPassword(password: string): string {
+const passwordWork = new BoundedExecutor(4, 128);
+function derivePassword(password: string, salt: string): Promise<Buffer> {
+  return passwordWork.run(() => new Promise<Buffer>((resolve, reject) => {
+    scrypt(password, salt, 64, (error, key) => error ? reject(error) : resolve(key));
+  }));
+}
+
+export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
-  const derivedKey = scryptSync(password, salt, 64).toString("hex");
+  const derivedKey = (await derivePassword(password, salt)).toString("hex");
   return `${salt}:${derivedKey}`;
 }
 
-export function verifyPassword(password: string, storedHash: string): boolean {
-  const [salt, originalKey] = storedHash.split(":");
-  if (!salt || !originalKey) {
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  const [salt, originalKey, extra] = storedHash.split(":");
+  if (extra !== undefined || !/^[a-f0-9]{32}$/i.test(salt ?? "") || !/^[a-f0-9]{128}$/i.test(originalKey ?? "")) {
     return false;
   }
 
-  const candidateKey = scryptSync(password, salt, 64).toString("hex");
-  return timingSafeEqual(Buffer.from(originalKey, "hex"), Buffer.from(candidateKey, "hex"));
+  const candidateKey = await derivePassword(password, salt);
+  return timingSafeEqual(Buffer.from(originalKey, "hex"), candidateKey);
 }
 
 export function validatePasswordStrength(password: string): void {

@@ -10799,6 +10799,7 @@ test("notifications generate external delivery records for push, email, and sms"
     totalCents: 6200
   });
 
+  await platform.retryDueNotificationDeliveriesForOps();
   const deliveries = await platform.listNotificationDeliveries({
     userId: provider.id,
     email: provider.email,
@@ -11140,6 +11141,7 @@ test("registered Expo push devices create retryable push deliveries", async () =
       notes: "Push delivery retry test",
       totalCents: 6200
     });
+    await platform.retryDueNotificationDeliveriesForOps();
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -11231,7 +11233,8 @@ test("configured Resend email delivery uses the real email provider path", async
       totalCents: 6200
     });
 
-    const deliveries = await platform.listNotificationDeliveries({
+    await platform.retryDueNotificationDeliveriesForOps();
+  const deliveries = await platform.listNotificationDeliveries({
       userId: provider.id,
       email: provider.email,
       role: "provider"
@@ -11317,7 +11320,8 @@ test("configured Twilio SMS delivery failures create retryable records", async (
       totalCents: 6200
     });
 
-    const deliveries = await platform.listNotificationDeliveries({
+    await platform.retryDueNotificationDeliveriesForOps();
+  const deliveries = await platform.listNotificationDeliveries({
       userId: provider.id,
       email: provider.email,
       role: "provider"

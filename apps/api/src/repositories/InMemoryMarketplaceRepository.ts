@@ -1,3 +1,6 @@
+import { summarizeNotificationHealth } from "./notificationHealth";
+import { buildProviderClientProperties } from "../services/providerClients";
+import { searchBounds, bookingMetrics, type ProviderSearchQuery } from "./searchQueries";
 import { resolveScheduleUpdates } from "../policies/bookingSchedulePolicy";
 import {
   AppNotification,
@@ -35,7 +38,8 @@ import {
   SupportTicket
 } from "@yardmatch/contracts";
 import { buildSettlementLedgerDraft, calculateMarketplaceSettlement } from "@yardmatch/domain";
-import { hashPassword } from "../auth";
+// Precomputed fixture only. Production rejects in-memory storage.
+const LOCAL_FIXTURE_PASSWORD_HASH = "4c4ba6d1033834c13de43137abbf008f:b702588a58a0cd051a5a6b8dc054ae83c6b8436af9f1eae3bfadcf7675ee3f85ea4af4b0410b90605fe7d1b7452017e18e3c9854e35d7adec2ab6497d8f08e57";
 import {
   AuthIdentityRecord,
   BookingPageQuery,
@@ -97,7 +101,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   private readonly supportTickets: SupportTicket[] = [];
   private readonly notifications: AppNotification[] = [];
   private readonly notificationPreferences: NotificationPreferences[] = [];
-  private readonly notificationDeliveries: NotificationDeliveryRecord[] = [];
+  private readonly notificationDeliveries: Array<NotificationDeliveryRecord & { leaseToken?: string; leaseExpiresAt?: string }> = [];
   private readonly pushDevices: PushDevice[] = [];
   private readonly crewMatches: CrewMatchCandidate[] = [];
   private readonly providerCrewConversations: ProviderCrewConversation[] = [];
@@ -138,12 +142,53 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return opsUser;
   }
 
+  public async searchProvidersPage(query: ProviderSearchQuery) {
+    const b = searchBounds(query.address);
+    const rows = this.providers.filter(provider => {
+      const { latitude, longitude } = provider.address.point;
+      return provider.verificationStatus === "verified" && query.categories.some(category => provider.categories.includes(category)) &&
+        (!query.cursorId || provider.id > query.cursorId) && latitude >= b.south && latitude <= b.north &&
+        (b.west <= b.east ? longitude >= b.west && longitude <= b.east : longitude >= b.west || longitude <= b.east);
+    }).sort((a, b) => a.id.localeCompare(b.id)).slice(0, 101);
+    return { items: rows.slice(0, 100), hasMore: rows.length > 100, nextCursorId: rows.length > 100 ? rows[99].id : undefined };
+  }
+
+  public async getProviderBookingMetrics(providerIds: string[], address: Address) {
+    return providerIds.map(id => bookingMetrics(id, this.bookings, address));
+  }
+
+  public async listSearchSlots(providerIds: string[], minimumDurationMinutes = 0) {
+    return this.providers.filter(provider => providerIds.includes(provider.id)).flatMap(provider => this.slots.filter(slot =>
+      slot.providerId === provider.id && !slot.isBooked && Date.parse(slot.startIso) >= Date.now() + (provider.minimumBookingLeadHours ?? 0) * 3600_000 &&
+      Date.parse(slot.endIso) - Date.parse(slot.startIso) >= minimumDurationMinutes * 60_000 &&
+      (!provider.calendarConnection.externalEventsBlockingEnabled || !(provider.calendarConnection.externalBlocks ?? []).some(block =>
+        Date.parse(slot.startIso) < Date.parse(block.endIso) && Date.parse(slot.endIso) > Date.parse(block.startIso))))
+      .sort((a, b) => a.startIso.localeCompare(b.startIso) || a.id.localeCompare(b.id)).slice(0, 3));
+  }
+
+  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }) {
+    if (!query.providerId && !query.customerId) throw new Error("Booking queries require an owner scope");
+    return this.bookings.filter(row => (!query.providerId || row.providerId === query.providerId) &&
+      (!query.customerId || row.customerId === query.customerId) && (!query.endAfter || Date.parse(row.scheduledEndIso) > Date.parse(query.endAfter)) &&
+      !query.excludeStatuses?.includes(row.status)).map(row => ({ ...row }));
+  }
+
+  public async getRetentionEvidence(bookingIds: string[]) {
+    const ids = new Set(bookingIds);
+    return { tickets: this.supportTickets.filter(row => row.bookingId && ids.has(row.bookingId)),
+      reviews: this.providerReviews.filter(row => ids.has(row.bookingId)), settlements: this.financialSettlements.filter(row => ids.has(row.bookingId)) };
+  }
+
+  public async getProviderClientProperties(providerId: string, nowIso: string) {
+    return buildProviderClientProperties(providerId, this.bookings, this.customers, this.recurringServicePlans, Date.parse(nowIso));
+  }
+
   public async listProviders(): Promise<ProviderProfile[]> {
     return [...this.providers];
   }
 
-  public async listCustomers(): Promise<CustomerProfile[]> {
-    return [...this.customers];
+  public async listCustomers(customerIds?: string[]): Promise<CustomerProfile[]> {
+    return this.customers.filter(customer => !customerIds || customerIds.includes(customer.id));
   }
 
   public async listCrewMembers(): Promise<CrewMemberProfile[]> {
@@ -329,11 +374,11 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listCrewMatchesForBookings(
     bookingIds: string[],
-    crewMemberId: string
+    crewMemberId?: string
   ): Promise<CrewMatchCandidate[]> {
     const requestedIds = new Set(bookingIds);
     return this.crewMatches
-      .filter((match) => match.crewMemberId === crewMemberId && requestedIds.has(match.bookingId))
+      .filter((match) => (!crewMemberId || match.crewMemberId === crewMemberId) && requestedIds.has(match.bookingId))
       .map((match) => ({ ...match }));
   }
 
@@ -926,6 +971,44 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return preferences;
   }
 
+  public async findNotificationById(id: string): Promise<AppNotification | undefined> {
+    return this.notifications.find(item => item.id === id);
+  }
+
+  public async claimNotificationDeliveries(limit: number, nowIso: string, leaseSeconds: number) {
+    const now = Date.parse(nowIso);
+    for (const row of this.notificationDeliveries) {
+      if (row.leaseExpiresAt && Date.parse(row.leaseExpiresAt) <= now && row.attemptCount >= 3 && ["queued", "failed"].includes(row.status)) {
+        Object.assign(row, { status: "failed", leaseToken: undefined, leaseExpiresAt: undefined, nextRetryAt: undefined,
+          errorMessage: "Delivery repeatedly interrupted; manual review required." });
+      }
+    }
+    return this.notificationDeliveries.filter(row => this.isNotificationDue(row, now))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
+      .slice(0, Math.max(1, Math.min(100, limit))).map(row => {
+        const leaseToken = crypto.randomUUID();
+        Object.assign(row, { leaseToken, leaseExpiresAt: new Date(now + leaseSeconds * 1000).toISOString(),
+          attemptCount: row.attemptCount + 1, lastAttemptAt: nowIso });
+        return { ...row, leaseToken };
+      });
+  }
+
+  private isNotificationDue(row: NotificationDeliveryRecord & { leaseExpiresAt?: string }, now: number) {
+    return row.attemptCount < 3 && (!row.leaseExpiresAt || Date.parse(row.leaseExpiresAt) <= now) &&
+      (row.status === "queued" || (row.status === "failed" && Boolean(row.nextRetryAt) && Date.parse(row.nextRetryAt!) <= now));
+  }
+
+  public async countDueNotificationDeliveries(nowIso: string) {
+    return this.notificationDeliveries.filter(row => this.isNotificationDue(row, Date.parse(nowIso))).length;
+  }
+
+  public async completeNotificationDelivery(id: string, leaseToken: string, updates: Partial<NotificationDeliveryRecord>) {
+    const row = this.notificationDeliveries.find(item => item.id === id && item.leaseToken === leaseToken);
+    if (!row) return undefined;
+    Object.assign(row, updates, { leaseToken: undefined, leaseExpiresAt: undefined });
+    return { ...row };
+  }
+
   public async createNotificationDelivery(
     delivery: NotificationDeliveryRecord
   ): Promise<NotificationDeliveryRecord> {
@@ -939,6 +1022,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.notificationDeliveries
       .filter((delivery) => delivery.recipientId === recipientId)
       .map((delivery) => ({ ...delivery }));
+  }
+
+  public async getNotificationHealth(nowIso: string) {
+    return summarizeNotificationHealth(this.notificationDeliveries, Date.parse(nowIso));
   }
 
   public async listAllNotificationDeliveries(): Promise<NotificationDeliveryRecord[]> {
@@ -1116,7 +1203,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   }
 
   private seedProviders(): void {
-    const defaultProviderPassword = hashPassword("YardMatch123!");
+    const defaultProviderPassword = LOCAL_FIXTURE_PASSWORD_HASH;
     const sampleAddresses: Address[] = [
       this.createAddress("145 Prospect Ave", "Brooklyn", "NY", "11215", 40.6681, -73.9836),
       this.createAddress("88 River Rd", "Jersey City", "NJ", "07310", 40.7261, -74.0321),
@@ -1332,7 +1419,7 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   private seedOpsUsers(): void {
     const now = new Date().toISOString();
-    const defaultOpsPassword = hashPassword("YardMatch123!");
+    const defaultOpsPassword = LOCAL_FIXTURE_PASSWORD_HASH;
     const opsUsers: OpsProfile[] = [
       {
         id: crypto.randomUUID(),

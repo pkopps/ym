@@ -42,10 +42,18 @@ const analytics = new ProductAnalytics(prismaClient);
 await analytics.restore();
 const analyticsMaintenance = setInterval(() => {
   void analytics.maintenance().catch(() => console.error("Analytics maintenance failed; inspect collection health."));
-}, 30_000);
+}, 1000);
 analyticsMaintenance.unref();
 const apiRuntimeObservability = createApiRuntimeObservabilityFromEnv();
 const platform = new MarketplacePlatformService(repository, analytics);
+// Durable claims allow each API replica to safely share this bounded worker.
+let notificationWork: Promise<unknown> | undefined;
+const notificationMaintenance = setInterval(() => {
+  notificationWork ??= platform.retryDueNotificationDeliveriesForOps()
+    .catch(() => console.error("Notification worker failed; queued work remains recoverable."))
+    .finally(() => { notificationWork = undefined; });
+}, 1000);
+notificationMaintenance.unref();
 const controllers: ApiController[] = [
   new HealthController(runtimeConfiguration, async () => {
     if (prismaClient) {
@@ -183,6 +191,8 @@ async function shutDown(reason: string): Promise<void> {
     return;
   }
   shuttingDown = true;
+  clearInterval(notificationMaintenance);
+  clearInterval(analyticsMaintenance);
   console.log(`YardMatch API received ${reason}; draining active requests.`);
 
   const forcedShutdown = setTimeout(() => {
@@ -197,8 +207,8 @@ async function shutDown(reason: string): Promise<void> {
       console.error("YardMatch API shutdown failed", error);
       process.exitCode = 1;
     }
-    clearInterval(analyticsMaintenance);
-    await analytics.flush().catch(() => { process.exitCode = 1; });
+    await notificationWork;
+    await analytics.drain().catch(() => { process.exitCode = 1; });
     await prismaClient?.$disconnect();
     await flushApiErrorReporting();
   });

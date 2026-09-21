@@ -292,6 +292,7 @@ export interface ExternalCalendarSubscription {
   importedEventCount: number;
   lastSyncedAt?: string;
   syncStatus: ExternalCalendarSubscriptionStatus;
+  syncRevision?: string;
   lastError?: string;
 }
 
@@ -4524,5 +4525,5 @@ export interface ProductAnalyticsReport {
     customerChargeCents: number | null; actualProcessorFeeCents: number | null;
     platformNetRevenueCents: number | null; providerNetCents: number | null;
   }}>;
-  health: {pendingWrites: number; dropped: number; lastFailureAt?: string; exportConfigured: boolean; exportBacklog: number; lastEventAt?: string};
+  health: {pendingWrites: number; dropped: number; lastFailureAt?: string; exportConfigured: boolean; exportBacklog: number; exportOldestAgeSeconds?: number; exportExhausted?: number; exportDelayed?: boolean; lastEventAt?: string};
 }

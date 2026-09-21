@@ -118,6 +118,8 @@ model ProviderBusinessProfile {
   connectAccount               ProviderConnectAccount?
   customerRelationships        CustomerProviderRelationship[]
 
+  @@index([verificationStatus, userId])
+  @@index([categories], type: Gin)
   @@map("provider_business_profiles")
 }
 
@@ -150,6 +152,7 @@ model AvailabilitySlot {
   isBooked   Boolean                 @default(false)
   provider   ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Cascade)
 
+  @@index([providerId, isBooked, startIso, id])
   @@map("availability_slots")
 }
 
@@ -223,6 +226,7 @@ model RecurringServicePlan {
   cancelledAt             DateTime?
   cancellationReason      String?
 
+  @@index([providerId, status])
   @@map("recurring_service_plans")
 }
 
@@ -277,6 +281,7 @@ model ProviderCrewMessage {
   body           String
   createdAt      DateTime
 
+  @@index([conversationId, createdAt, id])
   @@map("provider_crew_messages")
 }
 
@@ -303,6 +308,7 @@ model CustomerProviderMessage {
   body           String
   createdAt      DateTime
 
+  @@index([conversationId, createdAt, id])
   @@map("customer_provider_messages")
 }
 
@@ -635,6 +641,7 @@ model SupportTicket {
   resolutionNotes  String?
   resolutionAction String?
 
+  @@index([bookingId])
   @@map("support_tickets")
 }
 
@@ -721,9 +728,12 @@ model NotificationDelivery {
   lastAttemptAt  DateTime?
   nextRetryAt    DateTime?
   sentAt         DateTime?
+  leaseToken     String?
+  leaseExpiresAt DateTime?
 
   @@index([recipientId, createdAt])
   @@index([notificationId])
+  @@index([status, nextRetryAt, leaseExpiresAt, createdAt, id], map: "notification_delivery_due_idx")
   @@map("notification_deliveries")
 }
 
@@ -748,17 +758,21 @@ model ProductAnalyticsEvent {
   name        String
   actorId     String?
   occurredAt  DateTime
-  receivedAt  DateTime @default(now())
+  receivedAt  DateTime @default(dbgenerated("(now() AT TIME ZONE 'UTC'::text)"))
   environment String
   source      String
   properties  Json
   exportedAt  DateTime?
   attempts    Int      @default(0)
-  nextAttemptAt DateTime @default(now())
+  nextAttemptAt DateTime @default(dbgenerated("(now() AT TIME ZONE 'UTC'::text)"))
+  exportLeaseToken String?
+  exportLeaseExpiresAt DateTime?
 
   @@index([environment, occurredAt])
   @@index([actorId, occurredAt])
   @@index([exportedAt, nextAttemptAt])
+  @@index([environment, exportedAt, nextAttemptAt, exportLeaseExpiresAt], map: "analytics_export_due_idx")
+  @@index([environment, receivedAt])
 }
 
 model PrivacyRequest {

@@ -27,6 +27,7 @@ export function ProductAnalyticsBoard() {
       <p>{i18n.t(report.durable ? "analytics.durable" : "analytics.local")}</p>
       <p>{i18n.t("analytics.sample", {count: report.events})}</p>
       {report.lowSample || report.truncated ? <p role="status">{i18n.t("analytics.caution")}</p> : null}
+      {report.health.exportConfigured && report.health.exportDelayed ? <p role="alert">{i18n.t("analytics.export_delayed")}</p> : null}
       <div className="table-scroll"><table><caption>{i18n.t("analytics.funnel")}</caption><thead><tr>
         <th>{i18n.t("analytics.stage")}</th><th>{i18n.t("analytics.people")}</th><th>{i18n.t("analytics.rate")}</th>
       </tr></thead><tbody>{report.funnel.steps.map(step => <tr key={step.name}>
@@ -52,6 +53,8 @@ export function ProductAnalyticsBoard() {
         <dt>{i18n.t("analytics.pending")}</dt><dd>{report.health.pendingWrites}</dd>
         <dt>{i18n.t("analytics.dropped")}</dt><dd>{report.health.dropped}</dd>
         <dt>PostHog</dt><dd>{i18n.t(report.health.exportConfigured ? "analytics.configured" : "analytics.not_configured")}: {report.health.exportBacklog}</dd>
+        <dt>{i18n.t("analytics.export_age")}</dt><dd>{report.health.exportOldestAgeSeconds ?? 0}</dd>
+        <dt>{i18n.t("analytics.export_exhausted")}</dt><dd>{report.health.exportExhausted ?? 0}</dd>
         <dt>{i18n.t("analytics.last_failure")}</dt><dd>{report.health.lastFailureAt ?? "—"}</dd>
       </dl></details>
     </> : <p>{i18n.t("common.actions.trying_again")}</p>}

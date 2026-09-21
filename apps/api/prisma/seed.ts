@@ -30,7 +30,7 @@ async function main() {
   const repository = new PrismaMarketplaceRepository(prisma);
 
   const now = new Date().toISOString();
-  const seededPassword = hashPassword(resolveSeedPassword());
+  const seededPassword = await hashPassword(resolveSeedPassword());
 
   const providers = [
     {

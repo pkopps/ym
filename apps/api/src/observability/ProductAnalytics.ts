@@ -1,3 +1,7 @@
+import { utcTimestamp } from "../repositories/sqlTime";
+import { Prisma } from "@prisma/client";
+import { readAnalyticsReport } from "./analyticsReport";
+import type { ProductAnalyticsReport } from "@yardmatch/contracts";
 import { analyticsRequestContext } from "./analyticsContext";
 import { buildAnalyticsFunnel } from "./analyticsFunnel";
 import { createHash, createHmac } from "node:crypto";
@@ -76,6 +80,10 @@ export class AnalyticsRateLimit {
 export class ProductAnalytics extends DataEngineeringLogger {
   private readonly pending = new Map<string, AnalyticsEvent>();
   private flushing?: Promise<void>;
+  private maintaining?: Promise<void>;
+  private flushTimer?: ReturnType<typeof setTimeout>;
+  private lastRetentionAt = 0;
+  private readonly reportCache = new Map<number, { expiresAt: number; promise: Promise<ProductAnalyticsReport> }>();
   private dropped = 0;
   private readonly seen = new Set<string>();
   private lastFailureAt?: string;
@@ -93,7 +101,7 @@ export class ProductAnalytics extends DataEngineeringLogger {
     if (this.prisma && event.name !== "session_heartbeat") {
       if (this.pending.size >= 10000) { this.dropped++; return result; }
       this.pending.set(event.id, event);
-      void this.flush().catch(() => { this.lastFailureAt = new Date().toISOString(); });
+      this.scheduleFlush();
     }
     return result;
   }
@@ -108,12 +116,29 @@ export class ProductAnalytics extends DataEngineeringLogger {
       properties: row.properties as AnalyticsEvent["properties"]}); }
   }
 
+  public async collect(event: AnalyticsEvent): Promise<void> {
+    if (this.prisma && this.pending.size >= 10000 && !this.pending.has(event.id)) throw new HttpError(503, "Analytics collection is busy. Retry this event shortly.");
+    this.record(event);
+    do { await this.flush(); } while (this.pending.has(event.id));
+  }
+
+  private scheduleFlush(delayMs = 10) {
+    this.flushTimer ??= setTimeout(() => {
+      this.flushTimer = undefined;
+      void this.flush().catch(() => { this.lastFailureAt = new Date().toISOString(); });
+    }, delayMs);
+    this.flushTimer.unref();
+  }
+
   public async flush(): Promise<void> {
+    clearTimeout(this.flushTimer); this.flushTimer = undefined;
     if (!this.prisma) return;
-    if (this.flushing) { await this.flushing; if (this.pending.size) return this.flush(); return; }
+    if (this.flushing) return this.flushing;
     this.flushing = (async () => {
-      while (this.pending.size) {
-        const batch = [...this.pending.values()].slice(0, 200);
+      // Snapshot the admitted work. Continuous arrivals must not postpone acknowledgement forever.
+      const admitted = [...this.pending.values()];
+      for (let offset = 0; offset < admitted.length; offset += 200) {
+        const batch = admitted.slice(offset, offset + 200);
         await this.prisma!.productAnalyticsEvent.createMany({skipDuplicates: true, data: batch.map(event => ({
           id: event.id, name: event.name, actorId: event.actorId, occurredAt: new Date(event.occurredAt),
           environment: this.environment, source: event.properties.origin === "client" ? "client" : "server",
@@ -122,14 +147,35 @@ export class ProductAnalytics extends DataEngineeringLogger {
         for (const event of batch) this.pending.delete(event.id);
       }
     })();
-    try { await this.flushing; } finally { this.flushing = undefined; }
+    let succeeded = false;
+    try { await this.flushing; succeeded = true; } finally {
+      this.flushing = undefined;
+      if (this.pending.size) this.scheduleFlush(succeeded ? 10 : 1000);
+    }
   }
 
-  public async maintenance() {
+  public async maintenance(): Promise<void> {
+    if (this.maintaining) return this.maintaining;
+    this.maintaining = this.runMaintenance();
+    try { await this.maintaining; } finally { this.maintaining = undefined; }
+  }
+
+  public async drain(): Promise<void> {
+    await this.maintaining;
+    do { await this.flush(); } while (this.pending.size);
+  }
+
+  private async runMaintenance() {
     await this.flush();
     if (!this.prisma) return;
     const retentionDays = Math.max(7, Math.min(365, Number(process.env.ANALYTICS_RETENTION_DAYS) || 90));
-    await this.prisma.productAnalyticsEvent.deleteMany({where: {environment: this.environment, receivedAt: {lt: new Date(Date.now() - retentionDays * 86400_000)}}});
+    if (Date.now() - this.lastRetentionAt >= 3600_000) {
+      const removed = await this.prisma.$executeRaw`DELETE FROM "ProductAnalyticsEvent" WHERE id IN (
+        SELECT id FROM "ProductAnalyticsEvent" WHERE environment = ${this.environment}
+          AND "receivedAt" < ${utcTimestamp(new Date(Date.now() - retentionDays * 86400_000))} ORDER BY "receivedAt" LIMIT 1000
+      )`;
+      if (removed < 1000) this.lastRetentionAt = Date.now();
+    }
     const token = process.env.POSTHOG_API_KEY;
     const host = process.env.POSTHOG_HOST;
     const hashKey = process.env.ANALYTICS_IDENTITY_HASH_KEY;
@@ -137,9 +183,21 @@ export class ProductAnalytics extends DataEngineeringLogger {
     if (hashKey.length < 32) throw new Error("Analytics identity key must contain at least 32 characters");
     const url = new URL("/batch/", host);
     if (url.protocol !== "https:") throw new Error("Analytics export requires HTTPS");
-    const rows = await this.prisma.productAnalyticsEvent.findMany({where: {environment: this.environment,
-      AND: [{properties: {path: ["consent"], equals: true}}, {NOT: {properties: {path: ["internal"], equals: true}}}], exportedAt: null, nextAttemptAt: {lte: new Date()}, attempts: {lt: 10}}, orderBy: {receivedAt: "asc"}, take: 100});
-    if (!rows.length) return;
+    const deadline = Date.now() + 20_000;
+    for (let batch = 0; batch < 20 && Date.now() < deadline; batch++) {
+      const leaseToken = crypto.randomUUID();
+      const now = new Date();
+      const rows = await this.prisma.$queryRaw<Array<{ id: string; name: string; actorId: string | null; occurredAt: Date; environment: string; properties: unknown; attempts: number }>>`
+        WITH due AS (
+          SELECT id FROM "ProductAnalyticsEvent" WHERE environment = ${this.environment} AND "exportedAt" IS NULL
+            AND properties->'consent' = 'true'::jsonb AND properties->'internal' IS DISTINCT FROM 'true'::jsonb
+            AND properties->>'role' IS DISTINCT FROM 'ops' AND "nextAttemptAt" <= ${utcTimestamp(now)} AND attempts < 10
+            AND ("exportLeaseExpiresAt" IS NULL OR "exportLeaseExpiresAt" <= ${utcTimestamp(now)})
+          ORDER BY "receivedAt", id LIMIT 500 FOR UPDATE SKIP LOCKED
+        ) UPDATE "ProductAnalyticsEvent" event SET "exportLeaseToken" = ${leaseToken},
+          "exportLeaseExpiresAt" = ${utcTimestamp(new Date(now.getTime() + 30_000))}, attempts = attempts + 1
+          FROM due WHERE event.id = due.id RETURNING event.*`;
+      if (!rows.length) break;
     const hash = (id: string) => createHmac("sha256", hashKey).update(id).digest("hex");
     try {
       const response = await fetch(url, {method: "POST", signal: AbortSignal.timeout(5000),
@@ -155,29 +213,70 @@ export class ProductAnalytics extends DataEngineeringLogger {
                 environment: row.environment, $process_person_profile: Boolean(row.actorId)}};
           })})});
       if (!response.ok) throw new Error("Analytics export rejected");
-      await this.prisma.productAnalyticsEvent.updateMany({where: {id: {in: rows.map(row => row.id)}}, data: {exportedAt: new Date()}});
+      await this.prisma.productAnalyticsEvent.updateMany({where: {id: {in: rows.map(row => row.id)}, exportLeaseToken: leaseToken}, data: {exportedAt: new Date(), exportLeaseToken: null, exportLeaseExpiresAt: null}});
     } catch {
       this.lastFailureAt = new Date().toISOString();
-      for (const row of rows) await this.prisma.productAnalyticsEvent.update({where: {id: row.id}, data: {
-        attempts: {increment: 1}, nextAttemptAt: new Date(Date.now() + Math.min(3600_000, 30_000 * 2 ** row.attempts))
-      }});
+      // One statement releases the failed batch and preserves a bounded exponential retry schedule.
+      await this.prisma.$executeRaw`UPDATE "ProductAnalyticsEvent" SET "exportLeaseToken" = NULL, "exportLeaseExpiresAt" = NULL,
+        "nextAttemptAt" = ${utcTimestamp(new Date())} + least(3600000, 30000 * power(2, attempts - 1)) * interval '1 millisecond'
+        WHERE id IN (${Prisma.join(rows.map(row => row.id))}) AND "exportLeaseToken" = ${leaseToken}`;
+      break;
+    }
     }
   }
 
-  public async report(days = 30) {
+  private async databaseReport(days: number): Promise<ProductAnalyticsReport> {
+    const cached = this.reportCache.get(days);
+    if (cached && cached.expiresAt > Date.now()) return cached.promise;
+    const promise = (async () => {
+      const since = new Date(Date.now() - days * 86400_000);
+      const prisma = this.prisma!;
+      const [totals, supplyRows, economics, queue] = await Promise.all([
+        prisma.$transaction(async tx => {
+          await tx.$executeRaw`SET LOCAL statement_timeout = '15s'`;
+          return readAnalyticsReport(tx as unknown as PrismaClient, this.environment, since);
+        }, { timeout: 20_000 }),
+        prisma.$queryRaw<Array<NonNullable<ProductAnalyticsReport["supply"]>>>`SELECT
+          (SELECT count(*)::int FROM provider_business_profiles) AS registered,
+          (SELECT count(*)::int FROM provider_business_profiles WHERE "verificationStatus" = 'verified') AS verified,
+          (SELECT count(*)::int FROM provider_business_profiles p WHERE "verificationStatus" = 'verified' AND EXISTS (
+            SELECT 1 FROM availability_slots s WHERE s."providerId" = p."userId" AND NOT s."isBooked" AND s."endIso" >= ${utcTimestamp(new Date())}
+          )) AS "withAvailability",
+          (SELECT count(DISTINCT "providerId")::int FROM bookings) AS "withFirstBooking",
+          (SELECT count(DISTINCT "providerId")::int FROM bookings WHERE status = 'completed') AS "withCompletedJob"`,
+        prisma.bookingFinancialSettlement.groupBy({ by: ["status"], where: { createdAt: { gte: since } }, _count: { _all: true },
+          _sum: { customerChargeCents: true, actualProcessorFeeCents: true, platformNetRevenueCents: true, providerNetCents: true } }),
+        prisma.$queryRaw<Array<{ backlog: number; oldest: Date | null; exhausted: number }>>`SELECT count(*)::int AS backlog,
+          min("receivedAt") AS oldest, count(*) FILTER (WHERE attempts >= 10)::int AS exhausted
+          FROM "ProductAnalyticsEvent" WHERE environment = ${this.environment} AND "exportedAt" IS NULL
+            AND properties->'consent' = 'true'::jsonb AND properties->'internal' IS DISTINCT FROM 'true'::jsonb AND properties->>'role' IS DISTINCT FROM 'ops'`
+      ]);
+      const oldestAgeSeconds = queue[0].oldest ? Math.max(0, Math.floor((Date.now() - queue[0].oldest.getTime()) / 1000)) : 0;
+      return { ...totals, since: since.toISOString(), environment: this.environment, durable: true, supply: supplyRows[0], economics,
+        health: { pendingWrites: this.pending.size, dropped: this.dropped, lastFailureAt: this.lastFailureAt,
+          exportConfigured: Boolean(process.env.POSTHOG_API_KEY && process.env.POSTHOG_HOST && process.env.ANALYTICS_IDENTITY_HASH_KEY),
+          exportBacklog: queue[0].backlog, exportOldestAgeSeconds: oldestAgeSeconds, exportExhausted: queue[0].exhausted,
+          exportDelayed: oldestAgeSeconds > 300 || queue[0].exhausted > 0, lastEventAt: totals.lastEventAt } };
+    })();
+    this.reportCache.set(days, { expiresAt: Date.now() + 15_000, promise });
+    if (this.reportCache.size > 6) this.reportCache.delete(this.reportCache.keys().next().value!);
+    try { return await promise; } catch (error) { this.reportCache.delete(days); throw error; }
+  }
+
+  public async report(days = 30): Promise<ProductAnalyticsReport> {
+    days = Math.max(1, Math.min(90, Number.isFinite(days) ? Math.floor(days) : 30));
+    if (this.prisma) return this.databaseReport(days);
     const since = new Date(Date.now() - Math.max(1, Math.min(90, days)) * 86400_000);
-    const rows = this.prisma ? await this.prisma.productAnalyticsEvent.findMany({
-      where: {environment: this.environment, occurredAt: {gte: since}}, orderBy: {occurredAt: "asc"}, take: 50001
-    }) : this.listEvents().filter(event => Date.parse(event.occurredAt) >= since.getTime()).map(event => ({
+    const rows = this.listEvents().filter(event => Date.parse(event.occurredAt) >= since.getTime()).map(event => ({
       ...event, occurredAt: new Date(event.occurredAt), source: event.properties.origin === "client" ? "client" : "server"
     }));
     const truncated = rows.length > 50000;
-    const events = rows.slice(0, 50000).filter(row => (row.properties as AnalyticsEvent["properties"]).role !== "ops" && row.name !== "session_heartbeat" && (row.properties as AnalyticsEvent["properties"]).internal !== true);
+    const events = rows.slice(0, 50000).filter(row => row.properties.role !== "ops" && row.name !== "session_heartbeat" && row.properties.internal !== true);
     const counts: Record<string, {events: number; people: number}> = {};
     const people = new Map<string, Set<string>>();
     const segments: Record<string, Record<string, number>> = {platform: {}, locale: {}, source: {}, category: {}, area: {}};
     for (const row of events) {
-      const props = row.properties as AnalyticsEvent["properties"];
+      const props = row.properties;
       const person = row.actorId ?? String(props.anonymousId ?? row.id);
       if (!people.has(row.name)) people.set(row.name, new Set());
       people.get(row.name)!.add(person);
@@ -190,7 +289,7 @@ export class ProductAnalytics extends DataEngineeringLogger {
     const actions: Record<string, number> = {};
     const metricValues = new Map<string, number[]>();
     for (const row of events) {
-      const props = row.properties as AnalyticsEvent["properties"];
+      const props = row.properties;
       if (row.name === "action_clicked") {
         const key = `${props.action ?? "unknown"}${props.destination ? `: ${props.destination}` : ""}`;
         actions[key] = (actions[key] ?? 0) + 1;
@@ -203,19 +302,11 @@ export class ProductAnalytics extends DataEngineeringLogger {
       values.sort((a,b) => a-b);
       return [name, {samples: values.length, p75: values[Math.max(0, Math.ceil(values.length * 0.75) - 1)]}];
     }));
-    const backlog = this.prisma ? await this.prisma.productAnalyticsEvent.count({where: {environment: this.environment, exportedAt: null, properties: {path: ["consent"], equals: true}}}) : 0;
+    const backlog = 0;
     const funnel = buildAnalyticsFunnel(events.map(row => ({id: row.id, name: row.name, actorId: row.actorId ?? undefined,
-      occurredAt: row.occurredAt.toISOString(), properties: row.properties as AnalyticsEvent["properties"]})));
-    const supply = this.prisma ? {
-      registered: await this.prisma.providerBusinessProfile.count(),
-      verified: await this.prisma.providerBusinessProfile.count({where: {verificationStatus: "verified"}}),
-      withAvailability: await this.prisma.providerBusinessProfile.count({where: {verificationStatus: "verified", slots: {some: {isBooked: false, endIso: {gte: new Date()}}}}}),
-      withFirstBooking: (await this.prisma.booking.findMany({select: {providerId: true}, distinct: ["providerId"]})).length,
-      withCompletedJob: (await this.prisma.booking.findMany({where: {status: "completed"}, select: {providerId: true}, distinct: ["providerId"]})).length
-    } : undefined;
-    const economics = this.prisma ? await this.prisma.bookingFinancialSettlement.groupBy({by: ["status"],
-      where: {createdAt: {gte: since}}, _count: {_all: true}, _sum: {customerChargeCents: true,
-        actualProcessorFeeCents: true, platformNetRevenueCents: true, providerNetCents: true}}) : [];
+      occurredAt: row.occurredAt.toISOString(), properties: row.properties})));
+    const supply = undefined;
+    const economics: ProductAnalyticsReport["economics"] = [];
     return {funnel, economics, supply, actions, performance, since: since.toISOString(), environment: this.environment, durable: Boolean(this.prisma),
       events: events.length, truncated, lowSample: funnel.lowSample, counts, segments,
       health: {pendingWrites: this.pending.size, dropped: this.dropped, lastFailureAt: this.lastFailureAt,

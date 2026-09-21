@@ -3983,5 +3983,12 @@
   "complaint.no_bookings": "Your visits will appear here once you have a booking.",
   "complaint.followup_hint": "You can add detail or ask a person to review, including after a resolution.",
   "complaint.provider_capture": "For useful completion evidence, take an overview of each serviced area and a close-up of edges and cleanup. Match the before-photo angles where possible.",
-  "complaint.partially_refunded": "Partially refunded"
+  "complaint.partially_refunded": "Partially refunded",
+  "provider_clients.previous_page": "Previous",
+  "provider_clients.next_page": "Next",
+  "provider_clients.page_summary": "Page {page} of {pages}",
+  "provider_clients.cluster": "{count} properties — zoom in or choose a client",
+  "analytics.export_delayed": "Analytics export is delayed. Review collection health and the export service.",
+  "analytics.export_age": "Oldest queued event (seconds)",
+  "analytics.export_exhausted": "Events needing retry review"
 }

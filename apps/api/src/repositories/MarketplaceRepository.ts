@@ -1,3 +1,4 @@
+import type { NotificationHealthSnapshot } from "./notificationHealth";
 import {
   AppNotification,
   AuthDeviceDescriptor,
@@ -31,6 +32,7 @@ import {
   PushDevice,
   RecurringServicePlan,
   ProviderProfile,
+  ProviderClientProperty,
   ProviderReview,
   LaunchLead,
   OpsAccessHistoryEntry,
@@ -39,6 +41,7 @@ import {
   SupportTicket,
   TwoFactorMethod
 } from "@yardmatch/contracts";
+import type { ProviderSearchQuery, ProviderBookingMetrics } from "./searchQueries";
 
 export interface TrustedDeviceRecord {
   id: string;
@@ -127,6 +130,8 @@ export interface BookingPageQuery {
   cursorId?: string;
 }
 
+export type ClaimedNotificationDelivery = NotificationDeliveryRecord & { leaseToken: string };
+
 export interface MarketplaceRepository {
   /** Serialize a bounded operation across API instances; database writes use one transaction. */
   withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T>;
@@ -138,7 +143,13 @@ export interface MarketplaceRepository {
   createCrewMember(crewMember: CrewMemberProfile, passwordHash?: string): Promise<CrewMemberProfile>;
   createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
-  listCustomers(): Promise<CustomerProfile[]>;
+  searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
+  getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
+  listSearchSlots(providerIds: string[], minimumDurationMinutes?: number): Promise<AvailabilitySlot[]>;
+  listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }): Promise<Booking[]>;
+  getRetentionEvidence(bookingIds: string[]): Promise<{ tickets: SupportTicket[]; reviews: ProviderReview[]; settlements: BookingFinancialSettlement[] }>;
+  getProviderClientProperties(providerId: string, nowIso: string): Promise<ProviderClientProperty[]>;
+  listCustomers(customerIds?: string[]): Promise<CustomerProfile[]>;
   listCrewMembers(): Promise<CrewMemberProfile[]>;
   listOpsUsers(): Promise<OpsProfile[]>;
   findCustomerById(customerId: string): Promise<CustomerProfile | undefined>;
@@ -168,7 +179,7 @@ export interface MarketplaceRepository {
   ): Promise<RecurringServicePlan | undefined>;
   createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate>;
   listCrewMatches(): Promise<CrewMatchCandidate[]>;
-  listCrewMatchesForBookings(bookingIds: string[], crewMemberId: string): Promise<CrewMatchCandidate[]>;
+  listCrewMatchesForBookings(bookingIds: string[], crewMemberId?: string): Promise<CrewMatchCandidate[]>;
   updateCrewMatch(matchId: string, updates: Partial<CrewMatchCandidate>): Promise<CrewMatchCandidate | undefined>;
   findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined>;
   createProviderReview(review: ProviderReview): Promise<ProviderReview>;
@@ -250,6 +261,7 @@ export interface MarketplaceRepository {
   updateSupportTicket(ticketId: string, updates: Partial<SupportTicket>): Promise<SupportTicket | undefined>;
   createNotification(notification: AppNotification): Promise<AppNotification>;
   createNotificationIfAbsent(notification: AppNotification): Promise<boolean>;
+  findNotificationById(notificationId: string): Promise<AppNotification | undefined>;
   listNotificationsByRecipient(recipientId: string): Promise<AppNotification[]>;
   updateNotification(
     notificationId: string,
@@ -258,7 +270,11 @@ export interface MarketplaceRepository {
   getNotificationPreferences(recipientId: string): Promise<NotificationPreferences | undefined>;
   upsertNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferences>;
   createNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<NotificationDeliveryRecord>;
+  claimNotificationDeliveries(limit: number, nowIso: string, leaseSeconds: number): Promise<ClaimedNotificationDelivery[]>;
+  completeNotificationDelivery(deliveryId: string, leaseToken: string, updates: Partial<NotificationDeliveryRecord>): Promise<NotificationDeliveryRecord | undefined>;
+  countDueNotificationDeliveries(nowIso: string): Promise<number>;
   listNotificationDeliveriesByRecipient(recipientId: string): Promise<NotificationDeliveryRecord[]>;
+  getNotificationHealth(nowIso: string): Promise<NotificationHealthSnapshot>;
   listAllNotificationDeliveries(): Promise<NotificationDeliveryRecord[]>;
   updateNotificationDelivery(
     deliveryId: string,

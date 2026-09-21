@@ -2,6 +2,8 @@
 
 YardMatch is a triple marketplace for homeowners and property managers who need lawn care, landscaping businesses that run customer-facing operations, and crew members who can join those businesses without running their own company.
 
+Scale safeguards include database-backed notification/export claims, asynchronous bounded password work, scoped search and provider queries, property summaries, and clustered client maps. Run the repeatable mixed-workload gate with `npm run test:scale`; see [setup, worker limits, and rollout guidance](LOCAL_DEVELOPMENT.md#scale-reliability-and-capacity-checks) and [measured results](reports/scale-review/2026-09-21-remediation.md).
+
 ## Stack choice
 
 - `React Native + Expo` powers three separate mobile apps: one for customers, one for landscaping business owners, and one for crew members.

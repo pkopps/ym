@@ -6,7 +6,7 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 const javascriptFiles = ["**/*.{js,jsx,cjs,mjs}"];
-const typescriptFiles = ["**/*.{ts,tsx}"];
+const typescriptFiles = ["**/*.{ts,tsx,mts}"];
 const typedSourceFiles = [
   "apps/*/src/**/*.{ts,tsx}",
   "apps/*/App.tsx",
@@ -24,6 +24,7 @@ export default defineConfig([
     "**/out/**",
     "playwright-report/**",
     "test-results/**",
+    "tmp/**",
     "reports/**",
     "zocdoc-screenshots/**",
     "apps/web/next-env.d.ts",

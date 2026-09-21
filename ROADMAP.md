@@ -4,6 +4,10 @@ This is the single source of truth for forward-looking product and launch work.
 
 Keep this file focused on decisions, priorities, and unfinished work. Completed feature history belongs in `README.md` only when it explains current product behavior or developer setup.
 
+## Production capacity acceptance
+
+Run the checked-in scale gate on the intended staging topology with realistic geographical distribution, long-lived history, concurrent bookings/searches/authentication, route updates, and a notification vendor outage/recovery. Measure p95/p99 latency, errors, sustained memory, connection/lock wait, and queue age; establish service levels and replica/database connection budgets before advertising a supported user count. Local implementation and evidence are in [the scale remediation report](reports/scale-review/2026-09-21-remediation.md).
+
 ## Product Direction
 
 ### Product Design Standard

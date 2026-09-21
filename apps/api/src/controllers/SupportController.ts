@@ -228,8 +228,8 @@ export class SupportController implements ApiController {
     this.analyticsLimit.check(context);
     const identity = await getOptionalAuthenticatedIdentity(context, this.platform);
     const event = validateClientEvent(context.body, identity);
-    this.platform.createAnalyticsEvent(event);
-    await this.analytics?.flush();
+    if (this.analytics) await this.analytics.collect(event);
+    else this.platform.createAnalyticsEvent(event);
     sendJson(response, 201, {id: event.id, accepted: true});
   }
 

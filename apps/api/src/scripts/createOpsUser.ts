@@ -86,7 +86,7 @@ async function main() {
             }
           }
         },
-        hashPassword(args.password)
+        await hashPassword(args.password)
       );
 
       console.log(`Created ops user ${opsUser.email} (${opsUser.id}).`);
@@ -104,7 +104,7 @@ async function main() {
       internalScope: args.internalScope
     });
     await platform.updateAuthIdentity(existingOpsUser.id, {
-      passwordHash: hashPassword(args.password),
+      passwordHash: await hashPassword(args.password),
       sessionVersion: (existingIdentity.sessionVersion ?? 1) + 1
     });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProviderClientsOverview } from "@yardmatch/contracts";
 import { addLocalePrefix } from "@yardmatch/i18n";
 import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
@@ -30,6 +30,7 @@ export function ProviderClientsBoard() {
   const [kind, setKind] = useState<"all" | "recurring" | "one_time">("all");
   const [period, setPeriod] = useState("all");
   const [selectedId, setSelectedId] = useState<string>();
+  const [listPosition, setListPosition] = useState({ filter: "", page: 0 });
   const local = (href: string) => addLocalePrefix(href, i18n.locale);
   const data = result?.token === token ? result?.data : undefined;
   const failed = result?.token === token && result?.failed;
@@ -57,6 +58,15 @@ export function ProviderClientsBoard() {
     });
   }, [data, query, kind, period, i18n.locale]);
   const selected = properties.find((property) => property.id === selectedId);
+  const filterKey = JSON.stringify([query, kind, period, revision]);
+  const pageCount = Math.max(1, Math.ceil(properties.length / 50));
+  const listPage = listPosition.filter === filterKey ? Math.min(listPosition.page, pageCount - 1) : 0;
+  const visibleProperties = properties.slice(listPage * 50, (listPage + 1) * 50);
+  const selectProperty = useCallback((id: string) => {
+    setSelectedId(id);
+    const index = properties.findIndex(property => property.id === id);
+    if (index >= 0) setListPosition({ filter: filterKey, page: Math.floor(index / 50) });
+  }, [properties, filterKey]);
   const missingLocations = properties.filter((property) => !hasMapPoint(property.address.point)).length;
   const clearFilters = () => { setQuery(""); setKind("all"); setPeriod("all"); };
   const reload = () => { setResult(undefined); setRevision((value) => value + 1); };
@@ -93,13 +103,18 @@ export function ProviderClientsBoard() {
             </select></label>
           </div>
           <div className="provider-clients-list">
-            {properties.length === 0 ? <div className="provider-clients-no-results" role="status"><p>{i18n.t("provider_clients.no_results")}</p><button className="button-secondary" onClick={clearFilters}>{i18n.t("provider_clients.clear")}</button></div> : properties.map((property) => <button className="provider-client-row" key={property.id} type="button" aria-pressed={selected?.id === property.id} onClick={() => setSelectedId(property.id)}>
+            {properties.length === 0 ? <div className="provider-clients-no-results" role="status"><p>{i18n.t("provider_clients.no_results")}</p><button className="button-secondary" onClick={clearFilters}>{i18n.t("provider_clients.clear")}</button></div> : visibleProperties.map((property) => <button className="provider-client-row" key={property.id} type="button" aria-pressed={selected?.id === property.id} onClick={() => selectProperty(property.id)}>
               <span className="provider-client-row-icon" aria-hidden="true">⌂</span><span className="provider-client-row-copy"><strong>{property.customerName}</strong><span>{property.address.line1}{property.address.line2 ? `, ${property.address.line2}` : ""}</span><span>{property.address.city}, {property.address.state} {property.address.postalCode}</span><small className={property.recurring ? "client-recurring" : ""}>{i18n.t(property.recurring ? "provider_clients.recurring" : "provider_clients.one_time")}</small>{!hasMapPoint(property.address.point) ? <small>{i18n.t("provider_clients.no_location")}</small> : null}</span><span aria-hidden="true">›</span>
             </button>)}
           </div>
+          {pageCount > 1 ? <nav className="provider-clients-pagination" aria-label={i18n.t("provider_clients.list")}>
+            <button className="button-secondary" disabled={listPage === 0} onClick={() => setListPosition({ filter: filterKey, page: listPage - 1 })}>{i18n.t("provider_clients.previous_page")}</button>
+            <span aria-live="polite">{i18n.t("provider_clients.page_summary", { page: listPage + 1, pages: pageCount })}</span>
+            <button className="button-secondary" disabled={listPage + 1 >= pageCount} onClick={() => setListPosition({ filter: filterKey, page: listPage + 1 })}>{i18n.t("provider_clients.next_page")}</button>
+          </nav> : null}
         </aside>
         <section className="provider-clients-main" aria-label={i18n.t("provider_clients.map_label")}>
-          <ClientMap properties={properties} selectedId={selected?.id} onSelect={setSelectedId} />
+          <ClientMap properties={properties} selectedId={selected?.id} onSelect={selectProperty} />
           {missingLocations > 0 ? <p className="provider-clients-location-note" role="status">{i18n.t("provider_clients.missing_locations", { count: missingLocations })}</p> : null}
           {selected ? <section className="provider-client-detail" aria-label={selected.customerName} aria-live="polite">
             <div className="provider-client-detail-heading"><div><span className="eyebrow">{i18n.t(selected.recurring ? "provider_clients.recurring" : "provider_clients.one_time")}</span><h2>{selected.customerName}</h2><p>{selected.address.line1}{selected.address.line2 ? `, ${selected.address.line2}` : ""} · {selected.address.city}, {selected.address.state} {selected.address.postalCode}</p></div><button className="provider-client-close" aria-label={i18n.t("provider_clients.close")} onClick={() => setSelectedId(undefined)}>×</button></div>

@@ -59,3 +59,43 @@ test("photo review inventory holds disputed evidence and never deletes records",
     assert.equal(await prisma.booking.count({where:{id:{in:ids}}}),2);
   } finally {await prisma.booking.deleteMany({where:{id:{in:ids}}});await prisma.$disconnect();}
 });
+
+test("Postgres analytics workers drain a multi-batch backlog without overlapping claims and recover expired leases", {skip:!url}, async () => {
+  const prisma = new PrismaClient({datasourceUrl:url});
+  const prefix = `scale-export-${crypto.randomUUID()}`;
+  const keys = ["YARDMATCH_ENV", "POSTHOG_API_KEY", "POSTHOG_HOST", "ANALYTICS_IDENTITY_HASH_KEY"];
+  const previous = keys.map(key => process.env[key]), originalFetch = globalThis.fetch;
+  try {
+    process.env.YARDMATCH_ENV = "production";
+    process.env.POSTHOG_API_KEY = "isolated-test-token";
+    process.env.POSTHOG_HOST = "https://analytics.example.invalid";
+    process.env.ANALYTICS_IDENTITY_HASH_KEY = "isolated-test-identity-key".repeat(2);
+    const now = new Date();
+    await prisma.productAnalyticsEvent.createMany({ data: Array.from({length:1201}, (_, index) => ({
+      id: `${prefix}-${index}`, name: "page_viewed", occurredAt: now, environment: "production", source: "client",
+      properties: {consent:true, origin:"client", anonymousId:"scale-test"},
+      ...(index === 0 ? {exportLeaseToken:"abandoned-worker", exportLeaseExpiresAt:new Date(Date.now()-1000), attempts:1} : {})
+    })) });
+    const sent = new Set<string>(), batchSizes:number[] = [];
+    globalThis.fetch = async (_input, init) => {
+      const batch = JSON.parse(String(init?.body)).batch;
+      batchSizes.push(batch.length);
+      for (const item of batch) {
+        const id = item.properties.$insert_id;
+        assert.equal(sent.has(id), false, `Duplicate concurrent export: ${id}`); sent.add(id);
+      }
+      await new Promise(resolve => setTimeout(resolve, 5));
+      return new Response("", {status:200});
+    };
+    const a = new ProductAnalytics(prisma), b = new ProductAnalytics(prisma);
+    await Promise.all([a.maintenance(), a.maintenance(), b.maintenance()]);
+    assert.equal(sent.size, 1201); assert.ok(batchSizes.length >= 3); assert.ok(batchSizes.every(size => size <= 500));
+    assert.equal(await prisma.productAnalyticsEvent.count({where:{id:{startsWith:prefix}, exportedAt:null}}), 0);
+    assert.equal((await prisma.productAnalyticsEvent.findUniqueOrThrow({where:{id:`${prefix}-0`}})).attempts, 2);
+    await Promise.all([a.drain(), b.drain()]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    keys.forEach((key,index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; });
+    await prisma.productAnalyticsEvent.deleteMany({where:{id:{startsWith:prefix}}}); await prisma.$disconnect();
+  }
+});

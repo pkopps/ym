@@ -107,7 +107,7 @@ async function createOpsSession(
       address: createAddress(),
       internalScope
     },
-    hashPassword(password)
+    await hashPassword(password)
   );
 
   const response = createMockResponse();
@@ -535,7 +535,7 @@ test("repeated failed ops logins trigger a temporary lock until password recover
       address: createAddress(),
       internalScope: "operations"
     },
-    hashPassword("StrongPass123!")
+    await hashPassword("StrongPass123!")
   );
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -655,7 +655,7 @@ test("admin ops users can clear an auth lock with an audit note", async () => {
       address: createAddress(),
       internalScope: "operations"
     },
-    hashPassword("StrongPass123!")
+    await hashPassword("StrongPass123!")
   );
 
   for (let attempt = 0; attempt < 5; attempt += 1) {

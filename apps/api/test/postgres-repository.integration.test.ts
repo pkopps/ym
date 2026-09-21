@@ -431,7 +431,7 @@ test('Postgres serializes recovery and checkout across service instances and rol
     try {
       await repository.createProvider(provider);
       for (const credential of template.credentials ?? []) await repository.upsertProviderCredential({...credential,id:randomUUID(),providerId:provider.id});
-      const customer=await first.registerUser({fullName:'Audit Customer',email:`audit-customer-${suffix}@example.com`,phone:'555-0200',role:'customer',address:template.address},hashPassword('Password123!'));
+      const customer=await first.registerUser({fullName:'Audit Customer',email:`audit-customer-${suffix}@example.com`,phone:'555-0200',role:'customer',address:template.address},await hashPassword('Password123!'));
       customerId=customer.id;
       const reset=await first.requestPasswordReset({email:customer.email});
       assert.ok(reset.resetCodePreview);
