@@ -1,4 +1,6 @@
 "use client";
+import { ProviderPricingPanel } from "./ProviderPricingPanel";
+import { defaultServiceStartingPrices, type ProviderServicePrice } from "@yardmatch/contracts";
 
 import { FormEvent, useEffect, useState } from "react";
 import { Address, ServiceCategory, formatBookingWindowSummary } from "@yardmatch/contracts";
@@ -129,6 +131,8 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [phone, setPhone] = useState("");
+  const [servicePrices, setServicePrices] = useState<ProviderServicePrice[]>([]);
+  const [providerCategories, setProviderCategories] = useState<ServiceCategory[]>(defaultProviderCategories);
   const [companyName, setCompanyName] = useState("");
   const [serviceRadiusMiles, setServiceRadiusMiles] = useState(15);
   const [bookingAddress, setBookingAddress] = useState<Address>();
@@ -207,6 +211,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
       return;
     }
 
+    if (role === "provider" && !providerCategories.length) { setErrorMessage(i18n.t("pricing.choose_service")); return; }
     if (role === "provider" && !companyName.trim()) {
       setErrorMessage(i18n.t("auth_signup.error.business_name_required"));
       return;
@@ -247,7 +252,8 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
           ? {
               companyName: companyName.trim(),
               serviceRadiusMiles: resolvedServiceRadiusMiles,
-              categories: defaultProviderCategories
+              categories: providerCategories,
+              servicePrices
             }
           : {
               propertyLabel: i18n.t("auth_signup.default_property_label")
@@ -368,6 +374,13 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
             </label>
           ) : null}
         </div>
+
+        {role === "provider" ? <>
+          <fieldset className="stack-sm"><legend>{i18n.t("pricing.services")}</legend><div className="chip-row">
+            {(Object.keys(defaultServiceStartingPrices) as ServiceCategory[]).map(category => <label key={category}><input type="checkbox" checked={providerCategories.includes(category)} onChange={event => setProviderCategories(current => event.target.checked ? [...current, category] : current.filter(item => item !== category))} /> {i18n.t(serviceCategoryToI18nKey(category))}</label>)}
+          </div></fieldset>
+          <ProviderPricingPanel postalCode={postalCode} categories={providerCategories} onChange={setServicePrices} />
+        </> : null}
 
         <p className="auth-helper">
           {i18n.t("auth_signup.password_helper")}

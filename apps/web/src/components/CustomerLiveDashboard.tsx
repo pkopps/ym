@@ -497,7 +497,7 @@ export function CustomerLiveDashboard() {
   const requestActiveStepIndex = recommendedProviderCard ? 3 : providerStepActive ? 2 : quote ? 1 : 0;
   const requestProgressSteps = [
     { label: i18n.t("customer_live.progress.details"), value: selectedServiceLabel },
-    { label: i18n.t("customer_live.progress.price"), value: quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.next") },
+    { label: i18n.t("customer_live.progress.price"), value: quote ? i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : i18n.t("customer_live.next") },
     {
       label: i18n.t("customer_live.progress.match"),
       value: recommendedProviderCard
@@ -1017,6 +1017,12 @@ export function CustomerLiveDashboard() {
 
     try {
       const api = createAuthenticatedWebApiClient();
+      const providerQuote = await api.createInstantQuote({ address: activeProperty.address, propertyId: activeProperty.id, category: selectedCategory, providerId: provider.id });
+      if (providerQuote.estimatedPriceCents !== quote.estimatedPriceCents) {
+        setQuote(providerQuote);
+        setBookingMessage(i18n.t("pricing.review_changed", { amount: i18n.formatCurrency(providerQuote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }));
+        return;
+      }
       const launchLeadId = getStoredLaunchLeadId();
       const requestSource = activeRetentionOpportunity ? "customer-retention-nudge" : "customer-web-dashboard";
       const retentionContext = activeRetentionOpportunity
@@ -1038,8 +1044,8 @@ export function CustomerLiveDashboard() {
           scheduledStartIso: slot.startIso,
           scheduledEndIso: slot.endIso,
           notes: "Requested from the live YardMatch customer dashboard.",
-          totalCents: quote.estimatedPriceCents,
-          quoteToken: quote.quoteToken,
+          totalCents: providerQuote.estimatedPriceCents,
+          quoteToken: providerQuote.quoteToken,
           recommendationSessionId: providerResults?.recommendationSessionId,
           recommendedProviderId: providerResults?.recommendedProviderId,
           selectedProviderRank: rank,
@@ -1065,8 +1071,8 @@ export function CustomerLiveDashboard() {
           scheduledStartIso: slot.startIso,
           scheduledEndIso: slot.endIso,
           notes: "Recurring service plan started from the live YardMatch customer dashboard.",
-          totalCents: quote.estimatedPriceCents,
-          quoteToken: quote.quoteToken,
+          totalCents: providerQuote.estimatedPriceCents,
+          quoteToken: providerQuote.quoteToken,
           frequency: selectedCadence,
           recommendationSessionId: providerResults?.recommendationSessionId,
           recommendedProviderId: providerResults?.recommendedProviderId,
@@ -1546,7 +1552,7 @@ export function CustomerLiveDashboard() {
           </div>
           <div>
             <span>{i18n.t("customer_live.progress.price")}</span>
-            <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.after_details")}</strong>
+            <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : i18n.t("customer_live.after_details")}</strong>
           </div>
         </div></details>
       </section>
@@ -1573,7 +1579,7 @@ export function CustomerLiveDashboard() {
             <h2>{formatBookingStatusTitle(i18n, booking)}</h2>
             <p>{providerName}</p>
           </div>
-          <strong>{i18n.formatCurrency(booking.totalCents)}</strong>
+          <strong>{i18n.formatCurrency(booking.totalCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
         </div>
         <p className="history-card__summary">{getBookingStateMessage(i18n, booking, providerName, paymentRecord)}</p>
         <div className="chip-row">
@@ -2357,12 +2363,12 @@ export function CustomerLiveDashboard() {
                     <h2>{i18n.t("customer_live.progress.price")}</h2>
                     <p>{quote.estimateSummary}</p>
                   </div>
-                  <strong>{i18n.formatCurrency(quote.estimatedPriceCents)}</strong>
+                  <strong>{i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                 </div>
                 <div className="customer-request-summary-grid" aria-label={i18n.t("customer_live.price_summary_aria")}>
                   <div>
                     <span>{i18n.t("customer_live.price.visit")}</span>
-                    <strong>{i18n.formatCurrency(quote.estimatedPriceCents)}</strong>
+                    <strong>{i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                   </div>
                   <div>
                     <span>{i18n.t("customer_live.price.time")}</span>
@@ -2514,7 +2520,7 @@ export function CustomerLiveDashboard() {
                       <div className="customer-booking-review__grid" aria-label={i18n.t("customer_live.booking_summary_aria")}>
                         <div>
                           <span>{i18n.t("customer_live.progress.price")}</span>
-                          <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents) : i18n.t("customer_live.quote_pending")}</strong>
+                          <strong>{quote ? i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : i18n.t("customer_live.quote_pending")}</strong>
                         </div>
                         <div>
                           <span>{i18n.t("customer_live.provider.opening")}</span>
@@ -2601,7 +2607,7 @@ export function CustomerLiveDashboard() {
                             ? i18n.t("customer_live.action.request_this_time")
                             : quote
                               ? i18n.t("customer_live.start_for_price", {
-                                  price: i18n.formatCurrency(quote.estimatedPriceCents)
+                                  price: i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                 })
                               : i18n.t("customer_live.action.start_repeat_plan")}
                         </button>
@@ -2685,7 +2691,7 @@ export function CustomerLiveDashboard() {
                               ? i18n.t("customer_live.action.request_this_time")
                               : quote
                                 ? i18n.t("customer_live.start_for_price", {
-                                    price: i18n.formatCurrency(quote.estimatedPriceCents)
+                                    price: i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                                   })
                                 : i18n.t("customer_live.action.start_repeat_plan")}
                           </button>
@@ -2749,7 +2755,7 @@ export function CustomerLiveDashboard() {
                   <h2>{getPriorityBookingCardTitle(i18n, nextBooking, nextBookingPayment)}</h2>
                   <p>{getBookingStateMessage(i18n, nextBooking, nextBookingProviderName, nextBookingPayment)}</p>
                 </div>
-                <strong>{i18n.formatCurrency(nextBooking.totalCents)}</strong>
+                <strong>{i18n.formatCurrency(nextBooking.totalCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
               </div>
 
               <div className="customer-booking-review__grid" aria-label={i18n.t("customer_live.next_visit_summary_aria")}>
@@ -2775,7 +2781,7 @@ export function CustomerLiveDashboard() {
                 </div>
                 <div>
                   <span>{i18n.t("customer_live.progress.price")}</span>
-                  <strong>{i18n.formatCurrency(nextBooking.totalCents)}</strong>
+                  <strong>{i18n.formatCurrency(nextBooking.totalCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                 </div>
               </div>
 

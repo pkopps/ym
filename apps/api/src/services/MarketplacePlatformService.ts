@@ -593,7 +593,7 @@ export class MarketplacePlatformService {
       address: normalizedAddress,
       createdAt: now,
       companyName,
-      servicePrices: payload.servicePrices?.length ? await new ProviderPricingService(this.repository).validatePrices(payload.categories ?? ["lawn-mowing"], payload.servicePrices) : [],
+      servicePrices: payload.servicePrices !== undefined && !(Array.isArray(payload.servicePrices) && payload.servicePrices.length === 0) ? await new ProviderPricingService(this.repository).validatePrices(payload.categories ?? ["lawn-mowing"], payload.servicePrices) : [],
       bio,
       yearsExperience: payload.yearsExperience ?? 1,
       serviceRadiusMiles: payload.serviceRadiusMiles ?? 15,

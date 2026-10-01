@@ -1,3 +1,4 @@
+import { ProviderPricingCard } from "../components/ProviderPricingCard";
 import { AnalyticsPreferences } from "../providers/ObservabilityProvider";
 import { useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, Switch, Text, TextInput, View } from "react-native";
@@ -789,6 +790,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
         </View>
       </InfoCard>
 
+      {activeSection === "work" && provider ? <ProviderPricingCard postalCode={provider.address.postalCode} categories={provider.categories} token={envelope?.session.token} /> : null}
       {activeSection === "work" ? (
       <InfoCard title={i18n.t("auth_signup.field.service_radius")} description={i18n.t("provider_mobile.support.radius_description")}>
         <View style={styles.stepRow}>

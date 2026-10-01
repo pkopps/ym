@@ -285,3 +285,13 @@ PORT=44011 YARDMATCH_WEB_PORT=44012 YARDMATCH_NEXT_DIST_DIR=.next/booking-journe
 ```
 
 The optional dist directory keeps browser checks separate from a running development build. Playwright passes the chosen web port to Next. The booking browser tests capture desktop 1440×900 and mobile 390×844 evidence in `reports/agent-checkpoints/engineer/latest/booking-journey-*.png`.
+
+## ZIP pricing setup and acceptance
+
+Apply migration `20261001020000_provider_zip_pricing` using `npm run prisma:generate` and `npm run prisma:deploy`. It adds provider service-price storage and the ZIP/service minimum table; it inserts no pricing policy amounts. The seed remains repeatable and leaves configured policies alone.
+
+Sign in as an ops admin, open Administration → ZIP pricing minimums, choose a ZIP and service, and save the approved amount with a reason. Provider signup and Management → Service prices then display that minimum. Native providers use Business → Work. Unconfigured pairs explicitly show that custom pricing is unavailable; existing automatic quotes continue until a policy is configured. For local fixtures only, tests create their own synthetic minimums.
+
+Relevant APIs: public `GET /api/pricing/minimums?postalCode=08005`, provider-owned `GET/POST /api/providers/pricing`, and admin-only `GET/POST /api/ops/pricing/minimums`. POST provider pricing accepts `{ prices: [{ postalCode, category, startingPriceCents }] }` and merges the edited pairs. POST minimums accepts `{ postalCode, category, minimumStartingPriceCents, reason }`. `POST /api/quotes/instant` accepts `providerId` to obtain a provider-specific quote. Prices are positive integer cents, capped at 1,000,000 cents per starting-price entry; provider writes accept up to 100 entries per request and 1,000 stored entries per business.
+
+Run `node --test --import tsx apps/api/test/provider-pricing.test.ts`, `npm run test:api`, `TEST_DATABASE_URL=... npm run test:api:postgres`, and `npm run test:web:smoke -- tests/web/provider-pricing.spec.ts`. Use isolated local ports and `YARDMATCH_NEXT_DIST_DIR` when another development server is running. Pricing and review screens show exact cents. API tokens are bound to provider/category/property/starting price; existing bookings and active recurring plans are never repriced by settings changes.

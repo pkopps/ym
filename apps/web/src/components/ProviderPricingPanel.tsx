@@ -20,7 +20,7 @@ export function ProviderPricingPanel({ postalCode, categories, onChange }: Props
   useEffect(() => {
     let active = true;
     setRows([]); setLoadedZip(""); setError(""); setMessage(""); onChange?.([]);
-    if (!/^\d{5}$/.test(zip)) return;
+    if (!/^\d{5}$/.test(zip)) { setBusy(false); return; }
     setBusy(true);
     const api = onChange ? createWebApiClient() : createAuthenticatedWebApiClient();
     const request = onChange ? api.getZipServiceMinimums(zip).then(minimums => ({ postalCode: zip,
@@ -53,14 +53,14 @@ export function ProviderPricingPanel({ postalCode, categories, onChange }: Props
     finally { setBusy(false); }
   }
   return <section className="stack-md" aria-label={i18n.t("pricing.title")}>
-    <div><h2>{i18n.t("pricing.title")}</h2><p>{i18n.t("pricing.description")}</p></div>
-    {!onChange ? <label className="form-field"><span>{i18n.t("pricing.zip")}</span><input inputMode="numeric" maxLength={5} value={zipInput} onChange={e => setZipInput(e.target.value)} /></label> : <p>{i18n.t("pricing.zip")}: {zip || "—"}</p>}
+    <div>{onChange ? <h2>{i18n.t("pricing.title")}</h2> : null}<p>{i18n.t("pricing.description")}</p></div>
+    {!onChange ? <label className="form-field"><span>{i18n.t("pricing.zip")}</span><input inputMode="numeric" maxLength={5} disabled={busy} value={zipInput} onChange={e => setZipInput(e.target.value)} /></label> : <p>{i18n.t("pricing.zip")}: {zip || "—"}</p>}
     {busy && !rows.length ? <p role="status">{i18n.t("pricing.loading")}</p> : null}
     <div className="form-grid">{rows.map(row => <label className="form-field" key={row.category}>
       <span>{i18n.t(serviceCategoryLabelKeys[row.category])}</span>
       {row.minimumStartingPriceCents !== undefined ? <>
         <input aria-label={`${i18n.t(serviceCategoryLabelKeys[row.category])} — ${i18n.t("pricing.starting")}`} type="number" step="0.01" min={row.minimumStartingPriceCents / 100} max={10000} required disabled={busy || loadedZip !== zip} value={values[row.category] ?? ""} onChange={e => change(row.category, e.target.value)} />
-        <small>{i18n.t("pricing.minimum", { amount: i18n.formatCurrency(row.minimumStartingPriceCents) })}</small>
+        <small>{i18n.t("pricing.minimum", { amount: i18n.formatCurrency(row.minimumStartingPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}</small>
         {row.savedStartingPriceCents !== undefined && row.savedStartingPriceCents < row.minimumStartingPriceCents ? <small>{i18n.t("pricing.raised")}</small> : null}
       </> : <small>{i18n.t("pricing.unavailable")}</small>}
     </label>)}</div>

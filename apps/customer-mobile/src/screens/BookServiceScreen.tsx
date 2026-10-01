@@ -79,7 +79,7 @@ function formatServiceLabel(i18n: I18nInstance, service: ServiceCategory) {
 }
 
 function formatPrice(i18n: I18nInstance, cents: number) {
-  return i18n.formatCurrency(cents, "USD", { maximumFractionDigits: 0 });
+  return i18n.formatCurrency(cents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatOpenWindow(i18n: I18nInstance, slot?: AvailabilitySlot) {
@@ -385,6 +385,12 @@ export function BookServiceScreen({
       setErrorMessage("");
       const api = createCustomerMobileApiClient();
       api.setAuthToken(envelope.session.token);
+      const providerQuote = await api.createInstantQuote({ address: activeProperty.address, propertyId: activeProperty.id, category: selectedService, providerId: provider.provider.id });
+      if (providerQuote.estimatedPriceCents !== quote.estimatedPriceCents) {
+        setQuote(providerQuote);
+        setMessage(i18n.t("pricing.review_changed", { amount: i18n.formatCurrency(providerQuote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }));
+        return;
+      }
       await api.createBooking({
         providerId: provider.provider.id,
         serviceAddress: activeProperty.address,
@@ -393,8 +399,8 @@ export function BookServiceScreen({
         scheduledStartIso: slot.startIso,
         scheduledEndIso: slot.endIso,
         notes: i18n.t("mobile.book.booking_note"),
-        totalCents: quote.estimatedPriceCents,
-          quoteToken: quote.quoteToken,
+        totalCents: providerQuote.estimatedPriceCents,
+          quoteToken: providerQuote.quoteToken,
         recommendationSessionId: recommendationContext?.recommendationSessionId,
         recommendedProviderId: recommendationContext?.recommendedProviderId,
         selectedProviderRank: rank,

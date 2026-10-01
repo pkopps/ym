@@ -96,7 +96,7 @@ export class ProviderPricingService {
       const retained = (provider.servicePrices ?? []).filter(row => !normalized.some(next => next.postalCode === row.postalCode && next.category === row.category));
       if (retained.length + normalized.length > 1000) throw new HttpError(400, "Your business can save up to 1,000 service prices.");
       await repository.updateProvider(providerId, { servicePrices: [...retained, ...normalized] });
-      return scoped.overview(providerId, normalized[0]!.postalCode);
+      return scoped.overview(providerId, normalized[0].postalCode);
     });
   }
 

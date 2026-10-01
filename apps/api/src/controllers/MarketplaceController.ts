@@ -85,7 +85,8 @@ export class MarketplaceController implements ApiController {
 
   public canHandle(context: RequestContext): boolean {
     return (
-      (["GET", "POST"].includes(context.method) && ["/api/providers/pricing", "/api/ops/pricing/minimums"].includes(context.path)) ||
+      (["GET", "POST"].includes(context.method) && context.path === "/api/providers/pricing") ||
+      (["GET", "POST"].includes(context.method) && context.path === "/api/ops/pricing/minimums") ||
       (context.method === "GET" && context.path === "/api/pricing/minimums") ||
       (context.method === "GET" && context.path === "/api/customers/properties") ||
       (context.method === "POST" && context.path === "/api/customers/properties") ||

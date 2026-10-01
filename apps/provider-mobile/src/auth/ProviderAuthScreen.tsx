@@ -1,3 +1,6 @@
+import { ProviderPricingCard } from "../components/ProviderPricingCard";
+import { defaultServiceStartingPrices, type ServiceCategory, type ProviderServicePrice } from "@yardmatch/contracts";
+import { serviceCategoryLabelKeys } from "@yardmatch/i18n/service-labels";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { AntDesign } from "@expo/vector-icons";
@@ -81,6 +84,8 @@ export function ProviderAuthScreen({
   const [errorMessage, setErrorMessage] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
+  const [categories, setCategories] = useState<ServiceCategory[]>(["lawn-mowing"]);
+  const [servicePrices, setServicePrices] = useState<ProviderServicePrice[]>([]);
   const [companyName, setCompanyName] = useState("");
   const [addressQuery, setAddressQuery] = useState("");
   const [address, setAddress] = useState<Address>(createEmptyAddress());
@@ -301,6 +306,7 @@ export function ProviderAuthScreen({
       setErrorMessage("");
       const api = createProviderMobileApiClient();
       const device = await getProviderAuthDevice();
+      if (!categories.length) throw new Error(i18n.t("pricing.choose_service"));
       const normalizedAddress: Address = {
         ...address,
         state: address.state.trim().toUpperCase(),
@@ -322,6 +328,7 @@ export function ProviderAuthScreen({
             phone: phone.trim(),
             role: "provider",
             address: normalizedAddress,
+            categories, servicePrices,
             companyName: companyName.trim() || undefined
           })
         : await api.registerUser({
@@ -332,6 +339,7 @@ export function ProviderAuthScreen({
             role: "provider",
             device,
             address: normalizedAddress,
+            categories, servicePrices,
             companyName: companyName.trim() || undefined
           });
 
@@ -656,6 +664,12 @@ export function ProviderAuthScreen({
                     value={address.postalCode}
                   />
                 </View>
+                <Text style={styles.helper}>{i18n.t("pricing.services")}</Text>
+                {(Object.keys(defaultServiceStartingPrices) as ServiceCategory[]).map(category => <Pressable key={category} accessibilityRole="checkbox" accessibilityState={{ checked: categories.includes(category) }} onPress={() => setCategories(current => current.includes(category) ? current.filter(item => item !== category) : [...current, category])}>
+                  <Text style={styles.helper}>{categories.includes(category) ? "☑" : "☐"} {i18n.t(serviceCategoryLabelKeys[category])}</Text>
+                </Pressable>)}
+                <ProviderPricingCard postalCode={address.postalCode} categories={categories} onChange={setServicePrices} />
+
               </>
             )}
           </View>

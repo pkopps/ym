@@ -490,6 +490,7 @@ export class AuthController implements ApiController {
         yearsExperience: payload.yearsExperience,
         serviceRadiusMiles: payload.serviceRadiusMiles,
         categories: payload.categories,
+        servicePrices: payload.servicePrices,
         propertyNotes: payload.propertyNotes,
         lawnSizeSqFt: payload.lawnSizeSqFt,
         propertyLabel: payload.propertyLabel,
