@@ -63,6 +63,11 @@ Exit criteria:
 
 ## Priority 1: Launch-Critical
 
+### Provider Pricing — Owner-Requested ZIP Minimums
+
+Patrick requested provider-editable starting prices during and after onboarding on September 30, 2026, with ZIP codes defining each locale and existing job-size adjustments retained. Before launch, approve and configure minimum starting amounts for each supported ZIP/service pair using the audited ops admin controls. No production minimum amounts have been assumed. Independently accept signup, later edits, exact customer totals, stale-quote rejection, and grandfathered bookings/active recurring plans in staging. Current behavior and migration setup are documented in `README.md` and `LOCAL_DEVELOPMENT.md`.
+
+
 ### Provider Client Map — Owner-Approved Launch Requirement
 
 Patrick explicitly prioritized the provider client map for launch on September 20, 2026. Independently accept the authenticated `/provider/clients` workflow against staging bookings on desktop and mobile browsers, including historical clients, recurring-plan status, provider isolation, geocoded locations, and map-tile availability. Current local behavior and verification commands are documented in `README.md`.

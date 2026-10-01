@@ -84,7 +84,7 @@ export function BookingScheduleModal({ provider, address: initialAddress, catego
         (item.address.postalCode === address.postalCode.trim() || item.address.city.toLowerCase() === address.city.trim().toLowerCase()));
       if (!place) throw new Error(i18n.t("booking_journey.address.unresolved"));
       const nextAddress = { ...address, point: place.address.point, geocodePrecision: place.address.geocodePrecision, geocodeProvider: place.address.geocodeProvider };
-      const nextQuotes = await Promise.all(categories.map(category => api.createInstantQuote({ address: nextAddress, category, followUpAnswers: answers[category] })));
+      const nextQuotes = await Promise.all(categories.map(category => api.createInstantQuote({ providerId: provider.id, address: nextAddress, category, followUpAnswers: answers[category] })));
       setQuotes(nextQuotes);
       if (nextQuotes.some(quote => !quote.quoteReadyForCheckout)) return;
       const duration = nextQuotes.reduce((sum, quote) => sum + quote.estimatedDurationMinutes, 0);

@@ -1,4 +1,5 @@
 "use client";
+import { OpsPricingPanel } from "./OpsPricingPanel";
 
 import { WorkspaceSection } from "./WorkspaceSection";
 import { ReadinessBoard } from "./ReadinessBoard";
@@ -1110,9 +1111,10 @@ export function OpsDashboardClient() {
       </WorkspaceSection>
       <WorkspaceSection id="ops-administration" title={i18n.t("workspace.administration")}><ReadinessBoard />
       <OpsLaunchPlaybook />
-      {hasOpsAdminAccess ? (
-        <OpsAccountManagementBoard currentOpsUserId={session?.userId} />
-      ) : (
+      {hasOpsAdminAccess ? (<>
+        <WorkspaceSection id="ops-pricing" title={i18n.t("pricing.ops_title")}><OpsPricingPanel /></WorkspaceSection>
+      <OpsAccountManagementBoard currentOpsUserId={session?.userId} />
+      </>) : (
         <section className="card">
           <h2>{i18n.t("ops_auto.ops_dashboard_client.ops_account_management_3dg678")}</h2>
           <p>{i18n.t("ops_auto.ops_dashboard_client.this_internal_account_management_workspace_is_limited_to_siiu5o")}</p>

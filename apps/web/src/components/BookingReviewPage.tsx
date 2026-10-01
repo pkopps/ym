@@ -29,7 +29,7 @@ export function BookingReviewPage() {
           return;
         }
       }
-      const quotes = await Promise.all(input.categories.map(category => api.createInstantQuote({ address: input.address, category, followUpAnswers: input.answers[category] })));
+      const quotes = await Promise.all(input.categories.map(category => api.createInstantQuote({ providerId: input.provider.id, address: input.address, category, followUpAnswers: input.answers[category] })));
       const duration = quotes.reduce((sum, quote) => sum + quote.estimatedDurationMinutes, 0);
       const slots = await api.getProviderAvailability({ providerId: input.provider.id, address: quotes[0].address, categories: input.categories, estimatedDurationMinutes: duration });
       if (revision !== version.current) return;
@@ -86,10 +86,10 @@ export function BookingReviewPage() {
     <header><span className="eyebrow">{i18n.t("booking_journey.schedule.with", { provider: draft.provider.companyName })}</span><h1>{i18n.t("booking_journey.review.title")}</h1><p>{i18n.t("booking_journey.review.body")}</p></header>
     <div className="journey-review-layout"><section className="card journey-review-card"><h2>{draft.provider.companyName}</h2>
       <dl className="journey-summary"><div><dt>{i18n.t("booking_journey.day")}</dt><dd>{openingLabel(i18n, draft.slot.startIso)}</dd></div><div><dt>{i18n.t("booking_journey.address.title")}</dt><dd>{draft.address.line1}{draft.address.line2 ? `, ${draft.address.line2}` : ""}<br />{draft.address.city}, {draft.address.state} {draft.address.postalCode}</dd></div></dl>
-      <h3>{i18n.t("booking_journey.services")}</h3><ul className="journey-price-lines">{draft.quotes.map(quote => <li key={quote.category}><span>{i18n.t(serviceCategoryLabelKeys[quote.category])}</span><strong>{i18n.formatCurrency(quote.estimatedPriceCents)}</strong></li>)}</ul>
+      <h3>{i18n.t("booking_journey.services")}</h3><ul className="journey-price-lines">{draft.quotes.map(quote => <li key={quote.category}><span>{i18n.t(serviceCategoryLabelKeys[quote.category])}</span><strong>{i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></li>)}</ul>
       <p className="journey-muted">{i18n.t("booking_journey.review.duration", { minutes: draft.quotes.reduce((sum, quote) => sum + quote.estimatedDurationMinutes, 0) })}</p>
       <button className="button-secondary" type="button" disabled={busy} onClick={() => setEditing(true)}>{i18n.t("booking_journey.review.edit")}</button>
-    </section><section className="card journey-review-total"><div className="journey-total"><span>{i18n.t("booking_journey.review.total")}</span><strong>{i18n.formatCurrency(draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0))}</strong></div><p>{i18n.t("booking_journey.book.no_charge")}</p>
+    </section><section className="card journey-review-total"><div className="journey-total"><span>{i18n.t("booking_journey.review.total")}</span><strong>{i18n.formatCurrency(draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div><p>{i18n.t("booking_journey.book.no_charge")}</p>
       {notice ? <p role="status">{notice}</p> : null}{error ? <div role="alert" className="journey-error"><p>{error}</p><button className="button-secondary" type="button" disabled={busy || loading} onClick={() => void refresh(draft)}>{i18n.t("booking_journey.review.refresh")}</button></div> : null}
       {session?.role === "customer" ? <button className="button" type="button" disabled={busy || loading || !ready} onClick={() => void confirm()}>{i18n.t(busy ? "booking_journey.review.confirming" : loading ? "booking_journey.book.checking" : "booking_journey.review.confirm")}</button>
         : <div className="journey-auth"><h3>{i18n.t("booking_journey.review.auth")}</h3><p>{i18n.t(session ? "booking_journey.review.wrong_role" : "booking_journey.review.auth_body")}</p><Link className="button" href={addLocalePrefix(`/login/customer?returnTo=${encodeURIComponent(returnTo)}`, i18n.locale)}>{i18n.t("booking_journey.review.login")}</Link><Link className="button-secondary" href={addLocalePrefix(`/auth/customer?${signupParams}`, i18n.locale)}>{i18n.t("booking_journey.review.signup")}</Link></div>}

@@ -3108,6 +3108,7 @@ export interface SocialAuthPendingIdentity {
 }
 
 export interface CompleteSocialSignupRequest {
+  servicePrices?: ProviderServicePrice[];
   pendingToken: string;
   fullName: string;
   phone: string;

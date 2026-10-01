@@ -1114,12 +1114,31 @@ export const apiSpec = {
         }
       }
     },
+    "/api/pricing/minimums": {
+      get: { tags: ["Quotes"], summary: "Read configured service minimums for a five-digit US ZIP",
+        parameters: [{ name: "postalCode", in: "query", required: true, schema: { type: "string", pattern: "^[0-9]{5}$" } }],
+        responses: { "200": { description: "Service minimums without internal audit history; empty when unconfigured" } } }
+    },
+    "/api/providers/pricing": {
+      get: { tags: ["Providers"], summary: "Read own saved and effective starting prices by ZIP", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "postalCode", in: "query", required: true, schema: { type: "string" } }], responses: { "200": { description: "Provider pricing overview, including ZIP minimums" } } },
+      post: { tags: ["Providers"], summary: "Set own service starting prices at or above ZIP minimums", security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { prices: [{ postalCode: "08005", category: "lawn-mowing", startingPriceCents: 5000 }] } } } },
+        responses: { "200": { description: "Saved pricing overview" }, "400": { description: "Invalid, unsupported or below-minimum prices" }, "409": { description: "ZIP minimum is not configured" } } }
+    },
+    "/api/ops/pricing/minimums": {
+      get: { tags: ["Ops"], summary: "Admin-only ZIP minimums with audit history", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "postalCode", in: "query", required: true, schema: { type: "string" } }], responses: { "200": { description: "ZIP minimums and complete change history" }, "403": { description: "Admin role required" } } },
+      post: { tags: ["Ops"], summary: "Admin-only audited change to a service minimum", security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { example: { postalCode: "08005", category: "lawn-mowing", minimumStartingPriceCents: 3500, reason: "Approved local pricing review" } } } },
+        responses: { "200": { description: "Updated minimum and audit trail" }, "403": { description: "Admin role required" } } }
+    },
     "/api/quotes/instant": {
       post: {
         tags: ["Quotes"],
         summary: "Generate an instant quote with confidence scoring",
         description:
-          "Returns an automated price and duration estimate, backend-authored launch pricing policy, normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. Authenticated customer quote inputs that match a saved property reuse the saved geocode even when the client sends the address again instead of a property id. Lower-confidence jobs also surface complexity-aware follow-up questions so larger or more intricate properties can be clarified before checkout, including driveway and sidewalk measurement prompts for winter hardscape services.",
+          "Optional providerId selects the provider’s starting price for the service property ZIP, subject to its configured minimum. Size and labor adjustments remain additive. Quote tokens bind the provider and starting price; changed prices require a fresh quote before a new booking. Returns an automated price and duration estimate, backend-authored launch pricing policy, normalized-address metadata, measurement source details, and confidence reasons that explain whether the estimate is grounded in saved property data, customer answers, or heuristics. Authenticated customer quote inputs that match a saved property reuse the saved geocode even when the client sends the address again instead of a property id. Lower-confidence jobs also surface complexity-aware follow-up questions so larger or more intricate properties can be clarified before checkout, including driveway and sidewalk measurement prompts for winter hardscape services.",
         requestBody: {
           required: true,
           content: {
