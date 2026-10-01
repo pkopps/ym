@@ -1193,12 +1193,29 @@ export const apiSpec = {
         }
       }
     },
+    "/api/providers/availability": {
+      post: {
+        tags: ["Providers"], summary: "Read actual openings for a provider and service mix",
+        description: "Public customer-safe availability for an approved provider serving this address and every requested category. Includes future slots within 90 days, respects lead time, optional combined estimatedDurationMinutes, external calendar blocks and active booking conflicts. Returns at most 200 openings. Booking revalidates signed quotes and availability under a provider lock.",
+        requestBody: { required: true, content: { "application/json": { example: { providerId: "provider_123", address: { line1: "170 5th Ave", city: "Brooklyn", state: "NY", postalCode: "11201", country: "US", point: { latitude: 40.6782, longitude: -73.9442 } }, categories: ["lawn-mowing", "leaf-blowing"], estimatedDurationMinutes: 90 } } } },
+        responses: { "200": { description: "AvailabilitySlot array" }, "409": { description: "Provider/service/address is not eligible" } }
+      }
+    },
+    "/api/bookings/detail": {
+      get: {
+        tags: ["Bookings"], summary: "Read a customer's own booking or recover a submitted request",
+        security: [{ bearerAuth: [] }],
+        description: "Customer role required. Use bookingId for a booking (404 when not owned), or requestId to recover a retry-safe request (null if not yet saved). Includes persisted service line items. Other customers cannot inspect the request or address.",
+        parameters: [{ name: "bookingId", in: "query", schema: { type: "string" } }, { name: "requestId", in: "query", schema: { type: "string" } }],
+        responses: { "200": { description: "Owned booking, or null for an uncommitted request" }, "404": { description: "Booking not found" } }
+      }
+    },
     "/api/providers/search": {
       post: {
         tags: ["Providers"],
         summary: "Search nearby providers",
         description:
-          "Returns at most three curated, customer-safe marketplace results for providers that are verified, serve the requested address, and match the requested services. Phone, email, owner name, exact street address, exact map coordinates, payout state, verification notes, and other provider-account fields are excluded. Results are ranked using service fit, specialization, distance, reliability history, availability, and provider-economics guardrails. Paid placement never changes recommendation order. Multi-service requests include a backend-authored service-fit summary for complete versus partial category coverage, and provider-economics summaries account for the requested service mix, duration, and route instead of only the first matched category. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
+          "Returns the top three curated, customer-safe marketplace results by default, plus totalMatches. Optional availability {startIso, endIso} filters opening start times before the per-provider slot cap; the range must be at most 31 days. Pass directory {offset, limit} to page through every verified provider serving the address and matching the service (limit 1 to 24). Phone, email, owner name, exact street address, exact map coordinates, payout state, verification notes, and other provider-account fields are excluded. Results are ranked using service fit, specialization, distance, reliability history, availability, and provider-economics guardrails. Paid placement never changes recommendation order. Multi-service requests include a backend-authored service-fit summary for complete versus partial category coverage, and provider-economics summaries account for the requested service mix, duration, and route instead of only the first matched category. The response also includes a recommendation session id so customer flows can track recommendation acceptance, alternative reveals, and swaps cleanly, plus customer-facing transparency fields like nearby completed-job context and availability confidence.",
         requestBody: {
           required: true,
           content: {
@@ -1766,7 +1783,7 @@ export const apiSpec = {
         tags: ["Bookings"],
         summary: "Create a booking",
         description:
-          "Creates a customer booking request. Customer-facing recommendation-first flows can include recommendation session metadata here so ops telemetry can distinguish accepted first-choice recommendations from swapped bookings. When an authenticated customer's custom service address matches a saved property, the booking snapshot reuses the saved property geocode rather than geocoding the same address again.",
+          "Creates a customer booking request. The public booking journey supplies services [{category, quoteToken}] and a stable requestId (16–80 letters/digits/hyphens). All services must be offered by this approved provider; signed ready quotes must bind the address, category, duration and summed price. A real available slot must fit the combined duration. Concurrent retries reuse the same booking, and a durable customer email receipt is queued once. Bundles are single visits; recurring requests retain the existing single-service contract. Customer-facing recommendation-first flows can include recommendation session metadata here so ops telemetry can distinguish accepted first-choice recommendations from swapped bookings. When an authenticated customer's custom service address matches a saved property, the booking snapshot reuses the saved property geocode rather than geocoding the same address again.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -2339,6 +2356,24 @@ export const apiSpec = {
         responses: {
           "201": { description: "Support ticket created" }
         }
+      }
+    },
+    "/api/customer/referrals": {
+      get: {
+        tags: ["Launch"], security: [{ bearerAuth: [] }], summary: "List the signed-in customer's latest 100 referrals",
+        description: "Customer role required. Returns only owned contact details and coarse ops progress, plus the configured customer website URL for invitation composition. Internal lead notes, booking IDs and payment information are excluded.",
+        responses: { "200": { description: "CustomerReferralsOverview" }, "401": { description: "Sign-in required" }, "403": { description: "Customer role required" } }
+      },
+      post: {
+        tags: ["Launch"], security: [{ bearerAuth: [] }], summary: "Save a friend referral by email or US phone",
+        description: "Atomically saves an owned referral and an ops launch lead. Requires explicit contact permission, normalizes contacts, rejects self-referrals, deduplicates by referrer/channel/contact, and allows 10 new referrals per rolling 24 hours. Referrer identity and consent timestamp come from the server. The customer opens and sends a prepared invitation from their own email/SMS app; this endpoint does not send a message or award a reward.",
+        requestBody: { required: true, content: { "application/json": { schema: {
+          type: "object", required: ["friendName", "channel", "contact", "contactPermission"],
+          properties: { friendName: { type: "string", minLength: 2, maxLength: 80 }, channel: { type: "string", enum: ["email", "phone"] },
+            contact: { type: "string", maxLength: 254 }, areaLabel: { type: "string", maxLength: 100 }, contactPermission: { type: "boolean", enum: [true] } }
+        }, example: { friendName: "Jamie", channel: "phone", contact: "609-555-0101", areaLabel: "Barnegat", contactPermission: true } } } },
+        responses: { "201": { description: "Created referral, with created: true" }, "200": { description: "Existing referral, with created: false" },
+          "400": { description: "Invalid contact, missing permission or self-referral" }, "401": { description: "Sign-in required" }, "403": { description: "Customer role required" }, "429": { description: "Daily referral limit reached" } }
       }
     },
     "/api/launch/leads": {

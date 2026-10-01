@@ -32,7 +32,7 @@ async function searchSeededBrooklyn(page: Page, locale: "en" | "es") {
   expect(curatedProviderCount).toBeGreaterThan(0);
   expect(curatedProviderCount).toBeLessThanOrEqual(3);
   await expect(
-    page.getByText(isSpanish ? "El proveedor confirma antes del pago." : "Provider confirms before payment.").first()
+    page.getByText(isSpanish ? "Sin cargo ahora. Tu proveedor confirma antes del pago." : "No charge now. Your provider confirms before payment.").first()
   ).toBeVisible();
 }
 
@@ -67,7 +67,7 @@ async function registerExistingCustomer(request: APIRequestContext, email: strin
 }
 
 test.describe.serial("customer booking golden path", () => {
-  test("homepage search carries signup intent through quote, recommendation, and booking state", async ({ page, request }) => {
+  test("legacy provider signup intent still carries through dashboard quote and booking state", async ({ page, request }) => {
     test.setTimeout(90_000);
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(() => localStorage.setItem("yardmatch-analytics-permission", "yes"));
@@ -82,7 +82,9 @@ test.describe.serial("customer booking golden path", () => {
     });
     await page.setViewportSize({ width: 1440, height: 900 });
 
-    await page.getByRole("link", { name: "See price and request" }).click();
+    const matches = await (await request.post(`${apiBaseUrl}/api/providers/search`, { data: { address: { line1: "Brooklyn, NY", city: "Brooklyn", state: "NY", postalCode: "11201", country: "US", point: { latitude: 40.6782, longitude: -73.9442 } }, categories: ["lawn-mowing"], dateIso: new Date().toISOString() } })).json();
+    const provider = matches.rankedProviders[0].provider;
+    await page.goto(`/auth/customer?${new URLSearchParams({ service: "lawn-mowing", area: "Brooklyn, NY", city: "Brooklyn", state: "NY", postalCode: "11201", lat: "40.6782", lng: "-73.9442", providerId: provider.id, providerName: provider.companyName, rank: "1", source: "listings", slot: matches.suggestedSlots.find((slot: {providerId: string}) => slot.providerId === provider.id).startIso })}`);
     await expect(page).toHaveURL(/\/auth\/customer/);
     const signupUrl = new URL(page.url());
     expect(signupUrl.searchParams.get("lat")).toBe("40.6782");
@@ -119,6 +121,7 @@ test.describe.serial("customer booking golden path", () => {
     await expect(
       page.getByText("No charge yet. The provider reviews and confirms before payment is collected.")
     ).toBeVisible();
+    await page.screenshot({ path: `${evidenceRoot}/customer-quote-desktop.png`, fullPage: true });
     await page.getByRole("button", { name: "Request this time" }).click();
 
     await expect(page.getByRole("heading", { name: "Waiting on confirmation" })).toBeVisible();
@@ -145,6 +148,38 @@ test.describe.serial("customer booking golden path", () => {
     });
   });
 
+  test("homepage search leads to top matches and the optional full directory", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await searchSeededBrooklyn(page, "en");
+    await expect(page.getByRole("heading", { name: "Your top matches" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: "TerraCut Studio" })).toBeVisible();
+    const topCount = await page.locator(".live-provider-card").count();
+    expect(topCount).toBeGreaterThanOrEqual(2);
+    await page.screenshot({ path: `${evidenceRoot}/customer-top-matches-desktop.png` });
+
+    await page.getByRole("button", { name: "View more providers" }).click();
+    await expect(page).toHaveURL(/view=directory/);
+    await expect(page.getByRole("heading", { name: "Providers near you" })).toBeVisible();
+    await expect(page.locator(".live-provider-card")).toHaveCount(topCount);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Providers near you" })).toBeVisible();
+    await expect(page.locator(".live-provider-card")).toHaveCount(topCount);
+    await page.screenshot({ path: `${evidenceRoot}/customer-directory-desktop.png` });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({ path: `${evidenceRoot}/customer-directory-mobile.png` });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.getByRole("button", { name: "Back to recommendations" }).click();
+    await expect(page).not.toHaveURL(/view=directory/);
+    await page.screenshot({ path: `${evidenceRoot}/customer-top-matches-mobile.png` });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Providers near you" })).toBeVisible();
+    await page.locator(".live-provider-card").filter({ has: page.getByRole("heading", { name: "TerraCut Studio" }) })
+      .locator(".journey-slot-pill").first().click();
+    await expect(page.getByRole("dialog", { name: "Schedule your service" }).getByText("With TerraCut Studio")).toBeVisible();
+  });
+
   test("spanish mobile path keeps selected request through existing-customer login", async ({ page, request }) => {
     test.setTimeout(90_000);
     const email = `golden-path-es-${Date.now()}@example.com`;
@@ -153,40 +188,27 @@ test.describe.serial("customer booking golden path", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await searchSeededBrooklyn(page, "es");
 
-    await page.getByRole("link", { name: "Ver precio y solicitar" }).click();
-    await expect(page).toHaveURL(/\/es\/auth\/customer/);
-    await page.getByRole("link", { name: "Iniciar sesion y continuar" }).click();
+    await page.locator(".journey-provider-card").first().locator(".journey-slot-pill").first().click();
+    const dialog = page.getByRole("dialog", { name: "Programa tu servicio" });
+    await dialog.getByLabel("Direccion", { exact: true }).fill("170 5th Ave");
+    await dialog.getByRole("button", { name: "Reservar", exact: true }).click();
+    const questions = dialog.getByRole("group", { name: "Algunos detalles de tu propiedad" }).getByRole("combobox");
+    await expect(questions.first()).toBeVisible();
+    for (let index = 0; index < await questions.count(); index++) await questions.nth(index).selectOption({ index: 1 });
+    await dialog.getByRole("button", { name: "Reservar", exact: true }).click();
+    await expect(page).toHaveURL(/\/es\/customer\/booking\/review/);
+    await page.getByRole("link", { name: "Iniciar sesion y continuar", exact: true }).click();
     await expect(page).toHaveURL(/\/es\/login\/customer\?returnTo=/);
-
-    const loginUrl = new URL(page.url());
-    const returnTo = loginUrl.searchParams.get("returnTo") ?? "";
-    expect(returnTo).toContain("/es/customer/dashboard?flow=request");
-    expect(returnTo).toContain("service=lawn-mowing");
-    expect(returnTo).toContain("providerName=GreenStride+Lawn+Co.");
-
+    expect(new URL(page.url()).searchParams.get("returnTo")).toContain("/es/customer/booking/review?draft=");
     await expect(page.getByRole("link", { name: "Continuar con Apple" })).toBeVisible();
-    await page.waitForLoadState("networkidle");
-    const emailField = page.getByLabel("Correo");
-    const passwordField = page.getByLabel("Contrasena");
-    await emailField.fill(email);
-    await passwordField.fill(password);
-    await expect(emailField).toHaveValue(email);
-    await expect(passwordField).toHaveValue(password);
-    await passwordField.press("Enter");
-
-    await expect(page).toHaveURL(/\/es\/customer\/dashboard\?flow=request/);
-    await expect(page.getByRole("heading", { name: "Solicitar servicio" })).toBeVisible();
+    await page.getByLabel("Correo").fill(email);
+    await page.getByLabel("Contrasena").fill(password);
+    await page.getByLabel("Contrasena").press("Enter");
+    await expect(page).toHaveURL(/\/es\/customer\/booking\/review/);
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
-    await expect(page.getByLabel("Servicio").first()).toHaveValue("lawn-mowing");
-    await page.getByRole("button", { name: "Obtener precio" }).click();
-    await expect(page.getByText("Recomendacion seleccionada", { exact: true }).first()).toBeVisible();
-    await page.getByRole("button", { name: "Solicitar este horario" }).click();
-
-    await expect(page.getByRole("heading", { name: "Esperando confirmacion" })).toBeVisible();
-    await expect(page.getByText("Despues de que el proveedor confirme")).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "Secciones de cuenta de cliente" }).getByRole("link", { name: "Visitas anteriores" })).toBeVisible();
-    await page.screenshot({
-      path: `${evidenceRoot}/customer-booking-spanish-mobile.png`
-    });
+    await page.getByRole("button", { name: "Confirmar solicitud" }).click();
+    await expect(page).toHaveURL(/\/es\/customer\/booking\/confirmation/);
+    await expect(page.getByRole("heading", { name: "Recibimos tu solicitud" })).toBeVisible();
+    await page.screenshot({ path: `${evidenceRoot}/customer-booking-spanish-mobile.png` });
   });
 });

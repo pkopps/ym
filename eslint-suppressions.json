@@ -170,7 +170,7 @@
   },
   "apps/web/src/components/PublicCustomerMarketplacePage.tsx": {
     "@next/next/no-img-element": {
-      "count": 3
+      "count": 1
     }
   },
   "apps/web/src/components/RoleLoginExperience.tsx": {

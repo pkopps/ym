@@ -37,7 +37,7 @@ export default defineConfig({
       timeout: 30_000
     },
     {
-      command: `NEXT_PUBLIC_API_BASE_URL=${apiBaseUrl} npm run dev:web`,
+      command: `NEXT_PUBLIC_API_BASE_URL=${apiBaseUrl} npm run dev:web -- --port ${webPort}`,
       url: webBaseUrl,
       reuseExistingServer,
       timeout: 60_000

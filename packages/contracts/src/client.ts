@@ -1,4 +1,7 @@
+import type { ZipServiceMinimum, ZipServiceMinimumRecord, UpdateZipServiceMinimumRequest, ProviderServicePrice, ProviderPricingOverview } from "./pricing";
 import {
+  ProviderAvailabilityRequest,
+  AvailabilitySlot,
   UpdateBookingScheduleRequest,
   RespondBookingScheduleRequest,
   AddBookingEvidenceRequest,
@@ -40,6 +43,9 @@ import {
   CreateInboundGoogleBusinessProfileLeadRequest,
   CreateInboundLaunchLeadRequest,
   CreateInboundReferralLaunchLeadRequest,
+  CreateCustomerReferralRequest,
+  CreateCustomerReferralResponse,
+  CustomerReferralsOverview,
   CrewMatchSummary,
   CrewMatchesResponse,
   CrewOpportunity,
@@ -507,12 +513,32 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.defaultCustomerProperty, payload);
   }
 
+  public getZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimum[]> {
+    return this.getJson(`/api/pricing/minimums?postalCode=${encodeURIComponent(postalCode)}`);
+  }
+  public getProviderPricing(postalCode: string): Promise<ProviderPricingOverview> {
+    return this.getJson(`/api/providers/pricing?postalCode=${encodeURIComponent(postalCode)}`);
+  }
+  public updateProviderPricing(prices: ProviderServicePrice[]): Promise<ProviderPricingOverview> {
+    return this.postJson("/api/providers/pricing", { prices });
+  }
+  public getOpsPricingMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]> {
+    return this.getJson(`/api/ops/pricing/minimums?postalCode=${encodeURIComponent(postalCode)}`);
+  }
+  public updateZipServiceMinimum(payload: UpdateZipServiceMinimumRequest): Promise<ZipServiceMinimumRecord> {
+    return this.postJson("/api/ops/pricing/minimums", payload);
+  }
+
   public createInstantQuote(payload: InstantQuoteRequest): Promise<InstantQuoteResponse> {
     return this.postJson(ApiRoutes.createInstantQuote, payload);
   }
 
   public searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
     return this.postJson(ApiRoutes.searchProviders, payload);
+  }
+
+  public getProviderAvailability(payload: ProviderAvailabilityRequest): Promise<AvailabilitySlot[]> {
+    return this.postJson(ApiRoutes.providerAvailability, payload);
   }
 
   public getPublicMarketplaceOverview(): Promise<PublicMarketplaceOverviewResponse> {
@@ -826,6 +852,14 @@ export class MarketplaceApiClient {
     return this.postJson<Booking>(ApiRoutes.createBooking, payload);
   }
 
+  public getCustomerBookingForRequest(requestId: string): Promise<Booking | null> {
+    return this.getJson(`/api/bookings/detail?requestId=${encodeURIComponent(requestId)}`);
+  }
+
+  public getCustomerBooking(bookingId: string): Promise<Booking> {
+    return this.getJson(`/api/bookings/detail?bookingId=${encodeURIComponent(bookingId)}`);
+  }
+
   public cancelBooking(payload: CancelBookingRequest) {
     return this.postJson<Booking>(ApiRoutes.cancelBooking, payload);
   }
@@ -978,6 +1012,14 @@ export class MarketplaceApiClient {
 
   public createLaunchLead(payload: CreateLaunchLeadRequest): Promise<LaunchLead> {
     return this.postJson(ApiRoutes.launchLeads, payload);
+  }
+
+  public listCustomerReferrals(): Promise<CustomerReferralsOverview> {
+    return this.getJson(ApiRoutes.customerReferrals);
+  }
+
+  public createCustomerReferral(payload: CreateCustomerReferralRequest): Promise<CreateCustomerReferralResponse> {
+    return this.postJson(ApiRoutes.customerReferrals, payload);
   }
 
   public createInboundLaunchLead(payload: CreateInboundLaunchLeadRequest): Promise<LaunchLead> {

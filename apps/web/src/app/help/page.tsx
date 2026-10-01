@@ -19,7 +19,7 @@ export function generateMetadata(): Promise<Metadata> {
 
 export default async function HelpPage({searchParams}: {searchParams: Promise<Record<string, string | string[] | undefined>>}) {
   const params = await searchParams;
-  const area = typeof params.area === "string" ? params.area.slice(0,120) : "Barnegat, NJ";
+  const area = typeof params.area === "string" ? params.area.slice(0,120) : "";
   const service = typeof params.service === "string" && Object.hasOwn(serviceCategoryLabelKeys, params.service) ? params.service as ServiceCategory : undefined;
   const timing = typeof params.timing === "string" ? params.timing.slice(0,100).replaceAll("-", " ") : "";
   const i18n = await getRequestI18n();

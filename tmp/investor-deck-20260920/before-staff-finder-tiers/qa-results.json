@@ -1,0 +1,16 @@
+{
+  "independent_all_scenario_forecasts_reconciled": true,
+  "saved_xlsx_formula_errors": 0,
+  "pdf_pages": 37,
+  "pdf_source_links": 26,
+  "default_selectors_verified": true,
+  "town_cohorts": 14,
+  "workbook_sheets": 10,
+  "deck_receipt": "validation-v10.json",
+  "visual_review": "37 slide renders reviewed; geographic source overlays removed; native table sizing warnings manually inspected without visible clipping.",
+  "output_sha256": {
+    "output/pdf/YardMatch-Investor-Deck.pdf": "c05934f67df02dbb9abb23d0d52a138a10e3e9b6a228b19ee54e85d1435e884e",
+    "output/presentations/YardMatch-Investor-Deck.pptx": "d7f4d86df775a00fde2e007af228c8b4df1f520d73662bf398ee15da6decc924",
+    "outputs/investor-deck-20260920/YardMatch-Investor-Model.xlsx": "5f276ce0d2f3bcc6fde19d6828c418b294690ee57773ff8a94bacbe9d4f72e3f"
+  }
+}

@@ -1,6 +1,9 @@
+import { ProviderPricingService } from "./ProviderPricingService";
+import { defaultServiceStartingPrices, type UpdateZipServiceMinimumRequest, type ProviderServicePrice } from "@yardmatch/contracts";
 import { bookingMetrics, type ProviderBookingMetrics } from "../repositories/searchQueries";
 import type { ClaimedNotificationDelivery } from "../repositories/MarketplaceRepository";
 import { ServiceComplaintService } from "./ServiceComplaintService";
+import { CustomerReferralService } from "./CustomerReferralService";
 import { PartialRefundService, hasPendingPartialRefund } from "./PartialRefundService";
 import type { CreateServiceComplaintRequest, ReplyServiceComplaintRequest, IssuePartialRefundRequest } from "@yardmatch/contracts";
 import { fetchCalendarFeed } from "../integrations/calendarFeed";
@@ -9,6 +12,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { DataEngineeringLogger } from "@yardmatch/analytics";
 import {
   ActiveSession,
+  ProviderAvailabilityRequest,
+  BookingServiceItem,
   AccountSecuritySettings,
   bookingScheduleWindowHour,
   UpdateBookingScheduleRequest,
@@ -132,6 +137,8 @@ import {
   CreateInboundLaunchLeadRequest,
   CreateInboundReviewResponseRequest,
   CreateInboundReferralLaunchLeadRequest,
+  CreateCustomerReferralRequest,
+  normalizeReferralPhone,
   CreateInboundSharedInboxReviewResponseRequest,
   CreateLaunchLeadRequest,
   CreateSupportTicketRequest,
@@ -586,6 +593,7 @@ export class MarketplacePlatformService {
       address: normalizedAddress,
       createdAt: now,
       companyName,
+      servicePrices: payload.servicePrices?.length ? await new ProviderPricingService(this.repository).validatePrices(payload.categories ?? ["lawn-mowing"], payload.servicePrices) : [],
       bio,
       yearsExperience: payload.yearsExperience ?? 1,
       serviceRadiusMiles: payload.serviceRadiusMiles ?? 15,
@@ -616,6 +624,11 @@ export class MarketplacePlatformService {
     });
     return this.repository.createProvider(provider, passwordHash);
   }
+
+  public async getPricingMinimums(postalCode: string) { return new ProviderPricingService(this.repository).minimums(postalCode); }
+  public async setPricingMinimum(actorId: string, input: UpdateZipServiceMinimumRequest) { return new ProviderPricingService(this.repository).setMinimum(actorId, input); }
+  public async getProviderPricing(providerId: string, postalCode: string) { return new ProviderPricingService(this.repository).overview(providerId, postalCode); }
+  public async saveProviderPricing(providerId: string, prices: ProviderServicePrice[]) { return new ProviderPricingService(this.repository).save(providerId, prices); }
 
   private withRepository(repository: MarketplaceRepository): MarketplacePlatformService {
     return Object.assign(Object.create(Object.getPrototypeOf(this)), this, { repository });
@@ -1817,6 +1830,23 @@ export class MarketplacePlatformService {
   }
 
   public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
+    if (payload.availability) {
+      const { startIso, endIso } = payload.availability;
+      if (!Number.isFinite(Date.parse(startIso)) || !Number.isFinite(Date.parse(endIso)) ||
+          Date.parse(endIso) <= Date.parse(startIso) || Date.parse(endIso) - Date.parse(startIso) > 31 * 86400000) {
+        throw new HttpError(400, "Choose a valid availability range of up to 31 days.");
+      }
+      payload = { ...payload, availability: { startIso: new Date(startIso).toISOString(), endIso: new Date(endIso).toISOString() } };
+    }
+    const directoryOffset = payload.directory?.offset ?? 0;
+    const directoryLimit = payload.directory?.limit ?? 3;
+    if (payload.directory && (
+      !Number.isSafeInteger(directoryOffset) || directoryOffset < 0 || directoryOffset > 100_000 ||
+      !Number.isSafeInteger(directoryLimit) || directoryLimit < 1 || directoryLimit > 24
+    )) {
+      throw new HttpError(400, "Directory pages require a nonnegative offset and a limit from 1 to 24.");
+    }
+    const resultCap = payload.directory ? directoryOffset + directoryLimit : 3;
     const normalizedAddress = (await this.normalizeAndValidateAddress(payload.address)).address;
     const recommendationSessionId = crypto.randomUUID();
     const providerDecisionMetrics = this.buildProviderDecisionMetrics();
@@ -1848,6 +1878,7 @@ export class MarketplacePlatformService {
     });
 
     const rankedCandidates: Array<{ ranking: SearchProviderResult; matchingSlots: AvailabilitySlot[] }> = [];
+    let totalMatches = 0;
     let cursorId: string | undefined;
     do {
       const page = await this.repository.searchProvidersPage({ categories: payload.categories, address: normalizedAddress, cursorId });
@@ -1855,7 +1886,7 @@ export class MarketplacePlatformService {
       const ids = providers.map(provider => provider.id);
       const [metrics, slots] = await Promise.all([
         this.repository.getProviderBookingMetrics(ids, normalizedAddress),
-        this.repository.listSearchSlots(ids, payload.estimatedDurationMinutes)
+        this.repository.listSearchSlots(ids, payload.estimatedDurationMinutes, payload.availability)
       ]);
       const metricsById = new Map(metrics.map(item => [item.providerId, item]));
       const slotsById = new Map<string, AvailabilitySlot[]>();
@@ -1863,6 +1894,7 @@ export class MarketplacePlatformService {
         const group = slotsById.get(slot.providerId) ?? []; group.push(slot); slotsById.set(slot.providerId, group);
       }
       for (const provider of providers) {
+        totalMatches += 1;
         const matchingSlots = (slotsById.get(provider.id) ?? []).slice(0, payload.estimatedDurationMinutes ? 1 : 3);
         const ranking = this.buildSearchProviderRanking(rankingPayload, provider,
           metricsById.get(provider.id) ?? bookingMetrics(provider.id, [], normalizedAddress),
@@ -1872,16 +1904,21 @@ export class MarketplacePlatformService {
       rankedCandidates.sort((left, right) => right.ranking.score - left.ranking.score ||
         left.ranking.distanceMiles - right.ranking.distanceMiles || right.ranking.provider.rating - left.ranking.provider.rating ||
         left.ranking.provider.id.localeCompare(right.ranking.provider.id));
-      rankedCandidates.splice(3);
+      rankedCandidates.splice(resultCap);
       cursorId = page.hasMore ? page.nextCursorId : undefined;
     } while (cursorId);
 
-    const suggestedSlots = rankedCandidates.flatMap((candidate) => candidate.matchingSlots);
-    const rankedProviders = this.withCustomerSelectionSummaries(
+    const allRankedProviders = this.withCustomerSelectionSummaries(
       rankedCandidates.map((candidate) => candidate.ranking)
     );
+    const rankedProviders = payload.directory
+      ? allRankedProviders.slice(directoryOffset, directoryOffset + directoryLimit)
+      : allRankedProviders;
+    const suggestedSlots = (payload.directory
+      ? rankedCandidates.slice(directoryOffset, directoryOffset + directoryLimit)
+      : rankedCandidates).flatMap((candidate) => candidate.matchingSlots);
     const matchingProviders = rankedProviders.map((candidate) => candidate.provider);
-    const recommendedProviderId = rankedProviders[0]?.provider.id;
+    const recommendedProviderId = allRankedProviders[0]?.provider.id;
 
     this.analytics.record({
       id: crypto.randomUUID(),
@@ -1901,7 +1938,7 @@ export class MarketplacePlatformService {
       }
     });
 
-    if (matchingProviders.length === 0) {
+    if (totalMatches === 0) {
       this.analytics.record({
         id: crypto.randomUUID(),
         name: MarketplaceTelemetryEventCatalog.providerSearchNoResults,
@@ -1918,7 +1955,7 @@ export class MarketplacePlatformService {
           ...this.buildLaunchAttributionAnalyticsProperties(payload.attribution)
         }
       });
-    } else if (suggestedSlots.length === 0) {
+    } else if (suggestedSlots.length === 0 && !payload.directory) {
       this.analytics.record({
         id: crypto.randomUUID(),
         name: MarketplaceTelemetryEventCatalog.providerSearchNoOpenWindows,
@@ -1937,7 +1974,7 @@ export class MarketplacePlatformService {
       });
     }
 
-    if (recommendedProviderId) {
+    if (recommendedProviderId && !payload.directory) {
       this.analytics.record({
         id: crypto.randomUUID(),
         name: MarketplaceTelemetryEventCatalog.recommendationPresented,
@@ -1962,8 +1999,30 @@ export class MarketplacePlatformService {
       rankedProviders,
       suggestedSlots,
       recommendationSessionId,
-      recommendedProviderId
+      recommendedProviderId,
+      totalMatches
     };
+  }
+
+  public async getProviderAvailability(payload: ProviderAvailabilityRequest): Promise<AvailabilitySlot[]> {
+    if (!payload?.providerId || !Array.isArray(payload.categories) || !payload.categories.length || payload.categories.length > 13) {
+      throw new HttpError(400, "Choose a provider and at least one service.");
+    }
+    const duration = payload.estimatedDurationMinutes ?? 0;
+    if (!Number.isFinite(duration) || duration < 0 || duration > 1440) throw new HttpError(400, "Invalid service duration.");
+    const address = (await this.normalizeAndValidateAddress(payload.address)).address;
+    for (const category of payload.categories) await this.assertBookingProviderEligible(payload.providerId, category, address);
+    const provider = (await this.repository.findProviderById(payload.providerId))!;
+    const [slots, bookings] = await Promise.all([
+      this.repository.listSlotsByProvider(payload.providerId),
+      this.repository.listScopedBookings({ providerId: payload.providerId, endAfter: new Date().toISOString(), excludeStatuses: ["cancelled", "completed", "refunded"] })
+    ]);
+    return slots.filter(slot => !slot.isBooked && Date.parse(slot.startIso) > Date.now() &&
+      Date.parse(slot.startIso) < Date.now() + 90 * 86400000 && this.isWithinProviderAcceptanceWindow(provider, slot.startIso) &&
+      Date.parse(slot.endIso) - Date.parse(slot.startIso) >= duration * 60000 &&
+      !this.getActiveExternalCalendarBlocks(provider).some(block => this.doIntervalsOverlap(slot.startIso, slot.endIso, block.startIso, block.endIso)) &&
+      !bookings.some(booking => this.doIntervalsOverlap(slot.startIso, slot.endIso, booking.scheduledStartIso, booking.scheduledEndIso)))
+      .sort((a, b) => a.startIso.localeCompare(b.startIso)).slice(0, 200);
   }
 
   public async getPublicMarketplaceOverview(): Promise<PublicMarketplaceOverviewResponse> {
@@ -4521,6 +4580,7 @@ export class MarketplacePlatformService {
       providerCompanyName: provider.companyName,
       providerPhone: provider.phone,
       category: booking.category,
+      serviceCategories: booking.services?.map(item => item.category),
       serviceAddress: booking.serviceAddress,
       scheduledStartIso: booking.scheduledStartIso,
       scheduledEndIso: booking.scheduledEndIso,
@@ -7012,7 +7072,9 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Only requested bookings can be confirmed");
     }
 
-    await this.assertBookingProviderEligible(booking.providerId, booking.category, booking.serviceAddress);
+    for (const category of booking.services?.length ? booking.services.map(item => item.category) : [booking.category]) {
+      await this.assertBookingProviderEligible(booking.providerId, category, booking.serviceAddress);
+    }
     this.validateBookingWindow(booking.scheduledStartIso, booking.scheduledEndIso);
     await this.assertProviderWindowIsAvailable(booking.providerId, booking.scheduledStartIso, booking.scheduledEndIso);
 
@@ -7139,6 +7201,11 @@ export class MarketplacePlatformService {
       normalizedAddress: this.buildNormalizedAddressSummary(rawAddress, normalizedAddress, validatedAddress)
     });
 
+    const startingPriceCents = await new ProviderPricingService(this.repository).startingPrice(normalizedAddress.postalCode, payload.category, payload.providerId);
+    quote.estimatedPriceCents += startingPriceCents - defaultServiceStartingPrices[payload.category];
+    quote.startingPriceCents = startingPriceCents;
+    quote.providerId = payload.providerId;
+
     this.analytics.record({
       id: crypto.randomUUID(),
       name:
@@ -7164,7 +7231,11 @@ export class MarketplacePlatformService {
         addressKey: this.quoteAddressKey(normalizedAddress),
         category: payload.category,
         totalCents: quote.estimatedPriceCents,
-        pricingVersion: 1
+        estimatedDurationMinutes: quote.estimatedDurationMinutes,
+        quoteReadyForCheckout: quote.quoteReadyForCheckout,
+        pricingVersion: 1,
+        providerId: payload.providerId,
+        startingPriceCents
       }, 30 * 60),
       launchPricingPolicy: this.buildLaunchPricingPolicy(payload.category)
     };
@@ -7174,11 +7245,38 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: CreateBookingRequest
   ): Promise<Booking> {
-    return this.createBookingRecord(customerId, this.parseBookingRequest(payload));
+    const parsed = this.parseBookingRequest(payload);
+    if (!parsed.services) return this.createBookingRecord(customerId, parsed);
+    if (!parsed.requestId || !/^[a-zA-Z0-9-]{16,80}$/.test(parsed.requestId)) throw new HttpError(400, "A booking request identifier is required.");
+    const bookingId = `request-${hashDeviceIdentifier(`${customerId}:${parsed.requestId}`)}`;
+    return this.repository.withLock(`booking-provider:${parsed.providerId}`, async repository => {
+      const existing = await repository.findBookingById(bookingId);
+      if (existing) {
+        if (existing.customerId !== customerId || existing.providerId !== parsed.providerId || existing.totalCents !== parsed.totalCents ||
+          existing.scheduledStartIso !== parsed.scheduledStartIso || existing.scheduledEndIso !== parsed.scheduledEndIso || existing.category !== parsed.category ||
+          this.quoteAddressKey(existing.serviceAddress) !== this.quoteAddressKey(parsed.serviceAddress) ||
+          JSON.stringify(existing.services?.map(item => item.category)) !== JSON.stringify(parsed.services?.map(item => item.category))) {
+          throw new HttpError(409, "This booking request was already used. Review your existing booking before making another.");
+        }
+        return existing;
+      }
+      return this.withRepository(repository).createBookingRecord(customerId, parsed, { bookingId });
+    });
+  }
+
+  public async getCustomerBookingForRequest(customerId: string, requestId: string): Promise<Booking | null> {
+    if (!/^[a-zA-Z0-9-]{16,80}$/.test(requestId)) throw new HttpError(400, "Invalid booking request identifier.");
+    return await this.repository.findBookingById(`request-${hashDeviceIdentifier(`${customerId}:${requestId}`)}`) ?? null;
+  }
+
+  public async getCustomerBooking(customerId: string, bookingId: string): Promise<Booking> {
+    const booking = await this.repository.findBookingById(bookingId);
+    if (!booking || booking.customerId !== customerId) throw new HttpError(404, "Booking not found.");
+    return booking;
   }
 
   private quoteAddressKey(address: Address): string {
-    return [address.line1, address.city, address.state, address.postalCode, address.country]
+    return [address.line1, address.line2 ?? "", address.city, address.state, address.postalCode, address.country]
       .map((part) => part.trim().toLowerCase().replace(/\s+/g, " ")).join("|");
   }
 
@@ -7186,11 +7284,16 @@ export class MarketplacePlatformService {
     if (!payload || typeof payload.providerId !== "string" || !payload.serviceAddress || typeof payload.category !== "string") {
       throw new HttpError(400, "Provider, service, and address are required.");
     }
-    const { quoteToken, providerId, launchLeadId, serviceAddress, servicePropertyId, category,
+    const { quoteToken, requestId, services, providerId, launchLeadId, serviceAddress, servicePropertyId, category,
       scheduledStartIso, scheduledEndIso, totalCents, recommendationSessionId, recommendedProviderId,
       selectedProviderRank, viewedAlternativeProviders, requestSource, recommendationSource, retentionContext, attribution } = payload;
     if (!Number.isSafeInteger(totalCents) || totalCents <= 0) throw new HttpError(400, "Price must be a positive whole number of cents.");
-    return { quoteToken, providerId, launchLeadId, serviceAddress, servicePropertyId, category,
+    if (services !== undefined && (!Array.isArray(services) || !services.length || services.length > 13 ||
+      services[0]?.category !== category || new Set(services.map(item => item?.category)).size !== services.length ||
+      services.some(item => !item || typeof item.category !== "string" || typeof item.quoteToken !== "string"))) {
+      throw new HttpError(400, "Choose distinct services with a current quote for each service.");
+    }
+    return { quoteToken, requestId, services, providerId, launchLeadId, serviceAddress, servicePropertyId, category,
       scheduledStartIso, scheduledEndIso, totalCents, notes: typeof payload.notes === "string" ? payload.notes : "",
       recommendationSessionId, recommendedProviderId, selectedProviderRank, viewedAlternativeProviders,
       requestSource, recommendationSource, retentionContext, attribution };
@@ -7220,16 +7323,21 @@ export class MarketplacePlatformService {
   private async resolveBookingPrice(customerId: string, payload: CreateBookingRequest, address: Address): Promise<number> {
     let amount: number;
     if (payload.quoteToken) {
-      let quote: { customerId?: string; propertyId?: string; addressKey: string; category: string; totalCents: number; pricingVersion: number };
+      let quote: { customerId?: string; propertyId?: string; addressKey: string; category: string; totalCents: number; pricingVersion: number; providerId?: string; startingPriceCents?: number };
       try { quote = verifyScopedToken(payload.quoteToken, "yardmatch-booking-quote-v1"); }
       catch { throw new HttpError(409, "Your price has expired. Refresh the quote before booking."); }
       if ((quote.customerId && quote.customerId !== customerId) || quote.propertyId !== payload.servicePropertyId ||
           quote.addressKey !== this.quoteAddressKey(address) || quote.category !== payload.category || quote.pricingVersion !== 1) {
         throw new HttpError(409, "This quote does not match the service and property. Refresh the quote.");
       }
+      const currentStartingPrice = await new ProviderPricingService(this.repository).startingPrice(address.postalCode, payload.category, payload.providerId);
+      if ((quote.providerId && quote.providerId !== payload.providerId) ||
+          (quote.startingPriceCents ?? defaultServiceStartingPrices[payload.category]) !== currentStartingPrice) {
+        throw new HttpError(409, "The provider price has changed. Refresh the quote before booking.");
+      }
       amount = quote.totalCents;
     } else {
-      amount = (await this.createInstantQuote({ customerId, propertyId: payload.servicePropertyId, address, category: payload.category })).estimatedPriceCents;
+      amount = (await this.createInstantQuote({ customerId, propertyId: payload.servicePropertyId, address, category: payload.category, providerId: payload.providerId })).estimatedPriceCents;
     }
     if (!Number.isSafeInteger(amount) || amount <= 0 || amount !== payload.totalCents) {
       throw new HttpError(409, "The booking price does not match the current quote. Refresh the quote before booking.");
@@ -7237,7 +7345,32 @@ export class MarketplacePlatformService {
     return amount;
   }
 
+  private async resolveBookingServices(customerId: string, payload: CreateBookingRequest, address: Address): Promise<BookingServiceItem[] | undefined> {
+    if (!payload.services) return undefined;
+    const items: BookingServiceItem[] = [];
+    for (const item of payload.services) {
+      await this.assertBookingProviderEligible(payload.providerId, item.category, address);
+      let quote: { totalCents: number; estimatedDurationMinutes: number; quoteReadyForCheckout: boolean };
+      try { quote = verifyScopedToken(item.quoteToken, "yardmatch-booking-quote-v1"); }
+      catch { throw new HttpError(409, "Your price has expired. Refresh the quote before booking."); }
+      if (!quote.quoteReadyForCheckout || !Number.isFinite(quote.estimatedDurationMinutes) || quote.estimatedDurationMinutes <= 0) {
+        throw new HttpError(409, "Finish the property questions before booking this service.");
+      }
+      const totalCents = await this.resolveBookingPrice(customerId, { ...payload, category: item.category, quoteToken: item.quoteToken, totalCents: quote.totalCents }, address);
+      items.push({ category: item.category, totalCents, estimatedDurationMinutes: quote.estimatedDurationMinutes });
+    }
+    if (items.reduce((sum, item) => sum + item.totalCents, 0) !== payload.totalCents) throw new HttpError(409, "The booking price does not match the current quote.");
+    const duration = items.reduce((sum, item) => sum + item.estimatedDurationMinutes, 0);
+    if (Date.parse(payload.scheduledEndIso) - Date.parse(payload.scheduledStartIso) < duration * 60000) throw new HttpError(409, "Choose an opening long enough for all selected services.");
+    const slots = await this.getProviderAvailability({ providerId: payload.providerId, address, categories: items.map(item => item.category), estimatedDurationMinutes: duration });
+    if (!slots.some(slot => slot.startIso === payload.scheduledStartIso && Date.parse(slot.endIso) >= Date.parse(payload.scheduledEndIso))) {
+      throw new HttpError(409, "That opening is no longer available. Choose another time.");
+    }
+    return items;
+  }
+
   public async createRecurringServicePlan(customerId: string, input: CreateRecurringServicePlanRequest): Promise<CreateRecurringServicePlanResponse> {
+    if (input?.services) throw new HttpError(400, "Multiple services can be requested as a single visit. Set up recurring services separately.");
     if (!["weekly", "biweekly"].includes(input?.frequency)) throw new HttpError(400, "Choose a supported recurring frequency.");
     const payload = { ...this.parseBookingRequest(input), frequency: input.frequency };
     const key = hashDeviceIdentifier(JSON.stringify([customerId, payload.providerId, payload.servicePropertyId ?? this.quoteAddressKey(payload.serviceAddress), payload.category, payload.scheduledStartIso, payload.scheduledEndIso, payload.frequency]));
@@ -7429,6 +7562,7 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: CreateBookingRequest,
     options?: {
+      bookingId?: string;
       initialPlan?: RecurringServicePlan;
       agreedRecurringPrice?: number;
       recurringPlanId?: string;
@@ -7467,8 +7601,10 @@ export class MarketplacePlatformService {
     const { lead: linkedLaunchLead, linkMode } = await this.resolveLaunchLeadForCustomer(customer, payload);
 
     await this.assertBookingProviderEligible(payload.providerId, payload.category, validatedServiceAddress);
-    const totalCents = options?.agreedRecurringPrice ?? await this.resolveBookingPrice(customerId, payload, validatedServiceAddress);
-    const bookingBase = this.bookingLifecycle.createBooking(crypto.randomUUID(), {
+    const services = await this.resolveBookingServices(customerId, payload, validatedServiceAddress);
+    const totalCents = services ? services.reduce((sum, item) => sum + item.totalCents, 0)
+      : options?.agreedRecurringPrice ?? await this.resolveBookingPrice(customerId, payload, validatedServiceAddress);
+    const bookingBase = this.bookingLifecycle.createBooking(options?.bookingId ?? crypto.randomUUID(), {
       ...payload,
       customerId,
       totalCents,
@@ -7478,6 +7614,8 @@ export class MarketplacePlatformService {
 
     const booking: Booking = {
       ...bookingBase,
+      services,
+      notes: services?.length ? `${services.map(item => this.titleCaseCategory(item.category)).join(", ")}. ${bookingBase.notes}`.trim() : bookingBase.notes,
       recurringPlanId: options?.recurringPlanId,
       recurringOccurrenceIndex: options?.recurringOccurrenceIndex
     };
@@ -7537,12 +7675,19 @@ export class MarketplacePlatformService {
       title: options?.providerNotificationTitle ?? "New booking request",
       body:
         options?.providerNotificationBody ??
-        `${this.sanitizeMarketplaceProfileText(customer.fullName, "A property owner")} requested ${this.titleCaseCategory(payload.category)} for ${new Date(
+        `${this.sanitizeMarketplaceProfileText(customer.fullName, "A property owner")} requested ${services?.map(item => this.titleCaseCategory(item.category)).join(", ") || this.titleCaseCategory(payload.category)} for ${new Date(
           booking.scheduledStartIso
         ).toLocaleDateString()}.`,
       actionHref: "/provider/management"
     });
 
+    if (services) {
+      await this.createNotification({ recipientId: customerId, recipientRole: "customer", category: "booking",
+        title: "Booking request received",
+        body: `We received your request for ${services.map(item => this.titleCaseCategory(item.category)).join(", ")}. Your provider will confirm before payment is collected. You can review or reschedule your visit from your booking page.`,
+        actionHref: `/customer/booking/confirmation?bookingId=${encodeURIComponent(result.id)}`
+      }, ["email"], `booking-receipt-${result.id}`);
+    }
     return result;
   }
 
@@ -7665,7 +7810,13 @@ export class MarketplacePlatformService {
     return updatedBooking;
   }
 
-  public async rescheduleBooking(
+  public async rescheduleBooking(customerId: string, payload: RescheduleBookingRequest): Promise<Booking> {
+    const booking = await this.getCustomerBooking(customerId, payload.bookingId);
+    return this.repository.withLock(`booking-provider:${booking.providerId}`, repository =>
+      this.withRepository(repository).rescheduleBookingRecord(customerId, payload));
+  }
+
+  private async rescheduleBookingRecord(
     customerId: string,
     payload: RescheduleBookingRequest
   ): Promise<Booking> {
@@ -7679,6 +7830,18 @@ export class MarketplacePlatformService {
       throw new Error("Only future requested or confirmed bookings can be rescheduled");
     }
 
+    if (booking.scheduledStartIso === payload.scheduledStartIso && booking.scheduledEndIso === payload.scheduledEndIso) return booking;
+    if (booking.services?.length) {
+      const slots = await this.getProviderAvailability({ providerId: booking.providerId, address: booking.serviceAddress,
+        categories: booking.services.map(item => item.category), estimatedDurationMinutes: booking.services.reduce((sum, item) => sum + item.estimatedDurationMinutes, 0) });
+      if (!slots.some(slot => slot.startIso === payload.scheduledStartIso && Date.parse(slot.endIso) >= Date.parse(payload.scheduledEndIso))) {
+        throw new HttpError(409, "That opening is no longer available. Choose another time.");
+      }
+    }
+    if (booking.services?.length && Date.parse(payload.scheduledEndIso) - Date.parse(payload.scheduledStartIso) <
+        booking.services.reduce((sum, item) => sum + item.estimatedDurationMinutes, 0) * 60000) {
+      throw new HttpError(400, "Choose an opening long enough for all booked services.");
+    }
     const nextStart = new Date(payload.scheduledStartIso);
     const nextEnd = new Date(payload.scheduledEndIso);
 
@@ -13473,6 +13636,9 @@ export class MarketplacePlatformService {
 
   public async createLaunchLead(payload: CreateLaunchLeadRequest): Promise<LaunchLead> {
     const sourceReferenceId = payload.sourceReferenceId?.trim() || undefined;
+    if (sourceReferenceId?.startsWith("customer-referral:") || payload.requestSource === "customer-referral") {
+      throw new HttpError(400, "Use the authenticated customer referral form.");
+    }
     if (sourceReferenceId) {
       const existingLead = await this.repository.findLaunchLeadBySourceReferenceId(sourceReferenceId);
       if (existingLead) {
@@ -13569,6 +13735,14 @@ export class MarketplacePlatformService {
     });
 
     return savedLead;
+  }
+
+  public listCustomerReferrals(customerId: string) {
+    return new CustomerReferralService(this.repository, this.appBaseUrl).list(customerId);
+  }
+
+  public createCustomerReferral(customerId: string, payload: CreateCustomerReferralRequest) {
+    return new CustomerReferralService(this.repository, this.appBaseUrl).create(customerId, payload);
   }
 
   public async createInboundLaunchLead(
@@ -18314,6 +18488,7 @@ export class MarketplacePlatformService {
           bookingId: booking.id,
           customerName: customer?.fullName ?? "Customer",
           serviceAddress: this.sanitizeMarketplaceAddress(booking.serviceAddress),
+          services: booking.services,
           category: booking.category,
           status: booking.status,
           scheduledStartIso: booking.scheduledStartIso,
@@ -20533,6 +20708,10 @@ export class MarketplacePlatformService {
     return normalized.length >= 10 ? normalized.slice(0, 18) : undefined;
   }
 
+  private normalizeLaunchLeadMatchPhone(phone?: string): string | undefined {
+    return phone ? normalizeReferralPhone(phone) ?? this.normalizeLaunchLeadPhone(phone) : undefined;
+  }
+
   private sourceChannelSupportsPlatformMessage(sourceChannel: LaunchLeadSourceChannel): boolean {
     return sourceChannel === "google-business-profile" || sourceChannel === "social";
   }
@@ -21526,7 +21705,7 @@ export class MarketplacePlatformService {
     providers: ProviderProfile[]
   ): LaunchLeadBookingMatch[] {
     const normalizedLeadEmail = lead.email?.trim().toLowerCase();
-    const normalizedLeadPhone = this.normalizeLaunchLeadPhone(lead.phone);
+    const normalizedLeadPhone = this.normalizeLaunchLeadMatchPhone(lead.phone);
     if (!normalizedLeadEmail && !normalizedLeadPhone) {
       return [];
     }
@@ -21550,7 +21729,7 @@ export class MarketplacePlatformService {
 
       const emailMatch = Boolean(normalizedLeadEmail) && customer.email.trim().toLowerCase() === normalizedLeadEmail;
       const phoneMatch =
-        Boolean(normalizedLeadPhone) && this.normalizeLaunchLeadPhone(customer.phone) === normalizedLeadPhone;
+        Boolean(normalizedLeadPhone) && this.normalizeLaunchLeadMatchPhone(customer.phone) === normalizedLeadPhone;
       if (!emailMatch && !phoneMatch) {
         continue;
       }
@@ -21598,7 +21777,10 @@ export class MarketplacePlatformService {
   }> {
     if (payload.launchLeadId) {
       const explicitLead = await this.repository.findLaunchLeadById(payload.launchLeadId);
-      if (explicitLead && explicitLead.status !== "closed-lost") {
+      const matchesReferralContact = explicitLead?.requestSource !== "customer-referral" ||
+        explicitLead.email === customer.email.trim().toLowerCase() ||
+        (Boolean(explicitLead.phone) && this.normalizeLaunchLeadMatchPhone(explicitLead.phone) === this.normalizeLaunchLeadMatchPhone(customer.phone));
+      if (explicitLead && explicitLead.status !== "closed-lost" && matchesReferralContact) {
         return {
           lead: explicitLead,
           linkMode: "explicit-id"
@@ -21607,7 +21789,7 @@ export class MarketplacePlatformService {
     }
 
     const normalizedEmail = customer.email.trim().toLowerCase();
-    const normalizedPhone = this.normalizeLaunchLeadPhone(customer.phone);
+    const normalizedPhone = this.normalizeLaunchLeadMatchPhone(customer.phone);
     if (!normalizedEmail && !normalizedPhone) {
       return {};
     }
@@ -21617,7 +21799,7 @@ export class MarketplacePlatformService {
       .map((lead) => ({
         lead,
         emailMatch: Boolean(normalizedEmail) && lead.email === normalizedEmail,
-        phoneMatch: Boolean(normalizedPhone) && lead.phone === normalizedPhone
+        phoneMatch: Boolean(normalizedPhone) && this.normalizeLaunchLeadMatchPhone(lead.phone) === normalizedPhone
       }))
       .filter((candidate) => candidate.emailMatch || candidate.phoneMatch)
       .sort((left, right) => {

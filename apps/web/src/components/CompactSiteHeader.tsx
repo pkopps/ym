@@ -47,6 +47,7 @@ export function CompactSiteHeader() {
             <summary className="profile-menu__summary" title={session.fullName}>{i18n.t("ux.account")}</summary>
             <div className="profile-menu__panel">
               <strong>{session.fullName}</strong>
+              {role === "customer" ? <a href={local("/customer/referrals")}>{i18n.t("referrals.title")}</a> : null}
               <a href={local("/account/security")}>{i18n.t("ux.security")}</a>
               <a href={local("/help")}>{i18n.t("ux.help")}</a>
               <LanguagePicker />

@@ -1,3 +1,4 @@
+import { defaultServiceStartingPrices } from "@yardmatch/contracts";
 import {
   Address,
   EstimateConfidenceTier,
@@ -994,25 +995,9 @@ export class InstantQuoteEngine {
     measurements: PropertyMeasurementEstimate,
     durationMinutes: number
   ): number {
-    const baseTripCentsByCategory: Record<ServiceCategory, number> = {
-      "lawn-mowing": 2800,
-      "hedge-trimming": 4200,
-      "mulch-installation": 6500,
-      "seasonal-cleanup": 5200,
-      "weed-control": 3000,
-      "irrigation-check": 3900,
-      "leaf-blowing": 2400,
-      "aeration": 3600,
-      "fertilization": 3300,
-      "gutter-cleaning": 5200,
-      "snow-shoveling": 2600,
-      "ice-melt-salting": 2400,
-      "snow-blowing": 3000
-    };
-
     const laborCents = durationMinutes * 95;
     const areaPremium = Math.round((measurements.turfSqFt + measurements.shrubBedSqFt) * 0.12);
-    return baseTripCentsByCategory[category] + laborCents + areaPremium;
+    return defaultServiceStartingPrices[category] + laborCents + areaPremium;
   }
 
   private buildFollowUpQuestions(

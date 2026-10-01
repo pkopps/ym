@@ -1,0 +1,429 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/gny5sjyp",
+    "id": "gny5sjyp",
+    "slide": 16,
+    "layoutId": "/ppt/slideLayouts/slideLayout1.xml",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F5EF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "fontScheme": {
+      "name": "Office",
+      "majorFont": {
+        "latinTypeface": "Calibri Light",
+        "eastAsianTypeface": "Calibri Light",
+        "complexScriptTypeface": "Calibri Light"
+      },
+      "minorFont": {
+        "latinTypeface": "Calibri",
+        "eastAsianTypeface": "Calibri",
+        "complexScriptTypeface": "Calibri"
+      }
+    },
+    "typefaces": [
+      "Arial",
+      "Calibri",
+      "Calibri Light",
+      "Georgia"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "/ppt/slideLayouts/slideLayout1.xml",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "/ppt/slideMasters/slideMaster1.xml",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lwbyxwra",
+      "id": "7",
+      "name": "Revenue reaches $24.2m in 2033",
+      "bbox": [
+        64,
+        50,
+        1152,
+        108
+      ],
+      "geometry": "rect",
+      "text": "Revenue reaches $24.2m in 2033",
+      "textPreview": "Revenue reaches $24.2m in 2033",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Revenue reaches $24.2m in 2033"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Revenue reaches $24.2m in 2033",
+          "resolvedTextStyle": {
+            "fontSize": 48,
+            "typeface": "Georgia",
+            "color": "#14281D",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Revenue reaches $24.2m in 2033",
+              "fontSize": 48,
+              "typeface": "Georgia",
+              "color": "#14281D"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8z2h8bq1",
+      "id": "2",
+      "name": "Finder fees fund customer acquisition; provider su",
+      "bbox": [
+        66,
+        164,
+        1145,
+        66
+      ],
+      "geometry": "rect",
+      "text": "Finder fees fund customer acquisition; provider subscriptions add recurring company revenue.",
+      "textPreview": "Finder fees fund customer acquisition; provider subscriptions add recurring company revenue.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Finder fees fund customer acquisition; provider subscriptions add recurring company revenue."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Finder fees fund customer acquisition; provider subscriptions add recurring company revenue.",
+          "resolvedTextStyle": {
+            "fontSize": 23,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Finder fees fund customer acquisition; provider subscriptions add recurring company revenue.",
+              "fontSize": 23,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/9kby1g7m",
+      "id": "3",
+      "name": "YardMatch",
+      "bbox": [
+        64,
+        680,
+        220,
+        24
+      ],
+      "geometry": "rect",
+      "text": "YardMatch",
+      "textPreview": "YardMatch",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "YardMatch"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "YardMatch",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "YardMatch",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ytkf2h8j",
+      "id": "4",
+      "name": "16",
+      "bbox": [
+        1150,
+        680,
+        66,
+        24
+      ],
+      "geometry": "rect",
+      "text": "16",
+      "textPreview": "16",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "16"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "16",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "16",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "chart",
+      "scope": "slide",
+      "aid": "ch/y9wva94b",
+      "id": "8",
+      "name": "Chart",
+      "bbox": [
+        64,
+        237,
+        1152,
+        355
+      ],
+      "chartType": "bar"
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kv2h4rqp",
+      "id": "6",
+      "name": "2033: $21.1m finder-fee revenue plus $3.1m net sub",
+      "bbox": [
+        66,
+        623,
+        1140,
+        43
+      ],
+      "geometry": "rect",
+      "text": "2033: $21.1m finder-fee revenue plus $3.1m net subscription revenue. YardMatch revenue equals 3.7% of provider gross booking value.",
+      "textPreview": "2033: $21.1m finder-fee revenue plus $3.1m net subscription revenue. YardMatch revenue equals 3.7% of provider gross booking value.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "2033: $21.1m finder-fee revenue plus $3.1m net subscription revenue. YardMatch revenue equals 3.7% of provider gross booking value."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "2033: $21.1m finder-fee revenue plus $3.1m net subscription revenue. YardMatch revenue equals 3.7% of provider gross booking value.",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "2033: $21.1m finder-fee revenue plus $3.1m net subscription revenue. YardMatch revenue equals 3.7% of provider gross booking value.",
+              "fontSize": 16,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

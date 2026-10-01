@@ -1,4 +1,6 @@
+import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
 import type { NotificationHealthSnapshot } from "./notificationHealth";
+import type { CustomerReferralRecord } from "./customerReferrals";
 import {
   AppNotification,
   AuthDeviceDescriptor,
@@ -133,6 +135,8 @@ export interface BookingPageQuery {
 export type ClaimedNotificationDelivery = NotificationDeliveryRecord & { leaseToken: string };
 
 export interface MarketplaceRepository {
+  listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]>;
+  saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord>;
   /** Serialize a bounded operation across API instances; database writes use one transaction. */
   withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T>;
   getSecurityState(key: string): Promise<Record<string, unknown> | undefined>;
@@ -145,7 +149,7 @@ export interface MarketplaceRepository {
   listProviders(): Promise<ProviderProfile[]>;
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
-  listSearchSlots(providerIds: string[], minimumDurationMinutes?: number): Promise<AvailabilitySlot[]>;
+  listSearchSlots(providerIds: string[], minimumDurationMinutes?: number, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]>;
   listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }): Promise<Booking[]>;
   getRetentionEvidence(bookingIds: string[]): Promise<{ tickets: SupportTicket[]; reviews: ProviderReview[]; settlements: BookingFinancialSettlement[] }>;
   getProviderClientProperties(providerId: string, nowIso: string): Promise<ProviderClientProperty[]>;
@@ -252,6 +256,10 @@ export interface MarketplaceRepository {
   createOpsAutomationRun(run: OpsAutomationRunRecord): Promise<OpsAutomationRunRecord>;
   listOpsAutomationRuns(): Promise<OpsAutomationRunRecord[]>;
   createLaunchLead(lead: LaunchLead): Promise<LaunchLead>;
+  createCustomerReferralWithLead(referral: CustomerReferralRecord, lead: LaunchLead): Promise<CustomerReferralRecord>;
+  findCustomerReferralByContact(customerId: string, channel: string, contact: string): Promise<CustomerReferralRecord | undefined>;
+  listCustomerReferrals(customerId: string): Promise<CustomerReferralRecord[]>;
+  countCustomerReferralsSince(customerId: string, since: string): Promise<number>;
   listLaunchLeads(): Promise<LaunchLead[]>;
   findLaunchLeadById(leadId: string): Promise<LaunchLead | undefined>;
   findLaunchLeadBySourceReferenceId(sourceReferenceId: string): Promise<LaunchLead | undefined>;

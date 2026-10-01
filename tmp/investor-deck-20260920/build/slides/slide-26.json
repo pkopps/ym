@@ -1,0 +1,1461 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/l0bepsfm",
+    "id": "l0bepsfm",
+    "slide": 26,
+    "layoutId": "/ppt/slideLayouts/slideLayout1.xml",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F5EF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "fontScheme": {
+      "name": "Office",
+      "majorFont": {
+        "latinTypeface": "Calibri Light",
+        "eastAsianTypeface": "Calibri Light",
+        "complexScriptTypeface": "Calibri Light"
+      },
+      "minorFont": {
+        "latinTypeface": "Calibri",
+        "eastAsianTypeface": "Calibri",
+        "complexScriptTypeface": "Calibri"
+      }
+    },
+    "typefaces": [
+      "Arial",
+      "Calibri",
+      "Calibri Light",
+      "Georgia"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "/ppt/slideLayouts/slideLayout1.xml",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "/ppt/slideMasters/slideMaster1.xml",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/7e9kv6lg",
+      "id": "7",
+      "name": "Appendix: New Jersey launch evidence",
+      "bbox": [
+        64,
+        50,
+        1152,
+        108
+      ],
+      "geometry": "rect",
+      "text": "Appendix: New Jersey launch evidence",
+      "textPreview": "Appendix: New Jersey launch evidence",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Appendix: New Jersey launch evidence"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Appendix: New Jersey launch evidence",
+          "resolvedTextStyle": {
+            "fontSize": 48,
+            "typeface": "Georgia",
+            "color": "#14281D",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Appendix: New Jersey launch evidence",
+              "fontSize": 48,
+              "typeface": "Georgia",
+              "color": "#14281D"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/uhk36lk7",
+      "id": "2",
+      "name": "Named municipal inputs 1–7 support the pilot layer",
+      "bbox": [
+        66,
+        164,
+        1145,
+        66
+      ],
+      "geometry": "rect",
+      "text": "Named municipal inputs 1–7 support the pilot layer; national cohorts drive the consolidated forecast.",
+      "textPreview": "Named municipal inputs 1–7 support the pilot layer; national cohorts drive the consolidated forecast.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Named municipal inputs 1–7 support the pilot layer; national cohorts drive the consolidated forecast."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Named municipal inputs 1–7 support the pilot layer; national cohorts drive the consolidated forecast.",
+          "resolvedTextStyle": {
+            "fontSize": 23,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Named municipal inputs 1–7 support the pilot layer; national cohorts drive the consolidated forecast.",
+              "fontSize": 23,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/vitkzqlc",
+      "id": "3",
+      "name": "YardMatch",
+      "bbox": [
+        64,
+        680,
+        220,
+        24
+      ],
+      "geometry": "rect",
+      "text": "YardMatch",
+      "textPreview": "YardMatch",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "YardMatch"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "YardMatch",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "YardMatch",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8fil4b21",
+      "id": "4",
+      "name": "26",
+      "bbox": [
+        1150,
+        680,
+        66,
+        24
+      ],
+      "geometry": "rect",
+      "text": "26",
+      "textPreview": "26",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "26"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "26",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "26",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "table",
+      "scope": "slide",
+      "aid": "tb/tofqhwna",
+      "id": "8",
+      "bbox": [
+        64,
+        242,
+        1152,
+        352
+      ],
+      "text": "Municipality | Households | Owner share | Median income\nBarnegat | 10,265 | 88.0% | $91,540\nStafford | 12,007 | 90.3% | $117,612\nLacey | 11,338 | 88.1% | $102,624\nOcean / Waretown | 3,908 | 88.3% | $100,524\nBerkeley | 21,950 | 88.9% | $66,008\nToms River | 38,047 | 82.1% | $99,547\nBrick | 30,289 | 82.2% | $106,130",
+      "textPreview": "Municipality | Households | Owner share | Median income | Barnegat | 10,265 | 88.0% | $91,540 | Stafford | 12,007 | 90.3% | $117,612 | La...",
+      "rows": 8,
+      "cols": 4,
+      "cells": [
+        {
+          "index": 1,
+          "row": 1,
+          "column": 1,
+          "bbox": [
+            64,
+            242,
+            454,
+            44
+          ],
+          "text": "Municipality",
+          "textPreview": "Municipality",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Municipality",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Municipality",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "row": 1,
+          "column": 2,
+          "bbox": [
+            518,
+            242,
+            215,
+            44
+          ],
+          "text": "Households",
+          "textPreview": "Households",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Households",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Households",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "row": 1,
+          "column": 3,
+          "bbox": [
+            733,
+            242,
+            215,
+            44
+          ],
+          "text": "Owner share",
+          "textPreview": "Owner share",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Owner share",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Owner share",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "row": 1,
+          "column": 4,
+          "bbox": [
+            948,
+            242,
+            268,
+            44
+          ],
+          "text": "Median income",
+          "textPreview": "Median income",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Median income",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Median income",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "row": 2,
+          "column": 1,
+          "bbox": [
+            64,
+            286,
+            454,
+            44
+          ],
+          "text": "Barnegat",
+          "textPreview": "Barnegat",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Barnegat",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Barnegat",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "row": 2,
+          "column": 2,
+          "bbox": [
+            518,
+            286,
+            215,
+            44
+          ],
+          "text": "10,265",
+          "textPreview": "10,265",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "10,265",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "10,265",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 7,
+          "row": 2,
+          "column": 3,
+          "bbox": [
+            733,
+            286,
+            215,
+            44
+          ],
+          "text": "88.0%",
+          "textPreview": "88.0%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "88.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "88.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 8,
+          "row": 2,
+          "column": 4,
+          "bbox": [
+            948,
+            286,
+            268,
+            44
+          ],
+          "text": "$91,540",
+          "textPreview": "$91,540",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$91,540",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$91,540",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 9,
+          "row": 3,
+          "column": 1,
+          "bbox": [
+            64,
+            330,
+            454,
+            44
+          ],
+          "text": "Stafford",
+          "textPreview": "Stafford",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Stafford",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Stafford",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 10,
+          "row": 3,
+          "column": 2,
+          "bbox": [
+            518,
+            330,
+            215,
+            44
+          ],
+          "text": "12,007",
+          "textPreview": "12,007",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "12,007",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "12,007",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 11,
+          "row": 3,
+          "column": 3,
+          "bbox": [
+            733,
+            330,
+            215,
+            44
+          ],
+          "text": "90.3%",
+          "textPreview": "90.3%",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "90.3%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "90.3%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 12,
+          "row": 3,
+          "column": 4,
+          "bbox": [
+            948,
+            330,
+            268,
+            44
+          ],
+          "text": "$117,612",
+          "textPreview": "$117,612",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$117,612",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$117,612",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 13,
+          "row": 4,
+          "column": 1,
+          "bbox": [
+            64,
+            374,
+            454,
+            44
+          ],
+          "text": "Lacey",
+          "textPreview": "Lacey",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Lacey",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Lacey",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 14,
+          "row": 4,
+          "column": 2,
+          "bbox": [
+            518,
+            374,
+            215,
+            44
+          ],
+          "text": "11,338",
+          "textPreview": "11,338",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "11,338",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "11,338",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 15,
+          "row": 4,
+          "column": 3,
+          "bbox": [
+            733,
+            374,
+            215,
+            44
+          ],
+          "text": "88.1%",
+          "textPreview": "88.1%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "88.1%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "88.1%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 16,
+          "row": 4,
+          "column": 4,
+          "bbox": [
+            948,
+            374,
+            268,
+            44
+          ],
+          "text": "$102,624",
+          "textPreview": "$102,624",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$102,624",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$102,624",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 17,
+          "row": 5,
+          "column": 1,
+          "bbox": [
+            64,
+            418,
+            454,
+            44
+          ],
+          "text": "Ocean / Waretown",
+          "textPreview": "Ocean / Waretown",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Ocean / Waretown",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Ocean / Waretown",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 18,
+          "row": 5,
+          "column": 2,
+          "bbox": [
+            518,
+            418,
+            215,
+            44
+          ],
+          "text": "3,908",
+          "textPreview": "3,908",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "3,908",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "3,908",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 19,
+          "row": 5,
+          "column": 3,
+          "bbox": [
+            733,
+            418,
+            215,
+            44
+          ],
+          "text": "88.3%",
+          "textPreview": "88.3%",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "88.3%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "88.3%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 20,
+          "row": 5,
+          "column": 4,
+          "bbox": [
+            948,
+            418,
+            268,
+            44
+          ],
+          "text": "$100,524",
+          "textPreview": "$100,524",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$100,524",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$100,524",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 21,
+          "row": 6,
+          "column": 1,
+          "bbox": [
+            64,
+            462,
+            454,
+            44
+          ],
+          "text": "Berkeley",
+          "textPreview": "Berkeley",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Berkeley",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Berkeley",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 22,
+          "row": 6,
+          "column": 2,
+          "bbox": [
+            518,
+            462,
+            215,
+            44
+          ],
+          "text": "21,950",
+          "textPreview": "21,950",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "21,950",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "21,950",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 23,
+          "row": 6,
+          "column": 3,
+          "bbox": [
+            733,
+            462,
+            215,
+            44
+          ],
+          "text": "88.9%",
+          "textPreview": "88.9%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "88.9%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "88.9%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 24,
+          "row": 6,
+          "column": 4,
+          "bbox": [
+            948,
+            462,
+            268,
+            44
+          ],
+          "text": "$66,008",
+          "textPreview": "$66,008",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$66,008",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$66,008",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 25,
+          "row": 7,
+          "column": 1,
+          "bbox": [
+            64,
+            506,
+            454,
+            44
+          ],
+          "text": "Toms River",
+          "textPreview": "Toms River",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Toms River",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Toms River",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 26,
+          "row": 7,
+          "column": 2,
+          "bbox": [
+            518,
+            506,
+            215,
+            44
+          ],
+          "text": "38,047",
+          "textPreview": "38,047",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "38,047",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "38,047",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 27,
+          "row": 7,
+          "column": 3,
+          "bbox": [
+            733,
+            506,
+            215,
+            44
+          ],
+          "text": "82.1%",
+          "textPreview": "82.1%",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "82.1%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "82.1%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 28,
+          "row": 7,
+          "column": 4,
+          "bbox": [
+            948,
+            506,
+            268,
+            44
+          ],
+          "text": "$99,547",
+          "textPreview": "$99,547",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$99,547",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$99,547",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 29,
+          "row": 8,
+          "column": 1,
+          "bbox": [
+            64,
+            550,
+            454,
+            44
+          ],
+          "text": "Brick",
+          "textPreview": "Brick",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Brick",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Brick",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 30,
+          "row": 8,
+          "column": 2,
+          "bbox": [
+            518,
+            550,
+            215,
+            44
+          ],
+          "text": "30,289",
+          "textPreview": "30,289",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "30,289",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "30,289",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 31,
+          "row": 8,
+          "column": 3,
+          "bbox": [
+            733,
+            550,
+            215,
+            44
+          ],
+          "text": "82.2%",
+          "textPreview": "82.2%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "82.2%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "82.2%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 32,
+          "row": 8,
+          "column": 4,
+          "bbox": [
+            948,
+            550,
+            268,
+            44
+          ],
+          "text": "$106,130",
+          "textPreview": "$106,130",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$106,130",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$106,130",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/md0321kv",
+      "id": "6",
+      "name": "Lawn eligibility, outsourcing, lot size, price pre",
+      "bbox": [
+        66,
+        623,
+        1140,
+        43
+      ],
+      "geometry": "rect",
+      "text": "Lawn eligibility, outsourcing, lot size, price premiums, launch timing and provider capacity are planning assumptions, not Census findings.",
+      "textPreview": "Lawn eligibility, outsourcing, lot size, price premiums, launch timing and provider capacity are planning assumptions, not Census findings.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Lawn eligibility, outsourcing, lot size, price premiums, launch timing and provider capacity are planning assumptions, not Census findings."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Lawn eligibility, outsourcing, lot size, price premiums, launch timing and provider capacity are planning assumptions, not Census findings.",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Lawn eligibility, outsourcing, lot size, price premiums, launch timing and provider capacity are planning assumptions, not Census findings.",
+              "fontSize": 16,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

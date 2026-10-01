@@ -32,9 +32,9 @@ const customerArticles: HelpArticle[] = [
     slug: "booking-and-address-management",
     title: "Book services without re-entering every property",
     summary:
-      "Learn how saved properties, default addresses, and booking address snapshots work together.",
+      "Save your properties and choose the right address for each visit.",
     readTimeMinutes: 4,
-    updatedAt: "2026-04-23",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Save multiple properties",
@@ -47,7 +47,7 @@ const customerArticles: HelpArticle[] = [
         ]
       },
       {
-        heading: "Why bookings store their own address snapshot",
+        heading: "Check the address on your booking",
         body:
           "A booking keeps the exact service address that was chosen at checkout so later preference changes do not rewrite history.",
         bullets: [
@@ -62,20 +62,20 @@ const customerArticles: HelpArticle[] = [
     id: "customer-instant-quote",
     audience: "customer",
     slug: "instant-quotes-and-follow-up-questions",
-    title: "Understand instant quotes and confidence-based follow-up questions",
+    title: "Get a quote for your property",
     summary:
       "See how YardMatch estimates lawn size from the address first and only asks follow-up questions when confidence is lower.",
     readTimeMinutes: 5,
-    updatedAt: "2026-04-23",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Address first, not a long form",
         body:
-          "The quoting flow starts with the service address and requested service so customers can move quickly.",
+          "Enter your service address and choose the work you need to get started.",
         bullets: [
           "Automated measurement estimates turf, shrubs, driveway, and sidewalk work.",
-          "Estimated duration is passed into scheduling so time windows fit the job size.",
-          "Quotes stay lightweight even for first-time customers."
+          "The estimated job length helps determine available appointment times.",
+          "Review the estimated price before requesting a booking."
         ]
       },
       {
@@ -83,9 +83,9 @@ const customerArticles: HelpArticle[] = [
         body:
           "The platform only asks a small number of clarifying questions if it needs more certainty before pricing the job.",
         bullets: [
-          "High confidence returns an immediate quote.",
-          "Medium confidence asks one or two lightweight questions.",
-          "Lower confidence can route the request for provider review before final confirmation."
+          "A quote may be available from your property details alone.",
+          "You may be asked a few questions about the property or work.",
+          "Some requests need provider review before the price can be confirmed."
         ]
       }
     ]
@@ -98,12 +98,12 @@ const customerArticles: HelpArticle[] = [
     summary:
       "Open a support request tied to a booking so billing, no-show, and quality issues can be resolved faster.",
     readTimeMinutes: 4,
-    updatedAt: "2026-04-23",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Open support from the booking record",
         body:
-          "Support requests should stay connected to the booking and payment record so customers do not need to repeat context.",
+          "Open the affected booking and describe the issue so support can review the right service and payment details.",
         bullets: [
           "Report billing discrepancies directly from the affected booking.",
           "Flag provider no-shows and request rebooking help.",
@@ -115,9 +115,9 @@ const customerArticles: HelpArticle[] = [
         body:
           "Refunds can be reviewed when the job was not completed correctly, the crew never arrived, or there was another eligible issue.",
         bullets: [
-          "Payment authorization and capture events give support a full timeline.",
-          "Refund outcomes are logged against the original transaction.",
-          "Operational telemetry can track refund rates by issue type."
+          "Include the payment or charge you have a question about.",
+          "Check your support request for the refund decision.",
+          "Submitting a refund request does not guarantee a refund."
         ]
       }
     ]
@@ -130,15 +130,15 @@ const customerArticles: HelpArticle[] = [
     summary:
       "Understand why reviews are tied to completed bookings and delayed by a short invite window.",
     readTimeMinutes: 3,
-    updatedAt: "2026-04-29",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Reviews only unlock after service is complete",
         body:
-          "Customers should only be able to review a landscaper after the booked service has actually been provided.",
+          "You can review your provider after the service is complete and your review invitation is available.",
         bullets: [
           "The provider completes the booking first.",
-          "The system schedules a booking-specific review invite for 48 hours later.",
+          "Your review invitation is scheduled for 48 hours after completion.",
           "Only the customer attached to that booking can use the invite."
         ]
       },
@@ -165,7 +165,7 @@ const providerArticles: HelpArticle[] = [
     summary:
       "Organize your marketplace profile so customers only see services and jobs you can actually fulfill.",
     readTimeMinutes: 4,
-    updatedAt: "2026-04-23",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Choose the right services",
@@ -180,9 +180,9 @@ const providerArticles: HelpArticle[] = [
       {
         heading: "Define a realistic service radius",
         body:
-          "Distance-aware matching should reflect where your crew can reliably travel and still stay on schedule.",
+          "Choose an area your crew can reliably reach while staying on schedule.",
         bullets: [
-          "Keep your radius tight enough to protect route density.",
+          "Allow enough travel time between jobs when setting your radius.",
           "Out-of-radius address changes can be blocked automatically.",
           "Search ranking can factor both proximity and availability."
         ]
@@ -197,7 +197,7 @@ const providerArticles: HelpArticle[] = [
     summary:
       "See how instant quote duration estimates, synced calendars, and booking windows work together.",
     readTimeMinutes: 5,
-    updatedAt: "2026-04-23",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Connect external calendars",
@@ -205,8 +205,8 @@ const providerArticles: HelpArticle[] = [
           "Calendar integration helps the marketplace offer only slots that fit the crew schedule.",
         bullets: [
           "Sync Apple, Google, or Outlook calendars.",
-          "Expose a provider ICS feed for lightweight external scheduling tools.",
-          "Reduce double-booking by using the same availability logic everywhere."
+          "Use your calendar subscription link to view jobs in an external calendar.",
+          "Keep your availability and busy times up to date to avoid double-booking."
         ]
       },
       {
@@ -216,7 +216,7 @@ const providerArticles: HelpArticle[] = [
         bullets: [
           "Bigger yards create larger booking windows.",
           "Travel impact can be reviewed if the address changes after confirmation.",
-          "Tablet and desktop views can show denser schedule management layouts."
+          "Review the schedule before accepting additional work."
         ]
       }
     ]
@@ -227,28 +227,28 @@ const providerArticles: HelpArticle[] = [
     slug: "payouts-refunds-and-disputes",
     title: "Understand payouts, disputes, and support escalations",
     summary:
-      "Learn how payout timing, refund reviews, and service quality escalations should be handled.",
+      "Check payout status and get help with refund requests or service concerns.",
     readTimeMinutes: 4,
-    updatedAt: "2026-04-23",
+    updatedAt: "2026-09-28",
     sections: [
       {
-        heading: "Payment and payout flow",
+        heading: "Payments and payouts",
         body:
           "Customer payments can be authorized up front and captured after completion to protect both sides of the marketplace.",
         bullets: [
           "Authorization confirms the customer can pay before dispatch.",
-          "Capture should happen only after the job status is complete.",
-          "Disputes and refunds should remain tied to the booking record."
+          "Customer payments are captured after the job is completed.",
+          "Review disputes and refunds with the details of the affected booking."
         ]
       },
       {
         heading: "Handling service issues",
         body:
-          "If a customer raises a concern, the provider help flow should make next steps obvious and traceable.",
+          "If a customer raises a concern, review the booking and respond through support with relevant details.",
         bullets: [
           "Review the original notes, photos, and booked address.",
           "Respond quickly when a confirmed booking address change needs review.",
-          "Use support tickets and event logs to preserve the audit trail."
+          "Keep your responses and relevant photos in the support request."
         ]
       }
     ]
@@ -264,12 +264,12 @@ const crewMemberArticles: HelpArticle[] = [
     summary:
       "Learn how crew members can publish their skills, travel limits, and work preferences without owning trucks or heavy equipment.",
     readTimeMinutes: 4,
-    updatedAt: "2026-05-07",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Set realistic work preferences",
         body:
-          "Crew profiles should make it easy for landscaping businesses to understand where you can work and what jobs you are prepared to handle.",
+          "Add your skills, work preferences, and travel area so businesses can find you for suitable jobs.",
         bullets: [
           "Choose the service categories you are comfortable performing on a crew.",
           "Publish a travel radius from your home base or meeting point.",
@@ -279,11 +279,11 @@ const crewMemberArticles: HelpArticle[] = [
       {
         heading: "Why equipment ownership is optional",
         body:
-          "The crew-member role is designed for skilled workers who can contribute to jobs even if the business owner provides the truck, mower, trailer, and route plan.",
+          "You can join a crew without owning a truck or mower. Confirm the equipment and transport arrangements with the business before accepting a job.",
         bullets: [
-          "Providers can recruit for field labor without assuming every worker runs an independent company.",
-          "Customers still book the business, not the individual laborer.",
-          "Assignments can stay attached to the business account while crew members get their own operational app."
+          "Review the skills and equipment required for each assignment.",
+          "The landscaping business is responsible for the customer booking.",
+          "Use your crew account to review assignments and record your work."
         ]
       }
     ]
@@ -294,14 +294,14 @@ const crewMemberArticles: HelpArticle[] = [
     slug: "day-of-job-and-check-in",
     title: "Understand assigned jobs, check-in expectations, and route handoff",
     summary:
-      "See how the crew-member app can focus on where to go, who you are meeting, and what work is assigned that day.",
+      "Check where to go, who you are meeting, and what work is assigned for the day.",
     readTimeMinutes: 4,
-    updatedAt: "2026-05-07",
+    updatedAt: "2026-09-28",
     sections: [
       {
         heading: "Read the assignment before leaving",
         body:
-          "Assignments should show the meeting point, service notes, time window, and business owner or crew lead responsible for the job.",
+          "Check the meeting point, service notes, time window, and responsible business owner or crew lead before leaving.",
         bullets: [
           "Review access notes before arriving on site.",
           "Use schedule blocks sized to the quoted duration for the property.",
@@ -311,11 +311,11 @@ const crewMemberArticles: HelpArticle[] = [
       {
         heading: "Check-in and completion signals",
         body:
-          "Crew tools should help workers confirm they are on the job without exposing customer billing or back-office controls that belong to the business owner.",
+          "Use your assignment tools to record arrival, add work photos, and update progress. The business owner manages customer billing and completes the booking.",
         bullets: [
-          "Check-in can confirm arrival for internal operations.",
+          "Record your arrival when you reach the job.",
           "The business owner remains the primary account for customer communications and payouts.",
-          "Support issues can still be escalated with booking context attached."
+          "Include the assignment details when requesting support."
         ]
       }
     ]
@@ -326,28 +326,28 @@ const crewMemberArticles: HelpArticle[] = [
     slug: "support-ratings-and-work-history",
     title: "Get help with assignments, ratings, and work history",
     summary:
-      "Understand what crew members should see about feedback, support, and historical completed jobs.",
+      "Find completed assignments, review feedback, and get help with your work history.",
     readTimeMinutes: 3,
-    updatedAt: "2026-05-07",
+    updatedAt: "2026-09-28",
     sections: [
       {
-        heading: "Feedback should stay fair and contextual",
+        heading: "Customer reviews and your work history",
         body:
           "Customers review the landscaping business after a completed booking, while internal crew performance can still be tracked separately by the business owner.",
         bullets: [
           "Customer-facing reviews stay attached to the provider business profile.",
-          "Crew members can still keep internal completion history and dependability signals.",
-          "Support notes should distinguish customer disputes from internal staffing issues."
+          "Find your completed assignments in your work history.",
+          "Describe whether your concern is about an assignment, the business, or your account."
         ]
       },
       {
         heading: "When to contact support",
         body:
-          "The crew-member help flow should make it easy to flag assignment confusion, unsafe conditions, or account issues without mixing in owner-only billing controls.",
+          "Contact support about unclear assignments, unsafe conditions, or account issues. Include the assignment and relevant details.",
         bullets: [
           "Use assignment-linked support when a route or meeting point is unclear.",
           "Report account access issues from the same shared help center.",
-          "Keep crew support content separate from provider payout documentation."
+          "Contact the business responsible for your assignment with questions about your pay."
         ]
       }
     ]
@@ -372,7 +372,7 @@ export const helpCollections: Record<HelpAudience, HelpCollection> = {
     audience: "provider",
     title: "Provider help",
     description:
-      "Guides for profile setup, service radius management, calendar sync, payouts, disputes, and operational workflows.",
+      "Guides for your business profile, service area, calendar, payouts, and customer support.",
     quickLinks: [
       "Profile and service area",
       "Calendar sync and job duration",
@@ -384,7 +384,7 @@ export const helpCollections: Record<HelpAudience, HelpCollection> = {
     audience: "crew-member",
     title: "Crew member help",
     description:
-      "Guides for joining landscaping crews, managing daily assignments, understanding check-in expectations, and getting help without business-owner clutter.",
+      "Guides for joining crews, managing assignments, recording your work, and getting help.",
     quickLinks: [
       "Joining crews and setting availability",
       "Day-of-job and check-in",

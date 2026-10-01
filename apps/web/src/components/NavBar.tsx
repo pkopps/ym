@@ -25,6 +25,7 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
     { href: "/customer", labelKey: "nav.user.search_services" },
     { href: "/customer/dashboard", labelKey: "nav.user.account" },
     { href: "/customer/dashboard?view=history", labelKey: "nav.user.past_visits" },
+    { href: "/customer/referrals", labelKey: "referrals.title" },
     { href: "/account/security", labelKey: "security.title" }
   ],
   provider: [

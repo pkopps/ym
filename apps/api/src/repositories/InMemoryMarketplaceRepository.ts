@@ -1,3 +1,4 @@
+import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
 import { summarizeNotificationHealth } from "./notificationHealth";
 import { buildProviderClientProperties } from "../services/providerClients";
 import { searchBounds, bookingMetrics, type ProviderSearchQuery } from "./searchQueries";
@@ -48,7 +49,45 @@ import {
   MarketplaceRepository
 } from "./MarketplaceRepository";
 
+import type { CustomerReferralRecord } from "./customerReferrals";
+
 export class InMemoryMarketplaceRepository implements MarketplaceRepository {
+  private readonly zipServiceMinimums = new Map<string, ZipServiceMinimumRecord>();
+  public async listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]> {
+    return structuredClone([...this.zipServiceMinimums.values()].filter(row => row.postalCode === postalCode));
+  }
+  public async saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord> {
+    this.zipServiceMinimums.set(`${record.postalCode}:${record.category}`, structuredClone(record));
+    return structuredClone(record);
+  }
+
+  private readonly customerReferrals: CustomerReferralRecord[] = [];
+
+  public async createCustomerReferralWithLead(referral: CustomerReferralRecord, lead: LaunchLead): Promise<CustomerReferralRecord> {
+    // The service holds the referrer's lock. Publish both records without an await.
+    this.launchLeads.push(structuredClone(lead));
+    this.customerReferrals.push(structuredClone(referral));
+    return structuredClone(referral);
+  }
+
+  private referralWithStatus(referral: CustomerReferralRecord): CustomerReferralRecord {
+    return { ...referral, leadStatus: this.launchLeads.find((lead) => lead.id === referral.leadId)?.status ?? referral.leadStatus };
+  }
+
+  public async findCustomerReferralByContact(customerId: string, channel: string, contact: string): Promise<CustomerReferralRecord | undefined> {
+    const referral = this.customerReferrals.find((item) => item.referrerCustomerId === customerId && item.channel === channel && item.contact === contact);
+    return referral ? this.referralWithStatus(referral) : undefined;
+  }
+
+  public async listCustomerReferrals(customerId: string): Promise<CustomerReferralRecord[]> {
+    return this.customerReferrals.filter((item) => item.referrerCustomerId === customerId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .slice(0, 100).map((item) => this.referralWithStatus(item));
+  }
+
+  public async countCustomerReferralsSince(customerId: string, since: string): Promise<number> {
+    return this.customerReferrals.filter((item) => item.referrerCustomerId === customerId && item.createdAt >= since).length;
+  }
   private readonly locks = new Map<string, Promise<void>>();
   private readonly securityStates = new Map<string, { value: Record<string, unknown>; expiresAt: number }>();
 
@@ -157,9 +196,12 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return providerIds.map(id => bookingMetrics(id, this.bookings, address));
   }
 
-  public async listSearchSlots(providerIds: string[], minimumDurationMinutes = 0) {
+  public async listSearchSlots(providerIds: string[], minimumDurationMinutes = 0, range?: { startIso: string; endIso: string }) {
     return this.providers.filter(provider => providerIds.includes(provider.id)).flatMap(provider => this.slots.filter(slot =>
-      slot.providerId === provider.id && !slot.isBooked && Date.parse(slot.startIso) >= Date.now() + (provider.minimumBookingLeadHours ?? 0) * 3600_000 &&
+      slot.providerId === provider.id && !slot.isBooked &&
+      (!range || (slot.startIso >= range.startIso && slot.startIso < range.endIso)) &&
+      !this.bookings.some(booking => booking.providerId === provider.id && !["cancelled", "completed", "refunded"].includes(booking.status) &&
+        Date.parse(slot.startIso) < Date.parse(booking.scheduledEndIso) && Date.parse(slot.endIso) > Date.parse(booking.scheduledStartIso)) && Date.parse(slot.startIso) >= Date.now() + (provider.minimumBookingLeadHours ?? 0) * 3600_000 &&
       Date.parse(slot.endIso) - Date.parse(slot.startIso) >= minimumDurationMinutes * 60_000 &&
       (!provider.calendarConnection.externalEventsBlockingEnabled || !(provider.calendarConnection.externalBlocks ?? []).some(block =>
         Date.parse(slot.startIso) < Date.parse(block.endIso) && Date.parse(slot.endIso) > Date.parse(block.startIso))))
@@ -1412,7 +1454,11 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
           startIso: this.addHours(index + 26),
           endIso: this.addHours(index + 27),
           isBooked: false
-        }
+        },
+        ...[50, 74, 98].map(hours => ({
+          id: crypto.randomUUID(), providerId: provider.id,
+          startIso: this.addHours(index + hours), endIso: this.addHours(index + hours + 4), isBooked: false
+        }))
       );
     });
   }

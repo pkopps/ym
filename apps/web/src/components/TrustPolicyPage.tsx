@@ -20,13 +20,7 @@ export function TrustPolicyPage({ page }: { page: TrustPolicyPageContent }) {
         <p>{localizedPage.summary}</p>
       </section>
 
-      <section className="grid-two">
-        <article className="card">
-          <h2>{i18n.t("trust_policy.page.why_title")}</h2>
-          <p>{localizedPage.description}</p>
-          <p>{i18n.t("trust_policy.page.why_body")}</p>
-        </article>
-
+      <section>
         <article className="card">
           <h2>{i18n.t("trust_policy.page.related_title")}</h2>
           <div className="stack-lg" style={{ paddingBottom: 0 }}>

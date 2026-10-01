@@ -148,20 +148,7 @@ export function LaunchMarketplaceProofSection({
         ? i18n.formatNumber(localCoverageArea.supportedCategories.length)
         : i18n.t("common.state.focused")
     }
-  ] as const : [
-    {
-      label: i18n.t("launch_proof.opening.market_label"),
-      value: preferredAreaLabel ?? i18n.t("common.state.focused")
-    },
-    {
-      label: i18n.t("launch_proof.opening.supply_label"),
-      value: i18n.t("launch_proof.opening.supply_value")
-    },
-    {
-      label: i18n.t("launch_proof.opening.expansion_label"),
-      value: i18n.t("launch_proof.opening.expansion_value")
-    }
-  ] as const;
+  ] as const : [];
 
   return (
     <section className="stack-lg">
@@ -169,14 +156,14 @@ export function LaunchMarketplaceProofSection({
         <h2>{title}</h2>
         <p>{description}</p>
       </div>
-      <div className="grid-three">
+      {hasLocalProof ? <div className="grid-three">
         {proofStats.map((item) => (
           <article className="card" key={item.label}>
             <strong>{item.value}</strong>
             <p>{item.label}</p>
           </article>
         ))}
-      </div>
+      </div> : null}
       <div className="grid-two">
         <article className="card">
           <h3>{i18n.t("launch_proof.tight.title")}</h3>

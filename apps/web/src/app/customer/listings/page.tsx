@@ -98,6 +98,7 @@ export default async function CustomerListingsPage({
         initialService={initialService}
         initialState={state}
         initialTiming={initialTiming}
+        initialDirectoryView={resolvedSearchParams.view === "directory"}
       />
     </main>
   );

@@ -1,0 +1,820 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/ofy9wn61",
+    "id": "ofy9wn61",
+    "slide": 3,
+    "layoutId": "/ppt/slideLayouts/slideLayout1.xml",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F5EF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "fontScheme": {
+      "name": "Office",
+      "majorFont": {
+        "latinTypeface": "Calibri Light",
+        "eastAsianTypeface": "Calibri Light",
+        "complexScriptTypeface": "Calibri Light"
+      },
+      "minorFont": {
+        "latinTypeface": "Calibri",
+        "eastAsianTypeface": "Calibri",
+        "complexScriptTypeface": "Calibri"
+      }
+    },
+    "typefaces": [
+      "Arial",
+      "Calibri",
+      "Calibri Light",
+      "Georgia"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "/ppt/slideLayouts/slideLayout1.xml",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "/ppt/slideMasters/slideMaster1.xml",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/pcjqtg36",
+      "id": "7",
+      "name": "Local property care is still fragmented",
+      "bbox": [
+        64,
+        50,
+        1152,
+        108
+      ],
+      "geometry": "rect",
+      "text": "Local property care is still fragmented",
+      "textPreview": "Local property care is still fragmented",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Local property care is still fragmented"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Local property care is still fragmented",
+          "resolvedTextStyle": {
+            "fontSize": 48,
+            "typeface": "Georgia",
+            "color": "#14281D",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Local property care is still fragmented",
+              "fontSize": 48,
+              "typeface": "Georgia",
+              "color": "#14281D"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cza94vmx",
+      "id": "2",
+      "name": "Customers need confidence; providers need demand t",
+      "bbox": [
+        66,
+        164,
+        1145,
+        66
+      ],
+      "geometry": "rect",
+      "text": "Customers need confidence; providers need demand that fits the route.",
+      "textPreview": "Customers need confidence; providers need demand that fits the route.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Customers need confidence; providers need demand that fits the route."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Customers need confidence; providers need demand that fits the route.",
+          "resolvedTextStyle": {
+            "fontSize": 23,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Customers need confidence; providers need demand that fits the route.",
+              "fontSize": 23,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/d0jax03i",
+      "id": "3",
+      "name": "YardMatch",
+      "bbox": [
+        64,
+        680,
+        220,
+        24
+      ],
+      "geometry": "rect",
+      "text": "YardMatch",
+      "textPreview": "YardMatch",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "YardMatch"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "YardMatch",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "YardMatch",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/298ryl4v",
+      "id": "4",
+      "name": "03",
+      "bbox": [
+        1150,
+        680,
+        66,
+        24
+      ],
+      "geometry": "rect",
+      "text": "03",
+      "textPreview": "03",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "03"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "03",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "03",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "table",
+      "scope": "slide",
+      "aid": "tb/v6xo3qh4",
+      "id": "8",
+      "bbox": [
+        64,
+        246,
+        1152,
+        337
+      ],
+      "text": "Customer friction | Provider friction | YardMatch response\nFinding a reliable available business | Winning good customers efficiently | One recommendation and curated backups\nKnowing whether the crew will arrive | Coordinating schedules and crews | Shared job details and arrival status\nGetting the next visit handled | Turning demand into repeat routes | Rebooking, records and issue resolution",
+      "textPreview": "Customer friction | Provider friction | YardMatch response | Finding a reliable available business | Winning good customers efficiently |...",
+      "rows": 4,
+      "cols": 3,
+      "cells": [
+        {
+          "index": 1,
+          "row": 1,
+          "column": 1,
+          "bbox": [
+            64,
+            246,
+            350,
+            84.25
+          ],
+          "text": "Customer friction",
+          "textPreview": "Customer friction",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Customer friction",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Customer friction",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "row": 1,
+          "column": 2,
+          "bbox": [
+            414,
+            246,
+            365,
+            84.25
+          ],
+          "text": "Provider friction",
+          "textPreview": "Provider friction",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Provider friction",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Provider friction",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "row": 1,
+          "column": 3,
+          "bbox": [
+            779,
+            246,
+            437,
+            84.25
+          ],
+          "text": "YardMatch response",
+          "textPreview": "YardMatch response",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "YardMatch response",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "YardMatch response",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "row": 2,
+          "column": 1,
+          "bbox": [
+            64,
+            330.25,
+            350,
+            84.25
+          ],
+          "text": "Finding a reliable available business",
+          "textPreview": "Finding a reliable available business",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Finding a reliable available business",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Finding a reliable available business",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "row": 2,
+          "column": 2,
+          "bbox": [
+            414,
+            330.25,
+            365,
+            84.25
+          ],
+          "text": "Winning good customers efficiently",
+          "textPreview": "Winning good customers efficiently",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Winning good customers efficiently",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Winning good customers efficiently",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "row": 2,
+          "column": 3,
+          "bbox": [
+            779,
+            330.25,
+            437,
+            84.25
+          ],
+          "text": "One recommendation and curated backups",
+          "textPreview": "One recommendation and curated backups",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "One recommendation and curated backups",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "One recommendation and curated backups",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 7,
+          "row": 3,
+          "column": 1,
+          "bbox": [
+            64,
+            414.5,
+            350,
+            84.25
+          ],
+          "text": "Knowing whether the crew will arrive",
+          "textPreview": "Knowing whether the crew will arrive",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Knowing whether the crew will arrive",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Knowing whether the crew will arrive",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 8,
+          "row": 3,
+          "column": 2,
+          "bbox": [
+            414,
+            414.5,
+            365,
+            84.25
+          ],
+          "text": "Coordinating schedules and crews",
+          "textPreview": "Coordinating schedules and crews",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Coordinating schedules and crews",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Coordinating schedules and crews",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 9,
+          "row": 3,
+          "column": 3,
+          "bbox": [
+            779,
+            414.5,
+            437,
+            84.25
+          ],
+          "text": "Shared job details and arrival status",
+          "textPreview": "Shared job details and arrival status",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Shared job details and arrival status",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Shared job details and arrival status",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 10,
+          "row": 4,
+          "column": 1,
+          "bbox": [
+            64,
+            498.75,
+            350,
+            84.25
+          ],
+          "text": "Getting the next visit handled",
+          "textPreview": "Getting the next visit handled",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Getting the next visit handled",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Getting the next visit handled",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 11,
+          "row": 4,
+          "column": 2,
+          "bbox": [
+            414,
+            498.75,
+            365,
+            84.25
+          ],
+          "text": "Turning demand into repeat routes",
+          "textPreview": "Turning demand into repeat routes",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Turning demand into repeat routes",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Turning demand into repeat routes",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 12,
+          "row": 4,
+          "column": 3,
+          "bbox": [
+            779,
+            498.75,
+            437,
+            84.25
+          ],
+          "text": "Rebooking, records and issue resolution",
+          "textPreview": "Rebooking, records and issue resolution",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Rebooking, records and issue resolution",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Rebooking, records and issue resolution",
+                  "fontSize": 24,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/obq90bml",
+      "id": "6",
+      "name": "The recommendation-first experience stays central:",
+      "bbox": [
+        66,
+        623,
+        1140,
+        43
+      ],
+      "geometry": "rect",
+      "text": "The recommendation-first experience stays central: service, timing and property come first; YardMatch recommends the fit.",
+      "textPreview": "The recommendation-first experience stays central: service, timing and property come first; YardMatch recommends the fit.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The recommendation-first experience stays central: service, timing and property come first; YardMatch recommends the fit."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The recommendation-first experience stays central: service, timing and property come first; YardMatch recommends the fit.",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The recommendation-first experience stays central: service, timing and property come first; YardMatch recommends the fit.",
+              "fontSize": 16,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

@@ -1072,7 +1072,7 @@ export function ProviderLiveManagementBoard() {
             </div>
             <div>
               <span>{i18n.t("customer_live.label.service")}</span>
-              <strong>{formatServiceCategoryLabel(i18n, priorityJob.category)}</strong>
+              <strong>{(priorityJob.services?.length ? priorityJob.services.map(item => item.category) : [priorityJob.category]).map(category => formatServiceCategoryLabel(i18n, category)).join(" · ")}</strong>
             </div>
             <div>
               <span>{i18n.t("provider_live.total")}</span>
@@ -1277,7 +1277,7 @@ export function ProviderLiveManagementBoard() {
           <article className="history-card" key={job.bookingId}>
             <div className="history-card__header">
               <div>
-                <span className="eyebrow">{formatServiceCategoryLabel(i18n, job.category)}</span>
+                <span className="eyebrow">{(job.services?.length ? job.services.map(item => item.category) : [job.category]).map(category => formatServiceCategoryLabel(i18n, category)).join(" · ")}</span>
                 <h2>{job.customerName}</h2>
               </div>
               <strong>{i18n.formatCurrency(job.totalCents)}</strong>

@@ -1,3 +1,6 @@
+import "@formatjs/intl-pluralrules/polyfill-force.js";
+import "@formatjs/intl-pluralrules/locale-data/en.js";
+import "@formatjs/intl-pluralrules/locale-data/es.js";
 import {ReleaseGate} from "./providers/ReleaseGate";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";

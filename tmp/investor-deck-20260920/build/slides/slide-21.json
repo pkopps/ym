@@ -1,0 +1,1209 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/m1wvqtk3",
+    "id": "m1wvqtk3",
+    "slide": 21,
+    "layoutId": "/ppt/slideLayouts/slideLayout1.xml",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F5EF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "fontScheme": {
+      "name": "Office",
+      "majorFont": {
+        "latinTypeface": "Calibri Light",
+        "eastAsianTypeface": "Calibri Light",
+        "complexScriptTypeface": "Calibri Light"
+      },
+      "minorFont": {
+        "latinTypeface": "Calibri",
+        "eastAsianTypeface": "Calibri",
+        "complexScriptTypeface": "Calibri"
+      }
+    },
+    "typefaces": [
+      "Arial",
+      "Calibri",
+      "Calibri Light",
+      "Georgia"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "/ppt/slideLayouts/slideLayout1.xml",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "/ppt/slideMasters/slideMaster1.xml",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/sb2lk36t",
+      "id": "7",
+      "name": "Ownership starts at 70% / 30%, then dilutes",
+      "bbox": [
+        64,
+        50,
+        1152,
+        108
+      ],
+      "geometry": "rect",
+      "text": "Ownership starts at 70% / 30%, then dilutes",
+      "textPreview": "Ownership starts at 70% / 30%, then dilutes",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Ownership starts at 70% / 30%, then dilutes"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Ownership starts at 70% / 30%, then dilutes",
+          "resolvedTextStyle": {
+            "fontSize": 48,
+            "typeface": "Georgia",
+            "color": "#14281D",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Ownership starts at 70% / 30%, then dilutes",
+              "fontSize": 48,
+              "typeface": "Georgia",
+              "color": "#14281D"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1gbmxs7a",
+      "id": "2",
+      "name": "Illustrative priced rounds show how new capital af",
+      "bbox": [
+        66,
+        164,
+        1145,
+        66
+      ],
+      "geometry": "rect",
+      "text": "Illustrative priced rounds show how new capital affects every existing owner.",
+      "textPreview": "Illustrative priced rounds show how new capital affects every existing owner.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Illustrative priced rounds show how new capital affects every existing owner."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Illustrative priced rounds show how new capital affects every existing owner.",
+          "resolvedTextStyle": {
+            "fontSize": 23,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Illustrative priced rounds show how new capital affects every existing owner.",
+              "fontSize": 23,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0f2lon6p",
+      "id": "3",
+      "name": "YardMatch",
+      "bbox": [
+        64,
+        680,
+        220,
+        24
+      ],
+      "geometry": "rect",
+      "text": "YardMatch",
+      "textPreview": "YardMatch",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "YardMatch"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "YardMatch",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "YardMatch",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ra9kryp8",
+      "id": "4",
+      "name": "21",
+      "bbox": [
+        1150,
+        680,
+        66,
+        24
+      ],
+      "geometry": "rect",
+      "text": "21",
+      "textPreview": "21",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "21"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "21",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "21",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "table",
+      "scope": "slide",
+      "aid": "tb/epoz214f",
+      "id": "8",
+      "bbox": [
+        64,
+        244,
+        1152,
+        330
+      ],
+      "text": "Owner | Before financing | After 20% round 1 | After 20% round 2\nPatrick | 70.0% | 56.0% | 44.8%\nOther initial owners | 30.0% | 24.0% | 19.2%\nRound 1 investors | — | 20.0% | 16.0%\nRound 2 investors | — | — | 20.0%\nTotal | 100.0% | 100.0% | 100.0%",
+      "textPreview": "Owner | Before financing | After 20% round 1 | After 20% round 2 | Patrick | 70.0% | 56.0% | 44.8% | Other initial owners | 30.0% | 24.0%...",
+      "rows": 6,
+      "cols": 4,
+      "cells": [
+        {
+          "index": 1,
+          "row": 1,
+          "column": 1,
+          "bbox": [
+            64,
+            244,
+            370,
+            55
+          ],
+          "text": "Owner",
+          "textPreview": "Owner",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Owner",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Owner",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "row": 1,
+          "column": 2,
+          "bbox": [
+            434,
+            244,
+            250,
+            55
+          ],
+          "text": "Before financing",
+          "textPreview": "Before financing",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Before financing",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Before financing",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "row": 1,
+          "column": 3,
+          "bbox": [
+            684,
+            244,
+            266,
+            55
+          ],
+          "text": "After 20% round 1",
+          "textPreview": "After 20% round 1",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "After 20% round 1",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "After 20% round 1",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "row": 1,
+          "column": 4,
+          "bbox": [
+            950,
+            244,
+            266,
+            55
+          ],
+          "text": "After 20% round 2",
+          "textPreview": "After 20% round 2",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "After 20% round 2",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "After 20% round 2",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "row": 2,
+          "column": 1,
+          "bbox": [
+            64,
+            299,
+            370,
+            55
+          ],
+          "text": "Patrick",
+          "textPreview": "Patrick",
+          "fillColor": "#E8EDDF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Patrick",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Patrick",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "row": 2,
+          "column": 2,
+          "bbox": [
+            434,
+            299,
+            250,
+            55
+          ],
+          "text": "70.0%",
+          "textPreview": "70.0%",
+          "fillColor": "#E8EDDF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "70.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "70.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 7,
+          "row": 2,
+          "column": 3,
+          "bbox": [
+            684,
+            299,
+            266,
+            55
+          ],
+          "text": "56.0%",
+          "textPreview": "56.0%",
+          "fillColor": "#E8EDDF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "56.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "56.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 8,
+          "row": 2,
+          "column": 4,
+          "bbox": [
+            950,
+            299,
+            266,
+            55
+          ],
+          "text": "44.8%",
+          "textPreview": "44.8%",
+          "fillColor": "#E8EDDF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "44.8%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "44.8%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 9,
+          "row": 3,
+          "column": 1,
+          "bbox": [
+            64,
+            354,
+            370,
+            55
+          ],
+          "text": "Other initial owners",
+          "textPreview": "Other initial owners",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Other initial owners",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Other initial owners",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 10,
+          "row": 3,
+          "column": 2,
+          "bbox": [
+            434,
+            354,
+            250,
+            55
+          ],
+          "text": "30.0%",
+          "textPreview": "30.0%",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "30.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "30.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 11,
+          "row": 3,
+          "column": 3,
+          "bbox": [
+            684,
+            354,
+            266,
+            55
+          ],
+          "text": "24.0%",
+          "textPreview": "24.0%",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "24.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "24.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 12,
+          "row": 3,
+          "column": 4,
+          "bbox": [
+            950,
+            354,
+            266,
+            55
+          ],
+          "text": "19.2%",
+          "textPreview": "19.2%",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "19.2%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "19.2%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 13,
+          "row": 4,
+          "column": 1,
+          "bbox": [
+            64,
+            409,
+            370,
+            55
+          ],
+          "text": "Round 1 investors",
+          "textPreview": "Round 1 investors",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Round 1 investors",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Round 1 investors",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 14,
+          "row": 4,
+          "column": 2,
+          "bbox": [
+            434,
+            409,
+            250,
+            55
+          ],
+          "text": "—",
+          "textPreview": "—",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "—",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "—",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 15,
+          "row": 4,
+          "column": 3,
+          "bbox": [
+            684,
+            409,
+            266,
+            55
+          ],
+          "text": "20.0%",
+          "textPreview": "20.0%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "20.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "20.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 16,
+          "row": 4,
+          "column": 4,
+          "bbox": [
+            950,
+            409,
+            266,
+            55
+          ],
+          "text": "16.0%",
+          "textPreview": "16.0%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "16.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "16.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 17,
+          "row": 5,
+          "column": 1,
+          "bbox": [
+            64,
+            464,
+            370,
+            55
+          ],
+          "text": "Round 2 investors",
+          "textPreview": "Round 2 investors",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Round 2 investors",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Round 2 investors",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 18,
+          "row": 5,
+          "column": 2,
+          "bbox": [
+            434,
+            464,
+            250,
+            55
+          ],
+          "text": "—",
+          "textPreview": "—",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "—",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "—",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 19,
+          "row": 5,
+          "column": 3,
+          "bbox": [
+            684,
+            464,
+            266,
+            55
+          ],
+          "text": "—",
+          "textPreview": "—",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "—",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "—",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 20,
+          "row": 5,
+          "column": 4,
+          "bbox": [
+            950,
+            464,
+            266,
+            55
+          ],
+          "text": "20.0%",
+          "textPreview": "20.0%",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "20.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "20.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 21,
+          "row": 6,
+          "column": 1,
+          "bbox": [
+            64,
+            519,
+            370,
+            55
+          ],
+          "text": "Total",
+          "textPreview": "Total",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Total",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Total",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 22,
+          "row": 6,
+          "column": 2,
+          "bbox": [
+            434,
+            519,
+            250,
+            55
+          ],
+          "text": "100.0%",
+          "textPreview": "100.0%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "100.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "100.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 23,
+          "row": 6,
+          "column": 3,
+          "bbox": [
+            684,
+            519,
+            266,
+            55
+          ],
+          "text": "100.0%",
+          "textPreview": "100.0%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "100.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "100.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 24,
+          "row": 6,
+          "column": 4,
+          "bbox": [
+            950,
+            519,
+            266,
+            55
+          ],
+          "text": "100.0%",
+          "textPreview": "100.0%",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "100.0%",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "100.0%",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/dcb2t87y",
+      "id": "6",
+      "name": "Round 1 illustrates $1.5m for 20%, implying $6.0m ",
+      "bbox": [
+        66,
+        623,
+        1140,
+        43
+      ],
+      "geometry": "rect",
+      "text": "Round 1 illustrates $1.5m for 20%, implying $6.0m pre-money and $7.5m post-money. These are discussion assumptions, not an agreed valuation or term sheet.",
+      "textPreview": "Round 1 illustrates $1.5m for 20%, implying $6.0m pre-money and $7.5m post-money. These are discussion assumptions, not an agreed valuati...",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Round 1 illustrates $1.5m for 20%, implying $6.0m pre-money and $7.5m post-money. These are discussion assumptions, not an agreed valuation or term sheet."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Round 1 illustrates $1.5m for 20%, implying $6.0m pre-money and $7.5m post-money. These are discussion assumptions, not an agreed valuation or term sheet.",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Round 1 illustrates $1.5m for 20%, implying $6.0m pre-money and $7.5m post-money. These are discussion assumptions, not an agreed valuation or term sheet.",
+              "fontSize": 16,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

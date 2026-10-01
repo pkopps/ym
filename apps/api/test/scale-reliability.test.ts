@@ -86,9 +86,27 @@ test("search scans bounded provider pages and never requests marketplace booking
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
   const result = await platform.searchProviders({ address: template.address, categories: template.categories });
   assert.equal(result.providers.length, 3);
+  assert.ok(result.totalMatches >= 206);
   assert.ok(result.suggestedSlots.length <= 9);
   assert.ok(pageSizes.length >= 3);
   assert.ok(pageSizes.every(size => size <= 100));
+
+  const firstDirectoryPage = await platform.searchProviders({
+    address: template.address, categories: template.categories, directory: { offset: 0, limit: 12 }
+  });
+  const secondDirectoryPage = await platform.searchProviders({
+    address: template.address, categories: template.categories, directory: { offset: 12, limit: 12 }
+  });
+  assert.equal(firstDirectoryPage.totalMatches, result.totalMatches);
+  assert.equal(secondDirectoryPage.totalMatches, result.totalMatches);
+  assert.equal(firstDirectoryPage.rankedProviders.length, 12);
+  assert.equal(secondDirectoryPage.rankedProviders.length, 12);
+  assert.deepEqual(firstDirectoryPage.providers.slice(0, 3).map(provider => provider.id), result.providers.map(provider => provider.id));
+  assert.equal(new Set([...firstDirectoryPage.providers, ...secondDirectoryPage.providers].map(provider => provider.id)).size, 24);
+  assert.equal("email" in secondDirectoryPage.providers[0], false);
+  await assert.rejects(platform.searchProviders({
+    address: template.address, categories: template.categories, directory: { offset: 0, limit: 25 }
+  }), /limit from 1 to 24/);
 });
 
 test("calendar fetch releases the calendar lock and a late fetch cannot overwrite a newer sync or deleted feed", async () => {

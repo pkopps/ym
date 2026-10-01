@@ -1569,7 +1569,7 @@ export function CustomerLiveDashboard() {
       <article className="history-card">
         <div className="history-card__header">
           <div>
-            <span className="eyebrow">{booking.category.replaceAll("-", " ")}</span>
+            <span className="eyebrow">{(booking.services?.length ? booking.services.map(item => item.category) : [booking.category]).map(category => i18n.t(serviceCategoryToI18nKey(category))).join(" · ")}</span>
             <h2>{formatBookingStatusTitle(i18n, booking)}</h2>
             <p>{providerName}</p>
           </div>

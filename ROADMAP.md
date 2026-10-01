@@ -18,14 +18,15 @@ Use the public UX reference screenshots in `zocdoc-screenshots/screenshots/zocdo
 
 Before changing customer, provider, or crew UI, check whether the change reduces cognitive load, removes unnecessary decisions, keeps one clear purpose per screen, makes the next action obvious, improves trust, and feels natural on iOS. If not, simplify before building.
 
-YardMatch / GreenRain is a managed marketplace, not a directory.
+YardMatch / GreenRain is a managed marketplace with an optional directory after its recommendations.
 
 The customer experience should stay recommendation-first:
 
-1. Customer chooses the service, timing, and property.
-2. YardMatch recommends the best provider for that request.
-3. Customer can confirm quickly.
-4. Customer can reveal a small set of qualified backup options if they want more trust.
+1. Public web customers choose a service, then share their location or enter an area.
+2. YardMatch recommends up to three qualified providers, with a subtle first choice and factual reasons.
+3. Customers select an opening, confirm services and address, then review and submit their booking request. Timing belongs after provider discovery.
+4. Customers who want to compare further can open the directory with a list, date/time-of-day selectors, and an approximate service-area map. Customer dashboard and native mobile booking retain their curated backup flow.
+5. The confirmation provides a receipt and rescheduling path; providers still confirm before payment.
 
 Avoid drifting into:
 
@@ -107,6 +108,7 @@ Patrick explicitly prioritized the provider client map for launch on September 2
 
 ### Launch Readiness And Go-To-Market Ops
 
+- Add a funded customer/provider referral pilot to the expansion program. The [proposed referral plan](output/presentations/YardMatch-Referral-Incentives.md) specifies $20/$10 customer rewards, a $50 provider finder-fee credit, qualification and fraud controls, a $4,250 pilot allowance, and holdout measurement. Select reward terms and reconcile the direct-payment investor model with current app billing before publishing a reward offer. Build reward qualification, budget reservations, idempotent reward records, fulfillment/reconciliation, provider referrals, and experiment attribution on the customer referral intake documented in `README.md`. Automatic email/SMS invitations require a separate delivery/consent workflow; the current app prepares invitations for customers to send themselves. Include incentives once in acquisition economics and retain reliability/contribution expansion gates.
 - Finalize business approval for the first-customer offer and introductory pricing posture now that instant quotes and the public marketplace overview expose a backend-authored hybrid-model launch pricing policy with service list and provider-facing economics explanation.
 - Keep extending the new launch-lead queue beyond the current email-first Contact us forms, the automatic linkage for no-booking customer general/account support tickets, the new shared-secret inbound endpoints for direct email/GBP/referral-style forwarders, the new `platform-message` contact mode for Google Business Profile-style thread follow-up without a direct phone/email yet, the new referral-forwarder fallback path that can follow up through the referrer when the customer details are still partial, the new structured channel metadata for GBP thread details, referral fallback contacts, inbound-intake notes, direct-email reply-to details, and email message/thread ids, the new relayed-message inference that can now pull likely service/area/contact cues out of direct-email inquiries before ops touches them, the new form-encoded direct-inbox relay compatibility for common forwarded-email fields like `from`, `reply_to`, `message-id`, `in-reply-to`, `text`, and `html`, the new launch-lead backlog metrics now visible in ops, the new inbound-automation health section in the ops overview that shows source-level activity, expected-but-never-seen channel alerts, and external escalation for stale automated lead and review forwarders, ops manual intake for phone/text/social/referral/mail/GBP/customer-service requests, owner assignment, first-response SLA, next-follow-up scheduling, converted/closed-lost outcomes, and the backend-authored next-step guidance plus copy-ready customer reply drafts now shown in the ops queue so every inbound pre-booking inquiry lands in the same owned workflow automatically where possible.
 - Keep extending the current privacy-safe first-touch web attribution and launch-lead loop beyond the current website flow, which now links Contact us inquiries through self-serve booking, recurring follow-on bookings, and review generation, can auto-convert matching email or phone leads entered by ops, and now gives ops suggested booking matches plus manual attachment for cases where the booking happened before the lead existed. The remaining work is expanding the same closed-loop linkage to live inbound channels automatically instead of relying on manual ops intake, especially direct-inbox forwarding and any remaining referral/GBP forwarders that still are not posting into the queue yet.
@@ -124,7 +126,7 @@ Patrick explicitly prioritized the provider client map for launch on September 2
 ### Customer Matchmaking
 
 - Keep improving trust framing as longer-term dispute, cancellation, fulfillment, and review signals become reliable.
-- Keep alternative providers curated and limited.
+- Keep the primary recommendation clear. Public web search shows up to three top matches, followed by an optional paginated directory; dashboard and mobile booking keep curated alternatives.
 - Review recommendation performance by surface as launch volume grows, now that the ops overview exposes source-level metrics plus backend-authored recommendation insights for:
   - public web listings
   - customer web dashboard

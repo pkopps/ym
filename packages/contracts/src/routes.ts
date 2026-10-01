@@ -27,6 +27,7 @@ export class ApiRoutes {
   public static readonly customerRetentionOpportunities = "/api/customers/retention-opportunities";
   public static readonly createInstantQuote = "/api/quotes/instant";
   public static readonly searchProviders = "/api/providers/search";
+  public static readonly providerAvailability = "/api/providers/availability";
   public static readonly publicMarketplaceOverview = "/api/providers/public-overview";
   public static readonly providerProfile = "/api/providers/profile";
   public static readonly updateProviderProfile = "/api/providers/profile";
@@ -120,6 +121,7 @@ export class ApiRoutes {
   public static readonly inboundLaunchEmail = "/api/launch/inbound/email";
   public static readonly inboundLaunchGoogleBusinessProfile = "/api/launch/inbound/google-business-profile";
   public static readonly inboundLaunchReferral = "/api/launch/inbound/referral";
+  public static readonly customerReferrals = "/api/customer/referrals";
   public static readonly opsLaunchLeads = "/api/launch/ops/leads";
   public static readonly opsLaunchLeadsUpdate = "/api/launch/ops/leads/update";
   public static readonly createAnalyticsEvent = "/api/analytics/events";

@@ -2,6 +2,7 @@
 
 import { Booking, PaymentRecord, PropertyPhotoArea } from "@yardmatch/contracts";
 import { addLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
+import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
@@ -198,7 +199,7 @@ export function CustomerHistoryBoard() {
               <article className="history-card" key={booking.id}>
                 <div className="history-card__header">
                   <div>
-                    <span className="eyebrow">{booking.category.replaceAll("-", " ")}</span>
+                    <span className="eyebrow">{(booking.services?.length ? booking.services.map(item => item.category) : [booking.category]).map(category => i18n.t(serviceCategoryToI18nKey(category))).join(" · ")}</span>
                     <h2>{providerNamesById[booking.providerId] ?? i18n.t("market.home.provider.landscaping_business")}</h2>
                   </div>
                   <strong>{booking.status.replaceAll("-", " ")}</strong>

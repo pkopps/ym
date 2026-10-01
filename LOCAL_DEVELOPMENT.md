@@ -146,6 +146,17 @@ npm run lint:fix
 
 Existing violations that are too risky to rewrite during initial lint adoption are counted by file and rule in `eslint-suppressions.json`. The rules remain active, so new violations fail lint. After removing any suppressed violation, refresh the checked-in baseline with `npm run lint:prune-suppressions`; do not increase suppression counts as a routine fix.
 
+Customer referral verification:
+
+```bash
+npm run prisma:generate
+node --test --import tsx apps/api/test/customer-referrals.test.ts
+npm run test:web:smoke -- tests/web/customer-referrals.spec.ts
+npm run build:customer-mobile
+```
+
+Apply `20260928010000_customer_referrals` through the normal migration command before using PostgreSQL. The database suite includes a referral test covering concurrent duplicate requests, daily limits, durable ownership/consent, status joins, unique constraints, and rollback when a linked lead/referral write fails. In-memory mode supports the same form and referral workflow. No email/SMS credentials are needed: invitation buttons open the user's own email or text composer, and tests inspect those URLs without sending messages. `APP_BASE_URL` determines the invitation website; configure it for devices or staging rather than sharing a localhost link.
+
 PostgreSQL launch-gate verification:
 
 ```bash
@@ -253,3 +264,24 @@ Set an explicit Prisma `connection_limit` and `pool_timeout` in each server's `D
 Run `TEST_DATABASE_URL=postgresql://...@127.0.0.1:5432/yardmatch_scale_test npm run test:scale` after migrating a disposable local database. The command refuses non-loopback hosts and database names without `test` or `scale`. It inserts unique synthetic rows, uses stubbed notification delivery, exercises 601 providers, 20,000 bookings, 1,000 properties, 10,000 historical analytics events, and 250 queued notifications, then removes its fixtures. It measures per-operation p95/p99, event-loop delay, memory, and database query duration. The default gate requires zero errors, all notifications drained, operation p95 below 2.5 seconds, and event-loop p99 below 500 ms. CI uses a five-second operation threshold for shared runners and archives results. Neither threshold is a customer service-level promise.
 
 `npm run test:api:postgres` additionally checks overlapping workers, lease recovery/fencing, outbox rollback, non-UTC SQL comparisons, summary parity, and complete reporting beyond 50,000 events. The browser suite includes a 5,000-property fixture with 50-row pagination and clustered map markers. Full benchmark evidence and remaining production validation are in [the scale remediation report](reports/scale-review/2026-09-21-remediation.md).
+
+
+## Public web booking journey
+
+The public homepage selects service and area without timing. Selecting a service opens a location prompt; browser permission is requested only after “Use my location.” Manual area entry remains available. Use the seeded Brooklyn/Jersey City providers for the full local journey; no fake third recommendation is inserted where only two qualified providers exist.
+
+Apply `20261001010000_booking_services` with `npm run prisma:deploy` and run `npm run prisma:generate` before releasing the API. The additive JSONB `Booking.services` column defaults to an empty array for existing bookings. Single-service dashboard/native and recurring flows retain their contracts. Public single-visit bundles store priced category/duration line items, sum them for the existing payment flow, and validate provider eligibility for every service. Provider/crew web work summaries include all booked services. The existing email worker delivers the durable receipt; local mode verifies the queue without sending real email.
+
+The browser journey is `service → location → recommendations → scheduling modal → review/auth → request confirmation`. The optional directory opens from recommendations, with an OpenStreetMap service-area map, public reviews, and New York local day/time filters. Opening selection is checked again against real slots, active reservations, lead time, external calendar blocks, and combined duration. Request identifiers prevent duplicates and support recovery after a dropped response. Confirmation reloads the owned booking and offers available replacement slots subject to existing rescheduling policy. Drafts live in session storage, expire after two hours, and are tied to the signed-in customer once reviewed.
+
+Targeted verification:
+
+```bash
+npm run typecheck
+npm run i18n:validate
+node --test --import tsx apps/api/test/booking-journey.test.ts
+TEST_DATABASE_URL=postgresql://.../yardmatch_booking_test npm run test:api:postgres
+PORT=44011 YARDMATCH_WEB_PORT=44012 YARDMATCH_NEXT_DIST_DIR=.next/booking-journey npm run test:web:smoke -- tests/web/booking-journey.spec.ts tests/web/customer-booking-golden-path.spec.ts tests/web/smoke.spec.ts
+```
+
+The optional dist directory keeps browser checks separate from a running development build. Playwright passes the chosen web port to Next. The booking browser tests capture desktop 1440×900 and mobile 390×844 evidence in `reports/agent-checkpoints/engineer/latest/booking-journey-*.png`.

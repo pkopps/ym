@@ -15,6 +15,7 @@
     "android:device": "expo run:android --device"
   },
   "dependencies": {
+    "@formatjs/intl-pluralrules": "^6.3.15",
     "@yardmatch/branding": "0.1.0",
     "@yardmatch/contracts": "0.1.0",
     "@yardmatch/help-center": "0.1.0",

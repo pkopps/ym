@@ -22,6 +22,7 @@ import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { ArrivalTrackingModal } from "../components/ArrivalTrackingModal";
 import { CustomerPropertyForm } from "../components/CustomerPropertyForm";
+import { CustomerReferralsCard } from "../components/CustomerReferralsCard";
 import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { SkeletonCard } from "../components/SkeletonCard";
@@ -32,7 +33,7 @@ import { useCustomerSession } from "../session/CustomerSessionContext";
 
 const supportIssueOptions: SupportIssueType[] = ["billing", "service-quality", "account", "general"];
 
-type CustomerAccountSection = "properties" | "alerts" | "language" | "security" | "help";
+type CustomerAccountSection = "properties" | "alerts" | "language" | "security" | "help" | "referrals";
 type LanguageSettings = {
   locale: SupportedLocale;
   onLocaleChange: (locale: SupportedLocale) => void;
@@ -40,6 +41,7 @@ type LanguageSettings = {
 
 const accountSectionOptions: Array<{ value: CustomerAccountSection; labelKey: TranslationKey }> = [
   { value: "properties", labelKey: "mobile.support.section.properties" },
+  { value: "referrals", labelKey: "referrals.title" },
   { value: "alerts", labelKey: "mobile.support.section.alerts" },
   { value: "language", labelKey: "common.language.label" },
   { value: "security", labelKey: "mobile.support.section.security" },
@@ -145,6 +147,7 @@ export function SupportScreen({ languageSettings, onOpenBooking }: { languageSet
   const currentLanguageLabel =
     languageSettings.locale === "es" ? i18n.t("common.language.spanish") : i18n.t("common.language.english");
   const sectionSummaries: Record<CustomerAccountSection, string> = {
+    referrals: i18n.t("referrals.description"),
     properties: defaultProperty
       ? i18n.t("mobile.support.summary.default_property", { property: defaultProperty.label })
       : i18n.t("mobile.support.summary.saved_properties", { count: properties.length }),
@@ -499,6 +502,7 @@ export function SupportScreen({ languageSettings, onOpenBooking }: { languageSet
         </View>
       </InfoCard>
 
+      {activeSection === "referrals" ? <CustomerReferralsCard /> : null}
       {activeSection === "properties" ? (
       <InfoCard
         title={defaultProperty ? i18n.t("mobile.support.default_property") : i18n.t("mobile.support.saved_properties")}

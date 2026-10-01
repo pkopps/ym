@@ -805,34 +805,6 @@ body {
   margin-top: var(--ym-space-3);
 }
 
-.home-hero__trust-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ym-space-3);
-}
-
-.home-hero__trust-strip span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 2.5rem;
-  padding: 0 1rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 1px solid rgba(20, 40, 29, 0.08);
-  color: var(--ym-color-primary-strong);
-  font-weight: 700;
-}
-
-.home-hero__trust-strip span::before {
-  content: "";
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #6cc85b, #2c8f43);
-  box-shadow: 0 0 0 4px rgba(108, 200, 91, 0.16);
-}
-
 .market-home__proof,
 .market-home__market-grid {
   display: grid;
@@ -847,6 +819,34 @@ body {
 
 .market-home .section-header p {
   max-width: 42rem;
+}
+
+.market-home__help {
+  margin-bottom: var(--ym-space-6);
+}
+
+.market-home__help-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ym-space-4);
+}
+
+.market-home__help-card h2,
+.market-home__help-card p {
+  margin: 0;
+}
+
+.market-home__help-card p {
+  margin-top: 0.35rem;
+  color: var(--ym-color-ink-soft);
+}
+
+@media (max-width: 700px) {
+  .market-home__help-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .market-home__proof {
@@ -1553,12 +1553,25 @@ body {
   align-items: end;
 }
 
+.customer-search-shell--without-timing .customer-search-shell__grid {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.5fr) auto;
+}
+
 .customer-search-shell__field {
   display: grid;
   gap: var(--ym-space-2);
   position: relative;
 }
 
+.customer-search-shell__field-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ym-space-2);
+}
+
+.customer-search-shell__field-heading label,
 .customer-search-shell__field span {
   color: var(--ym-color-muted);
   font-weight: 600;
@@ -3783,6 +3796,23 @@ body {
   gap: var(--ym-space-3);
 }
 
+.live-listings-card__view-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: var(--ym-space-4);
+}
+
+.live-listings-card__view-header h2,
+.live-listings-card__view-header p {
+  margin: 0;
+}
+
+.live-listings-card__view-header p {
+  margin-top: 0.35rem;
+  color: var(--ym-color-ink-soft);
+}
+
 .live-listings-card__alternatives {
   display: flex;
   align-items: center;
@@ -5063,6 +5093,10 @@ body {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .customer-search-shell--without-timing .customer-search-shell__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .site-header__inner {
     row-gap: var(--ym-space-4);
   }
@@ -5150,6 +5184,7 @@ body {
   }
 
   .live-listings-card__alternatives,
+  .live-listings-card__view-header,
   .provider-signup-economics {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -5571,3 +5606,142 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
 
 .provider-clients-pagination { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 12px; font-size: 12px; }
 .provider-clients-pagination .button-secondary { padding: 8px 10px; }
+
+.referral-page { padding-top: 32px; padding-bottom: 48px; max-width: 1100px; }
+.referral-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.referral-fields { border: 0; margin: 0; padding: 0; min-width: 0; }
+.referral-fields > label:not(.referral-permission) { display: grid; gap: 8px; }
+.referral-fields input:not([type="checkbox"]), .referral-fields select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; border: 1px solid var(--ym-color-border); border-radius: var(--ym-radius-md); background: var(--ym-color-surface); color: inherit; font: inherit; font-size: 16px; }
+.referral-permission { display: flex; gap: 12px; align-items: flex-start; line-height: 1.5; }
+.referral-permission input { width: 20px; height: 20px; flex: 0 0 20px; margin-top: 3px; }
+.referral-list { list-style: none; padding: 0; margin: 0; }
+.referral-list li, .referral-invitation { overflow-wrap: anywhere; }
+.referral-list li { display: grid; gap: 10px; }
+.referral-list li .button-secondary { justify-self: start; }
+.referral-result:empty { display: none; }
+.referral-result:focus-visible { outline: 2px solid var(--ym-color-primary); outline-offset: 6px; }
+@media (max-width: 760px) { .referral-layout { grid-template-columns: minmax(0, 1fr); gap: 24px; } .referral-page { padding-top: 24px; } }
+
+/* Service discovery and appointment booking. */
+.booking-discovery { padding: 2.25rem 0 4rem; }
+.booking-discovery__header { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; }
+.booking-discovery__header h1 { margin: .5rem 0 .65rem; font-size: clamp(2rem, 3.2vw, 3rem); }
+.booking-discovery__header p, .journey-muted { color: var(--ym-color-muted); }
+.booking-discovery__edit { margin-bottom: 1.5rem; }
+.booking-discovery__edit > summary, .journey-provider-details > summary { cursor: pointer; color: var(--ym-color-primary-strong); font-weight: 600; }
+.booking-discovery__edit .customer-search-shell { margin-top: 1rem; }
+.booking-discovery__layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+.booking-discovery:not(.booking-discovery--directory) { max-width: 980px; margin: auto; }
+.booking-discovery--directory .booking-discovery__layout { grid-template-columns: minmax(0, 1.2fr) minmax(320px, .85fr); align-items: start; }
+.booking-discovery__providers { display: grid; gap: 1.2rem; min-width: 0; }
+.booking-discovery__map { position: sticky; top: 1rem; min-width: 0; }
+.booking-discovery__map > small { display: block; margin-top: .6rem; color: var(--ym-color-muted); }
+.booking-discovery__browse { text-align: center; padding: 1rem 0; }
+.journey-provider-card { background: #fff; border: 1px solid var(--ym-color-border); border-radius: 18px; padding: 1.6rem; box-shadow: 0 3px 12px rgba(20,40,29,.025); display: block; scroll-margin-top: 2rem; }
+.journey-provider-card--recommended { background: #fbfdf9; border-color: #b7ceb5; box-shadow: 0 3px 16px rgba(40,75,44,.05); }
+.journey-provider-card--selected { outline: 2px solid var(--ym-color-primary-strong); outline-offset: 2px; }
+.journey-provider-card__recommendation { font-size: .78rem; font-weight: 700; letter-spacing: .03em; color: #416344; margin-bottom: 1rem; }
+.journey-provider-card__identity { display: flex; align-items: center; gap: 1rem; }
+.journey-provider-card__identity h3 { font-size: 1.45rem; margin: 0 0 .3rem; }
+.journey-provider-card__identity p { font-size: .92rem; margin: .3rem 0 0; color: var(--ym-color-muted); }
+.journey-provider-avatar { display: grid; place-items: center; flex-shrink: 0; width: 64px; height: 64px; border-radius: 18px; background: #eef1e8; color: #426444; font-family: Georgia, serif; font-size: 1.45rem; font-weight: 600; }
+.journey-rating { color: #8c7122; }
+.journey-provider-tags { display: flex; flex-wrap: wrap; gap: .45rem; margin: 1rem 0; }
+.journey-provider-tags > span { background: #f0f3ec; color: #416044; font-size: .8rem; padding: .35rem .65rem; border-radius: 6px; }
+.journey-provider-card__bio { margin: 0 0 .8rem; color: var(--ym-color-muted); font-size: .95rem; line-height: 1.55; }
+.journey-provider-details { font-size: .9rem; }
+.journey-provider-details blockquote { margin: 1rem 0; padding: .8rem 1rem; border-left: 3px solid #d6e3d0; background: #f8faf6; }
+.journey-openings { margin-top: 1.25rem; padding-top: 1.2rem; border-top: 1px solid #e7ebe3; }
+.journey-openings > span { display: block; font-size: .84rem; color: var(--ym-color-muted); font-weight: 600; margin-bottom: .65rem; }
+.journey-slot-pills { display: flex; flex-wrap: wrap; gap: .55rem; }
+.journey-slot-pill { appearance: none; border: 1px solid #c8d9bc; border-radius: 9px; background: #edf4e3; color: #244a31; padding: .8rem .9rem; font: inherit; font-weight: 600; font-size: .9rem; cursor: pointer; min-height: 44px; }
+.journey-slot-pill:hover, .journey-slot-pill--selected { background: #dceacb; border-color: #64845d; }
+.journey-text-button { appearance: none; border: 0; background: none; color: var(--ym-color-primary-strong); cursor: pointer; padding: .8rem 0 .2rem; font: inherit; font-size: .86rem; text-decoration: underline; text-underline-offset: .18em; }
+.journey-provider-card__note { display: block; margin-top: .9rem; color: var(--ym-color-muted); font-size: .78rem; }
+.journey-directory-filters { display: flex; align-items: end; flex-wrap: wrap; gap: .85rem; padding: 1rem; border: 1px solid var(--ym-color-border); border-radius: 12px; background: #fff; margin-bottom: 1.5rem; }
+.journey-directory-filters label { flex: 1; min-width: 140px; display: grid; gap: .4rem; font-size: .85rem; font-weight: 600; }
+.journey-directory-filters input, .journey-directory-filters select { min-width: 0; width: 100%; min-height: 44px; padding: .7rem; border: 1px solid var(--ym-color-border); border-radius: 7px; background: #fff; font: inherit; }
+.journey-map { overflow: hidden; border: 1px solid var(--ym-color-border); border-radius: 18px; background: #edf0e8; }
+.journey-map__canvas { height: min(70vh, 690px); min-height: 420px; z-index: 0; }
+.journey-map > p { margin: 0; padding: .6rem 1rem; font-size: .8rem; background: #fff; }
+.journey-map-pin span { display: grid; place-items: center; width: 36px; height: 36px; border: 2px solid #fff; border-radius: 50%; color: #fff; background: #416844; font-size: 14px; font-weight: 700; box-shadow: 0 2px 6px #0003; }
+.journey-map-pin--selected span { background: #a47a27; transform: scale(1.12); }
+.journey-dialog { width: min(680px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid #dce4d6; border-radius: 20px; box-shadow: 0 24px 100px #15251b33; background: #fffefa; color: var(--ym-color-ink, #183a28); overflow-y: auto; }
+.journey-dialog::backdrop { background: rgba(16,33,23,.42); backdrop-filter: blur(3px); }
+.journey-dialog--location { max-width: 470px; }
+.journey-dialog__content { padding: 1.75rem; }
+.journey-dialog__header { display: flex; align-items: start; gap: 1rem; justify-content: space-between; margin-bottom: 1.5rem; }
+.journey-dialog__header h2 { font-size: 1.65rem; margin: 0 0 .5rem; }
+.journey-dialog__header p { color: var(--ym-color-muted); margin: 0; }
+.journey-close { flex-shrink: 0; width: 40px; height: 40px; border: 1px solid #dee5d8; border-radius: 50%; background: #fff; font: inherit; font-size: 1.6rem; cursor: pointer; line-height: 1; }
+.journey-location-actions { display: grid; gap: .75rem; margin-top: 1.5rem; }
+.journey-form { display: grid; gap: 1.4rem; }
+.journey-form label { display: grid; gap: .45rem; color: var(--ym-color-muted); font-size: .87rem; font-weight: 600; }
+.journey-form input, .journey-form select { width: 100%; min-width: 0; min-height: 46px; padding: .8rem; border: 1px solid #d7dfd1; border-radius: 8px; background: #fff; color: #243b2c; font: inherit; font-weight: 400; box-sizing: border-box; }
+.journey-form small { color: var(--ym-color-muted); font-weight: 400; line-height: 1.45; }
+.journey-fieldset { display: grid; gap: .9rem; border: 0; margin: 0; padding: 0; min-width: 0; }
+.journey-fieldset legend { font-weight: 700; font-size: 1rem; padding: 0 0 .9rem; }
+.journey-form__row { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+.journey-form__address-row { display: grid; grid-template-columns: 1.7fr .7fr 1fr; gap: .7rem; }
+.journey-service-picker { border: 1px solid #d7dfd1; border-radius: 10px; background: #fff; padding: .6rem; }
+.journey-service-chips { display: flex; flex-wrap: wrap; gap: .5rem; }
+.journey-service-chip { display: inline-flex; align-items: center; gap: .4rem; padding: .3rem .35rem .3rem .7rem; border-radius: 6px; background: #edf2e6; font-size: .88rem; }
+.journey-service-chip button { cursor: pointer; border: 0; background: none; font-size: 1.2rem; padding: .25rem .5rem; color: inherit; }
+.journey-service-picker > input { border: 0; margin-top: .3rem; padding: .5rem; }
+.journey-service-options { display: grid; max-height: 170px; overflow-y: auto; border-top: 1px solid #eee; }
+.journey-service-options button { text-align: left; background: #fff; border: 0; cursor: pointer; padding: .8rem .5rem; font: inherit; font-size: .9rem; }
+.journey-service-options button:hover { background: #f2f6ed; }
+.journey-dialog__footer { display: grid; gap: .7rem; text-align: center; border-top: 1px solid #e0e6da; padding-top: 1.25rem; margin-top: .3rem; }
+.journey-error { color: #843b28; background: #fff2e9; border-radius: 8px; padding: .8rem 1rem; line-height: 1.5; }
+.journey-page { max-width: 1040px; padding-top: 3rem; padding-bottom: 5rem; }
+.journey-page h1 { font-size: clamp(2rem, 4vw, 3rem); margin: .6rem 0 1rem; }
+.journey-page header { margin: 1.5rem 0 2rem; }
+.journey-back { color: var(--ym-color-primary-strong); text-underline-offset: .2em; }
+.journey-review-layout { display: grid; grid-template-columns: 1.3fr 1fr; gap: 1.5rem; align-items: start; }
+.journey-review-card, .journey-review-total { padding: 1.8rem; }
+.journey-summary > div { border-bottom: 1px solid #e3e9dc; padding: 1rem 0; }
+.journey-summary dt { font-size: .8rem; color: var(--ym-color-muted); margin-bottom: .4rem; }
+.journey-summary dd { margin: 0; line-height: 1.5; font-weight: 600; }
+.journey-price-lines { list-style: none; padding: 0; display: grid; gap: .9rem; }
+.journey-price-lines li { display: flex; justify-content: space-between; gap: 1rem; }
+.journey-total { display: flex; justify-content: space-between; align-items: center; gap: 1rem; font-size: 1rem; }
+.journey-total > strong { font-size: 1.65rem; }
+.journey-review-total > .button { width: 100%; margin-top: .75rem; }
+.journey-auth { display: grid; gap: .8rem; margin-top: 1.5rem; }
+.journey-auth h3, .journey-auth p { margin: 0; }
+.journey-auth p, .journey-review-total > p { color: var(--ym-color-muted); font-size: .92rem; line-height: 1.6; }
+.journey-confirmation { max-width: 660px; text-align: center; }
+.journey-success-icon { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 1.5rem; background: #e8f1dc; color: #426f40; font-size: 2rem; }
+.journey-confirmation > p { line-height: 1.6; color: var(--ym-color-muted); }
+.journey-confirmation__card { text-align: left; padding: 1.7rem; margin: 2rem 0 1.5rem; }
+.journey-confirmation__card address { font-style: normal; line-height: 1.6; }
+.journey-confirmation__card .journey-total { padding: 1rem 0; border-top: 1px solid #dce5d4; margin-top: 1.2rem; }
+.journey-confirmation__card small { color: var(--ym-color-muted); }
+.journey-confirmation__actions { display: flex; flex-wrap: wrap; gap: .75rem; justify-content: center; }
+.journey-notice { padding: 1rem; background: #edf4e4; border-radius: 10px; }
+@media (max-width: 900px) {
+  .booking-discovery--directory .booking-discovery__layout { grid-template-columns: minmax(0, 1fr); }
+  .booking-discovery__map { position: static; }
+  .journey-map__canvas { height: 350px; min-height: 300px; }
+  .journey-review-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .booking-discovery { padding-top: 1.5rem; }
+  .booking-discovery__header { display: block; }
+  .booking-discovery__header > button { margin-top: 1rem; }
+  .journey-provider-card { padding: 1.2rem; }
+  .journey-provider-card__identity { gap: .75rem; }
+  .journey-provider-card__identity h3 { font-size: 1.2rem; }
+  .journey-provider-avatar { width: 50px; height: 50px; font-size: 1.15rem; border-radius: 14px; }
+  .journey-slot-pills { display: grid; grid-template-columns: 1fr; }
+  .journey-slot-pill { text-align: center; }
+  .journey-dialog { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); border-radius: 16px; }
+  .journey-dialog__content { padding: 1.2rem; }
+  .journey-dialog__header h2 { font-size: 1.4rem; }
+  .journey-form__row { grid-template-columns: 1fr; }
+  .journey-form__address-row { grid-template-columns: 1fr 1fr; }
+  .journey-form__address-row > label:first-child { grid-column: 1 / -1; }
+  .journey-page { padding-top: 2rem; }
+  .journey-review-card, .journey-review-total { padding: 1.25rem; }
+  .journey-confirmation__actions { display: grid; }
+}

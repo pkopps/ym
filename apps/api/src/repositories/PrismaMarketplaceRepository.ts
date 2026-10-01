@@ -1,4 +1,6 @@
+import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
 import type { NotificationHealthSnapshot } from "./notificationHealth";
+import type { CustomerReferralRecord } from "./customerReferrals";
 import { utcTimestamp } from "./sqlTime";
 import { providerClientQuery } from "./providerClientQuery";
 import type { ProviderClientProperty } from "@yardmatch/contracts";
@@ -173,6 +175,16 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return (await this.findCustomerById(customer.id))!;
   }
 
+  public async listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]> {
+    const rows = await this.prisma.zipServiceMinimum.findMany({ where: { postalCode }, orderBy: { category: "asc" } });
+    return rows as unknown as ZipServiceMinimumRecord[];
+  }
+  public async saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord> {
+    const data = { ...record, history: asJson(record.history) };
+    await this.prisma.zipServiceMinimum.upsert({ where: { postalCode_category: { postalCode: record.postalCode, category: record.category } }, create: data, update: data });
+    return record;
+  }
+
   public async createProvider(
     provider: ProviderProfile,
     passwordHash?: string
@@ -213,6 +225,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
             ? new Date(provider.verificationReviewedAt)
             : undefined,
           verificationNotes: provider.verificationNotes,
+          servicePrices: asJson(provider.servicePrices ?? []),
           sponsoredListingEnabled: provider.sponsoredListingEnabled,
           categories: provider.categories,
           rating: provider.rating,
@@ -326,13 +339,18 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       FROM bookings WHERE "providerId" IN (${Prisma.join(providerIds)}) GROUP BY "providerId"`;
   }
 
-  public async listSearchSlots(providerIds: string[], minimumDurationMinutes = 0): Promise<AvailabilitySlot[]> {
+  public async listSearchSlots(providerIds: string[], minimumDurationMinutes = 0, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]> {
     if (!providerIds.length) return [];
     const rows = await this.prisma.$queryRaw<Array<{ id: string; providerId: string; startIso: Date; endIso: Date; isBooked: boolean }>>`
       SELECT slot.* FROM provider_business_profiles provider CROSS JOIN LATERAL (
         SELECT candidate.* FROM availability_slots candidate
         WHERE candidate."providerId" = provider."userId" AND NOT candidate."isBooked"
           AND candidate."startIso" >= ${utcTimestamp(new Date())} + provider."minimumBookingLeadHours" * interval '1 hour'
+          AND (${!range} OR (candidate."startIso" >= ${utcTimestamp(new Date(range?.startIso ?? 0))}
+            AND candidate."startIso" < ${utcTimestamp(new Date(range?.endIso ?? 0))}))
+          AND NOT EXISTS (SELECT 1 FROM bookings job WHERE job."providerId" = provider."userId"
+            AND job.status NOT IN ('cancelled', 'completed', 'refunded')
+            AND candidate."startIso" < job."scheduledEndIso" AND candidate."endIso" > job."scheduledStartIso")
           AND candidate."endIso" - candidate."startIso" >= ${minimumDurationMinutes} * interval '1 minute'
           AND (COALESCE(provider."calendarConnection"->>'externalEventsBlockingEnabled', 'false') <> 'true' OR NOT EXISTS (
             SELECT 1 FROM jsonb_array_elements(COALESCE(provider."calendarConnection"->'externalBlocks', '[]'::jsonb)) block
@@ -616,6 +634,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         serviceAddress: asJson(booking.serviceAddress),
         servicePropertyId: booking.servicePropertyId,
         category: booking.category,
+        services: asJson(booking.services ?? []),
         requestedAt: new Date(booking.requestedAt),
         scheduledStartIso: new Date(booking.scheduledStartIso),
         scheduledEndIso: new Date(booking.scheduledEndIso),
@@ -1269,6 +1288,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
               : null,
           verificationNotes:
             updates.verificationNotes === undefined ? undefined : updates.verificationNotes,
+          servicePrices: updates.servicePrices ? asJson(updates.servicePrices) : undefined,
           sponsoredListingEnabled: updates.sponsoredListingEnabled,
           categories: updates.categories,
           rating: updates.rating,
@@ -1974,6 +1994,42 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       }
     });
     return lead;
+  }
+
+  public async createCustomerReferralWithLead(referral: CustomerReferralRecord, lead: LaunchLead): Promise<CustomerReferralRecord> {
+    return this.transaction(async (tx) => {
+      await new PrismaMarketplaceRepository(tx as PrismaClient, true).createLaunchLead(lead);
+      const data = { id: referral.id, referrerCustomerId: referral.referrerCustomerId, leadId: referral.leadId,
+        friendName: referral.friendName, channel: referral.channel, contact: referral.contact, areaLabel: referral.areaLabel,
+        consentVersion: referral.consentVersion, consentedAt: referral.consentedAt, createdAt: referral.createdAt };
+      await tx.customerReferral.create({ data: { ...data, consentedAt: new Date(data.consentedAt), createdAt: new Date(data.createdAt) } });
+      return referral;
+    });
+  }
+
+  private mapCustomerReferral(record: Prisma.CustomerReferralGetPayload<{ include: { lead: true } }>): CustomerReferralRecord {
+    return { id: record.id, referrerCustomerId: record.referrerCustomerId, leadId: record.leadId,
+      friendName: record.friendName, channel: record.channel as CustomerReferralRecord["channel"], contact: record.contact,
+      areaLabel: record.areaLabel ?? undefined, consentVersion: record.consentVersion,
+      consentedAt: record.consentedAt.toISOString(), createdAt: record.createdAt.toISOString(),
+      leadStatus: record.lead.status as CustomerReferralRecord["leadStatus"] };
+  }
+
+  public async findCustomerReferralByContact(customerId: string, channel: string, contact: string): Promise<CustomerReferralRecord | undefined> {
+    const record = await this.prisma.customerReferral.findUnique({
+      where: { referrerCustomerId_channel_contact: { referrerCustomerId: customerId, channel, contact } }, include: { lead: true }
+    });
+    return record ? this.mapCustomerReferral(record) : undefined;
+  }
+
+  public async listCustomerReferrals(customerId: string): Promise<CustomerReferralRecord[]> {
+    const records = await this.prisma.customerReferral.findMany({ where: { referrerCustomerId: customerId },
+      include: { lead: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100 });
+    return records.map((record) => this.mapCustomerReferral(record));
+  }
+
+  public async countCustomerReferralsSince(customerId: string, since: string): Promise<number> {
+    return this.prisma.customerReferral.count({ where: { referrerCustomerId: customerId, createdAt: { gte: new Date(since) } } });
   }
 
   public async listLaunchLeads(): Promise<LaunchLead[]> {
@@ -2984,6 +3040,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       verificationSubmittedAt?: Date | null;
       verificationReviewedAt?: Date | null;
       verificationNotes?: string | null;
+      servicePrices?: unknown;
       sponsoredListingEnabled: boolean;
       categories: string[];
       rating: number;
@@ -3021,6 +3078,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       verificationSubmittedAt: profile.verificationSubmittedAt?.toISOString(),
       verificationReviewedAt: profile.verificationReviewedAt?.toISOString(),
       verificationNotes: profile.verificationNotes ?? undefined,
+      servicePrices: (profile.servicePrices ?? []) as ProviderProfile["servicePrices"],
       sponsoredListingEnabled: profile.sponsoredListingEnabled,
       categories: profile.categories as ProviderProfile["categories"],
       rating: profile.rating,
@@ -3123,6 +3181,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     serviceAddress: unknown;
     servicePropertyId: string | null;
     category: string;
+    services: unknown;
     requestedAt: Date;
     scheduledStartIso: Date;
     scheduledEndIso: Date;
@@ -3165,6 +3224,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       serviceAddress: readJson<Address>(record.serviceAddress),
       servicePropertyId: record.servicePropertyId ?? undefined,
       category: record.category as Booking["category"],
+      services: readJson<Booking["services"]>(record.services),
       requestedAt: record.requestedAt.toISOString(),
       scheduledStartIso: record.scheduledStartIso.toISOString(),
       scheduledEndIso: record.scheduledEndIso.toISOString(),

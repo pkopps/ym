@@ -10,9 +10,10 @@ import { addLocalePrefix, I18nInstance, sourceMessages, TranslationKey } from "@
 import { serviceCategoryLabelKeys, servicePickerLabelKeys } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { serviceCategoryLabels } from "@yardmatch/ui";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWebApiClient } from "../lib/api";
+import { JourneyDialog } from "./JourneyDialog";
 
 export function buildCustomerListingsSearchParams({
   areaQuery,
@@ -240,7 +241,10 @@ export function PublicMarketplaceSearchShell({
   selectedCustomWindows,
   selectedService,
   selectedSuggestion,
-  selectedTiming
+  selectedTiming,
+  showTimingSelection = true,
+  promptForLocation = false,
+  locationPromptRequest = 0
 }: {
   areaQuery: string;
   onAreaQueryChange: (value: string) => void;
@@ -267,15 +271,21 @@ export function PublicMarketplaceSearchShell({
   selectedService: ServiceCategory;
   selectedSuggestion?: PlaceSuggestion;
   selectedTiming: CustomerTimingPreference;
+  showTimingSelection?: boolean;
+  promptForLocation?: boolean;
+  locationPromptRequest?: number;
 }) {
   const i18n = useI18n();
   const router = useRouter();
   const api = useMemo(() => createWebApiClient(), []);
-  const searchFieldRef = useRef<HTMLLabelElement | null>(null);
+  const searchFieldRef = useRef<HTMLDivElement | null>(null);
+  const areaInputId = useId();
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [searchMessage, setSearchMessage] = useState<string | undefined>();
   const [submitGuidance, setSubmitGuidance] = useState<string | undefined>();
   const [isSearching, setIsSearching] = useState(false);
+  const [locationPromptOpen, setLocationPromptOpen] = useState(false);
+  useEffect(() => { if (locationPromptRequest > 0) setLocationPromptOpen(true); }, [locationPromptRequest]);
   const [isResolvingLocation, setIsResolvingLocation] = useState(false);
   const [hasFinishedSearch, setHasFinishedSearch] = useState(false);
   const [isSuggestionMenuOpen, setIsSuggestionMenuOpen] = useState(false);
@@ -303,7 +313,7 @@ export function PublicMarketplaceSearchShell({
     onSelectedCustomWindowsChange?.(nextWindows.length ? nextWindows : [value]);
   }
 
-  async function handleUseCurrentLocation() {
+  async function handleUseCurrentLocation(continueToMatches = false) {
     setSubmitGuidance(undefined);
     setLocationGuidance(undefined);
 
@@ -339,6 +349,10 @@ export function PublicMarketplaceSearchShell({
         onSelectedSuggestionChange(autoSelectedSuggestion);
         setSuggestions([]);
         setLocationGuidance(i18n.t("customer.search.using_area", { area: autoSelectedSuggestion.label }));
+        if (continueToMatches && onSearch) {
+          setLocationPromptOpen(false);
+          onSearch(selectedService, autoSelectedSuggestion, selectedTiming);
+        }
         return;
       }
 
@@ -423,6 +437,10 @@ export function PublicMarketplaceSearchShell({
   function handleSubmit(serviceOverride?: ServiceCategory) {
     const suggestion = selectedSuggestion ?? suggestions.find((item) => isPlaceSuggestionSafeToAutoSelect(item));
     const service = serviceOverride ?? selectedService;
+    if (promptForLocation && !selectedSuggestion) {
+      setLocationPromptOpen(true);
+      return;
+    }
 
     if (!selectedSuggestion && suggestions.length > 0 && !suggestion) {
       setSubmitGuidance(
@@ -454,12 +472,15 @@ export function PublicMarketplaceSearchShell({
   }
 
   return (
-    <div className="customer-search-shell">
+    <div className={`customer-search-shell${showTimingSelection ? "" : " customer-search-shell--without-timing"}`}>
       <div className="customer-search-shell__grid">
         <label className="customer-search-shell__field">
           <span>{i18n.t("customer.search.need")}</span>
           <select
-            onChange={(event) => onSelectedServiceChange(event.target.value as ServiceCategory)}
+            onChange={(event) => {
+              onSelectedServiceChange(event.target.value as ServiceCategory);
+              if (promptForLocation) setLocationPromptOpen(true);
+            }}
             value={selectedService}
           >
             {Object.entries(serviceCategoryLabels).map(([value, label]) => (
@@ -469,28 +490,41 @@ export function PublicMarketplaceSearchShell({
             ))}
           </select>
         </label>
-        <label className="customer-search-shell__field">
-          <span>{i18n.t("customer.search.when")}</span>
-          <select
-            onChange={(event) => {
-              const nextTiming = event.target.value as CustomerTimingPreference;
-              onSelectedTimingChange(nextTiming);
-              if (nextTiming === "custom-range" && !selectedCustomDate) {
-                onSelectedCustomDateChange?.(resolvedCustomDate);
-              }
-            }}
-            value={selectedTiming}
-          >
-            {customerSearchTimingOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {i18n.t(option.labelKey)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="customer-search-shell__field customer-search-shell__field--search" ref={searchFieldRef}>
-          <span>{i18n.t("customer.search.where")}</span>
+        {showTimingSelection ? (
+          <label className="customer-search-shell__field">
+            <span>{i18n.t("customer.search.when")}</span>
+            <select
+              onChange={(event) => {
+                const nextTiming = event.target.value as CustomerTimingPreference;
+                onSelectedTimingChange(nextTiming);
+                if (nextTiming === "custom-range" && !selectedCustomDate) {
+                  onSelectedCustomDateChange?.(resolvedCustomDate);
+                }
+              }}
+              value={selectedTiming}
+            >
+              {customerSearchTimingOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {i18n.t(option.labelKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <div className="customer-search-shell__field customer-search-shell__field--search" ref={searchFieldRef}>
+          <div className="customer-search-shell__field-heading">
+            <label htmlFor={areaInputId}>{i18n.t("customer.search.where")}</label>
+            <button
+              className="customer-search-shell__location-action"
+              disabled={isResolvingLocation}
+              onClick={() => void handleUseCurrentLocation()}
+              type="button"
+            >
+              {isResolvingLocation ? i18n.t("common.loading.finding_area") : i18n.t("common.actions.use_my_location")}
+            </button>
+          </div>
           <input
+            id={areaInputId}
             onChange={(event) => {
               onAreaQueryChange(event.target.value);
               onSelectedSuggestionChange(undefined);
@@ -510,14 +544,6 @@ export function PublicMarketplaceSearchShell({
             placeholder={i18n.t("customer.search.area_placeholder")}
             value={areaQuery}
           />
-          <button
-            className="customer-search-shell__location-action"
-            disabled={isResolvingLocation}
-            onClick={handleUseCurrentLocation}
-            type="button"
-          >
-            {isResolvingLocation ? i18n.t("common.loading.finding_area") : i18n.t("common.actions.use_my_location")}
-          </button>
           {isSuggestionMenuOpen && suggestions.length > 0 ? (
             <div className="customer-search-shell__suggestions">
               {suggestions.map((suggestion) => {
@@ -560,12 +586,12 @@ export function PublicMarketplaceSearchShell({
               </div>
             </div>
           ) : null}
-        </label>
+        </div>
         <button className="button customer-search-shell__action" onClick={() => handleSubmit()} type="button">
           {isSearching ? i18n.t("common.loading.checking_area") : i18n.t("common.actions.find_my_match")}
         </button>
       </div>
-      {!isCustomRange ? (
+      {showTimingSelection && !isCustomRange ? (
         <div className="customer-search-shell__backup-windows" aria-label={i18n.t("customer.search.backup_times")}>
           <span>{i18n.t("customer.search.also_works")}</span>
           <div className="customer-search-shell__backup-options">
@@ -587,7 +613,7 @@ export function PublicMarketplaceSearchShell({
           </div>
         </div>
       ) : null}
-      {isCustomRange ? (
+      {showTimingSelection && isCustomRange ? (
         <div className="customer-search-shell__custom-date">
           <label className="customer-search-shell__field">
             <span>{i18n.t("customer.search.start")}</span>
@@ -635,6 +661,13 @@ export function PublicMarketplaceSearchShell({
           </div>
         </div>
       ) : null}
+      {locationPromptOpen ? <JourneyDialog title={i18n.t("booking_journey.location.title")} onClose={() => setLocationPromptOpen(false)} className="journey-dialog--location">
+        <div className="journey-dialog__header"><h2>{i18n.t("booking_journey.location.title")}</h2><button type="button" className="journey-close" aria-label={i18n.t("booking_journey.close")} onClick={() => setLocationPromptOpen(false)}>×</button></div>
+        <p>{i18n.t("booking_journey.location.body")}</p>
+        {locationGuidance ? <p role="status">{locationGuidance}</p> : null}
+        <div className="journey-location-actions"><button type="button" className="button" disabled={isResolvingLocation} onClick={() => void handleUseCurrentLocation(true)}>{i18n.t(isResolvingLocation ? "common.loading.finding_area" : "common.actions.use_my_location")}</button>
+          <button type="button" className="button-secondary" onClick={() => { setLocationPromptOpen(false); window.setTimeout(() => document.getElementById(areaInputId)?.focus(), 0); }}>{i18n.t("booking_journey.location.manual")}</button></div>
+      </JourneyDialog> : null}
       {submitGuidance ? <p className="customer-search-shell__guidance">{submitGuidance}</p> : null}
       {locationGuidance ? <p className="customer-search-shell__guidance">{locationGuidance}</p> : null}
     </div>

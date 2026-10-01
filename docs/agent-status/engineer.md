@@ -1,5 +1,120 @@
 # Engineer Status
 
+## Current checkpoint: service-first public booking journey
+
+- Updated: September 30, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`; uncommitted alongside preserved pre-existing edits.
+- Completed: service → location → up to three recommended providers → scheduling dialog → review/auth → persisted request confirmation and rescheduling. Optional directory has a list, actual opening filters, public reviews and approximate service-area map. Multiple services are priced and stored as one visit, with all services visible in customer/provider/crew web work summaries.
+- Reliability: quote/address/unit binding, provider eligibility per service, duration/availability checks, provider-scoped locks, duplicate request protection, dropped-response recovery, owned booking lookup and a durable email receipt. Provider confirmation still precedes payment.
+- In progress: none for this implementation.
+- Remaining: normal migration/API/web rollout and live email verification; native scheduling parity is outside this web change.
+- Blockers: none for local implementation.
+- Changed workflows: timing is selected after discovery; guests review before authentication; additional services use chips; the confirmation offers rescheduling.
+- Validation: Prisma generate, fresh migration, seed and zero schema drift; 361 API tests passed and all 13 PostgreSQL tests passed separately; typecheck and 4,094-key locale validation passed. Lint passed; 14 targeted browser tests passed. Full browser suite: 46/47 passed, then the remaining provider-onboarding test passed after two stale copy assertions were corrected. All 47 scenarios have passing evidence.
+- Known defects/limits: no unresolved flow defect found; email queue tested without real delivery, no live payment, production build/deployment or native device/export run. Local supply may produce fewer than three eligible recommendations.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/booking-journey-{recommendations,directory,modal,review,confirmation}-{desktop,mobile}.png`, visually inspected at 1440×900 and 390×844. [Full checkpoint and logs](../../reports/agent-checkpoints/engineer/latest/booking-journey/checkpoint.md).
+- Recommended next task: staging acceptance with real email delivery and provider approval.
+
+## Current checkpoint: concise mobile web homepage
+
+- Updated: September 30, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`; changes uncommitted alongside pre-existing workspace edits.
+- Completed: removed the Barnegat-only proof block and explanatory sections from the public homepage, shortened the footer, made homepage metadata location-neutral, and stopped pre-filling Barnegat on the Help form unless a visitor arrives with an area. English and Spanish copy now focuses on the service search, popular services, and a help action. Refreshed the homepage screenshot in the local experience map.
+- In progress: none for this cleanup.
+- Remaining: no native customer dashboard change was needed; its captured Home screen has no Barnegat or launch-status copy. Barnegat remains the editable default in the public search input.
+- Blockers: none for the requested work.
+- Changed workflows: visitors still search for providers through the recommendation path, and the Help page remains available for availability questions. Homepage proof and the embedded lead form were removed from the homepage; the contact form remains on Help.
+- Validation: `npm run typecheck`, `npm run i18n:validate`, and the web production build passed. All 11 smoke and booking-path browser cases passed, including English/Spanish mobile flow and 390px overflow checks. Desktop and mobile homepage screenshots were visually inspected. Scoped ESLint and whitespace checks passed. Repository-wide lint stopped on pre-existing unused ESLint suppressions; the first browser run could not launch Chromium in the sandbox, then passed with browser permission. The experience-map refresh, validation, and build passed: 42 web routes, 15 mobile screens, 13 states, 83 connections, zero broken connections, and seven pending screenshots.
+- Known defects: none observed in the changed homepage. The seven pending experience-map screenshots are existing provider/crew placeholders.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/honest-launch-home-desktop.png` and `honest-launch-home-mobile.png`; refreshed map capture: `apps/experience-map/public/captures/full/web.png`.
+- Recommended next task: review the concise homepage in the local viewer and continue the customer booking path assessment.
+
+## Current checkpoint: homepage recommendations and optional directory
+
+- Updated: September 30, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`; changes uncommitted alongside pre-existing workspace edits.
+- Completed: homepage search now leads to up to three visible ranked provider matches. A clear button above the cards opens the full eligible local business directory for the same service, area, and timing, with 12 results per page and a return path to top matches. The selected provider and rank carry into customer signup. The API reports total eligible matches while default customer web/mobile search remains capped at three. The experience map now has screenshot cards and verified connections for top matches and the directory.
+- In progress: none for this path.
+- Remaining: the seeded Brooklyn market currently has two eligible providers, so live UI evidence shows two matches; the API regression verifies pagination beyond three using more than 200 synthetic providers. Native customer booking retains its existing curated flow. Provider native screens remain deferred at Patrick's request.
+- Blockers: none for local work.
+- Changed workflows: public visitors can browse all eligible businesses after the recommended top matches. Search ranking, verification, coverage, provider economics, and customer signup handoff are preserved. Directory pages do not add recommendation impressions to analytics.
+- Validation: `npm run test:api` passed (356 passed, 12 PostgreSQL tests skipped); `npm run lint`, `npm run typecheck`, and `npm run i18n:validate` passed; all seven `tests/web/smoke.spec.ts` cases and all three `tests/web/customer-booking-golden-path.spec.ts` cases passed. The new path test checked reload, browser Back, provider rank handoff, and no horizontal overflow at 390×844. Desktop and mobile screenshots were visually inspected. `npm run experience-map:refresh -- --no-capture`, `npm run experience-map:validate`, and `npm run build:experience-map` passed: 42 web routes, 15 app screens, 13 workflow states, 98 connections, zero broken connections; seven previously pending native/provider state screenshots remain. The live viewer at 127.0.0.1:4173 shows both new screenshot cards and their connections.
+- Known defects: no defect observed in this path. The optional directory currently includes only providers eligible for the selected service and address; it is not a sitewide catalog.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/customer-top-matches-desktop.png`, `customer-top-matches-mobile.png`, `customer-directory-desktop.png`, and `customer-directory-mobile.png`; graph thumbnails are in `apps/experience-map/public/captures/thumbnails/`.
+- Recommended next task: review this customer path in the local viewer and assess the signup-to-booking handoff with a real three-provider market when that supply exists.
+
+## Current checkpoint: local YardMatch experience map
+
+- Updated: September 29, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`; changes uncommitted.
+- Completed: added a separate local React Flow/ELK viewer with screenshot cards, zoom/pan, search, area/type/evidence filters, collapsible areas, downstream path highlighting, action details, and large previews. The inventory discovers 42 web routes and 15 mobile auth/tab screens, adds 11 workflow states, and validates 92 action connections. It currently has 61 screen/state screenshots, including all web routes and all five customer iPhone auth/tab screens. Crew auth, Today, and Schedule have iPhone captures. The provider iPhone auth image was captured before that app was deferred; its four tabs remain placeholders. Removed the temporary public preview-host setting from Next.js.
+- In progress: none; Patrick asked to stop native capture and build the graph from existing screenshots.
+- Remaining: provider iPhone tabs, crew Availability and Account, and provider completion state still need screenshots. The nodes and paths remain visible as labeled placeholders. Provider iPhone capture is deferred at Patrick's request.
+- Blockers: none for the local graph. The crew simulator crashed while opening Availability because `Intl.PluralRules` was missing; a polyfill was added to customer and crew app entry points, but the crew rebuild was interrupted when capture was paused. No further native capture was run.
+- Changed workflows: no customer, booking, payment, or ops workflow changed. Customer and crew native entry points now load English/Spanish plural-rules support for screens that previously crashed in the simulator. The local graph distinguishes test-verified paths from code-inferred paths and does not invent cross-app navigation.
+- Validation: web capture produced 42 thumbnails; the customer iPhone release build and five-screen Maestro flow completed; crew auth/Today/Schedule screenshots were visually checked and a crash-screen capture was removed. `npm run experience-map:refresh -- --no-capture` reported 42 web routes, 15 mobile screens, 11 states, 92 connections, zero broken connections, and seven pending screenshots. `npm run build:experience-map`, scoped ESLint, `npm run typecheck`, the customer quote Playwright test, and desktop/mobile viewer checks passed. The viewer was checked at 1440×900 and 390×844 for cards, image loading, search, filters, collapse, path highlighting, details, preview modal, and horizontal overflow. The full capture command and crew rebuilt binary were not rerun after Patrick paused capture.
+- Known defects: crew Availability and Account lack valid native captures; the provider completion state has no matching capture. The initial full-map overview makes cards small at fit-to-view; the viewer starts centered on Home and supports zoom and area filtering.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/experience-map-desktop.png` and `experience-map-mobile.png`; tracked map thumbnails are in `apps/experience-map/public/captures/thumbnails/`.
+- Recommended next task: review the local map, then capture the remaining crew screens and revisit the provider iPhone app when Patrick is ready.
+
+## Current checkpoint: production-facing website and app copy
+
+- Updated: September 28, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`; changes uncommitted.
+- Completed: audited public web and shared customer/provider/crew copy; rewrote internal launch, implementation, and strategy language in English and Spanish; rewrote shared help articles as user instructions; removed fallback expansion statistics, launch-queue explanation, policy-page rationale, and speculative partner deals. Preserved existing booking, availability, verification, pricing, and support behavior. Homepage expansion removal and related cleanup were already present when applying the component edits and were preserved.
+- In progress: none.
+- Remaining: none for this copy cleanup.
+- Blockers: none.
+- Changed workflows: no booking or payment logic changes; public pages now explain service availability and next actions; unavailable partnerships show an empty state instead of hypothetical offers.
+- Validation: `npm run typecheck` and `npm run i18n:validate` passed (3996 keys); scoped ESLint and whitespace checks passed; `npm run test:web:smoke -- tests/web/smoke.spec.ts tests/web/seo.spec.ts` passed all 14 tests using the existing local servers with `YARDMATCH_SMOKE_START_SERVERS=0`. Browser audit checked 16 public routes in English/Spanish at 1440×900 and 390×844 (64 route/viewport checks), with HTTP 200, no horizontal overflow, and no flagged internal copy. All three mobile apps exported for iOS, Android, and web via `npm run build:mobile`. The first sandbox browser-suite attempt could not reach the existing servers; the approved outside-sandbox run passed. API tests and native simulator checks were not run for this content-only change.
+- Known defects: none observed in scope. Shared help articles remain English-only under the existing help package; localized UI and policy copy is updated in both supported languages.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/production-copy/{home,barnegat-nj,provider-partnerships,refund-policy,help}-{desktop,mobile}.png`. Home desktop/mobile, local service desktop, and partnerships mobile visually inspected. Browser results: `production-copy/browser-checks.json`.
+- Recommended next task: independent review of the updated local site and apps.
+
+## Current checkpoint: public geographic launch copy cleanup
+
+- Updated: September 28, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`; changes uncommitted.
+- Completed: removed the homepage expansion section and its unused translation keys; replaced first-market, launch-area, and town-by-town language across public homepage, footer, provider, local service, coverage, and related trust copy in English and Spanish. Updated the existing homepage smoke expectation.
+- In progress: none.
+- Remaining: none for this request.
+- Blockers: none.
+- Changed workflows: public messaging describes services and checking current availability; Barnegat remains the default search location and existing coverage/recommendation rules still apply.
+- Validation: typecheck passed; translation validation passed for 4,014 keys; both English/Spanish public marketplace smoke tests passed. Seven public routes returned HTTP 200 and passed old-copy and horizontal-overflow checks at 1440×900 and 390×844: /, /es, /barnegat-nj, /barnegat-nj/lawn-mowing, /services/lawn-mowing, /provider, /provider-verification. Homepage desktop/mobile screenshots visually inspected. Scoped whitespace check passed. Full API and browser suites were not run for this copy-only change.
+- Known defects: none observed in scope.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/coverage-copy/desktop.png` and `reports/agent-checkpoints/engineer/latest/coverage-copy/mobile.png`.
+- Recommended next task: review the updated public copy locally.
+
+## Current checkpoint: homepage search alignment and badge cleanup
+
+- Updated: September 28, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`; changes uncommitted.
+- Completed: aligned the Where input with Need and When by moving Use my location into the label row; preserved an explicit accessible input label; removed the launch eyebrow and all three requested hero trust badges and their unused CSS.
+- In progress: none.
+- Remaining: none for these five comments.
+- Blockers: none.
+- Changed workflows: location action appears above the input beside Where; search and location handlers are unchanged.
+- Validation: `npm run typecheck` passed; Playwright browser check passed at 1440×900 and 390×844; input tops align within 0.4px on desktop, requested badges absent, no horizontal overflow; both screenshots visually inspected. Scoped whitespace check passed. Full test suites were not run for this presentation-only change. Initial sandbox browser launch failed; the approved outside-sandbox run passed. Repository-wide whitespace check reports pre-existing investor PDF whitespace.
+- Known defects: none observed in scope.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/home-search/desktop.png`, `reports/agent-checkpoints/engineer/latest/home-search/mobile.png`.
+- Recommended next task: review the updated homepage locally.
+
+## Current checkpoint: customer referral forms and data plumbing
+
+- Updated: September 28, 2026 (America/New_York).
+- Branch and source commit: `main`, `0987164427f50e3879570f83cb2bd6c8d2eb55a1`. Changes are uncommitted.
+- Completed: customer web/mobile referral forms for email and US phone; authenticated ownership and versioned contact permission; atomic referral/ops-lead persistence; normalized-contact deduplication; concurrency-safe rolling daily limit; private customer history; canonical phone matching into booking attribution; localized English/Spanish UI and prepared personal email/SMS invitations; API/migration/setup documentation and regressions.
+- In progress: none for this scope.
+- Remaining: migrate staging before API release; verify native composer handoff on physical devices; separately select and implement reward qualification, budget reservations, fulfillment, provider referrals, and experiment attribution.
+- Blockers: none locally. No deployment performed.
+- Changed workflows: Account → Refer a friend saves consented contact details and creates an ops lead, then opens a prepared invitation in the customer's own email/text app. History follows coarse ops/booking progress. Saving/opening never claims message delivery or reward eligibility. Provider pricing and recommendation order remain unchanged.
+- Validation: Prisma generation, typecheck, lint, 4,026 translation keys, nine targeted referral API tests; full API suite 356 passed and 12 PostgreSQL tests skipped in that invocation; all 12 PostgreSQL tests passed separately; all 42 browser tests passed; all 42 migrations applied to a fresh disposable PostgreSQL database, migration status/schema drift/seed passed; customer Expo export passed for iOS, Android, and web; scoped whitespace check passed.
+- Known defects/limits: no unresolved defect in scope. No live email/SMS delivery, physical-device test, deployment, production web build, or separate API smoke run. Existing manual privacy fulfillment must cover both referral and lead records. Rewards and automated invitations are not implemented.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/referrals-desktop.png` (1440×900 viewport) and `referrals-mobile.png` (390×844 viewport), visually inspected with no horizontal overflow. [Checkpoint and logs](../../reports/agent-checkpoints/engineer/latest/referrals/checkpoint.md).
+- Recommended next task: stage the migration/API/web/customer-mobile release and verify device composer handoff before selecting incentive terms and building reward fulfillment.
+
+Agent-reported completion is checkpoint evidence, not independent release acceptance. Existing investor-artifact edits are preserved.
+
 ## Current checkpoint: scale remediation
 
 - Updated: September 21, 2026 (America/New_York).
@@ -286,3 +401,16 @@ Engineer
 ## Recommended Next Task
 
 Add an ops recovery workflow for paused customer/provider relationships so support can document when a resolved quality issue should become eligible for continuity again without weakening the default trust guardrails.
+
+## Home Search Timing Checkpoint — 2026-09-30 EDT
+
+- Branch and commit: `main` at `0987164`; changes remain in the working tree.
+- Completed work: Hid the When selector, backup windows, and custom date controls on the home page while leaving the shared timing controls available on listings. Home search and popular-service links now carry service and area without a preselected `when` parameter.
+- In-progress work: None for this request.
+- Remaining work: A dedicated appointment-time step later in booking remains a future product change; listings currently offers timing through Edit service, time, or area and uses its existing initial search window.
+- Blockers: None.
+- Changed workflows: Home service and area search → listings recommendation → timing may be changed on listings before continuing.
+- Validation results: `npm run typecheck` passed; targeted `npm run test:web:smoke -- tests/web/smoke.spec.ts -g 'home search defers timing|public marketplace loads'` passed (2 tests); 1440x900 and 390x844 home screenshots reviewed, with no mobile horizontal overflow.
+- Known defects: The listings page still initializes to tomorrow morning when the home URL omits timing. This is existing behavior and should be revisited with a dedicated appointment-time step.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/honest-launch-home-desktop.png`, `reports/agent-checkpoints/engineer/latest/honest-launch-home-mobile.png`.
+- Recommended next task: Design a post-recommendation time-selection step that updates availability and booking intent after the customer has seen their match.

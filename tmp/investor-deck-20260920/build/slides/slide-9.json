@@ -1,0 +1,1016 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/udsvah03",
+    "id": "udsvah03",
+    "slide": 9,
+    "layoutId": "/ppt/slideLayouts/slideLayout1.xml",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F5EF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "fontScheme": {
+      "name": "Office",
+      "majorFont": {
+        "latinTypeface": "Calibri Light",
+        "eastAsianTypeface": "Calibri Light",
+        "complexScriptTypeface": "Calibri Light"
+      },
+      "minorFont": {
+        "latinTypeface": "Calibri",
+        "eastAsianTypeface": "Calibri",
+        "complexScriptTypeface": "Calibri"
+      }
+    },
+    "typefaces": [
+      "Arial",
+      "Calibri",
+      "Calibri Light",
+      "Georgia"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "/ppt/slideLayouts/slideLayout1.xml",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "/ppt/slideMasters/slideMaster1.xml",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ofq5svm5",
+      "id": "7",
+      "name": "$60 mowing is the floor, not the average job",
+      "bbox": [
+        64,
+        50,
+        1152,
+        108
+      ],
+      "geometry": "rect",
+      "text": "$60 mowing is the floor, not the average job",
+      "textPreview": "$60 mowing is the floor, not the average job",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "$60 mowing is the floor, not the average job"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "$60 mowing is the floor, not the average job",
+          "resolvedTextStyle": {
+            "fontSize": 48,
+            "typeface": "Georgia",
+            "color": "#14281D",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "$60 mowing is the floor, not the average job",
+              "fontSize": 48,
+              "typeface": "Georgia",
+              "color": "#14281D"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1cfmhgne",
+      "id": "2",
+      "name": "Service mix, neighborhood, property size and proje",
+      "bbox": [
+        66,
+        164,
+        1145,
+        66
+      ],
+      "geometry": "rect",
+      "text": "Service mix, neighborhood, property size and project work expand provider gross booking value.",
+      "textPreview": "Service mix, neighborhood, property size and project work expand provider gross booking value.",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Service mix, neighborhood, property size and project work expand provider gross booking value."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Service mix, neighborhood, property size and project work expand provider gross booking value.",
+          "resolvedTextStyle": {
+            "fontSize": 23,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Service mix, neighborhood, property size and project work expand provider gross booking value.",
+              "fontSize": 23,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0b65obm9",
+      "id": "3",
+      "name": "YardMatch",
+      "bbox": [
+        64,
+        680,
+        220,
+        24
+      ],
+      "geometry": "rect",
+      "text": "YardMatch",
+      "textPreview": "YardMatch",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "YardMatch"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "YardMatch",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "YardMatch",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/nex4jq5k",
+      "id": "4",
+      "name": "09",
+      "bbox": [
+        1150,
+        680,
+        66,
+        24
+      ],
+      "geometry": "rect",
+      "text": "09",
+      "textPreview": "09",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "09"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "09",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "09",
+              "fontSize": 14,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "table",
+      "scope": "slide",
+      "aid": "tb/29wzel8z",
+      "id": "8",
+      "bbox": [
+        64,
+        243,
+        1152,
+        354
+      ],
+      "text": "Service | 2027 starting price | Scheduled jobs / full-season household\nBasic mowing | $60 | 12.00\nMowing + edging / trimming | $85 | 6.00\nExpanded maintenance bundle | $120 | 2.00\nMulch / seasonal cleanup | $300 | 0.60\nTree / larger property project | $1,000 | 0.03",
+      "textPreview": "Service | 2027 starting price | Scheduled jobs / full-season household | Basic mowing | $60 | 12.00 | Mowing + edging / trimming | $85 | ...",
+      "rows": 6,
+      "cols": 3,
+      "cells": [
+        {
+          "index": 1,
+          "row": 1,
+          "column": 1,
+          "bbox": [
+            64,
+            243,
+            550,
+            59
+          ],
+          "text": "Service",
+          "textPreview": "Service",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Service",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Service",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "row": 1,
+          "column": 2,
+          "bbox": [
+            614,
+            243,
+            240,
+            59
+          ],
+          "text": "2027 starting price",
+          "textPreview": "2027 starting price",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "2027 starting price",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "2027 starting price",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "row": 1,
+          "column": 3,
+          "bbox": [
+            854,
+            243,
+            362,
+            59
+          ],
+          "text": "Scheduled jobs / full-season household",
+          "textPreview": "Scheduled jobs / full-season household",
+          "fillColor": "#205938",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Scheduled jobs / full-season household",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Scheduled jobs / full-season household",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#FFFFFF",
+                  "bold": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "row": 2,
+          "column": 1,
+          "bbox": [
+            64,
+            302,
+            550,
+            59
+          ],
+          "text": "Basic mowing",
+          "textPreview": "Basic mowing",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Basic mowing",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Basic mowing",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "row": 2,
+          "column": 2,
+          "bbox": [
+            614,
+            302,
+            240,
+            59
+          ],
+          "text": "$60",
+          "textPreview": "$60",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$60",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$60",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "row": 2,
+          "column": 3,
+          "bbox": [
+            854,
+            302,
+            362,
+            59
+          ],
+          "text": "12.00",
+          "textPreview": "12.00",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "12.00",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "12.00",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 7,
+          "row": 3,
+          "column": 1,
+          "bbox": [
+            64,
+            361,
+            550,
+            59
+          ],
+          "text": "Mowing + edging / trimming",
+          "textPreview": "Mowing + edging / trimming",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Mowing + edging / trimming",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Mowing + edging / trimming",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 8,
+          "row": 3,
+          "column": 2,
+          "bbox": [
+            614,
+            361,
+            240,
+            59
+          ],
+          "text": "$85",
+          "textPreview": "$85",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$85",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$85",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 9,
+          "row": 3,
+          "column": 3,
+          "bbox": [
+            854,
+            361,
+            362,
+            59
+          ],
+          "text": "6.00",
+          "textPreview": "6.00",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "6.00",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "6.00",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 10,
+          "row": 4,
+          "column": 1,
+          "bbox": [
+            64,
+            420,
+            550,
+            59
+          ],
+          "text": "Expanded maintenance bundle",
+          "textPreview": "Expanded maintenance bundle",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Expanded maintenance bundle",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Expanded maintenance bundle",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 11,
+          "row": 4,
+          "column": 2,
+          "bbox": [
+            614,
+            420,
+            240,
+            59
+          ],
+          "text": "$120",
+          "textPreview": "$120",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$120",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$120",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 12,
+          "row": 4,
+          "column": 3,
+          "bbox": [
+            854,
+            420,
+            362,
+            59
+          ],
+          "text": "2.00",
+          "textPreview": "2.00",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "2.00",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "2.00",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 13,
+          "row": 5,
+          "column": 1,
+          "bbox": [
+            64,
+            479,
+            550,
+            59
+          ],
+          "text": "Mulch / seasonal cleanup",
+          "textPreview": "Mulch / seasonal cleanup",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Mulch / seasonal cleanup",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Mulch / seasonal cleanup",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 14,
+          "row": 5,
+          "column": 2,
+          "bbox": [
+            614,
+            479,
+            240,
+            59
+          ],
+          "text": "$300",
+          "textPreview": "$300",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$300",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$300",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 15,
+          "row": 5,
+          "column": 3,
+          "bbox": [
+            854,
+            479,
+            362,
+            59
+          ],
+          "text": "0.60",
+          "textPreview": "0.60",
+          "fillColor": "#F7F5EF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "0.60",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "0.60",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 16,
+          "row": 6,
+          "column": 1,
+          "bbox": [
+            64,
+            538,
+            550,
+            59
+          ],
+          "text": "Tree / larger property project",
+          "textPreview": "Tree / larger property project",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "Tree / larger property project",
+              "resolvedTextStyle": {
+                "alignment": "left"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "Tree / larger property project",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 17,
+          "row": 6,
+          "column": 2,
+          "bbox": [
+            614,
+            538,
+            240,
+            59
+          ],
+          "text": "$1,000",
+          "textPreview": "$1,000",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "$1,000",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "$1,000",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 18,
+          "row": 6,
+          "column": 3,
+          "bbox": [
+            854,
+            538,
+            362,
+            59
+          ],
+          "text": "0.03",
+          "textPreview": "0.03",
+          "fillColor": "#FFFFFF",
+          "paragraphs": [
+            {
+              "index": 1,
+              "text": "0.03",
+              "resolvedTextStyle": {
+                "alignment": "right"
+              },
+              "runs": [
+                {
+                  "index": 1,
+                  "text": "0.03",
+                  "fontSize": 23,
+                  "typeface": "Arial",
+                  "color": "#14281D"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/9gzml0nq",
+      "id": "6",
+      "name": "The national forecast uses the detailed New Jersey",
+      "bbox": [
+        66,
+        623,
+        1140,
+        43
+      ],
+      "geometry": "rect",
+      "text": "The national forecast uses the detailed New Jersey mix as a planning proxy. 2033 weighted average ticket: $139. Customer funds remain provider gross booking value, not YardMatch revenue.",
+      "textPreview": "The national forecast uses the detailed New Jersey mix as a planning proxy. 2033 weighted average ticket: $139. Customer funds remain pro...",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "wrap": "square",
+        "autoFit": "none",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "The national forecast uses the detailed New Jersey mix as a planning proxy. 2033 weighted average ticket: $139. Customer funds remain provider gross booking"
+          },
+          {
+            "index": 2,
+            "text": "value, not YardMatch revenue."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "The national forecast uses the detailed New Jersey mix as a planning proxy. 2033 weighted average ticket: $139. Customer funds remain provider gross booking value, not YardMatch revenue.",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Arial",
+            "color": "#66756A",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "The national forecast uses the detailed New Jersey mix as a planning proxy. 2033 weighted average ticket: $139. Customer funds remain provider gross booking value, not YardMatch revenue.",
+              "fontSize": 16,
+              "typeface": "Arial",
+              "color": "#66756A"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

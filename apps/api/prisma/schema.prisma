@@ -66,6 +66,7 @@ model CustomerProfile {
   user                  UserAccount                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   properties            CustomerProperty[]
   providerRelationships CustomerProviderRelationship[]
+  referrals             CustomerReferral[]
 
   @@map("customer_profiles")
 }
@@ -89,6 +90,7 @@ model CustomerProperty {
 }
 
 model ProviderBusinessProfile {
+  servicePrices                Json                           @default("[]")
   userId                       String                         @id
   companyName                  String
   bio                          String
@@ -166,6 +168,7 @@ model Booking {
   serviceAddress                  Json
   servicePropertyId               String?
   category                        String
+  services                        Json                        @default("[]")
   requestedAt                     DateTime
   scheduledStartIso               DateTime
   scheduledEndIso                 DateTime
@@ -675,10 +678,30 @@ model LaunchLead {
   lastReviewSubmittedAt   DateTime?
   createdAt               DateTime
   updatedAt               DateTime
+  customerReferral        CustomerReferral?
 
   @@index([status, createdAt])
   @@index([assignedOwner, status])
   @@map("launch_leads")
+}
+
+model CustomerReferral {
+  id                 String          @id
+  referrerCustomerId String
+  leadId             String          @unique
+  friendName         String
+  channel            String
+  contact            String
+  areaLabel          String?
+  consentVersion     String
+  consentedAt        DateTime
+  createdAt          DateTime
+  referrer           CustomerProfile @relation(fields: [referrerCustomerId], references: [userId], onDelete: Cascade)
+  lead               LaunchLead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([referrerCustomerId, channel, contact])
+  @@index([referrerCustomerId, createdAt])
+  @@map("customer_referrals")
 }
 
 model AppNotification {
@@ -787,4 +810,14 @@ model PrivacyRequest {
   audit         Json     @default("[]")
   @@index([status, requestedAt])
   @@index([userId, requestedAt])
+}
+
+model ZipServiceMinimum {
+  postalCode                 String
+  category                   String
+  minimumStartingPriceCents  Int
+  history                    Json @default("[]")
+
+  @@id([postalCode, category])
+  @@map("zip_service_minimums")
 }

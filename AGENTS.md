@@ -103,3 +103,12 @@ Each worker checkpoint must include:
 ## Design Direction
 
 YardMatch should feel calm, local, trustworthy, and operationally polished. Avoid generic SaaS or AI-looking UI. Use existing web/mobile patterns and shared brand tokens before adding new visual systems.
+
+## Production-Facing Content
+
+- Treat every customer, provider, and crew surface on the website and apps as a production product that real people use to complete a task. Do not use the interface to explain implementation work back to Patrick or demonstrate what an agent built.
+- Keep internal strategy, roadmap progress, launch preparation, provider recruitment progress, demand-building efforts, technical details, and design rationale in project docs, status reports, or task updates. They do not belong in user-facing pages, cards, banners, or onboarding copy.
+- Include content only when it helps the intended user understand the service, make a decision, or complete their next action. Remove sections whose only purpose is to narrate the business or development process.
+- For example, do not publish "Starting here — Barnegat, NJ — Our first market. Local provider onboarding and launch demand are being built here now." State location or service availability only when useful to the user's task, with an appropriate action such as checking availability for their address.
+- Be accurate about actual availability and limitations without narrating internal preparations or implying that unavailable services are ready to book.
+- Before completing user-facing work, review the visible copy from the intended user's perspective and remove internal commentary, implementation explanations, and unnecessary launch-status messaging.

@@ -1,4 +1,7 @@
+import { requireOpsAdminAccess } from "../controller-auth";
+import type { ProviderServicePrice, UpdateZipServiceMinimumRequest } from "@yardmatch/contracts";
 import {
+  ProviderAvailabilityRequest,
   UpdateBookingScheduleRequest,
   RespondBookingScheduleRequest,
   AddBookingEvidenceRequest,
@@ -82,12 +85,16 @@ export class MarketplaceController implements ApiController {
 
   public canHandle(context: RequestContext): boolean {
     return (
+      (["GET", "POST"].includes(context.method) && ["/api/providers/pricing", "/api/ops/pricing/minimums"].includes(context.path)) ||
+      (context.method === "GET" && context.path === "/api/pricing/minimums") ||
       (context.method === "GET" && context.path === "/api/customers/properties") ||
       (context.method === "POST" && context.path === "/api/customers/properties") ||
       (context.method === "POST" && context.path === "/api/customers/properties/default") ||
       (context.method === "GET" && context.path === "/api/customers/review-opportunities") ||
       (context.method === "GET" && context.path === "/api/customers/retention-opportunities") ||
       (context.method === "POST" && context.path === "/api/quotes/instant") ||
+      (context.method === "POST" && context.path === "/api/providers/availability") ||
+      (context.method === "GET" && context.path === "/api/bookings/detail") ||
       (context.method === "GET" && context.path === "/api/places/search") ||
       (context.method === "POST" && context.path === "/api/places/reverse-geocode") ||
       (context.method === "POST" && context.path === "/api/providers/search") ||
@@ -221,6 +228,26 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (context.path === "/api/pricing/minimums" && context.method === "GET") {
+      const rows = await this.platform.getPricingMinimums(context.query.get("postalCode") ?? "");
+      sendJson(response, 200, rows.map(({ postalCode, category, minimumStartingPriceCents }) => ({ postalCode, category, minimumStartingPriceCents })));
+      return;
+    }
+    if (context.path === "/api/ops/pricing/minimums") {
+      const identity = await requireOpsAdminAccess(context, this.platform);
+      sendJson(response, 200, context.method === "GET"
+        ? await this.platform.getPricingMinimums(context.query.get("postalCode") ?? "")
+        : await this.platform.setPricingMinimum(identity.userId, context.body as UpdateZipServiceMinimumRequest));
+      return;
+    }
+    if (context.path === "/api/providers/pricing") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, context.method === "GET"
+        ? await this.platform.getProviderPricing(identity.userId, context.query.get("postalCode") ?? "")
+        : await this.platform.saveProviderPricing(identity.userId, (context.body as { prices: ProviderServicePrice[] })?.prices));
+      return;
+    }
+
     if (context.method === "POST" && context.path === "/api/quotes/instant") {
       const identity = await getOptionalAuthenticatedIdentity(context, this.platform);
       sendJson(
@@ -247,6 +274,11 @@ export class MarketplaceController implements ApiController {
 
     if (context.method === "POST" && context.path === "/api/providers/search") {
       sendJson(response, 200, await this.platform.searchProviders(context.body as SearchProvidersRequest));
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/providers/availability") {
+      sendJson(response, 200, await this.platform.getProviderAvailability(context.body as ProviderAvailabilityRequest));
       return;
     }
 
@@ -609,6 +641,13 @@ export class MarketplaceController implements ApiController {
         201,
         await this.platform.createBooking(identity.userId, context.body as CreateBookingRequest)
       );
+      return;
+    }
+
+    if (context.method === "GET" && context.path === "/api/bookings/detail") {
+      const identity = await requireRole(context, this.platform, "customer");
+      const requestId = context.query.get("requestId");
+      sendJson(response, 200, requestId ? await this.platform.getCustomerBookingForRequest(identity.userId, requestId) : await this.platform.getCustomerBooking(identity.userId, context.query.get("bookingId") ?? ""));
       return;
     }
 

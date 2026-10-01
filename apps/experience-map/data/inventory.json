@@ -1,0 +1,1798 @@
+{
+  "generatedAt": "2026-10-01T00:18:42.434Z",
+  "counts": {
+    "webRoutes": 42,
+    "mobileScreens": 15,
+    "states": 13,
+    "edges": 83
+  },
+  "nodes": [
+    {
+      "id": "web:/",
+      "label": "Home",
+      "kind": "web",
+      "role": "public",
+      "url": "/",
+      "source": "apps/web/src/app/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-.webp",
+        "full": "captures/full/web-.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.187Z",
+        "source": "tests/web → honest-launch-home-desktop.png"
+      }
+    },
+    {
+      "id": "web:/about",
+      "label": "About",
+      "kind": "web",
+      "role": "public",
+      "url": "/about",
+      "source": "apps/web/src/app/about/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-about.webp",
+        "full": "captures/full/web-about.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:15.322Z"
+      }
+    },
+    {
+      "id": "web:/account/security",
+      "label": "Security",
+      "kind": "web",
+      "role": "public",
+      "url": "/account/security",
+      "source": "apps/web/src/app/account/security/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-account-security.webp",
+        "full": "captures/full/web-account-security.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:17.580Z"
+      }
+    },
+    {
+      "id": "web:/auth",
+      "label": "Auth",
+      "kind": "web",
+      "role": "public",
+      "url": "/auth",
+      "source": "apps/web/src/app/auth/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-auth.webp",
+        "full": "captures/full/web-auth.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:19.658Z"
+      }
+    },
+    {
+      "id": "web:/auth/complete",
+      "label": "Complete",
+      "kind": "web",
+      "role": "public",
+      "url": "/auth/complete",
+      "source": "apps/web/src/app/auth/complete/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-auth-complete.webp",
+        "full": "captures/full/web-auth-complete.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:21.688Z"
+      }
+    },
+    {
+      "id": "web:/auth/crew",
+      "label": "Crew",
+      "kind": "web",
+      "role": "public",
+      "url": "/auth/crew",
+      "source": "apps/web/src/app/auth/crew/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-auth-crew.webp",
+        "full": "captures/full/web-auth-crew.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:23.809Z"
+      }
+    },
+    {
+      "id": "web:/auth/customer",
+      "label": "Customer",
+      "kind": "web",
+      "role": "public",
+      "url": "/auth/customer",
+      "source": "apps/web/src/app/auth/customer/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-auth-customer.webp",
+        "full": "captures/full/web-auth-customer.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:25.893Z"
+      }
+    },
+    {
+      "id": "web:/auth/provider",
+      "label": "Provider",
+      "kind": "web",
+      "role": "public",
+      "url": "/auth/provider",
+      "source": "apps/web/src/app/auth/provider/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-auth-provider.webp",
+        "full": "captures/full/web-auth-provider.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:28.298Z"
+      }
+    },
+    {
+      "id": "web:/auth/provider/create",
+      "label": "Create",
+      "kind": "web",
+      "role": "public",
+      "url": "/auth/provider/create",
+      "source": "apps/web/src/app/auth/provider/create/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-auth-provider-create.webp",
+        "full": "captures/full/web-auth-provider-create.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:30.420Z"
+      }
+    },
+    {
+      "id": "web:/barnegat-nj",
+      "label": "Barnegat Nj",
+      "kind": "web",
+      "role": "public",
+      "url": "/barnegat-nj",
+      "source": "apps/web/src/app/barnegat-nj/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-barnegat-nj.webp",
+        "full": "captures/full/web-barnegat-nj.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:32.829Z"
+      }
+    },
+    {
+      "id": "web:/barnegat-nj/lawn-mowing",
+      "label": "Lawn Mowing",
+      "kind": "web",
+      "role": "public",
+      "url": "/barnegat-nj/lawn-mowing",
+      "source": "apps/web/src/app/barnegat-nj/lawn-mowing/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-barnegat-nj-lawn-mowing.webp",
+        "full": "captures/full/web-barnegat-nj-lawn-mowing.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:35.177Z"
+      }
+    },
+    {
+      "id": "web:/barnegat-nj/yard-cleanup",
+      "label": "Yard Cleanup",
+      "kind": "web",
+      "role": "public",
+      "url": "/barnegat-nj/yard-cleanup",
+      "source": "apps/web/src/app/barnegat-nj/yard-cleanup/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-barnegat-nj-yard-cleanup.webp",
+        "full": "captures/full/web-barnegat-nj-yard-cleanup.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:37.494Z"
+      }
+    },
+    {
+      "id": "web:/booking-expectations",
+      "label": "Booking Expectations",
+      "kind": "web",
+      "role": "public",
+      "url": "/booking-expectations",
+      "source": "apps/web/src/app/booking-expectations/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-booking-expectations.webp",
+        "full": "captures/full/web-booking-expectations.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:39.661Z"
+      }
+    },
+    {
+      "id": "web:/cancellation-policy",
+      "label": "Cancellation Policy",
+      "kind": "web",
+      "role": "public",
+      "url": "/cancellation-policy",
+      "source": "apps/web/src/app/cancellation-policy/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-cancellation-policy.webp",
+        "full": "captures/full/web-cancellation-policy.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:41.846Z"
+      }
+    },
+    {
+      "id": "web:/crew",
+      "label": "Crew",
+      "kind": "web",
+      "role": "public",
+      "url": "/crew",
+      "source": "apps/web/src/app/crew/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-crew.webp",
+        "full": "captures/full/web-crew.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:44.067Z"
+      }
+    },
+    {
+      "id": "web:/crew/schedule",
+      "label": "Schedule",
+      "kind": "web",
+      "role": "crew",
+      "url": "/crew/schedule",
+      "source": "apps/web/src/app/crew/schedule/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-crew-schedule.webp",
+        "full": "captures/full/web-crew-schedule.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:46.307Z"
+      }
+    },
+    {
+      "id": "web:/crew/schedule/history",
+      "label": "History",
+      "kind": "web",
+      "role": "crew",
+      "url": "/crew/schedule/history",
+      "source": "apps/web/src/app/crew/schedule/history/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-crew-schedule-history.webp",
+        "full": "captures/full/web-crew-schedule-history.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:48.445Z"
+      }
+    },
+    {
+      "id": "web:/customer",
+      "label": "Customer",
+      "kind": "web",
+      "role": "public",
+      "url": "/customer",
+      "source": "apps/web/src/app/customer/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-customer.webp",
+        "full": "captures/full/web-customer.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:51.061Z"
+      }
+    },
+    {
+      "id": "web:/customer/dashboard",
+      "label": "Dashboard",
+      "kind": "web",
+      "role": "customer",
+      "url": "/customer/dashboard",
+      "source": "apps/web/src/app/customer/dashboard/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-customer-dashboard.webp",
+        "full": "captures/full/web-customer-dashboard.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:53.260Z"
+      }
+    },
+    {
+      "id": "web:/customer/history",
+      "label": "History",
+      "kind": "web",
+      "role": "customer",
+      "url": "/customer/history",
+      "source": "apps/web/src/app/customer/history/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-customer-history.webp",
+        "full": "captures/full/web-customer-history.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:55.666Z"
+      }
+    },
+    {
+      "id": "web:/customer/listings",
+      "label": "Listings",
+      "kind": "web",
+      "role": "customer",
+      "url": "/customer/listings",
+      "source": "apps/web/src/app/customer/listings/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-customer-listings.webp",
+        "full": "captures/full/web-customer-listings.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:57.816Z"
+      }
+    },
+    {
+      "id": "web:/customer/referrals",
+      "label": "Referrals",
+      "kind": "web",
+      "role": "customer",
+      "url": "/customer/referrals",
+      "source": "apps/web/src/app/customer/referrals/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-customer-referrals.webp",
+        "full": "captures/full/web-customer-referrals.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:45:59.966Z"
+      }
+    },
+    {
+      "id": "web:/help",
+      "label": "Help",
+      "kind": "web",
+      "role": "public",
+      "url": "/help",
+      "source": "apps/web/src/app/help/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-help.webp",
+        "full": "captures/full/web-help.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:02.314Z"
+      }
+    },
+    {
+      "id": "web:/login",
+      "label": "Login",
+      "kind": "web",
+      "role": "public",
+      "url": "/login",
+      "source": "apps/web/src/app/login/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-login.webp",
+        "full": "captures/full/web-login.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:04.331Z"
+      }
+    },
+    {
+      "id": "web:/login/crew",
+      "label": "Crew",
+      "kind": "web",
+      "role": "public",
+      "url": "/login/crew",
+      "source": "apps/web/src/app/login/crew/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-login-crew.webp",
+        "full": "captures/full/web-login-crew.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:06.494Z"
+      }
+    },
+    {
+      "id": "web:/login/customer",
+      "label": "Customer",
+      "kind": "web",
+      "role": "public",
+      "url": "/login/customer",
+      "source": "apps/web/src/app/login/customer/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-login-customer.webp",
+        "full": "captures/full/web-login-customer.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:08.554Z"
+      }
+    },
+    {
+      "id": "web:/login/ops",
+      "label": "Ops",
+      "kind": "web",
+      "role": "public",
+      "url": "/login/ops",
+      "source": "apps/web/src/app/login/ops/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-login-ops.webp",
+        "full": "captures/full/web-login-ops.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:10.680Z"
+      }
+    },
+    {
+      "id": "web:/login/provider",
+      "label": "Provider",
+      "kind": "web",
+      "role": "public",
+      "url": "/login/provider",
+      "source": "apps/web/src/app/login/provider/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-login-provider.webp",
+        "full": "captures/full/web-login-provider.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:12.763Z"
+      }
+    },
+    {
+      "id": "web:/ops",
+      "label": "Ops",
+      "kind": "web",
+      "role": "ops",
+      "url": "/ops",
+      "source": "apps/web/src/app/ops/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-ops.webp",
+        "full": "captures/full/web-ops.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:15.166Z"
+      }
+    },
+    {
+      "id": "web:/privacy-policy",
+      "label": "Privacy Policy",
+      "kind": "web",
+      "role": "public",
+      "url": "/privacy-policy",
+      "source": "apps/web/src/app/privacy-policy/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-privacy-policy.webp",
+        "full": "captures/full/web-privacy-policy.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:17.327Z"
+      }
+    },
+    {
+      "id": "web:/provider",
+      "label": "Provider",
+      "kind": "web",
+      "role": "public",
+      "url": "/provider",
+      "source": "apps/web/src/app/provider/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-provider.webp",
+        "full": "captures/full/web-provider.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:19.710Z"
+      }
+    },
+    {
+      "id": "web:/provider-standards",
+      "label": "Provider Standards",
+      "kind": "web",
+      "role": "public",
+      "url": "/provider-standards",
+      "source": "apps/web/src/app/provider-standards/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-provider-standards.webp",
+        "full": "captures/full/web-provider-standards.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:21.876Z"
+      }
+    },
+    {
+      "id": "web:/provider-verification",
+      "label": "Provider Verification",
+      "kind": "web",
+      "role": "public",
+      "url": "/provider-verification",
+      "source": "apps/web/src/app/provider-verification/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-provider-verification.webp",
+        "full": "captures/full/web-provider-verification.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:24.033Z"
+      }
+    },
+    {
+      "id": "web:/provider/clients",
+      "label": "Clients",
+      "kind": "web",
+      "role": "provider",
+      "url": "/provider/clients",
+      "source": "apps/web/src/app/provider/clients/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-provider-clients.webp",
+        "full": "captures/full/web-provider-clients.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:26.200Z"
+      }
+    },
+    {
+      "id": "web:/provider/management",
+      "label": "Management",
+      "kind": "web",
+      "role": "provider",
+      "url": "/provider/management",
+      "source": "apps/web/src/app/provider/management/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-provider-management.webp",
+        "full": "captures/full/web-provider-management.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:28.381Z"
+      }
+    },
+    {
+      "id": "web:/provider/partnerships",
+      "label": "Partnerships",
+      "kind": "web",
+      "role": "provider",
+      "url": "/provider/partnerships",
+      "source": "apps/web/src/app/provider/partnerships/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-provider-partnerships.webp",
+        "full": "captures/full/web-provider-partnerships.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:30.501Z"
+      }
+    },
+    {
+      "id": "web:/provider/payments",
+      "label": "Payments",
+      "kind": "web",
+      "role": "provider",
+      "url": "/provider/payments",
+      "source": "apps/web/src/app/provider/payments/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-provider-payments.webp",
+        "full": "captures/full/web-provider-payments.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:32.754Z"
+      }
+    },
+    {
+      "id": "web:/refund-policy",
+      "label": "Refund Policy",
+      "kind": "web",
+      "role": "public",
+      "url": "/refund-policy",
+      "source": "apps/web/src/app/refund-policy/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-refund-policy.webp",
+        "full": "captures/full/web-refund-policy.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:34.894Z"
+      }
+    },
+    {
+      "id": "web:/services/lawn-mowing",
+      "label": "Lawn Mowing",
+      "kind": "web",
+      "role": "public",
+      "url": "/services/lawn-mowing",
+      "source": "apps/web/src/app/services/lawn-mowing/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-services-lawn-mowing.webp",
+        "full": "captures/full/web-services-lawn-mowing.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:37.263Z"
+      }
+    },
+    {
+      "id": "web:/services/yard-cleanup",
+      "label": "Yard Cleanup",
+      "kind": "web",
+      "role": "public",
+      "url": "/services/yard-cleanup",
+      "source": "apps/web/src/app/services/yard-cleanup/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-services-yard-cleanup.webp",
+        "full": "captures/full/web-services-yard-cleanup.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:39.628Z"
+      }
+    },
+    {
+      "id": "web:/support",
+      "label": "Support",
+      "kind": "web",
+      "role": "public",
+      "url": "/support",
+      "source": "apps/web/src/app/support/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-support.webp",
+        "full": "captures/full/web-support.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:41.810Z"
+      }
+    },
+    {
+      "id": "web:/terms-of-service",
+      "label": "Terms Of Service",
+      "kind": "web",
+      "role": "public",
+      "url": "/terms-of-service",
+      "source": "apps/web/src/app/terms-of-service/page.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/web-terms-of-service.webp",
+        "full": "captures/full/web-terms-of-service.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:44.050Z"
+      }
+    },
+    {
+      "id": "mobile:customer:auth",
+      "label": "Customer · Auth",
+      "kind": "mobile",
+      "role": "customer",
+      "app": "customer",
+      "screen": "auth",
+      "source": "apps/customer-mobile/src/auth/CustomerAuthScreen.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-customer-auth.webp",
+        "full": "captures/full/mobile-customer-auth.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:29:47.622Z"
+      }
+    },
+    {
+      "id": "mobile:customer:dashboard",
+      "label": "Customer · Dashboard",
+      "kind": "mobile",
+      "role": "customer",
+      "app": "customer",
+      "screen": "dashboard",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-customer-dashboard.webp",
+        "full": "captures/full/mobile-customer-dashboard.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:29:47.844Z"
+      }
+    },
+    {
+      "id": "mobile:customer:book",
+      "label": "Customer · Book",
+      "kind": "mobile",
+      "role": "customer",
+      "app": "customer",
+      "screen": "book",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-customer-book.webp",
+        "full": "captures/full/mobile-customer-book.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:29:47.696Z"
+      }
+    },
+    {
+      "id": "mobile:customer:bookings",
+      "label": "Customer · Bookings",
+      "kind": "mobile",
+      "role": "customer",
+      "app": "customer",
+      "screen": "bookings",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-customer-bookings.webp",
+        "full": "captures/full/mobile-customer-bookings.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:29:47.771Z"
+      }
+    },
+    {
+      "id": "mobile:customer:account",
+      "label": "Customer · Account",
+      "kind": "mobile",
+      "role": "customer",
+      "app": "customer",
+      "screen": "account",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-customer-account.webp",
+        "full": "captures/full/mobile-customer-account.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:29:47.550Z"
+      }
+    },
+    {
+      "id": "mobile:provider:auth",
+      "label": "Provider · Auth",
+      "kind": "mobile",
+      "role": "provider",
+      "app": "provider",
+      "screen": "auth",
+      "source": "apps/provider-mobile/src/auth/ProviderAuthScreen.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-provider-auth.webp",
+        "full": "captures/full/mobile-provider-auth.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:25:36.311Z"
+      }
+    },
+    {
+      "id": "mobile:provider:dashboard",
+      "label": "Provider · Dashboard",
+      "kind": "mobile",
+      "role": "provider",
+      "app": "provider",
+      "screen": "dashboard",
+      "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
+      "capture": null
+    },
+    {
+      "id": "mobile:provider:schedule",
+      "label": "Provider · Schedule",
+      "kind": "mobile",
+      "role": "provider",
+      "app": "provider",
+      "screen": "schedule",
+      "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
+      "capture": null
+    },
+    {
+      "id": "mobile:provider:crew",
+      "label": "Provider · Crew",
+      "kind": "mobile",
+      "role": "provider",
+      "app": "provider",
+      "screen": "crew",
+      "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
+      "capture": null
+    },
+    {
+      "id": "mobile:provider:account",
+      "label": "Provider · Account",
+      "kind": "mobile",
+      "role": "provider",
+      "app": "provider",
+      "screen": "account",
+      "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
+      "capture": null
+    },
+    {
+      "id": "mobile:crew:auth",
+      "label": "Crew · Auth",
+      "kind": "mobile",
+      "role": "crew",
+      "app": "crew",
+      "screen": "auth",
+      "source": "apps/crew-mobile/src/auth/CrewAuthScreen.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-crew-auth.webp",
+        "full": "captures/full/mobile-crew-auth.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:26:28.121Z"
+      }
+    },
+    {
+      "id": "mobile:crew:today",
+      "label": "Crew · Today",
+      "kind": "mobile",
+      "role": "crew",
+      "app": "crew",
+      "screen": "today",
+      "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-crew-today.webp",
+        "full": "captures/full/mobile-crew-today.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:26:28.564Z"
+      }
+    },
+    {
+      "id": "mobile:crew:schedule",
+      "label": "Crew · Schedule",
+      "kind": "mobile",
+      "role": "crew",
+      "app": "crew",
+      "screen": "schedule",
+      "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
+      "capture": {
+        "thumbnail": "captures/thumbnails/mobile-crew-schedule.webp",
+        "full": "captures/full/mobile-crew-schedule.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T03:26:28.443Z"
+      }
+    },
+    {
+      "id": "mobile:crew:availability",
+      "label": "Crew · Availability",
+      "kind": "mobile",
+      "role": "crew",
+      "app": "crew",
+      "screen": "availability",
+      "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
+      "capture": null
+    },
+    {
+      "id": "mobile:crew:account",
+      "label": "Crew · Account",
+      "kind": "mobile",
+      "role": "crew",
+      "app": "crew",
+      "screen": "account",
+      "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
+      "capture": null
+    },
+    {
+      "id": "customer:top-matches",
+      "label": "Top local matches",
+      "role": "customer",
+      "url": "/customer/listings",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/customer-top-matches.webp",
+        "full": "captures/full/customer-top-matches.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.216Z",
+        "source": "tests/web → customer-top-matches-desktop.png"
+      }
+    },
+    {
+      "id": "customer:directory",
+      "label": "Full local directory",
+      "role": "customer",
+      "url": "/customer/listings?view=directory",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/customer-directory.webp",
+        "full": "captures/full/customer-directory.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.245Z",
+        "source": "tests/web → customer-directory-desktop.png"
+      }
+    },
+    {
+      "id": "customer:quote",
+      "label": "Quote and recommendation",
+      "role": "customer",
+      "url": "/customer/dashboard?flow=request",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/customer-quote.webp",
+        "full": "captures/full/customer-quote.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.312Z",
+        "source": "tests/web → customer-quote-desktop.png"
+      }
+    },
+    {
+      "id": "customer:request-pending",
+      "label": "Request pending",
+      "role": "customer",
+      "url": "/customer/dashboard",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/customer-request-pending.webp",
+        "full": "captures/full/customer-request-pending.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:46.249Z"
+      }
+    },
+    {
+      "id": "customer:confirmed",
+      "label": "Confirmed booking",
+      "role": "customer",
+      "url": "/customer/dashboard",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/customer-confirmed.webp",
+        "full": "captures/full/customer-confirmed.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:50.698Z"
+      }
+    },
+    {
+      "id": "customer:history",
+      "label": "Completed visit",
+      "role": "customer",
+      "url": "/customer/history",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/customer-history.webp",
+        "full": "captures/full/customer-history.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.339Z",
+        "source": "tests/web → customer-history-mobile.png"
+      }
+    },
+    {
+      "id": "customer:dispute",
+      "label": "Service issue",
+      "role": "customer",
+      "url": "/help?issueType=service-quality",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/customer-dispute.webp",
+        "full": "captures/full/customer-dispute.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.372Z",
+        "source": "tests/web → complaint-form-desktop.png"
+      }
+    },
+    {
+      "id": "provider:review",
+      "label": "New request to review",
+      "role": "provider",
+      "url": "/provider/management",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/provider-review.webp",
+        "full": "captures/full/provider-review.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:48.473Z"
+      }
+    },
+    {
+      "id": "provider:confirmed",
+      "label": "Confirmed job",
+      "role": "provider",
+      "url": "/provider/management",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/provider-confirmed.webp",
+        "full": "captures/full/provider-confirmed.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:52.927Z"
+      }
+    },
+    {
+      "id": "provider:on-route",
+      "label": "Crew on route",
+      "role": "provider",
+      "url": "/provider/management",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/provider-on-route.webp",
+        "full": "captures/full/provider-on-route.png",
+        "status": "captured",
+        "capturedAt": "2026-09-30T02:46:55.172Z"
+      }
+    },
+    {
+      "id": "provider:complete",
+      "label": "Job completed",
+      "role": "provider",
+      "url": "/provider/management",
+      "kind": "state",
+      "capture": null
+    },
+    {
+      "id": "crew:assignment",
+      "label": "Accepted assignment",
+      "role": "crew",
+      "url": "/crew/schedule",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/crew-assignment.webp",
+        "full": "captures/full/crew-assignment.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.401Z",
+        "source": "tests/web → crew-assignment-accepted-desktop.png"
+      }
+    },
+    {
+      "id": "ops:case",
+      "label": "Complaint review",
+      "role": "ops",
+      "url": "/ops?view=support#ops-support",
+      "kind": "state",
+      "capture": {
+        "thumbnail": "captures/thumbnails/ops-case.webp",
+        "full": "captures/full/ops-case.png",
+        "status": "test-artifact",
+        "capturedAt": "2026-10-01T00:18:42.417Z",
+        "source": "tests/web → complaint-review-desktop.png"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "web:/",
+      "to": "web:/customer/listings",
+      "action": "Find my match",
+      "role": "public",
+      "state": "service and area selected",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-1"
+    },
+    {
+      "from": "web:/",
+      "to": "web:/customer",
+      "action": "Book service",
+      "role": "public",
+      "state": "",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-2"
+    },
+    {
+      "from": "web:/",
+      "to": "web:/provider",
+      "action": "For providers",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/NavBar.tsx",
+      "id": "edge-3"
+    },
+    {
+      "from": "web:/",
+      "to": "web:/crew",
+      "action": "For crews",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/NavBar.tsx",
+      "id": "edge-4"
+    },
+    {
+      "from": "web:/",
+      "to": "web:/auth",
+      "action": "Sign up",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/NavBar.tsx",
+      "id": "edge-5"
+    },
+    {
+      "from": "web:/",
+      "to": "web:/help",
+      "action": "Help center",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/NavBar.tsx",
+      "id": "edge-6"
+    },
+    {
+      "from": "web:/customer",
+      "to": "web:/customer/listings",
+      "action": "Search service and area",
+      "role": "public",
+      "state": "",
+      "evidence": "test-verified",
+      "source": "tests/web/smoke.spec.ts",
+      "id": "edge-7"
+    },
+    {
+      "from": "web:/customer/listings",
+      "to": "customer:top-matches",
+      "action": "Review top matches",
+      "role": "public",
+      "state": "search returned providers",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-8"
+    },
+    {
+      "from": "customer:top-matches",
+      "to": "customer:directory",
+      "action": "Browse all matching businesses",
+      "role": "public",
+      "state": "directory requested",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-9"
+    },
+    {
+      "from": "customer:directory",
+      "to": "customer:top-matches",
+      "action": "Back to top matches",
+      "role": "public",
+      "state": "directory open",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-10"
+    },
+    {
+      "from": "customer:top-matches",
+      "to": "web:/auth/customer",
+      "action": "See price and request",
+      "role": "public",
+      "state": "selected provider",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-11"
+    },
+    {
+      "from": "customer:directory",
+      "to": "web:/auth/customer",
+      "action": "Request directory business",
+      "role": "public",
+      "state": "selected provider",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/PublicCustomerListingsExperience.tsx",
+      "id": "edge-12"
+    },
+    {
+      "from": "web:/customer/listings",
+      "to": "web:/auth/customer",
+      "action": "See price and request",
+      "role": "public",
+      "state": "selected provider",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-13"
+    },
+    {
+      "from": "web:/auth/customer",
+      "to": "web:/customer/dashboard",
+      "action": "Create customer account",
+      "role": "customer",
+      "state": "signup complete",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-14"
+    },
+    {
+      "from": "web:/login/customer",
+      "to": "web:/customer/dashboard",
+      "action": "Log in",
+      "role": "customer",
+      "state": "existing account",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-15"
+    },
+    {
+      "from": "web:/customer/dashboard",
+      "to": "customer:quote",
+      "action": "See quote and recommendation",
+      "role": "customer",
+      "state": "request flow",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-16"
+    },
+    {
+      "from": "customer:quote",
+      "to": "customer:request-pending",
+      "action": "Request recommended provider",
+      "role": "customer",
+      "state": "quote accepted",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-booking-golden-path.spec.ts",
+      "id": "edge-17"
+    },
+    {
+      "from": "customer:request-pending",
+      "to": "provider:review",
+      "action": "Provider receives request",
+      "role": "provider",
+      "state": "requested",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "id": "edge-18"
+    },
+    {
+      "from": "provider:review",
+      "to": "provider:confirmed",
+      "action": "Confirm booking",
+      "role": "provider",
+      "state": "requested",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "id": "edge-19"
+    },
+    {
+      "from": "provider:confirmed",
+      "to": "customer:confirmed",
+      "action": "Customer sees confirmation",
+      "role": "customer",
+      "state": "confirmed",
+      "evidence": "test-verified",
+      "source": "tests/web/booking-schedule.spec.ts",
+      "id": "edge-20"
+    },
+    {
+      "from": "provider:confirmed",
+      "to": "provider:on-route",
+      "action": "Mark on route",
+      "role": "provider",
+      "state": "confirmed",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "id": "edge-21"
+    },
+    {
+      "from": "provider:on-route",
+      "to": "provider:complete",
+      "action": "Complete job",
+      "role": "provider",
+      "state": "on route",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "id": "edge-22"
+    },
+    {
+      "from": "provider:complete",
+      "to": "customer:history",
+      "action": "View completed visit",
+      "role": "customer",
+      "state": "completed",
+      "evidence": "test-verified",
+      "source": "tests/web/crew-assignment-flow.spec.ts",
+      "id": "edge-23"
+    },
+    {
+      "from": "web:/customer/dashboard",
+      "to": "web:/customer/history",
+      "action": "Past visits",
+      "role": "customer",
+      "state": "signed in",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/NavBar.tsx",
+      "id": "edge-24"
+    },
+    {
+      "from": "web:/customer/dashboard",
+      "to": "web:/customer/referrals",
+      "action": "Referrals",
+      "role": "customer",
+      "state": "signed in",
+      "evidence": "test-verified",
+      "source": "tests/web/customer-referrals.spec.ts",
+      "id": "edge-25"
+    },
+    {
+      "from": "web:/customer/dashboard",
+      "to": "web:/account/security",
+      "action": "Account security",
+      "role": "customer",
+      "state": "signed in",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/CustomerAppHeader.tsx",
+      "id": "edge-26"
+    },
+    {
+      "from": "web:/customer/dashboard",
+      "to": "web:/help",
+      "action": "Get booking help",
+      "role": "customer",
+      "state": "booking exists",
+      "evidence": "test-verified",
+      "source": "tests/web/service-complaints.spec.ts",
+      "id": "edge-27"
+    },
+    {
+      "from": "web:/help",
+      "to": "customer:dispute",
+      "action": "Report service issue",
+      "role": "customer",
+      "state": "booking exists",
+      "evidence": "test-verified",
+      "source": "tests/web/service-complaints.spec.ts",
+      "id": "edge-28"
+    },
+    {
+      "from": "customer:dispute",
+      "to": "ops:case",
+      "action": "Request human review",
+      "role": "ops",
+      "state": "complaint submitted",
+      "evidence": "test-verified",
+      "source": "tests/web/service-complaints.spec.ts",
+      "id": "edge-29"
+    },
+    {
+      "from": "web:/login/provider",
+      "to": "web:/provider/management",
+      "action": "Log in",
+      "role": "provider",
+      "state": "approved account",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "id": "edge-30"
+    },
+    {
+      "from": "web:/auth/provider/create",
+      "to": "web:/provider/management",
+      "action": "Create business account",
+      "role": "provider",
+      "state": "verification pending",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/AccountSignupForm.tsx",
+      "id": "edge-31"
+    },
+    {
+      "from": "web:/provider/management",
+      "to": "provider:review",
+      "action": "Open new request",
+      "role": "provider",
+      "state": "requested",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "id": "edge-32"
+    },
+    {
+      "from": "web:/provider/management",
+      "to": "web:/provider/payments",
+      "action": "Open payments",
+      "role": "provider",
+      "state": "signed in",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-job-lifecycle.spec.ts",
+      "id": "edge-33"
+    },
+    {
+      "from": "web:/provider/management",
+      "to": "web:/provider/clients",
+      "action": "Open clients",
+      "role": "provider",
+      "state": "signed in",
+      "evidence": "test-verified",
+      "source": "tests/web/provider-clients.spec.ts",
+      "id": "edge-34"
+    },
+    {
+      "from": "web:/provider/management",
+      "to": "web:/provider/partnerships",
+      "action": "Business partnerships",
+      "role": "provider",
+      "state": "signed in",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/ProviderManagementBoard.tsx",
+      "id": "edge-35"
+    },
+    {
+      "from": "web:/login/crew",
+      "to": "web:/crew",
+      "action": "Log in",
+      "role": "crew",
+      "state": "accepted crew",
+      "evidence": "test-verified",
+      "source": "tests/web/crew-assignment-flow.spec.ts",
+      "id": "edge-36"
+    },
+    {
+      "from": "web:/crew",
+      "to": "web:/crew/schedule",
+      "action": "Open schedule",
+      "role": "crew",
+      "state": "signed in",
+      "evidence": "test-verified",
+      "source": "tests/web/crew-assignment-flow.spec.ts",
+      "id": "edge-37"
+    },
+    {
+      "from": "web:/crew/schedule",
+      "to": "crew:assignment",
+      "action": "Open assigned job",
+      "role": "crew",
+      "state": "accepted",
+      "evidence": "test-verified",
+      "source": "tests/web/crew-assignment-flow.spec.ts",
+      "id": "edge-38"
+    },
+    {
+      "from": "web:/crew/schedule",
+      "to": "web:/crew/schedule/history",
+      "action": "View past assignments",
+      "role": "crew",
+      "state": "signed in",
+      "evidence": "test-verified",
+      "source": "tests/web/crew-assignment-flow.spec.ts",
+      "id": "edge-39"
+    },
+    {
+      "from": "web:/login/ops",
+      "to": "web:/ops",
+      "action": "Log in",
+      "role": "ops",
+      "state": "ops account",
+      "evidence": "test-verified",
+      "source": "tests/web/service-complaints.spec.ts",
+      "id": "edge-40"
+    },
+    {
+      "from": "web:/ops",
+      "to": "web:/login/ops",
+      "action": "Ops login required",
+      "role": "ops",
+      "state": "signed out",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/OpsDashboardClient.tsx",
+      "id": "edge-41"
+    },
+    {
+      "from": "web:/ops",
+      "to": "ops:case",
+      "action": "Open support case",
+      "role": "ops",
+      "state": "complaint submitted",
+      "evidence": "test-verified",
+      "source": "tests/web/service-complaints.spec.ts",
+      "id": "edge-42"
+    },
+    {
+      "from": "web:/auth",
+      "to": "web:/auth/customer",
+      "action": "Customer sign up",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/page.tsx",
+      "id": "edge-43"
+    },
+    {
+      "from": "web:/auth",
+      "to": "web:/auth/provider/create",
+      "action": "Provider sign up",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/page.tsx",
+      "id": "edge-44"
+    },
+    {
+      "from": "web:/auth/provider",
+      "to": "web:/provider",
+      "action": "Legacy provider URL redirects",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/provider/page.tsx",
+      "id": "edge-45"
+    },
+    {
+      "from": "web:/auth",
+      "to": "web:/auth/crew",
+      "action": "Crew sign up",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/page.tsx",
+      "id": "edge-46"
+    },
+    {
+      "from": "web:/login",
+      "to": "web:/login/customer",
+      "action": "Customer login",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/login/page.tsx",
+      "id": "edge-47"
+    },
+    {
+      "from": "web:/login",
+      "to": "web:/login/provider",
+      "action": "Provider login",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/login/page.tsx",
+      "id": "edge-48"
+    },
+    {
+      "from": "web:/login",
+      "to": "web:/login/crew",
+      "action": "Crew login",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/login/page.tsx",
+      "id": "edge-49"
+    },
+    {
+      "from": "web:/auth/customer",
+      "to": "web:/auth/complete",
+      "action": "Continue with social sign up",
+      "role": "customer",
+      "state": "social authorization returns",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/AccountSignupForm.tsx",
+      "id": "edge-50"
+    },
+    {
+      "from": "web:/auth/provider/create",
+      "to": "web:/auth/complete",
+      "action": "Continue with social sign up",
+      "role": "provider",
+      "state": "social authorization returns",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/AccountSignupForm.tsx",
+      "id": "edge-51"
+    },
+    {
+      "from": "web:/auth/crew",
+      "to": "web:/auth/complete",
+      "action": "Continue with social sign up",
+      "role": "crew",
+      "state": "social authorization returns",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/AccountSignupForm.tsx",
+      "id": "edge-52"
+    },
+    {
+      "from": "web:/login/customer",
+      "to": "web:/auth/complete",
+      "action": "Continue with social login",
+      "role": "customer",
+      "state": "social authorization returns",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/RoleLoginCard.tsx",
+      "id": "edge-53"
+    },
+    {
+      "from": "web:/login/provider",
+      "to": "web:/auth/complete",
+      "action": "Continue with social login",
+      "role": "provider",
+      "state": "social authorization returns",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/RoleLoginCard.tsx",
+      "id": "edge-54"
+    },
+    {
+      "from": "web:/login/crew",
+      "to": "web:/auth/complete",
+      "action": "Continue with social login",
+      "role": "crew",
+      "state": "social authorization returns",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/RoleLoginCard.tsx",
+      "id": "edge-55"
+    },
+    {
+      "from": "web:/login/ops",
+      "to": "web:/auth/complete",
+      "action": "Continue with social login",
+      "role": "ops",
+      "state": "social authorization returns",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/components/RoleLoginCard.tsx",
+      "id": "edge-56"
+    },
+    {
+      "from": "web:/auth/complete",
+      "to": "web:/customer/dashboard",
+      "action": "Finish customer sign in",
+      "role": "customer",
+      "state": "social authorization complete",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/complete/page.tsx",
+      "id": "edge-57"
+    },
+    {
+      "from": "web:/auth/complete",
+      "to": "web:/provider/management",
+      "action": "Finish provider sign in",
+      "role": "provider",
+      "state": "social authorization complete",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/complete/page.tsx",
+      "id": "edge-58"
+    },
+    {
+      "from": "web:/auth/complete",
+      "to": "web:/crew",
+      "action": "Finish crew sign in",
+      "role": "crew",
+      "state": "social authorization complete",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/complete/page.tsx",
+      "id": "edge-59"
+    },
+    {
+      "from": "web:/auth/complete",
+      "to": "web:/ops",
+      "action": "Finish ops sign in",
+      "role": "ops",
+      "state": "social authorization complete",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/auth/complete/page.tsx",
+      "id": "edge-60"
+    },
+    {
+      "from": "mobile:customer:auth",
+      "to": "mobile:customer:dashboard",
+      "action": "Sign in",
+      "role": "customer",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/customer-mobile/src/App.tsx",
+      "id": "edge-61"
+    },
+    {
+      "from": "mobile:customer:dashboard",
+      "to": "mobile:customer:book",
+      "action": "Tap book tab",
+      "role": "customer",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "id": "edge-62"
+    },
+    {
+      "from": "mobile:customer:dashboard",
+      "to": "mobile:customer:bookings",
+      "action": "Tap bookings tab",
+      "role": "customer",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "id": "edge-63"
+    },
+    {
+      "from": "mobile:customer:dashboard",
+      "to": "mobile:customer:account",
+      "action": "Tap account tab",
+      "role": "customer",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "id": "edge-64"
+    },
+    {
+      "from": "mobile:provider:auth",
+      "to": "mobile:provider:dashboard",
+      "action": "Sign in",
+      "role": "provider",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/provider-mobile/src/App.tsx",
+      "id": "edge-65"
+    },
+    {
+      "from": "mobile:provider:dashboard",
+      "to": "mobile:provider:schedule",
+      "action": "Tap schedule tab",
+      "role": "provider",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
+      "id": "edge-66"
+    },
+    {
+      "from": "mobile:provider:dashboard",
+      "to": "mobile:provider:crew",
+      "action": "Tap crew tab",
+      "role": "provider",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
+      "id": "edge-67"
+    },
+    {
+      "from": "mobile:provider:dashboard",
+      "to": "mobile:provider:account",
+      "action": "Tap account tab",
+      "role": "provider",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/provider-mobile/src/navigation/ProviderAppNavigator.tsx",
+      "id": "edge-68"
+    },
+    {
+      "from": "mobile:crew:auth",
+      "to": "mobile:crew:today",
+      "action": "Sign in",
+      "role": "crew",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/crew-mobile/src/App.tsx",
+      "id": "edge-69"
+    },
+    {
+      "from": "mobile:crew:today",
+      "to": "mobile:crew:schedule",
+      "action": "Tap schedule tab",
+      "role": "crew",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
+      "id": "edge-70"
+    },
+    {
+      "from": "mobile:crew:today",
+      "to": "mobile:crew:availability",
+      "action": "Tap availability tab",
+      "role": "crew",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
+      "id": "edge-71"
+    },
+    {
+      "from": "mobile:crew:today",
+      "to": "mobile:crew:account",
+      "action": "Tap account tab",
+      "role": "crew",
+      "state": "authenticated",
+      "evidence": "code-inferred",
+      "source": "apps/crew-mobile/src/navigation/CrewAppNavigator.tsx",
+      "id": "edge-72"
+    },
+    {
+      "from": "mobile:customer:book",
+      "to": "mobile:customer:bookings",
+      "action": "Open bookings",
+      "role": "customer",
+      "state": "request made",
+      "evidence": "code-inferred",
+      "source": "apps/customer-mobile/src/navigation/CustomerAppNavigator.tsx",
+      "id": "edge-73"
+    },
+    {
+      "from": "web:/about",
+      "to": "web:/customer",
+      "action": "Open Customer",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/about/page.tsx",
+      "id": "edge-74"
+    },
+    {
+      "from": "web:/about",
+      "to": "web:/provider",
+      "action": "Open Provider",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/about/page.tsx",
+      "id": "edge-75"
+    },
+    {
+      "from": "web:/about",
+      "to": "web:/auth/crew",
+      "action": "Open Crew",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/about/page.tsx",
+      "id": "edge-76"
+    },
+    {
+      "from": "web:/about",
+      "to": "web:/crew",
+      "action": "Open Crew",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/about/page.tsx",
+      "id": "edge-77"
+    },
+    {
+      "from": "web:/barnegat-nj",
+      "to": "web:/customer",
+      "action": "Open Customer",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/barnegat-nj/page.tsx",
+      "id": "edge-78"
+    },
+    {
+      "from": "web:/barnegat-nj",
+      "to": "web:/about",
+      "action": "Open About",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/barnegat-nj/page.tsx",
+      "id": "edge-79"
+    },
+    {
+      "from": "web:/barnegat-nj",
+      "to": "web:/provider-verification",
+      "action": "Open Provider Verification",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/barnegat-nj/page.tsx",
+      "id": "edge-80"
+    },
+    {
+      "from": "web:/barnegat-nj",
+      "to": "web:/help",
+      "action": "Open Help",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/barnegat-nj/page.tsx",
+      "id": "edge-81"
+    },
+    {
+      "from": "web:/provider",
+      "to": "web:/auth/provider/create",
+      "action": "Open Create",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/provider/page.tsx",
+      "id": "edge-82"
+    },
+    {
+      "from": "web:/provider",
+      "to": "web:/login/provider",
+      "action": "Open Provider",
+      "role": "public",
+      "state": "",
+      "evidence": "code-inferred",
+      "source": "apps/web/src/app/provider/page.tsx",
+      "id": "edge-83"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import {
   CreateInboundEmailLaunchLeadRequest,
   CreateInboundGoogleBusinessProfileLeadRequest,
   CreateInboundReferralLaunchLeadRequest,
+  CreateCustomerReferralRequest,
   CreateInboundLaunchLeadRequest,
   CreateLaunchLeadRequest,
   CreateOpsBookingInterventionRequest,
@@ -27,6 +28,7 @@ export class SupportController implements ApiController {
 
   public canHandle(context: RequestContext): boolean {
     return (
+      (["GET", "POST"].includes(context.method) && context.path === "/api/customer/referrals") ||
       (context.method === "POST" && context.path === "/api/launch/leads") ||
       (context.method === "POST" && context.path === "/api/launch/inbound") ||
       (context.method === "POST" && context.path === "/api/launch/inbound/email") ||
@@ -52,6 +54,16 @@ export class SupportController implements ApiController {
   }
 
   public async handle(context: RequestContext, response: Parameters<typeof sendJson>[0]): Promise<void> {
+    if (context.path === "/api/customer/referrals") {
+      const identity = await requireRole(context, this.platform, "customer");
+      if (context.method === "GET") {
+        sendJson(response, 200, await this.platform.listCustomerReferrals(identity.userId));
+      } else {
+        const result = await this.platform.createCustomerReferral(identity.userId, context.body as CreateCustomerReferralRequest);
+        sendJson(response, result.created ? 201 : 200, result);
+      }
+      return;
+    }
     if (context.path === "/api/support/complaints" || context.path === "/api/support/complaints/reply") {
       const identity = await requireRole(context, this.platform, "customer");
       const result = context.path.endsWith("/reply")

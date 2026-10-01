@@ -38,26 +38,50 @@ test.describe("YardMatch web smoke", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { name: "One local match for yard care." })).toBeVisible();
-    await expect(page.getByText("Three quick steps. No directory rabbit hole.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Yard care for your home." })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Need" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "When" })).toHaveCount(0);
+    await expect(page.getByText("Also works", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: /Where/ })).toHaveValue(/Barnegat, NJ/i);
     await expect(page.getByRole("button", { name: "Find my match" }).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Starting in Barnegat. Expanding town by town." })).toBeVisible();
+    await expect(page.locator(".market-home__expansion")).toHaveCount(0);
     await expect(page.getByText("Top-rated providers")).toHaveCount(0);
     await expect(page.getByText("Most on-time providers")).toHaveCount(0);
-    await expect(page.getByText("Want YardMatch in your town?")).toBeVisible();
+    await expect(page.getByText("Verified providers in Barnegat")).toHaveCount(0);
+    await expect(page.getByText("Three quick steps. No directory rabbit hole.")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Frequently asked questions" })).toHaveCount(0);
+    await expect(page.getByText("Need help checking availability?")).toBeVisible();
+    await expect(page.locator("footer.site-footer")).toHaveCount(0);
 
-    await page.screenshot({ path: `${engineerEvidenceRoot}/honest-launch-home-desktop.png` });
+    await page.screenshot({ path: `${engineerEvidenceRoot}/honest-launch-home-desktop.png`, fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.screenshot({ path: `${engineerEvidenceRoot}/honest-launch-home-mobile.png` });
+    await page.screenshot({ path: `${engineerEvidenceRoot}/honest-launch-home-mobile.png`, fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.getByRole("link", { name: "Ask about availability" }).click();
+    await expect(page).toHaveURL(/\/help#contact-us$/);
+    await expect(page.getByRole("heading", { name: /Contact|help/i }).first()).toBeVisible();
+  });
+
+  test("home search defers timing until a provider is selected", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("combobox", { name: "When" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Find my match" }).click();
+    await expect(page.getByRole("dialog", { name: "Find care near you" })).toBeVisible();
+    await page.getByRole("button", { name: "Enter my area instead" }).click();
+    await page.getByRole("textbox", { name: "Where", exact: true }).fill("Brooklyn, NY");
+    await page.locator(".customer-search-shell__suggestion").filter({ hasText: "Brooklyn, NY" }).first().click();
+    await page.getByRole("button", { name: "Find my match" }).click();
+    await expect(page).toHaveURL(/\/customer\/listings\?/);
+    expect(new URL(page.url()).searchParams.has("when")).toBe(false);
+    await page.getByText("Change service or area").click();
+    await expect(page.getByRole("combobox", { name: "When" })).toHaveCount(0);
   });
 
   test("spanish public marketplace route renders localized shell", async ({ page }) => {
     await page.goto("/es");
 
     await expect(page.locator("html")).toHaveAttribute("lang", "es");
-    await expect(page.getByRole("heading", { name: "Una recomendacion local para cuidar tu jardin." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Cuidado para el jardin de tu hogar." })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Necesito" })).toBeVisible();
     await expect(page.getByRole("textbox", { name: /Donde/ })).toHaveValue(/Barnegat, NJ/i);
     await expect(page.getByRole("button", { name: "Encontrar mi recomendacion" }).first()).toBeVisible();
@@ -79,35 +103,21 @@ test.describe("YardMatch web smoke", () => {
 
     await page.goto(`/customer/listings?${params.toString()}`);
 
-    await expect(page.getByText("Recommended for this property", { exact: true })).toBeVisible();
-    await expect(page.getByText("Best overall match", { exact: true })).toBeVisible();
+    await expect(page.locator(".journey-provider-card--recommended")).toHaveCount(1);
     await expect(page.getByRole("heading", { level: 3, name: "GreenStride Lawn Co." })).toBeVisible();
     await expect(page.getByText("Sponsored", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("heading", { level: 3, name: "TerraCut Studio" })).toHaveCount(0);
-    const showBackups = page.getByRole("button", { name: /Show \d+ backup options?/ });
-    await expect(showBackups).toBeVisible();
-    await showBackups.click();
     await expect(page.getByRole("heading", { level: 3, name: "TerraCut Studio" })).toBeVisible();
-
-    const requestMatch = page.getByRole("link", { name: "See price and request" });
-    await expect(requestMatch).toBeVisible();
-
-    await requestMatch.click();
-    await expect(page).toHaveURL(/\/auth\/customer/);
-
-    const signupUrl = new URL(page.url());
-    expect(signupUrl.pathname).toBe("/auth/customer");
-    expect(signupUrl.searchParams.get("providerId")).toBeTruthy();
-    expect(signupUrl.searchParams.get("providerName")).toBe("GreenStride Lawn Co.");
-    expect(signupUrl.searchParams.get("rank")).toBe("1");
-    expect(signupUrl.searchParams.get("when")).toBe("tomorrow-morning");
-    expect(signupUrl.searchParams.get("service")).toBe("lawn-mowing");
-    expect(signupUrl.searchParams.get("area")).toBe("Brooklyn, NY");
-    expect(signupUrl.searchParams.get("city")).toBe("Brooklyn");
-    expect(signupUrl.searchParams.get("state")).toBe("NY");
-    expect(signupUrl.searchParams.get("postalCode")).toBe("11201");
-    expect(signupUrl.searchParams.get("source")).toBe("listings");
-    expect(Date.parse(signupUrl.searchParams.get("slot") ?? "")).not.toBeNaN();
+    await page.getByRole("button", { name: "View more providers" }).click();
+    await expect(page).toHaveURL(/view=directory/);
+    await expect(page.getByRole("heading", { name: "Providers near you" })).toBeVisible();
+    await page.getByRole("button", { name: "Back to recommendations" }).click();
+    await expect(page).not.toHaveURL(/view=directory/);
+    await page.locator(".journey-provider-card").first().locator(".journey-slot-pill").first().click();
+    const dialog = page.getByRole("dialog", { name: "Schedule your service" });
+    await expect(dialog.getByText("With GreenStride Lawn Co.")).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Remove Lawn mowing" })).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Day", exact: true })).not.toHaveValue("");
+    await expect(dialog.getByLabel("City", { exact: true })).toHaveValue("Brooklyn");
   });
 
   test("Barnegat launch proof stays local and provider pricing is disclosed before signup", async ({ page }) => {
@@ -122,13 +132,13 @@ test.describe("YardMatch web smoke", () => {
     });
     await page.goto("/barnegat-nj");
 
-    await expect(page.getByText("Barnegat, NJ", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(/verified local providers are not live here yet/i)).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Barnegat");
+    await expect(page.getByText(/No verified providers are currently listed for this area/i)).toBeVisible();
     await expect(page.getByText("GreenStride Lawn Co.")).toHaveCount(0);
     await expect(page.getByText("TerraCut Studio")).toHaveCount(0);
 
     await page.goto("/provider");
-    const pricingHeading = page.getByRole("heading", { name: "Simple launch pricing, before you sign up" });
+    const pricingHeading = page.getByRole("heading", { name: "Clear pricing, before you sign up" });
     await expect(pricingHeading).toBeVisible();
     await expect(page.getByRole("heading", { name: "$30 once" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "$6.99 per completed job" })).toBeVisible();

@@ -131,17 +131,13 @@ export default async function BarnegatTownPage() {
         title={i18n.t("launch_town.proof.title", values)}
       />
 
-      <section className="grid-two">
+      <section>
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
           description={i18n.t("launch_town.lead.body")}
           requestSource="launch-town-page-lead-form"
           title={i18n.t("launch_town.lead.title", values)}
         />
-        <article className="card">
-          <h2>{i18n.t("launch_town.launch_matter.title")}</h2>
-          <p>{i18n.t("launch_town.launch_matter.body")}</p>
-        </article>
       </section>
 
       <section className="grid-two">

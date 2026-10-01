@@ -199,7 +199,7 @@ export function CrewScheduleBoard() {
                     <div className="search-result-title">
                       <div>
                         <h3>{match.providerCompanyName}</h3>
-                        <p>{match.category.replaceAll("-", " ")}</p>
+                        <p>{(match.serviceCategories?.length ? match.serviceCategories : [match.category]).map(category => category.replaceAll("-", " ")).join(" · ")}</p>
                       </div>
                       <strong>{formatTimeRange(i18n, match.scheduledStartIso, match.scheduledEndIso)}</strong>
                     </div>
@@ -247,7 +247,7 @@ export function CrewScheduleBoard() {
               <div className="history-card__grid">
                 <div>
                   <h3>{i18n.t("crew_schedule.board.work")}</h3>
-                  <p>{match.category.replaceAll("-", " ")}</p>
+                  <p>{(match.serviceCategories?.length ? match.serviceCategories : [match.category]).map(category => category.replaceAll("-", " ")).join(" · ")}</p>
                   <p>{match.summary}</p>
                 </div>
                 <div>

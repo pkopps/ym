@@ -1,0 +1,388 @@
+{
+  "web:/": {
+    "thumbnail": "captures/thumbnails/web-.webp",
+    "full": "captures/full/web-.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.187Z",
+    "source": "tests/web → honest-launch-home-desktop.png"
+  },
+  "web:/about": {
+    "thumbnail": "captures/thumbnails/web-about.webp",
+    "full": "captures/full/web-about.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:15.322Z"
+  },
+  "web:/account/security": {
+    "thumbnail": "captures/thumbnails/web-account-security.webp",
+    "full": "captures/full/web-account-security.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:17.580Z"
+  },
+  "web:/auth": {
+    "thumbnail": "captures/thumbnails/web-auth.webp",
+    "full": "captures/full/web-auth.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:19.658Z"
+  },
+  "web:/auth/complete": {
+    "thumbnail": "captures/thumbnails/web-auth-complete.webp",
+    "full": "captures/full/web-auth-complete.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:21.688Z"
+  },
+  "web:/auth/crew": {
+    "thumbnail": "captures/thumbnails/web-auth-crew.webp",
+    "full": "captures/full/web-auth-crew.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:23.809Z"
+  },
+  "web:/auth/customer": {
+    "thumbnail": "captures/thumbnails/web-auth-customer.webp",
+    "full": "captures/full/web-auth-customer.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:25.893Z"
+  },
+  "web:/auth/provider": {
+    "thumbnail": "captures/thumbnails/web-auth-provider.webp",
+    "full": "captures/full/web-auth-provider.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:28.298Z"
+  },
+  "web:/auth/provider/create": {
+    "thumbnail": "captures/thumbnails/web-auth-provider-create.webp",
+    "full": "captures/full/web-auth-provider-create.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:30.420Z"
+  },
+  "web:/barnegat-nj": {
+    "thumbnail": "captures/thumbnails/web-barnegat-nj.webp",
+    "full": "captures/full/web-barnegat-nj.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:32.829Z"
+  },
+  "web:/barnegat-nj/lawn-mowing": {
+    "thumbnail": "captures/thumbnails/web-barnegat-nj-lawn-mowing.webp",
+    "full": "captures/full/web-barnegat-nj-lawn-mowing.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:35.177Z"
+  },
+  "web:/barnegat-nj/yard-cleanup": {
+    "thumbnail": "captures/thumbnails/web-barnegat-nj-yard-cleanup.webp",
+    "full": "captures/full/web-barnegat-nj-yard-cleanup.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:37.494Z"
+  },
+  "web:/booking-expectations": {
+    "thumbnail": "captures/thumbnails/web-booking-expectations.webp",
+    "full": "captures/full/web-booking-expectations.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:39.661Z"
+  },
+  "web:/cancellation-policy": {
+    "thumbnail": "captures/thumbnails/web-cancellation-policy.webp",
+    "full": "captures/full/web-cancellation-policy.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:41.846Z"
+  },
+  "web:/crew": {
+    "thumbnail": "captures/thumbnails/web-crew.webp",
+    "full": "captures/full/web-crew.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:44.067Z"
+  },
+  "web:/crew/schedule": {
+    "thumbnail": "captures/thumbnails/web-crew-schedule.webp",
+    "full": "captures/full/web-crew-schedule.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:46.307Z"
+  },
+  "web:/crew/schedule/history": {
+    "thumbnail": "captures/thumbnails/web-crew-schedule-history.webp",
+    "full": "captures/full/web-crew-schedule-history.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:48.445Z"
+  },
+  "web:/customer": {
+    "thumbnail": "captures/thumbnails/web-customer.webp",
+    "full": "captures/full/web-customer.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:51.061Z"
+  },
+  "web:/customer/dashboard": {
+    "thumbnail": "captures/thumbnails/web-customer-dashboard.webp",
+    "full": "captures/full/web-customer-dashboard.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:53.260Z"
+  },
+  "web:/customer/history": {
+    "thumbnail": "captures/thumbnails/web-customer-history.webp",
+    "full": "captures/full/web-customer-history.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:55.666Z"
+  },
+  "web:/customer/listings": {
+    "thumbnail": "captures/thumbnails/web-customer-listings.webp",
+    "full": "captures/full/web-customer-listings.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:57.816Z"
+  },
+  "web:/customer/referrals": {
+    "thumbnail": "captures/thumbnails/web-customer-referrals.webp",
+    "full": "captures/full/web-customer-referrals.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:45:59.966Z"
+  },
+  "web:/help": {
+    "thumbnail": "captures/thumbnails/web-help.webp",
+    "full": "captures/full/web-help.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:02.314Z"
+  },
+  "web:/login": {
+    "thumbnail": "captures/thumbnails/web-login.webp",
+    "full": "captures/full/web-login.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:04.331Z"
+  },
+  "web:/login/crew": {
+    "thumbnail": "captures/thumbnails/web-login-crew.webp",
+    "full": "captures/full/web-login-crew.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:06.494Z"
+  },
+  "web:/login/customer": {
+    "thumbnail": "captures/thumbnails/web-login-customer.webp",
+    "full": "captures/full/web-login-customer.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:08.554Z"
+  },
+  "web:/login/ops": {
+    "thumbnail": "captures/thumbnails/web-login-ops.webp",
+    "full": "captures/full/web-login-ops.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:10.680Z"
+  },
+  "web:/login/provider": {
+    "thumbnail": "captures/thumbnails/web-login-provider.webp",
+    "full": "captures/full/web-login-provider.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:12.763Z"
+  },
+  "web:/ops": {
+    "thumbnail": "captures/thumbnails/web-ops.webp",
+    "full": "captures/full/web-ops.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:15.166Z"
+  },
+  "web:/privacy-policy": {
+    "thumbnail": "captures/thumbnails/web-privacy-policy.webp",
+    "full": "captures/full/web-privacy-policy.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:17.327Z"
+  },
+  "web:/provider": {
+    "thumbnail": "captures/thumbnails/web-provider.webp",
+    "full": "captures/full/web-provider.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:19.710Z"
+  },
+  "web:/provider-standards": {
+    "thumbnail": "captures/thumbnails/web-provider-standards.webp",
+    "full": "captures/full/web-provider-standards.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:21.876Z"
+  },
+  "web:/provider-verification": {
+    "thumbnail": "captures/thumbnails/web-provider-verification.webp",
+    "full": "captures/full/web-provider-verification.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:24.033Z"
+  },
+  "web:/provider/clients": {
+    "thumbnail": "captures/thumbnails/web-provider-clients.webp",
+    "full": "captures/full/web-provider-clients.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:26.200Z"
+  },
+  "web:/provider/management": {
+    "thumbnail": "captures/thumbnails/web-provider-management.webp",
+    "full": "captures/full/web-provider-management.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:28.381Z"
+  },
+  "web:/provider/partnerships": {
+    "thumbnail": "captures/thumbnails/web-provider-partnerships.webp",
+    "full": "captures/full/web-provider-partnerships.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:30.501Z"
+  },
+  "web:/provider/payments": {
+    "thumbnail": "captures/thumbnails/web-provider-payments.webp",
+    "full": "captures/full/web-provider-payments.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:32.754Z"
+  },
+  "web:/refund-policy": {
+    "thumbnail": "captures/thumbnails/web-refund-policy.webp",
+    "full": "captures/full/web-refund-policy.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:34.894Z"
+  },
+  "web:/services/lawn-mowing": {
+    "thumbnail": "captures/thumbnails/web-services-lawn-mowing.webp",
+    "full": "captures/full/web-services-lawn-mowing.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:37.263Z"
+  },
+  "web:/services/yard-cleanup": {
+    "thumbnail": "captures/thumbnails/web-services-yard-cleanup.webp",
+    "full": "captures/full/web-services-yard-cleanup.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:39.628Z"
+  },
+  "web:/support": {
+    "thumbnail": "captures/thumbnails/web-support.webp",
+    "full": "captures/full/web-support.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:41.810Z"
+  },
+  "web:/terms-of-service": {
+    "thumbnail": "captures/thumbnails/web-terms-of-service.webp",
+    "full": "captures/full/web-terms-of-service.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:44.050Z"
+  },
+  "customer:request-pending": {
+    "thumbnail": "captures/thumbnails/customer-request-pending.webp",
+    "full": "captures/full/customer-request-pending.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:46.249Z"
+  },
+  "provider:review": {
+    "thumbnail": "captures/thumbnails/provider-review.webp",
+    "full": "captures/full/provider-review.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:48.473Z"
+  },
+  "customer:confirmed": {
+    "thumbnail": "captures/thumbnails/customer-confirmed.webp",
+    "full": "captures/full/customer-confirmed.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:50.698Z"
+  },
+  "provider:confirmed": {
+    "thumbnail": "captures/thumbnails/provider-confirmed.webp",
+    "full": "captures/full/provider-confirmed.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:52.927Z"
+  },
+  "provider:on-route": {
+    "thumbnail": "captures/thumbnails/provider-on-route.webp",
+    "full": "captures/full/provider-on-route.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T02:46:55.172Z"
+  },
+  "mobile:provider:auth": {
+    "thumbnail": "captures/thumbnails/mobile-provider-auth.webp",
+    "full": "captures/full/mobile-provider-auth.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:25:36.311Z"
+  },
+  "mobile:crew:auth": {
+    "thumbnail": "captures/thumbnails/mobile-crew-auth.webp",
+    "full": "captures/full/mobile-crew-auth.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:26:28.121Z"
+  },
+  "mobile:customer:auth": {
+    "thumbnail": "captures/thumbnails/mobile-customer-auth.webp",
+    "full": "captures/full/mobile-customer-auth.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:29:47.622Z"
+  },
+  "mobile:customer:dashboard": {
+    "thumbnail": "captures/thumbnails/mobile-customer-dashboard.webp",
+    "full": "captures/full/mobile-customer-dashboard.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:29:47.844Z"
+  },
+  "mobile:crew:today": {
+    "thumbnail": "captures/thumbnails/mobile-crew-today.webp",
+    "full": "captures/full/mobile-crew-today.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:26:28.564Z"
+  },
+  "mobile:customer:book": {
+    "thumbnail": "captures/thumbnails/mobile-customer-book.webp",
+    "full": "captures/full/mobile-customer-book.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:29:47.696Z"
+  },
+  "mobile:customer:bookings": {
+    "thumbnail": "captures/thumbnails/mobile-customer-bookings.webp",
+    "full": "captures/full/mobile-customer-bookings.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:29:47.771Z"
+  },
+  "mobile:crew:schedule": {
+    "thumbnail": "captures/thumbnails/mobile-crew-schedule.webp",
+    "full": "captures/full/mobile-crew-schedule.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:26:28.443Z"
+  },
+  "mobile:customer:account": {
+    "thumbnail": "captures/thumbnails/mobile-customer-account.webp",
+    "full": "captures/full/mobile-customer-account.png",
+    "status": "captured",
+    "capturedAt": "2026-09-30T03:29:47.550Z"
+  },
+  "customer:quote": {
+    "thumbnail": "captures/thumbnails/customer-quote.webp",
+    "full": "captures/full/customer-quote.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.312Z",
+    "source": "tests/web → customer-quote-desktop.png"
+  },
+  "customer:history": {
+    "thumbnail": "captures/thumbnails/customer-history.webp",
+    "full": "captures/full/customer-history.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.339Z",
+    "source": "tests/web → customer-history-mobile.png"
+  },
+  "customer:dispute": {
+    "thumbnail": "captures/thumbnails/customer-dispute.webp",
+    "full": "captures/full/customer-dispute.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.372Z",
+    "source": "tests/web → complaint-form-desktop.png"
+  },
+  "crew:assignment": {
+    "thumbnail": "captures/thumbnails/crew-assignment.webp",
+    "full": "captures/full/crew-assignment.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.401Z",
+    "source": "tests/web → crew-assignment-accepted-desktop.png"
+  },
+  "ops:case": {
+    "thumbnail": "captures/thumbnails/ops-case.webp",
+    "full": "captures/full/ops-case.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.417Z",
+    "source": "tests/web → complaint-review-desktop.png"
+  },
+  "customer:top-matches": {
+    "thumbnail": "captures/thumbnails/customer-top-matches.webp",
+    "full": "captures/full/customer-top-matches.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.216Z",
+    "source": "tests/web → customer-top-matches-desktop.png"
+  },
+  "customer:directory": {
+    "thumbnail": "captures/thumbnails/customer-directory.webp",
+    "full": "captures/full/customer-directory.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-01T00:18:42.245Z",
+    "source": "tests/web → customer-directory-desktop.png"
+  }
+}

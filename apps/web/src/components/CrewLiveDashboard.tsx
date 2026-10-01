@@ -761,7 +761,7 @@ export function CrewLiveDashboard() {
                     <h3>{match.providerCompanyName}</h3>
                     <span className="result-badge">{match.status.replaceAll("-", " ")}</span>
                   </div>
-                  <p>{match.category.replaceAll("-", " ")}</p>
+                  <p>{(match.serviceCategories?.length ? match.serviceCategories : [match.category]).map(category => category.replaceAll("-", " ")).join(" · ")}</p>
                 </div>
                 <strong>{i18n.t("crew_live.hour_rate_short", { rate: i18n.formatCurrency(match.hourlyRateCents) })}</strong>
               </div>

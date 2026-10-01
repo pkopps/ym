@@ -1,3 +1,4 @@
+import type { ProviderServicePrice } from "./pricing";
 export type MarketplaceRole = "customer" | "provider" | "crew-member" | "ops";
 export type AuthFlowMode = "signup" | "login";
 export type AuthProvider = "google" | "apple";
@@ -340,6 +341,7 @@ export interface CustomerProfile extends BaseUser {
 }
 
 export interface ProviderProfile extends BaseUser {
+  servicePrices?: ProviderServicePrice[];
   role: "provider";
   companyName: string;
   bio: string;
@@ -954,6 +956,7 @@ export interface CrewMatchCandidate {
 }
 
 export interface ProviderStaffingJobSummary {
+  services?: BookingServiceItem[];
   bookingId: string;
   customerName: string;
   serviceAddress: Address;
@@ -1054,6 +1057,7 @@ export interface ProviderRetentionProgramSummary {
 }
 
 export interface CrewMatchSummary {
+  serviceCategories?: ServiceCategory[];
   id: string;
   bookingId: string;
   providerId: string;
@@ -1260,6 +1264,8 @@ export interface Booking {
   serviceAddress: Address;
   servicePropertyId?: string;
   category: ServiceCategory;
+  /** Priced services for one visit; legacy bookings use category and totalCents. */
+  services?: BookingServiceItem[];
   requestedAt: string;
   scheduledStartIso: string;
   scheduledEndIso: string;
@@ -2857,6 +2863,7 @@ export interface SyncStaleProviderCalendarImportsResponse extends ProviderCalend
 }
 
 export interface RegisterUserRequest {
+  servicePrices?: ProviderServicePrice[];
   fullName: string;
   email: string;
   password: string;
@@ -3129,6 +3136,16 @@ export interface SearchProvidersRequest {
   requestSource?: string;
   retentionPreference?: SearchRetentionPreference;
   attribution?: LaunchAttributionContext;
+  /** Omit for the curated top three. Directory pages use the same ranking and eligibility rules. */
+  directory?: { offset: number; limit: number };
+  availability?: { startIso: string; endIso: string };
+}
+
+export interface ProviderAvailabilityRequest {
+  providerId: string;
+  address: Address;
+  categories: ServiceCategory[];
+  estimatedDurationMinutes?: number;
 }
 
 export interface SearchProvidersResponse {
@@ -3137,6 +3154,7 @@ export interface SearchProvidersResponse {
   suggestedSlots: AvailabilitySlot[];
   recommendationSessionId: string;
   recommendedProviderId?: string;
+  totalMatches: number;
 }
 
 export interface MarketplaceProviderProfile {
@@ -3465,6 +3483,9 @@ export interface LaunchAttributionContext {
 export interface CreateBookingRequest {
   /** Signed server quote; old clients must match a freshly recomputed price. */
   quoteToken?: string;
+  /** Stable per review attempt; retries return the original booking. */
+  requestId?: string;
+  services?: Array<{ category: ServiceCategory; quoteToken: string }>;
   providerId: string;
   launchLeadId?: string;
   serviceAddress: Address;
@@ -3482,6 +3503,12 @@ export interface CreateBookingRequest {
   recommendationSource?: string;
   retentionContext?: CustomerRetentionContext;
   attribution?: LaunchAttributionContext;
+}
+
+export interface BookingServiceItem {
+  category: ServiceCategory;
+  totalCents: number;
+  estimatedDurationMinutes: number;
 }
 
 export interface CreateRecurringServicePlanRequest extends CreateBookingRequest {
@@ -3845,6 +3872,7 @@ export interface NormalizedAddressSummary {
 }
 
 export interface InstantQuoteRequest {
+  providerId?: string;
   address: Address;
   category: ServiceCategory;
   propertyId?: string;
@@ -3853,6 +3881,8 @@ export interface InstantQuoteRequest {
 }
 
 export interface InstantQuoteResponse {
+  providerId?: string;
+  startingPriceCents?: number;
   quoteToken?: string;
   address: Address;
   normalizedAddress: NormalizedAddressSummary;
@@ -3925,6 +3955,37 @@ export interface CreateLaunchLeadRequest {
   serviceCategory?: ServiceCategory;
   message: string;
   assignedOwner?: string;
+}
+
+export type CustomerReferralChannel = "email" | "phone";
+
+export interface CreateCustomerReferralRequest {
+  friendName: string;
+  channel: CustomerReferralChannel;
+  contact: string;
+  areaLabel?: string;
+  contactPermission: boolean;
+}
+
+/** Customer-safe view. Internal lead notes, booking IDs and payment details stay private. */
+export interface CustomerReferral {
+  id: string;
+  friendName: string;
+  channel: CustomerReferralChannel;
+  contact: string;
+  areaLabel?: string;
+  status: "saved" | "in-progress" | "booked" | "closed";
+  createdAt: string;
+}
+
+export interface CustomerReferralsOverview {
+  referrals: CustomerReferral[];
+  shareBaseUrl: string;
+}
+
+export interface CreateCustomerReferralResponse {
+  referral: CustomerReferral;
+  created: boolean;
 }
 
 export interface CreateInboundLaunchLeadRequest {

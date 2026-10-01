@@ -4,6 +4,14 @@ YardMatch is a triple marketplace for homeowners and property managers who need 
 
 Scale safeguards include database-backed notification/export claims, asynchronous bounded password work, scoped search and provider queries, property summaries, and clustered client maps. Run the repeatable mixed-workload gate with `npm run test:scale`; see [setup, worker limits, and rollout guidance](LOCAL_DEVELOPMENT.md#scale-reliability-and-capacity-checks) and [measured results](reports/scale-review/2026-09-21-remediation.md).
 
+## Public web booking
+
+Choose a service on the homepage, then use device location or enter an area. Search presents up to three eligible providers vertically, with the first highlighted and factual trust hints. “View more providers” opens the paginated directory with day/time filters and an approximate service-area map. Only actual qualified matches and available openings are shown; areas with fewer than three matches show the available supply.
+
+An opening launches the scheduling dialog: switch or add services offered by that provider, choose a day/time of day, confirm the service address, and answer any property questions needed for a price. The full review page displays each service and the total. Guests sign in or create an account here; the draft survives that handoff and refreshes for two hours in the same tab. Confirmation creates one request, queues an email receipt, and offers real rescheduling. Providers confirm before payment. Interrupted responses recover by request identifier without creating a second booking.
+
+Apply the booking-services migration before deploying this API; see [local verification and rollout](LOCAL_DEVELOPMENT.md#public-web-booking-journey).
+
 ## Stack choice
 
 - `React Native + Expo` powers three separate mobile apps: one for customers, one for landscaping business owners, and one for crew members.
@@ -56,6 +64,14 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 
 - Active roadmap and backlog: [ROADMAP.md](/Users/patrickkopps/Documents/app/ROADMAP.md)
 - Cost sheet and future P&L starter: [COSTS.md](/Users/patrickkopps/Documents/app/COSTS.md)
+
+## Customer referrals
+
+Signed-in customers can use **Account → Refer a friend** at `/customer/referrals`, or the **Refer a friend** section of Account in the customer mobile app. The English/Spanish form saves a friend's name, email or US phone number, optional town, and explicit permission to share contact details for YardMatch follow-up. It then prepares an email or text in the customer's own messaging app, with selectable invitation text as a fallback. Saving a referral or opening a composer does not mark a message sent; YardMatch does not automatically deliver invitations or issue rewards.
+
+`GET/POST /api/customer/referrals` derive ownership from the authenticated customer. PostgreSQL stores referral ownership, normalized contact, consent version/time, and a linked ops launch lead atomically. Retries return the same referral; concurrent requests enforce a maximum of ten new contacts per rolling 24 hours. Customer history shows the latest 100 owned referrals and coarse follow-up/booking progress, excluding ops notes and booking/payment details. Ops sees the referrer and permission evidence in the existing lead queue. Matching email or canonically normalized US phone links subsequent customer bookings through the existing attribution flow; unrelated customers cannot attach a referral by supplying its internal lead ID.
+
+Deploy migration `20260928010000_customer_referrals` before releasing the API. Referral rewards, provider referral incentives, automatic invitation delivery, and proof of message delivery remain future work. Referral and linked lead records must be included when ops reviews data-access/deletion requests under the existing manual privacy workflow; deleting a referrer account cascades its referral rows, while the separate ops lead remains subject to that workflow.
 
 ## Backend hardening status
 
@@ -226,11 +242,11 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 - Provider verification queue/profile responses now also include a backend-authored onboarding automation plan. It translates checklist state into provider-owned profile fixes, dispatch-setting fixes, ops review readiness, narrow launch pilot eligibility, first-booking monitoring, and incident-recovery documentation, and now exposes stable automation actions with owners, priorities, due timestamps, route targets, blocking step keys, and notification copy so ops/provider workflow tools do not need to infer launch onboarding state from prose. Ops can process due actions through `POST /api/providers/verification/onboarding-automation/sweep`, which idempotently sends provider or ops notifications and reports sent, already-sent, blocked, completed, dry-run, and not-due outcomes. When a rejected provider materially fixes profile or dispatch blockers, the API automatically moves the business back into pending review and notifies ops users to revisit the launch-fit queue.
 - Provider profile responses now also include backend-authored business controls that document owner-only team access, provider-managed profile/dispatch/payout controls, ops-managed visibility controls, fresh re-auth requirements for payout-sensitive changes, launch guardrails, and active warnings.
 - The provider management board now also shows that same verification checklist in provider-friendly language, plus concrete next steps. Providers can update company name, bio, experience, and service categories directly in the dashboard, and rejected businesses are automatically moved back into `pending-review` when they make meaningful verification-related profile or dispatch-setting changes.
-- The public site now includes dedicated trust pages for support expectations, cancellations, refund reviews, and booking expectations, and those pages are linked from the homepage, Help center, footer, and sitemap so launch visitors can verify how GreenRain behaves before they book.
-- The legal and provider-facing trust layer is now live too: privacy basics, launch terms, and provider standards pages are published and linked from Help, the footer, the sitemap, and the provider marketing surface so both sides of the marketplace can see clearer launch expectations before committing.
-- The homepage, Barnegat launch page, and launch service landing pages now scope public proof to the named market before showing provider counts, ratings, reviews, or completed-work evidence. Barnegat is presented as the first launch market, nationwide ambition is framed as town-by-town expansion, and customers outside active coverage can submit real demand instead of seeing borrowed city proof. The homepage focuses launch promotion on recurring mowing and seasonal cleanup, while public results show one recommendation first, keep search edits and request details progressive, and reveal only a small backup set on demand. Paid placement is dormant: it contributes zero ranking points, produces no match reason or badge, and cannot be enabled through provider settings.
+- The public site includes dedicated trust pages for support expectations, cancellations, refund reviews, and booking expectations. The concise homepage links to Help and refunds; the Help center and sitemap link to the full policy set.
+- Privacy basics, terms, and provider standards pages are published. The compact footer links to privacy and terms; Help, the sitemap, and provider pages link to the additional guidance.
+- The homepage presents a short service and location search, two popular services, and a help link without market-specific proof or launch-status copy. Barnegat remains the editable default search location; the dedicated Barnegat and service pages scope public proof to the named market before showing provider counts, ratings, reviews, or completed-work evidence. Customers outside active coverage can ask for help checking availability. Public search results show the top three ranked matches, then offer an optional paginated directory for the same service, area, and timing. Paid placement is dormant: it contributes zero ranking points, produces no match reason or badge, and cannot be enabled through provider settings.
 - Customer-facing provider search, provider-profile, and review payloads now use reduced marketplace-safe contracts: they exclude phone, email, owner identity, street address, exact provider coordinates, customer and booking identifiers from public reviews, verification notes, payout/connect state, and other account-only fields. Customer-provider chat remains tied to a real booking and unlocks only once the route is active; the API rejects phone numbers, email addresses, links, social handles, and off-platform contact instructions in chat, booking notes, delay/exception/dispute updates, public reviews/replies, and provider marketplace copy. Unsafe legacy shared text is masked on read, blocked attempts are recorded without the attempted contact value, and web/mobile chat explains the protected-communication policy before sending.
-- Customers can attach up to six labeled pre-service property photos to a requested or confirmed visit from web or mobile. The assigned provider can review those photos before arrival, while provider/crew arrival proof remains a separate lifecycle requirement. Providers and crews can attach completion photos, and customer service history presents the resulting before-and-after record. Photo sets stay private by default; only completed work from a verified provider appears in the homepage trust gallery after the customer explicitly grants revocable public-use permission, and the public payload withholds the customer name and street address.
+- Customers can attach up to six labeled pre-service property photos to a requested or confirmed visit from web or mobile. The assigned provider can review those photos before arrival, while provider/crew arrival proof remains a separate lifecycle requirement. Providers and crews can attach completion photos, and customer service history presents the resulting before-and-after record. Photo sets stay private by default; public-use permission is revocable, and public proof only includes completed work from verified providers without customer names or street addresses. The concise homepage currently does not display the gallery.
 - To turn the real checkout path on locally, set:
   - `STRIPE_SECRET_KEY`
   - `STRIPE_WEBHOOK_SECRET`
@@ -299,7 +315,7 @@ npm run test:web:smoke
 YardMatch is not intended to become:
 
 - a lead-generation marketplace
-- a provider directory
+- a directory-first booking flow
 - a quote-collection platform
 - a promoted-listings platform
 
@@ -337,7 +353,7 @@ The customer should usually see:
 - one recommended provider
 - why that provider was selected
 - immediate booking controls
-- a limited fallback path to view a small number of other qualified providers
+- an optional path to browse all eligible local providers after the top matches on public web
 
 The platform should avoid making the customer do unnecessary marketplace work when GreenRain/YardMatch can make the recommendation confidently.
 
@@ -348,26 +364,23 @@ GreenRain/YardMatch should launch with:
 - one recommended provider
 - a clear explanation of why that provider was chosen
 - immediate booking controls
-- a lightweight fallback path like `Show me another provider`
+- a clear path to the top matches and, on public web, an optional full directory
 
-This is the preferred V1 middle ground:
-
-- not a full directory flow where the customer browses many landscapers
-- not an opaque hidden-match flow where the customer has no idea who was selected until after matching
+This keeps the recommendation first and leaves broader browsing to customers who choose it.
 
 In practical terms, the launch posture should be:
 
 1. Customer tells us what they need.
 2. The marketplace recommends the best provider.
 3. The customer can confirm that recommendation quickly.
-4. The customer can ask for a limited set of other qualified providers if trust is still needed.
+4. The customer can compare the top matches, then open the full local directory on public web if desired.
 
 This keeps friction low while still preserving homeowner trust.
 
 Current baseline shipped:
 
-- public listings, customer web dashboard, and customer mobile booking all show one recommended provider first
-- alternative providers sit behind an explicit reveal instead of being the default primary view
+- public listings show up to three ranked matches immediately and offer an optional paginated directory
+- customer web dashboard and customer mobile booking retain one recommended provider first with curated alternatives behind an explicit reveal
 - customer booking surfaces now use a cleaner confirmation posture around the primary match:
   - `Book now` for the recommendation
   - `Show me another provider` for the limited fallback path
@@ -392,7 +405,7 @@ Current baseline shipped:
   - `Local specialist`
 - weaker fallback area guesses no longer get silently auto-selected in the public recommendation flow; customers are prompted to choose a suggested area when search confidence is not strong enough
 
-Alternative providers should remain a secondary trust feature, not the primary browsing mode. If alternatives are shown, they should be tightly curated rather than open-ended. Good examples include:
+The recommendation remains the primary public web path. Dashboard and mobile alternatives remain a secondary trust feature. Good examples include:
 
 - `Best match`
 - `Highest rated`
@@ -420,7 +433,7 @@ Crew coordination commands can now target the assigned route leader or fan out t
 Start-route commands now preview the customer-facing on-my-way notification, including the backend-estimated arrival window and live tracking affordance, before execution sends the same update.
 After a route has started, arrival-update commands can also send a customer-safe "crew has arrived and is getting set up" notification while preserving the booking's lifecycle status until the normal proof-gated start-work action runs.
 
-### Why not launch as a full directory
+### Why the directory follows recommendations
 
 For landscaping, trust matters more than it does in rideshare-style matching:
 

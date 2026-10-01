@@ -10,6 +10,7 @@ import { NotificationMenu } from "./NotificationMenu";
 const profileLinks = [
   { href: "/customer/dashboard", labelKey: "nav.user.account" },
   { href: "/customer/dashboard?view=history", labelKey: "nav.user.past_visits" },
+  { href: "/customer/referrals", labelKey: "referrals.title" },
   { href: "/account/security", labelKey: "security.title" },
   { href: "/help", labelKey: "nav.help" }
 ] satisfies Array<{ href: string; labelKey: TranslationKey }>;
@@ -38,6 +39,7 @@ export function CustomerAppHeader() {
   }
 
   function isActiveLink(href: (typeof profileLinks)[number]["href"]) {
+    if (href === "/customer/referrals") return normalizedPathname === href;
     if (href === "/help") {
       return normalizedPathname === "/help";
     }

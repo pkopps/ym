@@ -27,9 +27,9 @@ test("provider signup reaches a complete, verified management profile", async ({
   await page.getByRole("button", { name: "Create account" }).click();
 
   await expect(page).toHaveURL(/\/provider\/management$/);
-  await expect(page.getByRole("heading", { name: "Upcoming jobs and live marketplace demand." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Upcoming jobs and customer requests." })).toBeVisible();
   await expect(page.getByText(/Status: pending review/i)).toBeVisible();
-  await expect(page.getByText("Launch checklist")).toBeVisible();
+  await expect(page.getByText("Verification checklist")).toBeVisible();
   await expect(page.getByRole("heading", { name: "No scheduled jobs." })).toBeVisible();
 
   await page.getByLabel("Business description").fill(

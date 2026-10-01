@@ -1,5 +1,6 @@
 const nextConfig = {
   reactStrictMode: true,
+  distDir: process.env.YARDMATCH_NEXT_DIST_DIR ?? ".next",
   transpilePackages: [
     "@yardmatch/branding",
     "@yardmatch/contracts",

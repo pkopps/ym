@@ -2,13 +2,14 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { Address, ServiceCategory, formatBookingWindowSummary } from "@yardmatch/contracts";
-import { addLocalePrefix } from "@yardmatch/i18n";
+import { addLocalePrefix, stripLocalePrefix } from "@yardmatch/i18n";
 import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
 import { serviceCategoryLabels } from "@yardmatch/ui";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, getWebAuthDevice, saveStoredSession } from "../lib/api";
 import { buildSocialAuthRedirectUri } from "../lib/socialAuth";
+import { readBookingDraft } from "../lib/bookingJourney";
 import { SignupIdentityOptions } from "./SignupIdentityOptions";
 import {
   CustomerCustomTimingWindow,
@@ -130,6 +131,7 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [serviceRadiusMiles, setServiceRadiusMiles] = useState(15);
+  const [bookingAddress, setBookingAddress] = useState<Address>();
   const [line1, setLine1] = useState("");
   const [line2, setLine2] = useState("");
   const [city, setCity] = useState(carriedCity);
@@ -149,13 +151,21 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
 
   useEffect(() => {
     setIsHydrated(true);
-  }, []);
+    const draftId = searchParams.get("draft");
+    const draft = role === "customer" && draftId ? readBookingDraft(draftId) : undefined;
+    if (draft) {
+      setBookingAddress(draft.address); setLine1(draft.address.line1); setLine2(draft.address.line2 ?? "");
+      setCity(draft.address.city); setState(draft.address.state); setPostalCode(draft.address.postalCode);
+    }
+  }, [role, searchParams]);
 
   function buildPostSignupRedirectPath() {
     if (role === "provider") {
       return "/provider/management";
     }
 
+    const bookingReturn = stripLocalePrefix(searchParams.get("returnTo") ?? "").path;
+    if (/^\/customer\/booking\/review\?draft=[a-zA-Z0-9-]{16,80}$/.test(bookingReturn)) return bookingReturn;
     const redirectParams = new URLSearchParams({ flow: "request" });
     if (carriedService) {
       redirectParams.set("service", carriedService);
@@ -215,7 +225,8 @@ export function AccountSignupForm({ role }: { role: AccountSignupRole }) {
       state: state.trim().toUpperCase(),
       postalCode: postalCode.trim(),
       country: "US",
-      point: canReuseCarriedPoint && carriedPoint ? carriedPoint : buildEstimatedPoint(state, postalCode)
+      point: bookingAddress && city.trim().toLowerCase() === bookingAddress.city.toLowerCase() && state.trim().toUpperCase() === bookingAddress.state.toUpperCase() && postalCode.trim() === bookingAddress.postalCode
+        ? bookingAddress.point : canReuseCarriedPoint && carriedPoint ? carriedPoint : buildEstimatedPoint(state, postalCode)
     };
     const resolvedServiceRadiusMiles = Number.isFinite(serviceRadiusMiles)
       ? Math.min(60, Math.max(5, serviceRadiusMiles))

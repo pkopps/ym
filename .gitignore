@@ -1,5 +1,6 @@
 node_modules
 .next
+apps/experience-map/public/captures/full/
 dist
 .expo
 .DS_Store

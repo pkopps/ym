@@ -23,7 +23,7 @@ async function prepare(platform: MarketplacePlatformService, repository: InMemor
       credentials: credentials.map((type) => ({ id: `fixture-${provider.id}-${type}`, providerId: provider.id, type, status: "verified", jurisdiction: "NJ", submittedAt, reviewedAt: submittedAt, expiresAt: "2099-12-31T00:00:00Z" }))
     });
   }
-  const addressKey = [quote.address.line1, quote.address.city, quote.address.state, quote.address.postalCode, quote.address.country]
+  const addressKey = [quote.address.line1, quote.address.line2 ?? "", quote.address.city, quote.address.state, quote.address.postalCode, quote.address.country]
     .map((part) => part.trim().toLowerCase().replace(/\s+/g, " ")).join("|");
   return { ...payload, serviceAddress: quote.address, quoteToken: signScopedToken("yardmatch-booking-quote-v1", {
     customerId, propertyId: payload.servicePropertyId, addressKey, category: payload.category, totalCents: payload.totalCents, pricingVersion: 1
