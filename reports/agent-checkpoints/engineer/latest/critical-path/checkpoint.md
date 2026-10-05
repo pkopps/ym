@@ -3,7 +3,7 @@
 ## Current checkpoint: provider and crew activation with booking continuity
 
 - Updated: October 5, 2026 (UTC).
-- Branch and commit: `codex/critical-path-activation`, based on clean `464e939`; implementation commit is the commit containing this checkpoint.
+- Branch and commit: `codex/critical-path-activation`, implementation commit `814afe7`, based on clean `464e939`.
 - Completed: provider credential submission/rejection/resubmission and authenticated ops review; owned availability publishing; native credential and Connect handoff/resume; truthful anonymous crew interest, retained signup sessions after failed claims, retry/concurrency/capacity gates, native claims; persisted customer-consented decline/withdrawal/deadline recovery, equivalent replacement and fee-free cancellation; recurring visit/plan consent; wrong-property review; route/work/checkout gates, crew reconfirmation and party notifications.
 - In progress: none for implementation; draft PR publication follows this checkpoint.
 - Remaining: live sandbox Connect and email/SMS acceptance, native device/browser-return checks and normal launch review. Native property corrections use the web dashboard/support; no native correction form added.
@@ -13,5 +13,4 @@
 - Experience map: refreshed and validated/built; 44 web routes, 15 mobile screens, 21 states, 94 connections, zero broken connections and 15 explicitly pending screenshots. Added recovery/approval captures and actual acceptance evidence; external Connect return stays code-inferred.
 - Known defects/limits: external imagery delivery unavailable during the cloud run; local map rendering uses fixture tiles and does not establish live imagery acceptance. Gateway tests do not establish real money movement or vendor onboarding. Legacy price/scope differences and generated recurring siblings require support; crew assignment locking is conservative and global for launch.
 - Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-onboarding-verified-{desktop,mobile}.png` and `booking-replacement-consent-{desktop,mobile}.png`. Command summaries and final logs are in `reports/agent-checkpoints/engineer/latest/critical-path/`.
-- Recommended next task: review draft PR and run sandbox/staging plus signed-device acceptance using the [critical-path matrix and rollout runbook](../CRITICAL_PATH_ACCEPTANCE.md). No production deployment, real money movement or agreement acceptance occurred.
-
+- Recommended next task: review draft PR and run sandbox/staging plus signed-device acceptance using the [critical-path matrix and rollout runbook](../../../../../docs/CRITICAL_PATH_ACCEPTANCE.md). No production deployment, real money movement or agreement acceptance occurred.

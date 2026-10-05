@@ -1,0 +1,3 @@
+
+> yardmatch-monorepo@0.1.0 build:api
+> tsc -p apps/api/tsconfig.json

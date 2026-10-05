@@ -3,7 +3,7 @@
 ## Current checkpoint: provider and crew activation with booking continuity
 
 - Updated: October 5, 2026 (UTC).
-- Branch and commit: `codex/critical-path-activation`, based on clean `464e939`; implementation commit is the commit containing this checkpoint.
+- Branch and commit: `codex/critical-path-activation`, implementation commit `814afe7`, based on clean `464e939`.
 - Completed: provider credential submission/rejection/resubmission and authenticated ops review; owned availability publishing; native credential and Connect handoff/resume; truthful anonymous crew interest, retained signup sessions after failed claims, retry/concurrency/capacity gates, native claims; persisted customer-consented decline/withdrawal/deadline recovery, equivalent replacement and fee-free cancellation; recurring visit/plan consent; wrong-property review; route/work/checkout gates, crew reconfirmation and party notifications.
 - In progress: none for implementation; draft PR publication follows this checkpoint.
 - Remaining: live sandbox Connect and email/SMS acceptance, native device/browser-return checks and normal launch review. Native property corrections use the web dashboard/support; no native correction form added.

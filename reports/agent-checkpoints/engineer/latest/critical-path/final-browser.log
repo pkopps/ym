@@ -117,7 +117,7 @@ Running 51 tests using 1 worker
   ✓  51 [chromium] › tests/web/timeout-handling.spec.ts:3:5 › stalled place search stops loading and shows retry guidance (11.5s)
 
 
-  1) [chromium] › tests/web/booking-journey.spec.ts:130:5 › directory shows list and map, filters real openings and opens an editable scheduling modal 
+  1) [chromium] › tests/web/booking-journey.spec.ts:130:5 › directory shows list and map, filters real openings and opens an editable scheduling modal
 
     Error: expect(locator).toBeVisible() failed
 
@@ -154,7 +154,7 @@ Running 51 tests using 1 worker
 
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
-  2) [chromium] › tests/web/provider-clients.spec.ts:48:5 › client map synchronizes search, service filters, dates, list selection, and pins at desktop and mobile sizes 
+  2) [chromium] › tests/web/provider-clients.spec.ts:48:5 › client map synchronizes search, service filters, dates, list selection, and pins at desktop and mobile sizes
 
     Error: expect(locator).toBeVisible() failed
 
@@ -192,6 +192,6 @@ Running 51 tests using 1 worker
     ────────────────────────────────────────────────────────────────────────────────────────────────
 
   2 failed
-    [chromium] › tests/web/booking-journey.spec.ts:130:5 › directory shows list and map, filters real openings and opens an editable scheduling modal 
-    [chromium] › tests/web/provider-clients.spec.ts:48:5 › client map synchronizes search, service filters, dates, list selection, and pins at desktop and mobile sizes 
+    [chromium] › tests/web/booking-journey.spec.ts:130:5 › directory shows list and map, filters real openings and opens an editable scheduling modal
+    [chromium] › tests/web/provider-clients.spec.ts:48:5 › client map synchronizes search, service filters, dates, list selection, and pins at desktop and mobile sizes
   49 passed (3.7m)
