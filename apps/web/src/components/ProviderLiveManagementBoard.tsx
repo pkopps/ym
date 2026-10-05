@@ -1,4 +1,7 @@
 "use client";
+import { ProviderAvailabilityPanel } from "./ProviderAvailabilityPanel";
+import { ProviderPropertyCorrectionPanel } from "./BookingPropertyCorrectionPanel";
+import { ProviderCredentialsPanel } from "./ProviderCredentialsPanel";
 import { ProviderPricingPanel } from "./ProviderPricingPanel";
 import type { PropertyPhotoArea } from "@yardmatch/contracts";
 
@@ -1153,6 +1156,8 @@ export function ProviderLiveManagementBoard() {
         <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-pricing">{i18n.t("pricing.title")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
       </nav>
       {provider ? <WorkspaceSection id="provider-pricing" title={i18n.t("pricing.title")} defaultOpen={provider.verificationStatus !== "verified"}><ProviderPricingPanel postalCode={provider.address.postalCode} categories={provider.categories} /></WorkspaceSection> : null}
+      {provider ? <ProviderAvailabilityPanel /> : null}
+      {provider ? <ProviderCredentialsPanel provider={provider} onUpdated={updated => setOverview(current => current ? { ...current, provider: updated } : current)} /> : null}
       <WorkspaceSection id="provider-setup" title={i18n.t("workspace.setup")} defaultOpen={provider?.verificationStatus !== "verified"}>
       {provider ? (
         <section className="card">
@@ -1438,7 +1443,7 @@ export function ProviderLiveManagementBoard() {
               ) : null}
             </div>
 
-            {job.status === "requested" ? (
+            {job.status === "requested" || (job.status === "confirmed" && !job.onRouteConfirmedAt) ? (
               <details className="service-card-disclosure">
                 <summary className="service-card-disclosure__summary">{i18n.t("customer_live.more_options")}</summary>
                 <div className="service-card-disclosure__body">
@@ -1449,7 +1454,7 @@ export function ProviderLiveManagementBoard() {
                       onClick={() => void handleDeclineBooking(job.bookingId)}
                       type="button"
                     >
-                      {i18n.t("provider_live.action.decline_request")}
+                      {job.status === "requested" ? i18n.t("provider_live.action.decline_request") : "Withdraw and offer customer recovery"}
                     </button>
                   </div>
                 </div>
@@ -1602,6 +1607,7 @@ export function ProviderLiveManagementBoard() {
               </details>
             ) : null}
 
+            <ProviderPropertyCorrectionPanel bookingId={job.bookingId} history={job.addressChangeHistory} onUpdated={() => void loadProviderView()} />
             <BookingSchedulePanel booking={job} bookingId={job.bookingId} provider onUpdated={loadProviderView} />
 
             {!job.scheduleUpdates?.length && job.lateEtaIso && !job.onRouteConfirmedAt ? (

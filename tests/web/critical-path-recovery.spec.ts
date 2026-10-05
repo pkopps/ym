@@ -1,0 +1,52 @@
+import { expect, test } from "@playwright/test";
+import { approveProvider, authenticatedPost, captureResponsiveEvidence, createBooking, loginUi, registerCustomer, registerProvider, testPassword, uniqueEmail } from "./workflow-helpers";
+
+test("lost opening keeps successful crew signup and offers recovery inside account", async ({ page, request }) => {
+  const provider = await registerProvider(request);
+  await approveProvider(request, provider.providerId, provider.token);
+  const customer = await registerCustomer(request);
+  const booking = await createBooking(request, { customerToken: customer.token, providerId: provider.providerId });
+  await page.goto("/crew");
+  const opening = page.locator("article.crew-opportunity-card").filter({ hasText: provider.companyName });
+  await opening.getByRole("button", { name: "Request this fit" }).click();
+  await page.getByRole("link", { name: "Sign up for this opening" }).click();
+  await authenticatedPost(request, customer.token, "/api/bookings/cancel", { bookingId: booking.id });
+  await page.getByLabel("Full name").fill("Stale Opening Crew");
+  await page.getByLabel("Email").fill(uniqueEmail("stale-crew"));
+  await page.getByLabel("Phone").fill("555-0182");
+  await page.getByLabel("Password", { exact: true }).fill(testPassword);
+  await page.getByLabel("Confirm password").fill(testPassword);
+  await page.getByLabel("Home base").fill("18 Bay Ave");
+  await page.getByLabel("City").fill("Barnegat");
+  await page.getByLabel("State").fill("NJ");
+  await page.getByLabel("ZIP").fill("08005");
+  await page.getByRole("button", { name: "Create crew account" }).click();
+  await expect(page).toHaveURL(/\/crew\?openingClaim=unavailable$/);
+  await expect(page.getByText(/Your account is ready. The selected opening could not be claimed/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create crew account" })).toHaveCount(0);
+  await captureResponsiveEvidence(page, "crew-stale-opening-recovery", page.getByText(/Your account is ready/));
+});
+
+test("declined request stays open until customer requests a replacement at the same price", async ({ page, request }) => {
+  const provider = await registerProvider(request);
+  const backup = await registerProvider(request);
+  await approveProvider(request, provider.providerId, provider.token);
+  await approveProvider(request, backup.providerId, backup.token);
+  await authenticatedPost(request, backup.token, "/api/providers/availability/manage", { action: "add", startIso: new Date(Date.now() + 72 * 3600000).toISOString(), endIso: new Date(Date.now() + 77 * 3600000).toISOString() });
+  const customer = await registerCustomer(request, "Recovery Customer");
+  const booking = await createBooking(request, { customerToken: customer.token, providerId: provider.providerId });
+  await authenticatedPost(request, provider.token, "/api/bookings/decline", { bookingId: booking.id, reason: "Route capacity is unavailable." });
+  await page.goto("/login/customer");
+  await page.getByLabel("Email").fill(customer.email);
+  await page.getByLabel("Password", { exact: true }).fill(testPassword);
+  await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page).toHaveURL(/\/customer\/dashboard$/);
+  const recovery = page.getByRole("region", { name: "Visit recovery" });
+  await expect(recovery.getByRole("heading", { name: "Choose how to recover this visit" })).toBeVisible();
+  await captureResponsiveEvidence(page, "booking-replacement-consent", recovery);
+  await recovery.getByRole("button", { name: `Request replacement from ${backup.companyName}` }).click();
+  await expect(recovery).toHaveCount(0);
+  await loginUi(page, "provider", backup.email);
+  await expect(page).toHaveURL(/\/provider\/management$/);
+  await expect(page.getByText("Recovery Customer").first()).toBeVisible();
+});

@@ -179,6 +179,7 @@ model Booking {
   lateNoticeSentAt                DateTime?
   lateEtaIso                      DateTime?
   lateReason                      String?
+  recovery                        Json?
   scheduleUpdates                 Json                        @default("[]")
   scheduleVersion                 Int                         @default(0)
   activeExceptionType             String?

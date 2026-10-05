@@ -166,6 +166,8 @@ export interface MarketplaceRepository {
   updateCustomer(customerId: string, updates: Partial<CustomerProfile>): Promise<CustomerProfile | undefined>;
   updateOpsUser(opsUserId: string, updates: Partial<OpsProfile>): Promise<OpsProfile | undefined>;
   listCustomerProperties(customerId: string): Promise<CustomerProperty[]>;
+  upsertAvailabilitySlot(slot: AvailabilitySlot): Promise<AvailabilitySlot>;
+  deleteAvailabilitySlot(providerId: string, slotId: string): Promise<void>;
   listSlotsByProvider(providerId: string): Promise<AvailabilitySlot[]>;
   listAllSlots(): Promise<AvailabilitySlot[]>;
   createBooking(booking: Booking): Promise<Booking>;

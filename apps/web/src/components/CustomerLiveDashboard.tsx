@@ -1,4 +1,6 @@
 "use client";
+import { BookingPropertyCorrectionPanel } from "./BookingPropertyCorrectionPanel";
+import { BookingRecoveryPanel } from "./BookingRecoveryPanel";
 
 import { PaymentMethodGuide } from "./PaymentMethodGuide";
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
@@ -243,6 +245,7 @@ function formatSentenceTail(value: string) {
 }
 
 function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerName: string, payment?: PaymentRecord) {
+  if (booking.recovery?.state === "open") return "Your visit needs your recovery choice. Select a replacement, cancel without a recovery fee, or get help.";
   if (payment?.status === "processing") return i18n.t("payments.processing.body");
   const update = booking.scheduleUpdates?.at(-1);
   if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather_body" : update.kind === "reschedule" ? "schedule.proposal_body" : "customer_live.state.late", { provider: providerName });
@@ -421,6 +424,7 @@ export function CustomerLiveDashboard() {
     : undefined;
   const nextBookingPayment = nextBooking ? paymentsByBookingId[nextBooking.id] : undefined;
   const nextBookingNeedsCheckout =
+    nextBooking?.recovery?.state !== "open" &&
     !nextBooking?.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state)) &&
     Boolean(nextBooking) &&
     nextBooking.status === "confirmed" &&
@@ -1746,6 +1750,8 @@ export function CustomerLiveDashboard() {
             ) : null}
           </section>
         ) : null}
+        <BookingPropertyCorrectionPanel booking={booking} properties={customer?.properties ?? []} onUpdated={() => void loadDashboard()} />
+        <BookingRecoveryPanel booking={booking} onUpdated={() => void loadDashboard()} />
         <details className="service-card-disclosure">
           <summary className="service-card-disclosure__summary">{i18n.t("customer_live.active_booking.visit_details")}</summary>
           <div className="service-card-disclosure__body">
@@ -2785,6 +2791,8 @@ export function CustomerLiveDashboard() {
                 </div>
               </div>
 
+              <BookingRecoveryPanel booking={nextBooking} onUpdated={() => void loadDashboard()} />
+              <BookingPropertyCorrectionPanel booking={nextBooking} properties={customer?.properties ?? []} onUpdated={() => void loadDashboard()} />
               <BookingSchedulePanel booking={nextBooking} bookingId={nextBooking.id} onUpdated={loadDashboard} />
 
               {nextBookingNeedsCheckout ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}

@@ -295,3 +295,8 @@ Sign in as an ops admin, open Administration → ZIP pricing minimums, choose a 
 Relevant APIs: public `GET /api/pricing/minimums?postalCode=08005`, provider-owned `GET/POST /api/providers/pricing`, and admin-only `GET/POST /api/ops/pricing/minimums`. POST provider pricing accepts `{ prices: [{ postalCode, category, startingPriceCents }] }` and merges the edited pairs. POST minimums accepts `{ postalCode, category, minimumStartingPriceCents, reason }`. `POST /api/quotes/instant` accepts `providerId` to obtain a provider-specific quote. Prices are positive integer cents, capped at 1,000,000 cents per starting-price entry; provider writes accept up to 100 entries per request and 1,000 stored entries per business.
 
 Run `node --test --import tsx apps/api/test/provider-pricing.test.ts`, `npm run test:api`, `TEST_DATABASE_URL=... npm run test:api:postgres`, and `npm run test:web:smoke -- tests/web/provider-pricing.spec.ts`. Use isolated local ports and `YARDMATCH_NEXT_DIST_DIR` when another development server is running. Pricing and review screens show exact cents. API tokens are bound to provider/category/property/starting price; existing bookings and active recurring plans are never repriced by settings changes.
+
+
+## Critical-path verification
+
+See [the critical-path acceptance matrix and rollout runbook](docs/CRITICAL_PATH_ACCEPTANCE.md). Provider/ops credential review and owned availability controls are now available. Declined/withdrawn or overdue visits remain open for explicit customer recovery consent; replacements preserve the agreed price, release previous crew and require new provider confirmation. Property corrections require provider review for confirmed visits and are blocked once travel starts.

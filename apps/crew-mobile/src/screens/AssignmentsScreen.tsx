@@ -1,3 +1,4 @@
+import { CrewOpeningsCard } from "../components/CrewOpeningsCard";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
@@ -329,6 +330,7 @@ export function AssignmentsScreen({ onOpenToday }: { onOpenToday?: () => void })
       {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
 
+      <CrewOpeningsCard token={envelope?.session.token} onClaimed={() => void loadMatches()} />
       {viewMode === "upcoming" ? (
         <>
           {acceptedAssignments.length > 0 ? (

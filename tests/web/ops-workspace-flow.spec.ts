@@ -27,7 +27,7 @@ test("ops workspace exposes and audits verification, support, leads, payouts, an
   await page.locator('.workspace-nav a[href="#ops-providers"]').click();
   const verificationItem = page.locator("article.list-panel").filter({ hasText: pendingProvider.companyName });
   await expect(verificationItem).toBeVisible();
-  const override = verificationItem.locator("textarea");
+  const override = verificationItem.locator("textarea").last();
   if (await override.count()) {
     await override.fill(
       "Ops confirmed the narrow Barnegat service area, service scope, route settings, first-job monitoring owner, and launch-quality expectations for this pilot provider."

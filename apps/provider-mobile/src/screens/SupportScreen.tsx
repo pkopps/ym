@@ -1,3 +1,4 @@
+import { ProviderActivationCard } from "../components/ProviderActivationCard";
 import { ProviderPricingCard } from "../components/ProviderPricingCard";
 import { AnalyticsPreferences } from "../providers/ObservabilityProvider";
 import { useEffect, useState } from "react";
@@ -790,6 +791,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
         </View>
       </InfoCard>
 
+      {activeSection === "work" && provider ? <ProviderActivationCard provider={provider} token={envelope?.session.token} onUpdated={setProvider} /> : null}
       {activeSection === "work" && provider ? <ProviderPricingCard postalCode={provider.address.postalCode} categories={provider.categories} token={envelope?.session.token} /> : null}
       {activeSection === "work" ? (
       <InfoCard title={i18n.t("auth_signup.field.service_radius")} description={i18n.t("provider_mobile.support.radius_description")}>

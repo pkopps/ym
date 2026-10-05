@@ -128,6 +128,8 @@ test("guest books multiple services through review and signup, receives one pers
 });
 
 test("directory shows list and map, filters real openings and opens an editable scheduling modal", async ({ page }) => {
+  // Tile rendering is deterministic offline; live imagery delivery is a staging check.
+  await page.route("https://tile.openstreetmap.org/**", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#eef0e9"/><path d="M0 128h256M128 0v256" stroke="#d9ded2"/></svg>' }));
   test.setTimeout(60000);
   await manualSearch(page);
   await page.getByRole("button", { name: "View more providers" }).click();

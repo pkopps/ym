@@ -1,3 +1,4 @@
+import type { RecoverBookingRequest, ReviewBookingAddressRequest, ManageProviderAvailabilityRequest } from "@yardmatch/contracts";
 import { requireOpsAdminAccess } from "../controller-auth";
 import type { ProviderServicePrice, UpdateZipServiceMinimumRequest } from "@yardmatch/contracts";
 import {
@@ -94,6 +95,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/customers/review-opportunities") ||
       (context.method === "GET" && context.path === "/api/customers/retention-opportunities") ||
       (context.method === "POST" && context.path === "/api/quotes/instant") ||
+      (["GET", "POST"].includes(context.method) && context.path === "/api/providers/availability/manage") ||
       (context.method === "POST" && context.path === "/api/providers/availability") ||
       (context.method === "GET" && context.path === "/api/bookings/detail") ||
       (context.method === "GET" && context.path === "/api/places/search") ||
@@ -140,6 +142,9 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === "/api/bookings/recurring-plans") ||
       (context.method === "POST" && context.path === "/api/bookings/recurring-plans") ||
       (context.method === "POST" && context.path === "/api/bookings/recurring-plans/cancel") ||
+      (context.method === "POST" && context.path === "/api/bookings/recovery-options") ||
+      (context.method === "POST" && context.path === "/api/bookings/recover") ||
+      (context.method === "POST" && context.path === "/api/bookings/address-review") ||
       (context.method === "POST" && context.path === "/api/bookings/cancel") ||
       (context.method === "POST" && context.path === "/api/bookings/schedule-update") ||
       (context.method === "POST" && context.path === "/api/bookings/schedule-response") ||
@@ -278,6 +283,11 @@ export class MarketplaceController implements ApiController {
       return;
     }
 
+    if (["GET", "POST"].includes(context.method) && context.path === "/api/providers/availability/manage") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, context.method === "GET" ? await this.platform.getOwnProviderAvailability(identity.userId) : await this.platform.manageProviderAvailability(identity.userId, context.body as ManageProviderAvailabilityRequest));
+      return;
+    }
     if (context.method === "POST" && context.path === "/api/providers/availability") {
       sendJson(response, 200, await this.platform.getProviderAvailability(context.body as ProviderAvailabilityRequest));
       return;
@@ -681,6 +691,22 @@ export class MarketplaceController implements ApiController {
           context.body as CancelRecurringServicePlanRequest
         )
       );
+      return;
+    }
+
+    if (context.method === "POST" && context.path === "/api/bookings/recovery-options") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.getBookingRecoveryOptions(identity.userId, (context.body as { bookingId: string }).bookingId));
+      return;
+    }
+    if (context.method === "POST" && context.path === "/api/bookings/address-review") {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.reviewBookingAddress(identity.userId, context.body as ReviewBookingAddressRequest));
+      return;
+    }
+    if (context.method === "POST" && context.path === "/api/bookings/recover") {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.recoverBooking(identity.userId, context.body as RecoverBookingRequest));
       return;
     }
 

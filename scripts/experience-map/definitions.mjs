@@ -1,5 +1,13 @@
 // Connections are user actions, not organizational relationships. Keep this list tied to UI code or tests.
 export const states = [
+  ["customer:cancelled", "Cancelled recovery visit", "customer", "/customer/dashboard"],
+  ["provider:credentials", "Credentials pending or rejected", "provider", "/provider/management"],
+  ["provider:approved", "Approved marketplace profile", "provider", "/provider/management"],
+  ["provider:payout-ready", "Connect readiness review", "provider", "/provider/payments"],
+  ["crew:interest", "Opening selected before signup", "crew", "/crew"],
+  ["crew:claim-recovery", "Account created, opening unavailable", "crew", "/crew?openingClaim=unavailable"],
+  ["customer:recovery", "Customer recovery consent required", "customer", "/customer/dashboard"],
+  ["customer:property-review", "Property correction awaiting review", "customer", "/customer/dashboard"],
   ["customer:top-matches", "Top local matches", "customer", "/customer/listings"],
   ["customer:directory", "Full local directory", "customer", "/customer/listings?view=directory"],
   ["customer:quote", "Quote and recommendation", "customer", "/customer/dashboard?flow=request"],
@@ -22,6 +30,17 @@ const edge = (from, to, action, role = "public", state = "", evidence = "code-in
 });
 
 export const curatedEdges = [
+  edge(web("/provider/management"), "provider:credentials", "Submit or resubmit credentials", "provider", "account created", "test-verified", "tests/web/provider-onboarding-flow.spec.ts"),
+  edge("provider:credentials", "provider:approved", "Ops verifies credentials and approves", "ops", "all requirements verified", "test-verified", "tests/web/provider-onboarding-flow.spec.ts"),
+  edge("provider:approved", "provider:payout-ready", "Start or resume Connect", "provider", "external onboarding", "code-inferred", "apps/provider-mobile/src/components/ProviderActivationCard.tsx"),
+  edge(web("/crew"), "crew:interest", "Select opening", "public", "no assignment yet", "test-verified", "tests/web/critical-path-recovery.spec.ts"),
+  edge("crew:interest", "crew:claim-recovery", "Create account after opening disappears", "crew", "session retained", "test-verified", "tests/web/critical-path-recovery.spec.ts"),
+  edge("crew:claim-recovery", web("/crew"), "Find another opening", "crew", "authenticated account", "code-inferred", "apps/web/src/components/CrewLiveDashboard.tsx"),
+  edge("provider:review", "customer:recovery", "Decline or withdraw visit", "provider", "not traveling or working", "test-verified", "apps/api/test/critical-path.test.ts"),
+  edge("customer:recovery", "customer:request-pending", "Consent to equivalent replacement", "customer", "fresh availability and unchanged price", "test-verified", "tests/web/critical-path-recovery.spec.ts"),
+  edge("customer:recovery", "customer:cancelled", "Cancel without recovery fee", "customer", "refund reviewed if captured", "test-verified", "apps/api/test/critical-path.test.ts"),
+  edge("customer:confirmed", "customer:property-review", "Request property correction", "customer", "before travel", "test-verified", "apps/api/test/critical-path.test.ts"),
+  edge("customer:property-review", "customer:confirmed", "Approve equivalent property", "provider", "owned visit and price preserved", "test-verified", "apps/api/test/critical-path.test.ts"),
   edge(web("/"), web("/customer/listings"), "Find my match", "public", "service and area selected", "test-verified", "tests/web/customer-booking-golden-path.spec.ts"),
   edge(web("/"), web("/customer"), "Book service", "public", "", "test-verified", "tests/web/customer-booking-golden-path.spec.ts"),
   edge(web("/"), web("/provider"), "For providers", "public", "", "code-inferred", "apps/web/src/components/NavBar.tsx"),

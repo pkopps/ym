@@ -974,6 +974,7 @@ export interface ProviderStaffingJobSummary {
   lateReason?: string;
   scheduleUpdates?: BookingScheduleUpdate[];
   scheduleVersion?: number;
+  addressChangeHistory?: BookingAddressChangeRequest[];
   activeExceptionType?: BookingExceptionType;
   activeExceptionReportedAt?: string;
   activeExceptionNotes?: string;
@@ -1254,7 +1255,34 @@ export interface RespondBookingScheduleRequest {
   action: "accept" | "decline";
 }
 
+export interface BookingRecovery {
+  id: string;
+  reason: "provider-declined" | "provider-withdrew" | "timing-overdue";
+  state: "open" | "replaced" | "cancelled";
+  openedAt: string;
+  previousProviderIds: string[];
+  resolvedAt?: string;
+  selectedProviderId?: string;
+  scope?: "visit" | "plan";
+}
+export interface BookingRecoveryOptions {
+  booking: Booking;
+  recovery?: BookingRecovery;
+  alternatives: Array<{ providerId: string; companyName: string; startIso: string; endIso: string }>;
+  supportRequired: boolean;
+}
+export interface RecoverBookingRequest {
+  bookingId: string;
+  recoveryId: string;
+  action: "replace" | "cancel";
+  providerId?: string;
+  scheduledStartIso?: string;
+  scheduledEndIso?: string;
+  scope?: "visit" | "plan";
+}
+
 export interface Booking {
+  recovery?: BookingRecovery;
   id: string;
   customerId: string;
   providerId: string;
@@ -3142,6 +3170,13 @@ export interface SearchProvidersRequest {
   availability?: { startIso: string; endIso: string };
 }
 
+export interface ManageProviderAvailabilityRequest {
+  action: "add" | "remove";
+  slotId?: string;
+  startIso?: string;
+  endIso?: string;
+}
+
 export interface ProviderAvailabilityRequest {
   providerId: string;
   address: Address;
@@ -3730,6 +3765,13 @@ export interface BookingAddressChangeRequest {
   requestedAt: string;
   requestedByCustomerId: string;
   outcome: "updated" | "requires-provider-review" | "blocked";
+  reason: string;
+}
+
+export interface ReviewBookingAddressRequest {
+  bookingId: string;
+  changeId: string;
+  action: "approve" | "reject";
   reason: string;
 }
 

@@ -52,3 +52,8 @@ Migration `20260920010000_booking_schedule_updates` adds `scheduleUpdates` JSON 
 Apply migrations and deploy the API before clients that use the new routes. Redeploy the operations runner and confirm its live run history includes the new sweep. Verify real email/SMS/push delivery and native notification taps with staging accounts and approved devices. Local tests use mock senders and cannot prove production delivery. No production deployment or vendor activation occurred in this task.
 
 Weather holds are provider-reported. Forecast ingestion, automatically detecting bad weather, batch updates for an entire route, repeated escalation ownership after an ignored ops alert, and suggesting alternative provider capacity are separate follow-ups. The existing scheduler must actually run for overdue notices to be sent. Customer views preserve the last known state during temporary network failures; web and native Visits refresh timing in the foreground.
+
+
+## Provider-caused recovery and property review
+
+See [the critical-path acceptance matrix and rollout runbook](CRITICAL_PATH_ACCEPTANCE.md). Provider/ops credential review and owned availability controls are now available. Declined/withdrawn or overdue visits remain open for explicit customer recovery consent; replacements preserve the agreed price, release previous crew and require new provider confirmation. Property corrections require provider review for confirmed visits and are blocked once travel starts.

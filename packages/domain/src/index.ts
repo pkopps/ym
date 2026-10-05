@@ -751,7 +751,7 @@ export class BookingAddressPolicyService {
     outcome: "updated" | "requires-provider-review" | "blocked";
     reason: string;
   } {
-    if (input.booking.status === "in-progress" || input.booking.status === "completed") {
+    if (!["requested", "confirmed"].includes(input.booking.status) || input.booking.onRouteConfirmedAt) {
       return {
         outcome: "blocked",
         reason: "The crew is already working or the job is complete, so the address can no longer be changed."

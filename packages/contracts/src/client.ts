@@ -1,3 +1,4 @@
+import type { BookingRecoveryOptions, RecoverBookingRequest, ReviewBookingAddressRequest, UpdateBookingAddressResponse, ManageProviderAvailabilityRequest } from "./types";
 import type { ZipServiceMinimum, ZipServiceMinimumRecord, UpdateZipServiceMinimumRequest, ProviderServicePrice, ProviderPricingOverview } from "./pricing";
 import {
   ProviderAvailabilityRequest,
@@ -537,6 +538,13 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.searchProviders, payload);
   }
 
+  public getOwnProviderAvailability(): Promise<AvailabilitySlot[]> {
+    return this.getJson(ApiRoutes.manageProviderAvailability);
+  }
+  public manageProviderAvailability(payload: ManageProviderAvailabilityRequest): Promise<AvailabilitySlot[]> {
+    return this.postJson(ApiRoutes.manageProviderAvailability, payload);
+  }
+
   public getProviderAvailability(payload: ProviderAvailabilityRequest): Promise<AvailabilitySlot[]> {
     return this.postJson(ApiRoutes.providerAvailability, payload);
   }
@@ -932,7 +940,18 @@ export class MarketplaceApiClient {
     return this.getJson(`${ApiRoutes.bookingTracking}?bookingId=${encodeURIComponent(bookingId)}`);
   }
 
-  public updateBookingAddress(payload: UpdateBookingAddressRequest) {
+  public getBookingRecoveryOptions(bookingId: string): Promise<BookingRecoveryOptions> {
+    return this.postJson(ApiRoutes.bookingRecoveryOptions, { bookingId });
+  }
+  public recoverBooking(payload: RecoverBookingRequest): Promise<Booking> {
+    return this.postJson(ApiRoutes.recoverBooking, payload);
+  }
+
+  public reviewBookingAddress(payload: ReviewBookingAddressRequest): Promise<Booking> {
+    return this.postJson(ApiRoutes.reviewBookingAddress, payload);
+  }
+
+  public updateBookingAddress(payload: UpdateBookingAddressRequest): Promise<UpdateBookingAddressResponse> {
     return this.postJson(ApiRoutes.updateBookingAddress, payload);
   }
 

@@ -186,7 +186,14 @@ export function CrewSignupExperience() {
       if (opportunityId) {
         const authenticatedApi = createWebApiClient(i18n.locale);
         authenticatedApi.setAuthToken(envelope.session.token);
-        await authenticatedApi.claimPublicCrewOpportunity({ opportunityId });
+        try {
+          await authenticatedApi.claimPublicCrewOpportunity({ opportunityId });
+        } catch {
+          // Account creation succeeded: recover inside the account, never register again.
+          router.push(addLocalePrefix("/crew?openingClaim=unavailable", i18n.locale));
+          router.refresh();
+          return;
+        }
       }
 
       router.push(addLocalePrefix("/crew", i18n.locale));

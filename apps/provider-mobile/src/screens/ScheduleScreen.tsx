@@ -1466,7 +1466,7 @@ export function ScheduleScreen() {
               const proofSummary = getProviderJobProofSummary(i18n, job);
               const shouldShowArrivalProof = job.status === "confirmed";
               const shouldShowCompletionProof = job.status === "in-progress";
-              const canDeclineJob = job.status === "requested";
+              const canDeclineJob = job.status === "requested" || (job.status === "confirmed" && !job.onRouteConfirmedAt);
               const canManageCrew = job.status === "confirmed" || job.status === "in-progress";
               const hasPendingCrewReview = job.matches.some((match) => match.status === "pending-provider-review");
               const canAssignRouteLeader =
@@ -1648,7 +1648,7 @@ export function ScheduleScreen() {
                             style={styles.chatButton}
                           >
                             <Text style={styles.chatButtonLabel}>
-                              {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : i18n.t("provider_live.action.decline_request")}
+                              {isWorking ? i18n.t("provider_mobile.dashboard.loading.working") : job.status === "requested" ? i18n.t("provider_live.action.decline_request") : "Withdraw and offer recovery"}
                             </Text>
                           </Pressable>
                         ) : null}

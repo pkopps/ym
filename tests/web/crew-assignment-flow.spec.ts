@@ -30,7 +30,7 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
   const opening = page.locator("article.crew-opportunity-card").filter({ hasText: provider.companyName });
   await expect(opening).toBeVisible();
   await opening.getByRole("button", { name: "Request this fit" }).click();
-  await expect(page.getByText("Provider notified")).toBeVisible();
+  await expect(page.getByText("Opening selected", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Sign up for this opening" }).click();
   await expect(page).toHaveURL(/\/auth\/crew\?.*opportunityId=/);
   await expect(page.getByText("Opening selected")).toBeVisible();

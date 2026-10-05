@@ -5,6 +5,7 @@ import { DataEngineeringLogger } from "@yardmatch/analytics";
 import { getBookingServiceWindow } from "@yardmatch/contracts";
 import { MarketplaceTelemetryEventCatalog } from "@yardmatch/observability";
 import { HttpError } from "../src/http";
+import { signScopedToken } from "../src/auth";
 import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
 import { PhotoStorageService } from "../src/services/PhotoStorageService";
@@ -318,7 +319,12 @@ async function createExecutedStripeProviderTransferFixture(options?: {
     propertyLabel: "Primary home",
     address: createAddress()
   });
-  const provider = (await repository.listProviders())[0];
+  const provider = await platform.registerUser({
+    role: "provider", fullName: "New Transfer Owner", companyName: "New Transfer Property Care",
+    email: `new-transfer-${crypto.randomUUID()}@example.com`, address: createAddress(),
+    categories: ["lawn-mowing"], serviceRadiusMiles: 20,
+    bio: "Insured property care with careful arrivals, complete proof and reliable customer communication.", yearsExperience: 5
+  });
   const opsProfile = (await repository.listOpsUsers())[0];
   assert.ok(provider);
   assert.ok(opsProfile);
@@ -328,8 +334,19 @@ async function createExecutedStripeProviderTransferFixture(options?: {
     role: "ops" as const,
     sessionVersion: 1
   };
+  for (const type of ["business-registration", "general-liability-insurance", "workers-compensation"] as const) {
+    const submitted = await platform.submitProviderCredential(provider.id, { type, jurisdiction: "NJ", referenceNumber: `new-provider-${type}`, expiresAt: futureIso(24 * 365) });
+    await platform.reviewProviderCredential(opsProfile.id, { providerId: provider.id, credentialId: submitted.credentials!.find(item => item.type === type)!.id, action: "verify" });
+  }
+  await platform.reviewProviderVerification({ providerId: provider.id, action: "approve", notes: "Reviewed profile, insurance, category coverage and operating requirements for marketplace visibility." });
+  await platform.manageProviderAvailability(provider.id, { action: "add", startIso: futureIso(72), endIso: futureIso(77) });
   await platform.startProviderConnectOnboarding(provider.id);
-  const booking = await createWorkflowBooking(platform, repository, customer.id, {
+  const property = customer.properties[0]!;
+  const addressKey = [property.address.line1, property.address.line2 ?? "", property.address.city, property.address.state, property.address.postalCode, property.address.country].map(part => part.trim().toLowerCase().replace(/\s+/g, " ")).join("|");
+  // Fixed agreed price isolates settlement arithmetic; provider approval/credentials are never overwritten by the legacy fixture helper.
+  const quoteToken = signScopedToken("yardmatch-booking-quote-v1", { customerId: customer.id, propertyId: property.id, addressKey, category: "lawn-mowing", totalCents: 12_800, pricingVersion: 1 }, 1800);
+  const booking = await platform.createBooking(customer.id, {
+    quoteToken,
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
@@ -509,7 +526,8 @@ test("instant quotes use google address validation when configured", async () =>
     assert.equal(quote.normalizedAddress.validationConfidence, "validated");
     assert.match(quote.normalizedAddress.validationMessage ?? "", /validated/i);
   } finally {
-    process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+    else process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalKey;
     global.fetch = originalFetch;
   }
 });
@@ -759,8 +777,10 @@ test("saved customer properties reuse cached geocodes for the same normalized ad
     assert.equal(secondProperty.address.geocodeCacheKey, firstProperty.address.geocodeCacheKey);
     assert.equal(secondProperty.address.geocodeProvider, "google-geocoding");
   } finally {
-    process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
-    process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalAddressValidationKey;
+    if (originalMapsKey === undefined) delete process.env.GOOGLE_MAPS_API_KEY;
+    else process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
+    if (originalAddressValidationKey === undefined) delete process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+    else process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalAddressValidationKey;
     global.fetch = originalFetch;
   }
 });
@@ -873,8 +893,10 @@ test("quotes and bookings reuse saved customer property geocodes for matching cu
     assert.equal(booking.serviceAddress.geocodeCacheKey, savedProperty.address.geocodeCacheKey);
     assert.equal(booking.serviceAddress.geocodeProvider, "google-geocoding");
   } finally {
-    process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
-    process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalAddressValidationKey;
+    if (originalMapsKey === undefined) delete process.env.GOOGLE_MAPS_API_KEY;
+    else process.env.GOOGLE_MAPS_API_KEY = originalMapsKey;
+    if (originalAddressValidationKey === undefined) delete process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY;
+    else process.env.GOOGLE_ADDRESS_VALIDATION_API_KEY = originalAddressValidationKey;
     global.fetch = originalFetch;
   }
 });
@@ -1559,7 +1581,8 @@ test("provider decline flow and ops overview counters cover confirms, declines, 
     bookingId: declinedBooking.id,
     reason: "Route already full for that window."
   });
-  assert.equal(declined.status, "cancelled");
+  assert.equal(declined.status, "requested");
+  assert.equal(declined.recovery?.state, "open");
 
   await platform.cancelBooking(customer.id, { bookingId: cancelledBooking.id });
   await platform.createPaymentIntent({
@@ -3406,7 +3429,8 @@ test("ops launch lead guidance preserves inbound intake notes for inferred email
       )
     );
   } finally {
-    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+    if (originalSecret === undefined) delete process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+    else process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
   }
 });
 
@@ -3675,7 +3699,8 @@ test("referral leads can guide ops to coordinate through the referrer when custo
     assert.equal(partnerTemplate.audience, "partner");
     assert.match(partnerTemplate.body, /active contact/i);
   } finally {
-    process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
+    if (originalSecret === undefined) delete process.env.INBOUND_LEAD_WEBHOOK_SECRET;
+    else process.env.INBOUND_LEAD_WEBHOOK_SECRET = originalSecret;
   }
 });
 
@@ -10811,7 +10836,7 @@ test("notifications generate external delivery records for push, email, and sms"
   assert.ok(deliveries.deliveries.every((delivery) => delivery.status === "sent"));
 });
 
-test("selecting a public crew opportunity texts auto-accept providers that the opening was filled", async () => {
+test("anonymous selection does not fill an opening or notify auto-accept providers", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
 
@@ -10856,7 +10881,7 @@ test("selecting a public crew opportunity texts auto-accept providers that the o
 
   const selection = await platform.selectPublicCrewOpportunity({ opportunityId: booking.id });
   assert.equal(selection.staffingMode, "auto-accept");
-  assert.equal(selection.notificationTitle, "Your crew opening was filled");
+  assert.equal(selection.notificationTitle, "Opening selected");
 
   const deliveries = await platform.listNotificationDeliveries({
     userId: provider.id,
@@ -10866,8 +10891,8 @@ test("selecting a public crew opportunity texts auto-accept providers that the o
   const sms = deliveries.deliveries.find(
     (delivery) => delivery.channel === "sms" && delivery.title === "Your crew opening was filled"
   );
-  assert.ok(sms);
-  assert.match(sms.bodyPreview, /auto-accept setting marked the opening as filled/i);
+  assert.equal(sms, undefined);
+  assert.equal((await repository.listCrewMatches()).length, 0);
 });
 
 for (const coverageState of ["missing", "expired", "verified"] as const) {
@@ -10942,7 +10967,7 @@ test(`public crew claims require verified coverage for auto-accept (${coverageSt
   });
 
   const selection = await platform.selectPublicCrewOpportunity({ opportunityId: booking.id });
-  assert.equal(selection.notificationTitle, hasCrewCoverage ? "Your crew opening was filled" : "Crew opening needs review");
+  assert.equal(selection.notificationTitle, "Opening selected");
 
   const match = await platform.claimPublicCrewOpportunity(crewMember.id, {
     opportunityId: booking.id
@@ -10962,7 +10987,7 @@ test(`public crew claims require verified coverage for auto-accept (${coverageSt
 
 }
 
-test("selecting a public crew opportunity texts review-first providers that review is needed", async () => {
+test("anonymous selection does not create a review request", async () => {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
 
@@ -11001,7 +11026,7 @@ test("selecting a public crew opportunity texts review-first providers that revi
 
   const selection = await platform.selectPublicCrewOpportunity({ opportunityId: booking.id });
   assert.equal(selection.staffingMode, "review-first");
-  assert.equal(selection.notificationTitle, "Crew opening needs review");
+  assert.equal(selection.notificationTitle, "Opening selected");
 
   const deliveries = await platform.listNotificationDeliveries({
     userId: provider.id,
@@ -11011,8 +11036,8 @@ test("selecting a public crew opportunity texts review-first providers that revi
   const sms = deliveries.deliveries.find(
     (delivery) => delivery.channel === "sms" && delivery.title === "Crew opening needs review"
   );
-  assert.ok(sms);
-  assert.match(sms.bodyPreview, /Review this match before adding them to the crew/i);
+  assert.equal(sms, undefined);
+  assert.equal((await repository.listCrewMatches()).length, 0);
 });
 
 test("notification preferences can disable sms and review reminder delivery", async () => {
@@ -11250,8 +11275,10 @@ test("configured Resend email delivery uses the real email provider path", async
     assert.match(recordedBody, /alerts@yardmatch\.example/);
     assert.match(recordedBody, /New booking request/);
   } finally {
-    process.env.RESEND_API_KEY = originalResendApiKey;
-    process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
+    if (originalResendApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = originalResendApiKey;
+    if (originalNotificationEmailFrom === undefined) delete process.env.NOTIFICATION_EMAIL_FROM;
+    else process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
     globalThis.fetch = originalFetch;
   }
 });
@@ -11335,9 +11362,12 @@ test("configured Twilio SMS delivery failures create retryable records", async (
     assert.ok(smsDelivery?.nextRetryAt);
     assert.match(smsDelivery?.errorMessage ?? "", /twilio unavailable/i);
   } finally {
-    process.env.TWILIO_ACCOUNT_SID = originalTwilioAccountSid;
-    process.env.TWILIO_AUTH_TOKEN = originalTwilioAuthToken;
-    process.env.TWILIO_FROM_NUMBER = originalTwilioFromNumber;
+    if (originalTwilioAccountSid === undefined) delete process.env.TWILIO_ACCOUNT_SID;
+    else process.env.TWILIO_ACCOUNT_SID = originalTwilioAccountSid;
+    if (originalTwilioAuthToken === undefined) delete process.env.TWILIO_AUTH_TOKEN;
+    else process.env.TWILIO_AUTH_TOKEN = originalTwilioAuthToken;
+    if (originalTwilioFromNumber === undefined) delete process.env.TWILIO_FROM_NUMBER;
+    else process.env.TWILIO_FROM_NUMBER = originalTwilioFromNumber;
     globalThis.fetch = originalFetch;
   }
 });
@@ -11593,9 +11623,12 @@ test("ops notification health can escalate external alerts to configured contact
       )
     );
   } finally {
-    process.env.RESEND_API_KEY = originalResendApiKey;
-    process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
-    process.env.NOTIFICATION_ALERT_EMAILS = originalNotificationAlertEmails;
+    if (originalResendApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = originalResendApiKey;
+    if (originalNotificationEmailFrom === undefined) delete process.env.NOTIFICATION_EMAIL_FROM;
+    else process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
+    if (originalNotificationAlertEmails === undefined) delete process.env.NOTIFICATION_ALERT_EMAILS;
+    else process.env.NOTIFICATION_ALERT_EMAILS = originalNotificationAlertEmails;
     globalThis.fetch = originalFetch;
   }
 });
@@ -11639,10 +11672,14 @@ test("inbound automation health can escalate external alerts to configured conta
       )
     );
   } finally {
-    process.env.RESEND_API_KEY = originalResendApiKey;
-    process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
-    process.env.NOTIFICATION_ALERT_EMAILS = originalNotificationAlertEmails;
-    process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES = originalExpectedSources;
+    if (originalResendApiKey === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = originalResendApiKey;
+    if (originalNotificationEmailFrom === undefined) delete process.env.NOTIFICATION_EMAIL_FROM;
+    else process.env.NOTIFICATION_EMAIL_FROM = originalNotificationEmailFrom;
+    if (originalNotificationAlertEmails === undefined) delete process.env.NOTIFICATION_ALERT_EMAILS;
+    else process.env.NOTIFICATION_ALERT_EMAILS = originalNotificationAlertEmails;
+    if (originalExpectedSources === undefined) delete process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES;
+    else process.env.OPS_EXPECTED_INBOUND_AUTOMATION_SOURCES = originalExpectedSources;
     globalThis.fetch = originalFetch;
   }
 });
