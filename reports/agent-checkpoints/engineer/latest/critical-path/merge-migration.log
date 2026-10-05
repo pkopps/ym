@@ -1,0 +1,157 @@
+
+> yardmatch-monorepo@0.1.0 prisma:deploy
+> npm --workspace @yardmatch/api run prisma:deploy
+
+
+> @yardmatch/api@0.1.0 prisma:deploy
+> node ../../scripts/deploy-database.mjs
+
+Script executed successfully.
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "yardmatch_merge_test", schema "public" at "127.0.0.1:55432"
+
+Migration 20260529011124_init marked as applied.
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "yardmatch_merge_test", schema "public" at "127.0.0.1:55432"
+
+45 migrations found in prisma/migrations
+
+Applying migration `20260528123000_crew_staffing_chat`
+Applying migration `20260601120000_customer_provider_chat_on_route`
+Applying migration `20260602143000_app_notifications`
+Applying migration `20260604153000_stripe_checkout_payments`
+Applying migration `20260605110000_booking_windows_and_late_notices`
+Applying migration `20260605120000_booking_exceptions`
+Applying migration `20260605133000_notification_delivery_preferences`
+Applying migration `20260607170000_booking_disputes`
+Applying migration `20260607183000_support_ticket_resolution`
+Applying migration `20260607193000_password_reset_and_session_version`
+Applying migration `20260607203000_live_route_location_tracking`
+Applying migration `20260607220000_social_auth_subjects`
+Applying migration `20260607233000_push_devices_and_delivery_retries`
+Applying migration `20260608154500_refund_review_workflow`
+Applying migration `20260610190000_provider_verification_workflow`
+Applying migration `20260610213000_booking_service_evidence`
+Applying migration `20260610224500_booking_interventions`
+Applying migration `20260611104500_recurring_service_plans`
+Applying migration `20260611123000_crew_cancellation_accountability`
+Applying migration `20260611143000_provider_dispatch_controls`
+Applying migration `20260612100000_provider_payout_rules`
+Applying migration `20260614120000_provider_acceptance_windows`
+Applying migration `20260614153000_booking_route_leader_assignments`
+Applying migration `20260614183000_booking_route_stops`
+Applying migration `20260614210000_schema_drift_cleanup`
+Applying migration `20260719223000_payout_disbursement_runs`
+Applying migration `20260719224500_launch_operations_tasks`
+Applying migration `20260719231500_ops_automation_runs`
+Applying migration `20260730010000_launch_financial_integrity`
+Applying migration `20260803202500_launch_leads_auth_and_review_responses`
+Applying migration `20260803233000_stripe_provider_transfer_lifecycle`
+Applying migration `20260803234500_processor_fee_status_constraint`
+Applying migration `20260809173000_account_two_factor_security`
+Applying migration `20260823233000_paginated_booking_history`
+Applying migration `20260909010000_security_states`
+Applying migration `20260919120000_product_analytics`
+Applying migration `20260920010000_booking_schedule_updates`
+Applying migration `20260920130000_service_complaints`
+Applying migration `20260921010000_scale_reliability`
+Applying migration `20260921011000_analytics_utc_defaults`
+Applying migration `20260928010000_customer_referrals`
+Applying migration `20261001010000_booking_services`
+Applying migration `20261001020000_provider_zip_pricing`
+Applying migration `20261005010000_booking_recovery`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20260528123000_crew_staffing_chat/
+    └─ migration.sql
+  └─ 20260601120000_customer_provider_chat_on_route/
+    └─ migration.sql
+  └─ 20260602143000_app_notifications/
+    └─ migration.sql
+  └─ 20260604153000_stripe_checkout_payments/
+    └─ migration.sql
+  └─ 20260605110000_booking_windows_and_late_notices/
+    └─ migration.sql
+  └─ 20260605120000_booking_exceptions/
+    └─ migration.sql
+  └─ 20260605133000_notification_delivery_preferences/
+    └─ migration.sql
+  └─ 20260607170000_booking_disputes/
+    └─ migration.sql
+  └─ 20260607183000_support_ticket_resolution/
+    └─ migration.sql
+  └─ 20260607193000_password_reset_and_session_version/
+    └─ migration.sql
+  └─ 20260607203000_live_route_location_tracking/
+    └─ migration.sql
+  └─ 20260607220000_social_auth_subjects/
+    └─ migration.sql
+  └─ 20260607233000_push_devices_and_delivery_retries/
+    └─ migration.sql
+  └─ 20260608154500_refund_review_workflow/
+    └─ migration.sql
+  └─ 20260610190000_provider_verification_workflow/
+    └─ migration.sql
+  └─ 20260610213000_booking_service_evidence/
+    └─ migration.sql
+  └─ 20260610224500_booking_interventions/
+    └─ migration.sql
+  └─ 20260611104500_recurring_service_plans/
+    └─ migration.sql
+  └─ 20260611123000_crew_cancellation_accountability/
+    └─ migration.sql
+  └─ 20260611143000_provider_dispatch_controls/
+    └─ migration.sql
+  └─ 20260612100000_provider_payout_rules/
+    └─ migration.sql
+  └─ 20260614120000_provider_acceptance_windows/
+    └─ migration.sql
+  └─ 20260614153000_booking_route_leader_assignments/
+    └─ migration.sql
+  └─ 20260614183000_booking_route_stops/
+    └─ migration.sql
+  └─ 20260614210000_schema_drift_cleanup/
+    └─ migration.sql
+  └─ 20260719223000_payout_disbursement_runs/
+    └─ migration.sql
+  └─ 20260719224500_launch_operations_tasks/
+    └─ migration.sql
+  └─ 20260719231500_ops_automation_runs/
+    └─ migration.sql
+  └─ 20260730010000_launch_financial_integrity/
+    └─ migration.sql
+  └─ 20260803202500_launch_leads_auth_and_review_responses/
+    └─ migration.sql
+  └─ 20260803233000_stripe_provider_transfer_lifecycle/
+    └─ migration.sql
+  └─ 20260803234500_processor_fee_status_constraint/
+    └─ migration.sql
+  └─ 20260809173000_account_two_factor_security/
+    └─ migration.sql
+  └─ 20260823233000_paginated_booking_history/
+    └─ migration.sql
+  └─ 20260909010000_security_states/
+    └─ migration.sql
+  └─ 20260919120000_product_analytics/
+    └─ migration.sql
+  └─ 20260920010000_booking_schedule_updates/
+    └─ migration.sql
+  └─ 20260920130000_service_complaints/
+    └─ migration.sql
+  └─ 20260921010000_scale_reliability/
+    └─ migration.sql
+  └─ 20260921011000_analytics_utc_defaults/
+    └─ migration.sql
+  └─ 20260928010000_customer_referrals/
+    └─ migration.sql
+  └─ 20261001010000_booking_services/
+    └─ migration.sql
+  └─ 20261001020000_provider_zip_pricing/
+    └─ migration.sql
+  └─ 20261005010000_booking_recovery/
+    └─ migration.sql
+
+All migrations have been successfully applied.
