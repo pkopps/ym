@@ -10,6 +10,8 @@ test("lost opening keeps successful crew signup and offers recovery inside accou
   const opening = page.locator("article.crew-opportunity-card").filter({ hasText: provider.companyName });
   await opening.getByRole("button", { name: "Request this fit" }).click();
   await page.getByRole("link", { name: "Sign up for this opening" }).click();
+  await expect(page).toHaveURL(/\/auth\/crew\?.*opportunityId=/);
+  await expect(page.getByRole("heading", { name: "Confirm your fit" })).toBeVisible();
   await authenticatedPost(request, customer.token, "/api/bookings/cancel", { bookingId: booking.id });
   await page.getByLabel("Full name").fill("Stale Opening Crew");
   await page.getByLabel("Email").fill(uniqueEmail("stale-crew"));
@@ -20,7 +22,11 @@ test("lost opening keeps successful crew signup and offers recovery inside accou
   await page.getByLabel("City").fill("Barnegat");
   await page.getByLabel("State").fill("NJ");
   await page.getByLabel("ZIP").fill("08005");
-  await page.getByRole("button", { name: "Create crew account" }).click();
+  const [registration] = await Promise.all([
+    page.waitForResponse(response => response.url().endsWith("/api/auth/register") && response.request().method() === "POST"),
+    page.getByRole("button", { name: "Create crew account" }).click()
+  ]);
+  expect(registration.ok(), await registration.text()).toBe(true);
   await expect(page).toHaveURL(/\/crew\?openingClaim=unavailable$/);
   await expect(page.getByText(/Your account is ready. The selected opening could not be claimed/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Create crew account" })).toHaveCount(0);
