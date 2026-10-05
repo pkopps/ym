@@ -1,0 +1,184 @@
+---
+title: "YardMatch · first-market pilot"
+subtitle: "A weekly decision scorecard for Barnegat and the approved launch ZIPs"
+date: 2026-10-05
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-depth: 2
+    theme: cosmo
+    css: scorecard.css
+    code-fold: true
+    page-layout: full
+    html-math-method: plain
+jupyter: python3
+execute:
+  echo: false
+  warning: false
+  error: false
+---
+
+```{python}
+from IPython.display import Markdown, display
+from pilot import ratio, contribution, reconcile, synthetic_fixture
+import matplotlib.pyplot as plt
+plt.rcParams.update({'figure.dpi': 140, 'font.size': 11})
+```
+
+::: {.callout-important title="Baseline unavailable — no live data checked"}
+This is a usable measurement plan and locally validated report, **not a launch-performance claim**. No authorized database connection, production export, or ops API endpoint was configured in this checkout. All six live metrics and their sample sizes are **unavailable**, not zero. The example later in this report is synthetic and does not describe customers.
+:::
+
+## The weekly scorecard
+
+Review weekly with Patrick and the pilot operations owner. Start with data quality, then read the six measures together. Resolve individual failed jobs before interpreting growth. Thresholds below are **proposed investigation triggers**, not approved SLAs, statistical significance, or permission to scale.
+
+| Measure | Live value / sample | Proposed small-pilot investigation trigger | First action |
+|---|---|---|---|
+| Booking conversion | **Unavailable** / visitors unavailable | 0 ordered requests after 10 observed visitors; or <20% after 30 | Inspect quote/search/coverage drop-off by surface; check missing stages first. |
+| Time to confirmation | **Unavailable** / matched confirmations unavailable | Any still-requested booking >24 hours; or p90 >12 hours once n≥10 | Review provider capacity and decision delivery with the continuity task owner. |
+| Completion rate | **Unavailable** / mature scheduled jobs unavailable | Any missed/unfinished job; or <90% once n≥10 | Review cancellations, weather, rescheduling, access and no-shows individually. |
+| Repeat customers, 30 days | **Unavailable** / mature first-job customers unavailable | 0 repeats after 10 eligible customers; or <20% once n≥20 | Split recurring and one-off service categories before changing retention tactics. |
+| Provider activation | **Unavailable** / registered providers unavailable | No verified provider with an open future slot; or <50% of registered have completed a job after 14 pilot days and n≥5 | Inspect verification, availability and demand matching; onboarding belongs to the other task. |
+| Contribution per completed job | **Unavailable** / fully costed jobs unavailable | Missing costs/fees; any negative job; or negative cohort mean after 10 fully costed jobs | Check refunds, actual processor fees, support time, incentives and acquisition spend. |
+
+Always show **numerator / denominator**, missing records, immature records and the as-of timestamp next to a percentage. For latency show n, p50, p90, maximum and unconfirmed aging. Below 30 observations, describe cases and counts; even above 30, these are descriptive pilot signals. A passing threshold is not a statistical guarantee. Do not average segment percentages.
+
+## Measurement contract
+
+**Market.** Operational jobs are selected by the persisted `bookings.serviceAddress.postalCode` in an explicitly approved ZIP list. Barnegat is the launch default; the exact ZIP list still needs owner confirmation. Do not guess it from seeded Brooklyn/Jersey City smoke data. A provider's home ZIP is not proof of coverage. Unknown ZIP records need a separate inventory before interpreting coverage.
+
+**Clock.** Use `America/New_York` for pilot calendar reporting, distinct from this workspace's UTC clock. Record UTC instants in inputs. Default review window: the previous complete Monday 00:00 through next Monday 00:00, half-open `[start,end)`. Also review trailing 28 calendar days for context and mature retention cohorts. Convert local boundaries individually so DST weeks can be 167 or 169 hours. SQL schema `DateTime` columns are UTC without a stored zone; the query converts parameters explicitly.
+
+**As-of and maturity.** Capture one current read-only snapshot at `as_of`, with `start < end ≤ as_of`; it must reflect the actual extraction time. The mutable booking/settlement tables cannot reconstruct a historical as-of state. Allow 48 hours after the scheduled end before evaluating fulfillment; allow a full 30×24 hours after first completion for repeat eligibility. These are proposed analytic maturity rules, not customer promises. Archive aggregate snapshots to compare later restatements; do not silently rewrite prior weeks.
+
+**Exclusions.** Remove known internal/test/seed customer and provider IDs inside the authorized environment before aggregation. Supply the same approved exclusion list used by analytics plus relevant legacy test identities. The existing API excludes ops/internal events but its supply and settlement queries do not apply equivalent account exclusions or market filters. Do not call those totals market-specific without a clean single-market database or a scoped export. Keep real cancellations, refunds, disputes, manual bookings and zero-value jobs visible in operational denominators; split them rather than removing difficult outcomes. Do not infer missing costs as zero.
+
+**Segmentation.** Use existing funnel dimensions: `source`, `platform`, `locale`, `category`, `area`, with `unknown` retained. Those are person entry/first-observed dimensions, not job attribution. Operational splits: approved ZIP, primary category (multi-service jobs counted once), one-off/recurring, first/repeat customer-provider pair, settlement policy version and currency. Segment PR #5 ZIP pricing using the booked job and persisted price, not today's provider price or minimum; active recurring plans may retain earlier agreed prices. Provider-level review stays private. For shared reports combine or suppress segments with n<5, never publish identifiers, addresses or free text, and never sum overlapping service categories.
+
+### 1 · Booking conversion: reuse the ordered funnel
+
+**Numerator:** `funnel.steps[booking_requested].people`. **Denominator:** `funnel.steps[page_viewed].people`, including the existing `screen_viewed` alias. This is the existing ordered person-level path through visit → quote → search → recommendation → request. Divide those counts; the existing per-step `conversionRate` at request instead divides by recommendation people. Report that step rate separately if useful.
+
+**Source:** authenticated ops `GET /api/observability/product-analytics?days=7` (also 30/90), implemented by `readAnalyticsReport` and `buildAnalyticsFunnel`. Do not rebuild identity stitching in Python. API periods are rolling elapsed days ending at retrieval, not the calendar week above; label its returned `since` and retrieval time explicitly. For an exact closed calendar period, an authorized analyst must invoke the existing aggregation on a matching snapshot or add a read-only upper-bound adaptation; this task does not change the endpoint.
+
+The denominator is **observed consenting visitors**, not all traffic. Web DNT/GPC, opt-out, device changes, missing identity links, losses and a window omitting earlier steps all affect coverage. Server outcomes may exist without optional consent; no client event can author a booking or payment outcome. A person can contribute multiple bookings but only one funnel stage count. Segment `requested/visitors` is an **any-request** cohort measure, not the ordered funnel rate: do not substitute it silently. The API cannot filter a full ordered funnel to a ZIP through its segment response; a clean single-market population or a scoped reuse of the existing aggregator is needed for a market-specific ordered rate.
+
+### 2 · Time to confirmation: event-based proxy
+
+**Population:** operational bookings requested in `[start,end)` in the approved market, all channels. **Sample:** jobs with a trusted first `booking_confirmed` event linked by `properties.bookingId`, before as-of, at or after `Booking.requestedAt`. **Value:** elapsed wall-clock hours; nearest-rank p50/p90, maximum and n. No rate denominator applies to the percentile; show matched n / requested jobs as coverage.
+
+Use the durable booking's request timestamp rather than an optional request event. `Booking` has no `confirmedAt`: the confirmation event is recorded after the database status update. This is a proxy, not an exact ledger transition time. Missing events bias the distribution; negative durations are quality failures, excluded from latency but counted. Show all still-requested jobs older than 24 hours, including those with no event. Terminal statuses cannot reliably establish whether a cancelled/refunded job was ever confirmed. A durable confirmation timestamp would require a separately authorized instrumentation/schema change.
+
+### 3 · Completion rate: scheduled jobs that matured
+
+**Numerator:** mature eligible jobs with a persisted `completedAt`. **Denominator:** all eligible jobs whose current `scheduledEndIso` falls in `[start,end)` and is at least 48 hours before as-of. Source: operational `bookings`, not telemetry. A later refund does not erase physical completion; show refunded/disputed jobs alongside it, and flag status/timestamp inconsistencies. This is provider-marked completion, not independent customer acceptance or quality certification.
+
+Include cancellations and unfinished jobs. Exclude only future/immature jobs and the agreed test/internal population. Report immature count separately. Rescheduling can move a job out of the current scheduled-window cohort: this is current-schedule fulfillment, not original-promise reliability. Keep a requested-job backlog and prior snapshots beside it; original-schedule/on-time measures depend on recovery/rescheduling evidence owned by the other active task.
+
+### 4 · Repeat customers: mature 30-day market cohort
+
+**Numerator:** eligible customers with a distinct later completed job within 30×24 hours of their first completed job in the pilot market. **Denominator:** customers whose first pilot-market completion is in `[start,end)` and whose full 30-day follow-up elapsed by as-of. Source: all retained operational booking history; distinct customer and booking identities stay inside the authorized database.
+
+Count across providers within the market. One customer counts once; automatic recurring completions qualify but must be shown separately from actively rebooked one-off jobs. This is **market repeat**, not global first-ever YardMatch retention. Insufficient historical coverage makes first-job classification unavailable. The existing `funnel.returningCustomers` counts people with >1 observed completion inside its event window; retain it as a diagnostic, never divide it by all visitors and call it 30-day retention. Show mature n, not-yet-mature n, repeat n and category mix.
+
+### 5 · Provider activation: preserve the snapshot
+
+Reuse `supply.registered`, `verified`, `withAvailability`, `withFirstBooking`, `withCompletedJob`. **Headline numerator:** registered providers with a completed job; **denominator:** registered providers, at extraction. Also show verified/registered and verified-with-open-future-slot/verified. A first booking is any booking status, not a confirmation or completion. The existing completion snapshot uses `status='completed'`, which can differ from the completion-history definition above after refunds.
+
+These are current totals, not ordered stages or signup-cohort conversion. `withFirstBooking` and `withCompletedJob` can include providers no longer verified, so do not draw a strictly decreasing funnel. The SQL behind the existing report covers all providers and all time. Until market service-coverage membership and exclusions are verified, label it **all-market snapshot**. A true 14-day activation cohort needs provider registration/verification/availability histories and explicit market membership; unavailable here. The 14-day trigger above merely starts a manual pilot review, not a fabricated cohort rate.
+
+### 6 · Contribution per job: costed operating contribution
+
+**Cohort:** jobs completed in `[start,end)`; include jobs with missing settlements as missing coverage, and reconcile costs/refunds to those same jobs through as-of. **Numerator:** sum of recorded `platformNetRevenueCents`, adjusted for net platform-borne refunds/disputes/reversals not already reflected, minus incremental support labor, incentives, attributed acquisition, variable operations/vendor costs and platform-borne taxes not already deducted. **Denominator:** all completed cohort jobs, once fully costed. Otherwise contribution is unavailable; report costed n / completed n and, if helpful, a clearly labeled partial-cost subtotal.
+
+`platformNetRevenueCents = finderFeeCents + completedJobFeeCents − actualProcessorFeeCents`. **It is not profit.** Provider net has already been separated from platform revenue; do not subtract it again. YardMatch has no crew wage ledger. Processor fee fields can be zero before actual-fee evidence arrives; verify provenance rather than treating every zero as free processing. Status buckets are `recorded`, `transfer-ready`, `transferred`, `reversed`; summing settlement rows is not a cash or refund-adjusted ledger.
+
+Reconcile immutable financial ledger entries, payment/refund/dispute records and actual fees before applying adjustments. Avoid double-counting an adjustment already in the ledger/net amount; include later adjustments as restatements of the original completion cohort. For acquisition, allocate campaign spend once to acquired customers under a documented policy (suggest charging first completed job), and show contribution before and after acquisition. Document loaded hourly support rate, job minutes, cost allocation, currency and tax treatment. Fixed corporate overhead remains outside this definition: even fully costed contribution is **not company profit**. Split first-pair vs repeat-pair jobs because the finder fee is one-time. Keep currencies separate.
+
+## Reconcile before interpreting
+
+`reconcile.sql` is a read-only PostgreSQL query over existing booking, event and settlement tables. It outputs only aggregate JSON; it does not create a new analytics service. It uses the booking ID join already present in server events. It never uses equal person counts as proof of equal bookings.
+
+| Check | Expected / investigation rule |
+|---|---|
+| Requested bookings ↔ request events | One distinct booking outcome per expected request; investigate any missing or >1 event IDs after flush. Identical event-ID delivery retries are already deduplicated by the primary key. |
+| Generated recurring requests | Later occurrences (`recurringPlanId` present, index >1) are separately counted; code deliberately passes `skipRequestedFunnelEvent: true`. This is an expected omission, not unexplained loss. Audit legacy/null recurrence indices. |
+| Confirmation | Compare events with confirmed/in-progress/completed records; count missing links, multiple event IDs and negative latency. Current status is only a lower-bound proxy for ever-confirmed. |
+| Completion | Persisted `completedAt` ↔ trusted completion events; separately count event without timestamp. Use booking history, including refunded jobs. |
+| Event integrity | Count missing booking IDs and references to nonexistent bookings. Global orphan counts cannot be attributed to a ZIP; label them global. Out-of-cohort existing bookings are not orphans. |
+| Settlement | Every completed paid job needs one versioned settlement and balanced ledger. Query flags completed jobs lacking a settlement for triage; zero-value/non-paid exceptions require inspection. Unique booking/payment constraints alone do not prove balances, fee correctness or actual transfer. |
+| Health | Inspect existing `durable`, `truncated`, pending writes, dropped writes, last failure/event and outbox age/exhaustion. A pending count of zero does not prove historical completeness. Investigate any unexplained mismatch, drop or stale gap after a known action. |
+
+**Reconciliation status: live unavailable.** Event writes are asynchronous and can be lost before flush; optional clients have bounded retries; retention defaults to 90 days (configurable 7–365). Reconcile before retention removes the relevant period and record the earliest retained date. Delayed received timestamps can change a rerun. Use first-party operational records for counts and money; PostHog only receives permissioned events and is not a complete booking ledger.
+
+**Documentation drift found:** `docs/ANALYTICS_AND_OPERATIONS.md` describes a 50,000-event product-report cap. This checkout's PostgreSQL `readAnalyticsReport` aggregates the full period and returns `truncated:false`; the in-memory path still has bounded history. Report the actual backend and health, not a blanket claim of unlimited history. No documentation or instrumentation change was made outside this report.
+
+### Python validation example — synthetic only
+
+The fixture deliberately contains four synthetic bookings: three ordinary requests, one generated recurring occurrence, a missing request event, distinct duplicate events, a repeated delivery of the same ID, a client-authored spoof, a missing completion event and an orphan. Python deduplicates delivery IDs and rejects untrusted outcomes. This is a validation example, **not a baseline**.
+
+```{python}
+example = reconcile(*synthetic_fixture())
+assert example['matched_request_jobs'] == 2
+assert example['missing_request_jobs'] == 1
+assert example['duplicate_request_jobs'] == 1
+assert example['missing_completion_jobs'] == 1
+assert example['orphan_events'] == 1
+assert ratio(0, 0) is None
+assert contribution(1000, {}, 2) is None
+rows = '\n'.join(f'| {k.replace("_", " ")} | {v} |' for k, v in example.items())
+display(Markdown('| Synthetic diagnostic | Result |\n|---|---:|\n' + rows))
+```
+
+```{python}
+#| fig-cap: "Synthetic test fixture only. Categories overlap; bars are counts, not rates."
+fig, ax = plt.subplots(figsize=(8, 3.2))
+labels = ['Matched requests', 'Missing requests', 'Duplicate request jobs', 'Missing completions', 'Orphan events']
+keys = ['matched_request_jobs','missing_request_jobs','duplicate_request_jobs','missing_completion_jobs','orphan_events']
+values = [example[k] for k in keys]
+ax.barh(labels[::-1], values[::-1], color=['#a65237']*4 + ['#276653'])
+ax.set(xlabel='Synthetic count', title='Reconciliation checks catch deliberate fixture defects', xticks=[0,1,2], xlim=(0,2.4))
+ax.spines[['top','right']].set_visible(False)
+for y, value in enumerate(values[::-1]): ax.text(value + .05, y, str(value), va='center')
+fig.tight_layout()
+plt.show()
+```
+
+## Populate and reproduce
+
+1. **Owner inputs:** approved market ZIPs, shared internal/test exclusions, actual pilot start and snapshot time; confirmation of operational-history coverage and event retention. Approve the proposed analytic windows/triggers before adopting them as operating policy.
+2. **Authorized analyst:** provide a current, read-only PostgreSQL snapshot/replica or run the supplied aggregate query there. Use a connection supplied through existing authorized infrastructure; do not put credentials in the report or commit raw exports. No new production credentials are needed to render this report.
+3. **Existing reports:** capture the authenticated product-analytics JSON for the desired rolling window, including environment, since, health, funnel and supply. Confirm market coverage before using headline conversion/activation. Remove any unexpected identifiers/free text before sharing; do not attach raw events.
+4. **Reconciliation:** retain the aggregate SQL JSON privately, confirm snapshot timing and exclusions, investigate mismatches inside the authorized environment. Do not attach per-job or per-customer details. The query's global orphan diagnostics deliberately have broader scope than the market cohort.
+5. **Costs:** supply same-cohort, currency-separated actual fee and adjustment reconciliation plus approved support/acquisition/incentive/vendor/tax inputs. The query exports settlement subtotals, not contribution. Missing categories keep contribution unavailable.
+6. **Update `.qmd`:** replace unavailable cells only with the verified aggregate values, scope, extraction time, numerator/denominator and caveats. Python helpers provide safe division, percentiles and contribution math. The renderer intentionally makes no network calls and does not auto-ingest private raw data.
+
+Use Python 3.12 and Quarto **1.10.18** (the version used here). No existing Quarto convention was found in this repository. Install the isolated Python dependencies and render:
+
+```bash
+cd reports/pilot-scorecard
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m unittest -v test_pilot.py
+QUARTO_PYTHON="$PWD/.venv/bin/python" quarto render pilot-scorecard.qmd
+```
+
+For an authorized analyst, `psql -X -qAt -v ON_ERROR_STOP=1` can execute `reconcile.sql` with parameters `start_utc`, `end_utc`, `as_of_utc`, `environment`, `market_zips_json` and `excluded_ids_json`. Supply dates with explicit offsets and JSON arrays via a protected wrapper; the query begins `READ ONLY`, sets a timeout and ends `ROLLBACK`. Validate nonempty approved ZIPs and boundary order before execution. Do not run against an unverified database or export identities. The query has no writes, scheduler or production configuration changes. Optional integration check: `python test_sql.py` starts and removes a disposable Docker PostgreSQL 17 container with no published ports or host mounts; run `docker pull postgres:17-alpine` first. It never connects to an existing database.
+
+## Evidence, limits and handoff
+
+Source inspected: `pkopps/ym`, branch `work`, commit `464e939` (PR #5 merge). Reused `docs/ANALYTICS_AND_OPERATIONS.md`, `ROADMAP.md`, root `AGENTS.md`, existing report/funnel, event catalog, booking lifecycle writers, Prisma schema, settlement calculation and analytics tests. The checkout review skill was inspected but its project-management workflow does not apply to this explicitly authorized report/query implementation.
+
+Primary code references (repository-relative):
+
+- `apps/api/src/observability/{analyticsReport,analyticsFunnel,ProductAnalytics}.ts`
+- `apps/api/src/controllers/ObservabilityController.ts`
+- `apps/web/src/components/ProductAnalyticsBoard.tsx`
+- `apps/api/src/services/MarketplacePlatformService.ts` (`confirmBooking`, completion writer, `createBookingRecord`, recurring scheduler)
+- `apps/api/prisma/schema.prisma`; `packages/domain/src/index.ts` (`calculateMarketplaceSettlement`)
+
+Validation commands and exact results are recorded in `VALIDATION.txt`. Python/Jupyter calculations and the HTML rendering use synthetic data only. The query also passed execution checks on disposable PostgreSQL 17 using synthetic schema tables and fixtures; this is not a full Prisma migration test or live reconciliation. No live baseline, live vendor check or live ledger balancing was performed.
+
+Dependencies stay with cloud task `01a109a8-3420-7220-a800-57bc68f9d0e3`: provider/crew onboarding, booking continuity, recovery/rescheduling, notification escalation/retries and payment/refund/dispute acceptance. Ask that owner for accepted status-transition and financial-reconciliation evidence; do not duplicate its product changes. Any durable confirmation timestamp, original-schedule instrumentation, market cohort endpoint or cost-ledger integration requires separately authorized scope. This task changes report files only; no push, merge, deployment, vendor activation, contacts or recurring job.

@@ -1,0 +1,63 @@
+YardMatch pilot scorecard — validation checkpoint (2026-10-05 UTC)
+Source: pkopps/ym, branch work, commit 464e939 (PR #5 merge).
+All changes confined to reports/pilot-scorecard; no app instrumentation changes.
+
+PASS — Python 3.12.14 unit tests (6/6):
+ python -m unittest discover -s reports/pilot-scorecard -p test_pilot.py -v
+ Missing/duplicate/orphan events, same-ID retries, spoof rejection, empty rates,
+ unknown costs, percentile/negative latency, environment/ops/internal exclusions,
+ and America/New_York DST calendar-week boundary.
+
+PASS — PostgreSQL 17 synthetic execution:
+ python reports/pilot-scorecard/test_sql.py
+ Tested actual reconcile.sql in isolated postgres:17-alpine Docker container,
+ no published ports or host mounts, synthetic reduced schema matching used columns.
+ Request-event mismatch counts, generated recurring exclusion, p50/p90, completion,
+ 30-day repeat maturity, missing settlement, empty ZIP scope, account exclusions,
+ environment isolation, half-open end boundary. Container removed afterward.
+ This is not a full Prisma migration/repository integration test or live DB check.
+ PostgreSQL parser separately accepted all four statements.
+
+PASS — Existing repository tests (12/12, zero skips):
+ node --test --import tsx apps/api/test/product-analytics.test.ts \
+   apps/api/test/mobile-analytics.test.ts apps/api/test/marketplace-economics.test.ts
+ Trusted outcomes, consent, identity joins, duplicate delivery, mobile consent,
+ and marketplace economics. API source unchanged; full API suite not run.
+
+PASS — Quarto 1.10.18 with Python/Jupyter:
+ QUARTO_PYTHON=/tmp/ym-quarto/venv/bin/python \
+   /tmp/ym-quarto/quarto-1.10.18/bin/quarto render \
+   reports/pilot-scorecard/pilot-scorecard.qmd
+ Executed all three Python cells; produced self-contained pilot-scorecard.html.
+ Writable XDG/Jupyter/IPython directories under /tmp/ym-quarto were supplied.
+ Initial render encountered read-only default cache; temporary cache resolved it.
+ Dependencies and portable commands: requirements.txt, RUNBOOK.txt.
+
+PASS — Playwright Chromium HTML checks:
+ Desktop 1440x900 and mobile 390x844, images loaded, no page overflow, no page errors,
+ zero HTTP(S) asset requests. See browser-checks.json, desktop.png, mobile.png.
+ Inspected screenshots. Tables scroll within the page on narrow screens.
+ Initial mobile overflow fixed by local report CSS; final check passed.
+ Browser installed only under /tmp; no product config changed.
+
+PASS — git diff --check; final artifact inventory reviewed.
+
+UNAVAILABLE — actual bookings, event-to-booking live reconciliation, production
+ API report, costs, ledger balancing, vendor ingestion and live pilot baseline.
+ No DATABASE_URL/TEST_DATABASE_URL or authorized API target configured; no .env
+ with live access was present. No credentials sought, added, printed or used.
+ All example records and metrics are synthetic. No customer personal data.
+
+Findings:
+ - Generated later recurring bookings intentionally omit request funnel events.
+ - No durable Booking.confirmedAt: trusted confirmation event is a latency proxy.
+ - Existing supply is all-time/all-market snapshot, not signup cohort conversion.
+ - Person-level rolling funnel cannot be equated with calendar-window job counts.
+ - PostgreSQL report now aggregates full period; docs still mention 50,000 cap.
+ - Platform net excludes operating costs and adjustments; never call it profit.
+
+Dependencies: authorized scoped aggregate extracts, approved market ZIP list/test
+ exclusions, full booking-history/retention evidence and complete cost inputs.
+ Onboarding/continuity/financial journey task retains ownership of product work.
+ No push, merge, deploy, vendor activation, contact, recurring task or production
+ data/configuration mutation performed. Temporary tooling is not a live launch test.

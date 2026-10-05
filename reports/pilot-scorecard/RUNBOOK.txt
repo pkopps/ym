@@ -1,0 +1,39 @@
+YardMatch first-market pilot scorecard — 2026-10-05
+
+OPEN: pilot-scorecard.html (self-contained; no server required)
+EDIT: pilot-scorecard.qmd (Quarto + Python/Jupyter)
+SUPPORT: pilot.py, reconcile.sql, test_pilot.py, test_sql.py, scorecard.css
+
+Python 3.12; Quarto 1.10.18. In this directory:
+  python3 -m venv .venv
+  .venv/bin/python -m pip install -r requirements.txt
+  .venv/bin/python -m unittest -v test_pilot.py
+  QUARTO_PYTHON="$PWD/.venv/bin/python" quarto render pilot-scorecard.qmd
+
+For read-only home directories, also set XDG_CACHE_HOME, XDG_CONFIG_HOME,
+XDG_DATA_HOME, JUPYTER_CONFIG_DIR and IPYTHONDIR to writable temporary paths.
+No product package, credentials, DB connection or network access is needed
+for rendering once dependencies are installed.
+
+Optional synthetic SQL verification (requires Docker):
+  docker pull postgres:17-alpine
+  python3 test_sql.py
+This starts and removes an isolated synthetic database without ports/mounts.
+It does not use DATABASE_URL or any existing DB. Runtime requires Docker access.
+
+Baseline is UNAVAILABLE. Never relabel the synthetic chart as pilot results.
+To populate: approved ZIP scope/test exclusions, authorized aggregate ops/API
+extracts with time/retention/history coverage, and actual cost/ledger inputs.
+The report details definitions, cohort mismatches, time zones and thresholds.
+Raw records/customer personal data must not be saved here or uploaded.
+
+SQL is read-only, aggregate-only and uses existing operational tables.
+Its required psql variables and UTC timestamp handling are in reconcile.sql.
+For an authorized connection supplied outside this artifact, invoke psql with
+-X -qAt -v ON_ERROR_STOP=1, all six scope variables, and -f reconcile.sql.
+Do not treat empty scope or missing history as a real zero. No automatic live
+fetch or private-data ingestion is performed by the report.
+
+Changes are confined to reports/pilot-scorecard. No push, merge, deployment,
+instrumentation change or recurring task. The active onboarding/continuity/
+financial-flow task retains its product scope; dependencies are in the report.

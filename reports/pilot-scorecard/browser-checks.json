@@ -1,0 +1,23 @@
+{
+  "results": [
+    {
+      "name": "desktop",
+      "width": 1440,
+      "height": 900,
+      "overflow": false,
+      "title": "YardMatch · first-market pilot",
+      "images": true,
+      "remoteResources": 0
+    },
+    {
+      "name": "mobile",
+      "width": 390,
+      "height": 844,
+      "overflow": false,
+      "title": "YardMatch · first-market pilot",
+      "images": true,
+      "remoteResources": 0
+    }
+  ],
+  "errors": []
+}
