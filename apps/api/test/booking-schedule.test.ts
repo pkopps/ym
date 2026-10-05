@@ -5,7 +5,9 @@ import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarke
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
 import { createWorkflowBooking } from "./helpers/workflowBooking";
 
-const future = (hours: number) => new Date(Date.now() + hours * 3600000).toISOString();
+// One reference time keeps fixture/proposal durations exact across separate calls.
+const fixtureReferenceTime = Date.now();
+const future = (hours: number) => new Date(fixtureReferenceTime + hours * 3600000).toISOString();
 async function fixture() {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
