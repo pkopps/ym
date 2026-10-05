@@ -49,6 +49,18 @@ export function OpsProviderVerificationQueue() {
     });
   }, []);
 
+  async function reviewCredential(providerId: string, credentialId: string, action: "verify" | "reject") {
+    const notes = approvalOverrideNotes[credentialId]?.trim();
+    if (action === "reject" && !notes) { setErrorMessage("Enter a reason before rejecting a credential."); return; }
+    setIsWorking(true);
+    try {
+      await createAuthenticatedWebApiClient().reviewProviderCredential({ providerId, credentialId, action, notes });
+      await loadQueue();
+      setStatusMessage("Credential review saved.");
+    } catch (error) { setErrorMessage(error instanceof Error ? error.message : "Unable to review credential."); }
+    finally { setIsWorking(false); }
+  }
+
   async function reviewProvider(item: ProviderVerificationQueueItem, action: "approve" | "reject") {
     try {
       setIsWorking(true);
@@ -119,6 +131,19 @@ export function OpsProviderVerificationQueue() {
                 <span className="result-badge">{provider.verificationStatus.replaceAll("-", " ")}</span>
               </div>
               <p>{provider.bio}</p>
+              <section aria-label="Credential review">
+                <h4>Business credentials</h4>
+                {provider.credentials?.map(credential => <div className="list-panel" key={credential.id}>
+                  <p>{credential.type.replaceAll("-", " ")}: {credential.status}</p>
+                  <p>{credential.jurisdiction} • {credential.referenceNumber} • Expires: {credential.expiresAt ?? "Not supplied"}</p>
+                  {credential.reviewNotes ? <p>{credential.reviewNotes}</p> : null}
+                  <label>Credential review reason<textarea value={approvalOverrideNotes[credential.id] ?? ""} onChange={event => setApprovalOverrideNotes(current => ({ ...current, [credential.id]: event.target.value }))} /></label>
+                  <div className="cta-row">
+                    <button className="button-secondary" disabled={isWorking} onClick={() => void reviewCredential(provider.id, credential.id, "verify")}>Verify credential</button>
+                    <button className="button-secondary" disabled={isWorking} onClick={() => void reviewCredential(provider.id, credential.id, "reject")}>Reject credential</button>
+                  </div>
+                </div>)}
+              </section>
               <div className="stack-md">
                 <p>
                   {i18n.t("ops_auto.ops_provider_verification_queue.submitted_1d29fl")} {formatDateTime(provider.verificationSubmittedAt)} • {provider.yearsExperience}{" "}

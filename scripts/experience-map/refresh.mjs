@@ -24,7 +24,9 @@ const verifiedArtifacts = {
   "customer:history": "customer-history-mobile.png",
   "customer:dispute": "complaint-form-desktop.png",
   "crew:assignment": "crew-assignment-accepted-desktop.png",
-  "ops:case": "complaint-review-desktop.png"
+  "ops:case": "complaint-review-desktop.png",
+  "customer:recovery": "booking-replacement-consent-desktop.png",
+  "provider:approved": "provider-onboarding-verified-desktop.png"
 };
 for (const [id, file] of Object.entries(verifiedArtifacts)) {
   const source = path.resolve("reports/agent-checkpoints/engineer/latest", file);

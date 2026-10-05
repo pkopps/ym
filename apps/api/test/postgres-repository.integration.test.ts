@@ -1,3 +1,6 @@
+import { DataEngineeringLogger } from "@yardmatch/analytics";
+import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
+import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarketplaceRepository";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
@@ -515,3 +518,42 @@ test("Postgres preserves timing history and atomically rejects stale schedule re
       await prisma.$disconnect();
     }
   });
+
+test("Postgres persists booking recovery and serializes repeated cancellation across instances", { skip: databaseUrl ? false : "TEST_DATABASE_URL is not configured" }, async () => {
+  const firstClient = new PrismaClient({ datasourceUrl: databaseUrl! });
+  const secondClient = new PrismaClient({ datasourceUrl: databaseUrl! });
+  const firstRepository = new PrismaMarketplaceRepository(firstClient);
+  const secondRepository = new PrismaMarketplaceRepository(secondClient);
+  const id = `critical-recovery-${randomUUID()}`;
+  const now = new Date().toISOString();
+  const booking: Booking = { id, customerId: `${id}-customer`, providerId: `${id}-provider`, serviceAddress: { line1: "18 Bay Ave", city: "Barnegat", state: "NJ", postalCode: "08005", country: "US", point: { latitude: 39.75, longitude: -74.22 } }, category: "lawn-mowing", requestedAt: now, scheduledStartIso: "2027-05-01T16:00:00.000Z", scheduledEndIso: "2027-05-01T18:00:00.000Z", status: "requested", notes: "Recovery persistence", totalCents: 6200, serviceEvidence: [], interventions: [], addressChangeHistory: [], recovery: { id: `${id}-recovery`, state: "open", reason: "provider-declined", openedAt: now, previousProviderIds: [`${id}-provider`] } };
+  try {
+    const [template] = await new InMemoryMarketplaceRepository().listProviders(); assert.ok(template);
+    const provider = { ...template, id: booking.providerId, email: `${id}-provider@example.invalid` };
+    await firstRepository.createProvider(provider);
+    const slot = { id: `${id}-slot`, providerId: provider.id, startIso: booking.scheduledStartIso, endIso: booking.scheduledEndIso, isBooked: false };
+    await firstRepository.upsertAvailabilitySlot(slot);
+    assert.ok((await secondRepository.listSlotsByProvider(provider.id)).some(item => item.id === slot.id));
+    await secondRepository.deleteAvailabilitySlot("other-provider", slot.id);
+    assert.ok((await firstRepository.listSlotsByProvider(provider.id)).some(item => item.id === slot.id));
+    await secondRepository.deleteAvailabilitySlot(provider.id, slot.id);
+    assert.equal((await firstRepository.listSlotsByProvider(provider.id)).some(item => item.id === slot.id), false);
+    await firstRepository.createBooking(booking);
+    assert.deepEqual((await secondRepository.findBookingById(id))!.recovery, booking.recovery);
+    const first = new MarketplacePlatformService(firstRepository, new DataEngineeringLogger());
+    const second = new MarketplacePlatformService(secondRepository, new DataEngineeringLogger());
+    const payload = { bookingId: id, recoveryId: booking.recovery!.id, action: "cancel" as const };
+    const results = await Promise.all([first.recoverBooking(booking.customerId, payload), second.recoverBooking(booking.customerId, payload)]);
+    assert.ok(results.every(result => result.status === "cancelled" && result.recovery?.state === "cancelled"));
+    assert.equal((await secondRepository.findBookingById(id))!.totalCents, 6200);
+    assert.equal((await firstRepository.listNotificationsByRecipient(booking.customerId)).filter(item => item.title === "Visit cancelled without a recovery fee").length, 1);
+  } finally {
+    const notifications = await firstClient.appNotification.findMany({ where: { OR: [{ recipientId: { in: [booking.customerId, booking.providerId] } }, { actionHref: { contains: id } }] }, select: { id: true } });
+    await firstClient.notificationDelivery.deleteMany({ where: { notificationId: { in: notifications.map(item => item.id) } } });
+    await firstClient.appNotification.deleteMany({ where: { id: { in: notifications.map(item => item.id) } } });
+    await firstClient.availabilitySlot.deleteMany({ where: { id: `${id}-slot` } });
+    await firstClient.booking.deleteMany({ where: { id } });
+    await firstClient.userAccount.deleteMany({ where: { id: booking.providerId } });
+    await firstClient.$disconnect(); await secondClient.$disconnect();
+  }
+});

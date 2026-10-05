@@ -1,7 +1,7 @@
 import type { NotificationDeliveryRecord, NotificationOpsChannelHealth, NotificationOpsHealthResponse } from "@yardmatch/contracts";
 export type NotificationHealthSnapshot = Omit<NotificationOpsHealthResponse, "generatedAt" | "alerts" | "deliveryPolicy">;
 export function summarizeNotificationHealth(deliveries: NotificationDeliveryRecord[], now: number): NotificationHealthSnapshot {
-  deliveries = [...deliveries].sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+  deliveries = [...deliveries].sort((a,b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
   const last24Hours = now - 86400_000;
     const deliveriesLast24Hours = deliveries.filter((delivery) => Date.parse(delivery.createdAt) >= last24Hours);
     const failedDeliveries = deliveries.filter((delivery) => delivery.status === "failed");

@@ -1,0 +1,54 @@
+
+> yardmatch-monorepo@0.1.0 test:scale
+> node --import tsx scripts/scale-smoke.mts
+
+{
+  "dataset": {
+    "providers": 601,
+    "bookings": 20000,
+    "properties": 1000,
+    "analyticsEvents": 10000,
+    "notifications": 250
+  },
+  "concurrency": 12,
+  "databaseConnections": 8,
+  "operations": 200,
+  "elapsedMs": 5030,
+  "latency": {
+    "route-write": {
+      "operations": 40,
+      "p95Ms": 96,
+      "p99Ms": 104
+    },
+    "password": {
+      "operations": 40,
+      "p95Ms": 98,
+      "p99Ms": 107
+    },
+    "clients": {
+      "operations": 40,
+      "p95Ms": 889,
+      "p99Ms": 907
+    },
+    "analytics": {
+      "operations": 40,
+      "p95Ms": 461,
+      "p99Ms": 508
+    },
+    "search": {
+      "operations": 40,
+      "p95Ms": 841,
+      "p99Ms": 895
+    }
+  },
+  "queries": {
+    "count": 2580,
+    "p95Ms": 50,
+    "p99Ms": 396
+  },
+  "eventLoopP99Ms": 31,
+  "heapGrowthMb": -5,
+  "rssMb": 486,
+  "delivered": 250,
+  "errors": []
+}

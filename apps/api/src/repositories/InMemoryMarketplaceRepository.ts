@@ -299,6 +299,16 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.customers.find((customer) => customer.id === customerId)?.properties ?? [];
   }
 
+  public async upsertAvailabilitySlot(slot: AvailabilitySlot): Promise<AvailabilitySlot> {
+    const index = this.slots.findIndex(item => item.id === slot.id);
+    if (index >= 0) this.slots[index] = slot; else this.slots.push(slot);
+    return slot;
+  }
+  public async deleteAvailabilitySlot(providerId: string, slotId: string): Promise<void> {
+    const index = this.slots.findIndex(item => item.id === slotId && item.providerId === providerId);
+    if (index >= 0) this.slots.splice(index, 1);
+  }
+
   public async listSlotsByProvider(providerId: string): Promise<AvailabilitySlot[]> {
     return this.slots.filter((slot) => slot.providerId === providerId);
   }

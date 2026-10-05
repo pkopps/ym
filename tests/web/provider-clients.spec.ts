@@ -46,6 +46,8 @@ test("real provider client endpoint isolates businesses and serves their booked 
 });
 
 test("client map synchronizes search, service filters, dates, list selection, and pins at desktop and mobile sizes", async ({ page, request }) => {
+  // Tile rendering is deterministic offline; live imagery delivery is a staging check.
+  await page.route("https://tile.openstreetmap.org/**", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#eef0e9"/><path d="M0 128h256M128 0v256" stroke="#d9ded2"/></svg>' }));
   const provider = await registerProvider(request);
   await loginUi(page, "provider", provider.email);
   await page.route("**/api/providers/clients", (route) => route.fulfill({ json: fixture() }));

@@ -1,0 +1,19 @@
+
+> yardmatch-monorepo@0.1.0 verify:mobile-release
+> node scripts/verify-mobile-release-config.mjs
+
+{
+  "status": "mobile-release-config-ready",
+  "apps": [
+    "customer",
+    "provider",
+    "crew"
+  ],
+  "profiles": [
+    "development",
+    "preview",
+    "preview-simulator",
+    "store-test",
+    "production"
+  ]
+}

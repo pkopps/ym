@@ -5,7 +5,9 @@ import { InMemoryMarketplaceRepository } from "../src/repositories/InMemoryMarke
 import { MarketplacePlatformService } from "../src/services/MarketplacePlatformService";
 import { createWorkflowBooking } from "./helpers/workflowBooking";
 
-const future = (hours: number) => new Date(Date.now() + hours * 3600000).toISOString();
+// One reference time keeps fixture/proposal durations exact across separate calls.
+const fixtureReferenceTime = Date.now();
+const future = (hours: number) => new Date(fixtureReferenceTime + hours * 3600000).toISOString();
 async function fixture() {
   const repository = new InMemoryMarketplaceRepository();
   const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
@@ -162,8 +164,11 @@ test("external notification delivery preserves the next-update deadline and a bo
   await platform.retryDueNotificationDeliveriesForOps();
   assert.ok(sent.length > 0);
   assert.ok(sent.every(input => input.body.includes("Next update by")));
-  assert.ok(sent.every(input => input.data?.actionHref === `/customer/dashboard?bookingId=${booking.id}`));
-  assert.ok(sent.filter(input => input.channel === "email").every(input => input.body.includes(`/customer/dashboard?bookingId=${booking.id}`)));
+  const customerHref = `/customer/dashboard?bookingId=${booking.id}`;
+  const allowedHrefs = new Set([customerHref, "/provider/management", "/crew/schedule", "/ops"]);
+  assert.ok(sent.some(input => input.data?.actionHref === customerHref));
+  assert.ok(sent.every(input => allowedHrefs.has(String(input.data?.actionHref))));
+  assert.ok(sent.filter(input => input.channel === "email").every(input => input.body.includes(String(input.data?.actionHref))));
 });
 
 test("concurrent acceptances cannot allocate the same provider window to two different visits", async () => {

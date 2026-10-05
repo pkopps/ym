@@ -1,0 +1,13 @@
+
+> yardmatch-monorepo@0.1.0 test:api:smoke
+> node scripts/api-smoke.mjs
+
+[api-smoke] API docs are reachable
+[api-smoke] health and readiness passed (local, in-memory)
+[api-smoke] place search returned Brooklyn
+[api-smoke] provider search returned 2 ranked provider(s)
+[api-smoke] customer registration returned a session
+[api-smoke] customer login returned a session
+[api-smoke] current-user endpoint returned the logged-in customer
+[api-smoke] instant quote returned a price and summary
+[api-smoke] passed

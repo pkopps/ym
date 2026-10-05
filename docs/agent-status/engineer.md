@@ -1,5 +1,24 @@
 # Engineer Status
 
+## Current checkpoint: provider and crew activation with booking continuity
+
+- Updated: October 5, 2026 (UTC).
+- Branch and commit: `codex/critical-path-activation`, implementation commit `814afe7`, based on clean `464e939`.
+- Completed: provider credential submission/rejection/resubmission and authenticated ops review; owned availability publishing; native credential and Connect handoff/resume; truthful anonymous crew interest, retained signup sessions after failed claims, retry/concurrency/capacity gates, native claims; persisted customer-consented decline/withdrawal/deadline recovery, equivalent replacement and fee-free cancellation; recurring visit/plan consent; wrong-property review; route/work/checkout gates, crew reconfirmation and party notifications.
+- In progress: none for implementation; draft PR publication follows this checkpoint.
+- Remaining: live sandbox Connect and email/SMS acceptance, native device/browser-return checks and normal launch review. Native property corrections use the web dashboard/support; no native correction form added.
+- Merge follow-up: schedule CI exposed millisecond drift from separate fixture clock reads. Fixture windows/proposals now use one reference time; all 13 schedule tests passed five repeated runs (65 cases), with scoped lint passing. The production duration guard remains unchanged.
+- Merge follow-up: browser CI exposed a signup navigation/hydration race in the new stale-opening test. It now awaits the selected-opening heading and explicitly checks successful registration; both recovery scenarios passed five repetitions (10/10), with scoped lint passing.
+- Merge follow-up: CI exposed a seeded-provider assumption in the new opening persistence test. The fixture now creates/cleans its own provider; all 15 PostgreSQL tests and the mixed-workload scale gate passed against a newly migrated, unseeded database. Lint and typecheck passed.
+- Blockers: none for local implementation. No live vendor/device credentials were used. The other chat's reported uncommitted workspace was not retrievable; clean main was preserved and missing recovery implemented here.
+- Changed workflows: providers submit references before ops approval and can publish future openings; crew selection is interest until authorized assignment; failed downstream claims enter the successfully created account; provider-caused recovery remains open until customer consent and cannot silently reprice, move a plan or bypass work/payment gates.
+- Validation: 385 API tests passed, 15 database-only cases skipped in the ordinary suite; all 15 PostgreSQL tests passed separately. Fresh additive migrations, repeat seed and zero schema drift passed. Lint, typecheck, API/web builds, all three iOS/Android/web Expo exports, locale validation and mobile release configuration passed. All 51 browser scenarios have passing evidence: full run 49/51, then all eight scenarios in the two map specs passed using deterministic tile fixtures; schedule browser rerun also passed after party notification changes. Desktop 1440×900 and mobile 390×844 screenshots/overflow checks passed and activation/recovery captures were visually inspected.
+- Experience map: refreshed and validated/built; 44 web routes, 15 mobile screens, 21 states, 94 connections, zero broken connections and 15 explicitly pending screenshots. Added recovery/approval captures and actual acceptance evidence; external Connect return stays code-inferred.
+- Known defects/limits: external imagery delivery unavailable during the cloud run; local map rendering uses fixture tiles and does not establish live imagery acceptance. Gateway tests do not establish real money movement or vendor onboarding. Legacy price/scope differences and generated recurring siblings require support; crew assignment locking is conservative and global for launch.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-onboarding-verified-{desktop,mobile}.png` and `booking-replacement-consent-{desktop,mobile}.png`. Command summaries and final logs are in `reports/agent-checkpoints/engineer/latest/critical-path/`.
+- Recommended next task: review draft PR and run sandbox/staging plus signed-device acceptance using the [critical-path matrix and rollout runbook](../CRITICAL_PATH_ACCEPTANCE.md). No production deployment, real money movement or agreement acceptance occurred.
+
+
 ## Current checkpoint: service-first public booking journey
 
 - Updated: September 30, 2026 (America/New_York).

@@ -3,7 +3,7 @@
     "thumbnail": "captures/thumbnails/web-.webp",
     "full": "captures/full/web-.png",
     "status": "test-artifact",
-    "capturedAt": "2026-10-01T00:18:42.187Z",
+    "capturedAt": "2026-10-05T02:20:37.205Z",
     "source": "tests/web → honest-launch-home-desktop.png"
   },
   "web:/about": {
@@ -340,7 +340,7 @@
     "thumbnail": "captures/thumbnails/customer-quote.webp",
     "full": "captures/full/customer-quote.png",
     "status": "test-artifact",
-    "capturedAt": "2026-10-01T00:18:42.312Z",
+    "capturedAt": "2026-10-05T02:20:37.336Z",
     "source": "tests/web → customer-quote-desktop.png"
   },
   "customer:history": {
@@ -354,35 +354,49 @@
     "thumbnail": "captures/thumbnails/customer-dispute.webp",
     "full": "captures/full/customer-dispute.png",
     "status": "test-artifact",
-    "capturedAt": "2026-10-01T00:18:42.372Z",
+    "capturedAt": "2026-10-05T02:20:37.380Z",
     "source": "tests/web → complaint-form-desktop.png"
   },
   "crew:assignment": {
     "thumbnail": "captures/thumbnails/crew-assignment.webp",
     "full": "captures/full/crew-assignment.png",
     "status": "test-artifact",
-    "capturedAt": "2026-10-01T00:18:42.401Z",
+    "capturedAt": "2026-10-05T02:20:37.418Z",
     "source": "tests/web → crew-assignment-accepted-desktop.png"
   },
   "ops:case": {
     "thumbnail": "captures/thumbnails/ops-case.webp",
     "full": "captures/full/ops-case.png",
     "status": "test-artifact",
-    "capturedAt": "2026-10-01T00:18:42.417Z",
+    "capturedAt": "2026-10-05T02:20:37.442Z",
     "source": "tests/web → complaint-review-desktop.png"
   },
   "customer:top-matches": {
     "thumbnail": "captures/thumbnails/customer-top-matches.webp",
     "full": "captures/full/customer-top-matches.png",
     "status": "test-artifact",
-    "capturedAt": "2026-10-01T00:18:42.216Z",
+    "capturedAt": "2026-10-05T02:20:37.240Z",
     "source": "tests/web → customer-top-matches-desktop.png"
   },
   "customer:directory": {
     "thumbnail": "captures/thumbnails/customer-directory.webp",
     "full": "captures/full/customer-directory.png",
     "status": "test-artifact",
-    "capturedAt": "2026-10-01T00:18:42.245Z",
+    "capturedAt": "2026-10-05T02:20:37.273Z",
     "source": "tests/web → customer-directory-desktop.png"
+  },
+  "customer:recovery": {
+    "thumbnail": "captures/thumbnails/customer-recovery.webp",
+    "full": "captures/full/customer-recovery.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-05T02:20:37.481Z",
+    "source": "tests/web → booking-replacement-consent-desktop.png"
+  },
+  "provider:approved": {
+    "thumbnail": "captures/thumbnails/provider-approved.webp",
+    "full": "captures/full/provider-approved.png",
+    "status": "test-artifact",
+    "capturedAt": "2026-10-05T02:20:37.533Z",
+    "source": "tests/web → provider-onboarding-verified-desktop.png"
   }
 }

@@ -291,6 +291,9 @@ export function CrewLiveDashboard() {
       return;
     }
 
+    if (new URLSearchParams(window.location.search).get("openingClaim") === "unavailable") {
+      setStatusMessage("Your account is ready. The selected opening could not be claimed. Review available openings below or contact the provider before trying again.");
+    }
     void loadCrewView().catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.load_dashboard"));
     });
@@ -424,11 +427,7 @@ export function CrewLiveDashboard() {
     try {
       const api = createWebApiClient();
       const selection = await api.selectPublicCrewOpportunity({ opportunityId });
-      setStatusMessage(
-        selection.staffingMode === "auto-accept"
-          ? i18n.t("crew_live.status.provider_notified_auto", { provider: selection.providerCompanyName })
-          : i18n.t("crew_live.status.provider_notified_review", { provider: selection.providerCompanyName })
-      );
+      setStatusMessage(`${selection.providerCompanyName}: create your account to request this opening. Your assignment will be confirmed after acceptance.`);
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -683,13 +682,13 @@ export function CrewLiveDashboard() {
         <section className="card" id="crew-signup-cta" tabIndex={-1}>
           {statusMessage ? (
             <div className="list-panel">
-              <strong>{i18n.t("crew_live.provider_notified")}</strong>
+              <strong>Opening selected</strong>
               <p>{statusMessage}</p>
             </div>
           ) : null}
           {errorMessage ? (
             <div className="list-panel" role="alert">
-              <strong>{i18n.t("crew_live.provider_notification_failed")}</strong>
+              <strong>Opening unavailable</strong>
               <p>{errorMessage}</p>
             </div>
           ) : null}

@@ -27,6 +27,7 @@ export class ApiRoutes {
   public static readonly customerRetentionOpportunities = "/api/customers/retention-opportunities";
   public static readonly createInstantQuote = "/api/quotes/instant";
   public static readonly searchProviders = "/api/providers/search";
+  public static readonly manageProviderAvailability = "/api/providers/availability/manage";
   public static readonly providerAvailability = "/api/providers/availability";
   public static readonly publicMarketplaceOverview = "/api/providers/public-overview";
   public static readonly providerProfile = "/api/providers/profile";
@@ -71,6 +72,8 @@ export class ApiRoutes {
   public static readonly listBookings = "/api/bookings";
   public static readonly recurringServicePlans = "/api/bookings/recurring-plans";
   public static readonly cancelRecurringServicePlan = "/api/bookings/recurring-plans/cancel";
+  public static readonly bookingRecoveryOptions = "/api/bookings/recovery-options";
+  public static readonly recoverBooking = "/api/bookings/recover";
   public static readonly cancelBooking = "/api/bookings/cancel";
   public static readonly updateBookingSchedule = "/api/bookings/schedule-update";
   public static readonly respondBookingSchedule = "/api/bookings/schedule-response";
@@ -89,6 +92,7 @@ export class ApiRoutes {
   public static readonly updateBookingPhotoMarketingUse = "/api/bookings/photo-marketing-use";
   public static readonly createBookingDispute = "/api/bookings/dispute";
   public static readonly bookingTracking = "/api/bookings/tracking";
+  public static readonly reviewBookingAddress = "/api/bookings/address-review";
   public static readonly updateBookingAddress = "/api/bookings/address";
   public static readonly processReviewInvites = "/api/review-invites/process";
   public static readonly crewPreferences = "/api/crew/preferences";

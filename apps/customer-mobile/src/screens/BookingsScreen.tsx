@@ -1,3 +1,4 @@
+import { BookingRecoveryCard } from "../components/BookingRecoveryCard";
 import { PaymentMethodGuide } from "../components/PaymentMethodGuide";
 import { useEffect, useMemo, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
@@ -963,6 +964,7 @@ export function BookingsScreen({
                       />
                     </View>
 
+                    <BookingRecoveryCard booking={booking} token={envelope?.session.token} onUpdated={() => void loadBookings()} />
                     <BookingScheduleCard booking={booking} token={envelope?.session.token} onUpdated={loadBookings} />
                     <VisitLifecycle booking={booking} payment={payment} paymentLabel={paymentLabel} i18n={i18n} />
 

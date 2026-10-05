@@ -1,0 +1,105 @@
+✔ weather holds tell the customer what is uncertain and when the next update is due (29.015776ms)
+✔ same-day recovery accepts a proposal inside the usual 24-hour lock without changing price or recurrence (4.11026ms)
+✔ declining asks for another window, keeps the visit open, and rejects replaced or unauthorized proposals (4.188317ms)
+✔ proposal acceptance rechecks provider conflicts and does not resurrect terminal bookings (2.383698ms)
+✔ schedule updates reject invalid dates, missing reasons, distant deadlines, and unauthorized providers (3.073413ms)
+✔ late notifications use the new ETA without repeating the original arrival window (2.17175ms)
+✔ due sweeps alert customers, providers, and ops once; dry runs and terminal visits do not notify (3.55017ms)
+✔ unannounced missed windows escalate even without a provider delay notice (1.859772ms)
+✔ overlapping schedule sweeps claim each recipient notification once (2.973083ms)
+✔ late updates remain visible while en route and legacy rescheduling resolves their history (3.330389ms)
+✔ external notification delivery preserves the next-update deadline and a booking link beyond the ops preview (4.849309ms)
+✔ concurrent acceptances cannot allocate the same provider window to two different visits (6.944445ms)
+✔ service-date conversion respects both Eastern daylight-saving offsets (1.408575ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 536.461592
+✔ weather holds tell the customer what is uncertain and when the next update is due (25.24086ms)
+✔ same-day recovery accepts a proposal inside the usual 24-hour lock without changing price or recurrence (3.775898ms)
+✔ declining asks for another window, keeps the visit open, and rejects replaced or unauthorized proposals (3.785603ms)
+✔ proposal acceptance rechecks provider conflicts and does not resurrect terminal bookings (2.250138ms)
+✔ schedule updates reject invalid dates, missing reasons, distant deadlines, and unauthorized providers (2.79126ms)
+✔ late notifications use the new ETA without repeating the original arrival window (2.27789ms)
+✔ due sweeps alert customers, providers, and ops once; dry runs and terminal visits do not notify (3.716949ms)
+✔ unannounced missed windows escalate even without a provider delay notice (1.774324ms)
+✔ overlapping schedule sweeps claim each recipient notification once (2.807965ms)
+✔ late updates remain visible while en route and legacy rescheduling resolves their history (2.223348ms)
+✔ external notification delivery preserves the next-update deadline and a booking link beyond the ops preview (4.270851ms)
+✔ concurrent acceptances cannot allocate the same provider window to two different visits (2.745111ms)
+✔ service-date conversion respects both Eastern daylight-saving offsets (1.179691ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 520.126985
+✔ weather holds tell the customer what is uncertain and when the next update is due (24.449501ms)
+✔ same-day recovery accepts a proposal inside the usual 24-hour lock without changing price or recurrence (3.874065ms)
+✔ declining asks for another window, keeps the visit open, and rejects replaced or unauthorized proposals (3.30371ms)
+✔ proposal acceptance rechecks provider conflicts and does not resurrect terminal bookings (1.942536ms)
+✔ schedule updates reject invalid dates, missing reasons, distant deadlines, and unauthorized providers (2.489777ms)
+✔ late notifications use the new ETA without repeating the original arrival window (1.876747ms)
+✔ due sweeps alert customers, providers, and ops once; dry runs and terminal visits do not notify (3.536679ms)
+✔ unannounced missed windows escalate even without a provider delay notice (1.948775ms)
+✔ overlapping schedule sweeps claim each recipient notification once (4.046875ms)
+✔ late updates remain visible while en route and legacy rescheduling resolves their history (2.267975ms)
+✔ external notification delivery preserves the next-update deadline and a booking link beyond the ops preview (4.095949ms)
+✔ concurrent acceptances cannot allocate the same provider window to two different visits (2.728355ms)
+✔ service-date conversion respects both Eastern daylight-saving offsets (1.157702ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 522.909386
+✔ weather holds tell the customer what is uncertain and when the next update is due (28.278469ms)
+✔ same-day recovery accepts a proposal inside the usual 24-hour lock without changing price or recurrence (3.978472ms)
+✔ declining asks for another window, keeps the visit open, and rejects replaced or unauthorized proposals (3.661586ms)
+✔ proposal acceptance rechecks provider conflicts and does not resurrect terminal bookings (2.276417ms)
+✔ schedule updates reject invalid dates, missing reasons, distant deadlines, and unauthorized providers (2.949737ms)
+✔ late notifications use the new ETA without repeating the original arrival window (2.040954ms)
+✔ due sweeps alert customers, providers, and ops once; dry runs and terminal visits do not notify (3.247655ms)
+✔ unannounced missed windows escalate even without a provider delay notice (1.832852ms)
+✔ overlapping schedule sweeps claim each recipient notification once (2.273253ms)
+✔ late updates remain visible while en route and legacy rescheduling resolves their history (2.522887ms)
+✔ external notification delivery preserves the next-update deadline and a booking link beyond the ops preview (4.147065ms)
+✔ concurrent acceptances cannot allocate the same provider window to two different visits (2.911681ms)
+✔ service-date conversion respects both Eastern daylight-saving offsets (1.279481ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 559.198651
+✔ weather holds tell the customer what is uncertain and when the next update is due (26.834472ms)
+✔ same-day recovery accepts a proposal inside the usual 24-hour lock without changing price or recurrence (4.200134ms)
+✔ declining asks for another window, keeps the visit open, and rejects replaced or unauthorized proposals (4.017521ms)
+✔ proposal acceptance rechecks provider conflicts and does not resurrect terminal bookings (2.241644ms)
+✔ schedule updates reject invalid dates, missing reasons, distant deadlines, and unauthorized providers (2.642828ms)
+✔ late notifications use the new ETA without repeating the original arrival window (1.97796ms)
+✔ due sweeps alert customers, providers, and ops once; dry runs and terminal visits do not notify (3.931651ms)
+✔ unannounced missed windows escalate even without a provider delay notice (2.259061ms)
+✔ overlapping schedule sweeps claim each recipient notification once (2.767635ms)
+✔ late updates remain visible while en route and legacy rescheduling resolves their history (2.407263ms)
+✔ external notification delivery preserves the next-update deadline and a booking link beyond the ops preview (4.402599ms)
+✔ concurrent acceptances cannot allocate the same provider window to two different visits (3.214385ms)
+✔ service-date conversion respects both Eastern daylight-saving offsets (1.230437ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 535.691148

@@ -595,6 +595,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return properties.map((property: any) => mapCustomerProperty(property));
   }
 
+  public async upsertAvailabilitySlot(slot: AvailabilitySlot): Promise<AvailabilitySlot> {
+    await this.prisma.availabilitySlot.upsert({ where: { id: slot.id }, create: { ...slot, startIso: new Date(slot.startIso), endIso: new Date(slot.endIso) }, update: { startIso: new Date(slot.startIso), endIso: new Date(slot.endIso) } });
+    return slot;
+  }
+  public async deleteAvailabilitySlot(providerId: string, slotId: string): Promise<void> {
+    await this.prisma.availabilitySlot.deleteMany({ where: { id: slotId, providerId, isBooked: false } });
+  }
+
   public async listSlotsByProvider(providerId: string): Promise<AvailabilitySlot[]> {
     const slots = await this.prisma.availabilitySlot.findMany({
       where: { providerId },
@@ -645,6 +653,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         lateNoticeSentAt: booking.lateNoticeSentAt ? new Date(booking.lateNoticeSentAt) : undefined,
         lateEtaIso: booking.lateEtaIso ? new Date(booking.lateEtaIso) : undefined,
         lateReason: booking.lateReason,
+        recovery: booking.recovery ? asJson(booking.recovery) : Prisma.DbNull,
         scheduleUpdates: asJson(booking.scheduleUpdates ?? []),
         scheduleVersion: booking.scheduleVersion ?? 0,
         activeExceptionType: booking.activeExceptionType,
@@ -732,6 +741,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     const booking = await this.prisma.booking.update({
       where: { id: bookingId, scheduleVersion: expectedVersion },
       data: {
+        recovery: "recovery" in updates ? updates.recovery ? asJson(updates.recovery) : Prisma.DbNull : undefined,
         scheduleVersion: { increment: 1 },
         scheduleUpdates: updates.scheduleUpdates || resolveScheduleUpdates(current, updates) !== current.scheduleUpdates
           ? asJson(resolveScheduleUpdates(current, updates) ?? []) : undefined,
@@ -2416,7 +2426,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         count(*) FILTER (WHERE "nextRetryAt" <= ${utcTimestamp(now)})::int AS "overdueRetryCount",
         max(COALESCE("lastAttemptAt", "sentAt", "createdAt")) AS "lastAttemptAt"
         FROM notification_deliveries GROUP BY channel, provider ORDER BY "failedCount" DESC, "totalDeliveries" DESC`,
-      this.prisma.notificationDelivery.findMany({ where: { status: "failed" }, orderBy: { createdAt: "desc" }, take: 8 })
+      this.prisma.notificationDelivery.findMany({ where: { status: "failed" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 8 })
     ]);
     return { ...totals[0], channels: groups.map(row => ({ ...row, lastAttemptAt: row.lastAttemptAt.toISOString() })),
       recentFailures: recent.map(row => this.mapNotificationDelivery(row)) };
@@ -3192,6 +3202,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     lateNoticeSentAt: Date | null;
     lateEtaIso: Date | null;
     lateReason: string | null;
+    recovery: unknown | null;
     scheduleUpdates: unknown;
     scheduleVersion: number;
     activeExceptionType: string | null;
@@ -3235,6 +3246,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       lateNoticeSentAt: record.lateNoticeSentAt?.toISOString(),
       lateEtaIso: record.lateEtaIso?.toISOString(),
       lateReason: record.lateReason ?? undefined,
+      recovery: record.recovery ? readJson<Booking["recovery"]>(record.recovery) : undefined,
       scheduleUpdates: readJson<Booking["scheduleUpdates"]>(record.scheduleUpdates),
       scheduleVersion: record.scheduleVersion,
       activeExceptionType: record.activeExceptionType as Booking["activeExceptionType"],

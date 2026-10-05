@@ -1,0 +1,202 @@
+
+> yardmatch-monorepo@0.1.0 build:mobile
+> npm run build:customer-mobile && npm run build:provider-mobile && npm run build:crew-mobile
+
+
+> yardmatch-monorepo@0.1.0 build:customer-mobile
+> npm --workspace @yardmatch/customer-mobile run export
+
+
+> @yardmatch/customer-mobile@0.1.0 export
+> expo export
+
+Expo Autolinking module resolution enabled
+Starting Metro Bundler
+
+Web node_modules/expo/AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android node_modules/expo/AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+iOS node_modules/expo/AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+| (node:9244) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:9244) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:9244) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+Web node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 7/37)
+Android node_modules/expo/AppEntry.js ▓▓░░░░░░░░░░░░░░ 17.5% ( 93/222)
+iOS node_modules/expo/AppEntry.js ▓▓░░░░░░░░░░░░░░ 13.6% ( 76/206)
+Web node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 25.0% (35/88)
+Android node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 30.5% (236/427)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓░░░░░░░░░░░ 31.3% (251/494)
+Web node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 25.0% ( 90/216)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓░░░░░░░░ 50.9% (406/569)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓░░░░░░░░░░░ 31.3% (258/505)
+Web node_modules/expo/AppEntry.js ▓▓▓▓▓░░░░░░░░░░░ 35.2% (169/295)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 67.4% (546/665)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 62.7% (506/639)
+Web node_modules/expo/AppEntry.js ▓▓▓▓▓▓░░░░░░░░░░ 43.2% (232/353)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 83.2% (665/729)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 86.0% (638/688)
+Web node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 81.5% (372/412)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 89.9% (732/772)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 86.1% (696/750)
+Web Bundled 24070ms node_modules/expo/AppEntry.js (518 modules)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.0% (785/789)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 94.5% (763/785)
+Android Bundled 26324ms node_modules/expo/AppEntry.js (789 modules)
+iOS Bundled 28939ms node_modules/expo/AppEntry.js (785 modules)
+
+› Assets (38):
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.3f78af31cca60105799838a1a7a59fbd.ttf (130KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.ttf (130KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.31b5ffea3daddc69dd01a1f3d6cf63c5.ttf (66KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.ttf (66KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/EvilIcons.140c53a7643ea949007aa9a282153849.ttf (13KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/EvilIcons.ttf (13KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf (56KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf (56KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.b06871f281fee6b241d60582ae9369b9.ttf (166KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf (166KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.3b89dd103490708d19a95adcae52210e.ttf (134KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf (134KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.1f77739ca9ff2188b539c36f30ffa2be.ttf (34KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf (34KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.605ed7926cf39a2ad5ec2d1f9d391d3d.ttf (203KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf (203KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Brands.56c8d80832e37783f12c05db7c8849e2.ttf (209KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Brands.ttf (209KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Regular.370dd5af19f8364907b6e2c41f45dbbf.ttf (68KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Regular.ttf (68KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Solid.adec7d6f310bc577f05e8fe06a5daccf.ttf (424KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Solid.ttf (424KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Fontisto.b49ae8ab2dbccb02c4d11caaacf09eab.ttf (314KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Fontisto.ttf (314KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Foundation.e20945d7c929279ef7a6f1db184a4470.ttf (57KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Foundation.ttf (57KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.b4eb097d35f44ed943676fd56f6bdc51.ttf (390KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf (390KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.6e435534bd35da5fef04168860a9b8fa.ttf (1.3MB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf (1.3MB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.4e85bc9ebe07e0340c9c4fc2f6c38908.ttf (357KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf (357KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Octicons.871378c6eab492a3e689a9385dc45a12.ttf (69KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Octicons.ttf (69KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/SimpleLineIcons.d2285965fe34b05465047401b8595dd0.ttf (54KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/SimpleLineIcons.ttf (54KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (26KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Zocial.ttf (26KB)
+
+› web bundles (3):
+_expo/static/js/web/AppEntry-668136ef90893e836525ed4f77b3656f.js (1.8MB)
+_expo/static/js/web/es-7736fe92910a20d8ade586ea17f960ad.js (335KB)
+_expo/static/js/web/pseudo-83f9645bd22c20617132ccb7f7df42b0.js (16KB)
+
+› android bundles (1):
+_expo/static/js/android/AppEntry-440a9d75ca097bf8929df60774ab7a72.hbc (3.3MB)
+
+› ios bundles (1):
+_expo/static/js/ios/AppEntry-d13dcd41d343868341eaf517b0b07014.hbc (3.3MB)
+
+› Files (2):
+index.html (1.2KB)
+metadata.json (2.6KB)
+
+Exported: dist
+
+> yardmatch-monorepo@0.1.0 build:provider-mobile
+> npm --workspace @yardmatch/provider-mobile run export
+
+
+> @yardmatch/provider-mobile@0.1.0 export
+> expo export
+
+Expo Autolinking module resolution enabled
+Starting Metro Bundler
+
+Web node_modules/expo/AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android node_modules/expo/AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+iOS node_modules/expo/AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+| (node:9421) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:9421) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+| (node:9421) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+| (Use `node --trace-warnings ...` to show where the warning was created)
+Web node_modules/expo/AppEntry.js ▓▓░░░░░░░░░░░░░░ 12.6% (25/75)
+Android node_modules/expo/AppEntry.js ▓▓▓░░░░░░░░░░░░░ 21.1% (112/247)
+iOS node_modules/expo/AppEntry.js ▓▓▓░░░░░░░░░░░░░ 21.2% (105/228)
+Web node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 30.0% ( 87/203)
+Android node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 29.6% (241/443)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 28.7% (239/483)
+Web node_modules/expo/AppEntry.js ▓▓▓▓▓▓░░░░░░░░░░ 38.4% (204/329)
+Android node_modules/expo/AppEntry.js ▓▓▓▓░░░░░░░░░░░░ 31.1% (284/509)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓░░░░░░░░ 54.1% (414/563)
+Web node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 77.1% (338/385)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓░░░░░░░ 56.5% (469/624)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓░░░░░░ 67.5% (544/662)
+Web node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 86.5% (381/412)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 83.1% (658/722)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ 84.8% (674/732)
+Web Bundled 20007ms node_modules/expo/AppEntry.js (510 modules)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 95.2% (765/784)
+iOS node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░ 92.6% (744/773)
+iOS Bundled 22430ms node_modules/expo/AppEntry.js (773 modules)
+Android node_modules/expo/AppEntry.js ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 95.2% (765/784)
+Android Bundled 24955ms node_modules/expo/AppEntry.js (784 modules)
+
+› Assets (38):
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.3f78af31cca60105799838a1a7a59fbd.ttf (130KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/AntDesign.ttf (130KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.31b5ffea3daddc69dd01a1f3d6cf63c5.ttf (66KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Entypo.ttf (66KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/EvilIcons.140c53a7643ea949007aa9a282153849.ttf (13KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/EvilIcons.ttf (13KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ca4b48e04dc1ce10bfbddb262c8b835f.ttf (56KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Feather.ttf (56KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.b06871f281fee6b241d60582ae9369b9.ttf (166KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome.ttf (166KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.3b89dd103490708d19a95adcae52210e.ttf (134KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Brands.ttf (134KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.1f77739ca9ff2188b539c36f30ffa2be.ttf (34KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Regular.ttf (34KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.605ed7926cf39a2ad5ec2d1f9d391d3d.ttf (203KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome5_Solid.ttf (203KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Brands.56c8d80832e37783f12c05db7c8849e2.ttf (209KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Brands.ttf (209KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Regular.370dd5af19f8364907b6e2c41f45dbbf.ttf (68KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Regular.ttf (68KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Solid.adec7d6f310bc577f05e8fe06a5daccf.ttf (424KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/FontAwesome6_Solid.ttf (424KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Fontisto.b49ae8ab2dbccb02c4d11caaacf09eab.ttf (314KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Fontisto.ttf (314KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Foundation.e20945d7c929279ef7a6f1db184a4470.ttf (57KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Foundation.ttf (57KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.b4eb097d35f44ed943676fd56f6bdc51.ttf (390KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf (390KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.6e435534bd35da5fef04168860a9b8fa.ttf (1.3MB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.ttf (1.3MB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.4e85bc9ebe07e0340c9c4fc2f6c38908.ttf (357KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialIcons.ttf (357KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Octicons.871378c6eab492a3e689a9385dc45a12.ttf (69KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Octicons.ttf (69KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/SimpleLineIcons.d2285965fe34b05465047401b8595dd0.ttf (54KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/SimpleLineIcons.ttf (54KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Zocial.1681f34aaca71b8dfb70756bca331eb2.ttf (26KB)
+../../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Zocial.ttf (26KB)
+
+› web bundles (3):
+_expo/static/js/web/AppEntry-4602904e86b71dcb0835a25053138988.js (1.7MB)
+_expo/static/js/web/es-86b5e98b556c0b7ec7c133303ef80e74.js (335KB)
+_expo/static/js/web/pseudo-d1558882141152223f737c407b4231c0.js (16KB)
+
+› ios bundles (1):
+_expo/static/js/ios/AppEntry-ec39ec751f2f0666394891dab850bd68.hbc (3.2MB)
+
+› android bundles (1):
+_expo/static/js/android/AppEntry-29d46700d94f91718ee68ba42b939816.hbc (3.2MB)
+
+› Files (2):
+index.html (1.2KB)
+metadata.json (2.6KB)
+
+Exported: dist

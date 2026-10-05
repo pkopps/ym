@@ -1,0 +1,41 @@
+
+> yardmatch-monorepo@0.1.0 test:web:smoke
+> playwright test --config=playwright.config.ts tests/web/booking-journey.spec.ts tests/web/provider-clients.spec.ts
+
+[WebServer] (node:14669) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14765) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14781) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 8 tests using 1 worker
+
+(node:14858) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓  1 [chromium] › tests/web/booking-journey.spec.ts:32:5 › service selection asks for location, browser permission finds the area, and denial retains manual search (2.9s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓  2 [chromium] › tests/web/booking-journey.spec.ts:54:5 › guest books multiple services through review and signup, receives one persisted request, then reschedules (8.1s)
+[WebServer] [browser] Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+  ✓  3 [chromium] › tests/web/booking-journey.spec.ts:130:5 › directory shows list and map, filters real openings and opens an editable scheduling modal (3.9s)
+  ✓  4 [chromium] › tests/web/provider-clients.spec.ts:26:5 › real provider client endpoint isolates businesses and serves their booked customers (1.8s)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '2827936474'
+[WebServer] }
+  ✓  5 [chromium] › tests/web/provider-clients.spec.ts:48:5 › client map synchronizes search, service filters, dates, list selection, and pins at desktop and mobile sizes (4.0s)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '2827936474'
+[WebServer] }
+  ✓  6 [chromium] › tests/web/provider-clients.spec.ts:98:5 › client map handles errors, empty clients, unavailable locations, shared pins, and session removal (2.0s)
+  ✓  7 [chromium] › tests/web/provider-clients.spec.ts:132:5 › anonymous client map does not fetch client data (640ms)
+[WebServer] ⨯ Error: The destination stream closed early.
+[WebServer]     at ignore-listed frames {
+[WebServer]   digest: '2827936474'
+[WebServer] }
+  ✓  8 [chromium] › tests/web/provider-clients.spec.ts:140:5 › 5,000 client properties keep map markers and list rows bounded while every property remains reachable (2.5s)
+
+  8 passed (32.5s)

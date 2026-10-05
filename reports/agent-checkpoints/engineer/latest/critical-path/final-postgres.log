@@ -1,0 +1,31 @@
+
+> yardmatch-monorepo@0.1.0 test:api:postgres
+> npm --workspace @yardmatch/api run test:postgres
+
+
+> @yardmatch/api@0.1.0 test:postgres
+> node --test --test-concurrency=1 --import tsx test/*.integration.test.ts
+
+✔ Postgres persists bundled services, serializes booking retries, queues one receipt and filters reserved openings (221.268741ms)
+✔ Postgres referrals persist ownership and consent, serialize limits, enforce uniqueness and roll back failed lead pairs (246.027688ms)
+✔ Postgres atomically claims first-match economics and persists a balanced idempotent ledger (138.552736ms)
+✔ Postgres persists two-factor settings, remembered devices, and security activity (41.566456ms)
+✔ Postgres serializes recovery and checkout across service instances and rolls back recurring creation (495.966624ms)
+✔ Postgres preserves timing history and atomically rejects stale schedule responses and duplicate follow-ups (54.996592ms)
+✔ Postgres persists booking recovery and serializes repeated cancellation across instances (95.450976ms)
+✔ Postgres analytics survives restart, deduplicates across instances, retains bounded history and exports only permissioned events (96.792702ms)
+✔ photo review inventory holds disputed evidence and never deletes records (134.22556ms)
+✔ Postgres analytics workers drain a multi-batch backlog without overlapping claims and recover expired leases (243.879997ms)
+✔ Postgres persists service prices and minimum audit history across instances, serializes edits and rolls back invalid batches (154.780223ms)
+✔ Postgres workers claim each notification once, recover crashes, fence old acknowledgements, and roll back outbox writes (104.921166ms)
+✔ Postgres search pages and client summaries match domain rules without loading booking history (405.235424ms)
+✔ Postgres analytics preserves ordered identity-linked funnels and counts beyond 50,000 events (1177.195924ms)
+✔ Postgres preserves complaints and refund reservations across instances and restarts, with one ledger posting (147.576405ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5692.461946
