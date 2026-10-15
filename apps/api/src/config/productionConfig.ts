@@ -1,3 +1,5 @@
+import { resolveLaunchFeatureFlags, type LaunchFeatureFlags } from "@yardmatch/contracts";
+
 const DEVELOPMENT_JWT_SECRET = "yardmatch-dev-secret";
 
 export interface RuntimeEnvironment {
@@ -24,6 +26,8 @@ export interface RuntimeEnvironment {
   BLOB_READ_WRITE_TOKEN?: string;
   SENTRY_DSN?: string;
   SENTRY_TRACES_SAMPLE_RATE?: string;
+  YARDMATCH_PAYMENTS_ENABLED?: string;
+  YARDMATCH_CREW_MARKETPLACE_ENABLED?: string;
 }
 
 export type YardMatchDeploymentEnvironment = "local" | "staging" | "production";
@@ -35,6 +39,7 @@ export interface RuntimeConfiguration {
   deploymentEnvironment: YardMatchDeploymentEnvironment;
   repositoryMode: "in-memory" | "prisma-postgres";
   maxRequestBodyBytes: number;
+  features: LaunchFeatureFlags;
 }
 
 const DEFAULT_MAX_REQUEST_BODY_BYTES = 2_500_000;
@@ -292,6 +297,7 @@ export function validateRuntimeConfiguration(
   const staging = deploymentEnvironment === "staging";
   const deployed = production || staging;
   const maxRequestBodyBytes = parseMaxRequestBodyBytes(environment, problems);
+  const features = resolveLaunchFeatureFlags(environment, problems);
 
   if (!deployed) {
     if (problems.length > 0) {
@@ -303,7 +309,8 @@ export function validateRuntimeConfiguration(
       deployed: false,
       deploymentEnvironment,
       repositoryMode: value(environment, "DATABASE_URL") ? "prisma-postgres" : "in-memory",
-      maxRequestBodyBytes
+      maxRequestBodyBytes,
+      features
     };
   }
 
@@ -390,7 +397,8 @@ export function validateRuntimeConfiguration(
     deployed,
     deploymentEnvironment,
     repositoryMode: "prisma-postgres",
-    maxRequestBodyBytes
+    maxRequestBodyBytes,
+    features
   };
 }
 

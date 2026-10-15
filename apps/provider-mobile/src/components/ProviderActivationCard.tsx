@@ -3,6 +3,7 @@ import { AppState, Linking, Pressable, Text, TextInput, View } from "react-nativ
 import { useEffect } from "react";
 import { bookingScheduleStartIso, type AvailabilitySlot, type ProviderProfile, type ProviderCredentialType, type ProviderConnectStatusResponse } from "@yardmatch/contracts";
 import { createProviderMobileApiClient } from "../lib/api";
+import { unlessFeatureDisabled } from "../lib/launchFeatures";
 
 const types: ProviderCredentialType[] = ["business-registration", "general-liability-insurance", "workers-compensation", "commercial-auto-insurance", "pesticide-applicator-license"];
 export function ProviderActivationCard({ provider, token, onUpdated }: { provider: ProviderProfile; token?: string; onUpdated: (profile: ProviderProfile) => void }) {
@@ -13,13 +14,14 @@ export function ProviderActivationCard({ provider, token, onUpdated }: { provide
   const [reference, setReference] = useState("");
   const [expiry, setExpiry] = useState("");
   const [status, setStatus] = useState<ProviderConnectStatusResponse>();
+  const [payoutsAvailable, setPayoutsAvailable] = useState(true);
   const [message, setMessage] = useState("");
   const [working, setWorking] = useState(false);
   function api() { const client = createProviderMobileApiClient(); client.setAuthToken(token); return client; }
   useEffect(() => {
     if (!token) return;
     const client = createProviderMobileApiClient(); client.setAuthToken(token);
-    const refresh = () => { void client.getProviderConnectStatus().then(setStatus).catch(error => setMessage(error instanceof Error ? error.message : "Unable to refresh payout setup.")); };
+    const refresh = () => { void unlessFeatureDisabled(client.getProviderConnectStatus()).then(next => { setPayoutsAvailable(Boolean(next)); setStatus(next); }).catch(error => setMessage(error instanceof Error ? error.message : "Unable to refresh payout setup.")); };
     refresh();
     void client.getOwnProviderAvailability().then(setSlots).catch(error => setMessage(String(error)));
     const listener = AppState.addEventListener("change", state => { if (state === "active") refresh(); });
@@ -57,16 +59,18 @@ export function ProviderActivationCard({ provider, token, onUpdated }: { provide
     {[7, 12, 16].map(hour => <Pressable key={hour} onPress={() => setOpeningHour(hour)}><Text>{openingHour === hour ? "✓ " : ""}{hour === 7 ? "Morning" : hour === 12 ? "Afternoon" : "Evening"}</Text></Pressable>)}
     <Pressable disabled={working} onPress={() => void opening()}><Text>Publish opening</Text></Pressable>
     {slots.map(slot => <View key={slot.id}><Text>{new Date(slot.startIso).toLocaleString("en-US", { timeZone: "America/New_York" })} ET</Text><Pressable disabled={working || slot.isBooked} onPress={() => void opening(slot.id)}><Text>Remove opening</Text></Pressable></View>)}
-    <Text accessibilityRole="header">Business credentials and payout setup</Text>
-    <Text>Marketplace: {provider.verificationStatus}. Payout account: {status?.account?.onboardingStatus ?? "not started"}. {status?.transferReady ? "Account capabilities ready; job and credential gates still apply." : "Payout setup required."}</Text>
+    <Text accessibilityRole="header">{payoutsAvailable ? "Business credentials and payout setup" : "Business credentials"}</Text>
+    {payoutsAvailable ? <Text>Marketplace: {provider.verificationStatus}. Payout account: {status?.account?.onboardingStatus ?? "not started"}. {status?.transferReady ? "Account capabilities ready; job and credential gates still apply." : "Payout setup required."}</Text> : <Text>Marketplace: {provider.verificationStatus}.</Text>}
     <Text>Your business engages, supervises, insures, and compensates its crew.</Text>
     {provider.credentials?.map(credential => <Text key={credential.id}>{credential.type}: {credential.expiresAt && Date.parse(credential.expiresAt) <= Date.now() ? "expired" : credential.status} {credential.reviewNotes}</Text>)}
     {types.map(value => <Pressable key={value} accessibilityRole="button" onPress={() => setType(value)}><Text>{value === type ? "✓ " : ""}{value.replaceAll("-", " ")}</Text></Pressable>)}
     <TextInput accessibilityLabel="Registration or policy reference" placeholder="Registration or policy reference" value={reference} onChangeText={setReference} />
     <TextInput accessibilityLabel="Credential expiration" placeholder="Expiration YYYY-MM-DD" value={expiry} onChangeText={setExpiry} />
     <Pressable disabled={working} onPress={() => void act("submit")}><Text>Submit credential</Text></Pressable>
-    <Pressable disabled={working || !status?.stripeConfigured} onPress={() => void act("connect")}><Text>Start or resume payout setup</Text></Pressable>
-    <Pressable onPress={() => void api().getProviderConnectStatus().then(setStatus).catch(error => setMessage(String(error)))}><Text>Refresh payout status</Text></Pressable>
+    {payoutsAvailable ? <>
+      <Pressable disabled={working || !status?.stripeConfigured} onPress={() => void act("connect")}><Text>Start or resume payout setup</Text></Pressable>
+      <Pressable onPress={() => void api().getProviderConnectStatus().then(setStatus).catch(error => setMessage(String(error)))}><Text>Refresh payout status</Text></Pressable>
+    </> : null}
     {message ? <Text accessibilityRole="alert">{message}</Text> : null}
   </View>;
 }

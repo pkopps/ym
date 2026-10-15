@@ -18,6 +18,7 @@ import { createAuthenticatedWebApiClient, createWebApiClient } from "../lib/api"
 import { readEvidenceImage } from "../lib/imageUploads";
 import { useStoredWebSession } from "../lib/session";
 import { LoadingSkeleton } from "./LoadingSkeleton";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 
 const allDays: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const skillOptions: ServiceCategory[] = [
@@ -194,6 +195,7 @@ function buildPublicCrewRecommendation(
 
 export function CrewLiveDashboard() {
   const i18n = useI18n();
+  const { crewMarketplace } = useLaunchFeatureFlags();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [matchesResponse, setMatchesResponse] = useState<CrewMatchesResponse | undefined>();
@@ -283,6 +285,9 @@ export function CrewLiveDashboard() {
 
     if (!session || session.role !== "crew-member") {
       setAccessDenied(true);
+      if (!crewMarketplace) {
+        return;
+      }
       void loadPublicPreview().catch((error) => {
         setErrorMessage(
           error instanceof Error ? error.message : i18n.t("crew_live.error.load_openings")
@@ -297,7 +302,7 @@ export function CrewLiveDashboard() {
     void loadCrewView().catch((error) => {
       setErrorMessage(error instanceof Error ? error.message : i18n.t("crew_live.error.load_dashboard"));
     });
-  }, [i18n, sessionReady, session?.token, session?.role]);
+  }, [crewMarketplace, i18n, sessionReady, session?.token, session?.role]);
 
   async function handleSavePreferences(next: {
     availableWeekdays?: CrewAvailabilityDay[];
@@ -448,6 +453,20 @@ export function CrewLiveDashboard() {
   if (!sessionReady || (!accessDenied && !matchesResponse && !errorMessage)) {
     return (
       <LoadingSkeleton cardCount={3} className="grid-three" label={i18n.t("crew_live.loading")} showAction />
+    );
+  }
+
+  if (accessDenied && !crewMarketplace) {
+    return (
+      <section className="card stack-md">
+        <h1>{i18n.t("crew_live.team_access.title")}</h1>
+        <p>{i18n.t("crew_live.team_access.body")}</p>
+        <div className="cta-row">
+          <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+            {i18n.t("crew_live.crew_login")}
+          </a>
+        </div>
+      </section>
     );
   }
 

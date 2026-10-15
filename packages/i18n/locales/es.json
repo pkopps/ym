@@ -1010,6 +1010,8 @@
   "crew_live.cancel.confirm": "Salir de un turno aceptado puede afectar negativamente tu puntaje de confiabilidad y reducir tus posibilidades de ser elegido para futuros equipos. Cancelar esta asignacion?",
   "crew_live.cancel.reason": "El miembro de equipo cancelo desde el panel web.",
   "crew_live.crew_login": "Inicio de sesion de equipo",
+  "crew_live.team_access.body": "La empresa para la que trabajas crea las cuentas de equipo. Inicia sesion con el correo de tu invitacion para ver tus trabajos, ruta y mensajes.",
+  "crew_live.team_access.title": "Inicia sesion en tu cuenta de equipo",
   "crew_live.equipment_provided": "Equipo incluido",
   "crew_live.error.cancel_assignment": "No se puede cancelar esta asignacion.",
   "crew_live.error.capture_photo": "No se puede guardar esa foto del servicio.",

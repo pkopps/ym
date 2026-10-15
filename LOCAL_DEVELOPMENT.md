@@ -48,6 +48,8 @@ npm run prisma:seed
 
 Local API reliability defaults are `API_SLOW_REQUEST_THRESHOLD_MS=1500`, `API_RECENT_FAILURE_LIMIT=100`, and `ANALYTICS_MAX_IN_MEMORY_EVENTS=10000`. Every response exposes `X-Request-Id`; slow requests and server failures are emitted as one-line structured JSON. The authenticated ops overview groups error types and slow routes without retaining request bodies or user contact data.
 
+Launch feature flags `YARDMATCH_PAYMENTS_ENABLED` and `YARDMATCH_CREW_MARKETPLACE_ENABLED` accept `true` or `false` and are read by both the API and the web app. When unset they are on for local development and off in staging and production (see `docs/plans/launch-scope-2026-10.md`). With payments off, the API answers `404` for checkout, refund, partial-refund, refund-override, payout and Stripe Connect routes, and the web hides provider Payments, ops payouts, customer checkout and refund-review entry points; the Stripe webhook stays reachable. With the crew marketplace off, public crew opportunity, select and claim routes return `404` and signed-out `/crew` shows a crew sign-in prompt instead of open listings. `GET /healthz` reports the active `features`.
+
 Staging and production require `SENTRY_DSN`. Set `SENTRY_TRACES_SAMPLE_RATE` between `0` and `1` (the documented default is `0.1`), create separate alert rules for staging and production, and verify one test exception before accepting a deployment. Sentry events carry the same request ID shown in API responses and the ops dashboard. They intentionally omit request bodies, headers, query strings, cookies, and user identity.
 
 ## Seeded Accounts

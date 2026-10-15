@@ -10,6 +10,7 @@ import {
   SupportTicketStatus
 } from "@yardmatch/contracts";
 import { ComplaintReviewPanel } from "./ComplaintReviewPanel";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useI18n } from "@yardmatch/i18n/react";
@@ -57,6 +58,7 @@ function isDetailedManualRationale(
 
 export function OpsSupportQueue() {
   const i18n = useI18n();
+  const { payments } = useLaunchFeatureFlags();
   const [tickets, setTickets] = useState<SupportOpsTicket[]>([]);
   const [refundOverrideDrafts, setRefundOverrideDrafts] = useState<Record<string, string>>({});
   const [interventionDrafts, setInterventionDrafts] = useState<
@@ -833,7 +835,8 @@ export function OpsSupportQueue() {
                       {i18n.t("ops_auto.ops_support_queue.deny_refund_9bsycs")} </button>
                   </>
                 ) : null}
-                {ticket.status !== "resolved" &&
+                {payments &&
+                ticket.status !== "resolved" &&
                 (ticket.issueType === "billing" || Boolean(ticket.complaint && ticket.complaint.kind !== "property-damage")) &&
                 payment?.status === "captured" &&
                 payment.refundReviewStatus !== "requested" ? (

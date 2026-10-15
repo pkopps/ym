@@ -53,7 +53,8 @@ test("local runtime intentionally permits the in-memory development repository",
     deployed: false,
     deploymentEnvironment: "local",
     repositoryMode: "in-memory",
-    maxRequestBodyBytes: 2_500_000
+    maxRequestBodyBytes: 2_500_000,
+    features: { payments: true, crewMarketplace: true }
   });
   assert.equal(resolveJwtSecret({ NODE_ENV: "development" }), "yardmatch-dev-secret");
 });
@@ -162,7 +163,8 @@ test("complete production configuration selects Postgres", () => {
     deployed: true,
     deploymentEnvironment: "production",
     repositoryMode: "prisma-postgres",
-    maxRequestBodyBytes: 2_500_000
+    maxRequestBodyBytes: 2_500_000,
+    features: { payments: false, crewMarketplace: false }
   });
 });
 
@@ -190,6 +192,33 @@ test("complete staging configuration selects Postgres and deployment safeguards"
     deployed: true,
     deploymentEnvironment: "staging",
     repositoryMode: "prisma-postgres",
-    maxRequestBodyBytes: 2_500_000
+    maxRequestBodyBytes: 2_500_000,
+    features: { payments: false, crewMarketplace: false }
   });
+});
+
+test("deployed launch features default off and can be enabled explicitly", () => {
+  const enabled = completeProductionEnvironment();
+  enabled.YARDMATCH_PAYMENTS_ENABLED = "true";
+  enabled.YARDMATCH_CREW_MARKETPLACE_ENABLED = "1";
+  assert.deepEqual(validateRuntimeConfiguration(enabled).features, {
+    payments: true,
+    crewMarketplace: true
+  });
+
+  assert.deepEqual(
+    validateRuntimeConfiguration({ NODE_ENV: "development", YARDMATCH_PAYMENTS_ENABLED: "false" }).features,
+    { payments: false, crewMarketplace: true }
+  );
+});
+
+test("malformed launch feature flags fail closed", () => {
+  assert.throws(
+    () => validateRuntimeConfiguration({ ...completeProductionEnvironment(), YARDMATCH_PAYMENTS_ENABLED: "maybe" }),
+    /YARDMATCH_PAYMENTS_ENABLED must be true or false/
+  );
+  assert.throws(
+    () => validateRuntimeConfiguration({ NODE_ENV: "development", YARDMATCH_CREW_MARKETPLACE_ENABLED: "enabled" }),
+    /YARDMATCH_CREW_MARKETPLACE_ENABLED must be true or false/
+  );
 });

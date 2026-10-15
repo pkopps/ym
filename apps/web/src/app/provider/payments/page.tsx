@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { ProviderPaymentsBoard } from "../../../components/ProviderPaymentsBoard";
+import { getLaunchFeatureFlags } from "../../../lib/feature-flags-server";
 import { getLocalizedPageMetadata, getRequestI18n } from "../../../lib/i18n-server";
 
 export function generateMetadata(): Promise<Metadata> {
@@ -11,6 +13,10 @@ export function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function ProviderPaymentsPage() {
+  if (!getLaunchFeatureFlags().payments) {
+    notFound();
+  }
+
   const i18n = await getRequestI18n();
 
   return (

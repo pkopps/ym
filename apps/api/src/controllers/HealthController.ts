@@ -17,6 +17,7 @@ export class HealthController implements ApiController {
         status: "ok",
         environment: this.runtime.deploymentEnvironment,
         repository: this.runtime.repositoryMode,
+        features: this.runtime.features,
         revision: process.env.RENDER_GIT_COMMIT?.slice(0, 12) ?? process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12)
       });
       return;

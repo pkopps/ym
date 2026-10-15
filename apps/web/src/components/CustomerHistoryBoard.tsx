@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { LoadingSkeleton } from "./LoadingSkeleton";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 
 function paymentLabelKey(payment?: PaymentRecord): TranslationKey {
   if (!payment) {
@@ -43,6 +44,7 @@ const photoAreaLabelKeys: Record<PropertyPhotoArea, TranslationKey> = {
 
 export function CustomerHistoryBoard() {
   const i18n = useI18n();
+  const { payments: paymentsEnabled } = useLaunchFeatureFlags();
   const { session, sessionReady } = useStoredWebSession();
   const [accessDenied, setAccessDenied] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -80,7 +82,7 @@ export function CustomerHistoryBoard() {
       const api = createAuthenticatedWebApiClient();
       const page = await api.getBookingsPage({ cursor, limit: 20, scope: "history" });
       const historicalBookings = page.items;
-      const payments = await api.getPayments(historicalBookings.map((booking) => booking.id));
+      const payments = paymentsEnabled ? await api.getPayments(historicalBookings.map((booking) => booking.id)) : [];
 
       const providerIds = [...new Set(historicalBookings.map((booking) => booking.providerId))];
       const providerProfiles = await Promise.all(
@@ -220,7 +222,7 @@ export function CustomerHistoryBoard() {
                   <div>
                     <h3>{i18n.t("customer_history.billing")}</h3>
                     <p>{i18n.formatCurrency(booking.totalCents)}</p>
-                    <p>{i18n.t(paymentLabelKey(payment))}</p>
+                    {paymentsEnabled ? <p>{i18n.t(paymentLabelKey(payment))}</p> : null}
                   </div>
                 </div>
                 {beforePhotos.length > 0 || afterPhotos.length > 0 ? (

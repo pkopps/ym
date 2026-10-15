@@ -3,9 +3,11 @@ import { useState } from "react";
 import type { PartialRefundRecord, SupportOpsTicket } from "@yardmatch/contracts";
 import { useI18n } from "@yardmatch/i18n/react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 
 export function ComplaintReviewPanel({ item, onChanged }: { item: SupportOpsTicket; onChanged: () => Promise<void> }) {
   const i18n = useI18n();
+  const { payments } = useLaunchFeatureFlags();
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,7 +49,7 @@ export function ComplaintReviewPanel({ item, onChanged }: { item: SupportOpsTick
       </details> : <p>{i18n.t("complaint.assessment_missing")}</p>}
       <button className="button-secondary" type="button" disabled={busy} onClick={() => void perform(() => createAuthenticatedWebApiClient().assessServiceComplaint(item.ticket.id))}>{i18n.t("complaint.assess")}</button>
     </> : null}
-    {payment && payment.status === "captured" && item.booking?.status === "completed" && complaint?.kind !== "property-damage" && item.ticket.status !== "resolved" ? <>
+    {payments && payment && payment.status === "captured" && item.booking?.status === "completed" && complaint?.kind !== "property-damage" && item.ticket.status !== "resolved" ? <>
       <h4>{i18n.t("complaint.partial_title")}</h4><p>{i18n.t("complaint.funding")}</p>
       {payment.processor !== "stripe" ? <strong>{i18n.t("complaint.simulation")}</strong> : null}
       <p>{i18n.t("complaint.remaining")}: {format(remaining)}</p>
@@ -56,7 +58,7 @@ export function ComplaintReviewPanel({ item, onChanged }: { item: SupportOpsTick
       <button className="button-secondary" type="button" disabled={busy || Boolean(pending) || reason.trim().length < 20 || !validAmount || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || Math.round(Number(amount) * 100) >= remaining} onClick={() => void refund()}>{busy ? i18n.t("complaint.busy") : i18n.t("complaint.issue_refund")}</button>
     </> : null}
     {payment?.partialRefunds?.length ? <div><h4>{i18n.t("complaint.refund_history")}</h4>{payment.partialRefunds.map(record => <div key={record.id}><p>{format(record.amountCents)} · {record.status} · {record.funding}<br />{record.reason}</p>
-      {record.status === "submitting" ? <button className="button-secondary" disabled={busy} onClick={() => void refund(record)}>{i18n.t("complaint.retry_refund")}</button> : null}
+      {payments && record.status === "submitting" ? <button className="button-secondary" disabled={busy} onClick={() => void refund(record)}>{i18n.t("complaint.retry_refund")}</button> : null}
     </div>)}</div> : null}
     {status ? <p role="status">{status}</p> : null}{error ? <p role="alert">{error}</p> : null}
   </section>;
