@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { opsEmail, opsPassword } from "./workflow-helpers";
 
 const engineerEvidenceRoot = "reports/agent-checkpoints/engineer/latest";

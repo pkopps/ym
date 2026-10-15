@@ -1,5 +1,5 @@
 import type { PaymentRecord, SupportOpsTicket } from "@yardmatch/contracts";
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { apiBaseUrl, approveProvider, authenticatedGet, authenticatedPost, createBooking, evidenceRoot, loginUi, opsEmail, opsPassword, registerCustomer, registerProvider, testPassword } from "./workflow-helpers";
 import { mkdir } from "node:fs/promises";
 
@@ -20,7 +20,7 @@ test("customer complaint form submits evidence, supports human review, and prote
   await page.goto("/login/customer");
   await page.getByLabel("Email").fill(customer.email); await page.getByLabel("Password").fill(testPassword);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
-  await expect(page).toHaveURL(/customer/);
+  await expect(page).toHaveURL(/\/customer\/dashboard/);
   await page.goto(`/help?bookingId=${booking.id}`);
   const panel = page.getByRole("region", { name: "Report a problem", exact: true });
   await expect(panel).toBeVisible();

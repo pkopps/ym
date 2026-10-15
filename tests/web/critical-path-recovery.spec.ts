@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { approveProvider, authenticatedPost, captureResponsiveEvidence, createBooking, loginUi, registerCustomer, registerProvider, testPassword, uniqueEmail } from "./workflow-helpers";
 
 test("lost opening keeps successful crew signup and offers recovery inside account", async ({ page, request }) => {

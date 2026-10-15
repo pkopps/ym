@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { evidenceRoot, opsEmail, opsPassword } from "./workflow-helpers";
 
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page) {

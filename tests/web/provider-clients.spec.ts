@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import type { ProviderClientsOverview } from "@yardmatch/contracts";
 import { apiBaseUrl, approveProvider, authenticatedGet, evidenceRoot, createBooking, loginUi, registerCustomer, registerProvider } from "./workflow-helpers";
 

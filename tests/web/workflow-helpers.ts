@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
-export const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? 4001}`;
+export const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? process.env.YARDMATCH_API_PORT ?? 4001}`;
 export const evidenceRoot = "reports/agent-checkpoints/engineer/latest";
 export const testPassword = "LaunchReady123";
 export const opsEmail = process.env.YARDMATCH_SMOKE_OPS_EMAIL ?? "ops@example.com";
@@ -208,6 +208,8 @@ export async function loginUi(page: Page, role: "provider" | "crew" | "ops", ema
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Log in" }).click();
+  // Callers often navigate next; let the sign-in finish so it isn't aborted mid-request.
+  await page.waitForURL((url) => !url.pathname.includes("/login/"));
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
