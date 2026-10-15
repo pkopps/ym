@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { apiBaseUrl, evidenceRoot, loginApi, opsEmail, opsPassword, testPassword, uniqueEmail } from "./workflow-helpers";
 
 test("provider prices can be set at signup, edited afterwards, and checked against audited ZIP minimums", async ({ page, request }) => {

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 const evidenceRoot = "reports/agent-checkpoints/engineer/latest/seo";
 

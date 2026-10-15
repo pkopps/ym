@@ -1,4 +1,4 @@
-import {expect,test} from "@playwright/test";
+import {expect,test} from "./fixtures";
 test("analytics is optional, measures navigation once, excludes query strings and stops after withdrawal",async({page})=>{
   const events:Array<{name:string;properties:Record<string,unknown>}>=[];
   await page.route("**/api/analytics/events",async route=>{events.push(route.request().postDataJSON());await route.fulfill({status:201,json:{accepted:true}});});

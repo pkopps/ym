@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("provider matching uses card skeletons without stacking the route loader", async ({ page }) => {
   let releaseSearch: (() => void) | undefined;

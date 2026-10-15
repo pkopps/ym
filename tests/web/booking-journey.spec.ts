@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { apiBaseUrl, evidenceRoot, testPassword, uniqueEmail } from "./workflow-helpers";
 
 async function manualSearch(page: Page) {
