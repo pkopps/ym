@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 test("stalled place search stops loading and shows retry guidance", async ({ page }) => {
   await page.addInitScript(() => {

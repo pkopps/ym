@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { apiBaseUrl, registerProvider, registerCustomer, approveProvider, createBooking, authenticatedPost, loginApi, evidenceRoot } from "./workflow-helpers";
 
 test("wallet-first checkout, optional bank guidance, and asynchronous payment status", async ({ page, request }) => {

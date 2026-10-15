@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./fixtures";
 import { apiBaseUrl, evidenceRoot, registerCustomer } from "./workflow-helpers";
 
 async function signIn(page: Page, customer: Awaited<ReturnType<typeof registerCustomer>>) {

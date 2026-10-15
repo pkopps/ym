@@ -1,6 +1,6 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, hydrateContextNavigation, test, type APIRequestContext, type Page } from "./fixtures";
 
-const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? 4001}`;
+const apiBaseUrl = process.env.API_BASE_URL ?? `http://localhost:${process.env.PORT ?? process.env.YARDMATCH_API_PORT ?? 4001}`;
 const evidenceRoot = "reports/agent-checkpoints/engineer/latest";
 
 async function registerSecurityCustomer(request: APIRequestContext, email: string, password: string) {
@@ -66,7 +66,7 @@ test("customer can enable email 2FA and verify a new mobile-sized device", async
     fullPage: true
   });
 
-  const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const mobileContext = hydrateContextNavigation(await browser.newContext({ viewport: { width: 390, height: 844 } }));
   const mobilePage = await mobileContext.newPage();
   try {
     await logIn(mobilePage, email, password);
