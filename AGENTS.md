@@ -9,6 +9,7 @@ YardMatch is a managed marketplace for lawn and property care. Preserve the reco
 - Internal ops tools must stay authenticated, role-aware, and auditable.
 - Launch defaults point to Barnegat, NJ, but smoke tests can use seeded Brooklyn/Jersey City data for reliable local provider matches.
 - Follow the roadmap direction in `ROADMAP.md`; keep completed behavior and local setup in `README.md` or `LOCAL_DEVELOPMENT.md`.
+- Launch scope (owner decisions, October 2026; see `ROADMAP.md`): customers pay providers directly and YardMatch earns finder fees and subscriptions, not per-job fees; crew is a provider tool, not a marketplace; the only native launch app is the provider app (crew is a role in it), and customers use the web. Don't add features to `apps/customer-mobile`, `apps/crew-mobile` or `apps/mobile`, and don't expand YardMatch-collected payments or crew matching unless Patrick asks.
 
 ## Autonomous Goal Mode
 

@@ -37,6 +37,16 @@ Avoid drifting into:
 - any paid-placement influence on recommendation order
 - ranking or pricing choices that squeeze provider economics and damage supply quality
 
+## Owner Decisions — October 14, 2026
+
+These narrow launch scope and take precedence over conflicting items below. Rationale and implementation chunks: [launch scope plan](docs/plans/launch-scope-2026-10.md).
+
+- **Billing:** customers pay providers directly at launch. YardMatch earns a one-time, size-tiered provider finder fee per new customer relationship plus optional Pro/Teams subscriptions, with no per-job fee. Existing YardMatch checkout, Connect, settlement and payout code stays behind a disabled flag for a later optional payments feature. Confirm with launch counsel.
+- **Crew:** crew management is a provider tool (invite, assign, schedule, message). The public crew-matching marketplace is deferred.
+- **Apps:** launch the native provider app, with crew as a role inside it. Customers use the web app. The customer and crew native apps leave the release pipeline; the legacy `apps/mobile` workspace is removed.
+
+Effect on the freeze below: items 3 and 4 and the settlement, transfer and Connect exit criteria apply only when YardMatch payments are enabled, so they no longer block launch. Item 1 now means the finder-fee economics policy. Items 2, 5, 6 and 7 are unchanged.
+
 ## Launch Feature Freeze
 
 Effective July 29, 2026, lower-priority feature expansion is frozen until the launch-safety gates below are independently verified. Work outside these gates requires an explicit owner decision explaining why it is more important than financial, legal, or production reliability.
