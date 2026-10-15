@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run lint)",
+      "Bash(npm run lint:fix)",
+      "Bash(npm run test:api)",
+      "Bash(npm run test:api:smoke)",
+      "Bash(npm run test:web:smoke)",
+      "Bash(npm run test:smoke)",
+      "Bash(npm run verify)",
+      "Bash(npm run verify:local)",
+      "Bash(npm run prisma:generate)",
+      "Bash(npm run i18n:validate)",
+      "Bash(npm run dev:api)",
+      "Bash(npm run dev:web)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git worktree list)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./.env.*.local)",
+      "Read(./**/.env)",
+      "Read(./**/.env.local)"
+    ]
+  }
+}

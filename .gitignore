@@ -30,3 +30,7 @@ reports/agent-checkpoints/*/latest/**
 # Generated local/CI verification artifacts.
 /reports/ci/
 /apps/api/reports/ci/
+
+# Claude Code personal overrides
+.claude/settings.local.json
+CLAUDE.local.md
