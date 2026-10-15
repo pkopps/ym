@@ -57,13 +57,13 @@ The canonical brand stylesheet lives at `packages/branding/src/brand.css`.
 
 - Canonical local web URL: `http://localhost:3000`
 - Canonical local API URL: `http://localhost:4001`
-- Practical local setup and smoke-test runbook: [LOCAL_DEVELOPMENT.md](/Users/patrickkopps/Documents/app/LOCAL_DEVELOPMENT.md)
-- Agent/project working rules: [AGENTS.md](/Users/patrickkopps/Documents/app/AGENTS.md)
+- Practical local setup and smoke-test runbook: [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
+- Agent/project working rules: [AGENTS.md](AGENTS.md)
 
 ## Product roadmap
 
-- Active roadmap and backlog: [ROADMAP.md](/Users/patrickkopps/Documents/app/ROADMAP.md)
-- Cost sheet and future P&L starter: [COSTS.md](/Users/patrickkopps/Documents/app/COSTS.md)
+- Active roadmap and backlog: [ROADMAP.md](ROADMAP.md)
+- Cost sheet and future P&L starter: [COSTS.md](COSTS.md)
 
 ## Customer referrals
 
@@ -598,7 +598,7 @@ Current baseline instrumentation:
 
 ### Environment variables
 
-See [.env.example](/Users/patrickkopps/Documents/app/.env.example:1) for the starting set of variables for API base URLs, OTLP export, Sentry, and PostHog.
+See [.env.example](.env.example) for the starting set of variables for API base URLs, OTLP export, Sentry, and PostHog.
 
 ## Notes
 
