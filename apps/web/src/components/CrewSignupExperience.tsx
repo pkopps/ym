@@ -12,6 +12,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createWebApiClient, getWebAuthDevice, saveStoredSession } from "../lib/api";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { SignupIdentityOptions } from "./SignupIdentityOptions";
 
 const dayOptions: CrewAvailabilityDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -84,6 +85,7 @@ function toggleRequiredValue<T extends string>(current: T[], value: T) {
 export function CrewSignupExperience() {
   const i18n = useI18n();
   const router = useRouter();
+  const { crewMarketplace } = useLaunchFeatureFlags();
   const [opportunityId, setOpportunityId] = useState("");
   const [categories, setCategories] = useState<ServiceCategory[]>(["lawn-mowing", "seasonal-cleanup"]);
   const [availableWeekdays, setAvailableWeekdays] = useState<CrewAvailabilityDay[]>([
@@ -111,7 +113,7 @@ export function CrewSignupExperience() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setOpportunityId(params.get("opportunityId") ?? "");
+    setOpportunityId(crewMarketplace ? params.get("opportunityId") ?? "" : "");
     setCategories(parseQueryList(params.get("categories"), categoryOptions, ["lawn-mowing", "seasonal-cleanup"]));
     setAvailableWeekdays(parseQueryList(params.get("days"), dayOptions, ["Mon", "Tue", "Wed", "Thu", "Fri"]));
 
@@ -126,7 +128,7 @@ export function CrewSignupExperience() {
     if (Number.isFinite(nextRadius)) {
       setWillingToTravelMiles(Math.min(60, Math.max(5, nextRadius)));
     }
-  }, []);
+  }, [crewMarketplace]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();

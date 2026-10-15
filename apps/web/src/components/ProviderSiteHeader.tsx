@@ -5,6 +5,7 @@ import { addLocalePrefix, TranslationKey } from "@yardmatch/i18n";
 import { useI18n } from "@yardmatch/i18n/react";
 import { clearStoredSession, getWebApiBaseUrl } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { NotificationMenu } from "./NotificationMenu";
 
 const productColumns = [
@@ -108,6 +109,8 @@ export function ProviderSiteHeader() {
   const i18n = useI18n();
   const [openMenu, setOpenMenu] = useState<null | "learn" | "marketplace" | "products">(null);
   const { session } = useStoredWebSession();
+  const { payments } = useLaunchFeatureFlags();
+  const showLink = (href: string) => payments || href !== "/provider/payments";
   const navRef = useRef<HTMLElement | null>(null);
   const localHref = (href: string) => (href.startsWith("http") ? href : addLocalePrefix(href, i18n.locale));
 
@@ -179,7 +182,7 @@ export function ProviderSiteHeader() {
                         <section key={column.titleKey}>
                           <h2>{i18n.t(column.titleKey)}</h2>
                           <div className="provider-menu__stack">
-                            {column.items.map((item) => (
+                            {column.items.filter((item) => showLink(item.href)).map((item) => (
                               <a className="provider-menu__card" href={localHref(item.href)} key={item.titleKey} onClick={closeMenu}>
                                 <strong>{i18n.t(item.titleKey)}</strong>
                                 <span>{i18n.t(item.bodyKey)}</span>
@@ -211,7 +214,7 @@ export function ProviderSiteHeader() {
                 {openMenu === "marketplace" ? (
                   <div className="provider-menu__panel">
                     <div className="provider-menu__stack">
-                      {marketplaceLinks.map((item) => (
+                      {marketplaceLinks.filter((item) => showLink(item.href)).map((item) => (
                         <a className="provider-menu__card" href={localHref(item.href)} key={item.titleKey} onClick={closeMenu}>
                           <strong>{i18n.t(item.titleKey)}</strong>
                           <span>{i18n.t(item.bodyKey)}</span>
@@ -261,9 +264,11 @@ export function ProviderSiteHeader() {
               <a className="button-secondary" href={localHref("/provider/management")}>
                 {i18n.t("nav.user.management")}
               </a>
-              <a className="button-secondary" href={localHref("/provider/payments")}>
-                {i18n.t("nav.user.payments")}
-              </a>
+              {payments ? (
+                <a className="button-secondary" href={localHref("/provider/payments")}>
+                  {i18n.t("nav.user.payments")}
+                </a>
+              ) : null}
               <a className="button-secondary" href={localHref("/account/security")}>
                 {i18n.t("security.title")}
               </a>

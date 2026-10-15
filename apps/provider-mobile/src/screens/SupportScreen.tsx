@@ -32,6 +32,7 @@ import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { SkeletonCard } from "../components/SkeletonCard";
 import { createProviderMobileApiClient } from "../lib/api";
+import { unlessFeatureDisabled } from "../lib/launchFeatures";
 import { getProviderAuthDevice } from "../lib/sessionSecurity";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
@@ -303,7 +304,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
         api.getNotificationDeliveries(),
         api.getProviderCalendarSubscription(),
         api.getProviderCalendarImports(),
-        api.getProviderPayoutLedger(),
+        unlessFeatureDisabled(api.getProviderPayoutLedger()),
         api.getSecuritySettings(device.id)
       ]);
       setProvider(me.user as ProviderProfile);
@@ -774,7 +775,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
 
       <InfoCard title={i18n.t("provider_mobile.support.business_tools")} description={sectionSummaries[activeSection]}>
         <View style={styles.issueRow}>
-          {businessSectionOptions.map((option) => {
+          {businessSectionOptions.filter((option) => option.value !== "payouts" || payoutLedger).map((option) => {
             const isActive = option.value === activeSection;
             return (
               <Pressable
@@ -1063,7 +1064,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       </InfoCard>
       ) : null}
 
-      {activeSection === "payouts" ? (
+      {activeSection === "payouts" && payoutLedger ? (
       <InfoCard title={i18n.t("provider_mobile.dashboard.payouts")} description={payoutStateLabel}>
         <View style={styles.payoutSummaryGrid}>
           <View style={styles.payoutSummaryItem}>

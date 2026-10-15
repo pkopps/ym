@@ -16,6 +16,7 @@ import { OpsFinancialExceptionBoard } from "./OpsFinancialExceptionBoard";
 import { OpsLaunchLeadBoard } from "./OpsLaunchLeadBoard";
 import { OpsLaunchPlaybook } from "./OpsLaunchPlaybook";
 import { OpsPayoutRunBoard } from "./OpsPayoutRunBoard";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { OpsProviderVerificationQueue } from "./OpsProviderVerificationQueue";
 import { OpsReviewResponseBoard } from "./OpsReviewResponseBoard";
 import { OpsSupportQueue } from "./OpsSupportQueue";
@@ -144,6 +145,7 @@ function createEmptyOverview(): ObservabilityOverview {
 
 export function OpsDashboardClient() {
   const i18n = useI18n();
+  const { payments } = useLaunchFeatureFlags();
   const { session, sessionReady } = useStoredWebSession();
   const [overview, setOverview] = useState<ObservabilityOverview>(createEmptyOverview);
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
@@ -257,17 +259,17 @@ export function OpsDashboardClient() {
       </section>
 
       <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
-        {["support", "providers", "leads", "payouts", "reports", "administration"].map(key => <a key={key} href={`#ops-${key}`} data-analytics-action={`ops-${key}`}>{i18n.t(`workspace.${key}` as Parameters<typeof i18n.t>[0])}</a>)}
+        {["support", "providers", "leads", ...(payments ? ["payouts"] : []), "reports", "administration"].map(key => <a key={key} href={`#ops-${key}`} data-analytics-action={`ops-${key}`}>{i18n.t(`workspace.${key}` as Parameters<typeof i18n.t>[0])}</a>)}
       </nav>
       <section className="grid-three">
         <article className="card"><h2>{overview.overdueLaunchLeads}</h2><a href="#ops-leads">{i18n.t("workspace.overdue_leads")}</a></article>
         <article className="card"><h2>{overview.urgentReviewResponses}</h2><a href="#ops-reviews">{i18n.t("workspace.urgent_reviews")}</a></article>
-        <article className="card"><h2>{overview.paymentFailures}</h2><a href="#ops-payouts">{i18n.t("workspace.payment_followup")}</a></article>
+        {payments ? <article className="card"><h2>{overview.paymentFailures}</h2><a href="#ops-payouts">{i18n.t("workspace.payment_followup")}</a></article> : null}
       </section>
       <WorkspaceSection id="ops-support" title={i18n.t("workspace.support")} defaultOpen><OpsSupportQueue /></WorkspaceSection>
       <WorkspaceSection id="ops-providers" title={i18n.t("workspace.providers")}><OpsProviderVerificationQueue /></WorkspaceSection>
       <WorkspaceSection id="ops-leads" title={i18n.t("workspace.leads")}><OpsLaunchLeadBoard /></WorkspaceSection>
-      <WorkspaceSection id="ops-payouts" title={i18n.t("workspace.payouts")}><OpsPayoutRunBoard /><OpsFinancialExceptionBoard /></WorkspaceSection>
+      {payments ? <WorkspaceSection id="ops-payouts" title={i18n.t("workspace.payouts")}><OpsPayoutRunBoard /><OpsFinancialExceptionBoard /></WorkspaceSection> : null}
       <WorkspaceSection id="ops-reviews" title={i18n.t("workspace.reviews")}><OpsReviewResponseBoard initialItems={overview.recentReviewResponses} /></WorkspaceSection>
       <WorkspaceSection id="ops-reports" title={i18n.t("workspace.reports")}><ProductAnalyticsBoard />
       <section className="grid-three">

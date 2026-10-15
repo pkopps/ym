@@ -1010,6 +1010,8 @@
   "crew_live.cancel.confirm": "Backing out of an accepted shift can negatively affect your reliability score and reduce your chances of being selected for future crews. Cancel this assignment?",
   "crew_live.cancel.reason": "Crew member cancelled from the web dashboard.",
   "crew_live.crew_login": "Crew login",
+  "crew_live.team_access.body": "Crew accounts are set up by the company you work for. Sign in with the email from your invite to see your jobs, route and messages.",
+  "crew_live.team_access.title": "Sign in to your crew account",
   "crew_live.equipment_provided": "Equipment provided",
   "crew_live.error.cancel_assignment": "Unable to cancel this assignment.",
   "crew_live.error.capture_photo": "Unable to save that service photo.",

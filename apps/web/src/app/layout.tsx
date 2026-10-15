@@ -3,9 +3,11 @@ import { AnalyticsPreferences } from "../components/AnalyticsPreferences";
 import type { Metadata } from "next";
 import { sourceMessages } from "@yardmatch/i18n";
 import { I18nProvider } from "@yardmatch/i18n/react";
+import { LaunchFeatureFlagsProvider } from "../components/LaunchFeatureFlagsProvider";
 import { ObservabilityProvider } from "../components/ObservabilityProvider";
 import { SiteHeader } from "../components/SiteHeader";
 import { SiteFooter } from "../components/SiteFooter";
+import { getLaunchFeatureFlags } from "../lib/feature-flags-server";
 import { getRequestLocale, getRequestMessages, localeToHtmlLang } from "../lib/i18n-server";
 import { publicSiteUrl } from "../lib/site";
 import "./globals.css";
@@ -51,11 +53,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang={localeToHtmlLang(locale)}>
       <body>
         <I18nProvider fallbackMessages={fallbackMessages} locale={locale} messages={messages}>
-          <Suspense fallback={null}><ObservabilityProvider /></Suspense>
-          <SiteHeader />
-          <div id="main-content" tabIndex={-1}>{children}</div>
-          <SiteFooter />
-          <AnalyticsPreferences />
+          <LaunchFeatureFlagsProvider flags={getLaunchFeatureFlags()}>
+            <Suspense fallback={null}><ObservabilityProvider /></Suspense>
+            <SiteHeader />
+            <div id="main-content" tabIndex={-1}>{children}</div>
+            <SiteFooter />
+            <AnalyticsPreferences />
+          </LaunchFeatureFlagsProvider>
         </I18nProvider>
       </body>
     </html>

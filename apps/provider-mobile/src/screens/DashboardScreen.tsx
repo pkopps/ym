@@ -13,6 +13,7 @@ import { InfoCard } from "../components/InfoCard";
 import { ScreenShell } from "../components/ScreenShell";
 import { SkeletonCard } from "../components/SkeletonCard";
 import { createProviderMobileApiClient } from "../lib/api";
+import { unlessFeatureDisabled } from "../lib/launchFeatures";
 import { getProviderMobileTracker } from "../lib/tracking";
 import { useProviderSession } from "../session/ProviderSessionContext";
 
@@ -313,7 +314,7 @@ export function DashboardScreen({
       api.setAuthToken(envelope.session.token);
       const [nextOverview, nextPayoutLedger] = await Promise.all([
         api.getProviderStaffingOverview(),
-        api.getProviderPayoutLedger()
+        unlessFeatureDisabled(api.getProviderPayoutLedger())
       ]);
       setOverview(nextOverview);
       setPayoutLedger(nextPayoutLedger);

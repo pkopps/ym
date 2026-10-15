@@ -41,6 +41,7 @@ import { ArrivalTrackingPanel } from "./ArrivalTrackingPanel";
 import { CustomerHistoryBoard } from "./CustomerHistoryBoard";
 import { FloatingChatWindow } from "./FloatingChatWindow";
 import { LoadingSkeleton } from "./LoadingSkeleton";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import {
   CustomerCustomTimingWindow,
   buildDateIsoForCustomerTiming,
@@ -291,6 +292,7 @@ function getPriorityBookingCardTitle(i18n: I18nInstance, booking: Booking, payme
 
 export function CustomerLiveDashboard() {
   const i18n = useI18n();
+  const { payments: paymentsEnabled } = useLaunchFeatureFlags();
   const searchParams = useSearchParams();
   const requestedView = searchParams.get("view");
   const requestedFlow = searchParams.get("flow");
@@ -424,6 +426,7 @@ export function CustomerLiveDashboard() {
     : undefined;
   const nextBookingPayment = nextBooking ? paymentsByBookingId[nextBooking.id] : undefined;
   const nextBookingNeedsCheckout =
+    paymentsEnabled &&
     nextBooking?.recovery?.state !== "open" &&
     !nextBooking?.scheduleUpdates?.some(update => ["active", "declined"].includes(update.state)) &&
     Boolean(nextBooking) &&
@@ -589,7 +592,7 @@ export function CustomerLiveDashboard() {
         api.getCustomerRetentionOpportunities(),
         api.getRecurringServicePlans()
       ]);
-      const payments = await api.getPayments(bookingList.map((booking) => booking.id));
+      const payments = paymentsEnabled ? await api.getPayments(bookingList.map((booking) => booking.id)) : [];
 
       const uniqueProviderIds = [...new Set(bookingList.map((booking) => booking.providerId))];
       const providerProfiles = await Promise.all(
@@ -675,7 +678,7 @@ export function CustomerLiveDashboard() {
       try {
         const api = createAuthenticatedWebApiClient();
         const updated = await api.getBookings({ limit: 50 });
-        const payments = await api.getPayments(updated.map(booking => booking.id));
+        const payments = paymentsEnabled ? await api.getPayments(updated.map(booking => booking.id)) : [];
         if (!stopped) {
           setBookings(updated);
           setPaymentsByBookingId(payments.reduce<Record<string, PaymentRecord>>((result, payment) => {
@@ -689,7 +692,7 @@ export function CustomerLiveDashboard() {
     const timer = window.setInterval(() => void refreshTiming(), 30000);
     document.addEventListener("visibilitychange", refreshTiming);
     return () => { stopped = true; window.clearInterval(timer); document.removeEventListener("visibilitychange", refreshTiming); };
-  }, [historyOnlyView, sessionReady, session?.token, session?.role]);
+  }, [historyOnlyView, paymentsEnabled, sessionReady, session?.token, session?.role]);
 
   useEffect(() => {
     if (retentionOpportunities.length === 0) {
@@ -722,7 +725,7 @@ export function CustomerLiveDashboard() {
   }, [retentionOpportunities]);
 
   useEffect(() => {
-    if (!sessionReady || paymentActionHandled) {
+    if (!sessionReady || paymentActionHandled || !paymentsEnabled) {
       return;
     }
 
@@ -780,7 +783,7 @@ export function CustomerLiveDashboard() {
         clearPaymentParams();
       }
     })();
-  }, [paymentActionHandled, searchParams, sessionReady]);
+  }, [paymentActionHandled, paymentsEnabled, searchParams, sessionReady]);
 
   async function handleQuote() {
     if (!activeProperty) {
@@ -1568,12 +1571,12 @@ export function CustomerLiveDashboard() {
     const paymentRecord = getPaymentRecord(booking.id);
     const paymentLabel = getBookingPaymentLabel(booking, paymentRecord);
     const canEditVisit = booking.status === "requested" || booking.status === "confirmed";
-    const canStartCheckout = booking.status === "confirmed" && !["captured", "processing", "refunded"].includes(paymentRecord?.status ?? "");
+    const canStartCheckout = paymentsEnabled && booking.status === "confirmed" && !["captured", "processing", "refunded"].includes(paymentRecord?.status ?? "");
     const canOpenDispute = booking.status !== "requested";
-    const canReviewRefund =
+    const canReviewRefund = paymentsEnabled && (
       canRequestRefundReview(booking, paymentRecord) ||
       paymentRecord?.refundReviewStatus === "requested" ||
-      paymentRecord?.refundReviewStatus === "denied";
+      paymentRecord?.refundReviewStatus === "denied");
 
     return (
       <article className="history-card">
@@ -1590,7 +1593,7 @@ export function CustomerLiveDashboard() {
           <span className="result-badge result-badge--neutral">
             {formatBookingWindowSummary(booking.scheduledStartIso)}
           </span>
-          <span className="result-badge result-badge--neutral">{paymentLabel}</span>
+          {paymentsEnabled ? <span className="result-badge result-badge--neutral">{paymentLabel}</span> : null}
         </div>
         {canStartCheckout ? <PaymentMethodGuide returningCustomer={bookings.some(visit => visit.status === "completed")} /> : null}
         <div className="cta-row">

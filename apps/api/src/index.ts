@@ -19,6 +19,7 @@ import { InMemoryMarketplaceRepository } from "./repositories/InMemoryMarketplac
 import { PrismaMarketplaceRepository } from "./repositories/PrismaMarketplaceRepository";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
 import { validateRuntimeConfiguration } from "./config/productionConfig";
+import { enforceLaunchFeatureFlags } from "./config/featureGate";
 import { ExternalRequestTimeoutError } from "./integrations/outboundRequestTimeout";
 import { createApiRuntimeObservabilityFromEnv } from "./observability/ApiRuntimeObservability";
 import {
@@ -91,6 +92,7 @@ const server = createServer(async (request, response) => {
     const parsedContext = await parseRequest(request, runtimeConfiguration.maxRequestBodyBytes);
     context = parsedContext;
     enforceMobileRelease(parsedContext);
+    enforceLaunchFeatureFlags(parsedContext, runtimeConfiguration.features);
     const controller = controllers.find((item) => item.canHandle(parsedContext));
 
     if (!controller) {
