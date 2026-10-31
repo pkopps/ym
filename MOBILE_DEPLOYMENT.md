@@ -18,7 +18,7 @@ Run `npm run verify:mobile-release` before requesting any build. Deployed mobile
 
 | App | Expo slug | iOS bundle identifier | Android application ID |
 | --- | --- | --- | --- |
-| Customer | `yardmatch-customer` | `com.patrickkopps.yardmatch.customer` | `com.yardmatch.customer` |
+| Customer | `yardmatch-customer` | `com.yardmatch.customer` | `com.yardmatch.customer` |
 | Provider | `yardmatch-provider` | `com.yardmatch.provider` | `com.yardmatch.provider` |
 | Crew | `yardmatch-crew` | `com.yardmatch.crew` | `com.yardmatch.crew` |
 

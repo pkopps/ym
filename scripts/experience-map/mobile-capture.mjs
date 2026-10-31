@@ -49,7 +49,7 @@ async function main() {
   try {
     for (const [app, appTabs] of Object.entries(tabs)) {
       if (!selectedApps.has(app)) continue;
-      const appId = app === "customer" ? "com.patrickkopps.yardmatch.customer" : `com.yardmatch.${app}`;
+      const appId = `com.yardmatch.${app}`;
       const installed = command("xcrun", ["simctl", "get_app_container", simulator, appId, "app"]);
       if (installed.status !== 0 || process.env.EXPERIENCE_MAP_REBUILD_MOBILE === "1") {
         console.log(`Building ${app} iPhone app for simulator…`);

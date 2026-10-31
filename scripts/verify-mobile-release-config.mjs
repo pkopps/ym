@@ -13,7 +13,7 @@ const allApplications = [
     directory: "apps/customer-mobile",
     slug: "yardmatch-customer",
     scheme: "yardmatch-customer",
-    iosBundleIdentifier: "com.patrickkopps.yardmatch.customer",
+    iosBundleIdentifier: "com.yardmatch.customer",
     androidPackage: "com.yardmatch.customer",
     projectIdEnvironmentKey: "YARDMATCH_CUSTOMER_EXPO_PROJECT_ID"
   },

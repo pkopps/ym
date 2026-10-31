@@ -7,7 +7,7 @@ const staging = deploymentEnvironment === "staging";
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
 const expoProjectId = process.env.EXPO_PUBLIC_EXPO_PROJECT_ID?.trim();
 const bundleIdentifier =
-  process.env.YARDMATCH_IOS_BUNDLE_IDENTIFIER || "com.patrickkopps.yardmatch.customer";
+  process.env.YARDMATCH_IOS_BUNDLE_IDENTIFIER || "com.yardmatch.customer";
 
 if (deploymentEnvironment !== "local" && (!apiBaseUrl || !apiBaseUrl.startsWith("https://"))) {
   throw new Error("Deployed customer builds require an HTTPS EXPO_PUBLIC_API_BASE_URL.");
