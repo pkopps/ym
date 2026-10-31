@@ -1,0 +1,65 @@
+node_modules
+.next
+apps/experience-map/public/captures/full/
+dist
+.expo
+.DS_Store
+*.tsbuildinfo
+test-results
+playwright-report
+/tmp/
+
+# Local secrets
+.env.*.local
+
+# Generated agent review evidence; keep directory anchors versioned.
+reports/progress/**
+!reports/progress/
+!reports/progress/.gitkeep
+reports/agent-checkpoints/*/latest/**
+!reports/agent-checkpoints/*/latest/
+!reports/agent-checkpoints/*/latest/.gitkeep
+
+.projects/cache
+.projects/vault
+.projects/state.test.json
+.projects/state.local.test.json
+.env
+.env.*
+!.env.example
+
+# Generated local/CI verification artifacts.
+/reports/ci/
+/apps/api/reports/ci/
+
+# Claude Code personal overrides
+.claude/settings.local.json
+CLAUDE.local.md
+
+# --- EAS Build only (.easignore replaces .gitignore for EAS uploads) ---
+# Mobile builds need the root workspace manifests, packages/, and apps/*
+# package.json files. Agent, report, and design artifacts are not used.
+.claude/
+.codex/
+.agents/
+.projects/
+docs/
+reports/
+output/
+outputs/
+zocdoc-screenshots/
+test-results/
+tests/
+apps/experience-map/public/captures/
+apps/web/public/
+
+# Nested .gitignore files are not applied when .easignore exists; mirror
+# apps/*/ios/.gitignore so local CocoaPods and Xcode output stay local.
+**/ios/Pods/
+**/ios/build/
+**/ios/.xcode.env.local
+xcuserdata
+DerivedData
+*.xcuserstate
+*.ipa
+*.jsbundle
