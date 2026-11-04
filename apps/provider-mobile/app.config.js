@@ -14,6 +14,7 @@ module.exports = {
     scheme: "yardmatch-provider",
     version: "0.1.0",
     orientation: "default",
+    icon: "./assets/icon.png",
     assetBundlePatterns: ["**/*"],
     plugins: [
       "expo-dev-client",
