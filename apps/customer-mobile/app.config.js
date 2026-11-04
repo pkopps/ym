@@ -20,6 +20,7 @@ module.exports = {
     scheme: "yardmatch-customer",
     version: "0.1.0",
     orientation: "default",
+    icon: "./assets/icon.png",
     assetBundlePatterns: ["**/*"],
     plugins: [
       "expo-dev-client",
@@ -60,7 +61,11 @@ module.exports = {
         : { "aps-environment": process.env.YARDMATCH_APS_ENVIRONMENT || "development" }
     },
     android: {
-      package: "com.yardmatch.customer"
+      package: "com.yardmatch.customer",
+      adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#f9f6ef"
+      }
     },
     extra: expoProjectId ? { eas: { projectId: expoProjectId } } : undefined
   }
