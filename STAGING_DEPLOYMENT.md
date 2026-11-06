@@ -41,6 +41,7 @@ Supply every `sync: false` value during initial Blueprint creation:
 - `STAGING_NOTIFICATION_ALLOWED_SMS_NUMBERS`: comma-separated QA numbers in E.164 format
 - `YARDMATCH_STAGING_SEED_PASSWORD`: password-manager-generated fixture password, at least 16 characters and not derived from the product name
 - `SENTRY_DSN`: HTTPS DSN for the staging Sentry project (the API refuses to start in staging without one)
+- `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`: Google OAuth web client whose authorized redirect URI is `<API_BASE_URL>/api/auth/google/callback` (optional; Google sign-in shows a "not configured" error without them)
 
 Add `STAGING_NOTIFICATION_ALLOWED_PUSH_TOKENS` manually when staging mobile builds register approved QA devices. If it is absent, staging push delivery is safely suppressed.
 
