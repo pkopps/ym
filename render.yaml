@@ -52,6 +52,14 @@ services:
         sync: false
       - key: YARDMATCH_STAGING_SEED_PASSWORD
         sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: SENTRY_TRACES_SAMPLE_RATE
+        value: "0.1"
 
 databases:
   - name: yardmatch-staging-db
