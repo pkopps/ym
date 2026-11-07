@@ -5,17 +5,17 @@ import { useI18n } from "@yardmatch/i18n/react";
 
 /** Keeps a crashed screen from leaving providers on a blank white app. */
 export class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  public state = { failed: false };
+  public override state = { failed: false };
 
   public static getDerivedStateFromError(): { failed: boolean } {
     return { failed: true };
   }
 
-  public componentDidCatch(error: Error, info: ErrorInfo): void {
+  public override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error("Provider app screen crashed", error, info.componentStack);
   }
 
-  public render(): ReactNode {
+  public override render(): ReactNode {
     return this.state.failed
       ? <AppErrorScreen onRetry={() => this.setState({ failed: false })} />
       : this.props.children;
