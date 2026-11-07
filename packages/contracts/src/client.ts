@@ -216,16 +216,84 @@ export class MarketplaceApiTimeoutError extends Error {
   }
 }
 
+/**
+ * What kind of failure a user hit, so screens can choose an action (retry, sign in again, contact
+ * support) without parsing messages. The message itself is always safe to show as written.
+ */
+export type MarketplaceApiErrorKind =
+  | "request"
+  | "session-expired"
+  | "rate-limited"
+  | "server"
+  | "unavailable"
+  | "network";
+
 export class MarketplaceApiError extends Error {
   public constructor(
     public readonly path: string,
     public readonly statusCode: number,
     public readonly requestId: string | undefined,
-    message: string
+    message: string,
+    public readonly kind: MarketplaceApiErrorKind = kindForStatus(statusCode)
   ) {
-    super(requestId ? `${message} (Reference: ${requestId})` : message);
+    // Only server-side failures carry a reference; validation messages stay readable.
+    super(requestId && statusCode >= 500 ? `${message} (Reference: ${requestId})` : message);
     this.name = "MarketplaceApiError";
   }
+
+  /** Worth offering a "Try again" action: nothing about the request itself was wrong. */
+  public get retryable(): boolean {
+    return this.kind === "network" || this.kind === "unavailable" || this.kind === "rate-limited" || this.kind === "server";
+  }
+}
+
+/** The request never reached YardMatch (offline, DNS, blocked, connection reset). */
+export class MarketplaceApiNetworkError extends MarketplaceApiError {
+  public constructor(path: string, message: string) {
+    super(path, 0, undefined, message, "network");
+    this.name = "MarketplaceApiNetworkError";
+  }
+}
+
+function kindForStatus(statusCode: number): MarketplaceApiErrorKind {
+  if (statusCode === 0) return "network";
+  if (statusCode === 401) return "session-expired";
+  if (statusCode === 429) return "rate-limited";
+  if (statusCode === 502 || statusCode === 503 || statusCode === 504) return "unavailable";
+  if (statusCode >= 500) return "server";
+  return "request";
+}
+
+type ClientMessageKey = "timeout" | "timeoutMayHaveSaved" | "network" | "offline" | "unavailable" | "server" | "rateLimited" | "sessionExpired" | "generic";
+
+const clientMessages: Record<"en" | "es", Record<ClientMessageKey, string>> = {
+  en: {
+    timeout: "YardMatch is taking longer than expected. Check your connection and try again.",
+    timeoutMayHaveSaved: "If you were saving a change, refresh to check whether it went through before trying again.",
+    network: "We couldn't reach YardMatch. Check your connection and try again.",
+    offline: "You appear to be offline. Reconnect to the internet and try again.",
+    unavailable: "YardMatch is temporarily unavailable. Please try again in a few minutes.",
+    server: "Something went wrong on our end. Please try again. If it keeps happening, contact support.",
+    rateLimited: "Too many attempts in a short time. Wait a minute and try again.",
+    sessionExpired: "Your session has ended. Please sign in again.",
+    generic: "We couldn't complete that request. Please try again."
+  },
+  es: {
+    timeout: "YardMatch esta tardando mas de lo esperado. Revisa tu conexion e intentalo de nuevo.",
+    timeoutMayHaveSaved: "Si estabas guardando un cambio, actualiza para confirmar si se guardo antes de intentarlo otra vez.",
+    network: "No pudimos conectar con YardMatch. Revisa tu conexion e intentalo de nuevo.",
+    offline: "Parece que no tienes conexion. Vuelve a conectarte a internet e intentalo de nuevo.",
+    unavailable: "YardMatch no esta disponible temporalmente. Intentalo de nuevo en unos minutos.",
+    server: "Algo salio mal de nuestro lado. Intentalo de nuevo. Si sigue pasando, contacta a soporte.",
+    rateLimited: "Demasiados intentos en poco tiempo. Espera un minuto e intentalo de nuevo.",
+    sessionExpired: "Tu sesion termino. Vuelve a iniciar sesion.",
+    generic: "No pudimos completar la solicitud. Intentalo de nuevo."
+  }
+};
+
+function isLikelyOffline(): boolean {
+  const navigatorLike = (globalThis as { navigator?: { onLine?: boolean } }).navigator;
+  return navigatorLike?.onLine === false;
 }
 
 export function isMarketplaceApiTimeoutError(error: unknown): error is MarketplaceApiTimeoutError {
@@ -286,23 +354,52 @@ export class MarketplaceApiClient {
     };
   }
 
-  private async buildError(response: Response, path: string): Promise<Error> {
-    const fallback = `Request failed for ${path} with status ${response.status}`;
-    const requestId = response.headers.get("x-request-id") ?? undefined;
-
-    try {
-      const payload = (await response.json()) as { message?: string };
-      return new MarketplaceApiError(path, response.status, requestId, payload.message || fallback);
-    } catch {
-      return new MarketplaceApiError(path, response.status, requestId, fallback);
-    }
+  private message(key: ClientMessageKey): string {
+    return clientMessages[this.locale?.toLowerCase().startsWith("es") ? "es" : "en"][key];
   }
 
-  private buildTimeoutError(path: string, timeoutMs: number): MarketplaceApiTimeoutError {
-    const message = this.locale?.toLowerCase().startsWith("es")
-      ? "YardMatch esta tardando mas de lo esperado. Revisa tu conexion e intentalo de nuevo."
-      : "YardMatch is taking longer than expected. Check your connection and try again.";
+  /**
+   * Turn an HTTP failure into a message a customer or provider can act on. API messages are
+   * kept when they explain a request problem; raw statuses, gateway HTML and internal 5xx
+   * wording are never shown.
+   */
+  private async buildError(response: Response, path: string): Promise<Error> {
+    const status = response.status;
+    const requestId = response.headers.get("x-request-id") ?? undefined;
+    let apiMessage: string | undefined;
+    try {
+      const payload = (await response.json()) as { message?: unknown };
+      apiMessage = typeof payload?.message === "string" && payload.message.trim() ? payload.message.trim() : undefined;
+    } catch {
+      apiMessage = undefined;
+    }
+
+    let message: string;
+    if (status === 500 || (status > 504 && status < 600)) {
+      message = this.message("server");
+    } else if (status === 502) {
+      message = this.message("unavailable");
+    } else if (status === 503 || status === 504) {
+      message = apiMessage ?? this.message("unavailable");
+    } else if (status === 429) {
+      message = apiMessage ?? this.message("rateLimited");
+    } else if (status === 401) {
+      message = apiMessage ?? this.message("sessionExpired");
+    } else {
+      message = apiMessage ?? this.message("generic");
+    }
+    return new MarketplaceApiError(path, status, requestId, message);
+  }
+
+  private buildTimeoutError(path: string, timeoutMs: number, method = "GET"): MarketplaceApiTimeoutError {
+    const message = method === "GET"
+      ? this.message("timeout")
+      : `${this.message("timeout")} ${this.message("timeoutMayHaveSaved")}`;
     return new MarketplaceApiTimeoutError(path, timeoutMs, message);
+  }
+
+  private buildNetworkError(path: string): MarketplaceApiNetworkError {
+    return new MarketplaceApiNetworkError(path, this.message(isLikelyOffline() ? "offline" : "network"));
   }
 
   private async requestJson<TResponse>(
@@ -316,18 +413,26 @@ export class MarketplaceApiClient {
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       timeoutId = setTimeout(() => {
         didTimeout = true;
-        reject(this.buildTimeoutError(path, timeoutMs));
+        reject(this.buildTimeoutError(path, timeoutMs, init.method));
         controller.abort();
       }, timeoutMs);
     });
 
     try {
       const requestPromise = (async () => {
-        const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-          ...init,
-          headers: this.buildHeaders(),
-          signal: controller.signal
-        });
+        let response: Response;
+        try {
+          response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+            ...init,
+            headers: this.buildHeaders(),
+            signal: controller.signal
+          });
+        } catch (error) {
+          // fetch rejects with a TypeError ("Failed to fetch", "Network request failed") when the
+          // request never reaches the API. Timeouts are reported separately below.
+          if (didTimeout) throw error;
+          throw this.buildNetworkError(path);
+        }
 
         if (!response.ok) {
           const error = await this.buildError(response, path);
@@ -337,13 +442,19 @@ export class MarketplaceApiClient {
           throw error;
         }
 
-        return (await response.json()) as TResponse;
+        try {
+          return (await response.json()) as TResponse;
+        } catch {
+          // A proxy or maintenance page answered instead of the API.
+          throw new MarketplaceApiError(path, response.status, response.headers.get("x-request-id") ?? undefined,
+            this.message("unavailable"), "unavailable");
+        }
       })();
 
       return await Promise.race([requestPromise, timeoutPromise]);
     } catch (error) {
       if (didTimeout && !isMarketplaceApiTimeoutError(error)) {
-        throw this.buildTimeoutError(path, timeoutMs);
+        throw this.buildTimeoutError(path, timeoutMs, init.method);
       }
       throw error;
     } finally {

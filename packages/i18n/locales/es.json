@@ -4118,5 +4118,16 @@
   "pricing.history": "Historial de cambios de precios",
   "pricing.services": "Servicios que ofreces",
   "pricing.choose_service": "Elige al menos un servicio.",
-  "pricing.review_changed": "El precio de este proveedor es {amount}. Revisa el total actualizado y vuelve a seleccionar la reserva para confirmar."
+  "pricing.review_changed": "El precio de este proveedor es {amount}. Revisa el total actualizado y vuelve a seleccionar la reserva para confirmar.",
+  "app_error.title": "Algo salió mal",
+  "app_error.body": "Esta página tuvo un problema al cargar. Inténtalo de nuevo o vuelve a la página de inicio.",
+  "app_error.body_mobile": "Esta pantalla tuvo un problema. Inténtalo de nuevo. Si sigue pasando, cierra y vuelve a abrir la app.",
+  "app_error.retry": "Intentar de nuevo",
+  "app_error.home": "Ir a la página de inicio",
+  "app_error.help": "Contactar a soporte",
+  "app_error.reference": "Si contactas a soporte, menciona la referencia {reference}.",
+  "not_found.title": "No encontramos esa página",
+  "not_found.body": "Es posible que el enlace esté desactualizado o que la página se haya movido.",
+  "not_found.home": "Ir a la página de inicio",
+  "not_found.help": "Visitar el centro de ayuda"
 }

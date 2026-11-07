@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: user-facing error messages and critical-path alerting
+
+- Updated: November 7, 2026 (America/New_York).
+- Branch: `claude/user-error-messaging-and-alerting`, stacked on `claude/api-durability-observability` (PR #19).
+- Completed: the shared API client now gives every screen plain-language English/Spanish messages for timeouts (with a warning on saves), offline/network failures, outages and gateway pages, 500s (with a reference), 429s and expired sessions, plus `kind`/`retryable` on errors. Raw "Failed to fetch", "Request failed for /api/… with status 502" and internal 5xx wording are no longer shown. The web app gained route error, global error and not-found pages, and the provider app gained a crash screen with retry. The API gained `GET /api/observability/critical-paths`, which checks the database, provider matching and password sign-in with no side effects. Setup is documented in `docs/ALERTING_AND_ON_CALL.md`.
+- In progress: none.
+- Remaining (Patrick): create the monitor accounts and set `CRITICAL_PATH_*`, create the uptime monitors, PagerDuty service and Sentry alert rules, and send one test page.
+- Blockers: no `node_modules` in the cloud session, so CI is the source of truth for typecheck, lint and full tests.
+- Changed workflows: no copy changes on happy paths. Error copy changes across web and provider app.
+- Validation: `critical-path-monitor.test.ts` (7) and `client-error-messages.test.ts` (7) passed with Node 22 `--experimental-transform-types`. Locale key parity checked (en/es). Typecheck, lint, the full API suite, Expo export and web smoke are pending CI.
+- Known defects/limits: `global-error.tsx` uses inline EN/ES copy because translations aren't available when the root layout fails.
+- Screenshot paths: none captured in this session (no browser available). The new error and not-found pages still need a 1440×900 and 390×844 screenshot pass.
+- Recommended next task: merge #19, then this PR, then finish the alerting checklist.
+
 ## Current checkpoint: API durability and observability gaps
 
 - Updated: November 7, 2026 (America/New_York).

@@ -44,6 +44,8 @@ Before fulfillment, establish ownership, inventory account/profile/auth/session/
 
 ## API runtime durability and logs
 
+Alerting, on-call setup and the critical-path probe are covered in [ALERTING_AND_ON_CALL.md](ALERTING_AND_ON_CALL.md).
+
 - **Request IDs.** Every response carries `X-Request-Id`. A well-formed inbound `X-Request-Id` (8–128 chars of `A-Za-z0-9._:-`) is reused so a web or proxy hop shares one ID; anything else gets a fresh UUID. Structured logs, Sentry tags, and the ops runtime snapshot all use the same ID.
 - **Route labels.** Metrics, logs and Sentry `http.route` tags collapse ID-like path segments to `:id`. Unmatched paths share `(unmatched)`, and at most 200 routes are tracked before new ones fall into `(other)`, so scanner traffic cannot grow API memory.
 - **Background jobs.** Notification-delivery and analytics-maintenance sweeps report failures as `api_background_job_failed` log lines (job, error type, redacted message, stack frames, `suppressedSinceLastLog`), raise a critical "Background job failures detected" alert in the ops runtime snapshot, and go to Sentry tagged `background.job`. Logs repeat at most once a minute and Sentry at most once every five minutes per job and error type, so an outage does not flood either. Queued notifications stay in the database and retry on the next tick.
