@@ -13,16 +13,17 @@ import { HealthController } from "./controllers/HealthController";
 import { MediaController } from "./controllers/MediaController";
 import { ObservabilityController } from "./controllers/ObservabilityController";
 import { SupportController } from "./controllers/SupportController";
-import { ApiController, HttpError, applyCorsHeaders, parseRequest, sendJson } from "./http";
+import { ApiController, HttpError, applyCorsHeaders, parseRequest, resolveRequestId, sendErrorJson } from "./http";
 import { localizeApiErrorMessage } from "./i18n";
 import { InMemoryMarketplaceRepository } from "./repositories/InMemoryMarketplaceRepository";
 import { PrismaMarketplaceRepository } from "./repositories/PrismaMarketplaceRepository";
 import { MarketplacePlatformService } from "./services/MarketplacePlatformService";
 import { validateRuntimeConfiguration } from "./config/productionConfig";
 import { enforceLaunchFeatureFlags } from "./config/featureGate";
-import { ExternalRequestTimeoutError } from "./integrations/outboundRequestTimeout";
-import { createApiRuntimeObservabilityFromEnv } from "./observability/ApiRuntimeObservability";
+import { ExternalRequestTimeoutError, withAbortableTimeout } from "./integrations/outboundRequestTimeout";
+import { UNMATCHED_ROUTE_LABEL, createApiRuntimeObservabilityFromEnv } from "./observability/ApiRuntimeObservability";
 import {
+  captureApiBackgroundException,
   captureApiException,
   captureApiProcessException,
   flushApiErrorReporting,
@@ -39,26 +40,45 @@ const repository = runtimeConfiguration.repositoryMode === "prisma-postgres"
   : new InMemoryMarketplaceRepository();
 const port = Number(process.env.PORT ?? 4001);
 const repositoryMode = runtimeConfiguration.repositoryMode;
+const apiRuntimeObservability = createApiRuntimeObservabilityFromEnv();
+function reportBackgroundFailure(job: string, error: unknown): void {
+  apiRuntimeObservability.recordBackgroundFailure(job, error);
+  captureApiBackgroundException(error, job);
+}
 const analytics = new ProductAnalytics(prismaClient);
 await analytics.restore();
+let analyticsWork: Promise<unknown> | undefined;
 const analyticsMaintenance = setInterval(() => {
-  void analytics.maintenance().catch(() => console.error("Analytics maintenance failed; inspect collection health."));
+  analyticsWork ??= analytics.maintenance()
+    .catch((error: unknown) => reportBackgroundFailure("analytics-maintenance", error))
+    .finally(() => { analyticsWork = undefined; });
 }, 1000);
 analyticsMaintenance.unref();
-const apiRuntimeObservability = createApiRuntimeObservabilityFromEnv();
 const platform = new MarketplacePlatformService(repository, analytics);
 // Durable claims allow each API replica to safely share this bounded worker.
+// Queued deliveries stay in the database, so a failed sweep is retried on the next tick.
 let notificationWork: Promise<unknown> | undefined;
 const notificationMaintenance = setInterval(() => {
   notificationWork ??= platform.retryDueNotificationDeliveriesForOps()
-    .catch(() => console.error("Notification worker failed; queued work remains recoverable."))
+    .catch((error: unknown) => reportBackgroundFailure("notification-delivery", error))
     .finally(() => { notificationWork = undefined; });
 }, 1000);
 notificationMaintenance.unref();
+const READINESS_DATABASE_TIMEOUT_MS = 3_000;
+let shuttingDown = false;
 const controllers: ApiController[] = [
   new HealthController(runtimeConfiguration, async () => {
+    if (shuttingDown) {
+      // A probe that lands on a still-open connection during drain must not report ready.
+      throw new Error("API is shutting down");
+    }
     if (prismaClient) {
-      await prismaClient.$queryRaw`SELECT 1`;
+      const client = prismaClient;
+      // A hung database connection must fail the health check instead of hanging it.
+      await withAbortableTimeout(async () => client.$queryRaw`SELECT 1`, {
+        timeoutMs: READINESS_DATABASE_TIMEOUT_MS,
+        timeoutMessage: "Database readiness check timed out"
+      });
     }
   }),
   new DocsController(),
@@ -73,7 +93,8 @@ const controllers: ApiController[] = [
 
 const server = createServer(async (request, response) => {
   let context: Awaited<ReturnType<typeof parseRequest>> | undefined;
-  const requestId = crypto.randomUUID();
+  const requestId = resolveRequestId(request.headers);
+  let routeMatched = false;
   const startedAt = performance.now();
   let errorType: string | undefined;
   let errorCategory: "client-request" | "authentication" | "dependency-timeout" | "server-error" | undefined;
@@ -96,12 +117,13 @@ const server = createServer(async (request, response) => {
     const controller = controllers.find((item) => item.canHandle(parsedContext));
 
     if (!controller) {
-      sendJson(response, 404, {
+      sendErrorJson(response, 404, {
         message: await localizeApiErrorMessage("Route not found", parsedContext.headers)
       });
       return;
     }
 
+    routeMatched = true;
     const analyticsActor = await getOptionalAuthenticatedIdentity(parsedContext, platform);
     await analyticsRequestContext.run({...parseAnalyticsContext(parsedContext.headers["x-yardmatch-analytics"]), role: analyticsActor?.role ?? "anonymous",
       internal: analyticsActor?.role === "ops" || (process.env.ANALYTICS_EXCLUDED_USER_IDS ?? "").split(",").includes(analyticsActor?.userId ?? "__anonymous__")},
@@ -123,7 +145,7 @@ const server = createServer(async (request, response) => {
           category: errorCategory
         });
       }
-      sendJson(response, error.statusCode, {
+      sendErrorJson(response, error.statusCode, {
         message: await localizeApiErrorMessage(error.message, context?.headers ?? request.headers)
       });
       return;
@@ -139,7 +161,7 @@ const server = createServer(async (request, response) => {
         statusCode: 504,
         category: errorCategory
       });
-      sendJson(response, 504, {
+      sendErrorJson(response, 504, {
         message: await localizeApiErrorMessage(error.message, context?.headers ?? request.headers)
       });
       return;
@@ -157,11 +179,12 @@ const server = createServer(async (request, response) => {
       statusCode: 500,
       category: errorCategory
     });
-    sendJson(response, 500, {
+    sendErrorJson(response, 500, {
       message: await localizeApiErrorMessage("Unexpected server error", context?.headers ?? request.headers)
     });
   } finally {
-    let route = context?.path;
+    // Unmatched paths (scanners, typos) share one bucket so they cannot grow route metrics without bound.
+    let route = routeMatched ? context?.path : context ? UNMATCHED_ROUTE_LABEL : undefined;
     if (!route) {
       try {
         route = new URL(request.url ?? "/", "http://localhost").pathname;
@@ -187,7 +210,24 @@ server.listen(port, () => {
   console.log(`YardMatch API listening on http://localhost:${port} (${repositoryMode})`);
 });
 
-let shuttingDown = false;
+// Render waits maxShutdownDelaySeconds (30s) before SIGKILL; exit on our own terms before that.
+const DRAIN_CONNECTIONS_MS = 10_000;
+const HARD_EXIT_MS = 25_000;
+
+async function runShutdownStep(step: string, work: () => Promise<unknown> | undefined): Promise<void> {
+  try {
+    await work();
+  } catch (error) {
+    process.exitCode = 1;
+    console.error(JSON.stringify({
+      event: "api_shutdown_step_failed",
+      occurredAt: new Date().toISOString(),
+      step,
+      errorType: error instanceof Error ? error.name : "UnknownShutdownError"
+    }));
+  }
+}
+
 async function shutDown(reason: string): Promise<void> {
   if (shuttingDown) {
     return;
@@ -197,11 +237,19 @@ async function shutDown(reason: string): Promise<void> {
   clearInterval(analyticsMaintenance);
   console.log(`YardMatch API received ${reason}; draining active requests.`);
 
+  const hardExit = setTimeout(() => {
+    console.error(`YardMatch API did not finish draining within ${HARD_EXIT_MS} ms; exiting.`);
+    process.exit(1);
+  }, HARD_EXIT_MS);
+  hardExit.unref();
+
   const forcedShutdown = setTimeout(() => {
     server.closeAllConnections();
     process.exitCode = 1;
-  }, 10_000);
+  }, DRAIN_CONNECTIONS_MS);
   forcedShutdown.unref();
+  // Idle keep-alive sockets would otherwise hold server.close() open until they time out.
+  server.closeIdleConnections();
 
   server.close(async (error) => {
     clearTimeout(forcedShutdown);
@@ -209,10 +257,14 @@ async function shutDown(reason: string): Promise<void> {
       console.error("YardMatch API shutdown failed", error);
       process.exitCode = 1;
     }
-    await notificationWork;
-    await analytics.drain().catch(() => { process.exitCode = 1; });
-    await prismaClient?.$disconnect();
-    await flushApiErrorReporting();
+    // Let in-flight sweeps finish so leased notifications are not left waiting for lease expiry.
+    await runShutdownStep("notification-worker", () => notificationWork);
+    await runShutdownStep("analytics-worker", () => analyticsWork);
+    await runShutdownStep("analytics-drain", () => analytics.drain());
+    await runShutdownStep("database-disconnect", () => prismaClient?.$disconnect());
+    await runShutdownStep("error-reporting-flush", () => flushApiErrorReporting());
+    clearTimeout(hardExit);
+    process.exit(process.exitCode ?? 0);
   });
 }
 

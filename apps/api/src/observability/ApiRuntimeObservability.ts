@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
+import type {
   ApiFailureCategory,
   ApiRuntimeFailure,
   ApiRuntimeObservabilitySnapshot,
@@ -10,6 +10,34 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
 const DEFAULT_SLOW_REQUEST_MS = 1_500;
 const DEFAULT_RECENT_FAILURE_LIMIT = 100;
 const MAX_RECENT_REQUESTS = 2_000;
+const MAX_TRACKED_ROUTES = 200;
+const BACKGROUND_LOG_INTERVAL_MS = 60_000;
+export const UNMATCHED_ROUTE_LABEL = "(unmatched)";
+export const OVERFLOW_ROUTE_LABEL = "(other)";
+
+const ID_LIKE_SEGMENT =
+  /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16,}|(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{16,})$/i;
+
+/**
+ * Collapse IDs and opaque tokens in a path so route metrics stay low-cardinality.
+ * Without this, every media ID or scanner probe would create its own metrics entry.
+ */
+export function normalizeRouteLabel(path: string): string {
+  const withoutQuery = path.split("?")[0] ?? "/";
+  return withoutQuery
+    .split("/")
+    .map((segment) => (segment && ID_LIKE_SEGMENT.test(segment) ? ":id" : segment))
+    .join("/")
+    .slice(0, 160) || "/";
+}
+
+function redactLogText(value: string): string {
+  return value
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
+    .replace(/(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g, "[redacted-phone]")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1[redacted-token]")
+    .slice(0, 300);
+}
 
 interface RouteAccumulator {
   method: string;
@@ -50,6 +78,8 @@ export class ApiRuntimeObservability {
   private readonly recentFailures: ApiRuntimeFailure[] = [];
   private readonly recentRequests: RecentRequest[] = [];
   private readonly errorCountsByType = new Map<string, number>();
+  private readonly recentBackgroundFailureTimes: number[] = [];
+  private readonly backgroundLogState = new Map<string, { lastLoggedAtMs: number; suppressed: number }>();
   private requestCount = 0;
   private failureCount = 0;
   private serverErrorCount = 0;
@@ -89,10 +119,16 @@ export class ApiRuntimeObservability {
     const isFailure = observation.statusCode >= 400;
     const isServerError = observation.statusCode >= 500;
     const isSlow = durationMs >= this.slowRequestThresholdMs;
-    const routeKey = `${observation.method} ${observation.route}`;
+    const method = /^[A-Z]{3,10}$/.test(observation.method) ? observation.method : "OTHER";
+    let routeLabel = normalizeRouteLabel(observation.route);
+    let routeKey = `${method} ${routeLabel}`;
+    if (!this.routes.has(routeKey) && this.routes.size >= MAX_TRACKED_ROUTES) {
+      routeLabel = OVERFLOW_ROUTE_LABEL;
+      routeKey = `${method} ${routeLabel}`;
+    }
     const route = this.routes.get(routeKey) ?? {
-      method: observation.method,
-      route: observation.route,
+      method,
+      route: routeLabel,
       requestCount: 0,
       failureCount: 0,
       serverErrorCount: 0,
@@ -120,7 +156,7 @@ export class ApiRuntimeObservability {
     }
 
     if (isFailure) {
-      const failure = this.createFailure(observation, durationMs);
+      const failure = this.createFailure({ ...observation, method, route: routeLabel }, durationMs);
       this.recentFailures.unshift(failure);
       this.recentFailures.splice(this.recentFailureLimit);
       this.errorCountsByType.set(
@@ -134,8 +170,8 @@ export class ApiRuntimeObservability {
         event: isServerError ? "api_request_failed" : "api_request_slow",
         occurredAt: new Date(occurredAtMs).toISOString(),
         requestId: observation.requestId,
-        method: observation.method,
-        route: observation.route,
+        method,
+        route: routeLabel,
         statusCode: observation.statusCode,
         durationMs,
         category: observation.category,
@@ -178,6 +214,55 @@ export class ApiRuntimeObservability {
     }));
   }
 
+  /**
+   * Background workers (notification delivery, analytics flushing) run outside any request,
+   * so their failures would otherwise only show up as a bare console line.
+   */
+  public recordBackgroundFailure(job: string, error: unknown): void {
+    const errorType = error instanceof Error ? error.name || "Error" : "UnknownBackgroundError";
+    const occurredAtMs = Date.now();
+    const occurredAt = new Date(occurredAtMs).toISOString();
+    const requestId = randomUUID();
+    this.recentBackgroundFailureTimes.push(occurredAtMs);
+    if (this.recentBackgroundFailureTimes.length > MAX_RECENT_REQUESTS) {
+      this.recentBackgroundFailureTimes.splice(0, this.recentBackgroundFailureTimes.length - MAX_RECENT_REQUESTS);
+    }
+    this.errorCountsByType.set(errorType, (this.errorCountsByType.get(errorType) ?? 0) + 1);
+    // A worker that ticks every second would otherwise emit one line per second during an outage.
+    const logKey = `${job}:${errorType}`;
+    const logState = this.backgroundLogState.get(logKey);
+    if (logState && occurredAtMs - logState.lastLoggedAtMs < BACKGROUND_LOG_INTERVAL_MS) {
+      logState.suppressed += 1;
+      return;
+    }
+    const suppressedSinceLastLog = logState?.suppressed ?? 0;
+    this.backgroundLogState.set(logKey, { lastLoggedAtMs: occurredAtMs, suppressed: 0 });
+    this.recentFailures.unshift({
+      requestId,
+      occurredAt,
+      method: "JOB",
+      route: job,
+      statusCode: 500,
+      durationMs: 0,
+      category: "process-error",
+      errorType
+    });
+    this.recentFailures.splice(this.recentFailureLimit);
+    this.logSink.error(JSON.stringify({
+      event: "api_background_job_failed",
+      occurredAt,
+      requestId,
+      job,
+      suppressedSinceLastLog,
+      category: "process-error",
+      errorType,
+      errorMessage: error instanceof Error ? redactLogText(error.message) : undefined,
+      errorFrames: error instanceof Error
+        ? error.stack?.split("\n").slice(1, 9).map((frame) => frame.trim())
+        : undefined
+    }));
+  }
+
   public getSnapshot(): ApiRuntimeObservabilitySnapshot {
     const generatedAt = new Date();
     const recentCutoff = generatedAt.getTime() - FIVE_MINUTES_MS;
@@ -194,6 +279,15 @@ export class ApiRuntimeObservability {
         title: "API server errors detected",
         detail: `${recentServerErrors} server error${recentServerErrors === 1 ? "" : "s"} occurred in the last five minutes.`,
         recommendedAction: "Inspect the recent failure types and correlate request IDs in structured production logs."
+      });
+    }
+    const recentBackgroundFailures = this.recentBackgroundFailureTimes.filter((at) => at >= recentCutoff).length;
+    if (recentBackgroundFailures > 0) {
+      alerts.push({
+        severity: "critical",
+        title: "Background job failures detected",
+        detail: `${recentBackgroundFailures} background job failure${recentBackgroundFailures === 1 ? "" : "s"} occurred in the last five minutes.`,
+        recommendedAction: "Check recent failures with method JOB, then search structured logs for api_background_job_failed."
       });
     }
     if (this.requireExternalErrorReporting && !this.errorReportingConfigured) {

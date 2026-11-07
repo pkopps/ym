@@ -42,6 +42,16 @@ Before fulfillment, establish ownership, inventory account/profile/auth/session/
 
 `PHOTO_RETENTION_REVIEW_DAYS=<approved-age> DATABASE_URL=<review-db> node scripts/inspect-data-lifecycle.mjs` creates a count-only review inventory, holds disputed bookings, and deletes nothing. An age of 90 was used only against synthetic local data for verification, not adopted as the production photo policy. Review open support/refund cases and legal holds before any later deletion implementation.
 
+## API runtime durability and logs
+
+- **Request IDs.** Every response carries `X-Request-Id`. A well-formed inbound `X-Request-Id` (8–128 chars of `A-Za-z0-9._:-`) is reused so a web or proxy hop shares one ID; anything else gets a fresh UUID. Structured logs, Sentry tags, and the ops runtime snapshot all use the same ID.
+- **Route labels.** Metrics, logs and Sentry `http.route` tags collapse ID-like path segments to `:id`. Unmatched paths share `(unmatched)`, and at most 200 routes are tracked before new ones fall into `(other)`, so scanner traffic cannot grow API memory.
+- **Background jobs.** Notification-delivery and analytics-maintenance sweeps report failures as `api_background_job_failed` log lines (job, error type, redacted message, stack frames, `suppressedSinceLastLog`), raise a critical "Background job failures detected" alert in the ops runtime snapshot, and go to Sentry tagged `background.job`. Logs repeat at most once a minute and Sentry at most once every five minutes per job and error type, so an outage does not flood either. Queued notifications stay in the database and retry on the next tick.
+- **Partial responses.** If a controller fails after it has started writing a response, the API aborts that connection instead of trying to write a second set of headers. Before, the second write threw inside the error handler and the unhandled rejection shut the whole process down.
+- **Readiness.** `/readyz` fails (503) if the database check takes longer than 3 seconds or the process is draining. `/healthz` stays a liveness check.
+- **Shutdown.** On SIGTERM the API stops accepting connections, closes idle keep-alive sockets, waits up to 10 s for active requests, finishes in-flight notification/analytics sweeps, drains analytics, disconnects Prisma and flushes Sentry. Each step's failure is logged as `api_shutdown_step_failed`. The process always exits within 25 s, which is inside Render's 30 s `maxShutdownDelaySeconds`.
+- **Staging database plan.** `render.yaml` uses Render's free Postgres plan for staging. Free databases have no automated backups and expire after a fixed period, so staging data is disposable. Production needs a paid plan with point-in-time recovery, and the restore rehearsal above should run against it before launch.
+
 ## Restore and release controls
 
 `npm run prisma:deploy` bootstraps the historical initial schema only on an empty database, records its original migration name, then applies normal migrations. This fixes a crew migration dated earlier than init without changing deployed migration checksums. Run one deployment migration job at a time. Existing non-empty databases are not reset or silently baselined.
@@ -57,6 +67,7 @@ Mobile clients send their app/version. Set `MINIMUM_CUSTOMER_MOBILE_VERSION`, `M
 - [ ] Restore Stripe Projects account verification; create/attach PostHog project and verify real ingestion/dashboards.
 - [ ] Configure staging resources, notification senders, real Stripe test acceptance, and approved production origin.
 - [ ] Enable scheduled sweeps after dry-run acceptance; configure independent missed-run monitoring and verify alert delivery.
+- [ ] Choose a paid Postgres plan with backups/PITR for production; record backup age (RPO) and restore time (RTO) from a staging rehearsal.
 - [ ] Approve account/photo/vendor retention and fulfillment policy; implement/test irreversible fulfillment against staging.
 - [ ] Distribute marked mobile preview builds and rehearse minimum-version/pause recovery on devices.
 - [ ] Verify CodeRabbit GitHub installation and an actual main-bound PR review. Configuration alone is not proof.
