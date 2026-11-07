@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: API durability and observability gaps
+
+- Updated: November 7, 2026 (America/New_York).
+- Branch: `claude/api-durability-observability`, based on `c490ff2`.
+- Completed: background-job failures (notification delivery, analytics maintenance) now log with detail, raise a runtime alert and reach Sentry with throttling; a controller that fails after starting its response no longer crashes the process; route metrics and Sentry route tags are bounded and ID-normalized; `/readyz` has a 3 s database timeout and fails while draining; shutdown steps are individually guarded and the process always exits within 25 s; inbound `X-Request-Id` is reused when well-formed. Documented in `docs/ANALYTICS_AND_OPERATIONS.md`.
+- In progress: none.
+- Remaining: run `npm run typecheck` and `npm run test:api` in CI or locally (this cloud session had no package network access, so dependencies could not be installed). Decide the production Postgres plan and backups.
+- Blockers: no `node_modules` in the cloud session.
+- Changed workflows: none user-facing. Ops runtime snapshot gains a "Background job failures detected" alert and `JOB` rows in recent failures.
+- Validation: new `apps/api/test/runtime-durability.test.ts` (5 tests) passed with Node 22 `--experimental-transform-types` against the changed modules. Full API suite and typecheck not run here.
+- Known defects/limits: staging Postgres is on Render's free plan (no backups).
+- Screenshot paths: none (no UI change).
+- Recommended next task: confirm CI green, then pick a production database plan and run the restore rehearsal against staging.
+
 ## Current checkpoint: provider and crew activation with booking continuity
 
 - Updated: October 5, 2026 (UTC).
