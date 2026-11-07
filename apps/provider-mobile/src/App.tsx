@@ -1,4 +1,5 @@
 import {ReleaseGate} from "./providers/ReleaseGate";
+import { AppErrorBoundary } from "./providers/AppErrorBoundary";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { BrandTokens } from "@yardmatch/branding";
@@ -272,7 +273,7 @@ export default function App() {
 
   return (
     <I18nProvider fallbackMessages={fallbackMessages} locale={locale} messages={messages}>
-      <ReleaseGate><ObservabilityProvider envelope={sessionEnvelope}>
+      <AppErrorBoundary><ReleaseGate><ObservabilityProvider envelope={sessionEnvelope}>
         <SafeAreaView style={{ flex: 1, backgroundColor: BrandTokens.colors.surface }}>
         <StatusBar barStyle="dark-content" />
         <ProviderSessionProvider
@@ -326,7 +327,7 @@ export default function App() {
           )}
         </ProviderSessionProvider>
         </SafeAreaView>
-      </ObservabilityProvider></ReleaseGate>
+      </ObservabilityProvider></ReleaseGate></AppErrorBoundary>
     </I18nProvider>
   );
 }

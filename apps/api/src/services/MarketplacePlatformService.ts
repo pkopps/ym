@@ -1830,7 +1830,12 @@ export class MarketplacePlatformService {
     );
   }
 
-  public async searchProviders(payload: SearchProvidersRequest): Promise<SearchProvidersResponse> {
+  public async searchProviders(
+    payload: SearchProvidersRequest,
+    // Internal callers (the critical-path monitor) pass a known, already-geocoded address and
+    // skip the paid address-validation lookup. Never set from request input.
+    options: { trustedAddress?: boolean } = {}
+  ): Promise<SearchProvidersResponse> {
     if (payload.availability) {
       const { startIso, endIso } = payload.availability;
       if (!Number.isFinite(Date.parse(startIso)) || !Number.isFinite(Date.parse(endIso)) ||
@@ -1848,7 +1853,9 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Directory pages require a nonnegative offset and a limit from 1 to 24.");
     }
     const resultCap = payload.directory ? directoryOffset + directoryLimit : 3;
-    const normalizedAddress = (await this.normalizeAndValidateAddress(payload.address)).address;
+    const normalizedAddress = options.trustedAddress
+      ? this.normalizeAddress(payload.address)
+      : (await this.normalizeAndValidateAddress(payload.address)).address;
     const recommendationSessionId = crypto.randomUUID();
     const providerDecisionMetrics = this.buildProviderDecisionMetrics();
 

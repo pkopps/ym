@@ -60,6 +60,14 @@ services:
         sync: false
       - key: SENTRY_TRACES_SAMPLE_RATE
         value: "0.1"
+      - key: CRITICAL_PATH_MATCHING_ADDRESS
+        sync: false
+      - key: CRITICAL_PATH_MATCHING_MIN_RESULTS
+        sync: false
+      - key: CRITICAL_PATH_SIGN_IN_EMAIL
+        sync: false
+      - key: CRITICAL_PATH_SIGN_IN_PASSWORD
+        sync: false
 
 databases:
   - name: yardmatch-staging-db

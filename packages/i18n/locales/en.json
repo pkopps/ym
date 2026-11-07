@@ -4118,5 +4118,16 @@
   "pricing.history": "Price change history",
   "pricing.services": "Services you provide",
   "pricing.choose_service": "Choose at least one service.",
-  "pricing.review_changed": "This provider’s price is {amount}. Review the updated total, then select the booking action again to confirm."
+  "pricing.review_changed": "This provider’s price is {amount}. Review the updated total, then select the booking action again to confirm.",
+  "app_error.title": "Something went wrong",
+  "app_error.body": "This page ran into a problem while loading. Try again, or go back to the home page.",
+  "app_error.body_mobile": "This screen ran into a problem. Try again. If it keeps happening, close and reopen the app.",
+  "app_error.retry": "Try again",
+  "app_error.home": "Go to the home page",
+  "app_error.help": "Contact support",
+  "app_error.reference": "If you contact support, mention reference {reference}.",
+  "not_found.title": "We couldn’t find that page",
+  "not_found.body": "The link may be out of date, or the page may have moved.",
+  "not_found.home": "Go to the home page",
+  "not_found.help": "Visit the help center"
 }
