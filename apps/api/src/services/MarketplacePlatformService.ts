@@ -11037,7 +11037,7 @@ export class MarketplacePlatformService {
       promise:
         "After the one-time finder fee is recorded, YardMatch keeps running review requests, book-again reminders, recurring-service prompts, and qualified prior-provider preference at no extra retention charge.",
       eligibilityRule:
-        "Continuity stays active when there is no dispute, refund, review below 4 stars, unresolved service-quality case, or active field exception. Standard completed-job fees still apply to future completed work.",
+        "Continuity stays active when there is no dispute, refund, review below 4 stars, unresolved service-quality case, or active field exception.",
       acquiredCustomerCount: relationships.filter((relationship) => relationship.finderFeeRecorded).length,
       eligibleCustomerCount: relationships.filter(
         (relationship) =>

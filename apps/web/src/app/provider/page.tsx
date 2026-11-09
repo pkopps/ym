@@ -70,8 +70,7 @@ const staffingValue = [
 const heroChipKeys = [
   "provider_landing.hero.chip.routes",
   "provider_landing.hero.chip.cleanup",
-  "provider_landing.hero.chip.launch",
-  "provider_landing.hero.chip.crew"
+  "provider_landing.hero.chip.launch"
 ] satisfies TranslationKey[];
 
 export default async function ProviderPage() {
@@ -113,8 +112,8 @@ export default async function ProviderPage() {
               <p>{i18n.t("provider_landing.panel.schedule.body")}</p>
             </article>
             <article className="stat-card">
-              <strong>{i18n.t("provider_landing.panel.labor.title")}</strong>
-              <p>{i18n.t("provider_landing.panel.labor.body")}</p>
+              <strong>{i18n.t("provider_landing.panel.crew.title")}</strong>
+              <p>{i18n.t("provider_landing.panel.crew.body")}</p>
             </article>
           </div>
         </aside>
@@ -147,14 +146,14 @@ export default async function ProviderPage() {
             <p>{i18n.t("provider_landing.pricing.finder.body")}</p>
           </article>
           <article className="card">
-            <span className="eyebrow">{i18n.t("provider_landing.pricing.job.eyebrow")}</span>
-            <h3>{i18n.t("provider_landing.pricing.job.title")}</h3>
-            <p>{i18n.t("provider_landing.pricing.job.body")}</p>
+            <span className="eyebrow">{i18n.t("provider_landing.pricing.direct.eyebrow")}</span>
+            <h3>{i18n.t("provider_landing.pricing.direct.title")}</h3>
+            <p>{i18n.t("provider_landing.pricing.direct.body")}</p>
           </article>
           <article className="card">
-            <span className="eyebrow">{i18n.t("provider_landing.pricing.fairness.eyebrow")}</span>
-            <h3>{i18n.t("provider_landing.pricing.fairness.title")}</h3>
-            <p>{i18n.t("provider_landing.pricing.fairness.body")}</p>
+            <span className="eyebrow">{i18n.t("provider_landing.pricing.plans.eyebrow")}</span>
+            <h3>{i18n.t("provider_landing.pricing.plans.title")}</h3>
+            <p>{i18n.t("provider_landing.pricing.plans.body")}</p>
           </article>
         </div>
         <p className="provider-pricing-section__note">{i18n.t("provider_landing.pricing.note")}</p>

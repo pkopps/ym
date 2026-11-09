@@ -2642,13 +2642,7 @@ export function ProviderLiveManagementBoard() {
           </div>
           <p>{retentionProgram.eligibilityRule}</p>
           <p>
-            {i18n.t("provider_live.retention.fee_detail", {
-              finderFee: i18n.formatCurrency(retentionProgram.finderFeeCents),
-              jobFee: i18n.formatCurrency(retentionProgram.completedJobFeeCents, "USD", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            })}
+            {i18n.t("provider_live.retention.fee_detail")}
           </p>
           {retentionProgram.relationships.length > 0 ? (
             <ul className="timeline">

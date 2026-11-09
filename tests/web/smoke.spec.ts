@@ -140,14 +140,15 @@ test.describe("YardMatch web smoke", () => {
     await page.goto("/provider");
     const pricingHeading = page.getByRole("heading", { name: "Clear pricing, before you sign up" });
     await expect(pricingHeading).toBeVisible();
-    await expect(page.getByRole("heading", { name: "$30 once" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "$6.99 per completed job" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "$75, $110 or $150 once" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No per-job fee" })).toBeVisible();
+    await expect(page.getByText(/\$30|\$6\.99/)).toHaveCount(0);
     await expect(page.getByText(/paid placement never changes recommendation order/i)).toBeVisible();
     const retentionHeading = page.getByRole("heading", {
       name: "Pay once for the introduction. We keep working on the relationship."
     });
     await expect(retentionHeading).toBeVisible();
-    await expect(page.getByText(/no second \$30 finder fee and no separate fee/i)).toBeVisible();
+    await expect(page.getByText(/no second finder fee for the same customer/i)).toBeVisible();
     await expect(page.getByText(/review below 4 stars/i)).toBeVisible();
     await retentionHeading.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-desktop.png` });
@@ -166,7 +167,8 @@ test.describe("YardMatch web smoke", () => {
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png` });
 
     await page.goto("/auth/provider/create");
-    await expect(page.getByText(/\$30 once per new customer relationship/i)).toBeVisible();
+    await expect(page.getByText(/one-time finder fee per new customer/i)).toBeVisible();
+    await expect(page.getByText(/customers pay you directly/i)).toBeVisible();
   });
 
   test("ops login opens the authenticated operations workspace", async ({ page }) => {

@@ -109,8 +109,9 @@ export function ProviderSiteHeader() {
   const i18n = useI18n();
   const [openMenu, setOpenMenu] = useState<null | "learn" | "marketplace" | "products">(null);
   const { session } = useStoredWebSession();
-  const { payments } = useLaunchFeatureFlags();
-  const showLink = (href: string) => payments || href !== "/provider/payments";
+  const { payments, crewMarketplace } = useLaunchFeatureFlags();
+  const showLink = (href: string) =>
+    (payments || href !== "/provider/payments") && (crewMarketplace || href !== "/crew");
   const navRef = useRef<HTMLElement | null>(null);
   const localHref = (href: string) => (href.startsWith("http") ? href : addLocalePrefix(href, i18n.locale));
 

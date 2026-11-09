@@ -5,6 +5,7 @@ import { useI18n } from "@yardmatch/i18n/react";
 import { clearStoredSession, StoredWebSession } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { LanguagePicker } from "./LanguagePicker";
+import { useLaunchFeatureFlags } from "./LaunchFeatureFlagsProvider";
 import { NotificationMenu } from "./NotificationMenu";
 
 const links = [
@@ -38,7 +39,7 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
     { href: "/account/security", labelKey: "security.title" }
   ],
   "crew-member": [
-    { href: "/crew", labelKey: "nav.user.open_work" },
+    { href: "/crew", labelKey: "ux.jobs" },
     { href: "/crew/schedule", labelKey: "nav.user.schedule" },
     { href: "/account/security", labelKey: "security.title" }
   ]
@@ -47,6 +48,7 @@ const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; label
 export function NavBar() {
   const { session } = useStoredWebSession();
   const i18n = useI18n();
+  const { payments } = useLaunchFeatureFlags();
   const localizedHref = (href: string) => addLocalePrefix(href, i18n.locale);
 
   function handleSignOut() {
@@ -88,7 +90,7 @@ export function NavBar() {
               <details className="profile-menu">
                 <summary className="profile-menu__summary">{session.fullName}</summary>
                 <div className="profile-menu__panel">
-                  {accountLinks[session.role].map((link) => (
+                  {accountLinks[session.role].filter((link) => payments || link.href !== "/provider/payments").map((link) => (
                     <a href={localizedHref(link.href)} key={link.href}>
                       {i18n.t(link.labelKey)}
                     </a>

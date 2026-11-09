@@ -482,13 +482,7 @@ export function DashboardScreen({
           </View>
           <Text style={styles.alertText}>{overview.retentionProgram.eligibilityRule}</Text>
           <Text style={styles.alertText}>
-            {i18n.t("provider_mobile.dashboard.retention.fee_detail", {
-              finderFee: formatCurrency(i18n, overview.retentionProgram.finderFeeCents),
-              jobFee: i18n.formatCurrency(overview.retentionProgram.completedJobFeeCents, "USD", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            })}
+            {i18n.t("provider_mobile.dashboard.retention.fee_detail")}
           </Text>
           {overview.retentionProgram.relationships.slice(0, 3).map((relationship) => (
             <View key={relationship.customerId} style={styles.jobRow}>

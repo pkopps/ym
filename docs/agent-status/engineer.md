@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: launch-scope chunk C (copy)
+
+- Updated: November 9, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, based on `c490ff2`; see the PR for the implementation commit.
+- Completed: English and Spanish copy now states the October 14 model. Fees: one-time finder fee of $75, $110 or $150 by property size after the first completed job with a new customer, first customer relationship free, no per-job fee, customers pay the provider directly, optional Pro $49/month and Teams $99/month (`auth_provider.economics.*`, `provider_landing.pricing.*`, `provider_landing.retention.note`, provider dashboard retention detail on web and provider mobile, and the API retention eligibility sentence). Payouts: removed from provider login, sign-up, landing, About, help and default metadata, and provider-mobile auth/support descriptions. Crew: landing, About, login, crew sign-up and crew-app copy describe crew as the provider's own team; "Find crew members", the provider "For crews" link and the unused provider header crew entries render only with the crew marketplace flag on; the home-header account menu hides Payments with the payments flag off.
+- In progress: none.
+- Remaining: chunk B (finder-fee policy and billing). Until it ships no code charges the fees the copy describes, and the retention board still counts "Finder fee covered" from recorded settlements, which do not exist with payments off. Provider staffing copy that describes automatic crew matching (`provider_live.staffing.body`, `provider_live.crew.no_matches_*`, provider-mobile equivalents) was left because it describes behaviour that still runs. Customer payment and refund strings inside flag-gated checkout screens were left as instructed.
+- Blockers: none. Launch counsel should review the `trust_policy.*` lines listed in the PR description.
+- Changed workflows: none functionally. About-page crew buttons and the crew login secondary button now go to crew login and Help instead of public crew openings.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (4,087 keys) passed; `npm run test:api` 391 passed, 15 database-only skipped; `npm run test:web:smoke` 51 of 51 passed (local flags default on). Screenshot pass ran against API and web started with both launch flags off; the four pages had no "$30", "6.99", payout, deduction or crew-hiring text and no horizontal overflow at either size. Not run: Expo export for provider mobile, Postgres integration.
+- Known defects: with payments on locally, settlement code still applies the old $30 and $6.99 policy (chunk B). No deployed path can charge it with the flag off; see the PR description for the trace and the one webhook caveat.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/launch-scope-copy/{provider,provider-pricing,provider-signup,provider-login,home}-{desktop,mobile}.png` (1440x900 and 390x844, flags off).
+- Recommended next task: chunk B, then replace the hardcoded fee amounts in copy with values from the new policy.
+
 ## Current checkpoint: provider and crew activation with booking continuity
 
 - Updated: October 5, 2026 (UTC).

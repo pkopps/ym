@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { addLocalePrefix } from "@yardmatch/i18n";
 import { ProviderLiveManagementBoard } from "../../../components/ProviderLiveManagementBoard";
+import { getLaunchFeatureFlags } from "../../../lib/feature-flags-server";
 import { getLocalizedPageMetadata, getRequestI18n } from "../../../lib/i18n-server";
 
 export function generateMetadata(): Promise<Metadata> {
@@ -13,6 +14,7 @@ export function generateMetadata(): Promise<Metadata> {
 
 export default async function ProviderManagementPage() {
   const i18n = await getRequestI18n();
+  const { crewMarketplace } = getLaunchFeatureFlags();
 
   return (
     <main className="container stack-lg">
@@ -24,9 +26,11 @@ export default async function ProviderManagementPage() {
           </div>
           <div className="cta-row">
             <a className="button-secondary" href={addLocalePrefix("/provider/clients", i18n.locale)}>{i18n.t("provider_clients.nav")}</a>
-            <a className="button" href={addLocalePrefix("/crew", i18n.locale)}>
-              {i18n.t("provider_management.find_crew")}
-            </a>
+            {crewMarketplace ? (
+              <a className="button" href={addLocalePrefix("/crew", i18n.locale)}>
+                {i18n.t("provider_management.find_crew")}
+              </a>
+            ) : null}
             <a className="button-secondary" href={addLocalePrefix("/provider", i18n.locale)}>
               {i18n.t("provider_management.back")}
             </a>
