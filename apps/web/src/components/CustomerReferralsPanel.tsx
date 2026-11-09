@@ -15,7 +15,7 @@ export function CustomerReferralsPanel() {
   if (!sessionReady) return <div className="container"><LoadingSkeleton label={i18n.t("common.loading.content")} /></div>;
   if (session?.role !== "customer") return <section className="container referral-page stack-lg">
     <h1>{i18n.t("referrals.title")}</h1><p>{i18n.t("referrals.sign_in")}</p>
-    <a className="button" href={addLocalePrefix("/login/customer", i18n.locale)}>{i18n.t("nav.log_in")}</a>
+    <a className="button" href={addLocalePrefix("/login", i18n.locale)}>{i18n.t("nav.log_in")}</a>
   </section>;
   return <ReferralForm key={session.token} />;
 }

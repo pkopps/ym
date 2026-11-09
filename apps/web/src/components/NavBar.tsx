@@ -15,12 +15,6 @@ const links = [
   { href: "/help", labelKey: "nav.help_center" }
 ] as const;
 
-const loginLinks = [
-  { href: "/login/customer", labelKey: "nav.customer_login" },
-  { href: "/login/provider", labelKey: "nav.business_owner_login" },
-  { href: "/login/crew", labelKey: "nav.crew_member_login" }
-] as const;
-
 const accountLinks: Record<StoredWebSession["role"], Array<{ href: string; labelKey: TranslationKey }>> = {
   customer: [
     { href: "/customer", labelKey: "nav.user.search_services" },
@@ -103,16 +97,9 @@ export function NavBar() {
             </>
           ) : (
             <>
-              <details className="auth-menu">
-                <summary className="auth-menu__summary">{i18n.t("nav.log_in")}</summary>
-                <div className="auth-menu__panel">
-                  {loginLinks.map((link) => (
-                    <a key={link.href} href={localizedHref(link.href)}>
-                      {i18n.t(link.labelKey)}
-                    </a>
-                  ))}
-                </div>
-              </details>
+              <a className="button-secondary" href={localizedHref("/login")}>
+                {i18n.t("nav.log_in")}
+              </a>
               <a className="button" href={localizedHref("/auth")}>
                 {i18n.t("nav.sign_up")}
               </a>

@@ -460,10 +460,10 @@ export class MarketplaceApiClient {
   }
 
   public getGoogleAuthStartUrl(payload: GoogleAuthStartRequest): string {
-    const query = new URLSearchParams({
-      role: payload.role,
-      mode: payload.mode
-    });
+    const query = new URLSearchParams({ mode: payload.mode });
+    if (payload.role) {
+      query.set("role", payload.role);
+    }
     if (payload.redirectUri) {
       query.set("redirectUri", payload.redirectUri);
     }
@@ -472,10 +472,10 @@ export class MarketplaceApiClient {
   }
 
   public getAppleAuthStartUrl(payload: GoogleAuthStartRequest): string {
-    const query = new URLSearchParams({
-      role: payload.role,
-      mode: payload.mode
-    });
+    const query = new URLSearchParams({ mode: payload.mode });
+    if (payload.role) {
+      query.set("role", payload.role);
+    }
     if (payload.redirectUri) {
       query.set("redirectUri", payload.redirectUri);
     }

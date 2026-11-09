@@ -3112,14 +3112,15 @@ export interface RequestOpsAccountPasswordResetResponse {
 }
 
 export interface GoogleAuthStartRequest {
-  role: MarketplaceRole;
+  /** Required for sign-up. Omit on login to sign in with whichever role the existing account has. */
+  role?: MarketplaceRole;
   mode: AuthFlowMode;
   redirectUri?: string;
 }
 
 export interface GoogleAuthStartResponse {
   provider: AuthProvider;
-  role: MarketplaceRole;
+  role?: MarketplaceRole;
   mode: AuthFlowMode;
   redirectUrl: string;
   status: "oauth-redirect";

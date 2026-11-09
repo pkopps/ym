@@ -59,7 +59,7 @@ export default async function AboutPage() {
               <a className="button-secondary" href={href("/provider")}>
                 {i18n.t("about.hero.list_business")}
               </a>
-              <a className="button-secondary" href={href("/login/crew")}>
+              <a className="button-secondary" href={href("/login")}>
                 {i18n.t("nav.crew_member_login")}
               </a>
             </div>
@@ -136,7 +136,7 @@ export default async function AboutPage() {
             <a className="button-secondary" href={href("/provider")}>
               {i18n.t("about.cta.provider_tools")}
             </a>
-            <a className="button-secondary" href={href("/login/crew")}>
+            <a className="button-secondary" href={href("/login")}>
               {i18n.t("nav.crew_member_login")}
             </a>
           </div>

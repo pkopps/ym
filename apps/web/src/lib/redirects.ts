@@ -10,6 +10,14 @@ const rolePathPrefixes: Record<MarketplaceRole, string[]> = {
   ops: ["/ops"]
 };
 
+/** Where each role lands after signing in when no valid returnTo was requested. */
+export const roleHomePaths: Record<MarketplaceRole, string> = {
+  customer: "/customer/dashboard",
+  provider: "/provider/management",
+  "crew-member": "/crew",
+  ops: "/ops"
+};
+
 export function getSafeRelativePath(candidate: string | null | undefined, fallback: string): string {
   const trimmed = candidate?.trim();
   if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//") || trimmed.includes("\\")) {
@@ -31,7 +39,7 @@ export function getSafeRelativePath(candidate: string | null | undefined, fallba
 export function getRoleRedirectPath(
   role: MarketplaceRole,
   candidate: string | null | undefined,
-  fallback: string
+  fallback: string = roleHomePaths[role]
 ): string {
   const safePath = getSafeRelativePath(candidate, fallback);
   const rolePath = stripLocalePrefix(safePath).path;

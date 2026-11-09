@@ -83,7 +83,7 @@ export function CrewHistoryBoard() {
         <h2>{i18n.t("crew_history.login_required")}</h2>
         <p>{i18n.t("crew_history.login_body")}</p>
         <div className="cta-row">
-          <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+          <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("crew_history.login_cta")}
           </a>
         </div>

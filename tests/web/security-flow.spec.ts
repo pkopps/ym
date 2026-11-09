@@ -30,7 +30,7 @@ async function registerSecurityCustomer(request: APIRequestContext, email: strin
 }
 
 async function logIn(page: Page, email: string, password: string) {
-  await page.goto("/login/customer");
+  await page.goto("/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Log in" }).click();

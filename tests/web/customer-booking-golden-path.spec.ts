@@ -198,7 +198,7 @@ test.describe.serial("customer booking golden path", () => {
     await dialog.getByRole("button", { name: "Reservar", exact: true }).click();
     await expect(page).toHaveURL(/\/es\/customer\/booking\/review/);
     await page.getByRole("link", { name: "Iniciar sesion y continuar", exact: true }).click();
-    await expect(page).toHaveURL(/\/es\/login\/customer\?returnTo=/);
+    await expect(page).toHaveURL(/\/es\/login\?returnTo=/);
     expect(new URL(page.url()).searchParams.get("returnTo")).toContain("/es/customer/booking/review?draft=");
     await expect(page.getByRole("link", { name: "Continuar con Apple" })).toBeVisible();
     await page.getByLabel("Correo").fill(email);

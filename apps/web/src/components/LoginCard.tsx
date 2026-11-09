@@ -1,62 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import {
-  AuthenticatedUserEnvelope,
-  MarketplaceRole,
-  TwoFactorChallengeResponse
-} from "@yardmatch/contracts";
-import { addLocalePrefix, stripLocalePrefix, type TranslationKey } from "@yardmatch/i18n";
+import { AuthenticatedUserEnvelope, TwoFactorChallengeResponse } from "@yardmatch/contracts";
+import { addLocalePrefix, stripLocalePrefix } from "@yardmatch/i18n";
 import { useI18n } from "@yardmatch/i18n/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getWebAuthDevice, saveStoredSession } from "../lib/api";
-import { createWebApiClient } from "../lib/api";
-import { getRoleRedirectPath } from "../lib/redirects";
+import { createWebApiClient, getWebAuthDevice, saveStoredSession } from "../lib/api";
+import { getRoleRedirectPath, getSafeRelativePath } from "../lib/redirects";
 import { buildSocialAuthRedirectUri } from "../lib/socialAuth";
 import { AuthIdentityOptions } from "./SignupIdentityOptions";
 
-const roleCopy: Record<
-  MarketplaceRole,
-  {
-    helperKey: TranslationKey;
-    redirectPath: string;
-  }
-> = {
-  customer: {
-    helperKey: "login_card.customer.helper",
-    redirectPath: "/customer/dashboard"
-  },
-  provider: {
-    helperKey: "login_card.provider.helper",
-    redirectPath: "/provider/management"
-  },
-  ops: {
-    helperKey: "login_card.ops.helper",
-    redirectPath: "/ops"
-  },
-  "crew-member": {
-    helperKey: "login_card.crew.helper",
-    redirectPath: "/crew"
-  }
-};
-
-export function RoleLoginCard({
-  role
-}: {
-  role: MarketplaceRole;
-}) {
+/**
+ * One sign-in form for customers, providers and crew ("member"): the account's own role decides
+ * where it lands. Staff accounts use the separate "staff" page, which accepts nothing else.
+ */
+export function LoginCard({ audience }: { audience: "member" | "staff" }) {
   const i18n = useI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectPath = getRoleRedirectPath(role, searchParams.get("returnTo"), roleCopy[role].redirectPath);
-  const localizedRedirectPath = stripLocalePrefix(redirectPath).locale
-    ? redirectPath
-    : addLocalePrefix(redirectPath, i18n.locale);
-  const socialRedirectUri = buildSocialAuthRedirectUri({ role, returnTo: localizedRedirectPath });
-  const [email, setEmail] = useState("");
+  const returnTo = searchParams.get("returnTo");
+  const localize = (path: string) => (stripLocalePrefix(path).locale ? path : addLocalePrefix(path, i18n.locale));
+  const safeReturnTo = getSafeRelativePath(returnTo, "");
+  const socialRedirectUri = buildSocialAuthRedirectUri({
+    locale: i18n.locale,
+    returnTo: safeReturnTo ? localize(safeReturnTo) : undefined
+  });
+  const linkedResetCode = searchParams.get("resetCode") ?? "";
+  const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
-  const [showRecovery, setShowRecovery] = useState(false);
-  const [recoveryCode, setRecoveryCode] = useState("");
+  const [showRecovery, setShowRecovery] = useState(Boolean(linkedResetCode));
+  const [recoveryCode, setRecoveryCode] = useState(linkedResetCode);
   const [newPassword, setNewPassword] = useState("");
   const [recoveryMessage, setRecoveryMessage] = useState<string | undefined>();
   const [resetCodePreview, setResetCodePreview] = useState<string | undefined>();
@@ -69,25 +42,23 @@ export function RoleLoginCard({
   const [rememberDevice, setRememberDevice] = useState(true);
 
   function completeAuthentication(envelope: AuthenticatedUserEnvelope) {
-    if (envelope.user.role !== role) {
+    const role = envelope.user.role;
+    if ((role === "ops") !== (audience === "staff")) {
       throw new Error(
-        i18n.t("login_card.error.role_mismatch", {
-          actualRole: envelope.user.role,
-          expectedRole: role
-        })
+        i18n.t(audience === "staff" ? "login_card.error.staff_only" : "login_card.error.use_staff_login")
       );
     }
 
     saveStoredSession({
       token: envelope.session.token,
-      role: envelope.user.role,
+      role,
       internalScope: envelope.user.role === "ops" ? envelope.user.internalScope : undefined,
       email: envelope.user.email,
       userId: envelope.user.id,
       fullName: envelope.user.fullName,
       expiresAtIso: envelope.session.expiresAtIso
     });
-    router.push(localizedRedirectPath);
+    router.push(localize(getRoleRedirectPath(role, returnTo)));
     router.refresh();
   }
 
@@ -206,7 +177,7 @@ export function RoleLoginCard({
   }
 
   return (
-    <section className="card auth-form-card">
+    <section className="card login-card">
       {errorMessage ? (
         <div className="list-panel" role="alert">
           <strong>{i18n.t("login_card.error_title")}</strong>
@@ -214,55 +185,62 @@ export function RoleLoginCard({
         </div>
       ) : null}
 
-      {!twoFactorChallenge ? <form className="auth-form-stack" onSubmit={handleSubmit}>
-        <div className="auth-form-card__header">
-          <h3>{i18n.t("login_card.title")}</h3>
-          <p>{i18n.t(roleCopy[role].helperKey)}</p>
-        </div>
-        <div className="form-grid">
+      {!twoFactorChallenge ? (
+        <form className="auth-form-stack" onSubmit={handleSubmit}>
           <label className="form-field">
             <span>{i18n.t("auth_signup.field.email")}</span>
             <input
+              autoCapitalize="none"
+              autoComplete="username"
+              autoCorrect="off"
+              inputMode="email"
+              name="email"
               onChange={(event) => setEmail(event.target.value)}
-              placeholder={i18n.t("auth_signup.placeholder.email")}
+              required
+              spellCheck={false}
+              type="email"
               value={email}
             />
           </label>
           <label className="form-field">
             <span>{i18n.t("auth_signup.field.password")}</span>
             <input
+              autoComplete="current-password"
+              name="password"
               onChange={(event) => setPassword(event.target.value)}
-              placeholder={i18n.t("login_card.password_placeholder")}
+              required
               type="password"
               value={password}
             />
           </label>
-        </div>
 
-        <div className="cta-row">
           <button className="button" disabled={isSubmitting} type="submit">
             {isSubmitting ? i18n.t("login_card.logging_in") : i18n.t("login_card.submit")}
           </button>
           <button
-            className="button-secondary"
+            className="text-link-button"
             disabled={isRequestingReset}
             onClick={() => void handleRequestReset()}
             type="button"
           >
             {isRequestingReset ? i18n.t("login_card.sending_code") : i18n.t("login_card.forgot_password")}
           </button>
-          <a className="button-secondary" href={addLocalePrefix("/login", i18n.locale)}>
-            {i18n.t("common.actions.back")}
-          </a>
-        </div>
 
-        {role === "ops" ? null : <AuthIdentityOptions mode="login" redirectUri={socialRedirectUri} role={role} />}
-      </form> : null}
+          {audience === "member" ? (
+            <>
+              <AuthIdentityOptions mode="login" redirectUri={socialRedirectUri} />
+              <a className="login-card__create" href={addLocalePrefix("/auth", i18n.locale)}>
+                {i18n.t("login_card.create_account")}
+              </a>
+            </>
+          ) : null}
+        </form>
+      ) : null}
 
       {twoFactorChallenge ? (
         <form className="auth-form-stack" onSubmit={handleVerifyTwoFactor}>
           <div className="auth-form-card__header">
-            <h3>{i18n.t("security.challenge.title")}</h3>
+            <h2>{i18n.t("security.challenge.title")}</h2>
             <p>{i18n.t("security.challenge.body", { destination: twoFactorChallenge.destinationHint })}</p>
             {twoFactorChallenge.codePreview ? (
               <p>{i18n.t("security.setup.local_preview", { code: twoFactorChallenge.codePreview })}</p>
@@ -310,40 +288,48 @@ export function RoleLoginCard({
 
       {showRecovery && !twoFactorChallenge ? (
         <form className="auth-form-stack" onSubmit={handleConfirmReset}>
-          <div className="list-panel">
-            <strong>{i18n.t("login_card.reset.title")}</strong>
+          <div className="auth-form-card__header">
+            <h2>{i18n.t("login_card.reset.title")}</h2>
             <p>{i18n.t("login_card.reset.body", { email: email.trim() || i18n.t("login_card.reset.your_account") })}</p>
           </div>
 
           {recoveryMessage ? (
-            <div className="list-panel">
+            <div className="list-panel" role="status">
               <strong>{i18n.t("login_card.reset.started")}</strong>
               <p>{recoveryMessage}</p>
               {resetCodePreview ? <p>{i18n.t("login_card.reset.local_code", { code: resetCodePreview })}</p> : null}
             </div>
           ) : null}
 
-          <div className="form-grid">
-            <label className="form-field">
-              <span>{i18n.t("login_card.reset.code")}</span>
-              <input onChange={(event) => setRecoveryCode(event.target.value)} value={recoveryCode} />
-            </label>
-            <label className="form-field">
-              <span>{i18n.t("login_card.reset.new_password")}</span>
-              <input
-                onChange={(event) => setNewPassword(event.target.value)}
-                type="password"
-                value={newPassword}
-              />
-            </label>
-          </div>
+          <label className="form-field">
+            <span>{i18n.t("login_card.reset.code")}</span>
+            <input
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              name="resetCode"
+              onChange={(event) => setRecoveryCode(event.target.value)}
+              required
+              value={recoveryCode}
+            />
+          </label>
+          <label className="form-field">
+            <span>{i18n.t("login_card.reset.new_password")}</span>
+            <input
+              autoComplete="new-password"
+              name="newPassword"
+              onChange={(event) => setNewPassword(event.target.value)}
+              required
+              type="password"
+              value={newPassword}
+            />
+          </label>
 
           <div className="cta-row">
-            <button className="button" disabled={isResettingPassword} type="submit">
+            <button className="button-secondary" disabled={isResettingPassword} type="submit">
               {isResettingPassword ? i18n.t("login_card.reset.updating") : i18n.t("login_card.reset.submit")}
             </button>
             <button
-              className="button-secondary"
+              className="text-link-button"
               onClick={() => {
                 setShowRecovery(false);
                 setRecoveryCode("");

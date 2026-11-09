@@ -43,7 +43,7 @@ export function BookingConfirmationPage() {
     finally { submitting.current = false; setBusy(false); }
   }
   if (!sessionReady || loading) return <main className="container journey-page"><p role="status">{i18n.t("booking_journey.confirmation.loading")}</p></main>;
-  if (session?.role !== "customer") return <main className="container journey-page"><h1>{i18n.t("booking_journey.review.auth")}</h1><Link className="button" href={addLocalePrefix(`/login/customer?returnTo=${encodeURIComponent(addLocalePrefix(`/customer/booking/confirmation?bookingId=${encodeURIComponent(id)}`, i18n.locale))}`, i18n.locale)}>{i18n.t("booking_journey.review.login")}</Link></main>;
+  if (session?.role !== "customer") return <main className="container journey-page"><h1>{i18n.t("booking_journey.review.auth")}</h1><Link className="button" href={addLocalePrefix(`/login?returnTo=${encodeURIComponent(addLocalePrefix(`/customer/booking/confirmation?bookingId=${encodeURIComponent(id)}`, i18n.locale))}`, i18n.locale)}>{i18n.t("booking_journey.review.login")}</Link></main>;
   if (!booking) return <main className="container journey-page"><p role="alert">{error}</p><button className="button-secondary" type="button" onClick={() => setRetry(value => value + 1)}>{i18n.t("booking_journey.retry")}</button></main>;
   const canReschedule = ["requested", "confirmed"].includes(booking.status) && Date.parse(booking.scheduledStartIso) > Date.now() && (booking.status !== "confirmed" || Date.parse(booking.scheduledStartIso) - Date.now() >= 24 * 3600000);
   return <main className="container journey-page journey-confirmation"><div className="journey-success-icon" aria-hidden="true">✓</div>

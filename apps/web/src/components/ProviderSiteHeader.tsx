@@ -147,7 +147,7 @@ export function ProviderSiteHeader() {
 
   function handleSignOut() {
     clearStoredSession();
-    window.location.href = localHref("/login/provider");
+    window.location.href = localHref("/login");
   }
 
   return (
@@ -279,7 +279,7 @@ export function ProviderSiteHeader() {
             </>
           ) : (
             <>
-              <a className="button-secondary" href={localHref("/login/provider")}>
+              <a className="button-secondary" href={localHref("/login")}>
                 {i18n.t("nav.log_in")}
               </a>
               <a className="button" href={localHref("/auth/provider/create")}>

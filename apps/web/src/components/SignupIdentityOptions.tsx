@@ -45,7 +45,8 @@ export function AuthIdentityOptions({
 }: {
   mode: AuthFlowMode;
   redirectUri?: string;
-  role: MarketplaceRole;
+  /** Sign-up names the role to create. Login omits it and uses the account's own role. */
+  role?: MarketplaceRole;
 }) {
   const i18n = useI18n();
   const api = new MarketplaceApiClient(getWebApiBaseUrl());

@@ -204,12 +204,13 @@ export async function authenticatedGet<T>(request: APIRequestContext, token: str
 }
 
 export async function loginUi(page: Page, role: "provider" | "crew" | "ops", email: string, password = testPassword) {
-  await page.goto(`/login/${role}`);
+  // Customers, providers and crew share one login page; staff keep their own.
+  await page.goto(role === "ops" ? "/login/ops" : "/login");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Log in" }).click();
   // Callers often navigate next; let the sign-in finish so it isn't aborted mid-request.
-  await page.waitForURL((url) => !url.pathname.includes("/login/"));
+  await page.waitForURL((url) => !url.pathname.includes("/login"));
 }
 
 async function expectNoHorizontalOverflow(page: Page) {

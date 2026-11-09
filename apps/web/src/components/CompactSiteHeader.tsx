@@ -32,7 +32,7 @@ export function CompactSiteHeader() {
   ] : [
     { href: "/customer", label: "ux.services" }, { href: "/provider", label: "ux.business" }, { href: "/crew", label: "ux.crew" }, { href: "/help", label: "ux.help" }
   ];
-  const login = provider ? "/login/provider" : crew ? "/login/crew" : "/login/customer";
+  const login = "/login";
   const signup = provider ? "/auth/provider/create" : crew ? "/auth/crew" : "/auth/customer";
   const local = (href: string) => addLocalePrefix(href, i18n.locale);
   return <header className="compact-header">
