@@ -42,7 +42,7 @@ test("declined request stays open until customer requests a replacement at the s
   const customer = await registerCustomer(request, "Recovery Customer");
   const booking = await createBooking(request, { customerToken: customer.token, providerId: provider.providerId });
   await authenticatedPost(request, provider.token, "/api/bookings/decline", { bookingId: booking.id, reason: "Route capacity is unavailable." });
-  await page.goto("/login/customer");
+  await page.goto("/login");
   await page.getByLabel("Email").fill(customer.email);
   await page.getByLabel("Password", { exact: true }).fill(testPassword);
   await page.getByRole("button", { name: "Log in" }).click();

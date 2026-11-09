@@ -89,7 +89,7 @@ export default async function ProviderPage() {
             <a className="button" href={href("/auth/provider/create")}>
               {i18n.t("provider_landing.hero.primary_cta")}
             </a>
-            <a className="button-secondary" href={href("/login/provider")}>
+            <a className="button-secondary" href={href("/login")}>
               {i18n.t("provider_landing.hero.secondary_cta")}
             </a>
           </div>
@@ -274,7 +274,7 @@ export default async function ProviderPage() {
             <a className="button" href={href("/auth/provider/create")}>
               {i18n.t("provider_landing.final.primary_cta")}
             </a>
-            <a className="button-secondary" href={href("/login/provider")}>
+            <a className="button-secondary" href={href("/login")}>
               {i18n.t("provider_landing.final.secondary_cta")}
             </a>
           </div>

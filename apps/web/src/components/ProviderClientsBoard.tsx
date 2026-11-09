@@ -74,7 +74,7 @@ export function ProviderClientsBoard() {
   if (!sessionReady) return <MapLoading />;
   if (!token) return <section className="card provider-clients-access">
     <h1>{i18n.t("provider_clients.login_title")}</h1><p>{i18n.t("provider_clients.login_body")}</p>
-    <a className="button" href={local("/login/provider")}>{i18n.t("provider_clients.login")}</a>
+    <a className="button" href={local("/login")}>{i18n.t("provider_clients.login")}</a>
   </section>;
 
   return <>

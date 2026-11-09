@@ -1414,7 +1414,7 @@ export function CustomerLiveDashboard() {
             <a className="button-secondary" href={addLocalePrefix("/customer", i18n.locale)}>
               {i18n.t("customer_history.request_service")}
             </a>
-            <a className="button" href={addLocalePrefix("/login/customer", i18n.locale)}>
+            <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
               {i18n.t("nav.log_in")}
             </a>
           </div>

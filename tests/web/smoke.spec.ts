@@ -11,7 +11,8 @@ async function expectSocialAuthLinks({
 }: {
   expectedMode: "login" | "signup";
   expectedReturnTo: string;
-  expectedRole: "customer" | "provider" | "crew-member";
+  /** Login leaves the role out so the API uses the account's own role. */
+  expectedRole: "customer" | "provider" | "crew-member" | null;
   page: Page;
 }) {
   for (const provider of ["google", "apple"] as const) {
@@ -218,12 +219,12 @@ test.describe("YardMatch web smoke", () => {
     });
 
     const loginReturnTo = "/customer/dashboard?flow=request&providerId=provider-seed";
-    await page.goto(`/login/customer?returnTo=${encodeURIComponent(loginReturnTo)}`);
+    await page.goto(`/login?returnTo=${encodeURIComponent(loginReturnTo)}`);
     await expect(page.getByRole("link", { name: "Continue with Apple" })).toBeVisible();
     await expectSocialAuthLinks({
       expectedMode: "login",
       expectedReturnTo: loginReturnTo,
-      expectedRole: "customer",
+      expectedRole: null,
       page
     });
 

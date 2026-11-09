@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: single web login page
+
+- Updated: November 9, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, restarted from `3d4ecd1`; see the PR for the implementation commit.
+- Completed: `/login` is one form (email, password, Log in, "Forgot password?", Google, Apple, "Create an account") that redirects by the role the API returns and still validates `returnTo` through `getRoleRedirectPath`. `/login/customer`, `/login/provider` and `/login/crew` are HTTP 307 redirects to `/login` (in `proxy.ts`, locale and `returnTo` kept). `/login/ops` is a separate "Staff log in" page that refuses non-staff accounts, and `/login` refuses staff accounts; neither keeps a session in that case. The story column, second intro, helper lines and Back button are gone, with their CSS, the illustration list and 108 locale keys. Social login no longer sends a role: the API signs the person in with the role the existing account has. Provider-mobile sign-in shows one title and no product copy, with email, password and code input hints.
+- In progress: none.
+- Remaining: `PAGE_FLOW.md` and its screenshots still describe the role picker (generated doc, not regenerated). Social sign-in still cannot complete for accounts with two-factor on; they are told to use email and password, as before.
+- Blockers: none. Live Google and Apple sign-in were not exercised; the provider exchange is stubbed in the API tests.
+- Changed workflows: one login address for customers, providers and crew; the home header "Log in" is a link instead of a three-item menu. API: `role` is optional on `GET /api/auth/google/start` and `/apple/start` when `mode=login`; a login that names a role (the mobile apps) still has to match, sign-up still requires one, and staff accounts are never signed in through a social provider.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (3,983 keys) and `npm run experience-map:validate` passed. `npm run test:web:smoke`: 58 of 58, including seven new cases in `tests/web/login.spec.ts` (page contents and field hints, role redirect for all three roles, `returnTo`, former URLs, two-factor, password reset, staff-only page). `npm run test:api`: 395 passed, 15 database-only skipped, 1 failed. The failure is `ops support queue includes weather or route delay exception scripts...`, which also fails on unchanged `main` when run late in the UTC day because its fixture crosses a service-day boundary. Five new social-login cases in `auth-controller.test.ts` pass. Provider-mobile Expo export passed. Not run: Postgres integration, simulator.
+- Known defects: none found in the changed flow. A failed reset attempt hides the "Reset started" panel (existing behaviour).
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/single-login/{login,staff-login}-{desktop,mobile}.png` (1440x900 and 390x844), written by the login spec. This folder is git-ignored, so the images are local evidence only.
+- Recommended next task: regenerate `PAGE_FLOW.md`, then fix the time-of-day dependent API test.
+
 ## Current checkpoint: launch-scope chunk C (copy)
 
 - Updated: November 9, 2026 (UTC).

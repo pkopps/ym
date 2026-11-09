@@ -6,14 +6,9 @@ import { addLocalePrefix, stripLocalePrefix, type SupportedLocale } from "@yardm
 import { useI18n } from "@yardmatch/i18n/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createWebApiClient, saveStoredSession } from "../../../lib/api";
-import { getRoleRedirectPath } from "../../../lib/redirects";
+import { getRoleRedirectPath, roleHomePaths } from "../../../lib/redirects";
 
-const redirectByRole: Record<MarketplaceRole, string> = {
-  customer: "/customer/dashboard",
-  provider: "/provider/management",
-  ops: "/ops",
-  "crew-member": "/crew"
-};
+const redirectByRole = roleHomePaths;
 
 function localizeRedirectPath(path: string, locale: SupportedLocale) {
   return stripLocalePrefix(path).locale ? path : addLocalePrefix(path, locale);
@@ -303,16 +298,7 @@ export default function AuthCompletePage() {
         <div className="cta-row">
           <a
             className="button"
-            href={addLocalePrefix(
-              role === "provider"
-                ? "/login/provider"
-                : role === "ops"
-                  ? "/login/ops"
-                  : role === "crew-member"
-                    ? "/login/crew"
-                    : "/login/customer",
-              i18n.locale
-            )}
+            href={addLocalePrefix(role === "ops" ? "/login/ops" : "/login", i18n.locale)}
           >
             {i18n.t("auth_complete.back_to_login")}
           </a>

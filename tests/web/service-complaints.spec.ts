@@ -17,7 +17,7 @@ test("customer complaint form submits evidence, supports human review, and prote
   expect(deniedAssessment.status()).toBe(403);
   const providerDenied = await request.post(`${apiBaseUrl}/api/support/complaints`, { headers: { Authorization: `Bearer ${provider.token}` }, data: { bookingId: booking.id } });
   expect(providerDenied.status()).toBe(403);
-  await page.goto("/login/customer");
+  await page.goto("/login");
   await page.getByLabel("Email").fill(customer.email); await page.getByLabel("Password").fill(testPassword);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page).toHaveURL(/\/customer\/dashboard/);

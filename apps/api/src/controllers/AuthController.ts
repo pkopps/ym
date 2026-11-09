@@ -50,7 +50,8 @@ const socialSignupTtlSeconds = 60 * 30;
 
 interface OAuthStatePayload {
   provider: SocialAuthProvider;
-  role: GoogleAuthStartResponse["role"];
+  /** Absent for a login started without a role: the linked account's own role decides. */
+  role?: GoogleAuthStartResponse["role"];
   mode: GoogleAuthStartResponse["mode"];
   redirectUri: string;
   nonce?: string;
@@ -63,7 +64,7 @@ interface PendingSocialSignupPayload {
   emailVerified: true;
   email: string;
   fullName: string;
-  role: GoogleAuthStartResponse["role"];
+  role: NonNullable<GoogleAuthStartResponse["role"]>;
   mode: GoogleAuthStartResponse["mode"];
 }
 
@@ -113,8 +114,8 @@ export class AuthController implements ApiController {
       context.method === "GET" &&
       (context.path === "/api/auth/google/start" || context.path === "/api/auth/apple/start")
     ) {
-      const role = this.parseRole(context.query.get("role"));
       const mode = this.parseMode(context.query.get("mode"));
+      const role = this.parseStartRole(context.query.get("role"), mode);
       const provider = this.getProviderFromPath(context.path);
       const redirectUri = this.normalizeRedirectUri(context.query.get("redirectUri"), role);
 
@@ -154,7 +155,7 @@ export class AuthController implements ApiController {
         "X-YardMatch-Google-Auth",
         JSON.stringify({
           provider,
-          role,
+          ...(role ? { role } : {}),
           mode,
           redirectUrl: authorizationUrl,
           status: "oauth-redirect"
@@ -607,6 +608,14 @@ export class AuthController implements ApiController {
     return value === "provider" || value === "crew-member" || value === "customer" ? value : "customer";
   }
 
+  /** Sign-up always needs a role. Login may omit it and take the role of the existing account. */
+  private parseStartRole(
+    value: string | null,
+    mode: GoogleAuthStartResponse["mode"]
+  ): GoogleAuthStartResponse["role"] | undefined {
+    return mode === "login" && !value?.trim() ? undefined : this.parseRole(value);
+  }
+
   private parseMode(value: string | null): GoogleAuthStartResponse["mode"] {
     return value === "signup" || value === "login" ? value : "signup";
   }
@@ -615,15 +624,17 @@ export class AuthController implements ApiController {
     return path.includes("/apple/") ? "apple" : "google";
   }
 
-  private getDefaultRedirectUri(role: GoogleAuthStartResponse["role"]): string {
+  private getDefaultRedirectUri(role: GoogleAuthStartResponse["role"] | undefined): string {
     const webCompletionUrl = new URL("/auth/complete", this.platform.getAppBaseUrl());
-    webCompletionUrl.searchParams.set("role", role);
+    if (role) {
+      webCompletionUrl.searchParams.set("role", role);
+    }
     return webCompletionUrl.toString();
   }
 
   private normalizeRedirectUri(
     redirectUri: string | null,
-    role: GoogleAuthStartResponse["role"]
+    role: GoogleAuthStartResponse["role"] | undefined
   ): string {
     if (!redirectUri) {
       return this.getDefaultRedirectUri(role);
@@ -649,9 +660,7 @@ export class AuthController implements ApiController {
     if (socialIdentity.emailVerified !== true) throw new HttpError(401, "Verify your email with the sign-in provider before continuing.");
     const linkedIdentity = await this.platform.findAuthIdentityByProvider(socialIdentity.provider, socialIdentity.subject);
     if (linkedIdentity) {
-      if (linkedIdentity.role !== state.role) {
-        throw new HttpError(409, `This ${socialIdentity.provider} account is already linked to a different YardMatch role.`);
-      }
+      this.assertSocialLoginRole(state, linkedIdentity.role, `This ${socialIdentity.provider} account is already linked to a different YardMatch role.`);
       if (this.platform.hasTwoFactorEnabled(linkedIdentity)) {
         throw new HttpError(
           409,
@@ -669,9 +678,7 @@ export class AuthController implements ApiController {
 
     const existingIdentity = await this.platform.findAuthIdentityByEmail(socialIdentity.email);
     if (existingIdentity) {
-      if (existingIdentity.role !== state.role) {
-        throw new HttpError(409, "That email already belongs to a different YardMatch role.");
-      }
+      this.assertSocialLoginRole(state, existingIdentity.role, "That email already belongs to a different YardMatch role.");
       if (this.platform.hasTwoFactorEnabled(existingIdentity)) {
         throw new HttpError(
           409,
@@ -694,7 +701,7 @@ export class AuthController implements ApiController {
       return this.createAuthenticatedEnvelope(updatedIdentity, user, socialIdentity.provider);
     }
 
-    if (state.mode === "login") {
+    if (state.mode === "login" || !state.role) {
       throw new HttpError(404, "No YardMatch account exists yet for this email. Continue with sign up instead.");
     }
 
@@ -760,6 +767,16 @@ export class AuthController implements ApiController {
     return target.toString();
   }
 
+  /**
+   * A login that named a role must match it. A login without a role accepts the account's own
+   * customer, provider or crew role; staff accounts never sign in through a social provider.
+   */
+  private assertSocialLoginRole(state: OAuthStatePayload, accountRole: string, mismatchMessage: string): void {
+    if (state.role ? accountRole !== state.role : accountRole === "ops") {
+      throw new HttpError(409, mismatchMessage);
+    }
+  }
+
   private redirectWithError(
     response: Parameters<typeof sendJson>[0],
     state: OAuthStatePayload,
@@ -770,7 +787,7 @@ export class AuthController implements ApiController {
       this.buildRedirectUrl(state.redirectUri, {
         authStatus: "error",
         provider: state.provider,
-        role: state.role,
+        ...(state.role ? { role: state.role } : {}),
         mode: state.mode,
         message
       })

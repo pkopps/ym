@@ -462,7 +462,7 @@ export function CrewLiveDashboard() {
         <h1>{i18n.t("crew_live.team_access.title")}</h1>
         <p>{i18n.t("crew_live.team_access.body")}</p>
         <div className="cta-row">
-          <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+          <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("crew_live.crew_login")}
           </a>
         </div>
@@ -739,7 +739,7 @@ export function CrewLiveDashboard() {
               : i18n.t("crew_live.signup.body_default")}
           </p>
           <div className="cta-row">
-            <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+            <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
               {i18n.t("crew_live.crew_login")}
             </a>
             <a className="button-secondary" href={crewSignupHref}>

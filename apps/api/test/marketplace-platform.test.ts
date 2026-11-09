@@ -35,6 +35,21 @@ function futureIso(hoursFromNow: number) {
   return new Date(Date.now() + hoursFromNow * 60 * 60 * 1000).toISOString();
 }
 
+/**
+ * A start time at least `hoursFromNow` away whose following `spanHours` stay on the same
+ * America/New_York calendar day. A running-late arrival must fall on the booking's service day,
+ * so a fixture built from "now" alone fails whenever it happens to straddle local midnight.
+ */
+function sameServiceDayStartMs(hoursFromNow: number, spanHours: number) {
+  const hour = 60 * 60 * 1000;
+  const serviceDay = (ms: number) => new Date(ms).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  let startMs = Date.now() + hoursFromNow * hour;
+  while (serviceDay(startMs) !== serviceDay(startMs + spanHours * hour)) {
+    startMs += hour;
+  }
+  return startMs;
+}
+
 async function createLaunchOperationsPressureFixture(
   platform: MarketplacePlatformService,
   repository: InMemoryMarketplaceRepository,
@@ -5155,13 +5170,14 @@ test("providers can send one-tap late updates to customers for active bookings",
   });
 
   const provider = (await repository.listProviders())[0];
+  const startMs = sameServiceDayStartMs(6, 0.5);
   const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
     category: "lawn-mowing",
-    scheduledStartIso: futureIso(6),
-    scheduledEndIso: futureIso(8),
+    scheduledStartIso: new Date(startMs).toISOString(),
+    scheduledEndIso: new Date(startMs + 2 * 60 * 60 * 1000).toISOString(),
     notes: "Backyard and edging",
     totalCents: 6200
   });
@@ -5170,7 +5186,7 @@ test("providers can send one-tap late updates to customers for active bookings",
     bookingId: booking.id
   });
 
-  const lateEtaIso = futureIso(6.5);
+  const lateEtaIso = new Date(startMs + 30 * 60 * 1000).toISOString();
   const updatedBooking = await platform.markBookingLate(provider.id, {
     bookingId: booking.id,
     lateEtaIso,
@@ -5491,19 +5507,20 @@ test("ops support queue includes weather or route delay exception scripts withou
   });
 
   const provider = (await repository.listProviders())[0];
+  const startMs = sameServiceDayStartMs(6, 0.75);
   const booking = await createWorkflowBooking(platform, repository, customer.id, {
     providerId: provider.id,
     serviceAddress: createAddress(),
     servicePropertyId: customer.defaultPropertyId,
     category: "lawn-mowing",
-    scheduledStartIso: futureIso(6),
-    scheduledEndIso: futureIso(8),
+    scheduledStartIso: new Date(startMs).toISOString(),
+    scheduledEndIso: new Date(startMs + 2 * 60 * 60 * 1000).toISOString(),
     notes: "Support route-delay script test",
     totalCents: 6200
   });
 
   await platform.confirmBooking(provider.id, { bookingId: booking.id });
-  const lateEtaIso = futureIso(6.75);
+  const lateEtaIso = new Date(startMs + 45 * 60 * 1000).toISOString();
   const delayedBooking = await platform.markBookingLate(provider.id, {
     bookingId: booking.id,
     lateEtaIso,

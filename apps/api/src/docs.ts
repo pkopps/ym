@@ -439,7 +439,9 @@ export const apiSpec = {
           {
             name: "role",
             in: "query",
-            required: true,
+            required: false,
+            description:
+              "Required for signup. Omit on login to sign in with the role of the existing customer, provider, or crew-member account.",
             schema: { type: "string", enum: ["customer", "provider", "crew-member"] }
           },
           {
@@ -470,7 +472,9 @@ export const apiSpec = {
           {
             name: "role",
             in: "query",
-            required: true,
+            required: false,
+            description:
+              "Required for signup. Omit on login to sign in with the role of the existing customer, provider, or crew-member account.",
             schema: { type: "string", enum: ["customer", "provider", "crew-member"] }
           },
           {

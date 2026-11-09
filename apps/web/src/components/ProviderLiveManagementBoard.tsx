@@ -1011,7 +1011,7 @@ export function ProviderLiveManagementBoard() {
         <h2>{i18n.t("provider_live.login_required.title")}</h2>
         <p>{i18n.t("provider_live.login_required.body")}</p>
         <div className="cta-row">
-          <a className="button" href={addLocalePrefix("/login/provider", i18n.locale)}>
+          <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("provider_live.login_required.cta")}
           </a>
         </div>
