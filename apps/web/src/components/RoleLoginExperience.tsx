@@ -112,7 +112,7 @@ const roleExperienceCopy: Record<
     ],
     primaryHref: "/auth/crew",
     primaryLabelKey: "login_experience.crew.primary_cta",
-    secondaryHref: "/crew",
+    secondaryHref: "/help",
     secondaryLabelKey: "login_experience.crew.secondary_cta",
     formEyebrowKey: "login_experience.crew.form_eyebrow",
     formTitleKey: "login_experience.crew.form_title",
