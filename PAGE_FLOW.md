@@ -24,11 +24,8 @@ Captured from the local web app at a 1440 x 1200 desktop viewport. Workspace scr
 | `/auth/provider/create` | [![Provider signup screenshot](docs/page-flow-screenshots/thumbs/auth-provider-create.png)](docs/page-flow-screenshots/auth-provider-create.png) |
 | `/auth/crew` | [![Crew signup screenshot](docs/page-flow-screenshots/thumbs/auth-crew.png)](docs/page-flow-screenshots/auth-crew.png) |
 | `/auth/complete` | [![Auth callback screenshot](docs/page-flow-screenshots/thumbs/auth-complete.png)](docs/page-flow-screenshots/auth-complete.png) |
-| `/login` | [![Login role picker screenshot](docs/page-flow-screenshots/thumbs/login.png)](docs/page-flow-screenshots/login.png) |
-| `/login/customer` | [![Customer login screenshot](docs/page-flow-screenshots/thumbs/login-customer.png)](docs/page-flow-screenshots/login-customer.png) |
-| `/login/provider` | [![Provider login screenshot](docs/page-flow-screenshots/thumbs/login-provider.png)](docs/page-flow-screenshots/login-provider.png) |
-| `/login/crew` | [![Crew login screenshot](docs/page-flow-screenshots/thumbs/login-crew.png)](docs/page-flow-screenshots/login-crew.png) |
-| `/login/ops` | [![Ops login screenshot](docs/page-flow-screenshots/thumbs/login-ops.png)](docs/page-flow-screenshots/login-ops.png) |
+| `/login` | [![Login screenshot](docs/page-flow-screenshots/thumbs/login.png)](docs/page-flow-screenshots/login.png) |
+| `/login/ops` | [![Staff login screenshot](docs/page-flow-screenshots/thumbs/login-ops.png)](docs/page-flow-screenshots/login-ops.png) |
 
 ### Role Workspaces
 
@@ -109,14 +106,14 @@ flowchart TD
   customer["/customer <br/>Book a service / public search"]
   listings["/customer/listings?... <br/>Recommended provider results"]
   auth["/auth <br/>Choose signup role"]
-  login["/login <br/>Choose login role"]
+  login["/login <br/>Log in"]
   help["/help <br/>Help center + contact + support tickets"]
 
   home -->|primary nav: Book a service| customer
   home -->|search, service tiles, provider rails| listings
   customer -->|search by service, area, timing| listings
   listings -->|create account to book| auth
-  listings -->|customer login| loginCustomer["/login/customer"]
+  listings -->|log in| login
   listings -->|request service / no coverage| help
 
   home -->|business CTA| provider["/provider"]
@@ -136,11 +133,8 @@ flowchart TD
   authCrew["/auth/crew <br/>Crew signup"]
   authComplete["/auth/complete <br/>Social auth callback / finish profile"]
 
-  login["/login <br/>Login role picker"]
-  loginCustomer["/login/customer <br/>Customer login"]
-  loginProvider["/login/provider <br/>Provider login"]
-  loginCrew["/login/crew <br/>Crew login"]
-  loginOps["/login/ops <br/>Ops login"]
+  login["/login <br/>Log in"]
+  loginOps["/login/ops <br/>Staff log in"]
 
   customerDashboard["/customer/dashboard <br/>Customer workspace"]
   providerManagement["/provider/management <br/>Provider management portal"]
@@ -164,12 +158,9 @@ flowchart TD
   authComplete -->|crew-member role| crewHome
   authComplete -->|ops role| ops
 
-  login --> loginCustomer
-  login --> loginProvider
-  login --> loginCrew
-  loginCustomer -->|login success| customerDashboard
-  loginProvider -->|login success| providerManagement
-  loginCrew -->|login success| crewHome
+  login -->|login success| customerDashboard
+  login -->|login success| providerManagement
+  login -->|login success| crewHome
   loginOps -->|login success| ops
 ```
 
@@ -184,18 +175,18 @@ flowchart TD
   historyView["/customer/dashboard?view=history <br/>Past visits tab"]
   historyRedirect["/customer/history <br/>Redirect page"]
   help["/help <br/>Support"]
-  loginCustomer["/login/customer <br/>Customer login"]
+  login["/login <br/>Log in"]
 
   customer -->|search| listings
   listings -->|create account to book| auth["/auth"]
-  listings -->|log in| loginCustomer
-  loginCustomer -->|login success| dashboard
+  listings -->|log in| login
+  login -->|login success| dashboard
   customer -->|signed-in profile menu: Account| dashboard
   dashboard -->|new service request| requestFlow
   dashboard -->|past visits link / tab| historyView
   historyRedirect -->|server redirect| historyView
   dashboard -->|booking issue / support links| help
-  dashboard -->|no session fallback| loginCustomer
+  dashboard -->|no session fallback| login
 ```
 
 ## Provider Workspace
@@ -205,7 +196,7 @@ flowchart TD
   provider["/provider <br/>Provider overview"]
   authProvider["/auth/provider <br/>Legacy redirect to /provider"]
   createProvider["/auth/provider/create <br/>Create provider account"]
-  loginProvider["/login/provider <br/>Provider login"]
+  login["/login <br/>Log in"]
   management["/provider/management <br/>Management portal"]
   payments["/provider/payments <br/>Payments"]
   partnerships["/provider/partnerships <br/>Concept partnership page"]
@@ -217,11 +208,11 @@ flowchart TD
   policies["Provider trust pages <br/>/provider-verification, /provider-standards"]
 
   provider -->|Get started| createProvider
-  provider -->|Business owner login| loginProvider
+  provider -->|Business owner login| login
   provider -->|standards / verification links| policies
   authProvider -->|redirect| provider
   createProvider -->|create account| management
-  loginProvider -->|login success| management
+  login -->|login success| management
 
   management -->|Find crew members| crew
   management -->|Back to overview| provider
@@ -248,21 +239,21 @@ flowchart TD
 flowchart TD
   crew["/crew <br/>Open crew work / crew dashboard"]
   authCrew["/auth/crew?... <br/>Crew signup, optionally prefilled from an opening"]
-  loginCrew["/login/crew <br/>Crew login"]
+  login["/login <br/>Log in"]
   schedule["/crew/schedule <br/>Upcoming schedule"]
   history["/crew/schedule/history <br/>Past job history"]
   help["/help?... <br/>Crew assignment support"]
 
-  crew -->|Crew login| loginCrew
+  crew -->|Crew login| login
   crew -->|Crew sign up / selected opening| authCrew
   authCrew -->|submit profile| crew
-  loginCrew -->|login success| crew
+  login -->|login success| crew
   crew -->|signed-in profile menu| schedule
   schedule -->|schedule menu| history
   history -->|schedule menu| schedule
   crew -->|assignment support| help
-  schedule -->|no session fallback| loginCrew
-  history -->|no session fallback| loginCrew
+  schedule -->|no session fallback| login
+  history -->|no session fallback| login
 ```
 
 ## Content, Local, And Policy Pages
@@ -354,11 +345,8 @@ Authentication:
 - `/auth/provider/create`
 - `/auth/crew`
 - `/auth/complete`
-- `/login`
-- `/login/customer`
-- `/login/provider`
-- `/login/crew`
-- `/login/ops`
+- `/login` (one page for customers, providers and crew; `/login/customer`, `/login/provider` and `/login/crew` redirect here)
+- `/login/ops` (staff only)
 
 Role workspaces:
 
