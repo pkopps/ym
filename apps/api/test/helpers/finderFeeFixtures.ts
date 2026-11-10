@@ -32,6 +32,13 @@ export class FakeProviderBilling implements ProviderBillingGateway {
     return { paymentMethodId: `pm_${input.customerId}`, brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 };
   }
 
+  /** Cards saved in Stripe outside a tracked setup session, by customer. */
+  public readonly cardsSavedInStripe = new Map<string, SavedProviderCard>();
+
+  public async findSavedCard(customerId: string): Promise<SavedProviderCard | undefined> {
+    return this.cardsSavedInStripe.get(customerId);
+  }
+
   /** PaymentIntents that actually moved money. */
   public get succeededIntentIds(): string[] {
     return [...new Set([...this.byKey.values()].flatMap(outcome => outcome.status === "succeeded" ? [outcome.paymentIntentId] : []))];

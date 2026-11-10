@@ -3,6 +3,7 @@ import { ProviderAvailabilityPanel } from "./ProviderAvailabilityPanel";
 import { ProviderPropertyCorrectionPanel } from "./BookingPropertyCorrectionPanel";
 import { ProviderCredentialsPanel } from "./ProviderCredentialsPanel";
 import { ProviderPricingPanel } from "./ProviderPricingPanel";
+import { ProviderBillingPanel } from "./ProviderBillingPanel";
 import type { PropertyPhotoArea } from "@yardmatch/contracts";
 
 import { BookingSchedulePanel } from "./BookingSchedulePanel";
@@ -1153,9 +1154,10 @@ export function ProviderLiveManagementBoard() {
       )}
 
       <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
-        <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-pricing">{i18n.t("pricing.title")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
+        <a href="#provider-jobs">{i18n.t("workspace.jobs")}</a><a href="#provider-setup">{i18n.t("workspace.setup")}</a><a href="#provider-pricing">{i18n.t("pricing.title")}</a><a href="#provider-billing">{i18n.t("provider_billing.title")}</a><a href="#provider-settings">{i18n.t("workspace.settings")}</a>
       </nav>
       {provider ? <WorkspaceSection id="provider-pricing" title={i18n.t("pricing.title")} defaultOpen={provider.verificationStatus !== "verified"}><ProviderPricingPanel postalCode={provider.address.postalCode} categories={provider.categories} /></WorkspaceSection> : null}
+      {provider ? <WorkspaceSection id="provider-billing" title={i18n.t("provider_billing.title")}><ProviderBillingPanel /></WorkspaceSection> : null}
       {provider ? <ProviderAvailabilityPanel /> : null}
       {provider ? <ProviderCredentialsPanel provider={provider} onUpdated={updated => setOverview(current => current ? { ...current, provider: updated } : current)} /> : null}
       <WorkspaceSection id="provider-setup" title={i18n.t("workspace.setup")} defaultOpen={provider?.verificationStatus !== "verified"}>

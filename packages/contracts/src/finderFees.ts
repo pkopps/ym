@@ -58,10 +58,21 @@ export interface ProviderBillingAccountRecord {
   updatedAt: string;
 }
 
+export interface FinderFeeTierSummary {
+  tier: FinderFeePropertySizeTierName;
+  feeCents: number;
+  /** Largest lawn in the tier, in square feet; absent for the top tier. */
+  maxLawnSqFt?: number;
+}
+
 export interface ProviderBillingStatusResponse {
   billingConfigured: boolean;
   hasCardOnFile: boolean;
   card?: { brand?: string; last4?: string; expMonth?: number; expYear?: number };
+  finderFees: FinderFeeTierSummary[];
+  firstCustomerFree: boolean;
+  /** Finder-fee charges that were declined or could not be attempted without a card. */
+  chargesNeedingAttention: number;
 }
 
 export interface StartProviderCardSetupRequest {

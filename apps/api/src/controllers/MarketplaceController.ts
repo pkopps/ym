@@ -91,6 +91,7 @@ export class MarketplaceController implements ApiController {
       (context.method === "GET" && context.path === ApiRoutes.providerBilling) ||
       (context.method === "POST" && context.path === ApiRoutes.providerBillingCardSetup) ||
       (context.method === "POST" && context.path === ApiRoutes.providerBillingCardSetupComplete) ||
+      (context.method === "POST" && context.path === ApiRoutes.providerBillingRefresh) ||
       (context.method === "POST" && context.path === ApiRoutes.bookingCompletionConfirm) ||
       (["GET", "POST"].includes(context.method) && context.path === "/api/ops/pricing/minimums") ||
       (context.method === "GET" && context.path === "/api/pricing/minimums") ||
@@ -264,6 +265,11 @@ export class MarketplaceController implements ApiController {
     if (context.path === ApiRoutes.providerBillingCardSetupComplete) {
       const identity = await requireRole(context, this.platform, "provider");
       sendJson(response, 200, await this.platform.completeProviderCardSetup(identity.userId, (context.body as CompleteProviderCardSetupRequest | undefined)?.setupSessionId));
+      return;
+    }
+    if (context.path === ApiRoutes.providerBillingRefresh) {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.refreshProviderBilling(identity.userId));
       return;
     }
     if (context.path === ApiRoutes.bookingCompletionConfirm) {

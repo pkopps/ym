@@ -1132,7 +1132,7 @@ export const apiSpec = {
     },
     "/api/providers/billing": {
       get: { tags: ["Providers"], summary: "Read whether the business has a card on file for YardMatch finder fees", security: [{ bearerAuth: [] }],
-        responses: { "200": { description: "Billing availability and the saved card's brand, last four digits and expiry" } } }
+        responses: { "200": { description: "Billing availability, the saved card's brand, last four digits and expiry, the finder-fee tiers, and charges waiting on a working card" } } }
     },
     "/api/providers/billing/card-setup": {
       post: { tags: ["Providers"], summary: "Start Stripe-hosted card setup for finder-fee billing", security: [{ bearerAuth: [] }],
@@ -1145,6 +1145,10 @@ export const apiSpec = {
         description: "Also gives any finder-fee charge waiting on a card another attempt.",
         requestBody: { required: true, content: { "application/json": { example: { setupSessionId: "cs_test_123" } } } },
         responses: { "200": { description: "Updated billing status" }, "403": { description: "Setup session belongs to another business" }, "409": { description: "Setup not finished or not started" } } }
+    },
+    "/api/providers/billing/refresh": {
+      post: { tags: ["Providers"], summary: "Pick up a card saved in Stripe outside the web app, such as from the provider app's browser handoff", security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Updated billing status" } } }
     },
     "/api/bookings/completion/confirm": {
       post: { tags: ["Bookings"], summary: "Customer confirms the provider's completed visit", security: [{ bearerAuth: [] }],

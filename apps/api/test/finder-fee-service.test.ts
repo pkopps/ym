@@ -306,6 +306,8 @@ test("card setup creates one Stripe customer per provider and validates the retu
   assert.deepEqual(ctx.billing.createdCustomers, [ctx.provider.id]);
   assert.equal(first.setupSessionId, second.setupSessionId);
   assert.match(decodeURIComponent(first.url), /https:\/\/yardmatch\.test\/provider\/management\?tab=billing&billing=card-saved&setup_session_id=\{CHECKOUT_SESSION_ID\}/);
+  const withSection = await ctx.service.startCardSetup(ctx.provider.id, "/provider/management#provider-billing");
+  assert.match(decodeURIComponent(withSection.url), /\/provider\/management\?billing=card-saved&setup_session_id=\{CHECKOUT_SESSION_ID\}#provider-billing/);
   for (const path of ["https://evil.test", "//evil.test", "provider", 5]) {
     await assert.rejects(ctx.service.startCardSetup(ctx.provider.id, path), /valid return page/);
   }
@@ -371,4 +373,63 @@ test("finder-fee routes are served by the marketplace controller and are not beh
     assert.equal(controller.canHandle({ method, path, body: undefined, query: new URLSearchParams(), headers: {} }), true, path);
     assert.equal(launchFeatureForApiPath(path), undefined, path);
   }
+});
+
+test("billing status lists the finder-fee tiers and flags charges that need a working card", async () => {
+  const ctx = await fixture([3_000, 3_000], { cardOnFile: false });
+  const status = await ctx.service.billingStatus(ctx.provider.id);
+  assert.deepEqual(status.finderFees, [
+    { tier: "typical", feeCents: 7_500, maxLawnSqFt: 5_000 },
+    { tier: "large", feeCents: 11_000, maxLawnSqFt: 9_000 },
+    { tier: "very-large", feeCents: 15_000 }
+  ]);
+  assert.deepEqual([status.firstCustomerFree, status.hasCardOnFile, status.chargesNeedingAttention], [true, false, 0]);
+  await useWaiver(ctx);
+  await ctx.service.recordCompletion(await createCompletedBooking(ctx.repository, ctx.provider, ctx.customers[1]!, COMPLETED_AT));
+  await ctx.service.processDue(hoursAfter(COMPLETED_AT, 72));
+  assert.equal((await ctx.service.billingStatus(ctx.provider.id)).chargesNeedingAttention, 1);
+});
+
+test("a card saved in Stripe from the provider app's browser handoff is picked up by refresh and retries waiting charges", async () => {
+  const ctx = await fixture([3_000, 3_000], { cardOnFile: false });
+  // No billing account yet: refresh is a safe no-op.
+  assert.equal((await ctx.service.refreshCard(ctx.provider.id)).hasCardOnFile, false);
+  await useWaiver(ctx);
+  const charge = (await ctx.service.recordCompletion(await createCompletedBooking(ctx.repository, ctx.provider, ctx.customers[1]!, COMPLETED_AT)))!;
+  await ctx.service.processDue(hoursAfter(COMPLETED_AT, 72));
+  assert.equal((await ctx.repository.findFinderFeeChargeById(charge.id))!.status, "retry-scheduled");
+
+  const setup = await ctx.service.startCardSetup(ctx.provider.id, "/provider/card-saved");
+  assert.match(decodeURIComponent(setup.url), /\/provider\/card-saved\?billing=card-saved/);
+  const customerId = (await ctx.repository.findProviderBillingAccount(ctx.provider.id))!.stripeCustomerId;
+  assert.equal((await ctx.service.refreshCard(ctx.provider.id)).hasCardOnFile, false, "nothing saved in Stripe yet");
+  ctx.billing.cardsSavedInStripe.set(customerId, { paymentMethodId: "pm_from_phone", brand: "mastercard", last4: "4444", expMonth: 3, expYear: 2031 });
+  const refreshed = await ctx.service.refreshCard(ctx.provider.id);
+  assert.deepEqual([refreshed.hasCardOnFile, refreshed.card?.brand, refreshed.card?.last4], [true, "mastercard", "4444"]);
+  await ctx.service.processDue(new Date(Date.now() + 1000).toISOString());
+  assert.equal((await ctx.repository.findFinderFeeChargeById(charge.id))!.status, "paid");
+  assert.equal(ctx.billing.chargeCalls.at(-1)!.paymentMethodId, "pm_from_phone");
+});
+
+test("provider retention counts relationships whose finder fee was billed or waived under the new policy", async () => {
+  const ctx = await fixture([3_000, 3_000, 3_000]);
+  const platform = new MarketplacePlatformService(ctx.repository, new DataEngineeringLogger(), undefined, undefined, undefined, undefined, ctx.billing);
+  const recent = new Date(Date.now() - 100 * 60 * 60 * 1000).toISOString();
+  const pending = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  await ctx.service.recordCompletion(await createCompletedBooking(ctx.repository, ctx.provider, ctx.customers[0]!, recent));
+  await ctx.service.recordCompletion(await createCompletedBooking(ctx.repository, ctx.provider, ctx.customers[1]!, recent));
+  await createCompletedBooking(ctx.repository, ctx.provider, ctx.customers[1]!, pending);
+  await ctx.service.recordCompletion(await createCompletedBooking(ctx.repository, ctx.provider, ctx.customers[2]!, pending));
+  await ctx.service.processDue();
+
+  const program = (await platform.getProviderStaffingOverview(ctx.provider.id)).retentionProgram;
+  assert.equal(program.policyVersion, "2026-10-finder-fee-v1");
+  assert.equal(program.completedJobFeeCents, 0);
+  assert.deepEqual(program.finderFees.map(row => row.feeCents), [7_500, 11_000, 15_000]);
+  const byCustomer = new Map(program.relationships.map(row => [row.customerId, row]));
+  assert.deepEqual([byCustomer.get(ctx.customers[0]!.id)!.finderFeeRecorded, byCustomer.get(ctx.customers[0]!.id)!.status], [true, "eligible-for-retention"]);
+  assert.deepEqual([byCustomer.get(ctx.customers[1]!.id)!.finderFeeRecorded, byCustomer.get(ctx.customers[1]!.id)!.status], [true, "repeat-customer"]);
+  assert.deepEqual([byCustomer.get(ctx.customers[2]!.id)!.finderFeeRecorded, byCustomer.get(ctx.customers[2]!.id)!.status], [false, "awaiting-first-settlement"]);
+  assert.match(byCustomer.get(ctx.customers[2]!.id)!.reason, /has not been billed yet/);
+  assert.deepEqual([program.acquiredCustomerCount, program.eligibleCustomerCount, program.repeatCustomerCount], [2, 2, 1]);
 });

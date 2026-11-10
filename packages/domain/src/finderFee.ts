@@ -160,3 +160,22 @@ export function describeFinderFeeBandMapping(
     return { lawnSizeBandId: band.id, label: band.label, tier: resolution.tier, feeCents: resolution.feeCents };
   });
 }
+
+export interface FinderFeeTierSummary {
+  tier: FinderFeePropertySizeTier;
+  feeCents: number;
+  /** Largest lawn in this tier, in square feet; undefined for the open-ended top tier. */
+  maxLawnSqFt?: number;
+}
+
+/** The published tiers in ascending order, for provider-facing billing and retention summaries. */
+export function summarizeFinderFeeTiers(
+  policy: FinderFeeEconomicsPolicy = ACTIVE_FINDER_FEE_ECONOMICS_POLICY
+): FinderFeeTierSummary[] {
+  return policy.tiers.map((definition) => {
+    const bands = LAWN_SIZE_BANDS.filter((band) => definition.lawnSizeBandIds.includes(band.id));
+    const openEnded = bands.some((band) => band.maxSqFtInclusive === undefined);
+    const maxLawnSqFt = openEnded ? undefined : Math.max(...bands.map((band) => band.maxSqFtInclusive ?? 0));
+    return { tier: definition.tier, feeCents: definition.feeCents, ...(maxLawnSqFt === undefined ? {} : { maxLawnSqFt }) };
+  });
+}

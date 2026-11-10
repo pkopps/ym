@@ -37,6 +37,8 @@ export interface ProviderBillingGateway {
     cancelUrl: string;
   }): Promise<{ url: string; setupSessionId: string }>;
   retrieveCardSetup(input: { setupSessionId: string; customerId: string }): Promise<SavedProviderCard>;
+  /** The customer's default card, or its newest card made default; undefined when none is saved. */
+  findSavedCard(customerId: string): Promise<SavedProviderCard | undefined>;
   chargeProviderFee(input: {
     customerId: string;
     paymentMethodId: string;
@@ -46,6 +48,16 @@ export interface ProviderBillingGateway {
     description: string;
     metadata: Record<string, string>;
   }): Promise<ProviderFeeChargeOutcome>;
+}
+
+function toSavedCard(paymentMethod: Stripe.PaymentMethod): SavedProviderCard {
+  return {
+    paymentMethodId: paymentMethod.id,
+    brand: paymentMethod.card?.brand,
+    last4: paymentMethod.card?.last4,
+    expMonth: paymentMethod.card?.exp_month,
+    expYear: paymentMethod.card?.exp_year
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -147,13 +159,31 @@ export class StripeProviderBillingService implements ProviderBillingGateway {
       }),
       "Card setup did not respond in time. Refresh and try again."
     );
-    return {
-      paymentMethodId: paymentMethod.id,
-      brand: paymentMethod.card?.brand,
-      last4: paymentMethod.card?.last4,
-      expMonth: paymentMethod.card?.exp_month,
-      expYear: paymentMethod.card?.exp_year
-    };
+    return toSavedCard(paymentMethod);
+  }
+
+  public async findSavedCard(customerId: string): Promise<SavedProviderCard | undefined> {
+    const stripe = this.client();
+    const customer = await runStripeRequest(
+      () => stripe.customers.retrieve(customerId, { expand: ["invoice_settings.default_payment_method"] }),
+      "Card billing did not respond in time. Refresh and try again."
+    );
+    if (customer.deleted) return undefined;
+    const current = customer.invoice_settings?.default_payment_method;
+    if (current && typeof current !== "string" && current.type === "card") {
+      return toSavedCard(current);
+    }
+    const cards = await runStripeRequest(
+      () => stripe.customers.listPaymentMethods(customerId, { type: "card", limit: 1 }),
+      "Card billing did not respond in time. Refresh and try again."
+    );
+    const newest = cards.data[0];
+    if (!newest) return undefined;
+    await runStripeRequest(
+      () => stripe.customers.update(customerId, { invoice_settings: { default_payment_method: newest.id } }),
+      "Card billing did not respond in time. Refresh and try again."
+    );
+    return toSavedCard(newest);
   }
 
   public async chargeProviderFee(input: {

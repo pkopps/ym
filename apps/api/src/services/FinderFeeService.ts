@@ -5,6 +5,7 @@ import type {
   FinderFeeChargeRecord,
   FinderFeeChargeStatus,
   OpsFinderFeeExceptionItem,
+  ProviderBillingAccountRecord,
   ProviderBillingStatusResponse,
   StartProviderCardSetupResponse
 } from "@yardmatch/contracts";
@@ -15,12 +16,13 @@ import {
   calculateFinderFee,
   evaluateFinderFeeTrigger,
   resolveFinderFeeWindowEnd,
+  summarizeFinderFeeTiers,
   type FinderFeeEconomicsPolicy
 } from "@yardmatch/domain";
 import { HttpError } from "../http";
 import { FinderFeeRelationshipConflictError } from "../repositories/finderFeeRecords";
 import type { MarketplaceRepository } from "../repositories/MarketplaceRepository";
-import type { ProviderBillingGateway, ProviderFeeChargeOutcome } from "./StripeProviderBillingService";
+import type { ProviderBillingGateway, ProviderFeeChargeOutcome, SavedProviderCard } from "./StripeProviderBillingService";
 
 export const FINDER_FEE_DISPUTE_WINDOW_ENV_KEY = "FINDER_FEE_DISPUTE_WINDOW_HOURS";
 /** Declined attempts before the charge waits for ops or a new card. */
@@ -431,14 +433,34 @@ export class FinderFeeService {
   }
 
   public async billingStatus(providerId: string): Promise<ProviderBillingStatusResponse> {
-    const account = await this.repository.findProviderBillingAccount(providerId);
+    const [account, waiting] = await Promise.all([
+      this.repository.findProviderBillingAccount(providerId),
+      this.repository.listFinderFeeCharges({ providerId, statuses: ["retry-scheduled", "failed"] })
+    ]);
     return {
       billingConfigured: this.billing.isConfigured(),
       hasCardOnFile: Boolean(account?.defaultPaymentMethodId),
       ...(account?.defaultPaymentMethodId
         ? { card: { brand: account.cardBrand, last4: account.cardLast4, expMonth: account.cardExpMonth, expYear: account.cardExpYear } }
-        : {})
+        : {}),
+      finderFees: summarizeFinderFeeTiers(this.policy),
+      firstCustomerFree: this.policy.firstRelationshipPerProviderWaived,
+      chargesNeedingAttention: waiting.filter(row => row.attemptCount > 0).length
     };
+  }
+
+  /**
+   * Picks up a card saved in Stripe without a setup-session reference, for example when
+   * the provider app opened setup in the phone's browser.
+   */
+  public async refreshCard(providerId: string): Promise<ProviderBillingStatusResponse> {
+    const account = await this.repository.findProviderBillingAccount(providerId);
+    if (!account || !this.billing.isConfigured()) return this.billingStatus(providerId);
+    const card = await this.billing.findSavedCard(account.stripeCustomerId);
+    if (card && card.paymentMethodId !== account.defaultPaymentMethodId) {
+      await this.saveCard(providerId, account, card);
+    }
+    return this.billingStatus(providerId);
   }
 
   public async startCardSetup(providerId: string, returnPath: unknown): Promise<StartProviderCardSetupResponse> {
@@ -458,12 +480,14 @@ export class FinderFeeService {
       const now = new Date().toISOString();
       return repository.upsertProviderBillingAccount({ providerId, stripeCustomerId: customerId, createdAt: now, updatedAt: now });
     });
-    const separator = path.includes("?") ? "&" : "?";
+    const [beforeHash, hash] = path.split("#", 2);
+    const separator = beforeHash.includes("?") ? "&" : "?";
+    const fragment = hash ? `#${hash}` : "";
     return this.billing.createCardSetupSession({
       providerId,
       customerId: account.stripeCustomerId,
-      successUrl: `${this.appBaseUrl}${path}${separator}billing=card-saved&setup_session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${this.appBaseUrl}${path}${separator}billing=card-cancelled`
+      successUrl: `${this.appBaseUrl}${beforeHash}${separator}billing=card-saved&setup_session_id={CHECKOUT_SESSION_ID}${fragment}`,
+      cancelUrl: `${this.appBaseUrl}${beforeHash}${separator}billing=card-cancelled${fragment}`
     });
   }
 
@@ -474,6 +498,11 @@ export class FinderFeeService {
     const account = await this.repository.findProviderBillingAccount(providerId);
     if (!account) throw new HttpError(409, "Start card setup first.");
     const card = await this.billing.retrieveCardSetup({ setupSessionId, customerId: account.stripeCustomerId });
+    await this.saveCard(providerId, account, card);
+    return this.billingStatus(providerId);
+  }
+
+  private async saveCard(providerId: string, account: ProviderBillingAccountRecord, card: SavedProviderCard): Promise<void> {
     const now = new Date().toISOString();
     await this.lock(providerId, async repository => {
       await repository.upsertProviderBillingAccount({
@@ -490,6 +519,5 @@ export class FinderFeeService {
         await repository.updateFinderFeeCharge(charge.id, { status: "retry-scheduled", nextAttemptAt: now, updatedAt: now });
       }
     });
-    return this.billingStatus(providerId);
   }
 }

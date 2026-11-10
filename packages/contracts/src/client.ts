@@ -1101,6 +1101,11 @@ export class MarketplaceApiClient {
     return this.postJson(ApiRoutes.providerBillingCardSetupComplete, payload);
   }
 
+  /** Picks up a card saved in Stripe, for example after setup finished in a browser outside the app. */
+  public refreshProviderBilling(): Promise<ProviderBillingStatusResponse> {
+    return this.postJson(ApiRoutes.providerBillingRefresh, {});
+  }
+
   public confirmBookingCompletion(payload: ConfirmBookingCompletionRequest): Promise<ConfirmBookingCompletionResponse> {
     return this.postJson(ApiRoutes.bookingCompletionConfirm, payload);
   }

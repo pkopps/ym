@@ -156,6 +156,7 @@ export class ApiRoutes {
   public static readonly providerBilling = "/api/providers/billing";
   public static readonly providerBillingCardSetup = "/api/providers/billing/card-setup";
   public static readonly providerBillingCardSetupComplete = "/api/providers/billing/card-setup/complete";
+  public static readonly providerBillingRefresh = "/api/providers/billing/refresh";
   public static readonly bookingCompletionConfirm = "/api/bookings/completion/confirm";
   public static readonly opsRefundOverride = "/api/support/ops/refund-override";
   public static readonly opsBookingIntervention = "/api/support/ops/bookings/intervene";
