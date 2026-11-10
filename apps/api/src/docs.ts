@@ -1130,6 +1130,28 @@ export const apiSpec = {
         requestBody: { required: true, content: { "application/json": { example: { prices: [{ postalCode: "08005", category: "lawn-mowing", startingPriceCents: 5000 }] } } } },
         responses: { "200": { description: "Saved pricing overview" }, "400": { description: "Invalid, unsupported or below-minimum prices" }, "409": { description: "ZIP minimum is not configured" } } }
     },
+    "/api/providers/billing": {
+      get: { tags: ["Providers"], summary: "Read whether the business has a card on file for YardMatch finder fees", security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Billing availability and the saved card's brand, last four digits and expiry" } } }
+    },
+    "/api/providers/billing/card-setup": {
+      post: { tags: ["Providers"], summary: "Start Stripe-hosted card setup for finder-fee billing", security: [{ bearerAuth: [] }],
+        description: "Creates the business's Stripe Customer once, then returns a Stripe Checkout setup-mode URL. This is separate from Connect payouts and YardMatch-collected customer payments.",
+        requestBody: { required: false, content: { "application/json": { example: { returnPath: "/provider/management" } } } },
+        responses: { "200": { description: "Hosted setup URL and setup session id" }, "400": { description: "Return path must be an app path" }, "503": { description: "Card billing is not configured" } } }
+    },
+    "/api/providers/billing/card-setup/complete": {
+      post: { tags: ["Providers"], summary: "Save the card from a finished setup session as the default card for finder fees", security: [{ bearerAuth: [] }],
+        description: "Also gives any finder-fee charge waiting on a card another attempt.",
+        requestBody: { required: true, content: { "application/json": { example: { setupSessionId: "cs_test_123" } } } },
+        responses: { "200": { description: "Updated billing status" }, "403": { description: "Setup session belongs to another business" }, "409": { description: "Setup not finished or not started" } } }
+    },
+    "/api/bookings/completion/confirm": {
+      post: { tags: ["Bookings"], summary: "Customer confirms the provider's completed visit", security: [{ bearerAuth: [] }],
+        description: "Confirmation makes the relationship's one-time finder fee billable before the dispute window (FINDER_FEE_DISPUTE_WINDOW_HOURS, default 72) closes. Idempotent.",
+        requestBody: { required: true, content: { "application/json": { example: { bookingId: "booking-id" } } } },
+        responses: { "200": { description: "Confirmation time" }, "404": { description: "Booking not found for this customer" }, "409": { description: "Visit not completed yet, or it has an open dispute" } } }
+    },
     "/api/ops/pricing/minimums": {
       get: { tags: ["Ops"], summary: "Admin-only ZIP minimums with audit history", security: [{ bearerAuth: [] }],
         parameters: [{ name: "postalCode", in: "query", required: true, schema: { type: "string" } }], responses: { "200": { description: "ZIP minimums and complete change history" }, "403": { description: "Admin role required" } } },

@@ -1,4 +1,5 @@
-import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeRecord, ProviderBillingAccountRecord, ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import { FinderFeeRelationshipConflictError, findFinderFeeUniqueConflict, matchesFinderFeeQuery, type FinderFeeChargeQuery } from "./finderFeeRecords";
 import { summarizeNotificationHealth } from "./notificationHealth";
 import { buildProviderClientProperties } from "../services/providerClients";
 import { searchBounds, bookingMetrics, type ProviderSearchQuery } from "./searchQueries";
@@ -59,6 +60,47 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   public async saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord> {
     this.zipServiceMinimums.set(`${record.postalCode}:${record.category}`, structuredClone(record));
     return structuredClone(record);
+  }
+
+  private readonly providerBillingAccounts = new Map<string, ProviderBillingAccountRecord>();
+  private readonly finderFeeCharges: FinderFeeChargeRecord[] = [];
+
+  public async findProviderBillingAccount(providerId: string): Promise<ProviderBillingAccountRecord | undefined> {
+    const account = this.providerBillingAccounts.get(providerId);
+    return account ? structuredClone(account) : undefined;
+  }
+  public async upsertProviderBillingAccount(account: ProviderBillingAccountRecord): Promise<ProviderBillingAccountRecord> {
+    const existing = this.providerBillingAccounts.get(account.providerId);
+    const saved = { ...account, createdAt: existing?.createdAt ?? account.createdAt };
+    this.providerBillingAccounts.set(account.providerId, structuredClone(saved));
+    return structuredClone(saved);
+  }
+  public async findFinderFeeChargeById(chargeId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const record = this.finderFeeCharges.find(row => row.id === chargeId);
+    return record ? structuredClone(record) : undefined;
+  }
+  public async findFinderFeeChargeByRelationship(customerId: string, providerId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const record = this.finderFeeCharges.find(row => row.customerId === customerId && row.providerId === providerId);
+    return record ? structuredClone(record) : undefined;
+  }
+  public async createFinderFeeCharge(record: FinderFeeChargeRecord): Promise<FinderFeeChargeRecord> {
+    // Mirrors the Postgres unique constraints; no await between the check and the insert.
+    const conflict = findFinderFeeUniqueConflict(this.finderFeeCharges, record);
+    if (conflict) throw new FinderFeeRelationshipConflictError(`Finder-fee ${conflict} is already recorded.`);
+    this.finderFeeCharges.push(structuredClone(record));
+    return structuredClone(record);
+  }
+  public async updateFinderFeeCharge(chargeId: string, updates: Partial<FinderFeeChargeRecord>): Promise<FinderFeeChargeRecord | undefined> {
+    const index = this.finderFeeCharges.findIndex(row => row.id === chargeId);
+    if (index < 0) return undefined;
+    const next = { ...this.finderFeeCharges[index], ...structuredClone(updates), id: chargeId };
+    const conflict = findFinderFeeUniqueConflict(this.finderFeeCharges, next);
+    if (conflict) throw new FinderFeeRelationshipConflictError(`Finder-fee ${conflict} is already recorded.`);
+    this.finderFeeCharges[index] = next;
+    return structuredClone(next);
+  }
+  public async listFinderFeeCharges(query: FinderFeeChargeQuery): Promise<FinderFeeChargeRecord[]> {
+    return structuredClone(this.finderFeeCharges.filter(row => matchesFinderFeeQuery(row, query)));
   }
 
   private readonly customerReferrals: CustomerReferralRecord[] = [];

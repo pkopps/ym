@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: launch-scope chunk B (finder-fee economics policy)
+
+- Updated: November 10, 2026 (UTC).
+- Branch and commit: `claude/finder-fee-economics-policy-5sa63d`, based on `bed4e06`; see the PR for the implementation commit.
+- Completed: economics policy `2026-10-finder-fee-v1` in `packages/domain` (one-time finder fee $75/$110/$150 mapped onto the booking flow's four lawn-size bands, no per-job fee, provider's first relationship waived, completion trigger with a configurable dispute window, default 72 hours). The 2026-07 settlement policy is unchanged, with a version lookup so stored settlements recompute exactly. `FinderFeeService` records the relationship when a provider (or ops) marks a job complete, waits for customer confirmation or window expiry, is blocked by open disputes and unresolved service complaints, voids if the qualifying job is cancelled or refunded, and charges the provider's saved card. Minimal Stripe card-on-file billing (`StripeProviderBillingService`: Customer, Checkout setup session, saved default card, off-session PaymentIntent) behind `ProviderBillingGateway`. Prisma tables `provider_billing_accounts` and `finder_fee_charges` with unique (customer, provider), unique booking, unique waived-provider and unique payment-intent constraints plus CHECK constraints. Declines retry at 1h/6h/24h/48h with a new idempotency key per attempt; unknown results retry with the same key; five declines stop and wait for ops or a new card. Failures show in the ops financial summary API and a new Ops → Finder fees section that renders with payments off.
+- In progress: none.
+- Remaining: provider web/mobile UI to add a card (API only today), customer "confirm visit" button (API only; window expiry covers it), and replacing the old $30/$6.99 numbers in the provider retention summary API with the new tiers.
+- Blockers: none. No live Stripe key was used; Stripe calls are covered by a fake gateway.
+- Changed workflows: provider job completion now starts a finder-fee record; new provider billing endpoints and a customer completion-confirm endpoint; Ops gets a Finder fees section.
+- Validation: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, `npm run i18n:validate` passed. `npm run test:api`: 417 passed, 16 database-only skipped, 0 failed. `npm run test:api:smoke` passed. `npm run test:api:postgres` against a local PostgreSQL 16 migrated from empty with `npm run prisma:deploy`: 16 of 16 passed; `prisma migrate diff` showed no drift. Not run: `npm run test:web:smoke`, browser screenshots of the ops section.
+- Known defects: none found.
+- Screenshot paths: none (API and internal ops change).
+- Recommended next task: provider card setup UI on web and in the provider app, then the customer confirm-visit action.
+
 ## Current checkpoint: single web login page
 
 - Updated: November 9, 2026 (UTC).

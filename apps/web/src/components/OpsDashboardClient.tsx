@@ -13,6 +13,7 @@ import { NotificationOpsBoard } from "./NotificationOpsBoard";
 import { OpsAutomationBoard } from "./OpsAutomationBoard";
 import { OpsAccountManagementBoard } from "./OpsAccountManagementBoard";
 import { OpsFinancialExceptionBoard } from "./OpsFinancialExceptionBoard";
+import { OpsFinderFeeExceptionBoard } from "./OpsFinderFeeExceptionBoard";
 import { OpsLaunchLeadBoard } from "./OpsLaunchLeadBoard";
 import { OpsLaunchPlaybook } from "./OpsLaunchPlaybook";
 import { OpsPayoutRunBoard } from "./OpsPayoutRunBoard";
@@ -259,7 +260,7 @@ export function OpsDashboardClient() {
       </section>
 
       <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
-        {["support", "providers", "leads", ...(payments ? ["payouts"] : []), "reports", "administration"].map(key => <a key={key} href={`#ops-${key}`} data-analytics-action={`ops-${key}`}>{i18n.t(`workspace.${key}` as Parameters<typeof i18n.t>[0])}</a>)}
+        {["support", "providers", "leads", "billing", ...(payments ? ["payouts"] : []), "reports", "administration"].map(key => <a key={key} href={`#ops-${key}`} data-analytics-action={`ops-${key}`}>{i18n.t(`workspace.${key}` as Parameters<typeof i18n.t>[0])}</a>)}
       </nav>
       <section className="grid-three">
         <article className="card"><h2>{overview.overdueLaunchLeads}</h2><a href="#ops-leads">{i18n.t("workspace.overdue_leads")}</a></article>
@@ -269,6 +270,7 @@ export function OpsDashboardClient() {
       <WorkspaceSection id="ops-support" title={i18n.t("workspace.support")} defaultOpen><OpsSupportQueue /></WorkspaceSection>
       <WorkspaceSection id="ops-providers" title={i18n.t("workspace.providers")}><OpsProviderVerificationQueue /></WorkspaceSection>
       <WorkspaceSection id="ops-leads" title={i18n.t("workspace.leads")}><OpsLaunchLeadBoard /></WorkspaceSection>
+      <WorkspaceSection id="ops-billing" title={i18n.t("workspace.billing")}><OpsFinderFeeExceptionBoard /></WorkspaceSection>
       {payments ? <WorkspaceSection id="ops-payouts" title={i18n.t("workspace.payouts")}><OpsPayoutRunBoard /><OpsFinancialExceptionBoard /></WorkspaceSection> : null}
       <WorkspaceSection id="ops-reviews" title={i18n.t("workspace.reviews")}><OpsReviewResponseBoard initialItems={overview.recentReviewResponses} /></WorkspaceSection>
       <WorkspaceSection id="ops-reports" title={i18n.t("workspace.reports")}><ProductAnalyticsBoard />

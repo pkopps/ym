@@ -1,3 +1,11 @@
+import type {
+  CompleteProviderCardSetupRequest,
+  ConfirmBookingCompletionRequest,
+  ConfirmBookingCompletionResponse,
+  ProviderBillingStatusResponse,
+  StartProviderCardSetupRequest,
+  StartProviderCardSetupResponse
+} from "./finderFees";
 import type { BookingRecoveryOptions, RecoverBookingRequest, ReviewBookingAddressRequest, UpdateBookingAddressResponse, ManageProviderAvailabilityRequest } from "./types";
 import type { ZipServiceMinimum, ZipServiceMinimumRecord, UpdateZipServiceMinimumRequest, ProviderServicePrice, ProviderPricingOverview } from "./pricing";
 import {
@@ -1079,6 +1087,22 @@ export class MarketplaceApiClient {
 
   public getOpsSupportSummary(): Promise<OpsFinancialExceptionSummaryResponse> {
     return this.getJson(ApiRoutes.opsSupportSummary);
+  }
+
+  public getProviderBilling(): Promise<ProviderBillingStatusResponse> {
+    return this.getJson(ApiRoutes.providerBilling);
+  }
+
+  public startProviderCardSetup(payload: StartProviderCardSetupRequest = {}): Promise<StartProviderCardSetupResponse> {
+    return this.postJson(ApiRoutes.providerBillingCardSetup, payload);
+  }
+
+  public completeProviderCardSetup(payload: CompleteProviderCardSetupRequest): Promise<ProviderBillingStatusResponse> {
+    return this.postJson(ApiRoutes.providerBillingCardSetupComplete, payload);
+  }
+
+  public confirmBookingCompletion(payload: ConfirmBookingCompletionRequest): Promise<ConfirmBookingCompletionResponse> {
+    return this.postJson(ApiRoutes.bookingCompletionConfirm, payload);
   }
 
   public createOpsRefundOverride(payload: CreateOpsRefundOverrideRequest): Promise<PaymentRecord> {

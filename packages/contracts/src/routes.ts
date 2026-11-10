@@ -153,6 +153,10 @@ export class ApiRoutes {
   public static readonly opsSupportTicketsEscalateStale =
     "/api/support/ops/tickets/escalate-stale";
   public static readonly opsSupportSummary = "/api/support/ops/summary";
+  public static readonly providerBilling = "/api/providers/billing";
+  public static readonly providerBillingCardSetup = "/api/providers/billing/card-setup";
+  public static readonly providerBillingCardSetupComplete = "/api/providers/billing/card-setup/complete";
+  public static readonly bookingCompletionConfirm = "/api/bookings/completion/confirm";
   public static readonly opsRefundOverride = "/api/support/ops/refund-override";
   public static readonly opsBookingIntervention = "/api/support/ops/bookings/intervene";
   public static readonly opsBookingEvidenceReview = "/api/support/ops/bookings/evidence/review";

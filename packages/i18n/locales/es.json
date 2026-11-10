@@ -3981,5 +3981,18 @@
   "pricing.history": "Historial de cambios de precios",
   "pricing.services": "Servicios que ofreces",
   "pricing.choose_service": "Elige al menos un servicio.",
-  "pricing.review_changed": "El precio de este proveedor es {amount}. Revisa el total actualizado y vuelve a seleccionar la reserva para confirmar."
+  "pricing.review_changed": "El precio de este proveedor es {amount}. Revisa el total actualizado y vuelve a seleccionar la reserva para confirmar.",
+  "workspace.billing": "Tarifas de captación",
+  "ops_finder_fees.title": "Cobros de tarifas de captación que requieren atención",
+  "ops_finder_fees.description": "Cobros a la tarjeta registrada del proveedor que fueron rechazados, están pendientes de reintento o se detuvieron a mitad del intento.",
+  "ops_finder_fees.empty": "Ningún cobro de tarifa de captación requiere atención.",
+  "ops_finder_fees.load_error": "No se pudieron cargar los cobros de tarifas de captación. Actualiza para intentarlo de nuevo.",
+  "ops_finder_fees.no_reason": "No se registró el motivo del fallo.",
+  "ops_finder_fees.attempts": "{count, plural, one {# intento rechazado} other {# intentos rechazados}}",
+  "ops_finder_fees.last_attempt": "Último intento",
+  "ops_finder_fees.next_attempt": "Próximo intento",
+  "ops_finder_fees.booking": "Reserva",
+  "ops_finder_fees.status.retry-scheduled": "Reintentando",
+  "ops_finder_fees.status.failed": "Requiere seguimiento",
+  "ops_finder_fees.status.charging": "Intento detenido"
 }

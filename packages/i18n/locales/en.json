@@ -3981,5 +3981,18 @@
   "pricing.history": "Price change history",
   "pricing.services": "Services you provide",
   "pricing.choose_service": "Choose at least one service.",
-  "pricing.review_changed": "This provider’s price is {amount}. Review the updated total, then select the booking action again to confirm."
+  "pricing.review_changed": "This provider’s price is {amount}. Review the updated total, then select the booking action again to confirm.",
+  "workspace.billing": "Finder fees",
+  "ops_finder_fees.title": "Finder-fee charges needing attention",
+  "ops_finder_fees.description": "Charges to a provider's card on file that were declined, are waiting to retry, or stopped mid-attempt.",
+  "ops_finder_fees.empty": "No finder-fee charges need attention.",
+  "ops_finder_fees.load_error": "Finder-fee charges could not be loaded. Refresh to try again.",
+  "ops_finder_fees.no_reason": "No failure reason recorded.",
+  "ops_finder_fees.attempts": "{count, plural, one {# declined attempt} other {# declined attempts}}",
+  "ops_finder_fees.last_attempt": "Last attempt",
+  "ops_finder_fees.next_attempt": "Next attempt",
+  "ops_finder_fees.booking": "Booking",
+  "ops_finder_fees.status.retry-scheduled": "Retrying",
+  "ops_finder_fees.status.failed": "Needs follow-up",
+  "ops_finder_fees.status.charging": "Attempt stalled"
 }

@@ -1,5 +1,8 @@
 import type { BookingRecoveryOptions, RecoverBookingRequest, ReviewBookingAddressRequest, ManageProviderAvailabilityRequest } from "@yardmatch/contracts";
 import { ProviderPricingService } from "./ProviderPricingService";
+import { FinderFeeService } from "./FinderFeeService";
+import { StripeProviderBillingService, type ProviderBillingGateway } from "./StripeProviderBillingService";
+import type { ConfirmBookingCompletionResponse, ProviderBillingStatusResponse, StartProviderCardSetupResponse } from "@yardmatch/contracts";
 import { defaultServiceStartingPrices, type UpdateZipServiceMinimumRequest, type ProviderServicePrice } from "@yardmatch/contracts";
 import { bookingMetrics, type ProviderBookingMetrics } from "../repositories/searchQueries";
 import type { ClaimedNotificationDelivery } from "../repositories/MarketplaceRepository";
@@ -470,6 +473,7 @@ export class MarketplacePlatformService {
   private readonly appBaseUrl: string;
   private readonly apiBaseUrl: string;
   private readonly photoStorage: PhotoStorageService;
+  private readonly providerBilling: ProviderBillingGateway;
 
   public constructor(
     private readonly repository: MarketplaceRepository,
@@ -477,8 +481,10 @@ export class MarketplacePlatformService {
     stripeCheckout: PaymentCheckoutGateway = new StripeCheckoutService(),
     appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000",
     stripeConnect: StripeConnectGateway = new StripeConnectService(),
-    photoStorage?: PhotoStorageService
+    photoStorage?: PhotoStorageService,
+    providerBilling: ProviderBillingGateway = new StripeProviderBillingService()
   ) {
+    this.providerBilling = providerBilling;
     this.stripeCheckout = stripeCheckout;
     this.stripeConnect = stripeConnect;
     this.appBaseUrl = appBaseUrl;
@@ -625,6 +631,15 @@ export class MarketplacePlatformService {
     });
     return this.repository.createProvider(provider, passwordHash);
   }
+
+  private finderFees(): FinderFeeService {
+    return new FinderFeeService(this.repository, this.providerBilling, { appBaseUrl: this.appBaseUrl });
+  }
+  public getProviderBilling(providerId: string): Promise<ProviderBillingStatusResponse> { return this.finderFees().billingStatus(providerId); }
+  public startProviderCardSetup(providerId: string, returnPath: unknown): Promise<StartProviderCardSetupResponse> { return this.finderFees().startCardSetup(providerId, returnPath); }
+  public completeProviderCardSetup(providerId: string, setupSessionId: unknown): Promise<ProviderBillingStatusResponse> { return this.finderFees().completeCardSetup(providerId, setupSessionId); }
+  public confirmBookingCompletion(customerId: string, bookingId: unknown): Promise<ConfirmBookingCompletionResponse> { return this.finderFees().confirmCompletion(customerId, bookingId); }
+  public processDueFinderFees(nowIso?: string) { return this.finderFees().processDue(nowIso); }
 
   public async getPricingMinimums(postalCode: string) { return new ProviderPricingService(this.repository).minimums(postalCode); }
   public async setPricingMinimum(actorId: string, input: UpdateZipServiceMinimumRequest) { return new ProviderPricingService(this.repository).setMinimum(actorId, input); }
@@ -7075,6 +7090,7 @@ export class MarketplacePlatformService {
     if (capturedPayment) {
       await this.ensureBookingFinancialSettlement(updatedBooking, capturedPayment);
     }
+    await this.finderFees().recordCompletion(updatedBooking);
 
     const existingInvite = await this.repository.findReviewInviteByBookingId(booking.id);
     if (!existingInvite) {
@@ -14613,8 +14629,12 @@ export class MarketplacePlatformService {
       })
       .sort((left, right) => (right.reportedAt ?? "").localeCompare(left.reportedAt ?? ""));
 
+    const finderFeeExceptions = await this.finderFees().listExceptions();
+
     return {
       generatedAt: new Date().toISOString(),
+      finderFeeExceptionCount: finderFeeExceptions.length,
+      finderFeeExceptions,
       refundReviewOpenCount: refundReviews.length,
       refundedAmountLast30DaysCents: payments
         .filter(
@@ -15120,6 +15140,7 @@ export class MarketplacePlatformService {
       if (!completedBooking) {
         throw new HttpError(500, "Booking could not be completed");
       }
+      await this.finderFees().recordCompletion(completedBooking);
 
       const existingInvite = await this.repository.findReviewInviteByBookingId(booking.id);
       if (!existingInvite) {

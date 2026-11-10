@@ -67,6 +67,7 @@ model CustomerProfile {
   properties            CustomerProperty[]
   providerRelationships CustomerProviderRelationship[]
   referrals             CustomerReferral[]
+  finderFeeCharges      FinderFeeCharge[]
 
   @@map("customer_profiles")
 }
@@ -119,6 +120,8 @@ model ProviderBusinessProfile {
   credentials                  ProviderCredential[]
   connectAccount               ProviderConnectAccount?
   customerRelationships        CustomerProviderRelationship[]
+  billingAccount               ProviderBillingAccount?
+  finderFeeCharges             FinderFeeCharge[]
 
   @@index([verificationStatus, userId])
   @@index([categories], type: Gin)
@@ -202,6 +205,7 @@ model Booking {
   interventions                   Json
   addressChangeHistory            Json
   financialSettlement             BookingFinancialSettlement?
+  finderFeeCharge                 FinderFeeCharge?
 
   @@index([customerId, scheduledStartIso, id])
   @@index([providerId, scheduledStartIso, id])
@@ -821,4 +825,59 @@ model ZipServiceMinimum {
 
   @@id([postalCode, category])
   @@map("zip_service_minimums")
+}
+
+/// The provider business's Stripe Customer and saved card for YardMatch's own fees.
+/// Unrelated to Connect payouts and YardMatch-collected customer payments.
+model ProviderBillingAccount {
+  providerId              String                  @id
+  stripeCustomerId        String                  @unique
+  defaultPaymentMethodId  String?
+  cardBrand               String?
+  cardLast4               String?
+  cardExpMonth            Int?
+  cardExpYear             Int?
+  createdAt               DateTime
+  updatedAt               DateTime
+  provider                ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Restrict)
+
+  @@map("provider_billing_accounts")
+}
+
+/// One finder fee per customer-provider relationship (finder-fee economics policy).
+model FinderFeeCharge {
+  id                    String                  @id
+  customerId            String
+  providerId            String
+  /// The completed job that started the relationship.
+  bookingId             String                  @unique
+  policyVersion         String
+  tier                  String
+  lawnSizeBandId        String?
+  listFeeCents          Int
+  feeCents              Int
+  waived                Boolean
+  /// Set only on a waived relationship, so a provider can hold at most one waiver.
+  waivedProviderId      String?                 @unique
+  status                String
+  completedAt           DateTime
+  windowEndsAt          DateTime
+  customerConfirmedAt   DateTime?
+  attemptCount          Int                     @default(0)
+  nextAttemptAt         DateTime?
+  chargeLeaseExpiresAt  DateTime?
+  lastAttemptAt         DateTime?
+  lastFailureReason     String?
+  stripePaymentIntentId String?                 @unique
+  paidAt                DateTime?
+  createdAt             DateTime
+  updatedAt             DateTime
+  customer              CustomerProfile         @relation(fields: [customerId], references: [userId], onDelete: Restrict)
+  provider              ProviderBusinessProfile @relation(fields: [providerId], references: [userId], onDelete: Restrict)
+  booking               Booking                 @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+
+  @@unique([customerId, providerId])
+  @@index([status, nextAttemptAt])
+  @@index([providerId, status])
+  @@map("finder_fee_charges")
 }

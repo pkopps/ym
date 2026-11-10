@@ -1,4 +1,5 @@
-import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeRecord, ProviderBillingAccountRecord, ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import { FinderFeeRelationshipConflictError, type FinderFeeChargeQuery } from "./finderFeeRecords";
 import type { NotificationHealthSnapshot } from "./notificationHealth";
 import type { CustomerReferralRecord } from "./customerReferrals";
 import { utcTimestamp } from "./sqlTime";
@@ -56,6 +57,81 @@ import {
   CompleteProviderTransferReversalInput,
   MarketplaceRepository
 } from "./MarketplaceRepository";
+
+const optionalIso = (value: Date | null): string | undefined => value ? value.toISOString() : undefined;
+const optionalDate = (value: string | undefined): Date | null => value ? new Date(value) : null;
+
+function mapProviderBillingAccount(row: Prisma.ProviderBillingAccountGetPayload<object>): ProviderBillingAccountRecord {
+  return {
+    providerId: row.providerId,
+    stripeCustomerId: row.stripeCustomerId,
+    defaultPaymentMethodId: row.defaultPaymentMethodId ?? undefined,
+    cardBrand: row.cardBrand ?? undefined,
+    cardLast4: row.cardLast4 ?? undefined,
+    cardExpMonth: row.cardExpMonth ?? undefined,
+    cardExpYear: row.cardExpYear ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function mapFinderFeeCharge(row: Prisma.FinderFeeChargeGetPayload<object>): FinderFeeChargeRecord {
+  return {
+    id: row.id,
+    customerId: row.customerId,
+    providerId: row.providerId,
+    bookingId: row.bookingId,
+    policyVersion: row.policyVersion,
+    tier: row.tier as FinderFeeChargeRecord["tier"],
+    lawnSizeBandId: row.lawnSizeBandId ?? undefined,
+    listFeeCents: row.listFeeCents,
+    feeCents: row.feeCents,
+    waived: row.waived,
+    status: row.status as FinderFeeChargeRecord["status"],
+    completedAt: row.completedAt.toISOString(),
+    windowEndsAt: row.windowEndsAt.toISOString(),
+    customerConfirmedAt: optionalIso(row.customerConfirmedAt),
+    attemptCount: row.attemptCount,
+    nextAttemptAt: optionalIso(row.nextAttemptAt),
+    chargeLeaseExpiresAt: optionalIso(row.chargeLeaseExpiresAt),
+    lastAttemptAt: optionalIso(row.lastAttemptAt),
+    lastFailureReason: row.lastFailureReason ?? undefined,
+    stripePaymentIntentId: row.stripePaymentIntentId ?? undefined,
+    paidAt: optionalIso(row.paidAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function finderFeeChargeData(record: FinderFeeChargeRecord) {
+  return {
+    id: record.id,
+    customerId: record.customerId,
+    providerId: record.providerId,
+    bookingId: record.bookingId,
+    policyVersion: record.policyVersion,
+    tier: record.tier,
+    lawnSizeBandId: record.lawnSizeBandId ?? null,
+    listFeeCents: record.listFeeCents,
+    feeCents: record.feeCents,
+    waived: record.waived,
+    // The unique column that allows a provider at most one waived relationship.
+    waivedProviderId: record.waived ? record.providerId : null,
+    status: record.status,
+    completedAt: new Date(record.completedAt),
+    windowEndsAt: new Date(record.windowEndsAt),
+    customerConfirmedAt: optionalDate(record.customerConfirmedAt),
+    attemptCount: record.attemptCount,
+    nextAttemptAt: optionalDate(record.nextAttemptAt),
+    chargeLeaseExpiresAt: optionalDate(record.chargeLeaseExpiresAt),
+    lastAttemptAt: optionalDate(record.lastAttemptAt),
+    lastFailureReason: record.lastFailureReason ?? null,
+    stripePaymentIntentId: record.stripePaymentIntentId ?? null,
+    paidAt: optionalDate(record.paidAt),
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt)
+  };
+}
 
 function asJson(value: unknown): any {
   return value as any;
@@ -183,6 +259,73 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     const data = { ...record, history: asJson(record.history) };
     await this.prisma.zipServiceMinimum.upsert({ where: { postalCode_category: { postalCode: record.postalCode, category: record.category } }, create: data, update: data });
     return record;
+  }
+
+  public async findProviderBillingAccount(providerId: string): Promise<ProviderBillingAccountRecord | undefined> {
+    const row = await this.prisma.providerBillingAccount.findUnique({ where: { providerId } });
+    return row ? mapProviderBillingAccount(row) : undefined;
+  }
+  public async upsertProviderBillingAccount(account: ProviderBillingAccountRecord): Promise<ProviderBillingAccountRecord> {
+    const data = {
+      stripeCustomerId: account.stripeCustomerId,
+      defaultPaymentMethodId: account.defaultPaymentMethodId ?? null,
+      cardBrand: account.cardBrand ?? null,
+      cardLast4: account.cardLast4 ?? null,
+      cardExpMonth: account.cardExpMonth ?? null,
+      cardExpYear: account.cardExpYear ?? null,
+      updatedAt: new Date(account.updatedAt)
+    };
+    const row = await this.prisma.providerBillingAccount.upsert({
+      where: { providerId: account.providerId },
+      create: { ...data, providerId: account.providerId, createdAt: new Date(account.createdAt) },
+      update: data
+    });
+    return mapProviderBillingAccount(row);
+  }
+  public async findFinderFeeChargeById(chargeId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const row = await this.prisma.finderFeeCharge.findUnique({ where: { id: chargeId } });
+    return row ? mapFinderFeeCharge(row) : undefined;
+  }
+  public async findFinderFeeChargeByRelationship(customerId: string, providerId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const row = await this.prisma.finderFeeCharge.findUnique({ where: { customerId_providerId: { customerId, providerId } } });
+    return row ? mapFinderFeeCharge(row) : undefined;
+  }
+  public async createFinderFeeCharge(record: FinderFeeChargeRecord): Promise<FinderFeeChargeRecord> {
+    try {
+      const row = await this.prisma.finderFeeCharge.create({ data: finderFeeChargeData(record) });
+      return mapFinderFeeCharge(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new FinderFeeRelationshipConflictError();
+      }
+      throw error;
+    }
+  }
+  public async updateFinderFeeCharge(chargeId: string, updates: Partial<FinderFeeChargeRecord>): Promise<FinderFeeChargeRecord | undefined> {
+    const existing = await this.prisma.finderFeeCharge.findUnique({ where: { id: chargeId } });
+    if (!existing) return undefined;
+    const merged = { ...mapFinderFeeCharge(existing), ...updates, id: chargeId };
+    const data: Partial<ReturnType<typeof finderFeeChargeData>> = finderFeeChargeData(merged);
+    delete data.id;
+    delete data.createdAt;
+    try {
+      return mapFinderFeeCharge(await this.prisma.finderFeeCharge.update({ where: { id: chargeId }, data }));
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new FinderFeeRelationshipConflictError();
+      }
+      throw error;
+    }
+  }
+  public async listFinderFeeCharges(query: FinderFeeChargeQuery): Promise<FinderFeeChargeRecord[]> {
+    const rows = await this.prisma.finderFeeCharge.findMany({
+      where: {
+        ...(query.providerId ? { providerId: query.providerId } : {}),
+        ...(query.statuses ? { status: { in: query.statuses } } : {})
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    return rows.map(mapFinderFeeCharge);
   }
 
   public async createProvider(
