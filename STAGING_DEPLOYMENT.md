@@ -13,6 +13,7 @@ Phase 1 prepares one persistent test environment: the Next.js website on Vercel,
 ## 1. Create The Vercel Web Project And Blob Store
 
 1. Import this repository into Vercel and select `apps/web` as the project Root Directory. Keep source-file access outside that directory enabled so workspace packages remain available.
+   The build command comes from `apps/web/vercel.json` and overrides the dashboard setting. It generates the Prisma client and builds the workspace packages with `npm run typecheck` before `npm run build:web`, because Vercel's npm install skips the Prisma install scripts and the packages resolve to their built `dist/` output.
 2. Create a private Blob store and connect it to the web project. Copy its `BLOB_READ_WRITE_TOKEN` into the Render API secrets; do not expose it as a `NEXT_PUBLIC_*` value.
 3. Set the Vercel Preview and staging/Production environment values:
    - `YARDMATCH_ENV=staging`

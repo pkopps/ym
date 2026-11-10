@@ -14,6 +14,20 @@
 - Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-billing-{no-card,card-saved}-{desktop,mobile}.png` and `provider-card-saved-{desktop,mobile}.png` (1440x900 and 390x844), written by the billing spec. Git-ignored, local evidence only.
 - Recommended next task: run card setup and one off-session finder-fee charge against Stripe test mode in staging.
 
+## Current checkpoint: Vercel staging build and login follow-ups
+
+- Updated: November 10, 2026 (UTC).
+- Branch and commit: `claude/launch-scope-chunk-c-copy-9j6dml`, restarted from `bed4e06`; see the PR for the commit.
+- Completed: `apps/web/vercel.json` sets the Vercel build command to `cd ../.. && npm run prisma:generate && npm run typecheck && npm run build:web`, replacing the dashboard command `cd ../.. && npm run build:api && npm run build:web` that has failed every staging build. `STAGING_DEPLOYMENT.md` explains it. `PAGE_FLOW.md`, its login screenshots and the generated flow diagrams now show the single `/login` page and the staff page; the three role-login screenshots are gone. Removed `hedge-trimmer.png` and `string-trimmer.png`, which only the old login illustration used.
+- In progress: none.
+- Remaining: the PR's own Vercel preview is the first real test of the new build command. The other `PAGE_FLOW.md` screenshots predate recent work (for example `/crew`) and were not retaken. `gutter-cleaning.png` and `mulch-refresh.png` were already unreferenced before the login change and were kept.
+- Blockers: none.
+- Changed workflows: none for users. Staging builds no longer compile `apps/api` separately; `npm run typecheck` (`tsc -b`) type-checks it and builds the workspace packages the web app imports.
+- Validation: reproduced the Vercel failure locally from a clean state (no package `dist/`, no generated Prisma client): the old command failed with 341 TypeScript errors (`TS6305` and implicit `any`), the new command built in 53 seconds with none. `npm run lint` and `npm run typecheck` passed; `tests/web/smoke.spec.ts` and `tests/web/login.spec.ts` passed (15).
+- Known defects: none found.
+- Screenshot paths: `docs/page-flow-screenshots/{login,login-ops}.png` (1440x1200) and `docs/page-flow-diagrams/signup-login-flow.png`.
+- Recommended next task: confirm the staging deployment goes green after merge, then run the hosted acceptance workflow.
+
 ## Current checkpoint: single web login page
 
 - Updated: November 9, 2026 (UTC).
