@@ -1,4 +1,5 @@
-import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeRecord, ProviderBillingAccountRecord, ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeQuery } from "./finderFeeRecords";
 import type { NotificationHealthSnapshot } from "./notificationHealth";
 import type { CustomerReferralRecord } from "./customerReferrals";
 import {
@@ -137,6 +138,14 @@ export type ClaimedNotificationDelivery = NotificationDeliveryRecord & { leaseTo
 export interface MarketplaceRepository {
   listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]>;
   saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord>;
+  findProviderBillingAccount(providerId: string): Promise<ProviderBillingAccountRecord | undefined>;
+  upsertProviderBillingAccount(account: ProviderBillingAccountRecord): Promise<ProviderBillingAccountRecord>;
+  findFinderFeeChargeById(chargeId: string): Promise<FinderFeeChargeRecord | undefined>;
+  findFinderFeeChargeByRelationship(customerId: string, providerId: string): Promise<FinderFeeChargeRecord | undefined>;
+  /** Throws FinderFeeRelationshipConflictError when a unique constraint already holds the relationship. */
+  createFinderFeeCharge(record: FinderFeeChargeRecord): Promise<FinderFeeChargeRecord>;
+  updateFinderFeeCharge(chargeId: string, updates: Partial<FinderFeeChargeRecord>): Promise<FinderFeeChargeRecord | undefined>;
+  listFinderFeeCharges(query: FinderFeeChargeQuery): Promise<FinderFeeChargeRecord[]>;
   /** Serialize a bounded operation across API instances; database writes use one transaction. */
   withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T>;
   getSecurityState(key: string): Promise<Record<string, unknown> | undefined>;

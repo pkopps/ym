@@ -1,3 +1,4 @@
+import type { FinderFeeTierSummary, OpsFinderFeeExceptionItem } from "./finderFees";
 import type { ProviderServicePrice } from "./pricing";
 export type MarketplaceRole = "customer" | "provider" | "crew-member" | "ops";
 export type AuthFlowMode = "signup" | "login";
@@ -1045,7 +1046,9 @@ export interface ProviderRetentionRelationshipSummary {
 }
 
 export interface ProviderRetentionProgramSummary {
-  finderFeeCents: number;
+  /** Economics policy new relationships are billed under. */
+  policyVersion: string;
+  finderFees: FinderFeeTierSummary[];
   completedJobFeeCents: number;
   noAdditionalRetentionFee: true;
   promise: string;
@@ -2441,6 +2444,9 @@ export interface OpsFinancialExceptionSummaryResponse {
   payoutHolds: OpsPayoutHoldSummaryItem[];
   refundReviews: OpsRefundSummaryItem[];
   activeExceptions: OpsBookingExceptionSummaryItem[];
+  /** Finder-fee charges that failed, are retrying, or have a stuck attempt. */
+  finderFeeExceptionCount: number;
+  finderFeeExceptions: OpsFinderFeeExceptionItem[];
 }
 
 export interface ProviderVerificationQueueItem {

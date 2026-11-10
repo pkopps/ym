@@ -1,4 +1,5 @@
 import type { RecoverBookingRequest, ReviewBookingAddressRequest, ManageProviderAvailabilityRequest } from "@yardmatch/contracts";
+import { ApiRoutes, type CompleteProviderCardSetupRequest, type ConfirmBookingCompletionRequest, type StartProviderCardSetupRequest } from "@yardmatch/contracts";
 import { requireOpsAdminAccess } from "../controller-auth";
 import type { ProviderServicePrice, UpdateZipServiceMinimumRequest } from "@yardmatch/contracts";
 import {
@@ -87,6 +88,11 @@ export class MarketplaceController implements ApiController {
   public canHandle(context: RequestContext): boolean {
     return (
       (["GET", "POST"].includes(context.method) && context.path === "/api/providers/pricing") ||
+      (context.method === "GET" && context.path === ApiRoutes.providerBilling) ||
+      (context.method === "POST" && context.path === ApiRoutes.providerBillingCardSetup) ||
+      (context.method === "POST" && context.path === ApiRoutes.providerBillingCardSetupComplete) ||
+      (context.method === "POST" && context.path === ApiRoutes.providerBillingRefresh) ||
+      (context.method === "POST" && context.path === ApiRoutes.bookingCompletionConfirm) ||
       (["GET", "POST"].includes(context.method) && context.path === "/api/ops/pricing/minimums") ||
       (context.method === "GET" && context.path === "/api/pricing/minimums") ||
       (context.method === "GET" && context.path === "/api/customers/properties") ||
@@ -244,6 +250,31 @@ export class MarketplaceController implements ApiController {
       sendJson(response, 200, context.method === "GET"
         ? await this.platform.getPricingMinimums(context.query.get("postalCode") ?? "")
         : await this.platform.setPricingMinimum(identity.userId, context.body as UpdateZipServiceMinimumRequest));
+      return;
+    }
+    if (context.path === ApiRoutes.providerBilling) {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.getProviderBilling(identity.userId));
+      return;
+    }
+    if (context.path === ApiRoutes.providerBillingCardSetup) {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.startProviderCardSetup(identity.userId, (context.body as StartProviderCardSetupRequest | undefined)?.returnPath));
+      return;
+    }
+    if (context.path === ApiRoutes.providerBillingCardSetupComplete) {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.completeProviderCardSetup(identity.userId, (context.body as CompleteProviderCardSetupRequest | undefined)?.setupSessionId));
+      return;
+    }
+    if (context.path === ApiRoutes.providerBillingRefresh) {
+      const identity = await requireRole(context, this.platform, "provider");
+      sendJson(response, 200, await this.platform.refreshProviderBilling(identity.userId));
+      return;
+    }
+    if (context.path === ApiRoutes.bookingCompletionConfirm) {
+      const identity = await requireRole(context, this.platform, "customer");
+      sendJson(response, 200, await this.platform.confirmBookingCompletion(identity.userId, (context.body as ConfirmBookingCompletionRequest | undefined)?.bookingId));
       return;
     }
     if (context.path === "/api/providers/pricing") {

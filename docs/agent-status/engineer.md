@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: launch-scope chunk B (finder-fee economics policy)
+
+- Updated: November 10, 2026 (UTC).
+- Branch and commit: `claude/finder-fee-economics-policy-5sa63d`, PR #24; see the PR for the latest commit.
+- Completed: economics policy `2026-10-finder-fee-v1` in `packages/domain` (one-time finder fee $75/$110/$150 mapped onto the booking flow's four lawn-size bands, no per-job fee, provider's first relationship waived, completion trigger with a configurable dispute window, default 72 hours), with the 2026-07 settlement policy unchanged. `FinderFeeService` records, gates, retries and charges finder fees to the provider's saved Stripe card; Prisma constraints keep one fee per relationship and one waiver per provider; failures show in Ops → Finder fees. Follow-up: providers can add or replace the card from provider management on the web (Billing section, Stripe-hosted setup, return completes it) and from the provider app's Work tab (opens Stripe in the browser; the app picks the card up from Stripe on return through `POST /api/providers/billing/refresh`, so no web sign-in is needed). Both show the tiers from the API and warn when a charge could not be made. The provider retention summary now reports the new policy's tiers and counts a relationship as acquired when its finder fee was billed, waived or covered by the old policy, so returned-customer counts and prior-provider preference work with payments off; the "Awaiting first settlement" label is now "Finder fee pending".
+- In progress: none.
+- Remaining: none for this chunk. The customer "confirm visit" button was left out on purpose: the 72-hour window bills fees without it.
+- Blockers: none. No live Stripe key was used; Stripe calls are covered by a fake gateway and mocked web routes.
+- Changed workflows: provider job completion starts a finder-fee record; providers save a card for finder fees on web and in the app; Ops gets a Finder fees section.
+- Validation: `npm run prisma:generate`, `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (4,018 keys) passed. `npm run test:api`: 420 passed, 16 database-only skipped, 0 failed. `npm run test:api:smoke` passed. `npm run test:api:postgres` against a local PostgreSQL 16 migrated from empty: 16 of 16 passed, no schema drift. `npm run test:web:smoke`: 61 of 61 passed, including three new cases in `tests/web/provider-billing.spec.ts`. Provider-app Expo export bundled iOS, Android and web. Not run: simulator, live Stripe.
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/provider-billing-{no-card,card-saved}-{desktop,mobile}.png` and `provider-card-saved-{desktop,mobile}.png` (1440x900 and 390x844), written by the billing spec. Git-ignored, local evidence only.
+- Recommended next task: run card setup and one off-session finder-fee charge against Stripe test mode in staging.
+
 ## Current checkpoint: Vercel staging build and login follow-ups
 
 - Updated: November 10, 2026 (UTC).

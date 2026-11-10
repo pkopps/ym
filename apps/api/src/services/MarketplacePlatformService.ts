@@ -1,5 +1,8 @@
 import type { BookingRecoveryOptions, RecoverBookingRequest, ReviewBookingAddressRequest, ManageProviderAvailabilityRequest } from "@yardmatch/contracts";
 import { ProviderPricingService } from "./ProviderPricingService";
+import { FinderFeeService } from "./FinderFeeService";
+import { StripeProviderBillingService, type ProviderBillingGateway } from "./StripeProviderBillingService";
+import type { ConfirmBookingCompletionResponse, ProviderBillingStatusResponse, StartProviderCardSetupResponse } from "@yardmatch/contracts";
 import { defaultServiceStartingPrices, type UpdateZipServiceMinimumRequest, type ProviderServicePrice } from "@yardmatch/contracts";
 import { bookingMetrics, type ProviderBookingMetrics } from "../repositories/searchQueries";
 import type { ClaimedNotificationDelivery } from "../repositories/MarketplaceRepository";
@@ -282,7 +285,8 @@ import {
   VerifyTwoFactorLoginRequest
 } from "@yardmatch/contracts";
 import {
-  ACTIVE_MARKETPLACE_ECONOMICS_POLICY,
+  ACTIVE_FINDER_FEE_ECONOMICS_POLICY,
+  summarizeFinderFeeTiers,
   BookingAddressPolicyService,
   BookingLifecycleService,
   containsDirectContactDetails,
@@ -470,6 +474,7 @@ export class MarketplacePlatformService {
   private readonly appBaseUrl: string;
   private readonly apiBaseUrl: string;
   private readonly photoStorage: PhotoStorageService;
+  private readonly providerBilling: ProviderBillingGateway;
 
   public constructor(
     private readonly repository: MarketplaceRepository,
@@ -477,8 +482,10 @@ export class MarketplacePlatformService {
     stripeCheckout: PaymentCheckoutGateway = new StripeCheckoutService(),
     appBaseUrl = process.env.APP_BASE_URL ?? "http://localhost:3000",
     stripeConnect: StripeConnectGateway = new StripeConnectService(),
-    photoStorage?: PhotoStorageService
+    photoStorage?: PhotoStorageService,
+    providerBilling: ProviderBillingGateway = new StripeProviderBillingService()
   ) {
+    this.providerBilling = providerBilling;
     this.stripeCheckout = stripeCheckout;
     this.stripeConnect = stripeConnect;
     this.appBaseUrl = appBaseUrl;
@@ -625,6 +632,16 @@ export class MarketplacePlatformService {
     });
     return this.repository.createProvider(provider, passwordHash);
   }
+
+  private finderFees(): FinderFeeService {
+    return new FinderFeeService(this.repository, this.providerBilling, { appBaseUrl: this.appBaseUrl });
+  }
+  public getProviderBilling(providerId: string): Promise<ProviderBillingStatusResponse> { return this.finderFees().billingStatus(providerId); }
+  public startProviderCardSetup(providerId: string, returnPath: unknown): Promise<StartProviderCardSetupResponse> { return this.finderFees().startCardSetup(providerId, returnPath); }
+  public completeProviderCardSetup(providerId: string, setupSessionId: unknown): Promise<ProviderBillingStatusResponse> { return this.finderFees().completeCardSetup(providerId, setupSessionId); }
+  public refreshProviderBilling(providerId: string): Promise<ProviderBillingStatusResponse> { return this.finderFees().refreshCard(providerId); }
+  public confirmBookingCompletion(customerId: string, bookingId: unknown): Promise<ConfirmBookingCompletionResponse> { return this.finderFees().confirmCompletion(customerId, bookingId); }
+  public processDueFinderFees(nowIso?: string) { return this.finderFees().processDue(nowIso); }
 
   public async getPricingMinimums(postalCode: string) { return new ProviderPricingService(this.repository).minimums(postalCode); }
   public async setPricingMinimum(actorId: string, input: UpdateZipServiceMinimumRequest) { return new ProviderPricingService(this.repository).setMinimum(actorId, input); }
@@ -7075,6 +7092,7 @@ export class MarketplacePlatformService {
     if (capturedPayment) {
       await this.ensureBookingFinancialSettlement(updatedBooking, capturedPayment);
     }
+    await this.finderFees().recordCompletion(updatedBooking);
 
     const existingInvite = await this.repository.findReviewInviteByBookingId(booking.id);
     if (!existingInvite) {
@@ -10901,6 +10919,12 @@ export class MarketplacePlatformService {
       existing.push(booking);
       relationships.set(key, existing);
     }
+    const finderFeeChargesByRelationship = new Map(
+      (await Promise.all([...new Set(bookings.map(booking => booking.providerId))]
+        .map(providerId => this.repository.listFinderFeeCharges({ providerId }))))
+        .flat()
+        .map(charge => [`${charge.customerId}:${charge.providerId}`, charge])
+    );
 
     const states = new Map<string, CustomerProviderRetentionState>();
     for (const [key, relationshipBookings] of relationships) {
@@ -10918,6 +10942,7 @@ export class MarketplacePlatformService {
       const finderFeeSettlement = completedHistory
         .map((booking) => settlementsByBookingId.get(booking.id))
         .find((settlement) => Boolean(settlement && settlement.finderFeeCents > 0));
+      const finderFeeCharge = finderFeeChargesByRelationship.get(key);
       const hasDisputeHistory = relationshipBookings.some(
         (booking) => Boolean(booking.disputedAt) || booking.status === "disputed"
       );
@@ -10940,7 +10965,9 @@ export class MarketplacePlatformService {
       const cleanCompletedBookingCount = completedHistory.filter(
         (booking) => booking.status === "completed"
       ).length;
-      const finderFeeRecorded = Boolean(finderFeeSettlement);
+      // Either model counts: a 2026-07 settlement fee, or a finder fee billed, waived or already covered.
+      const finderFeeRecorded = Boolean(finderFeeSettlement) ||
+        (finderFeeCharge !== undefined && ["paid", "waived", "covered-by-prior-policy"].includes(finderFeeCharge.status));
 
       let status: CustomerProviderRetentionState["status"];
       let reason: string;
@@ -10970,9 +10997,9 @@ export class MarketplacePlatformService {
           "YardMatch will make a fresh recommendation while the prior service issue is being resolved.";
       } else if (!finderFeeRecorded) {
         status = "awaiting-first-settlement";
-        reason = "The first completed-service settlement and one-time finder fee have not been recorded yet.";
+        reason = "The one-time finder fee for this customer has not been billed yet. It is billed after the customer confirms the first completed job or the review window passes without a reported problem.";
         customerMessage =
-          "YardMatch will make a fresh recommendation until the first completed-service settlement is recorded.";
+          "YardMatch will make a fresh recommendation until the first completed service is confirmed.";
       } else if (cleanCompletedBookingCount >= 2) {
         status = "repeat-customer";
         reason =
@@ -10990,7 +11017,7 @@ export class MarketplacePlatformService {
       states.set(key, {
         customerId: relationshipBookings[0].customerId,
         providerId: relationshipBookings[0].providerId,
-        firstCompletedBookingId: finderFeeSettlement?.bookingId ?? completedHistory[0]?.id,
+        firstCompletedBookingId: finderFeeSettlement?.bookingId ?? finderFeeCharge?.bookingId ?? completedHistory[0]?.id,
         lastCompletedAt: completedHistory.at(-1)?.completedAt,
         completedBookingCount: cleanCompletedBookingCount,
         finderFeeRecorded,
@@ -11031,8 +11058,9 @@ export class MarketplacePlatformService {
       }));
 
     return {
-      finderFeeCents: ACTIVE_MARKETPLACE_ECONOMICS_POLICY.finderFeeCents,
-      completedJobFeeCents: ACTIVE_MARKETPLACE_ECONOMICS_POLICY.completedJobFeeCents,
+      policyVersion: ACTIVE_FINDER_FEE_ECONOMICS_POLICY.version,
+      finderFees: summarizeFinderFeeTiers(ACTIVE_FINDER_FEE_ECONOMICS_POLICY),
+      completedJobFeeCents: ACTIVE_FINDER_FEE_ECONOMICS_POLICY.completedJobFeeCents,
       noAdditionalRetentionFee: true,
       promise:
         "After the one-time finder fee is recorded, YardMatch keeps running review requests, book-again reminders, recurring-service prompts, and qualified prior-provider preference at no extra retention charge.",
@@ -14613,8 +14641,12 @@ export class MarketplacePlatformService {
       })
       .sort((left, right) => (right.reportedAt ?? "").localeCompare(left.reportedAt ?? ""));
 
+    const finderFeeExceptions = await this.finderFees().listExceptions();
+
     return {
       generatedAt: new Date().toISOString(),
+      finderFeeExceptionCount: finderFeeExceptions.length,
+      finderFeeExceptions,
       refundReviewOpenCount: refundReviews.length,
       refundedAmountLast30DaysCents: payments
         .filter(
@@ -15120,6 +15152,7 @@ export class MarketplacePlatformService {
       if (!completedBooking) {
         throw new HttpError(500, "Booking could not be completed");
       }
+      await this.finderFees().recordCompletion(completedBooking);
 
       const existingInvite = await this.repository.findReviewInviteByBookingId(booking.id);
       if (!existingInvite) {
