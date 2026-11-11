@@ -4,7 +4,7 @@ import { CrewMatchSummary } from "@yardmatch/contracts";
 import { addLocalePrefix } from "@yardmatch/i18n";
 import { serviceCategoryToI18nKey } from "@yardmatch/i18n/service-labels";
 import { useI18n } from "@yardmatch/i18n/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createAuthenticatedWebApiClient } from "../lib/api";
 import { useStoredWebSession } from "../lib/session";
 import { LoadingSkeleton } from "./LoadingSkeleton";
@@ -57,19 +57,6 @@ export function CrewHistoryBoard() {
     })();
   }, [i18n, sessionReady, session?.role, session?.token]);
 
-  const providerCount = useMemo(
-    () => new Set(assignments.map((assignment) => assignment.providerId)).size,
-    [assignments]
-  );
-  const evidenceCount = useMemo(
-    () =>
-      assignments.reduce(
-        (total, assignment) =>
-          total + assignment.beforeEvidenceCount + assignment.afterEvidenceCount,
-        0
-      ),
-    [assignments]
-  );
 
   if (!sessionReady || (!accessDenied && isLoading && assignments.length === 0 && !errorMessage)) {
     return (
@@ -81,7 +68,6 @@ export function CrewHistoryBoard() {
     return (
       <section className="card">
         <h2>{i18n.t("crew_history.login_required")}</h2>
-        <p>{i18n.t("crew_history.login_body")}</p>
         <div className="cta-row">
           <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("crew_history.login_cta")}
@@ -100,25 +86,10 @@ export function CrewHistoryBoard() {
         </section>
       ) : null}
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{assignments.length}</h2>
-          <p>{i18n.t("crew_history.metric.completed_assignments")}</p>
-        </article>
-        <article className="card">
-          <h2>{providerCount}</h2>
-          <p>{i18n.t("crew_history.metric.providers")}</p>
-        </article>
-        <article className="card">
-          <h2>{evidenceCount}</h2>
-          <p>{i18n.t("crew_history.metric.evidence_items")}</p>
-        </article>
-      </section>
 
       {assignments.length === 0 ? (
         <section className="card">
           <h2>{i18n.t("crew_history.empty.title")}</h2>
-          <p>{i18n.t("crew_history.empty.body")}</p>
         </section>
       ) : (
         <section className="stack-lg">

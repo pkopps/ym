@@ -134,7 +134,7 @@ test.describe("YardMatch web smoke", () => {
     await page.goto("/barnegat-nj");
 
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Barnegat");
-    await expect(page.getByText(/No verified providers are currently listed for this area/i)).toBeVisible();
+    await expect(page.getByText(/No verified providers are listed for this area yet/i)).toBeVisible();
     await expect(page.getByText("GreenStride Lawn Co.")).toHaveCount(0);
     await expect(page.getByText("TerraCut Studio")).toHaveCount(0);
 
@@ -146,7 +146,7 @@ test.describe("YardMatch web smoke", () => {
     await expect(page.getByText(/\$30|\$6\.99/)).toHaveCount(0);
     await expect(page.getByText(/paid placement never changes recommendation order/i)).toBeVisible();
     const retentionHeading = page.getByRole("heading", {
-      name: "Pay once for the introduction. We keep working on the relationship."
+      name: "Pay once for the introduction."
     });
     await expect(retentionHeading).toBeVisible();
     await expect(page.getByText(/no second finder fee for the same customer/i)).toBeVisible();
@@ -159,12 +159,12 @@ test.describe("YardMatch web smoke", () => {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/provider");
-    await expect(page.getByRole("heading", { name: "Grow local routes without losing control of your calendar or margins." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Grow local routes and keep control of your calendar." })).toBeVisible();
     await retentionHeading.scrollIntoViewIfNeeded();
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 390);
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-mobile.png` });
 
-    await page.getByRole("heading", { name: "Grow local routes without losing control of your calendar or margins." }).scrollIntoViewIfNeeded();
+    await page.getByRole("heading", { name: "Grow local routes and keep control of your calendar." }).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png` });
 
     await page.goto("/auth/provider/create");
@@ -233,10 +233,10 @@ test.describe("YardMatch web smoke", () => {
 
   test("protected dashboards show the expected login gates when signed out", async ({ page }) => {
     await page.goto("/customer/dashboard");
-    await expect(page.getByRole("heading", { name: "Log in to manage your account" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Log in to your account" })).toBeVisible();
 
     await page.goto("/provider/management");
-    await expect(page.getByRole("heading", { name: "Business owner login required" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Log in as a business owner" })).toBeVisible();
 
     await page.goto("/ops");
     await expect(page.getByRole("heading", { name: "Internal login required" })).toBeVisible();

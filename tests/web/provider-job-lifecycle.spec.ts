@@ -37,9 +37,9 @@ test("provider confirms, routes, proves, completes, and can decline a second req
   await expect(primaryJob.getByText(/Status: requested/i)).toBeVisible();
 
   await primaryJob.getByRole("button", { name: "Confirm booking" }).click();
-  await expect(page.getByText("Booking confirmed. Your crew can now head out when ready.")).toBeVisible();
+  await expect(page.getByText("Booking confirmed.")).toBeVisible();
   await primaryJob.getByRole("button", { name: "Start route" }).click();
-  await expect(page.getByText("Route started. Customer tracking and chat are now live.")).toBeVisible();
+  await expect(page.getByText("Route started. Tracking and chat are live.")).toBeVisible();
 
   const startWork = primaryJob.getByRole("button", { name: "Start work" });
   await expect(startWork).toBeDisabled();
@@ -48,7 +48,7 @@ test("provider confirms, routes, proves, completes, and can decline a second req
     mimeType: "image/png",
     buffer: tinyPng
   });
-  await expect(page.getByText("Before-service photo saved. Work can now begin.")).toBeVisible();
+  await expect(page.getByText("Before photo saved. You can start work.")).toBeVisible();
   await expect(startWork).toBeEnabled();
   await startWork.click();
   await expect(page.getByText("Work started.")).toBeVisible();
@@ -60,7 +60,7 @@ test("provider confirms, routes, proves, completes, and can decline a second req
     mimeType: "image/png",
     buffer: tinyPng
   });
-  await expect(page.getByText("After-service photo saved. The job can now be completed.")).toBeVisible();
+  await expect(page.getByText("After photo saved. You can complete the job.")).toBeVisible();
   await expect(completeJob).toBeEnabled();
 
   await captureResponsiveEvidence(page, "provider-job-in-progress", primaryJob);
@@ -71,7 +71,7 @@ test("provider confirms, routes, proves, completes, and can decline a second req
 
   await declineJob.locator("details").filter({ hasText: "More options" }).getByText("More options").click();
   await declineJob.getByRole("button", { name: "Decline request" }).click();
-  await expect(page.getByText("Booking declined. The customer can choose another qualified provider.")).toBeVisible();
+  await expect(page.getByText("Booking declined.")).toBeVisible();
   await expect(declineJob).toHaveCount(0);
 
   await page.goto("/provider/payments");

@@ -147,7 +147,6 @@ export function CustomerHistoryBoard() {
     return (
       <section className="card">
         <h2>{i18n.t("customer_history.login_required")}</h2>
-        <p>{i18n.t("customer_history.login_body")}</p>
         <div className="cta-row">
           <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("nav.log_in")}
@@ -174,7 +173,6 @@ export function CustomerHistoryBoard() {
       {bookings.length === 0 ? (
         <section className="card">
           <h2>{i18n.t("customer_history.empty.title")}</h2>
-          <p>{i18n.t("customer_history.empty.body")}</p>
           <div className="cta-row">
             <a className="button" href={addLocalePrefix("/customer/dashboard?flow=request", i18n.locale)}>
               {i18n.t("customer_history.request_service")}
@@ -230,7 +228,6 @@ export function CustomerHistoryBoard() {
                     <div className="service-history-photos__header">
                       <div>
                         <h3>{i18n.t("customer_history.photos.title")}</h3>
-                        <p>{i18n.t("customer_history.photos.body")}</p>
                       </div>
                       <span className="result-badge result-badge--neutral">
                         {i18n.t("customer_history.photos.count", { count: beforePhotos.length + afterPhotos.length })}

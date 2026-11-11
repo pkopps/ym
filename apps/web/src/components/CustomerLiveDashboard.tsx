@@ -1409,7 +1409,6 @@ export function CustomerLiveDashboard() {
       <main className="container stack-lg">
         <section className="card">
           <h2>{i18n.t("customer_live.login_required.title")}</h2>
-          <p>{i18n.t("customer_live.login_required.body")}</p>
           <div className="cta-row">
             <a className="button-secondary" href={addLocalePrefix("/customer", i18n.locale)}>
               {i18n.t("customer_history.request_service")}
@@ -1434,7 +1433,6 @@ export function CustomerLiveDashboard() {
   function renderRequestDetailsEditor(buttonLabel: string) {
     return (
       <>
-        <p>{i18n.t("customer_live.request_editor.body")}</p>
         <div className="form-grid">
           <label className="form-field">
             <span>{i18n.t("customer_live.label.property")}</span>
@@ -1784,9 +1782,6 @@ export function CustomerLiveDashboard() {
             </div>
             {canEditVisit ? (
               <>
-                <p className="history-card__detail-copy">
-                  {i18n.t("customer_live.active_booking.change_copy")}
-                </p>
                 <div className="form-grid">
                   <label className="form-field">
                     <span>{i18n.t("customer_live.active_booking.new_start")}</span>
@@ -1857,7 +1852,6 @@ export function CustomerLiveDashboard() {
               {canOpenDispute ? (
                 <div className="list-panel">
                   <h3>{i18n.t("customer_live.dispute.title")}</h3>
-                  <p>{i18n.t("customer_live.dispute.body")}</p>
                   <div className="form-grid" style={{ marginTop: "1rem" }}>
                     <label className="form-field form-field--full">
                       <span>{i18n.t("customer_live.dispute.reason")}</span>
@@ -2234,7 +2228,6 @@ export function CustomerLiveDashboard() {
       <main className="container stack-lg">
         <section className="page-hero">
           <h1>{i18n.t("nav.user.past_visits")}</h1>
-          <p>{i18n.t("customer_live.past_visits.body")}</p>
         </section>
 
         <nav aria-label={i18n.t("customer_live.account_sections_aria")} className="dashboard-switcher">
@@ -2261,7 +2254,6 @@ export function CustomerLiveDashboard() {
           <div className="search-result-title">
             <div>
               <h1>{i18n.t("customer_history.request_service")}</h1>
-              <p>{i18n.t("customer_live.request_service.body")}</p>
             </div>
             <a className="button-secondary" href={addLocalePrefix("/customer/dashboard", i18n.locale)}>
               {i18n.t("customer_live.back_to_account")}
@@ -2270,7 +2262,6 @@ export function CustomerLiveDashboard() {
         ) : (
           <>
             <h1>{i18n.t("customer_live.welcome_back", { name: customer?.fullName?.split(" ")[0] ?? i18n.t("customer_live.there") })}</h1>
-            <p>{i18n.t("customer_live.account.body")}</p>
           </>
         )}
       </section>
@@ -2448,7 +2439,6 @@ export function CustomerLiveDashboard() {
                         ? i18n.t("customer_live.provider.best_match")
                         : i18n.t("customer_live.provider.best_fit")}
                   </h2>
-                  <p>{i18n.t("customer_live.provider.review_body")}</p>
                 </div>
                 {providerResults ? (
                   <span className="result-badge result-badge--neutral">
@@ -2459,7 +2449,6 @@ export function CustomerLiveDashboard() {
               {providerSearchState === "loading" ? (
                 <article className="list-panel">
                   <h3>{i18n.t("customer_live.provider.checking_title")}</h3>
-                  <p>{i18n.t("customer_live.provider.checking_body")}</p>
                 </article>
               ) : providerResults ? (
                 <div className="stack-lg" style={{ paddingBottom: 0 }}>
@@ -2940,11 +2929,6 @@ export function CustomerLiveDashboard() {
               <div className="search-result-title">
                 <div>
                   <h2>{hasAccountHistory ? i18n.t("customer_live.ready_another_visit") : i18n.t("customer_live.need_service")}</h2>
-                  <p>
-                    {hasAccountHistory
-                      ? i18n.t("customer_live.ready_another_visit_body")
-                      : i18n.t("customer_live.need_service_body")}
-                  </p>
                 </div>
                 <a className="button" href={addLocalePrefix("/customer/dashboard?flow=request", i18n.locale)}>
                   {i18n.t("customer_history.request_service")}

@@ -393,9 +393,7 @@ export function DashboardScreen({
   if (!overview && !payoutLedger && !errorMessage) {
     return (
       <ScreenShell
-        eyebrow={i18n.t("provider_mobile.dashboard.eyebrow")}
         title={i18n.t("provider_mobile.dashboard.title")}
-        description={i18n.t("provider_mobile.dashboard.description")}
       >
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
         <SkeletonCard label={i18n.t("common.loading.content")} lines={3} showAvatar />
@@ -406,9 +404,7 @@ export function DashboardScreen({
 
   return (
     <ScreenShell
-      eyebrow={i18n.t("provider_mobile.dashboard.eyebrow")}
       title={i18n.t("provider_mobile.dashboard.title")}
-      description={i18n.t("provider_mobile.dashboard.description")}
     >
       {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}

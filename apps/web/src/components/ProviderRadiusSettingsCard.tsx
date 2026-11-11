@@ -26,7 +26,6 @@ export function ProviderRadiusSettingsCard() {
     <section className="radius-settings" aria-labelledby="provider-radius-heading">
       <div className="radius-settings__header">
         <div>
-          <p className="eyebrow">{i18n.t("provider_radius.eyebrow")}</p>
           <h3 id="provider-radius-heading">
             {i18n.t("provider_radius.title")}
           </h3>
@@ -81,11 +80,8 @@ export function ProviderRadiusSettingsCard() {
 
       <div className="radius-settings__summary">
         <div>
-          <strong>{i18n.t("provider_radius.match_rule.title")}</strong>
-          <p>{i18n.t("provider_radius.match_rule.body")}</p>
         </div>
         <div>
-          <strong>{i18n.t("provider_radius.operational_effect.title")}</strong>
           <p>{i18n.t(getRadiusGuidanceKey(serviceRadiusMiles))}</p>
         </div>
       </div>

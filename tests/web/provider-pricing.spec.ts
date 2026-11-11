@@ -47,7 +47,7 @@ test("provider prices can be set at signup, edited afterwards, and checked again
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }
   await panel.getByLabel("Service ZIP code").fill("00000");
-  await expect(panel.getByText("Custom pricing is not available for this service in this ZIP yet.").first()).toBeVisible();
+  await expect(panel.getByText("Custom pricing isn't available for this service and ZIP yet.").first()).toBeVisible();
   await expect(panel.getByRole("button", { name: "Save prices" })).toBeDisabled();
   const provider = await loginApi(request, email);
   const result = await request.get(`${apiBaseUrl}/api/providers/pricing?postalCode=${zip}`, { headers: { Authorization: `Bearer ${provider.session.token}` } });

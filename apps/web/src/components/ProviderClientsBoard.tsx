@@ -73,14 +73,14 @@ export function ProviderClientsBoard() {
 
   if (!sessionReady) return <MapLoading />;
   if (!token) return <section className="card provider-clients-access">
-    <h1>{i18n.t("provider_clients.login_title")}</h1><p>{i18n.t("provider_clients.login_body")}</p>
+    <h1>{i18n.t("provider_clients.login_title")}</h1>
     <a className="button" href={local("/login")}>{i18n.t("provider_clients.login")}</a>
   </section>;
 
   return <>
     <header className="provider-clients-heading">
       <div><span className="eyebrow">{data?.companyName ?? i18n.t("provider_clients.nav")}</span>
-        <h1>{i18n.t("provider_clients.title")}</h1><p>{i18n.t("provider_clients.description")}</p></div>
+        <h1>{i18n.t("provider_clients.title")}</h1></div>
       <div className="provider-clients-heading-actions">
         <button className="button-secondary" type="button" onClick={reload} disabled={!data && !failed}>{i18n.t("provider_clients.refresh")}</button>
         <a className="button-secondary" href={local("/provider/management")}>{i18n.t("provider_clients.open_jobs")}</a>

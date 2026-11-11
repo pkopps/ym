@@ -1,5 +1,20 @@
 # Engineer Checkpoint: Provider Finder-Fee Retention Promise
 
+## Current checkpoint: copy cut across non-ops screens
+
+- Updated: November 11, 2026 (UTC).
+- Branch and commit: `claude/remove-self-explanatory-copy-otfrru`; see the PR for the commit.
+- Completed: "Copy rules" added to `AGENTS.md`. Swept customer web, provider web, crew web, auth and provider-mobile screens: removed eyebrows, helper and description lines that restate headings, and the metric tiles on the provider board, crew dashboard, crew schedule, crew history, provider landing and local proof section; shortened what was left. Deleted 247 keys that were already unused and six unreferenced web components (`BookedBusinessResults`, `CrewHiringDashboard`, `CustomerListingsHero`, `HomeServiceScroller`, `ProviderMowerScrollStrip`, `ProviderSiteHeader`) with their keys. `en.json`, `es.json` and `pseudo.json` are in sync at 3,523 keys (was 4,018).
+- Word count (keys not starting with `ops` or `trust_policy.`): 16,709 before, 12,429 after, a 25.6% cut. The 40% target was not reached. 3,424 of those words are shared with customer-mobile or crew-mobile and were left alone; another 463 belong to ops screens with non-ops prefixes. On the remaining 12,822 words the cut is 33.4% (to 8,542).
+- In progress: none.
+- Remaining: provider screens whose strings live under `ops_auto.provider_management_board.*` and `ops_auto.provider_payments_board.*` (82 keys) were not touched because `ops_*` strings were out of scope. Reaching 40% needs either those plus the customer-mobile and crew-mobile strings, or removing functional text.
+- Blockers: none.
+- Changed workflows: none. Text and decorative tiles only; no layout fixes.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run i18n:validate` (3,523 keys), `npm run experience-map:validate`, `npm run test:api` (420 passed, 16 skipped, 0 failed), `npm run build:provider-mobile` (Expo export) passed. `npm run test:web:smoke`: 61 of 61, run through a local config that points Playwright at the preinstalled Chromium; ten spec files had assertions updated to the new copy.
+- Known defects: none found. Layout left empty or unbalanced by the removals is listed in the PR description.
+- Screenshot paths: `reports/agent-checkpoints/engineer/copy-cut-2026-11/*-{desktop,mobile}.png` (1440x900 and 390x844 viewports, full page), 39 screens. Provider-mobile screens were not captured: the exported web build stops at session restore because secure storage is native-only.
+- Recommended next task: decide whether the shared customer-mobile and crew-mobile strings and the `ops_auto.provider_*` strings can be cut, then rebalance the provider landing hero.
+
 ## Current checkpoint: Vercel staging build and login follow-ups
 
 - Updated: November 10, 2026 (UTC).

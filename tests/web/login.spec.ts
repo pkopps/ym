@@ -241,7 +241,7 @@ test("staff login is a separate page that accepts only staff accounts", async ({
 
     // A customer, provider or crew account is refused here and no session is kept.
     await submitLogin(staffPage, customer.email);
-    await expect(staffPage.locator("main").getByRole("alert")).toContainText("This page is for YardMatch staff accounts.");
+    await expect(staffPage.locator("main").getByRole("alert")).toContainText("This page is for YardMatch staff.");
     await expect(staffPage).toHaveURL(/\/login\/ops$/);
     expect(await storedRole(staffPage)).toBeUndefined();
 
@@ -258,7 +258,7 @@ test("staff login is a separate page that accepts only staff accounts", async ({
   try {
     await memberPage.goto(`/login?returnTo=${encodeURIComponent("/ops")}`);
     await submitLogin(memberPage, opsEmail, opsPassword);
-    await expect(memberPage.locator("main").getByRole("alert")).toContainText("Staff accounts log in from the staff login page.");
+    await expect(memberPage.locator("main").getByRole("alert")).toContainText("Staff accounts use the staff login page.");
     await expect(memberPage).toHaveURL(/\/login\?returnTo=/);
     expect(await storedRole(memberPage)).toBeUndefined();
   } finally {

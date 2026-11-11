@@ -40,7 +40,7 @@ test("customer complaint form submits evidence, supports human review, and prote
   await expect(panel.getByRole("status")).toHaveText("Your report is saved");
   await expect(panel.getByRole("heading", { name: "Your service reports" })).toBeVisible();
   await panel.getByRole("button", { name: "Ask a person to review" }).click();
-  await expect(panel.getByText("I would like a person to review this report and any resolution.", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Please have a person review this report.", { exact: true })).toBeVisible();
   await loginUi(page, "ops", opsEmail, opsPassword);
   await expect(page).toHaveURL(/ops/);
   await page.goto("/ops?view=support#ops-support");

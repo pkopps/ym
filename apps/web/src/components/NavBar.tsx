@@ -65,7 +65,6 @@ export function NavBar() {
           </span>
           <span className="brand-lockup__wordmark">
             <strong>{i18n.t("common.brand")}</strong>
-            <small>{i18n.t("nav.brand_tagline")}</small>
           </span>
         </a>
         <nav aria-label={i18n.t("nav.primary_aria")} className="site-header__nav">

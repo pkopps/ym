@@ -19,9 +19,7 @@ export default async function CrewSchedulePage() {
       <section className="page-hero">
         <div className="search-result-title">
           <div>
-            <span className="eyebrow">{i18n.t("crew_schedule.eyebrow")}</span>
             <h1>{i18n.t("crew_schedule.hero.title")}</h1>
-            <p>{i18n.t("crew_schedule.hero.body")}</p>
           </div>
           <CrewScheduleMenu />
         </div>

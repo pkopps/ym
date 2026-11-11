@@ -17,14 +17,12 @@ export default async function ProviderSignupCreatePage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{i18n.t("auth_provider.eyebrow")}</span>
         <h1>{i18n.t("auth_provider.title")}</h1>
         <p>{i18n.t("auth_provider.body")}</p>
       </section>
 
       <section className="card provider-signup-economics" aria-label={i18n.t("auth_provider.economics.aria")}>
         <div>
-          <span className="eyebrow">{i18n.t("auth_provider.economics.eyebrow")}</span>
           <h2>{i18n.t("auth_provider.economics.title")}</h2>
         </div>
         <p>{i18n.t("auth_provider.economics.body")}</p>

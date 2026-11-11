@@ -49,7 +49,7 @@ export function ServiceComplaintPanel({ bookings, tickets, initialBookingId, onC
     finally { setBusy(false); }
   }
   return <section className="card stack-lg" aria-labelledby="complaint-title" style={{ marginBottom: "1.5rem" }}>
-    <div><span className="eyebrow">YardMatch Care</span><h2 id="complaint-title">{i18n.t("complaint.title")}</h2><p>{i18n.t("complaint.intro")}</p></div>
+    <div><h2 id="complaint-title">{i18n.t("complaint.title")}</h2><p>{i18n.t("complaint.intro")}</p></div>
     {bookings.length ? <form onSubmit={event => void submit(event)} className="stack-lg">
       <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         <div className="form-grid">

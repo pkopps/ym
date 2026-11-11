@@ -113,3 +113,13 @@ YardMatch should feel calm, local, trustworthy, and operationally polished. Avoi
 - For example, do not publish "Starting here — Barnegat, NJ — Our first market. Local provider onboarding and launch demand are being built here now." State location or service availability only when useful to the user's task, with an appropriate action such as checking availability for their address.
 - Be accurate about actual availability and limitations without narrating internal preparations or implying that unavailable services are ready to book.
 - Before completing user-facing work, review the visible copy from the intended user's perspective and remove internal commentary, implementation explanations, and unnecessary launch-status messaging.
+
+### Copy rules
+
+- One headline and at most one supporting line per screen or section.
+- No eyebrow + title + description stacks. Pick the headline; drop the rest.
+- No sentences that describe the product or the screen itself ("in one place", "one workspace", "so setup feels lighter", "without the back-and-forth").
+- No decorative "metric" tiles. Show a number only when the user acts on it.
+- Labels and buttons say what happens, not how great it is.
+- Error messages say what to do next.
+- Never cut what people need to finish the task: field labels, validation errors, fee and policy disclosures, cancellation and refund terms at the point of decision, accessibility labels.

@@ -142,9 +142,7 @@ export default function AuthCompletePage() {
     return (
       <main className="container stack-lg">
         <section className="page-hero">
-          <span className="eyebrow">{i18n.t("auth_complete.success.eyebrow")}</span>
           <h1>{i18n.t("auth_complete.success.title")}</h1>
-          <p>{i18n.t("auth_complete.success.body")}</p>
         </section>
       </main>
     );
@@ -154,7 +152,6 @@ export default function AuthCompletePage() {
     return (
       <main className="container stack-lg">
         <section className="page-hero">
-          <span className="eyebrow">{i18n.t("auth_complete.pending.eyebrow")}</span>
           <h1>{i18n.t("auth_complete.pending.title")}</h1>
           <p>{i18n.t("auth_complete.pending.body")}</p>
         </section>
@@ -289,7 +286,6 @@ export default function AuthCompletePage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{i18n.t("auth_complete.issue.eyebrow")}</span>
         <h1>{i18n.t("auth_complete.issue.title")}</h1>
         <p>{errorMessage || i18n.t("auth_complete.issue.body")}</p>
       </section>

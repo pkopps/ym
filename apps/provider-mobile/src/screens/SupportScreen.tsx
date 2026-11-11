@@ -722,9 +722,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
   if (isInitialLoading && !errorMessage) {
     return (
       <ScreenShell
-        eyebrow={i18n.t("provider_mobile.support.eyebrow")}
         title={i18n.t("provider_mobile.support.title")}
-        description={i18n.t("provider_mobile.support.description")}
       >
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} />
@@ -735,9 +733,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
 
   return (
     <ScreenShell
-      eyebrow={i18n.t("provider_mobile.support.eyebrow")}
       title={i18n.t("provider_mobile.support.title")}
-      description={i18n.t("provider_mobile.support.description")}
     >
       <AnalyticsPreferences />
       {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
@@ -797,7 +793,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       {activeSection === "work" && provider ? <ProviderBillingCard token={envelope?.session.token} /> : null}
       {activeSection === "work" && provider ? <ProviderPricingCard postalCode={provider.address.postalCode} categories={provider.categories} token={envelope?.session.token} /> : null}
       {activeSection === "work" ? (
-      <InfoCard title={i18n.t("auth_signup.field.service_radius")} description={i18n.t("provider_mobile.support.radius_description")}>
+      <InfoCard title={i18n.t("auth_signup.field.service_radius")}>
         <View style={styles.stepRow}>
           <Pressable
             disabled={isWorking || !provider}
@@ -840,7 +836,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       ) : null}
 
       {activeSection === "security" ? (
-      <InfoCard title={i18n.t("mobile.support.section.security")} description={i18n.t("provider_mobile.support.security_description")}>
+      <InfoCard title={i18n.t("mobile.support.section.security")}>
         <View style={styles.switchRow}>
           <View style={styles.ticketCopy}>
             <Text style={styles.title}>{i18n.t("mobile.support.use_biometric", { biometric: biometricLabel })}</Text>
@@ -905,7 +901,7 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       ) : null}
 
       {activeSection === "work" ? (
-      <InfoCard title={i18n.t("provider_mobile.support.staffing.title")} description={i18n.t("provider_mobile.support.staffing.description")}>
+      <InfoCard title={i18n.t("provider_mobile.support.staffing.title")}>
         <Text style={styles.meta}>
           {i18n.t("provider_mobile.support.staffing.summary", {
             mode:
@@ -1198,7 +1194,6 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
       {activeSection === "work" ? (
       <InfoCard
         title={i18n.t("provider_live.calendar.eyebrow")}
-        description={i18n.t("provider_mobile.support.calendar.description")}
       >
         <Text style={styles.meta}>{i18n.t("provider_live.calendar.body")}</Text>
         {calendarHealth ? (
@@ -1274,7 +1269,6 @@ export function SupportScreen({ languageSettings }: { languageSettings: Language
                 </Pressable>
               ) : null}
               <Text style={styles.valueText}>{i18n.t("provider_mobile.support.calendar.import_feed_title")}</Text>
-              <Text style={styles.meta}>{i18n.t("provider_mobile.support.calendar.import_feed_description")}</Text>
               <TextInput
                 value={importTitle}
                 onChangeText={setImportTitle}

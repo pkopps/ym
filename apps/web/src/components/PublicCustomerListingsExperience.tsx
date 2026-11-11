@@ -87,7 +87,7 @@ export function PublicCustomerListingsExperience(props: Props) {
     <header className="booking-discovery__header">
       <div><span className="eyebrow">{i18n.t(serviceCategoryLabelKeys[request.service])} · {searchArea}</span>
         <h1>{i18n.t(directory ? "booking_journey.directory.title" : "booking_journey.recommendations.title")}</h1>
-        <p>{i18n.t(directory ? "booking_journey.directory.body" : "booking_journey.recommendations.body")}</p></div>
+        {directory ? null : <p>{i18n.t("booking_journey.recommendations.body")}</p>}</div>
       {directory ? <button className="button-secondary" type="button" onClick={() => toggleDirectory(false)}>{i18n.t("booking_journey.directory.back")}</button> : null}
     </header>
     <details className="booking-discovery__edit"><summary>{i18n.t("booking_journey.change_search")}</summary><PublicMarketplaceSearchShell areaQuery={area} onAreaQueryChange={setArea} selectedService={service} onSelectedServiceChange={setService} selectedSuggestion={suggestion} onSelectedSuggestionChange={setSuggestion} selectedTiming="tomorrow-morning" onSelectedTimingChange={() => undefined} showTimingSelection={false}

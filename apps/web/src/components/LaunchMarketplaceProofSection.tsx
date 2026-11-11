@@ -53,7 +53,7 @@ export function LaunchMarketplaceProofSection({
   preferredAreaLabel
 }: {
   title: string;
-  description: string;
+  description?: string;
   preferredCategory?: ServiceCategory;
   preferredAreaLabel?: string;
 }) {
@@ -125,45 +125,13 @@ export function LaunchMarketplaceProofSection({
     return selected.slice(0, 3);
   }, [overview, preferredAreaLabel, preferredCategory]);
 
-  const localCoverageArea = highlightedCoverageAreas[0];
-  const averageRating = highlightedProviders.length
-    ? highlightedProviders.reduce((total, provider) => total + provider.rating, 0) / highlightedProviders.length
-    : undefined;
-  const hasLocalProof =
-    highlightedProviders.length > 0 ||
-    highlightedReviews.length > 0 ||
-    Boolean(localCoverageArea?.verifiedProviderCount);
-  const proofStats = hasLocalProof ? [
-    {
-      label: i18n.t("launch_proof.stat.verified_providers.label"),
-      value: i18n.formatNumber(localCoverageArea?.verifiedProviderCount ?? highlightedProviders.length)
-    },
-    {
-      label: i18n.t("launch_proof.stat.average_rating.label"),
-      value: averageRating ? `${i18n.formatNumber(averageRating, { maximumFractionDigits: 1, minimumFractionDigits: 1 })}★` : i18n.t("common.state.new")
-    },
-    {
-      label: i18n.t("launch_proof.stat.active_categories.label"),
-      value: localCoverageArea?.supportedCategories.length
-        ? i18n.formatNumber(localCoverageArea.supportedCategories.length)
-        : i18n.t("common.state.focused")
-    }
-  ] as const : [];
 
   return (
     <section className="stack-lg">
       <div className="section-header">
         <h2>{title}</h2>
-        <p>{description}</p>
+        {description ? <p>{description}</p> : null}
       </div>
-      {hasLocalProof ? <div className="grid-three">
-        {proofStats.map((item) => (
-          <article className="card" key={item.label}>
-            <strong>{item.value}</strong>
-            <p>{item.label}</p>
-          </article>
-        ))}
-      </div> : null}
       <div className="grid-two">
         <article className="card">
           <h3>{i18n.t("launch_proof.tight.title")}</h3>
@@ -217,7 +185,6 @@ export function LaunchMarketplaceProofSection({
                 <div className="stack-lg" style={{ paddingBottom: 0 }}>
                   <div>
                     <span className="eyebrow">{i18n.t("launch_proof.feedback.title")}</span>
-                    <p>{i18n.t("launch_proof.feedback.body")}</p>
                   </div>
                   {highlightedReviews.map((review) => (
                     <article className="list-panel" key={review.reviewId}>

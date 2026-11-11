@@ -76,7 +76,6 @@ export default async function BarnegatTownPage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{i18n.t("launch_town.hero.eyebrow")}</span>
         <h1>{i18n.t("launch_town.hero.title", values)}</h1>
         <p>{i18n.t("launch_town.hero.body")}</p>
         <div className="cta-row">
@@ -110,7 +109,6 @@ export default async function BarnegatTownPage() {
       <section className="stack-lg">
         <div className="section-header">
           <h2>{i18n.t("launch_town.services.title", values)}</h2>
-          <p>{i18n.t("launch_town.services.body")}</p>
         </div>
         <div className="grid-two">
           {launchTownPageLinks.map((item) => (
@@ -126,7 +124,6 @@ export default async function BarnegatTownPage() {
       </section>
 
       <LaunchMarketplaceProofSection
-        description={i18n.t("launch_town.proof.body", values)}
         preferredAreaLabel={launchAreaLabel}
         title={i18n.t("launch_town.proof.title", values)}
       />
@@ -164,7 +161,6 @@ export default async function BarnegatTownPage() {
       <section className="stack-lg">
         <div className="section-header">
           <h2>{i18n.t("launch_town.faq.title")}</h2>
-          <p>{i18n.t("launch_town.faq.body")}</p>
         </div>
         <div className="grid-two">
           {localFaqs.map((item) => (

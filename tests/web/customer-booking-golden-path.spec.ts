@@ -119,7 +119,7 @@ test.describe.serial("customer booking golden path", () => {
     await expect(page.getByRole("heading", { level: 3, name: "GreenStride Lawn Co." })).toBeVisible();
     await expect(page.getByText("Open route window", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("No charge yet. The provider reviews and confirms before any payment is due.")
+      page.getByText("No charge yet. The provider confirms before any payment is due.")
     ).toBeVisible();
     await page.screenshot({ path: `${evidenceRoot}/customer-quote-desktop.png`, fullPage: true });
     await page.getByRole("button", { name: "Request this time" }).click();

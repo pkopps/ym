@@ -33,9 +33,7 @@ export default async function AuthPage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{i18n.t("auth_choice.eyebrow")}</span>
         <h1>{i18n.t("auth_choice.title")}</h1>
-        <p>{i18n.t("auth_choice.body")}</p>
       </section>
 
       <section className="grid-three auth-choice-grid">
