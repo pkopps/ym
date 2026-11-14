@@ -450,14 +450,15 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async searchProvidersPage(query: ProviderSearchQuery) {
     if (!query.categories.length) return { items: [], hasMore: false };
     const bounds = searchBounds(query.address);
-    const longitude = Prisma.sql`(u.address->'point'->>'longitude')::double precision`;
+    // u.latitude and u.longitude are copied from u.address by a database trigger and indexed with u.role.
+    const longitude = Prisma.sql`u.longitude`;
     const longitudeCondition = bounds.west <= bounds.east
       ? Prisma.sql`${longitude} BETWEEN ${bounds.west} AND ${bounds.east}`
       : Prisma.sql`(${longitude} >= ${bounds.west} OR ${longitude} <= ${bounds.east})`;
     const ids = await this.prisma.$queryRaw<Array<{ userId: string }>>`
       SELECT p."userId" FROM provider_business_profiles p JOIN user_accounts u ON u.id = p."userId"
       WHERE p."verificationStatus" = 'verified' AND p.categories && ARRAY[${Prisma.join(query.categories)}]::text[]
-        AND (u.address->'point'->>'latitude')::double precision BETWEEN ${bounds.south} AND ${bounds.north}
+        AND u.role = 'provider' AND u.latitude BETWEEN ${bounds.south} AND ${bounds.north}
         AND ${longitudeCondition} ${query.cursorId ? Prisma.sql`AND p."userId" > ${query.cursorId}` : Prisma.empty}
       ORDER BY p."userId" LIMIT 101`;
     const pageIds = ids.slice(0, 100).map(row => row.userId);
