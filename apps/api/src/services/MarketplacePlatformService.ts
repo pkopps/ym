@@ -12204,12 +12204,33 @@ export class MarketplacePlatformService {
   }
 
   public async getOpsPayoutPreview(): Promise<OpsPayoutRunPreviewResponse> {
+    // Only completed, refunded and disputed bookings can be payout relevant.
     const [providers, bookings, payments, providerTransfers] = await Promise.all([
       this.repository.listProviders(),
-      this.repository.listBookings(),
+      this.repository.listBookingsByStatuses(["completed", "refunded", "disputed"]),
       this.repository.listPayments(),
       this.repository.listProviderTransferRecords()
     ]);
+    // Grouped once, in list order, so each provider's bookings and each booking's payments are looked up directly.
+    const payoutBookingsByProviderId = new Map<string, Booking[]>();
+    for (const booking of bookings) {
+      if (!this.isPayoutRelevantBooking(booking)) {
+        continue;
+      }
+      const group = payoutBookingsByProviderId.get(booking.providerId) ?? [];
+      group.push(booking);
+      payoutBookingsByProviderId.set(booking.providerId, group);
+    }
+    const firstCapturedPaymentByBookingId = new Map<string, PaymentRecord>();
+    const firstPaymentByBookingId = new Map<string, PaymentRecord>();
+    for (const payment of payments) {
+      if (!firstPaymentByBookingId.has(payment.bookingId)) {
+        firstPaymentByBookingId.set(payment.bookingId, payment);
+      }
+      if (payment.status === "captured" && !firstCapturedPaymentByBookingId.has(payment.bookingId)) {
+        firstCapturedPaymentByBookingId.set(payment.bookingId, payment);
+      }
+    }
     const stripeTransfersConfigured = this.stripeConnect.isConfigured();
     type DisbursementEntryRef = OpsPayoutRunPreviewResponse["disbursementBatches"][number]["entries"][number];
     type MutableDisbursementBatch = {
@@ -12314,9 +12335,7 @@ export class MarketplacePlatformService {
     let providerInstantEligibleCount = 0;
 
     for (const provider of providers) {
-      const providerBookings = bookings.filter(
-        (booking) => booking.providerId === provider.id && this.isPayoutRelevantBooking(booking)
-      );
+      const providerBookings = payoutBookingsByProviderId.get(provider.id) ?? [];
       const nextRunIso = this.getNextPayoutRunIso(provider.weeklyPayoutDay);
       let providerInstantEligibleCents = 0;
       const providerTransferBlockers: string[] = [];
@@ -12348,10 +12367,7 @@ export class MarketplacePlatformService {
       }
 
       for (const booking of providerBookings) {
-        const payment =
-          payments.find(
-            (candidate) => candidate.bookingId === booking.id && candidate.status === "captured"
-          ) ?? payments.find((candidate) => candidate.bookingId === booking.id);
+        const payment = firstCapturedPaymentByBookingId.get(booking.id) ?? firstPaymentByBookingId.get(booking.id);
         const settlement = payment
           ? await this.ensureBookingFinancialSettlement(booking, payment)
           : await this.repository.findBookingFinancialSettlement(booking.id);
@@ -14303,12 +14319,23 @@ export class MarketplacePlatformService {
 
   public async listOpsLaunchLeads(): Promise<OpsLaunchLead[]> {
     const now = Date.now();
-    const [leads, bookings, customers, providers] = await Promise.all([
+    const [leads, customers, providers] = await Promise.all([
       this.repository.listLaunchLeads(),
-      this.repository.listBookings(),
       this.repository.listCustomers(),
       this.repository.listProviders()
     ]);
+    // A lead is shown with the bookings linked to it and the bookings of customers who share its email or phone.
+    const leadEmails = new Set(leads.flatMap((lead) => lead.email?.trim() ? [lead.email.trim().toLowerCase()] : []));
+    const leadPhones = new Set(leads.flatMap((lead) => this.normalizeLaunchLeadMatchPhone(lead.phone) ?? []));
+    const bookings = await this.repository.listBookingsForCustomersOrLaunchLeads({
+      customerIds: customers
+        .filter((customer) => {
+          const phone = this.normalizeLaunchLeadMatchPhone(customer.phone);
+          return leadEmails.has(customer.email.trim().toLowerCase()) || (phone !== undefined && leadPhones.has(phone));
+        })
+        .map((customer) => customer.id),
+      launchLeadIds: leads.map((lead) => lead.id)
+    });
 
     return leads
       .map((lead) => {
@@ -14582,12 +14609,22 @@ export class MarketplacePlatformService {
   }
 
   public async getOpsFinancialExceptionSummary(): Promise<OpsFinancialExceptionSummaryResponse> {
-    const [tickets, bookings, payments, customers, providers] = await Promise.all([
+    const [tickets, payments] = await Promise.all([
       this.repository.listSupportTickets(),
-      this.repository.listBookings(),
-      this.repository.listPayments(),
-      this.repository.listCustomers(),
-      this.repository.listProviders()
+      this.repository.listPayments()
+    ]);
+    // Every figure here comes from a booking that is still open or disputed, or one with a refund under review.
+    const [openBookings, refundReviewBookings] = await Promise.all([
+      this.repository.listBookingsByStatuses(["requested", "confirmed", "in-progress", "disputed"]),
+      this.repository.listBookingsByIds([
+        ...new Set(payments.filter((payment) => payment.refundReviewStatus === "requested").map((payment) => payment.bookingId))
+      ])
+    ]);
+    const bookings = [...new Map([...openBookings, ...refundReviewBookings].map((booking) => [booking.id, booking])).values()]
+      .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
+    const [customers, providers] = await Promise.all([
+      this.repository.listCustomers([...new Set(bookings.map((booking) => booking.customerId))]),
+      this.repository.listProvidersByIds([...new Set(bookings.map((booking) => booking.providerId))])
     ]);
 
     const customerById = new Map(customers.map((customer) => [customer.id, customer]));
