@@ -979,6 +979,10 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return bookings.map((booking) => this.mapBooking(booking));
   }
 
+  public async countBookings(): Promise<number> {
+    return this.prisma.booking.count();
+  }
+
   public async summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary> {
     const hasException = Prisma.sql`"activeExceptionType" IS NOT NULL AND "activeExceptionType" <> ''`;
     const [[counts], pockets] = await Promise.all([
@@ -1000,10 +1004,6 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         ORDER BY MIN("scheduledStartIso"), 1, 2, 3, 4`)
     ]);
     return { ...counts, pockets: pockets.map((pocket) => ({ ...pocket })) };
-  }
-
-  public async countBookings(): Promise<number> {
-    return this.prisma.booking.count();
   }
 
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {

@@ -504,6 +504,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.bookings.filter((booking) => customerIds.has(booking.customerId) || (booking.launchLeadId !== undefined && launchLeadIds.has(booking.launchLeadId)));
   }
 
+  public async countBookings(): Promise<number> {
+    return this.bookings.length;
+  }
+
   public async summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary> {
     const requestedSince = new Date(requestedSinceIso).getTime();
     const pockets = new Map<string, OpsOverviewBookingSummary["pockets"][number]>();
@@ -529,10 +533,6 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       disputedAfterCompletionCount: this.bookings.filter((booking) => booking.status === "disputed" && Boolean(booking.completedAt)).length,
       pockets: [...pockets.values()]
     };
-  }
-
-  public async countBookings(): Promise<number> {
-    return this.bookings.length;
   }
 
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
