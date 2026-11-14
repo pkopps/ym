@@ -28,6 +28,8 @@ function wholeTableRepository(repository: MarketplaceRepository): MarketplaceRep
       (await repository.listProviders()).filter((provider) => providerIds.includes(provider.id)),
     listBookingsByIds: async (bookingIds: string[]) =>
       (await repository.listBookings()).filter((booking) => bookingIds.includes(booking.id)),
+    listBookingsForRecurringPlan: async (recurringPlanId: string) =>
+      (await repository.listBookings()).filter((booking) => booking.recurringPlanId === recurringPlanId),
     listUpcomingBookings: async (query: UpcomingBookingsQuery) =>
       (await repository.listBookings()).filter(
         (booking) =>
@@ -248,13 +250,17 @@ test("Postgres scoped crew queries return the same rows as the whole-table loads
       repository.listProviders()
     ]);
 
-    // Matches for one booking (GPS pings and arrival tracking). Callers do not depend on row order.
+    // Matches for one booking (GPS pings, arrival tracking, route start, reschedule notices), newest first like the whole-table load.
     for (const name of ["upcoming-a", "upcoming-b", "past-a", "upcoming-cancelled"]) {
       assert.deepEqual(
-        byId(await repository.listCrewMatchesForBookings([bookingId(name)])),
-        byId(allMatches.filter((match) => match.bookingId === bookingId(name)))
+        await repository.listCrewMatchesForBookings([bookingId(name)]),
+        allMatches.filter((match) => match.bookingId === bookingId(name))
       );
     }
+    assert.deepEqual(
+      await repository.listCrewMatchesForBookings([bookingId("upcoming-a"), bookingId("upcoming-b")]),
+      allMatches.filter((match) => [bookingId("upcoming-a"), bookingId("upcoming-b")].includes(match.bookingId))
+    );
 
     // Matches for one crew member (crew schedule and crew status), newest first like the whole-table load.
     for (const crewMemberId of [ids.crewA, ids.crewB]) {
@@ -427,4 +433,43 @@ test("Postgres tryWithLock reports a lock held by another transaction without wa
     await holder.catch(() => {});
     await prisma.$disconnect();
   }
+});
+
+test("Postgres recurring plan bookings match the whole-table results", { skip }, async () => {
+  await withCrewFixtures(async ({ prisma, repository, ids, bookingId, booking }) => {
+    const planId = `${bookingId("plan")}`;
+    const otherPlanId = `${bookingId("other-plan")}`;
+    const requestedAt = new Date().toISOString();
+    for (const [id, providerId] of [[planId, ids.providerA], [otherPlanId, ids.providerB]] as const) {
+      await repository.createRecurringServicePlan({
+        id, customerId: ids.customer, providerId, category: "lawn-mowing", frequency: "weekly",
+        serviceAddress: booking("plan-address", providerId, "requested", 1).serviceAddress,
+        requestedAt, anchorScheduledStartIso: requestedAt, anchorScheduledEndIso: requestedAt, notes: "", totalCents: 7_500,
+        status: "active"
+      });
+    }
+    try {
+      for (const row of [
+        booking("plan-3", ids.providerA, "requested", 21, { recurringPlanId: planId, recurringOccurrenceIndex: 3 }),
+        booking("plan-1", ids.providerA, "completed", -7, { recurringPlanId: planId, recurringOccurrenceIndex: 1 }),
+        booking("plan-2", ids.providerA, "cancelled", 14, { recurringPlanId: planId, recurringOccurrenceIndex: 2 }),
+        booking("other-plan-1", ids.providerB, "confirmed", 15, { recurringPlanId: otherPlanId, recurringOccurrenceIndex: 1 })
+      ]) {
+        await repository.createBooking(row);
+      }
+
+      const scopedRows = await repository.listBookingsForRecurringPlan(planId);
+      assert.deepEqual(scopedRows.map((row) => row.id), [bookingId("plan-1"), bookingId("plan-2"), bookingId("plan-3")]);
+      assert.deepEqual(scopedRows, (await repository.listBookings()).filter((row) => row.recurringPlanId === planId));
+      assert.deepEqual(await repository.listBookingsForRecurringPlan(`${planId}-missing`), []);
+
+      const scoped = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+      const wholeTable = new MarketplacePlatformService(wholeTableRepository(repository), new DataEngineeringLogger());
+      const summaries = await scoped.listRecurringServicePlansForCustomer(ids.customer);
+      assert.equal(summaries.plans.find((summary) => summary.plan.id === planId)?.upcomingBooking?.id, bookingId("plan-3"));
+      assert.deepEqual(summaries, await wholeTable.listRecurringServicePlansForCustomer(ids.customer));
+    } finally {
+      await prisma.recurringServicePlan.deleteMany({ where: { id: { in: [planId, otherPlanId] } } });
+    }
+  });
 });

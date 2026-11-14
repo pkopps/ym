@@ -214,6 +214,7 @@ model Booking {
   @@index([customerId, scheduledStartIso, id])
   @@index([providerId, scheduledStartIso, id])
   @@index([status, scheduledStartIso])
+  @@index([recurringPlanId])
   @@map("bookings")
 }
 

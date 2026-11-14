@@ -1,18 +1,18 @@
 # Engineer Status
 
-## Current checkpoint: scale fixes step 3 (per-provider crew lock)
+## Current checkpoint: scale fixes steps 0 to 4
 
 - Updated: November 14, 2026 (UTC).
-- Branch and commit: `claude/scale-3-crew-lock`, stacked on `claude/scale-2-location-index`, `claude/scale-1-hot-path-queries` and `claude/scale-0-baseline`; see the PRs for the commits.
-- Completed: step 0 (crew and GPS workload in the scale smoke, baseline recorded). Step 1 (GPS pings, arrival tracking, crew schedule, crew openings and crew status read only the rows they use; reconciliation returns early when no upcoming booking needs crew). Step 2 (`user_accounts.latitude`/`longitude` kept in sync by a trigger, indexed, used by provider search). Step 3: the `crew-staffing` lock is per provider. Reviewing, cancelling and claiming a crew match lock the booking's provider. A pass over every provider finds the providers with a booking short of crew, then reconciles them one at a time, each under its own lock and in its own transaction. Auto-accept takes the crew member's schedule lock without waiting and skips the crew member if another provider holds it or booked an overlapping job during the pass. Numbers for each step are in `reports/scale-review/2026-11-14-crew-hot-path.md`.
-- In progress: step 4, remaining whole-table loads.
-- Remaining: step 4. Taking reconciliation off the read path is proposed in the step 1 PR and not done.
+- Branch and commit: five stacked branches, one PR each: `claude/scale-0-baseline`, `claude/scale-1-hot-path-queries`, `claude/scale-2-location-index`, `claude/scale-3-crew-lock`, `claude/scale-4-whole-table-loads`; see the PRs for the commits.
+- Completed: step 0 (crew and GPS workload in the scale smoke, baseline recorded). Step 1 (GPS pings, arrival tracking, crew schedule, crew openings and crew status read only the rows they use; reconciliation returns early when no upcoming booking needs crew). Step 2 (`user_accounts.latitude`/`longitude` kept in sync by a trigger, indexed, used by provider search). Step 3 (`crew-staffing` lock per provider; a pass over every provider reconciles the providers that need crew one at a time; auto-accept takes the crew member's schedule lock without waiting). Step 4, first batch: recurring plan creation, cancellation, summaries, next-visit generation and plan-scope recovery read one plan's bookings (`listBookingsForRecurringPlan`, index on `bookings.recurringPlanId`); twelve places that wanted one booking's crew matches (rescheduling, booking notices, route start, job start, evidence photos, route leader, crew cancel, provider assistant) read only those. Before and after numbers and the list of what still loads whole tables are in `reports/scale-review/2026-11-14-crew-hot-path.md`.
+- In progress: none.
+- Remaining: 22 `listBookings()`, 6 `listCrewMatches()` and 11 `listProviders()` call sites, listed by screen in the report. Taking reconciliation off the read path is proposed in the step 1 PR and not done.
 - Blockers: none.
 - Changed workflows: none. One matching difference, described in the step 3 PR: a pass over every provider now reads fresh data for each provider, so in auto-accept mode it no longer books one crew member onto overlapping jobs for two providers in the same pass.
-- Validation: `npm run typecheck`; `npm run lint` with the stale-worktree ignore pattern; `npm run test:api` (424 passed, 22 skipped); `npm run test:api:postgres` (22 passed); `prisma migrate diff --exit-code` (no drift); `SCALE_MAX_P95_MS=5000 npm run test:scale` (passed). Local runs used Node 22 because the default Homebrew Node does not start.
+- Validation (on the step 4 branch, which contains all five steps): `npm run typecheck`; `npm run lint` with the stale-worktree ignore pattern; `npm run test:api` (424 passed, 23 skipped); `npm run test:api:postgres` (23 passed); `prisma migrate diff --exit-code` (no drift); `npm run prisma:seed` on a throwaway database (step 2); `SCALE_MAX_P95_MS=5000 npm run test:scale` three times (passed, slowest p95 1.1 s). Local runs used Node 22 because the default Homebrew Node does not start. Web smoke was not run locally; nothing under `apps/web` changed.
 - Known defects: none found.
 - Screenshot paths: none; no user-facing change.
-- Recommended next task: step 4.
+- Recommended next task: decide on the reconciliation proposal in the step 1 PR, then scope the crew staffing slow path and the provider calendar and payout ledgers.
 
 ## Current checkpoint: provider landing page rebuild
 

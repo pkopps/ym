@@ -51,3 +51,37 @@ Provider search filters on `user_accounts.latitude` and `longitude` with an inde
 ## After step 3 (per-provider crew lock), November 14, 2026
 
 The scale dataset has no booking short of crew, so a crew schedule read now takes no staffing lock at all (before: the global `crew-staffing` lock on every read). One run: crew-matches p95 311 ms, gps-ping 390 ms, search 564 ms, clients 1,092 ms, query p99 94 ms, zero errors. The difference from the step 2 run is within run-to-run noise; what this step changes is contention between providers when bookings do need crew, which this dataset does not exercise. `crew-hot-path.integration.test.ts` covers that case directly: staffing provider B completes while provider A's lock is held.
+
+## Final, after step 4 (recurring plans and per-booking crew match loads), November 14, 2026
+
+Three runs on the same machine and dataset; the table shows the median p95 of the three (range in brackets). All runs: zero errors, 250 notifications delivered.
+
+| Operation | Baseline p95 ms | Final p95 ms |
+| --- | ---: | ---: |
+| crew-matches | 30,021 | 252 (184 to 898) |
+| gps-ping | 14,997 | 276 (214 to 405) |
+| search | 14,053 | 454 (352 to 659) |
+| analytics | 9,444 | 654 (475 to 1,115) |
+| arrival-tracking | 8,368 | 135 (121 to 172) |
+| clients | 6,515 | 843 (709 to 934) |
+| route-write | 4,532 | 61 (51 to 66) |
+| password | 4,180 | 76 (76 to 102) |
+| crew-opportunities | 3,849 | 151 (124 to 156) |
+
+| Measure | Baseline | Final (median) |
+| --- | ---: | ---: |
+| Run time | 237 s | 6.7 s |
+| Event-loop p99 | 2,751 ms | 31 ms |
+| Query p99 | 1,772 ms | 71 ms |
+| RSS | 1,148 MB | 264 MB |
+
+The scale smoke does not exercise recurring plans, rescheduling, or a booking that is short of crew, so step 4 and the slow path of reconciliation are covered by the parity tests, not by these numbers.
+
+### Whole-table loads still in `MarketplacePlatformService`
+
+After step 4: `listBookings()` 22 call sites (was 27), `listCrewMatches()` 6 (was 18 at the start of step 4), `listProviders()` 11 (was 12).
+
+- Crew staffing when a booking needs crew: `reconcileCrewMatchesRecord`, `reviewCrewMatchRecord` (accept), `claimPublicCrewOpportunityRecord`, `buildProviderStaffingSummaries`. Crew eligibility looks at every accepted job a crew member has across providers, so these need a query for the candidate crew members' matches and those bookings.
+- Provider screens: `getProviderCalendarOverview`, `getProviderPayoutLedger`, `getCrewPayoutLedger`, `listProviderAssistantCandidates`, `buildProviderRetentionProgramSummary`, `bookingRecoveryOptionsRecord`, `getEvidencePhoto`.
+- Public: `getPublicMarketplaceOverview`, `buildCalendarFeedByToken` (finds the provider by scanning every provider's calendar token).
+- Ops screens and sweeps: `listProviderVerificationQueue`, `reviewProviderVerification`, `processProviderOnboardingAutomation`, `listOpsSupportTickets`, `escalateStaleOpsSupportTickets`, `listOpsLaunchLeads`, `listCustomerRetentionOpportunities`, `getOpsPayoutPreview`, `getOpsFinancialExceptionSummary`, `getObservabilityOverview`, `processBookingScheduleFollowUps`.
