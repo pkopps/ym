@@ -196,11 +196,6 @@ export interface MarketplaceRepository {
   listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
   /** The bookings with these ids, in the same order as `listBookings`. */
   listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
-  /** Every booking of these providers, in the same order as `listBookings`. */
-  listBookingsForProviders(providerIds: string[]): Promise<Booking[]>;
-  /** Every booking in one of these statuses, in the same order as `listBookings`. */
-  listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]>;
-  countBookings(): Promise<number>;
   /**
    * The bookings crew reconciliation for one provider can depend on: every booking of that provider, plus any
    * provider's bookings that end after `endAfterIso`. Same order as `listBookings`.
@@ -210,6 +205,11 @@ export interface MarketplaceRepository {
   listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]>;
   /** Bookings starting after `afterIso` in one of `statuses`, in the same order as `listBookings`. */
   listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]>;
+  /** Every booking of these providers, in the same order as `listBookings`. */
+  listBookingsForProviders(providerIds: string[]): Promise<Booking[]>;
+  /** Every booking in one of these statuses, in the same order as `listBookings`. */
+  listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]>;
+  countBookings(): Promise<number>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined>;
   createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
