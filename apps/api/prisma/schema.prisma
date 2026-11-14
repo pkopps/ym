@@ -352,6 +352,7 @@ model ProviderReview {
   escalationNotes         String?
   createdAt               DateTime
 
+  @@index([createdAt])
   @@map("provider_reviews")
 }
 

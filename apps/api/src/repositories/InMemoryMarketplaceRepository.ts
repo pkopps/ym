@@ -48,6 +48,7 @@ import {
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
   MarketplaceRepository,
+  CompletedBookingAreaSummary,
   UpcomingBookingsQuery
 } from "./MarketplaceRepository";
 
@@ -282,6 +283,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return [...this.providers];
   }
 
+  public async listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]> {
+    return this.providers.filter((provider) => provider.verificationStatus === status);
+  }
+
   public async listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]> {
     const requestedIds = new Set(providerIds);
     return this.providers.filter((provider) => requestedIds.has(provider.id));
@@ -442,6 +447,41 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     );
   }
 
+  public async summarizeCompletedBookingsByArea(recentSinceIso: string): Promise<CompletedBookingAreaSummary[]> {
+    const recentSince = new Date(recentSinceIso).getTime();
+    const groups = new Map<string, CompletedBookingAreaSummary>();
+    for (const booking of this.bookings) {
+      if (booking.status !== "completed") {
+        continue;
+      }
+      const key = JSON.stringify([booking.providerId, booking.serviceAddress.city, booking.serviceAddress.state, booking.category]);
+      const group = groups.get(key) ?? {
+        providerId: booking.providerId,
+        city: booking.serviceAddress.city,
+        state: booking.serviceAddress.state,
+        category: booking.category,
+        completedBookingCount: 0,
+        recentCompletedBookingCount: 0,
+        firstScheduledStartIso: booking.scheduledStartIso
+      };
+      group.completedBookingCount += 1;
+      if (new Date(booking.completedAt ?? booking.scheduledEndIso).getTime() >= recentSince) {
+        group.recentCompletedBookingCount += 1;
+      }
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }
+
+  public async listCompletedBookingsWithMarketingPhotos(): Promise<Booking[]> {
+    return this.bookings.filter(
+      (booking) =>
+        booking.status === "completed" &&
+        Boolean(booking.completedAt) &&
+        booking.serviceEvidence.some((evidence) => evidence.marketingUseStatus === "granted")
+    );
+  }
+
   public async listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]> {
     return this.bookings.filter((booking) => booking.recurringPlanId === recurringPlanId);
   }
@@ -543,6 +583,15 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async listProviderReviews(providerId: string): Promise<ProviderReview[]> {
     return this.providerReviews.filter((review) => review.providerId === providerId).map((review) => ({ ...review }));
+  }
+
+  public async listLatestProviderReviews(providerIds: string[], limit: number): Promise<ProviderReview[]> {
+    const requestedIds = new Set(providerIds);
+    const newestFirst = this.providerReviews
+      .filter((review) => requestedIds.has(review.providerId))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+    const last = newestFirst[limit - 1];
+    return (last ? newestFirst.filter((review) => review.createdAt >= last.createdAt) : newestFirst).map((review) => ({ ...review }));
   }
 
   public async findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined> {
