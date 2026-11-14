@@ -897,6 +897,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return bookings.map((booking) => this.mapBooking(booking));
   }
 
+  public async listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { OR: [{ providerId: query.providerId }, { scheduledEndIso: { gt: new Date(query.endAfterIso) } }] },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
   public async listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]> {
     const bookings = await this.prisma.booking.findMany({
       where: { recurringPlanId },
@@ -1185,14 +1193,21 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     if (bookingIds.length === 0) {
       return [];
     }
-    const matches = await this.prisma.crewMatch.findMany({
+    // Large id lists are split so the query stays under the database's bind-parameter limit.
+    const chunkSize = 5000;
+    const chunks = Array.from({ length: Math.ceil(bookingIds.length / chunkSize) }, (_, index) =>
+      bookingIds.slice(index * chunkSize, (index + 1) * chunkSize));
+    const rows = (await Promise.all(chunks.map((ids) => this.prisma.crewMatch.findMany({
       where: {
         crewMemberId,
-        bookingId: { in: bookingIds }
+        bookingId: { in: ids }
       },
       orderBy: { createdAt: "desc" }
-    });
-    return matches.map((match: any) => this.mapCrewMatch(match));
+    })))).flat();
+    if (chunks.length > 1) {
+      rows.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+    }
+    return rows.map((match) => this.mapCrewMatch(match));
   }
 
   public async listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]> {

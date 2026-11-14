@@ -28,6 +28,7 @@ function wholeTableRepository(repository: MarketplaceRepository): MarketplaceRep
       (await repository.listProviders()).filter((provider) => providerIds.includes(provider.id)),
     listBookingsByIds: async (bookingIds: string[]) =>
       (await repository.listBookings()).filter((booking) => bookingIds.includes(booking.id)),
+    listBookingsForCrewStaffing: async () => repository.listBookings(),
     listBookingsForRecurringPlan: async (recurringPlanId: string) =>
       (await repository.listBookings()).filter((booking) => booking.recurringPlanId === recurringPlanId),
     listUpcomingBookings: async (query: UpcomingBookingsQuery) =>
@@ -352,13 +353,15 @@ test("Postgres crew schedule, openings and tracking match the whole-table result
   });
 });
 
-test("Postgres crew reconciliation still offers an unstaffed upcoming booking to eligible crew", { skip }, async () => {
+test("Postgres crew reconciliation offers an unstaffed upcoming booking from the staffing view, not from a schedule read", { skip }, async () => {
   await withCrewFixtures(async ({ prisma, repository, ids, bookingId, booking }) => {
     const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
     await repository.createBooking(booking("unstaffed", ids.providerA, "confirmed", 20));
 
     await platform.getCrewMatchesForCrew(ids.crewA);
+    assert.equal(await prisma.crewMatch.count({ where: { bookingId: bookingId("unstaffed") } }), 0);
 
+    await platform.getProviderStaffingOverview(ids.providerA);
     const created = await prisma.crewMatch.findMany({ where: { bookingId: bookingId("unstaffed") } });
     assert.deepEqual(created.map((match) => match.crewMemberId).sort(), [ids.crewA, ids.crewB]);
     assert.ok(created.every((match) => match.status === "pending-provider-review" && match.providerId === ids.providerA));
@@ -472,4 +475,42 @@ test("Postgres recurring plan bookings match the whole-table results", { skip },
       await prisma.recurringServicePlan.deleteMany({ where: { id: { in: [planId, otherPlanId] } } });
     }
   });
+});
+
+test("Postgres crew reconciliation on scoped rows offers the same seats as on every row", { skip }, async () => {
+  const offers = async (useWholeTables: boolean) => {
+    let result: string[] = [];
+    await withCrewFixtures(async ({ prisma, repository, ids, bookingId, booking }) => {
+      const platform = new MarketplacePlatformService(
+        useWholeTables ? wholeTableRepository(repository) : repository,
+        new DataEngineeringLogger()
+      );
+      // Open seats for provider A: one at the same time as crew B's accepted job for provider B, one on the same
+      // day as crew A's accepted job, and one on a free day.
+      await repository.createBooking(booking("open-overlap", ids.providerA, "confirmed", 11));
+      await repository.createBooking(booking("open-same-day", ids.providerA, "confirmed", 10 + 3 / 24));
+      await repository.createBooking(booking("open-free", ids.providerA, "requested", 20));
+
+      await platform.getProviderStaffingOverview(ids.providerA);
+
+      const created = await prisma.crewMatch.findMany({
+        where: { bookingId: { startsWith: bookingId("open-") } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+      });
+      result = created
+        .map((match) => `${match.bookingId.slice(bookingId("").length)}:${match.crewMemberId.slice(-6)}:${match.status}:${match.distanceMiles}`)
+        .sort();
+    });
+    return result;
+  };
+
+  const scoped = await offers(false);
+  assert.deepEqual(scoped, [
+    "open-free:crew-a:pending-provider-review:0",
+    "open-free:crew-b:pending-provider-review:0",
+    "open-overlap:crew-a:pending-provider-review:0",
+    "open-same-day:crew-a:pending-provider-review:0",
+    "open-same-day:crew-b:pending-provider-review:0"
+  ]);
+  assert.deepEqual(scoped, await offers(true));
 });

@@ -85,3 +85,18 @@ After step 4: `listBookings()` 22 call sites (was 27), `listCrewMatches()` 6 (wa
 - Provider screens: `getProviderCalendarOverview`, `getProviderPayoutLedger`, `getCrewPayoutLedger`, `listProviderAssistantCandidates`, `buildProviderRetentionProgramSummary`, `bookingRecoveryOptionsRecord`, `getEvidencePhoto`.
 - Public: `getPublicMarketplaceOverview`, `buildCalendarFeedByToken` (finds the provider by scanning every provider's calendar token).
 - Ops screens and sweeps: `listProviderVerificationQueue`, `reviewProviderVerification`, `processProviderOnboardingAutomation`, `listOpsSupportTickets`, `escalateStaleOpsSupportTickets`, `listOpsLaunchLeads`, `listCustomerRetentionOpportunities`, `getOpsPayoutPreview`, `getOpsFinancialExceptionSummary`, `getObservabilityOverview`, `processBookingScheduleFollowUps`.
+
+## Reconciliation off the crew schedule read, November 14, 2026
+
+`getCrewMatchesForCrew` no longer reconciles. Two runs: crew-matches p95 76 and 83 ms (median 252 ms before), run time 4.8 and 5.1 s, zero errors.
+
+Reconciliation now runs after the writes that change staffing, so its cost when a booking needs crew matters. Timed on the same dataset with one unstaffed booking, five runs each:
+
+| Reconcile one provider | Before | After |
+| --- | ---: | ---: |
+| Provider with about 50 bookings | 1,800 to 2,480 ms | 89 to 103 ms |
+| Provider with 10,000 bookings | not measured | 1,011 to 1,080 ms |
+
+Before, a pass loaded every booking and every crew match. It now loads the provider's own bookings plus any provider's bookings that have not ended (or ended in the last two days), and the matches on those. A provider's whole booking history is still loaded, because crew familiarity counts past jobs with that provider; that is the 10,000-booking row.
+
+Whole-table loads left in `MarketplacePlatformService`: `listBookings()` 21, `listCrewMatches()` 5, `listProviders()` 11.

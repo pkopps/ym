@@ -15844,14 +15844,15 @@ test("crew staffing is serialized per provider and a global pass only locks prov
   const withLock = f.repository.withLock.bind(f.repository);
   f.repository.withLock = (key, work) => { keys.push(key); return withLock(key, work); };
 
-  await f.platform.getCrewMatchesForCrew(f.crew.id);
+  // Saving crew preferences runs a pass over every provider.
+  await f.platform.updateCrewPreferences(f.crew.id, {});
   const staffingKeys = keys.filter((key) => key.startsWith("crew-staffing"));
   assert.deepEqual(staffingKeys, [`crew-staffing:${f.provider.id}`]);
   assert.equal((await f.crewMatchesForBooking()).length, 1);
 
   // The booking now has the crew it needs, so the next global pass takes no staffing lock at all.
   keys.length = 0;
-  await f.platform.getCrewMatchesForCrew(f.crew.id);
+  await f.platform.updateCrewPreferences(f.crew.id, {});
   assert.deepEqual(keys.filter((key) => key.startsWith("crew-staffing")), []);
 });
 
@@ -15897,11 +15898,12 @@ test("auto-accept does not double-book a crew member another provider booked dur
   assert.equal(template?.status, "accepted");
 
   // Another provider books the crew member for the same hour right after this pass has loaded its matches.
-  const listCrewMatches = f.repository.listCrewMatches.bind(f.repository);
+  // The pass loads matches for every booking it can depend on, which includes the other provider's booking.
+  const listCrewMatchesForBookings = f.repository.listCrewMatchesForBookings.bind(f.repository);
   let booked = false;
-  f.repository.listCrewMatches = async () => {
-    const snapshot = await listCrewMatches();
-    if (!booked) {
+  f.repository.listCrewMatchesForBookings = async (bookingIds, crewMemberId) => {
+    const snapshot = await listCrewMatchesForBookings(bookingIds, crewMemberId);
+    if (!booked && bookingIds.includes(otherBooking.id)) {
       booked = true;
       await f.repository.createCrewMatch({ ...template!, id: "match-other-provider", bookingId: otherBooking.id,
         providerId: otherBooking.providerId, crewMemberId: f.crew.id, crewMemberName: f.crew.fullName });
@@ -15913,4 +15915,72 @@ test("auto-accept does not double-book a crew member another provider booked dur
   assert.deepEqual(await f.crewMatchesForBooking(), []);
   const accepted = (await f.repository.listCrewMatches()).filter((match) => match.crewMemberId === f.crew.id && match.status === "accepted");
   assert.deepEqual(accepted.map((match) => match.id), ["match-other-provider"]);
+});
+
+test("reading a crew schedule does not reconcile or take a staffing lock", async () => {
+  const f = await createAutoAcceptStaffingFixture("read-no-reconcile");
+  const keys: string[] = [];
+  const withLock = f.repository.withLock.bind(f.repository);
+  f.repository.withLock = (key, work) => { keys.push(key); return withLock(key, work); };
+
+  const schedule = await f.platform.getCrewMatchesForCrew(f.crew.id);
+  assert.deepEqual(schedule.matches, []);
+  assert.deepEqual(await f.crewMatchesForBooking(), []);
+  assert.deepEqual(keys.filter((key) => key.startsWith("crew-staffing")), []);
+
+  // The provider's staffing view still reconciles, and the crew member then sees the job.
+  await f.platform.getProviderStaffingOverview(f.provider.id);
+  assert.equal((await f.platform.getCrewMatchesForCrew(f.crew.id)).matches.length, 1);
+});
+
+test("a new booking is offered to eligible crew when it is created", async () => {
+  const f = await createAutoAcceptStaffingFixture("booking-trigger");
+  const second = await createWorkflowBooking(f.platform, f.repository, f.customer.id, {
+    providerId: f.provider.id, serviceAddress: createAddress("114 Garden Row", 30.2436, -97.7637),
+    servicePropertyId: f.customer.defaultPropertyId, category: "lawn-mowing",
+    scheduledStartIso: futureIso(96), scheduledEndIso: futureIso(97), notes: "Second visit", totalCents: 6200
+  });
+  const matches = (await f.repository.listCrewMatches()).filter((match) => match.crewMemberId === f.crew.id);
+  // Creating the second booking reconciles the provider, which also staffs the first one.
+  assert.deepEqual(matches.map((match) => match.bookingId).sort(), [f.booking.id, second.id].sort());
+  assert.ok(matches.every((match) => match.status === "accepted" && match.autoAccepted));
+});
+
+test("a denied crew match offers the open seat to the next eligible crew member", async () => {
+  const f = await createAutoAcceptStaffingFixture("deny-trigger");
+  await f.platform.updateProviderSettings(f.provider.id, { serviceRadiusMiles: 20, staffingMode: "review-first", sponsoredListingEnabled: false });
+  await f.platform.getProviderStaffingOverview(f.provider.id);
+  const [pending] = await f.crewMatchesForBooking();
+  assert.equal(pending?.status, "pending-provider-review");
+  const later = await f.platform.registerUser({
+    fullName: "Sam Trimmer", email: "crew-deny-trigger-later@example.com", password: "Password123!", phone: "555-0601", role: "crew-member",
+    address: createAddress("108 Garden Row", 30.2432, -97.7634), categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], willingToTravelMiles: 30
+  });
+  const offeredTo = async () => (await f.repository.listCrewMatches()).filter((match) => match.bookingId === f.booking.id).map((match) => match.crewMemberId);
+  assert.deepEqual(await offeredTo(), [f.crew.id]);
+
+  await f.platform.reviewCrewMatch(f.provider.id, { crewMatchId: pending!.id, action: "deny" });
+  assert.deepEqual((await offeredTo()).sort(), [f.crew.id, later.id].sort());
+});
+
+test("a failed crew reconcile does not fail the booking that triggered it", async () => {
+  const f = await createAutoAcceptStaffingFixture("reconcile-failure");
+  const listUpcomingBookings = f.repository.listUpcomingBookings.bind(f.repository);
+  f.repository.listUpcomingBookings = async () => { throw new Error("staffing query unavailable"); };
+  const errors: unknown[][] = [];
+  const consoleError = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args); };
+  try {
+    const second = await createWorkflowBooking(f.platform, f.repository, f.customer.id, {
+      providerId: f.provider.id, serviceAddress: createAddress("114 Garden Row", 30.2436, -97.7637),
+      servicePropertyId: f.customer.defaultPropertyId, category: "lawn-mowing",
+      scheduledStartIso: futureIso(96), scheduledEndIso: futureIso(97), notes: "Second visit", totalCents: 6200
+    });
+    assert.ok(await f.repository.findBookingById(second.id));
+    assert.equal(errors.length, 1);
+  } finally {
+    console.error = consoleError;
+    f.repository.listUpcomingBookings = listUpcomingBookings;
+  }
 });

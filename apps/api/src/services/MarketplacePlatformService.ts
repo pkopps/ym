@@ -4294,6 +4294,8 @@ export class MarketplacePlatformService {
       throw new Error("Crew preferences could not be updated");
     }
 
+    // Changed services, days or travel distance may make this crew member eligible for open seats with any provider.
+    await this.reconcileCrewAfterChange();
     return updatedCrewMember;
   }
 
@@ -4323,9 +4325,12 @@ export class MarketplacePlatformService {
   ): Promise<CrewMatchCandidate> {
     const found = await this.repository.findCrewMatchById(payload.crewMatchId);
     if (!found) throw new HttpError(404, "Crew match not found");
-    return this.repository.withLock(this.crewStaffingLockKey(found.providerId), repository =>
+    const reviewed = await this.repository.withLock(this.crewStaffingLockKey(found.providerId), repository =>
       repository.withLock(`crew-schedule:${found.crewMemberId}`, locked =>
         this.withRepository(locked).reviewCrewMatchRecord(providerId, payload)));
+    // A denied match leaves the seat open for the next candidates.
+    if (reviewed.status === "denied") await this.reconcileCrewAfterChange(reviewed.providerId);
+    return reviewed;
   }
 
   private async reviewCrewMatchRecord(providerId: string, payload: ReviewCrewMatchRequest): Promise<CrewMatchCandidate> {
@@ -4483,8 +4488,8 @@ export class MarketplacePlatformService {
       throw new Error("Crew member not found");
     }
 
-    await this.reconcileCrewMatches();
-
+    // Reading a schedule does not reconcile. Matches are offered by the writes that change who is needed or
+    // eligible (see reconcileCrewAfterChange) and when a provider opens their staffing view.
     const ownMatches = await this.repository.listCrewMatchesForCrewMember(crewMemberId);
     const bookingIds = [...new Set(ownMatches.map((match) => match.bookingId))];
     const [providers, bookings, bookingMatches] = await Promise.all([
@@ -5447,7 +5452,9 @@ export class MarketplacePlatformService {
   }
 
   public async updateBookingSchedule(providerId: string, payload: UpdateBookingScheduleRequest): Promise<Booking> {
-    return this.repository.withLock(`booking:${payload.bookingId}`, repository => this.withRepository(repository).updateBookingScheduleRecord(providerId, payload));
+    const updated = await this.repository.withLock(`booking:${payload.bookingId}`, repository => this.withRepository(repository).updateBookingScheduleRecord(providerId, payload));
+    await this.reconcileCrewAfterChange(updated.providerId);
+    return updated;
   }
 
   private async updateBookingScheduleRecord(providerId: string, payload: UpdateBookingScheduleRequest): Promise<Booking> {
@@ -5517,6 +5524,7 @@ export class MarketplacePlatformService {
       for (const notification of response.notifications) await scoped.queueNotificationDeliveries(notification);
       return response;
     }));
+    await this.reconcileCrewAfterChange(result.booking.providerId);
     return result.booking;
   }
 
@@ -7155,6 +7163,8 @@ export class MarketplacePlatformService {
       });
 
       await this.scheduleNextRecurringBookingIfNeeded(updatedBooking);
+      // The next recurring visit, if one was generated, needs crew.
+      await this.reconcileCrewAfterChange(updatedBooking.providerId);
     }
 
     return updatedBooking;
@@ -7341,7 +7351,9 @@ export class MarketplacePlatformService {
 
   public async recoverBooking(customerId: string, payload: RecoverBookingRequest): Promise<Booking> {
     const providerId = payload.providerId ?? "cancel";
-    return this.repository.withLock(`calendar:${providerId}`, repository => repository.withLock(`booking:${payload.bookingId}`, locked => this.withRepository(locked).recoverBookingRecord(customerId, payload)));
+    const recovered = await this.repository.withLock(`calendar:${providerId}`, repository => repository.withLock(`booking:${payload.bookingId}`, locked => this.withRepository(locked).recoverBookingRecord(customerId, payload)));
+    await this.reconcileCrewAfterChange(recovered.providerId);
+    return recovered;
   }
 
   private async recoverBookingRecord(customerId: string, payload: RecoverBookingRequest): Promise<Booking> {
@@ -7468,7 +7480,9 @@ export class MarketplacePlatformService {
   }
 
   public async createBooking(customerId: string, payload: CreateBookingRequest): Promise<Booking> {
-    return this.repository.withLock(`calendar:${payload.providerId}`, repository => this.withRepository(repository).createBookingWithRequestLock(customerId, payload));
+    const booking = await this.repository.withLock(`calendar:${payload.providerId}`, repository => this.withRepository(repository).createBookingWithRequestLock(customerId, payload));
+    await this.reconcileCrewAfterChange(booking.providerId);
+    return booking;
   }
 
   private async createBookingWithRequestLock(customerId: string, payload: CreateBookingRequest): Promise<Booking> {
@@ -7601,6 +7615,16 @@ export class MarketplacePlatformService {
     if (!["weekly", "biweekly"].includes(input?.frequency)) throw new HttpError(400, "Choose a supported recurring frequency.");
     const payload = { ...this.parseBookingRequest(input), frequency: input.frequency };
     const key = hashDeviceIdentifier(JSON.stringify([customerId, payload.providerId, payload.servicePropertyId ?? this.quoteAddressKey(payload.serviceAddress), payload.category, payload.scheduledStartIso, payload.scheduledEndIso, payload.frequency]));
+    const created = await this.createRecurringServicePlanWithLock(customerId, payload, key);
+    await this.reconcileCrewAfterChange(created.initialBooking.providerId);
+    return created;
+  }
+
+  private async createRecurringServicePlanWithLock(
+    customerId: string,
+    payload: CreateRecurringServicePlanRequest,
+    key: string
+  ): Promise<CreateRecurringServicePlanResponse> {
     return this.repository.withLock(`recurring:${key}`, async (repository) => {
       const existing = await repository.findRecurringServicePlanById(key);
       const scoped = this.withRepository(repository);
@@ -7991,7 +8015,10 @@ export class MarketplacePlatformService {
     customerId: string,
     payload: CancelBookingRequest
   ): Promise<Booking> {
-    return this.repository.withLock(`booking:${payload.bookingId}`, repository => this.withRepository(repository).cancelBookingRecord(customerId, payload));
+    const cancelled = await this.repository.withLock(`booking:${payload.bookingId}`, repository => this.withRepository(repository).cancelBookingRecord(customerId, payload));
+    // The crew this visit held are free for the provider's other open seats.
+    await this.reconcileCrewAfterChange(cancelled.providerId);
+    return cancelled;
   }
 
   private async cancelBookingRecord(customerId: string, payload: CancelBookingRequest): Promise<Booking> {
@@ -8038,8 +8065,10 @@ export class MarketplacePlatformService {
 
   public async rescheduleBooking(customerId: string, payload: RescheduleBookingRequest): Promise<Booking> {
     const booking = await this.getCustomerBooking(customerId, payload.bookingId);
-    return this.repository.withLock(`calendar:${booking.providerId}`, repository => repository.withLock(`booking:${payload.bookingId}`, locked =>
+    const rescheduled = await this.repository.withLock(`calendar:${booking.providerId}`, repository => repository.withLock(`booking:${payload.bookingId}`, locked =>
       locked.withLock(`booking-provider:${booking.providerId}`, serialized => this.withRepository(serialized).rescheduleBookingRecord(customerId, payload))));
+    await this.reconcileCrewAfterChange(rescheduled.providerId);
+    return rescheduled;
   }
 
   private async rescheduleBookingRecord(
@@ -11745,7 +11774,10 @@ export class MarketplacePlatformService {
   }
 
   public async reviewBookingAddress(providerId: string, payload: ReviewBookingAddressRequest): Promise<Booking> {
-    return this.repository.withLock(`booking:${payload.bookingId}`, repository => this.withRepository(repository).reviewBookingAddressRecord(providerId, payload));
+    const reviewed = await this.repository.withLock(`booking:${payload.bookingId}`, repository => this.withRepository(repository).reviewBookingAddressRecord(providerId, payload));
+    // An approved address change moves the job, which changes which crew are within travel distance.
+    await this.reconcileCrewAfterChange(reviewed.providerId);
+    return reviewed;
   }
 
   private async reviewBookingAddressRecord(providerId: string, payload: ReviewBookingAddressRequest): Promise<Booking> {
@@ -18834,6 +18866,19 @@ export class MarketplacePlatformService {
       .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
   }
 
+  /**
+   * Offers open crew seats after a write that can change which bookings need crew or who is eligible: for one
+   * provider, or for every provider that has a booking short of crew. Call it after the write has committed and
+   * its locks are released. It never fails the write; the provider staffing view reconciles again when opened.
+   */
+  private async reconcileCrewAfterChange(providerId?: string): Promise<void> {
+    try {
+      await this.reconcileCrewMatches(providerId);
+    } catch {
+      console.error("Crew reconciliation after a staffing change failed; the provider staffing view retries it.");
+    }
+  }
+
   /** Crew staffing for one provider's bookings is serialized on this key. */
   private crewStaffingLockKey(providerId: string): string {
     return `crew-staffing:${providerId}`;
@@ -18928,12 +18973,27 @@ export class MarketplacePlatformService {
       return;
     }
 
-    const [providers, crewMembers, bookings, matches, customers] = await Promise.all([
+    // What the pass below reads from bookings and matches, and why this subset gives the same result as every row:
+    // - the provider's own upcoming bookings, and their matches, to find open seats;
+    // - a candidate's accepted jobs that overlap an upcoming booking. Those end in the future;
+    // - a candidate's accepted and pending jobs on the same day as an upcoming booking. Those start within the
+    //   last day or later;
+    // - a candidate's past accepted jobs with this provider (familiarity). Those are this provider's bookings.
+    // So: every booking of this provider, plus any provider's bookings that ended within the last two days or
+    // have not ended, and the matches on those bookings.
+    const [providers, crewMembers, bookings] = await Promise.all([
       this.repository.listProvidersByIds([providerId]),
       this.repository.listCrewMembers(),
-      this.repository.listBookings(),
-      this.repository.listCrewMatches(),
-      this.repository.listCustomers()
+      this.repository.listBookingsForCrewStaffing({
+        providerId,
+        endAfterIso: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+      })
+    ]);
+    const [matches, customers] = await Promise.all([
+      this.repository.listCrewMatchesForBookings(bookings.map((booking) => booking.id)),
+      this.repository.listCustomers([
+        ...new Set(bookings.filter((booking) => booking.providerId === providerId).map((booking) => booking.customerId))
+      ])
     ]);
 
     const targetProviders = providers.filter((provider) => provider.id === providerId);

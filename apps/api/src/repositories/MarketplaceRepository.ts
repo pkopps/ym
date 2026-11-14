@@ -195,6 +195,11 @@ export interface MarketplaceRepository {
   listBookings(): Promise<Booking[]>;
   listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
   listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
+  /**
+   * The bookings crew reconciliation for one provider can depend on: every booking of that provider, plus any
+   * provider's bookings that end after `endAfterIso`. Same order as `listBookings`.
+   */
+  listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]>;
   /** One recurring plan's bookings, in the same order as `listBookings`. */
   listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]>;
   /** Bookings starting after `afterIso` in one of `statuses`, in the same order as `listBookings`. */
