@@ -14,9 +14,10 @@ if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || !/test|scale/
   throw new Error("Use TEST_DATABASE_URL for a disposable local database whose name includes test or scale.");
 }
 // SCALE_LARGE=1 runs the larger dataset and concurrency. It is for local before and after comparisons, not for CI.
+// Its pool timeout is off (0), so an operation that cannot get a connection waits and the wait shows up as latency.
 const large = process.env.SCALE_LARGE === "1";
 const size = large
-  ? { providers: 1999, history: 200_000, crew: 500, perKind: 100, concurrency: 300, connections: 20, poolTimeoutSeconds: 120 }
+  ? { providers: 1999, history: 200_000, crew: 500, perKind: 100, concurrency: 300, connections: 20, poolTimeoutSeconds: 0 }
   : { providers: 600, history: 20_000, crew: 200, perKind: 40, concurrency: 12, connections: 8, poolTimeoutSeconds: 10 };
 const nearProviders = 200, upcomingCount = 500;
 url.searchParams.set("connection_limit", String(size.connections)); url.searchParams.set("pool_timeout", String(size.poolTimeoutSeconds));
@@ -140,6 +141,7 @@ try {
   const seededMatchCount = (crewIndex: number) => [size.history, upcomingCount].reduce((sum, rows) => sum + (crewIndex < rows ? Math.ceil((rows - crewIndex) / size.crew) : 0), 0);
   const isSeededCrewJob = (bookingId: string) => bookingId.startsWith(`${prefix}-booking-`) || bookingId.startsWith(`${prefix}-upcoming-`);
   const notifications = (async () => { while (await repository.countDueNotificationDeliveries(new Date().toISOString())) await platform.retryDueNotificationDeliveriesForOps(); })();
+  notifications.catch(() => {}); // Awaited below; this only stops a failure during the run from ending the process first.
   await mapConcurrent(operations, size.concurrency, async index => {
     const kind = kinds[index % kinds.length], turn = Math.floor(index / kinds.length), began = performance.now();
     try {
