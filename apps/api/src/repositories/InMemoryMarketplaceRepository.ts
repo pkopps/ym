@@ -512,6 +512,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.bookings.filter((booking) => requestedIds.has(booking.id));
   }
 
+  public async findBookingByEvidenceId(evidenceId: string): Promise<Booking | undefined> {
+    return this.bookings.find((booking) => booking.serviceEvidence.some((evidence) => evidence.id === evidenceId));
+  }
+
   public async findBookingById(bookingId: string): Promise<Booking | undefined> {
     return this.bookings.find((booking) => booking.id === bookingId);
   }
@@ -734,6 +738,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     checkoutSessionId: string
   ): Promise<PaymentRecord | undefined> {
     return this.payments.find((payment) => payment.checkoutSessionId === checkoutSessionId);
+  }
+
+  public async findPaymentByProcessorPaymentIntentId(paymentIntentId: string): Promise<PaymentRecord | undefined> {
+    return this.payments.find((payment) => payment.processorPaymentIntentId === paymentIntentId);
   }
 
   public async listPayments(): Promise<PaymentRecord[]> {
