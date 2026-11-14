@@ -967,6 +967,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return bookings.map((booking) => this.mapBooking(booking));
   }
 
+  public async listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]> {
+    if (query.customerIds.length === 0 && query.launchLeadIds.length === 0) {
+      return [];
+    }
+    const bookings = await this.prisma.booking.findMany({
+      where: { OR: [{ customerId: { in: query.customerIds } }, { launchLeadId: { in: query.launchLeadIds } }] },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
   public async countBookings(): Promise<number> {
     return this.prisma.booking.count();
   }

@@ -497,6 +497,12 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.bookings.filter((booking) => statuses.includes(booking.status));
   }
 
+  public async listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]> {
+    const customerIds = new Set(query.customerIds);
+    const launchLeadIds = new Set(query.launchLeadIds);
+    return this.bookings.filter((booking) => customerIds.has(booking.customerId) || (booking.launchLeadId !== undefined && launchLeadIds.has(booking.launchLeadId)));
+  }
+
   public async countBookings(): Promise<number> {
     return this.bookings.length;
   }

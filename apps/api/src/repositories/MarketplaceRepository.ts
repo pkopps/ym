@@ -233,6 +233,8 @@ export interface MarketplaceRepository {
   /** Every booking in one of these statuses, in the same order as `listBookings`. */
   listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]>;
   countBookings(): Promise<number>;
+  /** Bookings made by any of these customers or linked to any of these launch leads, in the same order as `listBookings`. */
+  listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined>;
   createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
