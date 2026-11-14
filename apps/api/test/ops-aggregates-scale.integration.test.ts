@@ -16,7 +16,9 @@ const skip = databaseUrl ? false : "TEST_DATABASE_URL is not configured";
 function wholeTableRepository(repository: MarketplaceRepository): MarketplaceRepository {
   const overrides: Partial<MarketplaceRepository> = {
     listBookingsByStatuses: async () => await repository.listBookings(),
-    listBookingsByIds: async (bookingIds) => (await repository.listBookings()).filter((booking) => bookingIds.includes(booking.id)),
+    listBookingsByIds: async () => await repository.listBookings(),
+    // The payout preview used to walk every booking itself, so nothing was totalled ahead of it.
+    summarizeBookingsWithoutPayments: async () => ({ completedTotalCents: 0, disputedAfterCompletionCount: 0 }),
     listBookingsForCustomersOrLaunchLeads: async () => await repository.listBookings(),
     listCustomers: async () => await repository.listCustomers(),
     listProvidersByIds: async () => await repository.listProviders()
@@ -93,6 +95,13 @@ test("Postgres ops payout preview, financial exceptions and launch leads match t
     assert.deepEqual(scopedRows, everyBooking.filter((row) => row.customerId === customerIds[2] || row.launchLeadId === leadIds[2]));
     assert.deepEqual(scopedRows.map((row) => row.id), ["b-ready", "a-refund-review", "a-cancelled-review", "b-requested"].map(bookingId));
     assert.deepEqual(await repository.listBookingsForCustomersOrLaunchLeads({ customerIds: [], launchLeadIds: [] }), []);
+
+    const paidBookingIds = new Set((await repository.listPayments()).map((row) => row.bookingId));
+    const neverPaid = everyBooking.filter((row) => !paidBookingIds.has(row.id));
+    assert.deepEqual(await repository.summarizeBookingsWithoutPayments(), {
+      completedTotalCents: neverPaid.filter((row) => row.status === "completed").reduce((sum, row) => sum + row.totalCents, 0),
+      disputedAfterCompletionCount: neverPaid.filter((row) => row.status === "disputed" && Boolean(row.completedAt)).length
+    });
 
     const scoped = new MarketplacePlatformService(repository, new DataEngineeringLogger());
     const wholeTable = new MarketplacePlatformService(wholeTableRepository(repository), new DataEngineeringLogger());
