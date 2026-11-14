@@ -207,6 +207,7 @@ export interface MarketplaceRepository {
   createBooking(booking: Booking): Promise<Booking>;
   listBookings(): Promise<Booking[]>;
   listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
+  /** The bookings with these ids, in the same order as `listBookings`. */
   listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
   /**
    * The bookings crew reconciliation for one provider can depend on: every booking of that provider, plus any
