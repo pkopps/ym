@@ -49,6 +49,7 @@ import {
   CompleteProviderTransferReversalInput,
   MarketplaceRepository,
   CompletedBookingAreaSummary,
+  OpsOverviewBookingSummary,
   UpcomingBookingsQuery
 } from "./MarketplaceRepository";
 
@@ -514,6 +515,33 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
 
   public async countBookings(): Promise<number> {
     return this.bookings.length;
+  }
+
+  public async summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary> {
+    const requestedSince = new Date(requestedSinceIso).getTime();
+    const pockets = new Map<string, OpsOverviewBookingSummary["pockets"][number]>();
+    for (const booking of this.bookings) {
+      const { city, state, postalCode } = booking.serviceAddress;
+      const key = JSON.stringify([city, state, postalCode, booking.category]);
+      const pocket = pockets.get(key) ?? { city, state, postalCode, category: booking.category, completedCount: 0, activeCount: 0, activeExceptionCount: 0 };
+      if (booking.status === "completed" || booking.status === "refunded") {
+        pocket.completedCount += 1;
+      } else if (booking.status !== "cancelled") {
+        pocket.activeCount += 1;
+      }
+      if (booking.activeExceptionType) {
+        pocket.activeExceptionCount += 1;
+      }
+      pockets.set(key, pocket);
+    }
+    return {
+      totalBookings: this.bookings.length,
+      requestedBookings: this.bookings.filter((booking) => booking.status === "requested").length,
+      requestedSinceCount: this.bookings.filter((booking) => new Date(booking.requestedAt).getTime() >= requestedSince).length,
+      activeExceptionCount: this.bookings.filter((booking) => Boolean(booking.activeExceptionType)).length,
+      disputedAfterCompletionCount: this.bookings.filter((booking) => booking.status === "disputed" && Boolean(booking.completedAt)).length,
+      pockets: [...pockets.values()]
+    };
   }
 
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
