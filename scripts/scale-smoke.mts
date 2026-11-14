@@ -30,10 +30,16 @@ const prefix = `scale-load-${crypto.randomUUID()}`;
 process.env.YARDMATCH_ENV = prefix;
 const prisma = new PrismaClient({ datasourceUrl: url.toString(), log: [{ emit: "event", level: "query" }] });
 const queryTimes: number[] = [];
+// SCALE_PROFILE=1 (with SCALE_CONCURRENCY=1, so statements can be attributed) prints, per kind of operation, how many
+// statements one operation runs and which statements take the time. SCALE_KINDS=a,b limits the run to those kinds.
+const profiling = process.env.SCALE_PROFILE === "1";
+const queryLog: Array<{ ms: number; sql: string }> = [];
+const profile: Record<string, { operations: number; totalMs: number; queryMs: number; statements: Map<string, { count: number; ms: number }> }> = {};
 // The slowest statements are reported so a failed gate names the query to look at.
 let slowestQueries: Array<{ ms: number; sql: string }> = [];
 prisma.$on("query", event => {
   queryTimes.push(event.duration);
+  if (profiling) queryLog.push({ ms: event.duration, sql: event.query.replace(/\s+/g, " ").trim() });
   if (slowestQueries.length < 3 || event.duration > slowestQueries[2].ms) {
     slowestQueries = [...slowestQueries, { ms: event.duration, sql: event.query.replace(/\s+/g, " ").slice(0, 400) }].sort((a, b) => b.ms - a.ms).slice(0, 3);
   }
@@ -144,7 +150,8 @@ try {
     // Screens that still load whole tables are slow enough to fail the default gate, so they run only in the large
     // comparison, and fewer times each: on 200,000 bookings one of them can hold the process for minutes.
     ...(large ? screenKinds : [])];
-  const operations = Array.from({ length: size.perKind }, (_, turn) => kinds.filter(kind => !screenKinds.includes(kind) || turn < screenOperations).map(kind => ({ kind, turn })))
+  const onlyKinds = process.env.SCALE_KINDS?.split(",");
+  const operations = Array.from({ length: size.perKind }, (_, turn) => kinds.filter(kind => !onlyKinds || onlyKinds.includes(kind)).filter(kind => !screenKinds.includes(kind) || turn < screenOperations).map(kind => ({ kind, turn })))
     .flat().map((operation, index) => ({ ...operation, index }));
   // Seeded matches a crew member holds: the fixture gives match i to crew member i % crew.
   const seededMatchCount = (crewIndex: number) => [size.history, upcomingCount].reduce((sum, rows) => sum + (crewIndex < rows ? Math.ceil((rows - crewIndex) / size.crew) : 0), 0);
@@ -152,7 +159,7 @@ try {
   const notifications = (async () => { while (await repository.countDueNotificationDeliveries(new Date().toISOString())) await platform.retryDueNotificationDeliveriesForOps(); })();
   notifications.catch(() => {}); // Awaited below; this only stops a failure during the run from ending the process first.
   await mapConcurrent(operations, size.concurrency, async ({ kind, turn, index }) => {
-    const began = performance.now();
+    const began = performance.now(), firstStatement = queryLog.length;
     try {
       if (kind === "search") assert.equal((await platform.searchProviders({ address, categories: ["lawn-mowing"] })).providers.length, 3);
       if (kind === "clients") assert.equal((await platform.getProviderClients(providerId)).properties.length, 1000);
@@ -189,6 +196,15 @@ try {
         new Date(moveStartMs + 7 * day).toISOString());
     } catch (error) { errors.push(`${kind}: ${error instanceof Error ? error.message : String(error)}`); }
     (latencies[kind] ??= []).push(performance.now() - began);
+    if (profiling) {
+      const entry = (profile[kind] ??= { operations: 0, totalMs: 0, queryMs: 0, statements: new Map() });
+      entry.operations++; entry.totalMs += performance.now() - began;
+      for (const statement of queryLog.slice(firstStatement)) {
+        const key = statement.sql.replace(/\$\d+/g, "?").replace(/(\?, ?)+\?/g, "?…").slice(0, 150);
+        const row = entry.statements.get(key) ?? { count: 0, ms: 0 };
+        row.count++; row.ms += statement.ms; entry.statements.set(key, row); entry.queryMs += statement.ms;
+      }
+    }
   });
   await notifications; await analytics.drain(); delay.disable();
   const stats = Object.fromEntries(Object.entries(latencies).map(([kind, values]) => [kind, {
@@ -203,6 +219,13 @@ try {
     eventLoopP99Ms: Math.round(delay.percentile(99) / 1e6), heapGrowthMb: Math.round((process.memoryUsage().heapUsed - heapBefore) / 1048576),
     rssMb: Math.round(process.memoryUsage().rss / 1048576), delivered: sends, errors };
   console.log(JSON.stringify(result, null, 2));
+  if (profiling) console.log(JSON.stringify(Object.fromEntries(Object.entries(profile).map(([kind, entry]) => [kind, {
+    msPerOperation: Math.round(entry.totalMs / entry.operations), queryMsPerOperation: Math.round(entry.queryMs / entry.operations),
+    statementsPerOperation: Math.round([...entry.statements.values()].reduce((sum, row) => sum + row.count, 0) / entry.operations),
+    slowest: [...entry.statements.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 5).map(([sql, row]) =>
+      `${(row.ms / entry.operations).toFixed(1)} ms, ${(row.count / entry.operations).toFixed(1)}x: ${sql}`),
+    mostRepeated: [...entry.statements.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 18).map(([sql, row]) =>
+      `${(row.count / entry.operations).toFixed(1)}x: ${sql}`) }])), null, 2));
   assert.equal(errors.length, 0);
   // The recurring workload queues its own notifications, so the seeded 250 are checked by id.
   assert.equal(await prisma.notificationDelivery.count({ where: { id: { startsWith: prefix }, status: "queued" } }), 0);
