@@ -435,6 +435,13 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     );
   }
 
+  public async listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]> {
+    const endAfter = new Date(query.endAfterIso).getTime();
+    return this.bookings.filter(
+      (booking) => booking.providerId === query.providerId || new Date(booking.scheduledEndIso).getTime() > endAfter
+    );
+  }
+
   public async listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]> {
     return this.bookings.filter((booking) => booking.recurringPlanId === recurringPlanId);
   }

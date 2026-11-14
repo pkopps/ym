@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: crew reconciliation off the schedule read
+
+- Updated: November 14, 2026 (UTC).
+- Branch and commit: `claude/scale-5-reconcile-on-write`; see the PR for the commit.
+- Completed: `getCrewMatchesForCrew` no longer reconciles. Reconciliation for the affected provider runs after a booking is created (one-off, recurring, next recurring visit), rescheduled, has its schedule changed or a proposal answered, is recovered, cancelled, or has an address change reviewed, and after a provider denies a crew match; a crew call-off already did. Saving crew preferences runs it for every provider with an open seat. It runs after the write commits and never fails the write. The provider staffing view still reconciles when opened. Reconciliation loads the provider's bookings plus bookings that have not ended, instead of every booking and match (about 2 s to about 100 ms on the scale dataset).
+- In progress: none.
+- Remaining: no reconcile on crew registration, staffing-mode change or credential verification (reasons in the PR). 21 `listBookings()`, 5 `listCrewMatches()` and 11 `listProviders()` call sites still load whole tables.
+- Blockers: none.
+- Changed workflows: crew are offered jobs when a provider's bookings change or the provider opens staffing, not when a crew member opens their schedule. A crew member who signs up sees no offers until one of those happens.
+- Validation: `npm run typecheck`; `npm run lint` with the stale-worktree ignore pattern; `npm run test:api` (428 passed, 23 skipped); `npm run test:api:postgres` (24 passed); `prisma migrate diff --exit-code` (no drift); `SCALE_MAX_P95_MS=5000 npm run test:scale` twice (passed). Local runs used Node 22. Web smoke was not run; nothing under `apps/web` changed.
+- Known defects: none found.
+- Screenshot paths: none; no screen changed.
+- Recommended next task: decide whether new crew should get offers at sign-up, then scope the crew review and claim paths.
+
 ## Current checkpoint: scale fixes steps 0 to 4
 
 - Updated: November 14, 2026 (UTC).

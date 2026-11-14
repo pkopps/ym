@@ -1,7 +1,7 @@
 {
   "apps/api/src/repositories/PrismaMarketplaceRepository.ts": {
     "@typescript-eslint/no-explicit-any": {
-      "count": 73
+      "count": 72
     }
   },
   "apps/api/src/services/StripeConnectService.ts": {
