@@ -122,7 +122,12 @@ test("Postgres provider calendar and payout ledgers match the whole-table versio
     assert.equal(crewLedger.attendanceSummary.activeAssignmentCount, 2);
     assert.equal((await scoped.getCrewPayoutLedger(crewIds[1]!)).attendanceSummary.completedAssignmentCount, 1);
   } finally {
-    await prisma.crewMatch.deleteMany({ where: { id: { startsWith: prefix } } });
+    // Opening the calendar reconciles crew, which offers the upcoming jobs and queues notifications.
+    const userIds = [...providers.map((row) => row.id), ...customerIds, ...crewIds];
+    await prisma.notificationDelivery.deleteMany({ where: { recipientId: { in: userIds } } });
+    await prisma.appNotification.deleteMany({ where: { recipientId: { in: userIds } } });
+    await prisma.notificationPreference.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.crewMatch.deleteMany({ where: { bookingId: { startsWith: prefix } } });
     await prisma.bookingFinancialSettlement.deleteMany({ where: { bookingId: { startsWith: prefix } } }).catch(() => {});
     await prisma.booking.deleteMany({ where: { id: { startsWith: prefix } } });
     await prisma.userAccount.deleteMany({ where: { id: { startsWith: prefix } } });
