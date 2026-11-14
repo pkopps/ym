@@ -15807,3 +15807,110 @@ test("public marketplace overview returns only verified providers and live aggre
   assert.equal(barnegatCoverage?.recentCompletedBookingCount, 1);
   assert.ok(barnegatCoverage?.supportedCategories.includes(provider.categories[0] ?? "lawn-mowing"));
 });
+
+async function createAutoAcceptStaffingFixture(label: string) {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const provider = await platform.registerUser({
+    fullName: "Riley Bishop", email: `provider-${label}@example.com`, password: "Password123!", phone: "555-0500",
+    role: "provider", companyName: "Bishop Outdoor", categories: ["lawn-mowing"], serviceRadiusMiles: 20,
+    address: createAddress("200 Provider Way", 30.2438, -97.7635)
+  });
+  await platform.updateProviderSettings(provider.id, { serviceRadiusMiles: 20, staffingMode: "auto-accept", sponsoredListingEnabled: false });
+  await verifyProviderCredentials(platform, provider.id, { includeWorkersComp: true });
+  const customer = await platform.registerUser({
+    fullName: "Jordan Rivera", email: `customer-${label}@example.com`, password: "Password123!", phone: "555-0200",
+    role: "customer", propertyLabel: "Primary home", address: createAddress("112 Garden Row", 30.2435, -97.7638), lawnSizeSqFt: 3000
+  });
+  if (customer.role !== "customer") throw new Error("Expected a customer");
+  const booking = await createWorkflowBooking(platform, repository, customer.id, {
+    providerId: provider.id, serviceAddress: createAddress("112 Garden Row", 30.2435, -97.7638),
+    servicePropertyId: customer.defaultPropertyId, category: "lawn-mowing",
+    scheduledStartIso: futureIso(72), scheduledEndIso: futureIso(73), notes: "Weekly service", totalCents: 6200
+  });
+  const crew = await platform.registerUser({
+    fullName: "Alex Mower", email: `crew-${label}@example.com`, password: "Password123!", phone: "555-0600", role: "crew-member",
+    address: createAddress("110 Garden Row", 30.2433, -97.7636), categories: ["lawn-mowing"],
+    availableWeekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], willingToTravelMiles: 30
+  });
+  const crewMatchesForBooking = async () =>
+    (await repository.listCrewMatches()).filter((match) => match.bookingId === booking.id && match.crewMemberId === crew.id);
+  return { repository, platform, provider, customer, booking, crew, crewMatchesForBooking };
+}
+
+test("crew staffing is serialized per provider and a global pass only locks providers that need crew", async () => {
+  const f = await createAutoAcceptStaffingFixture("lock-keys");
+  const keys: string[] = [];
+  const withLock = f.repository.withLock.bind(f.repository);
+  f.repository.withLock = (key, work) => { keys.push(key); return withLock(key, work); };
+
+  await f.platform.getCrewMatchesForCrew(f.crew.id);
+  const staffingKeys = keys.filter((key) => key.startsWith("crew-staffing"));
+  assert.deepEqual(staffingKeys, [`crew-staffing:${f.provider.id}`]);
+  assert.equal((await f.crewMatchesForBooking()).length, 1);
+
+  // The booking now has the crew it needs, so the next global pass takes no staffing lock at all.
+  keys.length = 0;
+  await f.platform.getCrewMatchesForCrew(f.crew.id);
+  assert.deepEqual(keys.filter((key) => key.startsWith("crew-staffing")), []);
+});
+
+test("tryWithLock reports a held lock without waiting and runs the work when it is free", async () => {
+  const repository = new InMemoryMarketplaceRepository();
+  let release!: () => void;
+  const holder = repository.withLock("crew-schedule:someone", () => new Promise<void>((resolve) => { release = resolve; }));
+  await Promise.resolve();
+  assert.deepEqual(await repository.tryWithLock("crew-schedule:someone", async () => "ran"), { acquired: false });
+  assert.deepEqual(await repository.tryWithLock("crew-schedule:someone-else", async () => "ran"), { acquired: true, value: "ran" });
+  release();
+  await holder;
+  assert.deepEqual(await repository.tryWithLock("crew-schedule:someone", async () => "ran"), { acquired: true, value: "ran" });
+});
+
+test("auto-accept leaves a crew member unassigned while their schedule lock is held elsewhere", async () => {
+  const f = await createAutoAcceptStaffingFixture("crew-lock-held");
+  let release!: () => void;
+  const holder = f.repository.withLock(`crew-schedule:${f.crew.id}`, () => new Promise<void>((resolve) => { release = resolve; }));
+  await Promise.resolve();
+
+  await f.platform.getProviderStaffingOverview(f.provider.id);
+  assert.deepEqual(await f.crewMatchesForBooking(), []);
+
+  release();
+  await holder;
+  await f.platform.getProviderStaffingOverview(f.provider.id);
+  const [match] = await f.crewMatchesForBooking();
+  assert.equal(match?.status, "accepted");
+  assert.equal(match?.autoAccepted, true);
+});
+
+test("auto-accept does not double-book a crew member another provider booked during the pass", async () => {
+  const f = await createAutoAcceptStaffingFixture("unseen-conflict");
+  const otherBooking = { ...f.booking, id: "booking-other-provider", providerId: "provider-other" };
+  await f.repository.createBooking(otherBooking);
+  const [template] = await (async () => {
+    // A throwaway accepted match gives a complete row to copy; it is removed again before the pass runs.
+    const scratch = await createAutoAcceptStaffingFixture("unseen-conflict-template");
+    await scratch.platform.getProviderStaffingOverview(scratch.provider.id);
+    return scratch.crewMatchesForBooking();
+  })();
+  assert.equal(template?.status, "accepted");
+
+  // Another provider books the crew member for the same hour right after this pass has loaded its matches.
+  const listCrewMatches = f.repository.listCrewMatches.bind(f.repository);
+  let booked = false;
+  f.repository.listCrewMatches = async () => {
+    const snapshot = await listCrewMatches();
+    if (!booked) {
+      booked = true;
+      await f.repository.createCrewMatch({ ...template!, id: "match-other-provider", bookingId: otherBooking.id,
+        providerId: otherBooking.providerId, crewMemberId: f.crew.id, crewMemberName: f.crew.fullName });
+    }
+    return snapshot;
+  };
+
+  await f.platform.getProviderStaffingOverview(f.provider.id);
+  assert.deepEqual(await f.crewMatchesForBooking(), []);
+  const accepted = (await f.repository.listCrewMatches()).filter((match) => match.crewMemberId === f.crew.id && match.status === "accepted");
+  assert.deepEqual(accepted.map((match) => match.id), ["match-other-provider"]);
+});

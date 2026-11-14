@@ -4323,7 +4323,7 @@ export class MarketplacePlatformService {
   ): Promise<CrewMatchCandidate> {
     const found = await this.repository.findCrewMatchById(payload.crewMatchId);
     if (!found) throw new HttpError(404, "Crew match not found");
-    return this.repository.withLock("crew-staffing", repository =>
+    return this.repository.withLock(this.crewStaffingLockKey(found.providerId), repository =>
       repository.withLock(`crew-schedule:${found.crewMemberId}`, locked =>
         this.withRepository(locked).reviewCrewMatchRecord(providerId, payload)));
   }
@@ -4525,7 +4525,12 @@ export class MarketplacePlatformService {
     crewMemberId: string,
     payload: CancelCrewMatchRequest
   ): Promise<CrewMatchesResponse["matches"][number]> {
-    return this.repository.withLock("crew-staffing", repository => this.withRepository(repository).cancelCrewMatchRecord(crewMemberId, payload));
+    // The match's provider never changes, so it is safe to read it before taking that provider's lock.
+    const found = await this.repository.findCrewMatchById(payload.crewMatchId);
+    if (!found) {
+      return this.cancelCrewMatchRecord(crewMemberId, payload);
+    }
+    return this.repository.withLock(this.crewStaffingLockKey(found.providerId), repository => this.withRepository(repository).cancelCrewMatchRecord(crewMemberId, payload));
   }
 
   private async cancelCrewMatchRecord(crewMemberId: string, payload: CancelCrewMatchRequest): Promise<CrewMatchesResponse["matches"][number]> {
@@ -6660,9 +6665,12 @@ export class MarketplacePlatformService {
     crewMemberId: string,
     payload: ClaimPublicCrewOpportunityRequest
   ): Promise<CrewMatchCandidate> {
-    return this.repository.withLock("crew-staffing", (repository) =>
+    // An opening is a booking, and a booking's provider never changes, so read it before taking that provider's lock.
+    const opening = payload.opportunityId?.trim() ? await this.repository.findBookingById(payload.opportunityId.trim()) : undefined;
+    const claim = (repository: MarketplaceRepository) =>
       repository.withLock(`crew-schedule:${crewMemberId}`, (lockedRepository) =>
-        this.withRepository(lockedRepository).claimPublicCrewOpportunityRecord(crewMemberId, payload)));
+        this.withRepository(lockedRepository).claimPublicCrewOpportunityRecord(crewMemberId, payload));
+    return opening ? this.repository.withLock(this.crewStaffingLockKey(opening.providerId), claim) : claim(this.repository);
   }
 
   private async claimPublicCrewOpportunityRecord(
@@ -18826,15 +18834,37 @@ export class MarketplacePlatformService {
       .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
   }
 
-  private async reconcileCrewMatches(providerId?: string): Promise<void> {
-    return this.repository.withLock("crew-staffing", repository => this.withRepository(repository).reconcileCrewMatchesRecord(providerId));
+  /** Crew staffing for one provider's bookings is serialized on this key. */
+  private crewStaffingLockKey(providerId: string): string {
+    return `crew-staffing:${providerId}`;
   }
 
   /**
-   * True when at least one upcoming booking in reconcile's scope has fewer accepted crew than it needs.
-   * Reconcile skips every other booking, so when this is false the whole-table load below would do nothing.
+   * Reconciles one provider, or every provider that has a booking short of crew. Each provider is reconciled under
+   * its own lock and in its own transaction, one after another, so a pass over every provider never holds two
+   * provider locks at once and cannot deadlock with a crew member claiming or a provider reviewing a match.
    */
-  private async hasUpcomingBookingNeedingCrew(providerId?: string): Promise<boolean> {
+  private async reconcileCrewMatches(providerId?: string): Promise<void> {
+    let providerIds = providerId ? [providerId] : [];
+    if (!providerId) {
+      const needingCrew = await this.listProviderIdsNeedingCrew();
+      if (needingCrew.size === 0) {
+        return;
+      }
+      // Same provider order as the single pass this replaces.
+      providerIds = (await this.repository.listProviders()).map((provider) => provider.id).filter((id) => needingCrew.has(id));
+    }
+
+    for (const id of providerIds) {
+      await this.repository.withLock(this.crewStaffingLockKey(id), repository => this.withRepository(repository).reconcileCrewMatchesRecord(id));
+    }
+  }
+
+  /**
+   * Providers with at least one upcoming booking that has fewer accepted crew than it needs.
+   * Reconcile skips every other booking, so for any provider not listed here the whole-table load below would do nothing.
+   */
+  private async listProviderIdsNeedingCrew(providerId?: string): Promise<Set<string>> {
     const upcoming = (
       await this.repository.listUpcomingBookings({
         afterIso: new Date().toISOString(),
@@ -18843,7 +18873,7 @@ export class MarketplacePlatformService {
       })
     ).filter((booking) => booking.recovery?.state !== "open");
     if (upcoming.length === 0) {
-      return false;
+      return new Set();
     }
 
     const [matches, customers] = await Promise.all([
@@ -18858,16 +18888,43 @@ export class MarketplacePlatformService {
     }
     const customersById = new Map(customers.map((customer) => [customer.id, customer]));
 
-    return upcoming.some((booking) => {
-      const property = customersById
-        .get(booking.customerId)
-        ?.properties.find((item) => item.id === booking.servicePropertyId);
-      return (acceptedCountByBookingId.get(booking.id) ?? 0) < this.estimateRequiredCrewMembers(booking, property);
-    });
+    return new Set(
+      upcoming
+        .filter((booking) => {
+          const property = customersById
+            .get(booking.customerId)
+            ?.properties.find((item) => item.id === booking.servicePropertyId);
+          return (acceptedCountByBookingId.get(booking.id) ?? 0) < this.estimateRequiredCrewMembers(booking, property);
+        })
+        .map((booking) => booking.providerId)
+    );
   }
 
-  private async reconcileCrewMatchesRecord(providerId?: string): Promise<void> {
-    if (!(await this.hasUpcomingBookingNeedingCrew(providerId))) {
+  /**
+   * True when the crew member has an accepted job that overlaps `booking` and that this reconcile pass has not
+   * seen: one accepted for another provider after this pass loaded its matches. Call it holding the crew
+   * member's schedule lock.
+   */
+  private async hasUnseenAcceptedCrewConflict(
+    crewMemberId: string,
+    booking: Booking,
+    seenMatchIds: Set<string>
+  ): Promise<boolean> {
+    const unseen = (await this.repository.listCrewMatchesForCrewMember(crewMemberId)).filter(
+      (match) => match.status === "accepted" && !seenMatchIds.has(match.id) && match.bookingId !== booking.id
+    );
+    if (unseen.length === 0) {
+      return false;
+    }
+    const bookings = await this.repository.listBookingsByIds(unseen.map((match) => match.bookingId));
+    return bookings.some((other) =>
+      this.doIntervalsOverlap(other.scheduledStartIso, other.scheduledEndIso, booking.scheduledStartIso, booking.scheduledEndIso)
+    );
+  }
+
+  /** Call holding the provider's crew staffing lock. */
+  private async reconcileCrewMatchesRecord(providerId: string): Promise<void> {
+    if ((await this.listProviderIdsNeedingCrew(providerId)).size === 0) {
       return;
     }
 
@@ -18879,10 +18936,9 @@ export class MarketplacePlatformService {
       this.repository.listCustomers()
     ]);
 
-    const targetProviders = providerId
-      ? providers.filter((provider) => provider.id === providerId)
-      : providers;
+    const targetProviders = providers.filter((provider) => provider.id === providerId);
     const crewDayLoadMap = this.buildCrewDayLoadMap(matches, bookings);
+    const seenMatchIds = new Set(matches.map((match) => match.id));
 
     for (const provider of targetProviders) {
       const credentialReadiness = evaluateProviderCredentialReadiness(
@@ -18944,13 +19000,15 @@ export class MarketplacePlatformService {
           .filter(({ crewMember }) => !existingIds.has(crewMember.id))
           .slice(0, canAutoAcceptCrew ? gap : Math.max(3, gap));
 
-        for (const { crewMember } of nextCandidates) {
+        const offerToCrewMember = async (crewMember: CrewMemberProfile): Promise<void> => {
           const distanceMiles = Number(
             this.geoService.distanceMiles(crewMember.address, booking.serviceAddress).toFixed(1)
           );
           const status = canAutoAcceptCrew ? "accepted" : "pending-provider-review";
+          const matchId = crypto.randomUUID();
+          seenMatchIds.add(matchId);
           await this.repository.createCrewMatch({
-            id: crypto.randomUUID(),
+            id: matchId,
             bookingId: booking.id,
             providerId: provider.id,
             crewMemberId: crewMember.id,
@@ -18990,6 +19048,23 @@ export class MarketplacePlatformService {
           if (canAutoAcceptCrew) {
             await this.refreshCrewMemberStatus(crewMember.id);
           }
+        };
+
+        for (const { crewMember } of nextCandidates) {
+          if (!canAutoAcceptCrew) {
+            await offerToCrewMember(crewMember);
+            continue;
+          }
+
+          // Auto-accept books the crew member, and crew work for more than one provider. The provider lock does
+          // not stop another provider booking the same person at the same time, so take the crew member's schedule
+          // lock (the one claims and reviews hold) without waiting. If someone else holds it, or booked an
+          // overlapping job since this pass loaded its matches, leave the seat open for the next pass.
+          await this.repository.tryWithLock(`crew-schedule:${crewMember.id}`, async () => {
+            if (!(await this.hasUnseenAcceptedCrewConflict(crewMember.id, booking, seenMatchIds))) {
+              await offerToCrewMember(crewMember);
+            }
+          });
         }
       }
     }

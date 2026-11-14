@@ -154,6 +154,11 @@ export interface MarketplaceRepository {
   listFinderFeeCharges(query: FinderFeeChargeQuery): Promise<FinderFeeChargeRecord[]>;
   /** Serialize a bounded operation across API instances; database writes use one transaction. */
   withLock<T>(key: string, work: (repository: MarketplaceRepository) => Promise<T>): Promise<T>;
+  /** Like `withLock`, but returns `{ acquired: false }` without running `work` when another holder has the lock. Never waits. */
+  tryWithLock<T>(
+    key: string,
+    work: (repository: MarketplaceRepository) => Promise<T>
+  ): Promise<{ acquired: true; value: T } | { acquired: false }>;
   getSecurityState(key: string): Promise<Record<string, unknown> | undefined>;
   putSecurityState(key: string, value: Record<string, unknown>, expiresAt: string): Promise<void>;
   createRecurringPlanWithBooking(plan: RecurringServicePlan, booking: Booking): Promise<Booking>;
