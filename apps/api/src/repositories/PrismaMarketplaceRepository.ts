@@ -1462,6 +1462,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     });
   }
 
+  public async findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined> {
+    const provider = await this.prisma.providerBusinessProfile.findFirst({
+      where: { calendarConnection: { path: ["feedToken"], equals: feedToken } },
+      include: { user: true, credentials: true, connectAccount: true }
+    });
+    return provider ? this.mapProviderProfile(provider.user, provider) : undefined;
+  }
+
   public async findProviderById(providerId: string): Promise<ProviderProfile | undefined> {
     const provider = await this.prisma.providerBusinessProfile.findUnique({
       where: { userId: providerId },

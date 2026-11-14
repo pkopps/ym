@@ -168,6 +168,8 @@ export interface MarketplaceRepository {
   createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
   listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]>;
+  /** The provider whose calendar feed token is `feedToken`: the one `listProviders` would reach first. */
+  findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined>;
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
   listSearchSlots(providerIds: string[], minimumDurationMinutes?: number, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]>;
