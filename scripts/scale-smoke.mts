@@ -19,6 +19,9 @@ const large = process.env.SCALE_LARGE === "1";
 const size = large
   ? { providers: 1999, history: 200_000, crew: 500, perKind: 100, concurrency: 300, connections: 20, poolTimeoutSeconds: 0 }
   : { providers: 600, history: 20_000, crew: 200, perKind: 40, concurrency: 12, connections: 8, poolTimeoutSeconds: 10 };
+// SCALE_CONCURRENCY overrides how many operations are in flight. At 300 the large run mostly measures time spent
+// queued for a connection; a run at 12 shows what each operation costs on the large dataset by itself.
+if (process.env.SCALE_CONCURRENCY) size.concurrency = Number(process.env.SCALE_CONCURRENCY);
 const nearProviders = 200, upcomingCount = 500;
 url.searchParams.set("connection_limit", String(size.connections)); url.searchParams.set("pool_timeout", String(size.poolTimeoutSeconds));
 for (const key of ["GOOGLE_MAPS_API_KEY", "GOOGLE_ADDRESS_VALIDATION_API_KEY", "RESEND_API_KEY", "TWILIO_AUTH_TOKEN", "POSTHOG_API_KEY"]) delete process.env[key];
