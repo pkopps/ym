@@ -554,7 +554,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       where: { userId: { in: providerIds } },
       include: { user: true, credentials: true, connectAccount: true }
     });
-    return providers.map((record: any) => this.mapProviderProfile(record.user, record));
+    return providers.map((record) => this.mapProviderProfile(record.user, record));
   }
 
   public async listCustomers(customerIds?: string[]): Promise<CustomerProfile[]> {
