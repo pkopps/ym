@@ -5,7 +5,7 @@ import { StripeProviderBillingService, type ProviderBillingGateway } from "./Str
 import type { ConfirmBookingCompletionResponse, ProviderBillingStatusResponse, StartProviderCardSetupResponse } from "@yardmatch/contracts";
 import { defaultServiceStartingPrices, type UpdateZipServiceMinimumRequest, type ProviderServicePrice } from "@yardmatch/contracts";
 import { bookingMetrics, type ProviderBookingMetrics } from "../repositories/searchQueries";
-import type { ClaimedNotificationDelivery, CompletedBookingAreaSummary } from "../repositories/MarketplaceRepository";
+import type { ClaimedNotificationDelivery, CompletedBookingAreaSummary, OpsOverviewBookingSummary } from "../repositories/MarketplaceRepository";
 import { ServiceComplaintService } from "./ServiceComplaintService";
 import { CustomerReferralService } from "./CustomerReferralService";
 import { PartialRefundService, hasPendingPartialRefund } from "./PartialRefundService";
@@ -15684,8 +15684,9 @@ export class MarketplacePlatformService {
   }
 
   public async getObservabilityOverview(): Promise<ObservabilityOverview> {
-    const [bookings, launchLeads, reviewInvites, supportTickets, providers, opsUsers] = await Promise.all([
-      this.repository.listBookings(),
+    // Everything this overview needs from bookings is a count, so the database does the counting.
+    const [bookingSummary, launchLeads, reviewInvites, supportTickets, providers, opsUsers] = await Promise.all([
+      this.repository.summarizeBookingsForOpsOverview(new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
       this.repository.listLaunchLeads(),
       this.repository.listReviewInvites(),
       this.repository.listSupportTickets(),
@@ -15698,7 +15699,12 @@ export class MarketplacePlatformService {
     const opsAccounts = opsUsers.map((profile, index) => this.buildOpsAccountSummary(profile, opsIdentities[index]));
 
     const overview = this.analytics.getOverview({
-      bookings,
+      bookings: [],
+      bookingCounts: {
+        total: bookingSummary.totalBookings,
+        requested: bookingSummary.requestedBookings,
+        requestedLast24Hours: bookingSummary.requestedSinceCount
+      },
       launchLeads,
       reviewInvites,
       supportTickets
@@ -15706,6 +15712,15 @@ export class MarketplacePlatformService {
     const providerReviews = (
       await Promise.all(providers.map((provider) => this.repository.listProviderReviews(provider.id)))
     ).flat();
+    // The only bookings read in full: those behind the reviews in the response queue and behind open
+    // service-quality tickets.
+    const bookings = await this.repository.listBookingsByIds([
+      ...new Set([
+        ...this.selectOpsReviewResponseQueueReviews(providerReviews).map((review) => review.bookingId),
+        ...supportTickets.flatMap((ticket) =>
+          ticket.issueType === "service-quality" && ticket.status !== "resolved" && ticket.bookingId ? [ticket.bookingId] : [])
+      ])
+    ]);
     const recentReviewResponses = this.buildOpsReviewResponseQueue(
       providerReviews,
       bookings,
@@ -15749,7 +15764,7 @@ export class MarketplacePlatformService {
       opsAccountsWithRecentFailures: opsAccessAudit.opsAccountsWithRecentFailures,
       pendingOpsPasswordResetInvites: opsAccessAudit.pendingOpsPasswordResetInvites,
       opsAccessPolicy: opsAccessAudit.opsAccessPolicy,
-      launchOperationsPolicy: this.buildLaunchOperationsPolicy(bookings, supportTickets, providers),
+      launchOperationsPolicy: this.buildLaunchOperationsPolicy(bookingSummary, bookings, supportTickets, providers),
       accessAlerts: opsAccessAudit.accessAlerts,
       recentOpsAccessChanges: opsAccessAudit.recentOpsAccessChanges,
       recentOpsAuthenticationEvents: opsAccessAudit.recentOpsAuthenticationEvents,
@@ -16061,20 +16076,20 @@ export class MarketplacePlatformService {
   }
 
   private buildLaunchOperationsPolicy(
-    bookings: Booking[],
+    bookingSummary: OpsOverviewBookingSummary,
+    ticketBookings: Booking[],
     supportTickets: SupportTicket[],
     providers: ProviderProfile[]
   ): ObservabilityOverview["launchOperationsPolicy"] {
-    const activeExceptions = bookings.filter((booking) => Boolean(booking.activeExceptionType));
-    const disputedCompletedBookings = bookings.filter(
-      (booking) => booking.status === "disputed" && Boolean(booking.completedAt)
-    );
+    const activeExceptions = { length: bookingSummary.activeExceptionCount };
+    const disputedCompletedBookings = { length: bookingSummary.disputedAfterCompletionCount };
     const openServiceQualityTickets = supportTickets.filter(
       (ticket) => ticket.issueType === "service-quality" && ticket.status !== "resolved"
     );
     const verifiedProviderCount = providers.filter((provider) => provider.verificationStatus === "verified").length;
     const coveragePockets = this.buildLaunchOperationsCoveragePockets(
-      bookings,
+      bookingSummary.pockets,
+      ticketBookings,
       supportTickets,
       providers
     );
@@ -16292,7 +16307,8 @@ export class MarketplacePlatformService {
   }
 
   private buildLaunchOperationsCoveragePockets(
-    bookings: Booking[],
+    bookingPockets: OpsOverviewBookingSummary["pockets"],
+    ticketBookings: Booking[],
     supportTickets: SupportTicket[],
     providers: ProviderProfile[]
   ): ObservabilityOverview["launchOperationsPolicy"]["coveragePockets"] {
@@ -16302,16 +16318,16 @@ export class MarketplacePlatformService {
       state: string;
       postalCode: string;
       verifiedProviderIds: Set<string>;
-      activeBookingIds: Set<string>;
-      completedBookingIds: Set<string>;
+      activeBookingCount: number;
+      completedBookingCount: number;
       activeExceptionCount: number;
       openServiceQualityTicketCount: number;
       supportedCategories: Set<Booking["category"]>;
     };
     const pockets = new Map<string, MutablePocket>();
-    const bookingMap = new Map(bookings.map((booking) => [booking.id, booking]));
+    const bookingMap = new Map(ticketBookings.map((booking) => [booking.id, booking]));
 
-    const touchPocket = (address: Address): MutablePocket => {
+    const touchPocket = (address: Pick<Address, "city" | "state" | "postalCode">): MutablePocket => {
       const city = address.city.trim() || "Unknown city";
       const state = address.state.trim().toUpperCase() || "NA";
       const postalCode = address.postalCode.trim().slice(0, 5) || "unknown";
@@ -16326,8 +16342,8 @@ export class MarketplacePlatformService {
         state,
         postalCode,
         verifiedProviderIds: new Set<string>(),
-        activeBookingIds: new Set<string>(),
-        completedBookingIds: new Set<string>(),
+        activeBookingCount: 0,
+        completedBookingCount: 0,
         activeExceptionCount: 0,
         openServiceQualityTicketCount: 0,
         supportedCategories: new Set<Booking["category"]>()
@@ -16347,17 +16363,12 @@ export class MarketplacePlatformService {
       }
     }
 
-    for (const booking of bookings) {
-      const pocket = touchPocket(booking.serviceAddress);
-      pocket.supportedCategories.add(booking.category);
-      if (booking.status === "completed" || booking.status === "refunded") {
-        pocket.completedBookingIds.add(booking.id);
-      } else if (booking.status !== "cancelled") {
-        pocket.activeBookingIds.add(booking.id);
-      }
-      if (booking.activeExceptionType) {
-        pocket.activeExceptionCount += 1;
-      }
+    for (const group of bookingPockets) {
+      const pocket = touchPocket(group);
+      pocket.supportedCategories.add(group.category);
+      pocket.completedBookingCount += group.completedCount;
+      pocket.activeBookingCount += group.activeCount;
+      pocket.activeExceptionCount += group.activeExceptionCount;
     }
 
     for (const ticket of supportTickets) {
@@ -16377,7 +16388,7 @@ export class MarketplacePlatformService {
         if (pocket.verifiedProviderIds.size < 2) {
           warnings.push("Verified supply is thin for this ZIP-level launch pocket.");
         }
-        if (pocket.activeBookingIds.size > Math.max(2, pocket.verifiedProviderIds.size * 3)) {
+        if (pocket.activeBookingCount > Math.max(2, pocket.verifiedProviderIds.size * 3)) {
           warnings.push("Active booking load is high relative to verified supply in this pocket.");
         }
         if (pocket.activeExceptionCount > 0) {
@@ -16408,8 +16419,8 @@ export class MarketplacePlatformService {
           state: pocket.state,
           postalCode: pocket.postalCode,
           verifiedProviderCount: pocket.verifiedProviderIds.size,
-          activeBookingCount: pocket.activeBookingIds.size,
-          completedBookingCount: pocket.completedBookingIds.size,
+          activeBookingCount: pocket.activeBookingCount,
+          completedBookingCount: pocket.completedBookingCount,
           activeExceptionCount: pocket.activeExceptionCount,
           openServiceQualityTicketCount: pocket.openServiceQualityTicketCount,
           supportedCategories: Array.from(pocket.supportedCategories).sort(),
@@ -21244,6 +21255,19 @@ export class MarketplacePlatformService {
     return sourceChannel === "google-business-profile" || sourceChannel === "social";
   }
 
+  /** The eight reviews the ops response queue shows: pending ones first, then newest. */
+  private selectOpsReviewResponseQueueReviews(reviews: ProviderReview[]): ProviderReview[] {
+    return [...reviews]
+      .sort((left, right) => {
+        if (left.responseStatus !== right.responseStatus) {
+          return left.responseStatus === "pending" ? -1 : right.responseStatus === "pending" ? 1 : 0;
+        }
+
+        return right.createdAt.localeCompare(left.createdAt);
+      })
+      .slice(0, 8);
+  }
+
   private buildOpsReviewResponseQueue(
     reviews: ProviderReview[],
     bookings: Booking[],
@@ -21253,15 +21277,7 @@ export class MarketplacePlatformService {
     const bookingsById = new Map(bookings.map((booking) => [booking.id, booking]));
     const providersById = new Map(providers.map((provider) => [provider.id, provider]));
 
-    return [...reviews]
-      .sort((left, right) => {
-        if (left.responseStatus !== right.responseStatus) {
-          return left.responseStatus === "pending" ? -1 : right.responseStatus === "pending" ? 1 : 0;
-        }
-
-        return right.createdAt.localeCompare(left.createdAt);
-      })
-      .slice(0, 8)
+    return this.selectOpsReviewResponseQueueReviews(reviews)
       .map((review) =>
         this.buildOpsReviewResponseQueueItem(
           review,

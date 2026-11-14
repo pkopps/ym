@@ -152,6 +152,28 @@ export interface CompletedBookingAreaSummary {
   firstScheduledStartIso: string;
 }
 
+export interface OpsOverviewBookingSummary {
+  totalBookings: number;
+  requestedBookings: number;
+  /** Requested at or after the given instant, in any status. */
+  requestedSinceCount: number;
+  /** Bookings with an active exception, in any status. */
+  activeExceptionCount: number;
+  disputedAfterCompletionCount: number;
+  /** One row per service city, state, postal code (as stored) and category, ordered by each group's earliest booking. */
+  pockets: Array<{
+    city: string;
+    state: string;
+    postalCode: string;
+    category: Booking["category"];
+    /** Completed or refunded. */
+    completedCount: number;
+    /** Neither completed, refunded nor cancelled. */
+    activeCount: number;
+    activeExceptionCount: number;
+  }>;
+}
+
 export interface MarketplaceRepository {
   listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]>;
   saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord>;
@@ -233,6 +255,8 @@ export interface MarketplaceRepository {
   /** Every booking in one of these statuses, in the same order as `listBookings`. */
   listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]>;
   countBookings(): Promise<number>;
+  /** Booking counts for the ops overview, and bookings counted per service address and category. */
+  summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary>;
   /** Bookings made by any of these customers or linked to any of these launch leads, in the same order as `listBookings`. */
   listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;

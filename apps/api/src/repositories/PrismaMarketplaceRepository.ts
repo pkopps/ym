@@ -57,6 +57,7 @@ import {
   CompleteProviderTransferReversalInput,
   MarketplaceRepository,
   CompletedBookingAreaSummary,
+  OpsOverviewBookingSummary,
   UpcomingBookingsQuery
 } from "./MarketplaceRepository";
 
@@ -976,6 +977,29 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       orderBy: { scheduledStartIso: "asc" }
     });
     return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary> {
+    const hasException = Prisma.sql`"activeExceptionType" IS NOT NULL AND "activeExceptionType" <> ''`;
+    const [[counts], pockets] = await Promise.all([
+      this.prisma.$queryRaw<Array<Omit<OpsOverviewBookingSummary, "pockets">>>(Prisma.sql`
+        SELECT COUNT(*)::int AS "totalBookings",
+          (COUNT(*) FILTER (WHERE status = 'requested'))::int AS "requestedBookings",
+          (COUNT(*) FILTER (WHERE "requestedAt" >= ${utcTimestamp(new Date(requestedSinceIso))}))::int AS "requestedSinceCount",
+          (COUNT(*) FILTER (WHERE ${hasException}))::int AS "activeExceptionCount",
+          (COUNT(*) FILTER (WHERE status = 'disputed' AND "completedAt" IS NOT NULL))::int AS "disputedAfterCompletionCount"
+        FROM bookings`),
+      this.prisma.$queryRaw<OpsOverviewBookingSummary["pockets"]>(Prisma.sql`
+        SELECT COALESCE("serviceAddress"->>'city', '') AS city, COALESCE("serviceAddress"->>'state', '') AS state,
+          COALESCE("serviceAddress"->>'postalCode', '') AS "postalCode", category,
+          (COUNT(*) FILTER (WHERE status IN ('completed', 'refunded')))::int AS "completedCount",
+          (COUNT(*) FILTER (WHERE status NOT IN ('completed', 'refunded', 'cancelled')))::int AS "activeCount",
+          (COUNT(*) FILTER (WHERE ${hasException}))::int AS "activeExceptionCount"
+        FROM bookings
+        GROUP BY 1, 2, 3, 4
+        ORDER BY MIN("scheduledStartIso"), 1, 2, 3, 4`)
+    ]);
+    return { ...counts, pockets: pockets.map((pocket) => ({ ...pocket })) };
   }
 
   public async countBookings(): Promise<number> {
