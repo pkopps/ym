@@ -153,7 +153,6 @@ export default function AuthCompletePage() {
       <main className="container stack-lg">
         <section className="page-hero">
           <h1>{i18n.t("auth_complete.pending.title")}</h1>
-          <p>{i18n.t("auth_complete.pending.body")}</p>
         </section>
 
         <section className="card">

@@ -1672,7 +1672,6 @@ export function ProviderLiveManagementBoard() {
                   {job.matches.length === 0 ? (
                     <div className="list-panel">
                       <strong>{i18n.t("provider_live.crew.no_matches_title")}</strong>
-                      <p>{i18n.t("provider_live.crew.no_matches_body")}</p>
                     </div>
                   ) : (
                     job.matches.map((match) => {
@@ -1786,7 +1785,6 @@ export function ProviderLiveManagementBoard() {
                 <div className="search-result-title">
                   <div>
                     <h3>{i18n.t("provider_live.chat.title")}</h3>
-                    <p>{i18n.t("provider_live.chat.body")}</p>
                   </div>
                 </div>
                 <div className="cta-row">
@@ -1999,7 +1997,6 @@ export function ProviderLiveManagementBoard() {
               ? i18n.t("provider_live.staffing.gap_title", { count: totalCrewGap })
               : i18n.t("provider_live.staffing.covered_title")}
           </h2>
-          <p>{i18n.t("provider_live.staffing.body")}</p>
         </div>
         <div className="cta-row">
           <button
@@ -2025,7 +2022,6 @@ export function ProviderLiveManagementBoard() {
         <article className="card">
           <span className="eyebrow">{i18n.t("provider_live.settings.service_area")}</span>
           <h2>{i18n.t("common.format.miles", { count: provider?.serviceRadiusMiles ?? 0 })}</h2>
-          <p>{i18n.t("provider_live.settings.service_area_body")}</p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -2058,7 +2054,6 @@ export function ProviderLiveManagementBoard() {
         <article className="card">
           <span className="eyebrow">{i18n.t("provider_live.settings.reminder_timing")}</span>
           <h2>{i18n.t("provider_live.duration.minutes", { count: provider?.departureReminderLeadMinutes ?? 0 })}</h2>
-          <p>{i18n.t("provider_live.settings.reminder_timing_body")}</p>
           <div className="cta-row">
             <button
               className="button-secondary"
@@ -2196,7 +2191,6 @@ export function ProviderLiveManagementBoard() {
         <article className="card">
           <span className="eyebrow">{i18n.t("provider_live.settings.payout_timing")}</span>
           <h2>{provider ? formatWeekdayLabel(i18n, provider.weeklyPayoutDay) : formatWeekdayLabel(i18n, "Thu")}</h2>
-          <p>{i18n.t("provider_live.settings.payout_timing_body")}</p>
           <p>{i18n.t("provider_live.settings.payout_security_body")}</p>
           <div className="cta-row">
             {(["Tue", "Thu", "Fri"] as const).map((weekday) => (

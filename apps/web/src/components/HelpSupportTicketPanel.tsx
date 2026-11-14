@@ -184,7 +184,6 @@ export function HelpSupportTicketPanel() {
     {session.role === "customer" ? <ServiceComplaintPanel bookings={bookingOptions} tickets={tickets} initialBookingId={selectedBookingId} onChanged={loadSupportView} /> : null}
     <article className="card">
       <h2>{i18n.t("support.open_ticket")}</h2>
-      <p>{i18n.t("support.body")}</p>
       <div className="cta-row u-mt-4">
         <button
           className={showComposer ? "button-secondary" : "button"}

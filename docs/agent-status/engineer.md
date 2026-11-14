@@ -539,3 +539,18 @@ Add an ops recovery workflow for paused customer/provider relationships so suppo
 - Recommended next task: define the approved ZIP/service minimum matrix, then use the audited admin editor to activate it in staging and independently verify a provider quote and booking.
 
 Agent-reported completion is checkpoint evidence, not independent acceptance by Patrick or the Project Manager.
+
+## Copy cut, second pass — 2026-11-14
+
+- Branch and commit: `claude/copy-cut-second-pass`, from `main` at `0784fc5`.
+- Completed work: second sweep of non-ops, non-home screens after PR #25. Removed 50 keys (helper lines that restate a heading or its button, the provider landing "Bring in jobs" section, the town page "Book with confidence / Know what to expect" pair, the service page "What happens after you ask for help" card, sign-up choice descriptions). Rewrote 44 strings: 35 "Unable to…" errors now end with "Try again", and the finder-fee card copy is shorter. en, es and pseudo in sync at 3,473 keys.
+- Word count (en.json, keys not starting `ops` or `trust_policy.`, excluding the 117 keys rendered by the home page and site chrome): 11,992 → 11,599 (3.3%). The 40% target was not reached; the remaining words are field labels, statuses, errors, fee and policy disclosures, and 3,368 words shared with customer-mobile and crew-mobile.
+- In-progress work: none.
+- Remaining work: none in this slice.
+- Blockers: none.
+- Changed workflows: none; copy and markup removal only. The booking confirmation page no longer shows a supporting line once a visit is confirmed.
+- Validation results: `npm run typecheck` passed; `npm run i18n:validate` passed (3,473 keys); `npm run lint` fails only on files inside `.claude/worktrees/` (126 errors there, 0 in this checkout; passes with that folder ignored); `npm run test:web:smoke` 60 of 61 passed, the one failure asserted a shortened string and passes after the assertion update (that spec re-run: 3 of 3); `npm run build:provider-mobile` passed.
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/copy-cut-pass-2/` (17 screens at 1440x900 and 390x844, full page). Home page screenshots are byte-identical to captures from `main`.
+- Not captured: provider-mobile finder-fee card, auth completion pending state, the schedule modal service picker, the refund block on a completed visit, and the provider board settings cards (collapsed by default).
+- Recommended next task: decide whether to shorten the `ops_auto.provider_*` strings on the provider board and the strings shared with customer and crew mobile, which is where the remaining removable words are.

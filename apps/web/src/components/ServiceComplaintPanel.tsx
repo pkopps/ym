@@ -49,7 +49,7 @@ export function ServiceComplaintPanel({ bookings, tickets, initialBookingId, onC
     finally { setBusy(false); }
   }
   return <section className="card stack-lg u-mb-5" aria-labelledby="complaint-title">
-    <div><h2 id="complaint-title">{i18n.t("complaint.title")}</h2><p>{i18n.t("complaint.intro")}</p></div>
+    <div><h2 id="complaint-title">{i18n.t("complaint.title")}</h2></div>
     {bookings.length ? <form onSubmit={event => void submit(event)} className="stack-lg">
       <fieldset disabled={busy} className="u-border-0 u-p-0 u-m-0 u-min-w-0">
         <div className="form-grid">
@@ -88,7 +88,7 @@ export function ServiceComplaintPanel({ bookings, tickets, initialBookingId, onC
       {ticket.resolutionNotes ? <p>{ticket.resolutionNotes}</p> : null}
       {ticket.complaint!.replies.map((entry, index) => <p key={index}>{entry.message}</p>)}
       <label className="form-field"><span>{i18n.t("complaint.reply")}</span><textarea rows={2} maxLength={2000} value={replies[ticket.id] ?? ""} onChange={event => setReplies(current => ({ ...current, [ticket.id]: event.target.value }))} /></label>
-      <p>{i18n.t("complaint.followup_hint")}</p><div className="cta-row"><button className="button-secondary" disabled={busy || (replies[ticket.id]?.trim().length ?? 0) < 3} onClick={() => void reply(ticket.id)}>{i18n.t("complaint.send")}</button><button className="button-secondary" disabled={busy} onClick={() => void reply(ticket.id, true)}>{i18n.t("complaint.human")}</button></div>
+      <div className="cta-row"><button className="button-secondary" disabled={busy || (replies[ticket.id]?.trim().length ?? 0) < 3} onClick={() => void reply(ticket.id)}>{i18n.t("complaint.send")}</button><button className="button-secondary" disabled={busy} onClick={() => void reply(ticket.id, true)}>{i18n.t("complaint.human")}</button></div>
     </article>)}</div> : null}
   </section>;
 }

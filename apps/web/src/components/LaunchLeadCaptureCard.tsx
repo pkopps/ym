@@ -88,10 +88,7 @@ export function LaunchLeadCaptureCard({
   return (
     <article className="card">
       <h2>{title ?? i18n.t("launch_lead.title")}</h2>
-      <p>
-        {description ??
-          i18n.t("launch_lead.description")}
-      </p>
+      {description ? <p>{description}</p> : null}
       <div className="form-grid">
         <label className="form-field">
           <span>{i18n.t("launch_lead.name")}</span>

@@ -12,20 +12,17 @@ export function generateMetadata(): Promise<Metadata> {
 const choices = [
   {
     href: "/auth/customer",
-    titleKey: "auth_choice.customer.title",
-    bodyKey: "auth_choice.customer.body"
+    titleKey: "auth_choice.customer.title"
   },
   {
     href: "/auth/provider/create",
-    titleKey: "auth_choice.provider.title",
-    bodyKey: "auth_choice.provider.body"
+    titleKey: "auth_choice.provider.title"
   },
   {
     href: "/auth/crew",
-    titleKey: "auth_choice.crew.title",
-    bodyKey: "auth_choice.crew.body"
+    titleKey: "auth_choice.crew.title"
   }
-] satisfies Array<{ href: string; titleKey: TranslationKey; bodyKey: TranslationKey }>;
+] satisfies Array<{ href: string; titleKey: TranslationKey }>;
 
 export default async function AuthPage() {
   const i18n = await getRequestI18n();
@@ -40,7 +37,6 @@ export default async function AuthPage() {
         {choices.map((choice) => (
           <article className="card" key={choice.href}>
             <h2>{i18n.t(choice.titleKey)}</h2>
-            <p>{i18n.t(choice.bodyKey)}</p>
             <div className="cta-row">
               <a className="button" href={addLocalePrefix(choice.href, i18n.locale)}>
                 {i18n.t("common.actions.continue")}
