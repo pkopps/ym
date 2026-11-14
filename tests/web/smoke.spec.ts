@@ -139,33 +139,37 @@ test.describe("YardMatch web smoke", () => {
     await expect(page.getByText("TerraCut Studio")).toHaveCount(0);
 
     await page.goto("/provider");
-    const pricingHeading = page.getByRole("heading", { name: "Clear pricing, before you sign up" });
+    const landingHeading = page.getByRole("heading", { level: 1, name: "Get lawn care customers near your routes." });
+    await expect(landingHeading).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(3);
+    const pricingHeading = page.getByRole("heading", { name: "Pricing", exact: true });
     await expect(pricingHeading).toBeVisible();
-    await expect(page.getByRole("heading", { name: "$75, $110 or $150 once" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "No per-job fee" })).toBeVisible();
+    const prices = page.locator(".provider-landing__prices");
+    await expect(prices.getByText("$75", { exact: true })).toBeVisible();
+    await expect(prices.getByText("$110", { exact: true })).toBeVisible();
+    await expect(prices.getByText("$150", { exact: true })).toBeVisible();
+    await expect(prices.getByText("Your first customer")).toBeVisible();
+    await expect(prices.getByText("Per-job fee")).toBeVisible();
+    await expect(prices.getByText("$49/month")).toBeVisible();
+    await expect(prices.getByText("$99/month")).toBeVisible();
     await expect(page.getByText(/\$30|\$6\.99/)).toHaveCount(0);
-    await expect(page.getByText(/paid placement never changes recommendation order/i)).toBeVisible();
-    const retentionHeading = page.getByRole("heading", {
-      name: "Pay once for the introduction."
-    });
-    await expect(retentionHeading).toBeVisible();
-    await expect(page.getByText(/no second finder fee for the same customer/i)).toBeVisible();
-    await expect(page.getByText(/review below 4 stars/i)).toBeVisible();
-    await retentionHeading.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-desktop.png` });
+    await expect(page.getByText(/plans never change who yardmatch recommends/i)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Read the provider standards" })).toHaveAttribute(
+      "href",
+      "/provider-standards"
+    );
+    await expect(page.getByRole("link", { name: "Sign up your business" })).toHaveCount(3);
+    await expect(page.locator(".radius-settings")).toHaveCount(0);
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-desktop.png`, fullPage: true });
 
     await pricingHeading.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-pricing-desktop.png` });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/provider");
-    await expect(page.getByRole("heading", { name: "Grow local routes and keep control of your calendar." })).toBeVisible();
-    await retentionHeading.scrollIntoViewIfNeeded();
+    await expect(landingHeading).toBeVisible();
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 390);
-    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-mobile.png` });
-
-    await page.getByRole("heading", { name: "Grow local routes and keep control of your calendar." }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png` });
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png`, fullPage: true });
 
     await page.goto("/auth/provider/create");
     await expect(page.getByText(/one-time finder fee per new customer/i)).toBeVisible();
