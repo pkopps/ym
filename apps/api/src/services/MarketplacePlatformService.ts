@@ -11848,16 +11848,15 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Provider not found");
     }
 
-    const [bookings, payments, matches, customers, providerTransfers] = await Promise.all([
-      this.repository.listBookings(),
-      this.repository.listPayments(),
-      this.repository.listCrewMatches(),
-      this.repository.listCustomers(),
-      this.repository.listProviderTransferRecords()
-    ]);
-    const providerBookings = bookings.filter(
+    const providerBookings = (await this.repository.listScopedBookings({ providerId })).filter(
       (booking) => booking.providerId === providerId && this.isPayoutRelevantBooking(booking)
     );
+    const [payments, matches, customers, providerTransfers] = await Promise.all([
+      this.repository.listPayments(),
+      this.repository.listCrewMatchesForBookings(providerBookings.map((booking) => booking.id)),
+      this.repository.listCustomers([...new Set(providerBookings.map((booking) => booking.customerId))]),
+      this.repository.listProviderTransferRecords()
+    ]);
     const settlementPairs = await Promise.all(
       providerBookings.map(async (booking) => {
         const payment = payments.find(
@@ -11955,17 +11954,19 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Crew member not found");
     }
 
-    const [matches, bookings, payments] = await Promise.all([
-      this.repository.listCrewMatches(),
-      this.repository.listBookings(),
+    const [crewMatches, payments] = await Promise.all([
+      this.repository.listCrewMatchesForCrewMember(crewMemberId),
       this.repository.listPayments()
+    ]);
+    // Attendance and performance only look at bookings this crew member accepted.
+    const bookings = await this.repository.listBookingsByIds([
+      ...new Set(crewMatches.filter((match) => match.status === "accepted").map((match) => match.bookingId))
     ]);
 
     // YardMatch does not accrue, hold, or disburse crew wages. Crew members are
     // engaged and paid by their provider business under the launch responsibility model.
     const entries: CrewPayoutLedgerEntry[] = [];
     const nextWeeklyPayoutDateIso = this.getNextPayoutRunIso(this.crewPayoutWeekday);
-    const crewMatches = matches.filter((match) => match.crewMemberId === crewMemberId);
     const attendanceSummary = this.buildCrewAttendanceSummary(crewMember, crewMatches, bookings);
     const earningsSummary = this.buildCrewEarningsSummary(
       entries,
@@ -16650,10 +16651,8 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Calendar overview window must use valid ISO dates with end after start");
     }
 
-    const [staffingSummaries, rawBookings] = await Promise.all([
-      this.buildProviderStaffingSummaries(provider),
-      this.repository.listBookings()
-    ]);
+    const staffingSummaries = await this.buildProviderStaffingSummaries(provider);
+    const rawBookings = await this.repository.listBookingsByIds(staffingSummaries.map((job) => job.bookingId));
     const bookingNotesById = new Map(rawBookings.map((booking) => [booking.id, booking.notes]));
     const bookings = staffingSummaries
       .map((job) => ({
