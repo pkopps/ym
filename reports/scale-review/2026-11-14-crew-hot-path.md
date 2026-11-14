@@ -100,3 +100,60 @@ Reconciliation now runs after the writes that change staffing, so its cost when 
 Before, a pass loaded every booking and every crew match. It now loads the provider's own bookings plus any provider's bookings that have not ended (or ended in the last two days), and the matches on those. A provider's whole booking history is still loaded, because crew familiarity counts past jobs with that provider; that is the 10,000-booking row.
 
 Whole-table loads left in `MarketplacePlatformService`: `listBookings()` 21, `listCrewMatches()` 5, `listProviders()` 11.
+
+## Remaining whole-table loads and a 200,000-booking run, November 14, 2026
+
+PRs #35 to #45 took the remaining whole-table loads off the provider, crew, customer and most ops paths, and added a larger dataset to the scale smoke.
+
+### Whole-table loads in `MarketplacePlatformService`
+
+| Load | At the start of this round | Now |
+| --- | ---: | ---: |
+| `listBookings()` | 22 | 0 |
+| `listCrewMatches()` | 5 | 0 |
+| `listPayments()` | 13 | 2 |
+| `listProviders()` | 11 | 5 |
+
+Still whole-table: every payment in the ops payout preview and the ops financial exception summary; every provider in the ops verification queue, the onboarding sweep, the payout preview, launch leads and the observability overview. All are ops screens.
+
+### The larger run
+
+`SCALE_LARGE=1 npm run test:scale`: 2,000 providers, 500 crew members, 200,000 past bookings plus 500 upcoming and 200 seeded plan visits, one crew match per booking, 20 database connections. Twenty kinds of operation: the nine from the default run, three recurring writes (start a weekly plan, complete a plan visit so the next is generated, reschedule a plan visit), and eight screens that used to load whole tables. The screens run 20 times each and the rest 100 times each, 1,360 operations in all.
+
+There is no before column. On main before these PRs the run did not finish: an attempt with a 120-second connection-pool timeout crashed when operations could not get a connection, and an attempt with the timeout off was stopped 40 minutes in, with no recurring write completed and the process using 4 to 6 GB. A later run on main with #36 to #42 merged was stopped after 12 minutes at 10 GB; the ops payout preview was loading every completed booking and looking up a settlement for each.
+
+Final code (main with #43 to #45 and the analytics query change), same laptop as above, three runs at 12 operations in flight (`SCALE_CONCURRENCY=12`). Median p95 of the three, range in brackets. All runs: zero errors, 66 to 68 seconds, event-loop p99 168 to 220 ms, RSS 347 to 374 MB, query p99 65 to 111 ms.
+
+| Operation | p95 ms |
+| --- | ---: |
+| next-visit (complete a plan visit, generate the next) | 2,173 (2,126 to 2,176) |
+| reschedule (plan visit) | 2,030 (2,028 to 2,035) |
+| plan-create (quote and start a weekly plan) | 1,937 (1,903 to 1,969) |
+| search | 1,325 (1,258 to 1,562) |
+| provider-calendar | 999 (706 to 1,093) |
+| clients | 982 (893 to 1,049) |
+| public-overview | 809 (794 to 1,039) |
+| staffing-overview | 761 (736 to 920) |
+| analytics | 667 (526 to 1,142) |
+| ops-payout-preview | 629 (618 to 745) |
+| ops-verification-queue | 542 (495 to 649) |
+| gps-ping | 404 (357 to 424) |
+| crew-opportunities | 390 (348 to 415) |
+| crew-matches | 339 (337 to 363) |
+| crew-payouts | 292 (263 to 361) |
+| provider-payouts | 277 (238 to 286) |
+| calendar-feed | 252 (192 to 339) |
+| arrival-tracking | 237 (180 to 264) |
+| password | 149 (137 to 155) |
+| route-write | 77 (73 to 79) |
+
+At 300 operations in flight on the same 20 connections the run also completes (103 seconds, 628 MB, measured before the analytics query change), but its latencies, 5 to 72 seconds at p95, are mostly time queued for a connection, and all 100 analytics report calls failed to start a transaction in time. Those numbers describe an overloaded pool, not the operations.
+
+### Found along the way
+
+- **Analytics report.** Two `count(DISTINCT "providerId")` subqueries over bookings took about 2 seconds each on 200,000 rows because DISTINCT sorts the ids as text. Grouping returns the same counts in under 100 ms. The report's p95 went from 6,629 ms to 667 ms.
+- **Recurring writes are the slowest operations**, about 2 seconds each on this dataset against 0.5 to 1 second on the default one. They no longer load whole tables; the cost is many small queries plus crew reconciliation after the write. Not profiled yet.
+- **The analytics report drops its cache when it fails**, so under an overloaded pool every caller retries the expensive queries. Not changed.
+- **The analytics events query** (a materialized CTE over the report window) is now the slowest single statement, 1.7 to 2.0 seconds on 10,000 events under load. It is cached for 15 seconds. Not changed.
+- **The first version of the recurring workload shared one provider across the three writes of a turn**, so they queued on that provider's locks and reported 3 to 5 seconds. Each kind now writes to its own provider.
+- **`listProviders` has no ORDER BY.** A query written to match "the order of `listProviders`" failed CI on main once the planner chose a different scan (#42). New provider queries state their own order.
