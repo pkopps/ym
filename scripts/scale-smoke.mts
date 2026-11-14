@@ -22,7 +22,8 @@ const size = large
 // SCALE_CONCURRENCY overrides how many operations are in flight. At 300 the large run mostly measures time spent
 // queued for a connection; a run at 12 shows what each operation costs on the large dataset by itself.
 if (process.env.SCALE_CONCURRENCY) size.concurrency = Number(process.env.SCALE_CONCURRENCY);
-const nearProviders = 200, upcomingCount = 500;
+// The recurring workload needs three nearby providers per turn, one for each kind of write.
+const nearProviders = Math.max(200, size.perKind * 3), upcomingCount = 500;
 url.searchParams.set("connection_limit", String(size.connections)); url.searchParams.set("pool_timeout", String(size.poolTimeoutSeconds));
 for (const key of ["GOOGLE_MAPS_API_KEY", "GOOGLE_ADDRESS_VALIDATION_API_KEY", "RESEND_API_KEY", "TWILIO_AUTH_TOKEN", "POSTHOG_API_KEY"]) delete process.env[key];
 const prefix = `scale-load-${crypto.randomUUID()}`;
@@ -86,7 +87,7 @@ try {
     return matchRow(`${prefix}-booking-${index}`, historyProviderId(index), index);
   }) });
   await prisma.crewMatch.createMany({ data: Array.from({ length: upcomingCount }, (_, index) => matchRow(`${prefix}-upcoming-${index}`, upcomingProviderId(index), index)) });
-  // Recurring workload. Operation i of each kind uses nearby provider i and its own customer, so the operations do
+  // Recurring workload. Operation i of each kind uses its own nearby provider and customer, so the operations do
   // not contend with each other: "plan-create" quotes and starts a weekly plan, "next-visit" completes the first
   // visit of a seeded plan (which generates the second), and "reschedule" moves a seeded plan visit by a week.
   const recurringKinds = ["plan", "visit", "move"] as const;
@@ -96,17 +97,19 @@ try {
   const recurringCustomerIds = recurringKinds.flatMap(kind => Array.from({ length: size.perKind }, (_, index) => recurringCustomerId(kind, index)));
   await prisma.userAccount.createMany({ data: recurringCustomerIds.map(id => ({ ...customerUser, id, email: `${id}@example.invalid` })) });
   await prisma.customerProfile.createMany({ data: recurringCustomerIds.map(userId => ({ ...customerProfile, userId })) });
-  await prisma.providerCredential.createMany({ data: providerIds.slice(0, size.perKind).flatMap(id => (template.credentials ?? []).map((credential, index) => ({
+  await prisma.providerCredential.createMany({ data: providerIds.slice(0, size.perKind * 3).flatMap(id => (template.credentials ?? []).map((credential, index) => ({
     id: `${id}-credential-${index}`, providerId: id, type: credential.type, status: credential.status, jurisdiction: credential.jurisdiction,
     referenceNumber: credential.referenceNumber, issuedAt: credential.issuedAt ? new Date(credential.issuedAt) : null,
     expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : null, submittedAt: new Date(credential.submittedAt) }))) });
   const day = 86400_000, hour = 3600_000;
-  const seededVisit = (kind: "visit" | "move", index: number, startMs: number) => ({ id: `${prefix}-${kind}-${index}`, providerId: providerIds[index],
+  // Each kind writes to its own provider. Sharing one made the three writes of a turn queue on that provider's locks.
+  const recurringProviderId = (kind: typeof recurringKinds[number], index: number) => providerIds[recurringKinds.indexOf(kind) * size.perKind + index];
+  const seededVisit = (kind: "visit" | "move", index: number, startMs: number) => ({ id: `${prefix}-${kind}-${index}`, providerId: recurringProviderId(kind, index),
     customerId: recurringCustomerId(kind, index), serviceAddress: address, category: "lawn-mowing", requestedAt: new Date(now - day),
     scheduledStartIso: new Date(startMs), scheduledEndIso: new Date(startMs + hour), status: "confirmed", notes: "Disposable scale fixture",
     totalCents: 7500, recurringPlanId: `${prefix}-plan-${kind}-${index}`, recurringOccurrenceIndex: 1, interventions: [], addressChangeHistory: [],
     serviceEvidence: kind === "visit" ? [{ id: `${prefix}-evidence-${index}`, phase: "after", evidenceType: "photo", capturedAt: new Date(now).toISOString(),
-      capturedByRole: "provider", capturedByUserId: providerIds[index] }] : [] });
+      capturedByRole: "provider", capturedByUserId: recurringProviderId(kind, index) }] : [] });
   const visitStartMs = now + 3 * day, moveStartMs = now + 40 * day, planStartMs = now + 20 * day;
   const seededVisits = Array.from({ length: size.perKind }, (_, index) => [seededVisit("visit", index, visitStartMs), seededVisit("move", index, moveStartMs)]).flat();
   await prisma.recurringServicePlan.createMany({ data: seededVisits.map(visit => ({ id: visit.recurringPlanId, customerId: visit.customerId,
@@ -165,8 +168,8 @@ try {
       if (kind === "crew-opportunities") assert.equal((await platform.listCrewOpportunities()).filter(item => item.id.startsWith(`${prefix}-upcoming-`)).length, upcomingCount);
       if (kind === "plan-create") {
         const planCustomerId = recurringCustomerId("plan", turn);
-        const quote = await platform.createInstantQuote({ customerId: planCustomerId, address, category: "lawn-mowing", providerId: providerIds[turn] });
-        const created = await platform.createRecurringServicePlan(planCustomerId, { providerId: providerIds[turn], serviceAddress: address, category: "lawn-mowing",
+        const quote = await platform.createInstantQuote({ customerId: planCustomerId, address, category: "lawn-mowing", providerId: recurringProviderId("plan", turn) });
+        const created = await platform.createRecurringServicePlan(planCustomerId, { providerId: recurringProviderId("plan", turn), serviceAddress: address, category: "lawn-mowing",
           scheduledStartIso: new Date(planStartMs).toISOString(), scheduledEndIso: new Date(planStartMs + hour).toISOString(), notes: "Disposable scale fixture",
           totalCents: quote.estimatedPriceCents, quoteToken: quote.quoteToken, frequency: "weekly" });
         assert.equal(created.plan.upcomingBooking?.id, created.initialBooking.id);
@@ -180,7 +183,7 @@ try {
       if (kind === "staffing-overview") assert.ok((await platform.getProviderStaffingOverview(upcomingProviderId(turn))).jobs.length >= 1);
       if (kind === "ops-verification-queue") assert.ok(await platform.listProviderVerificationQueue());
       if (kind === "ops-payout-preview") assert.ok(await platform.getOpsPayoutPreview());
-      if (kind === "next-visit") assert.equal((await platform.completeBooking(providerIds[turn], { bookingId: `${prefix}-visit-${turn}` })).status, "completed");
+      if (kind === "next-visit") assert.equal((await platform.completeBooking(recurringProviderId("visit", turn), { bookingId: `${prefix}-visit-${turn}` })).status, "completed");
       if (kind === "reschedule") assert.equal((await platform.rescheduleBooking(recurringCustomerId("move", turn), { bookingId: `${prefix}-move-${turn}`,
         scheduledStartIso: new Date(moveStartMs + 7 * day).toISOString(), scheduledEndIso: new Date(moveStartMs + 7 * day + hour).toISOString() })).scheduledStartIso,
         new Date(moveStartMs + 7 * day).toISOString());
