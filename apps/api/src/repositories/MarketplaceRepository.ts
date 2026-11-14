@@ -168,8 +168,6 @@ export interface MarketplaceRepository {
   createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
   listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]>;
-  /** The provider whose calendar feed token is `feedToken`: the one `listProviders` would reach first. */
-  findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined>;
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
   listSearchSlots(providerIds: string[], minimumDurationMinutes?: number, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]>;
@@ -239,6 +237,8 @@ export interface MarketplaceRepository {
     change: BookingAddressChangeRequest
   ): Promise<Booking | undefined>;
   findProviderById(providerId: string): Promise<ProviderProfile | undefined>;
+  /** The provider whose calendar feed token is `feedToken`: the one `listProviders` would reach first. */
+  findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined>;
   updateProvider(providerId: string, updates: Partial<ProviderProfile>): Promise<ProviderProfile | undefined>;
   createPayment(payment: PaymentRecord): Promise<PaymentRecord>;
   findPaymentById(paymentId: string): Promise<PaymentRecord | undefined>;
