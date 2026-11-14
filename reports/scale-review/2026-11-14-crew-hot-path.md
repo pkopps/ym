@@ -47,3 +47,7 @@ Query p95 22 ms, p99 498 ms across 4,492 queries. Event-loop p99 30 ms. RSS 269 
 ## After step 2 (location columns and index), November 14, 2026
 
 Provider search filters on `user_accounts.latitude` and `longitude` with an index on `(role, latitude, longitude)` instead of casting the address JSON for every row. One run: search p95 435 ms (765 ms in the step 1 run), query p99 78 ms (was 498 ms). Run-to-run noise on this machine is large (crew-matches p95 was 222 ms in this run and 1,714 ms in the step 1 run with no crew change), and with 601 providers the table is small enough that the planner may not need the index, so treat the search change as directional.
+
+## After step 3 (per-provider crew lock), November 14, 2026
+
+The scale dataset has no booking short of crew, so a crew schedule read now takes no staffing lock at all (before: the global `crew-staffing` lock on every read). One run: crew-matches p95 311 ms, gps-ping 390 ms, search 564 ms, clients 1,092 ms, query p99 94 ms, zero errors. The difference from the step 2 run is within run-to-run noise; what this step changes is contention between providers when bookings do need crew, which this dataset does not exercise. `crew-hot-path.integration.test.ts` covers that case directly: staffing provider B completes while provider A's lock is held.

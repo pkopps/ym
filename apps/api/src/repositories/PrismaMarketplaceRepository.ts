@@ -184,6 +184,20 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     });
   }
 
+  public async tryWithLock<T>(
+    key: string,
+    work: (repository: MarketplaceRepository) => Promise<T>
+  ): Promise<{ acquired: true; value: T } | { acquired: false }> {
+    return this.transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) AS acquired`;
+      if (!row?.acquired) {
+        return { acquired: false as const };
+      }
+      return { acquired: true as const, value: await work(new PrismaMarketplaceRepository(tx as PrismaClient, true)) };
+    });
+  }
+
   public async getSecurityState(key: string): Promise<Record<string, unknown> | undefined> {
     const entry = await this.prisma.securityState.findUnique({ where: { key } });
     return entry && entry.expiresAt.getTime() > Date.now() ? entry.value as Record<string, unknown> : undefined;

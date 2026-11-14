@@ -147,6 +147,16 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     }
   }
 
+  public async tryWithLock<T>(
+    key: string,
+    work: (repository: MarketplaceRepository) => Promise<T>
+  ): Promise<{ acquired: true; value: T } | { acquired: false }> {
+    if (this.locks.has(key)) {
+      return { acquired: false };
+    }
+    return { acquired: true, value: await this.withLock(key, work) };
+  }
+
   public async getSecurityState(key: string): Promise<Record<string, unknown> | undefined> {
     const entry = this.securityStates.get(key);
     return entry && entry.expiresAt > Date.now() ? structuredClone(entry.value) : undefined;

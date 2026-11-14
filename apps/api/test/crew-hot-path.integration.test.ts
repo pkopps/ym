@@ -358,3 +358,73 @@ test("Postgres crew reconciliation still offers an unstaffed upcoming booking to
     assert.ok(created.every((match) => match.status === "pending-provider-review" && match.providerId === ids.providerA));
   });
 });
+
+test("Postgres crew staffing locks one provider at a time, not every provider", { skip }, async () => {
+  await withCrewFixtures(async ({ prisma, repository, ids, bookingId, booking }) => {
+    const platform = new MarketplacePlatformService(new PrismaMarketplaceRepository(prisma), new DataEngineeringLogger());
+    await repository.createBooking(booking("unstaffed-a", ids.providerA, "confirmed", 20));
+    await repository.createBooking(booking("unstaffed-b", ids.providerB, "confirmed", 21));
+    const offered = (name: string) => prisma.crewMatch.count({ where: { bookingId: bookingId(name) } });
+
+    // Another request is in the middle of staffing provider A.
+    let release!: () => void;
+    let held!: () => void;
+    const isHeld = new Promise<void>((resolve) => { held = resolve; });
+    const holder = repository.withLock(`crew-staffing:${ids.providerA}`, async () => {
+      held();
+      await new Promise<void>((resolve) => { release = resolve; });
+    });
+    await isHeld;
+
+    try {
+      // Provider B is staffed without waiting for provider A.
+      await platform.getProviderStaffingOverview(ids.providerB);
+      assert.equal(await offered("unstaffed-b"), 2);
+
+      // Provider A's own staffing waits for the lock.
+      let finished = false;
+      const waiting = platform.getProviderStaffingOverview(ids.providerA).then(() => { finished = true; });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      assert.equal(finished, false);
+      assert.equal(await offered("unstaffed-a"), 0);
+
+      release();
+      await holder;
+      await waiting;
+      assert.equal(await offered("unstaffed-a"), 2);
+    } finally {
+      release();
+      await holder.catch(() => {});
+    }
+  });
+});
+
+test("Postgres tryWithLock reports a lock held by another transaction without waiting", { skip }, async () => {
+  const prisma = new PrismaClient({ datasourceUrl: databaseUrl! });
+  const repository = new PrismaMarketplaceRepository(prisma);
+  const key = `crew-schedule:try-lock-${randomUUID()}`;
+  let release!: () => void;
+  let held!: () => void;
+  const isHeld = new Promise<void>((resolve) => { held = resolve; });
+  const holder = repository.withLock(key, async () => {
+    held();
+    await new Promise<void>((resolve) => { release = resolve; });
+  });
+  try {
+    await isHeld;
+    assert.deepEqual(await repository.tryWithLock(key, async () => "ran"), { acquired: false });
+    assert.deepEqual(await repository.tryWithLock(`${key}-other`, async () => "ran"), { acquired: true, value: "ran" });
+    // The transaction that holds a lock can take it again.
+    assert.deepEqual(
+      await repository.withLock(`${key}-nested`, (locked) => locked.tryWithLock(`${key}-nested`, async () => "ran")),
+      { acquired: true, value: "ran" }
+    );
+    release();
+    await holder;
+    assert.deepEqual(await repository.tryWithLock(key, async () => "ran"), { acquired: true, value: "ran" });
+  } finally {
+    release();
+    await holder.catch(() => {});
+    await prisma.$disconnect();
+  }
+});
