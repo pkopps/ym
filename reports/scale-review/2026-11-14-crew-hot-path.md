@@ -23,3 +23,23 @@ Query p95 438 ms, p99 1,772 ms across 4,836 queries. Event-loop p99 2,751 ms. RS
 The crew operations slow everything else down: with the crew workload off, the same dataset gives search p95 1,112 ms, clients 1,318 ms, analytics 1,697 ms, event-loop p99 15 ms, RSS 217 MB.
 
 The event-loop stall comes from `buildCrewDayLoadMap`, which looks up a booking for every match by scanning the full booking list (20,500 x 20,500) inside `reconcileCrewMatches`, on every `getCrewMatchesForCrew` read.
+
+## After step 1 (scoped hot-path queries), November 14, 2026
+
+Same machine and dataset, 360 operations. Zero errors. Elapsed 8.6 s (was 237 s). The crew workload is now part of the default run.
+
+| Operation | p95 ms before | p95 ms after |
+| --- | ---: | ---: |
+| crew-matches | 30,021 | 1,714 |
+| gps-ping | 14,997 | 489 |
+| search | 14,053 | 765 |
+| analytics | 9,444 | 817 |
+| arrival-tracking | 8,368 | 348 |
+| clients | 6,515 | 968 |
+| route-write | 4,532 | 54 |
+| password | 4,180 | 88 |
+| crew-opportunities | 3,849 | 213 |
+
+Query p95 22 ms, p99 498 ms across 4,492 queries. Event-loop p99 30 ms. RSS 269 MB.
+
+`crew-matches` is still the slowest operation: every read takes the global `crew-staffing` lock and checks whether any upcoming booking needs crew. In this dataset none does, so the check is three scoped queries. When a booking does need crew, reconciliation still loads providers, crew, bookings, matches and customers in full.

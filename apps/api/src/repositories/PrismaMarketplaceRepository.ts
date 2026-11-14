@@ -55,7 +55,8 @@ import {
   BookingPageQuery,
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
-  MarketplaceRepository
+  MarketplaceRepository,
+  UpcomingBookingsQuery
 } from "./MarketplaceRepository";
 
 const optionalIso = (value: Date | null): string | undefined => value ? value.toISOString() : undefined;
@@ -545,6 +546,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return providers.map((record: any) => this.mapProviderProfile(record.user, record));
   }
 
+  public async listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]> {
+    if (providerIds.length === 0) {
+      return [];
+    }
+    const providers = await this.prisma.providerBusinessProfile.findMany({
+      where: { userId: { in: providerIds } },
+      include: { user: true, credentials: true, connectAccount: true }
+    });
+    return providers.map((record: any) => this.mapProviderProfile(record.user, record));
+  }
+
   public async listCustomers(customerIds?: string[]): Promise<CustomerProfile[]> {
     const customers = await this.prisma.customerProfile.findMany({
       where: customerIds ? { userId: { in: customerIds } } : undefined,
@@ -858,6 +870,18 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     };
   }
 
+  public async listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        scheduledStartIso: { gt: new Date(query.afterIso) },
+        status: { in: query.statuses },
+        providerId: query.providerId
+      },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
     if (bookingIds.length === 0) {
       return [];
@@ -1145,6 +1169,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       }
     });
     return matches.map((match: any) => this.mapCrewMatch(match));
+  }
+
+  public async listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]> {
+    const matches = await this.prisma.crewMatch.findMany({
+      where: { crewMemberId },
+      orderBy: { createdAt: "desc" }
+    });
+    return matches.map((match) => this.mapCrewMatch(match));
   }
 
   public async updateCrewMatch(

@@ -57,6 +57,12 @@ export interface TrustedDeviceRecord {
   revokedAt?: string;
 }
 
+export interface UpcomingBookingsQuery {
+  afterIso: string;
+  statuses: Booking["status"][];
+  providerId?: string;
+}
+
 export interface AuthIdentityRecord {
   userId: string;
   email: string;
@@ -156,6 +162,7 @@ export interface MarketplaceRepository {
   createCrewMember(crewMember: CrewMemberProfile, passwordHash?: string): Promise<CrewMemberProfile>;
   createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
+  listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]>;
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
   listSearchSlots(providerIds: string[], minimumDurationMinutes?: number, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]>;
@@ -183,6 +190,8 @@ export interface MarketplaceRepository {
   listBookings(): Promise<Booking[]>;
   listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
   listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
+  /** Bookings starting after `afterIso` in one of `statuses`, in the same order as `listBookings`. */
+  listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined>;
   createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
@@ -195,6 +204,8 @@ export interface MarketplaceRepository {
   createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate>;
   listCrewMatches(): Promise<CrewMatchCandidate[]>;
   listCrewMatchesForBookings(bookingIds: string[], crewMemberId?: string): Promise<CrewMatchCandidate[]>;
+  /** One crew member's matches, in the same order as `listCrewMatches`. */
+  listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]>;
   updateCrewMatch(matchId: string, updates: Partial<CrewMatchCandidate>): Promise<CrewMatchCandidate | undefined>;
   findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined>;
   createProviderReview(review: ProviderReview): Promise<ProviderReview>;

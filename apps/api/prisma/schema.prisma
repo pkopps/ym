@@ -209,6 +209,7 @@ model Booking {
 
   @@index([customerId, scheduledStartIso, id])
   @@index([providerId, scheduledStartIso, id])
+  @@index([status, scheduledStartIso])
   @@map("bookings")
 }
 
@@ -261,6 +262,7 @@ model CrewMatch {
   reviewedAt           DateTime?
 
   @@unique([bookingId, crewMemberId])
+  @@index([crewMemberId, createdAt])
   @@map("crew_matches")
 }
 

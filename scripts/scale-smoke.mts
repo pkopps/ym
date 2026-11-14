@@ -83,10 +83,7 @@ try {
   queryTimes.length = 0; delay.enable();
   const start = performance.now(), latencies: Record<string, number[]> = {}, errors: string[] = [];
   const heapBefore = process.memoryUsage().heapUsed;
-  // The crew and GPS operations exceed the CI latency gate until the hot-path queries are scoped, so they are opt-in for now.
-  const crewWorkload = process.env.SCALE_CREW_WORKLOAD === "1";
-  const kinds = ["search", "clients", "password", "route-write", "analytics",
-    ...(crewWorkload ? ["gps-ping", "arrival-tracking", "crew-matches", "crew-opportunities"] : [])];
+  const kinds = ["search", "clients", "password", "route-write", "analytics", "gps-ping", "arrival-tracking", "crew-matches", "crew-opportunities"];
   const operations = Array.from({ length: kinds.length * 40 }, (_, index) => index);
   const notifications = (async () => { while (await repository.countDueNotificationDeliveries(new Date().toISOString())) await platform.retryDueNotificationDeliveriesForOps(); })();
   await mapConcurrent(operations, 12, async index => {
@@ -111,7 +108,7 @@ try {
   const stats = Object.fromEntries(Object.entries(latencies).map(([kind, values]) => [kind, {
     operations: values.length, p95Ms: Math.round(percentile(values, 0.95)), p99Ms: Math.round(percentile(values, 0.99)) }]));
   const result = { dataset: { providers: 601, bookings: 20500, crewMembers: 200, crewMatches: 20500, properties: 1000, analyticsEvents: 10000, notifications: 250 },
-    crewWorkload, concurrency: 12, databaseConnections: 8, operations: operations.length, elapsedMs: Math.round(performance.now() - start),
+    concurrency: 12, databaseConnections: 8, operations: operations.length, elapsedMs: Math.round(performance.now() - start),
     latency: stats, queries: { count: queryTimes.length, p95Ms: percentile(queryTimes, 0.95), p99Ms: percentile(queryTimes, 0.99) },
     eventLoopP99Ms: Math.round(delay.percentile(99) / 1e6), heapGrowthMb: Math.round((process.memoryUsage().heapUsed - heapBefore) / 1048576),
     rssMb: Math.round(process.memoryUsage().rss / 1048576), delivered: sends, errors };
