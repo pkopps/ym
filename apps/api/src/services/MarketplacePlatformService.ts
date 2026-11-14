@@ -12200,13 +12200,16 @@ export class MarketplacePlatformService {
   }
 
   public async getOpsPayoutPreview(): Promise<OpsPayoutRunPreviewResponse> {
-    // Only completed, refunded and disputed bookings can be payout relevant.
-    const [providers, bookings, payments, providerTransfers] = await Promise.all([
+    // A booking with no payment has no settlement or transfer either, so it can only be waiting on the customer
+    // (completed), on hold (disputed after completion) or reversed (refunded). Those are totalled in the database;
+    // only bookings that have a payment are loaded and walked one by one.
+    const [providers, payments, providerTransfers, unpaid] = await Promise.all([
       this.repository.listProviders(),
-      this.repository.listBookingsByStatuses(["completed", "refunded", "disputed"]),
       this.repository.listPayments(),
-      this.repository.listProviderTransferRecords()
+      this.repository.listProviderTransferRecords(),
+      this.repository.summarizeBookingsWithoutPayments()
     ]);
+    const bookings = await this.repository.listBookingsByIds([...new Set(payments.map((payment) => payment.bookingId))]);
     // Grouped once, in list order, so each provider's bookings and each booking's payments are looked up directly.
     const payoutBookingsByProviderId = new Map<string, Booking[]>();
     for (const booking of bookings) {
@@ -12326,8 +12329,8 @@ export class MarketplacePlatformService {
 
     let totalProviderReadyCents = 0;
     const totalCrewReadyCents = 0;
-    let totalAwaitingCustomerPaymentCents = 0;
-    let onHoldEntryCount = 0;
+    let totalAwaitingCustomerPaymentCents = unpaid.completedTotalCents;
+    let onHoldEntryCount = unpaid.disputedAfterCompletionCount;
     let providerInstantEligibleCount = 0;
 
     for (const provider of providers) {

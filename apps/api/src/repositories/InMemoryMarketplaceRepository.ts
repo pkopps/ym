@@ -503,6 +503,15 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.bookings.filter((booking) => customerIds.has(booking.customerId) || (booking.launchLeadId !== undefined && launchLeadIds.has(booking.launchLeadId)));
   }
 
+  public async summarizeBookingsWithoutPayments(): Promise<{ completedTotalCents: number; disputedAfterCompletionCount: number }> {
+    const paidBookingIds = new Set(this.payments.map((payment) => payment.bookingId));
+    const unpaid = this.bookings.filter((booking) => !paidBookingIds.has(booking.id));
+    return {
+      completedTotalCents: unpaid.filter((booking) => booking.status === "completed").reduce((sum, booking) => sum + booking.totalCents, 0),
+      disputedAfterCompletionCount: unpaid.filter((booking) => booking.status === "disputed" && Boolean(booking.completedAt)).length
+    };
+  }
+
   public async countBookings(): Promise<number> {
     return this.bookings.length;
   }
