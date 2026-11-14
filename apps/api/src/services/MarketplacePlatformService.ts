@@ -2581,13 +2581,10 @@ export class MarketplacePlatformService {
   }
 
   public async listProviderVerificationQueue(): Promise<ProviderVerificationQueueItem[]> {
-    const [providers, bookings] = await Promise.all([
-      this.repository.listProviders(),
-      this.repository.listBookings()
-    ]);
+    const providers = (await this.repository.listProviders()).filter((provider) => provider.verificationStatus !== "verified");
+    const bookings = await this.repository.listBookingsForProviders(providers.map((provider) => provider.id));
 
     return providers
-      .filter((provider) => provider.verificationStatus !== "verified")
       .map((provider) => {
         const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
 
@@ -2840,9 +2837,8 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
     }
     const asOfIso = new Date(asOfMs).toISOString();
-    const [allProviders, bookings, opsUsers] = await Promise.all([
+    const [allProviders, opsUsers] = await Promise.all([
       this.repository.listProviders(),
-      this.repository.listBookings(),
       this.repository.listOpsUsers()
     ]);
     const providers = allProviders.filter(
@@ -2850,6 +2846,7 @@ export class MarketplacePlatformService {
         provider.verificationStatus !== "verified" &&
         (!payload.providerId || provider.id === payload.providerId)
     );
+    const bookings = await this.repository.listBookingsForProviders(providers.map((provider) => provider.id));
 
     if (payload.providerId && providers.length === 0) {
       const exists = allProviders.some((provider) => provider.id === payload.providerId);
@@ -3001,7 +2998,7 @@ export class MarketplacePlatformService {
           `Provider cannot be approved until required credentials are verified: ${credentialReadiness.warnings.join(" ")}`
         );
       }
-      const bookings = await this.repository.listBookings();
+      const bookings = await this.repository.listScopedBookings({ providerId: provider.id });
       const openBookingCount = this.countOpenProviderBookings(provider.id, bookings);
       const guidance = this.buildProviderVerificationGuidance(
         provider,
@@ -5582,7 +5579,10 @@ export class MarketplacePlatformService {
   private async processBookingScheduleFollowUps(asOfIso: string, dryRun: boolean) {
     const result = { sentNotificationCount: 0, alreadySentCount: 0, skippedCount: 0 };
     const asOfMs = Date.parse(asOfIso);
-    for (const booking of await this.repository.listBookings()) {
+    // Only confirmed and in-progress bookings can be due; every other booking counts as skipped, as before.
+    const [bookings, bookingCount] = await Promise.all([this.repository.listBookingsByStatuses(["confirmed", "in-progress"]), this.repository.countBookings()]);
+    result.skippedCount += Math.max(bookingCount - bookings.length, 0);
+    for (const booking of bookings) {
       if (!["confirmed", "in-progress"].includes(booking.status)) { result.skippedCount++; continue; }
       const update = booking.scheduleUpdates?.at(-1);
       const active = update && ["active", "declined"].includes(update.state);
@@ -10932,7 +10932,7 @@ export class MarketplacePlatformService {
   ): Promise<ListCustomerReviewOpportunitiesResponse> {
     const now = new Date(Date.now());
     const opportunities = (await this.repository
-      .listBookings())
+      .listScopedBookings({ customerId }))
       .filter((booking) => booking.customerId === customerId && booking.status === "completed")
       .map(async (booking) => this.buildReviewOpportunity(booking, now))
       ;
@@ -11081,11 +11081,8 @@ export class MarketplacePlatformService {
   private async buildProviderRetentionProgramSummary(
     provider: ProviderProfile
   ): Promise<ProviderRetentionProgramSummary> {
-    const [bookings, customers] = await Promise.all([
-      this.repository.listBookings(),
-      this.repository.listCustomers()
-    ]);
-    const providerBookings = bookings.filter((booking) => booking.providerId === provider.id);
+    const providerBookings = (await this.repository.listScopedBookings({ providerId: provider.id })).filter((booking) => booking.providerId === provider.id);
+    const customers = await this.repository.listCustomers([...new Set(providerBookings.map((booking) => booking.customerId))]);
     const retentionStates = await this.buildCustomerProviderRetentionStates(providerBookings);
     const customerNames = new Map(customers.map((customer) => [customer.id, customer.fullName]));
     const relationships = [...retentionStates.values()]
@@ -11130,7 +11127,7 @@ export class MarketplacePlatformService {
     customerId: string
   ): Promise<ListCustomerRetentionOpportunitiesResponse> {
     const [bookings, recurringPlans] = await Promise.all([
-      this.repository.listBookings(),
+      this.repository.listScopedBookings({ customerId }),
       this.repository.listRecurringServicePlans()
     ]);
 
@@ -14512,13 +14509,18 @@ export class MarketplacePlatformService {
   }
 
   public async listOpsSupportTickets(): Promise<SupportOpsTicket[]> {
-    const [tickets, bookings, payments, customers, providers, crewMembers] = await Promise.all([
+    const [tickets, payments, crewMembers] = await Promise.all([
       this.repository.listSupportTickets(),
-      this.repository.listBookings(),
       this.repository.listPayments(),
-      this.repository.listCustomers(),
-      this.repository.listProviders(),
       this.repository.listCrewMembers()
+    ]);
+    // Only the bookings tickets point at are shown, with the customers and providers on them. A ticket's requester
+    // is looked up too, to tell whether a customer, provider or crew member opened it.
+    const bookings = await this.repository.listBookingsByIds([...new Set(tickets.flatMap((ticket) => ticket.bookingId ? [ticket.bookingId] : []))]);
+    const requesterIds = tickets.map((ticket) => ticket.requesterId);
+    const [customers, providers] = await Promise.all([
+      this.repository.listCustomers([...new Set([...bookings.map((booking) => booking.customerId), ...requesterIds])]),
+      this.repository.listProvidersByIds([...new Set([...bookings.map((booking) => booking.providerId), ...requesterIds])])
     ]);
     const customerById = new Map(customers.map((customer) => [customer.id, customer]));
     const providerById = new Map(providers.map((provider) => [provider.id, provider]));
@@ -14899,9 +14901,8 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
     }
     const asOfIso = new Date(asOfMs).toISOString();
-    const [allTickets, bookings, payments, opsUsers] = await Promise.all([
+    const [allTickets, payments, opsUsers] = await Promise.all([
       this.repository.listSupportTickets(),
-      this.repository.listBookings(),
       this.repository.listPayments(),
       this.repository.listOpsUsers()
     ]);
@@ -14909,6 +14910,7 @@ export class MarketplacePlatformService {
     if (payload.ticketId && tickets.length === 0) {
       throw new HttpError(404, "Support ticket not found");
     }
+    const bookings = await this.repository.listBookingsByIds([...new Set(tickets.flatMap((ticket) => ticket.bookingId ? [ticket.bookingId] : []))]);
     const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
     const paymentByBookingId = new Map(payments.map((payment) => [payment.bookingId, payment]));
     const recipients = opsUsers.map((opsUser) => ({
@@ -17525,10 +17527,8 @@ export class MarketplacePlatformService {
   }
 
   private async listProviderAssistantCandidates(providerId: string) {
-    const [bookings, customers] = await Promise.all([
-      this.repository.listBookings(),
-      this.repository.listCustomers()
-    ]);
+    const bookings = await this.repository.listScopedBookings({ providerId, excludeStatuses: ["cancelled", "completed", "refunded"] });
+    const customers = await this.repository.listCustomers([...new Set(bookings.map((booking) => booking.customerId))]);
     const customerById = new Map(customers.map((customer) => [customer.id, customer]));
 
     return bookings

@@ -913,14 +913,45 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return bookings.map((booking) => this.mapBooking(booking));
   }
 
+  public async listBookingsForProviders(providerIds: string[]): Promise<Booking[]> {
+    if (providerIds.length === 0) {
+      return [];
+    }
+    const bookings = await this.prisma.booking.findMany({
+      where: { providerId: { in: providerIds } },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { status: { in: statuses } },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async countBookings(): Promise<number> {
+    return this.prisma.booking.count();
+  }
+
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
     if (bookingIds.length === 0) {
       return [];
     }
-    const bookings = await this.prisma.booking.findMany({
-      where: { id: { in: bookingIds } }
-    });
-    return bookings.map((booking) => this.mapBooking(booking));
+    // Large id lists are split so the query stays under the database's bind-parameter limit.
+    const chunkSize = 5000;
+    const chunks = Array.from({ length: Math.ceil(bookingIds.length / chunkSize) }, (_, index) =>
+      bookingIds.slice(index * chunkSize, (index + 1) * chunkSize));
+    const rows = (await Promise.all(chunks.map((ids) => this.prisma.booking.findMany({
+      where: { id: { in: ids } },
+      orderBy: { scheduledStartIso: "asc" }
+    })))).flat();
+    if (chunks.length > 1) {
+      rows.sort((left, right) => left.scheduledStartIso.getTime() - right.scheduledStartIso.getTime());
+    }
+    return rows.map((booking) => this.mapBooking(booking));
   }
 
   public async findBookingById(bookingId: string): Promise<Booking | undefined> {
