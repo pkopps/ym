@@ -27,10 +27,14 @@ function summarizeByArea(bookings: Booking[], recentSinceIso: string): Completed
   return [...groups.values()];
 }
 
+/** `listProviders` has no defined order, so the whole-table side is put in the order the scoped query promises. */
+const inAccountOrder = (providers: ProviderProfile[]) =>
+  [...providers].sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
+
 /** Answers the overview's scoped queries by loading whole tables and filtering, as the service did before. */
 function wholeTableRepository(repository: MarketplaceRepository): MarketplaceRepository {
   const overrides: Partial<MarketplaceRepository> = {
-    listProvidersByVerificationStatus: async (status) => (await repository.listProviders()).filter((provider) => provider.verificationStatus === status),
+    listProvidersByVerificationStatus: async (status) => inAccountOrder((await repository.listProviders()).filter((provider) => provider.verificationStatus === status)),
     summarizeCompletedBookingsByArea: async (recentSinceIso) => summarizeByArea(await repository.listBookings(), recentSinceIso),
     listCompletedBookingsWithMarketingPhotos: async () => await repository.listBookings(),
     listLatestProviderReviews: async (providerIds) => (await Promise.all(providerIds.map((id) => repository.listProviderReviews(id)))).flat()
@@ -113,7 +117,7 @@ test("Postgres public overview queries return the same rows, in the same order, 
     const allBookings = await repository.listBookings();
     for (const status of ["verified", "pending-review"] as const) {
       const scoped = await repository.listProvidersByVerificationStatus(status);
-      assert.deepEqual(scoped, allProviders.filter((row) => row.verificationStatus === status));
+      assert.deepEqual(scoped, inAccountOrder(allProviders.filter((row) => row.verificationStatus === status)));
       assert.ok(scoped.some(own));
     }
 
