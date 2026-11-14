@@ -50,11 +50,15 @@ model UserAccount {
   phone                          String
   role                           String
   address                        Json
+  /// Copied from address.point by the user_accounts_sync_location trigger. Never written by the application.
+  latitude                       Float?
+  longitude                      Float?
   createdAt                      DateTime                 @default(now())
   customer                       CustomerProfile?
   provider                       ProviderBusinessProfile?
   crewMember                     CrewMemberProfile?
 
+  @@index([role, latitude, longitude])
   @@map("user_accounts")
 }
 

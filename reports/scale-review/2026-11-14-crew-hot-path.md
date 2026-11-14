@@ -43,3 +43,7 @@ Same machine and dataset, 360 operations. Zero errors. Elapsed 8.6 s (was 237 s)
 Query p95 22 ms, p99 498 ms across 4,492 queries. Event-loop p99 30 ms. RSS 269 MB.
 
 `crew-matches` is still the slowest operation: every read takes the global `crew-staffing` lock and checks whether any upcoming booking needs crew. In this dataset none does, so the check is three scoped queries. When a booking does need crew, reconciliation still loads providers, crew, bookings, matches and customers in full.
+
+## After step 2 (location columns and index), November 14, 2026
+
+Provider search filters on `user_accounts.latitude` and `longitude` with an index on `(role, latitude, longitude)` instead of casting the address JSON for every row. One run: search p95 435 ms (765 ms in the step 1 run), query p99 78 ms (was 498 ms). Run-to-run noise on this machine is large (crew-matches p95 was 222 ms in this run and 1,714 ms in the step 1 run with no crew change), and with 601 providers the table is small enough that the planner may not need the index, so treat the search change as directional.
