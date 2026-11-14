@@ -18,7 +18,6 @@ export default async function ProviderSignupCreatePage() {
     <main className="container stack-lg">
       <section className="page-hero">
         <h1>{i18n.t("auth_provider.title")}</h1>
-        <p>{i18n.t("auth_provider.body")}</p>
       </section>
 
       <section className="card provider-signup-economics" aria-label={i18n.t("auth_provider.economics.aria")}>

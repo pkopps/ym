@@ -156,31 +156,13 @@ export function LaunchServiceLandingPage({
         title={i18n.t("launch_service.proof.title", values)}
       />
 
-      <section className="grid-two">
+      <section>
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
           defaultServiceCategory={preferredCategory}
-          description={i18n.t("launch_service.lead.body", values)}
           requestSource={variant === "town-service" ? "launch-town-service-lead-form" : "launch-service-lead-form"}
           title={i18n.t("launch_service.lead.title", values)}
         />
-        <article className="card">
-          <h2>{i18n.t("launch_service.after_help.title")}</h2>
-          <ol className="timeline">
-            <li>
-              <strong>1.</strong>
-              <span>{i18n.t("launch_service.after_help.step.queue")}</span>
-            </li>
-            <li>
-              <strong>2.</strong>
-              <span>{i18n.t("launch_service.after_help.step.owner_response")}</span>
-            </li>
-            <li>
-              <strong>3.</strong>
-              <span>{i18n.t("launch_service.after_help.step.closed_loop")}</span>
-            </li>
-          </ol>
-        </article>
       </section>
 
       <section className="stack-lg">

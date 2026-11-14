@@ -1884,15 +1884,15 @@ export function CustomerLiveDashboard() {
                 <div className="list-panel">
                   <h3>{i18n.t("customer_live.refund.title")}</h3>
                   <a className="button" href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(booking.id)}`, i18n.locale)}>{i18n.t("complaint.title")}</a>
-                  <p>
-                    {paymentRecord?.refundReviewStatus === "requested"
-                      ? i18n.t("customer_live.refund.reviewing")
-                      : paymentRecord?.refundReviewStatus === "denied"
-                        ? i18n.t("customer_live.refund.denied", {
-                            notes: paymentRecord?.refundDecisionNotes ? ` ${paymentRecord.refundDecisionNotes}` : ""
-                          })
-                        : i18n.t("customer_live.refund.body")}
-                  </p>
+                  {paymentRecord?.refundReviewStatus === "requested" ? (
+                    <p>{i18n.t("customer_live.refund.reviewing")}</p>
+                  ) : paymentRecord?.refundReviewStatus === "denied" ? (
+                    <p>
+                      {i18n.t("customer_live.refund.denied", {
+                        notes: paymentRecord?.refundDecisionNotes ? ` ${paymentRecord.refundDecisionNotes}` : ""
+                      })}
+                    </p>
+                  ) : null}
                   {paymentRecord?.refundReviewStatus !== "requested" ? (
                     <>
                       <div className="form-grid u-mt-4">

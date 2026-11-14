@@ -21,12 +21,6 @@ export function generateMetadata(): Promise<Metadata> {
   });
 }
 
-const trustPointKeys = [
-  "launch_town.trust.point.recommendation",
-  "launch_town.trust.point.backups",
-  "launch_town.trust.point.support"
-] satisfies TranslationKey[];
-
 const localFaqs = [
   {
     questionKey: "launch_town.faq.services.question",
@@ -45,25 +39,21 @@ const localFaqs = [
 const launchTownPageLinks = [
   {
     href: launchServiceContent["lawn-mowing"].townPath,
-    titleKey: "launch_town.service.lawn_mowing.title",
-    bodyKey: "launch_town.service.lawn_mowing.body"
+    titleKey: "launch_town.service.lawn_mowing.title"
   },
   {
     href: launchServiceContent["yard-cleanup"].townPath,
-    titleKey: "launch_town.service.yard_cleanup.title",
-    bodyKey: "launch_town.service.yard_cleanup.body"
+    titleKey: "launch_town.service.yard_cleanup.title"
   },
   {
     href: launchServiceContent["lawn-mowing"].path,
-    titleKey: "launch_town.service.general_lawn.title",
-    bodyKey: "launch_town.service.general_lawn.body"
+    titleKey: "launch_town.service.general_lawn.title"
   },
   {
     href: launchServiceContent["yard-cleanup"].path,
-    titleKey: "launch_town.service.general_cleanup.title",
-    bodyKey: "launch_town.service.general_cleanup.body"
+    titleKey: "launch_town.service.general_cleanup.title"
   }
-] satisfies Array<{ href: string; titleKey: TranslationKey; bodyKey: TranslationKey }>;
+] satisfies Array<{ href: string; titleKey: TranslationKey }>;
 
 export default async function BarnegatTownPage() {
   const i18n = await getRequestI18n();
@@ -88,24 +78,6 @@ export default async function BarnegatTownPage() {
         </div>
       </section>
 
-      <section className="grid-two">
-        <article className="card">
-          <h2>{i18n.t("launch_town.trust.title")}</h2>
-          <ul className="timeline">
-            {trustPointKeys.map((key) => (
-              <li key={key}>
-                <strong>•</strong>
-                <span>{i18n.t(key)}</span>
-              </li>
-            ))}
-          </ul>
-        </article>
-        <article className="card">
-          <h2>{i18n.t("launch_town.optimizing.title")}</h2>
-          <p>{i18n.t("launch_town.optimizing.body", values)}</p>
-        </article>
-      </section>
-
       <section className="stack-lg">
         <div className="section-header">
           <h2>{i18n.t("launch_town.services.title", values)}</h2>
@@ -114,7 +86,6 @@ export default async function BarnegatTownPage() {
           {launchTownPageLinks.map((item) => (
             <article className="card" key={item.href}>
               <h3>{i18n.t(item.titleKey, values)}</h3>
-              <p>{i18n.t(item.bodyKey)}</p>
               <Link className="button-secondary" href={href(item.href)}>
                 {i18n.t("launch_town.services.view_page")}
               </Link>
@@ -131,7 +102,6 @@ export default async function BarnegatTownPage() {
       <section>
         <LaunchLeadCaptureCard
           defaultAreaLabel={launchAreaLabel}
-          description={i18n.t("launch_town.lead.body")}
           requestSource="launch-town-page-lead-form"
           title={i18n.t("launch_town.lead.title", values)}
         />
@@ -140,7 +110,6 @@ export default async function BarnegatTownPage() {
       <section className="grid-two">
         <article className="card">
           <h2>{i18n.t("launch_town.local_trust.title")}</h2>
-          <p>{i18n.t("launch_town.local_trust.body")}</p>
           <div className="cta-row u-mt-4">
             <Link className="button-secondary" href={href("/provider-verification")}>
               {i18n.t("launch_town.local_trust.cta")}
@@ -149,7 +118,6 @@ export default async function BarnegatTownPage() {
         </article>
         <article className="card">
           <h2>{i18n.t("launch_town.support.title")}</h2>
-          <p>{i18n.t("launch_town.support.body")}</p>
           <div className="cta-row u-mt-4">
             <Link className="button-secondary" href={href("/help")}>
               {i18n.t("launch_town.support.cta")}

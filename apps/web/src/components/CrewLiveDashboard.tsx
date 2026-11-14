@@ -474,7 +474,6 @@ export function CrewLiveDashboard() {
           <div className="search-result-title">
             <div>
               <h2>{i18n.t("crew_live.fit.title")}</h2>
-              <p>{i18n.t("crew_live.fit.body")}</p>
             </div>
             <strong>{i18n.t("crew_live.fit.count", { count: recommendedPublicOpportunities.length })}</strong>
           </div>

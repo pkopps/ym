@@ -135,7 +135,6 @@ export function LaunchMarketplaceProofSection({
       <div className="grid-two">
         <article className="card">
           <h3>{i18n.t("launch_proof.tight.title")}</h3>
-          <p>{i18n.t("launch_proof.tight.body")}</p>
           <div className="cta-row u-mt-4">
             <Link className="button-secondary" href={addLocalePrefix("/provider-verification", i18n.locale)}>
               {i18n.t("launch_proof.tight.provider_verification_cta")}

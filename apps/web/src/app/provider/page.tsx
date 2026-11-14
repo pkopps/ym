@@ -36,21 +36,6 @@ const operatingLeverKeys = [
   "provider_landing.operating.lever.support"
 ] satisfies TranslationKey[];
 
-const acquisitionChannels = [
-  {
-    titleKey: "provider_landing.acquisition.marketplace.title",
-    bodyKey: "provider_landing.acquisition.marketplace.body"
-  },
-  {
-    titleKey: "provider_landing.acquisition.google.title",
-    bodyKey: "provider_landing.acquisition.google.body"
-  },
-  {
-    titleKey: "provider_landing.acquisition.repeat.title",
-    bodyKey: "provider_landing.acquisition.repeat.body"
-  }
-] satisfies Array<{ titleKey: TranslationKey; bodyKey: TranslationKey }>;
-
 export default async function ProviderPage() {
   const i18n = await getRequestI18n();
   const href = (path: string) => addLocalePrefix(path, i18n.locale);
@@ -61,7 +46,6 @@ export default async function ProviderPage() {
       <section className="container hero provider-landing-hero">
         <div>
           <h1>{i18n.t("provider_landing.hero.title")}</h1>
-          <p>{i18n.t("provider_landing.hero.body")}</p>
           <div className="cta-row">
             <a className="button" href={href("/auth/provider/create")}>
               {i18n.t("provider_landing.hero.primary_cta")}
@@ -136,29 +120,12 @@ export default async function ProviderPage() {
       </section>
 
       <section className="container stack-lg">
-        <div className="provider-strip">
-          <div>
-            <h2>{i18n.t("provider_landing.demand.title")}</h2>
-          </div>
-        </div>
-        <div className="grid-three">
-          {acquisitionChannels.map((channel) => (
-            <article className="card" key={channel.titleKey}>
-              <h3>{i18n.t(channel.titleKey)}</h3>
-              <p>{i18n.t(channel.bodyKey)}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="container stack-lg">
         <div className="section-header">
           <h2>{i18n.t("provider_landing.operating.title")}</h2>
         </div>
         <div className="grid-two provider-proof-grid">
           <article className="card">
             <h3>{i18n.t("provider_landing.operating.territory.title")}</h3>
-            <p>{i18n.t("provider_landing.operating.territory.body")}</p>
             <ProviderRadiusSettingsCard />
           </article>
           <article className="card">
@@ -179,7 +146,6 @@ export default async function ProviderPage() {
       <section className="container stack-lg">
         <div className="section-header">
           <h2>{i18n.t("provider_landing.standards.title")}</h2>
-          <p>{i18n.t("provider_landing.standards.body")}</p>
         </div>
         <div className="grid-two">
           {providerPolicyPages.map((page) => {
