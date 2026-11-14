@@ -195,6 +195,8 @@ export interface MarketplaceRepository {
   listBookings(): Promise<Booking[]>;
   listBookingsPage(query: BookingPageQuery): Promise<RepositoryPage<Booking>>;
   listBookingsByIds(bookingIds: string[]): Promise<Booking[]>;
+  /** One recurring plan's bookings, in the same order as `listBookings`. */
+  listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]>;
   /** Bookings starting after `afterIso` in one of `statuses`, in the same order as `listBookings`. */
   listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
@@ -208,6 +210,7 @@ export interface MarketplaceRepository {
   ): Promise<RecurringServicePlan | undefined>;
   createCrewMatch(match: CrewMatchCandidate): Promise<CrewMatchCandidate>;
   listCrewMatches(): Promise<CrewMatchCandidate[]>;
+  /** Matches for the given bookings, in the same order as `listCrewMatches`. */
   listCrewMatchesForBookings(bookingIds: string[], crewMemberId?: string): Promise<CrewMatchCandidate[]>;
   /** One crew member's matches, in the same order as `listCrewMatches`. */
   listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]>;

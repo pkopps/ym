@@ -4435,7 +4435,7 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "Route leader assignment is locked once the route has started");
     }
 
-    const acceptedMatches = (await this.repository.listCrewMatches()).filter(
+    const acceptedMatches = (await this.repository.listCrewMatchesForBookings([booking.id])).filter(
       (match) => match.bookingId === booking.id && match.status === "accepted"
     );
 
@@ -4550,7 +4550,7 @@ export class MarketplacePlatformService {
     if (match.status === "cancelled-by-crew") {
       const [provider, booking] = await Promise.all([this.repository.findProviderById(match.providerId), this.repository.findBookingById(match.bookingId)]);
       if (!provider || !booking) throw new HttpError(404, "Assignment details could not be found");
-      const count = (await this.repository.listCrewMatches()).filter(candidate => candidate.bookingId === booking.id && candidate.status === "accepted").length;
+      const count = (await this.repository.listCrewMatchesForBookings([booking.id])).filter(candidate => candidate.bookingId === booking.id && candidate.status === "accepted").length;
       return this.buildCrewMatchSummary(match, provider, booking, count);
     }
     if (match.status !== "accepted") {
@@ -4632,7 +4632,7 @@ export class MarketplacePlatformService {
       actionHref: "/crew/schedule"
     });
 
-    const acceptedMatchCount = (await this.repository.listCrewMatches()).filter(
+    const acceptedMatchCount = (await this.repository.listCrewMatchesForBookings([booking.id])).filter(
       (candidate) => candidate.bookingId === booking.id && candidate.status === "accepted"
     ).length;
     const refreshedBooking = (await this.repository.findBookingById(booking.id)) ?? booking;
@@ -5138,7 +5138,7 @@ export class MarketplacePlatformService {
     }
 
     const [allMatches, provider] = await Promise.all([
-      this.repository.listCrewMatches(),
+      this.repository.listCrewMatchesForBookings([booking.id]),
       this.repository.findProviderById(booking.providerId)
     ]);
     if (booking.recovery?.state === "open") throw new HttpError(409, "This visit is awaiting customer recovery consent");
@@ -5553,7 +5553,7 @@ export class MarketplacePlatformService {
       { recipientId: booking.customerId, recipientRole: "customer" }, { recipientId: booking.providerId, recipientRole: "provider" }
     ];
     if (payload.action === "accept") {
-      for (const match of await this.repository.listCrewMatches()) {
+      for (const match of await this.repository.listCrewMatchesForBookings([booking.id])) {
         if (match.bookingId === booking.id && match.status === "accepted") {
           await this.repository.updateCrewMatch(match.id, { status: "pending-provider-review", reviewedAt: undefined, autoAccepted: false });
           await this.refreshCrewMemberStatus(match.crewMemberId);
@@ -5632,7 +5632,7 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    const acceptedMatch = (await this.repository.listCrewMatches()).find(
+    const acceptedMatch = (await this.repository.listCrewMatchesForBookings([booking.id])).find(
       (match) => match.bookingId === booking.id && match.status === "accepted" && match.crewMemberId === actor.userId
     );
 
@@ -6342,7 +6342,7 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    const acceptedMatch = (await this.repository.listCrewMatches()).find(
+    const acceptedMatch = (await this.repository.listCrewMatchesForBookings([booking.id])).find(
       (match) =>
         match.bookingId === booking.id &&
         match.status === "accepted" && match.crewMemberId === actor.userId
@@ -7368,7 +7368,7 @@ export class MarketplacePlatformService {
     if (scope === "plan") {
       const plan = await this.repository.findRecurringServicePlanById(booking.recurringPlanId!);
       if (!plan || plan.customerId !== customerId || plan.status !== "active") throw new HttpError(409, "The recurring plan is no longer active");
-      const siblings = (await this.repository.listBookings()).filter(item => item.recurringPlanId === plan.id && item.id !== booking.id && ["requested", "confirmed", "in-progress"].includes(item.status));
+      const siblings = (await this.repository.listBookingsForRecurringPlan(plan.id)).filter(item => item.recurringPlanId === plan.id && item.id !== booking.id && ["requested", "confirmed", "in-progress"].includes(item.status));
       if (siblings.length) throw new HttpError(409, "Other generated visits require individual review. Contact support before changing the plan");
       await this.repository.updateRecurringServicePlan(plan.id, payload.action === "cancel" ? { status: "cancelled", cancelledAt: new Date().toISOString(), cancellationReason: "Customer consented to provider-caused recovery cancellation" } : { providerId: payload.providerId });
     }
@@ -7602,10 +7602,10 @@ export class MarketplacePlatformService {
     const payload = { ...this.parseBookingRequest(input), frequency: input.frequency };
     const key = hashDeviceIdentifier(JSON.stringify([customerId, payload.providerId, payload.servicePropertyId ?? this.quoteAddressKey(payload.serviceAddress), payload.category, payload.scheduledStartIso, payload.scheduledEndIso, payload.frequency]));
     return this.repository.withLock(`recurring:${key}`, async (repository) => {
-      const existing = (await repository.listRecurringServicePlans()).find((plan) => plan.id === key);
+      const existing = await repository.findRecurringServicePlanById(key);
       const scoped = this.withRepository(repository);
       if (existing) {
-        const initialBooking = (await repository.listBookings()).find((booking) => booking.recurringPlanId === existing.id && booking.recurringOccurrenceIndex === 1);
+        const initialBooking = (await repository.listBookingsForRecurringPlan(existing.id)).find((booking) => booking.recurringPlanId === existing.id && booking.recurringOccurrenceIndex === 1);
         if (initialBooking) return { plan: await scoped.buildRecurringServicePlanSummary(existing.id), initialBooking };
       }
       return scoped.createRecurringServicePlanRecord(customerId, payload, key);
@@ -7750,8 +7750,8 @@ export class MarketplacePlatformService {
     }
 
     const cancelledAt = new Date().toISOString();
-    const allBookings = await this.repository.listBookings();
-    const futureBookings = allBookings.filter(
+    const planBookings = await this.repository.listBookingsForRecurringPlan(plan.id);
+    const futureBookings = planBookings.filter(
       (booking) =>
         booking.recurringPlanId === plan.id &&
         (booking.status === "requested" || booking.status === "confirmed") &&
@@ -8140,7 +8140,7 @@ export class MarketplacePlatformService {
   }
 
   private async reconfirmCrewAfterBookingChange(booking: Booking, message: string, cancel = false): Promise<void> {
-    for (const match of await this.repository.listCrewMatches()) {
+    for (const match of await this.repository.listCrewMatchesForBookings([booking.id])) {
       if (match.bookingId !== booking.id || !["accepted", "pending-provider-review"].includes(match.status)) continue;
       await this.repository.updateCrewMatch(match.id, { status: cancel ? "denied" : "pending-provider-review", reviewedAt: undefined, autoAccepted: false });
       await this.refreshCrewMemberStatus(match.crewMemberId);
@@ -8149,7 +8149,7 @@ export class MarketplacePlatformService {
   }
 
   private async notifyBookingParties(booking: Booking, title: string, body: string): Promise<void> {
-    const crewRecipients = (await this.repository.listCrewMatches()).filter(match => match.bookingId === booking.id && match.status === "accepted").map(match => ({ recipientId: match.crewMemberId, recipientRole: "crew-member" as const }));
+    const crewRecipients = (await this.repository.listCrewMatchesForBookings([booking.id])).filter(match => match.bookingId === booking.id && match.status === "accepted").map(match => ({ recipientId: match.crewMemberId, recipientRole: "crew-member" as const }));
     for (const recipient of [{ recipientId: booking.customerId, recipientRole: "customer" as const }, { recipientId: booking.providerId, recipientRole: "provider" as const }, ...crewRecipients, ...(await this.repository.listOpsUsers()).map(user => ({ recipientId: user.id, recipientRole: "ops" as const }))]) {
       await this.createNotification({ ...recipient, category: "booking", title, body, actionHref: recipient.recipientRole === "customer" ? `/customer/dashboard?bookingId=${booking.id}` : recipient.recipientRole === "provider" ? "/provider/management" : recipient.recipientRole === "crew-member" ? "/crew/schedule" : "/ops" });
     }
@@ -9161,7 +9161,7 @@ export class MarketplacePlatformService {
     }
 
     if (action.actionType === "message-crew") {
-      const bookingMatches = (projectedMatches ?? (await this.repository.listCrewMatches())).filter(
+      const bookingMatches = (projectedMatches ?? (await this.repository.listCrewMatchesForBookings([booking.id]))).filter(
         (match) =>
           match.bookingId === booking.id &&
           (match.status === "accepted" || match.status === "pending-provider-review")
@@ -9321,7 +9321,7 @@ export class MarketplacePlatformService {
         };
       }
 
-      const acceptedMatches = (projectedMatches ?? (await this.repository.listCrewMatches())).filter(
+      const acceptedMatches = (projectedMatches ?? (await this.repository.listCrewMatchesForBookings([booking.id]))).filter(
         (match) => match.bookingId === booking.id && match.status === "accepted"
       );
 
@@ -13889,7 +13889,7 @@ export class MarketplacePlatformService {
       }
 
       if (requester.role === "crew-member") {
-        const matches = await this.repository.listCrewMatches();
+        const matches = await this.repository.listCrewMatchesForBookings([booking.id]);
         const hasAcceptedMatch = matches.some(
           (match) =>
             match.bookingId === booking.id &&
@@ -18929,7 +18929,7 @@ export class MarketplacePlatformService {
     }
 
     const [providers, crewMembers, bookings, matches, customers] = await Promise.all([
-      this.repository.listProviders(),
+      this.repository.listProvidersByIds([providerId]),
       this.repository.listCrewMembers(),
       this.repository.listBookings(),
       this.repository.listCrewMatches(),
@@ -19656,12 +19656,12 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Recurring plan not found");
     }
 
-    const [provider, allBookings] = await Promise.all([
+    const [provider, recurringBookings] = await Promise.all([
       this.repository.findProviderById(plan.providerId),
-      this.repository.listBookings()
+      this.repository.listBookingsForRecurringPlan(plan.id)
     ]);
 
-    const planBookings = allBookings
+    const planBookings = recurringBookings
       .filter((booking) => booking.recurringPlanId === plan.id)
       .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
 
@@ -19696,8 +19696,8 @@ export class MarketplacePlatformService {
       return;
     }
 
-    const allBookings = await this.repository.listBookings();
-    const hasUpcomingRecurringBooking = allBookings.some(
+    const planBookings = await this.repository.listBookingsForRecurringPlan(plan.id);
+    const hasUpcomingRecurringBooking = planBookings.some(
       (booking) =>
         booking.recurringPlanId === plan.id &&
         booking.id !== completedBooking.id &&

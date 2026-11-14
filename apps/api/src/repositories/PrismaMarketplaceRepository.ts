@@ -897,6 +897,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return bookings.map((booking) => this.mapBooking(booking));
   }
 
+  public async listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { recurringPlanId },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
     if (bookingIds.length === 0) {
       return [];
@@ -1181,7 +1189,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       where: {
         crewMemberId,
         bookingId: { in: bookingIds }
-      }
+      },
+      orderBy: { createdAt: "desc" }
     });
     return matches.map((match: any) => this.mapCrewMatch(match));
   }
