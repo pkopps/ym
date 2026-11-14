@@ -386,6 +386,8 @@ export interface MarketplaceRepository {
   getNotificationPreferences(recipientId: string): Promise<NotificationPreferences | undefined>;
   upsertNotificationPreferences(preferences: NotificationPreferences): Promise<NotificationPreferences>;
   createNotificationDelivery(delivery: NotificationDeliveryRecord): Promise<NotificationDeliveryRecord>;
+  /** Queues several deliveries in one write. */
+  createNotificationDeliveries(deliveries: NotificationDeliveryRecord[]): Promise<void>;
   claimNotificationDeliveries(limit: number, nowIso: string, leaseSeconds: number): Promise<ClaimedNotificationDelivery[]>;
   completeNotificationDelivery(deliveryId: string, leaseToken: string, updates: Partial<NotificationDeliveryRecord>): Promise<NotificationDeliveryRecord | undefined>;
   countDueNotificationDeliveries(nowIso: string): Promise<number>;
@@ -433,6 +435,11 @@ export interface MarketplaceRepository {
     subject: string
   ): Promise<AuthIdentityRecord | undefined>;
   findAuthIdentityByUserId(userId: string): Promise<AuthIdentityRecord | undefined>;
+  /**
+   * The email and phone notifications go to for a user in this role, or undefined when the user has no profile
+   * for the role. The same answer as loading the full customer, provider, ops or crew profile, in one read.
+   */
+  findNotificationContact(userId: string, role: AuthIdentityRecord["role"]): Promise<{ email: string; phone: string } | undefined>;
   updateAuthIdentity(
     userId: string,
     updates: Partial<AuthIdentityRecord>

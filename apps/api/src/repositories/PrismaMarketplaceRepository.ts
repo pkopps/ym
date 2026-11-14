@@ -2752,31 +2752,51 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapNotificationDelivery(row);
   }
 
+  private notificationDeliveryRow(delivery: NotificationDeliveryRecord) {
+    return {
+      id: delivery.id,
+      notificationId: delivery.notificationId,
+      recipientId: delivery.recipientId,
+      recipientRole: delivery.recipientRole,
+      category: delivery.category,
+      channel: delivery.channel,
+      destination: delivery.destination,
+      provider: delivery.provider,
+      status: delivery.status,
+      title: delivery.title,
+      bodyPreview: delivery.bodyPreview,
+      errorMessage: delivery.errorMessage,
+      attemptCount: delivery.attemptCount,
+      createdAt: new Date(delivery.createdAt),
+      lastAttemptAt: delivery.lastAttemptAt ? new Date(delivery.lastAttemptAt) : null,
+      nextRetryAt: delivery.nextRetryAt ? new Date(delivery.nextRetryAt) : null,
+      sentAt: delivery.sentAt ? new Date(delivery.sentAt) : null
+    };
+  }
+
   public async createNotificationDelivery(
     delivery: NotificationDeliveryRecord
   ): Promise<NotificationDeliveryRecord> {
-    await this.prisma.notificationDelivery.create({
-      data: {
-        id: delivery.id,
-        notificationId: delivery.notificationId,
-        recipientId: delivery.recipientId,
-        recipientRole: delivery.recipientRole,
-        category: delivery.category,
-        channel: delivery.channel,
-        destination: delivery.destination,
-        provider: delivery.provider,
-        status: delivery.status,
-        title: delivery.title,
-        bodyPreview: delivery.bodyPreview,
-        errorMessage: delivery.errorMessage,
-        attemptCount: delivery.attemptCount,
-        createdAt: new Date(delivery.createdAt),
-        lastAttemptAt: delivery.lastAttemptAt ? new Date(delivery.lastAttemptAt) : null,
-        nextRetryAt: delivery.nextRetryAt ? new Date(delivery.nextRetryAt) : null,
-        sentAt: delivery.sentAt ? new Date(delivery.sentAt) : null
-      }
-    });
+    await this.prisma.notificationDelivery.create({ data: this.notificationDeliveryRow(delivery) });
     return delivery;
+  }
+
+  public async createNotificationDeliveries(deliveries: NotificationDeliveryRecord[]): Promise<void> {
+    if (deliveries.length === 0) {
+      return;
+    }
+    await this.prisma.notificationDelivery.createMany({ data: deliveries.map((delivery) => this.notificationDeliveryRow(delivery)) });
+  }
+
+  public async findNotificationContact(userId: string, role: AuthIdentityRecord["role"]): Promise<{ email: string; phone: string } | undefined> {
+    // Mirrors the profile finders: customers, providers and crew need their profile row; ops users need the ops role.
+    const hasProfile = role === "customer" ? Prisma.sql`EXISTS (SELECT 1 FROM customer_profiles profile WHERE profile."userId" = account.id)`
+      : role === "provider" ? Prisma.sql`EXISTS (SELECT 1 FROM provider_business_profiles profile WHERE profile."userId" = account.id)`
+      : role === "ops" ? Prisma.sql`account.role = 'ops'`
+      : Prisma.sql`EXISTS (SELECT 1 FROM crew_member_profiles profile WHERE profile."userId" = account.id)`;
+    const [row] = await this.prisma.$queryRaw<Array<{ email: string; phone: string }>>(Prisma.sql`
+      SELECT account.email, account.phone FROM user_accounts account WHERE account.id = ${userId} AND ${hasProfile}`);
+    return row ? { email: row.email, phone: row.phone } : undefined;
   }
 
   public async listNotificationDeliveriesByRecipient(

@@ -1270,6 +1270,18 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return { ...row };
   }
 
+  public async createNotificationDeliveries(deliveries: NotificationDeliveryRecord[]): Promise<void> {
+    this.notificationDeliveries.push(...deliveries);
+  }
+
+  public async findNotificationContact(userId: string, role: AuthIdentityRecord["role"]): Promise<{ email: string; phone: string } | undefined> {
+    const profile = role === "customer" ? await this.findCustomerById(userId)
+      : role === "provider" ? await this.findProviderById(userId)
+      : role === "ops" ? await this.findOpsUserById(userId)
+      : await this.findCrewMemberById(userId);
+    return profile ? { email: profile.email, phone: profile.phone } : undefined;
+  }
+
   public async createNotificationDelivery(
     delivery: NotificationDeliveryRecord
   ): Promise<NotificationDeliveryRecord> {
