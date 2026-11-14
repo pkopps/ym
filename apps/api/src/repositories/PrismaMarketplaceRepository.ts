@@ -1000,6 +1000,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return rows.map((booking) => this.mapBooking(booking));
   }
 
+  public async findBookingByEvidenceId(evidenceId: string): Promise<Booking | undefined> {
+    const booking = await this.prisma.booking.findFirst({
+      where: { serviceEvidence: { array_contains: [{ id: evidenceId }] } },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return booking ? this.mapBooking(booking) : undefined;
+  }
+
   public async findBookingById(bookingId: string): Promise<Booking | undefined> {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId }
@@ -1676,6 +1684,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return payment ? this.mapPaymentRecord(payment) : undefined;
   }
 
+  public async findPaymentByProcessorPaymentIntentId(paymentIntentId: string): Promise<PaymentRecord | undefined> {
+    const payment = await this.prisma.paymentRecord.findFirst({ where: { processorPaymentIntentId: paymentIntentId } });
+    return payment ? this.mapPaymentRecord(payment) : undefined;
+  }
+
   public async listPayments(): Promise<PaymentRecord[]> {
     const payments = await this.prisma.paymentRecord.findMany();
     return payments.map((payment) => this.mapPaymentRecord(payment));
@@ -1685,10 +1698,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     if (bookingIds.length === 0) {
       return [];
     }
-    const payments = await this.prisma.paymentRecord.findMany({
-      where: { bookingId: { in: bookingIds } },
+    // Large id lists are split so the query stays under the database's bind-parameter limit.
+    const chunkSize = 5000;
+    const chunks = Array.from({ length: Math.ceil(bookingIds.length / chunkSize) }, (_, index) =>
+      bookingIds.slice(index * chunkSize, (index + 1) * chunkSize));
+    const payments = (await Promise.all(chunks.map((ids) => this.prisma.paymentRecord.findMany({
+      where: { bookingId: { in: ids } },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
-    });
+    })))).flat();
+    if (chunks.length > 1) {
+      payments.sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime() || (left.id < right.id ? 1 : -1));
+    }
     return payments.map((payment: any) => this.mapPaymentRecord(payment));
   }
 

@@ -236,6 +236,8 @@ export interface MarketplaceRepository {
   /** Bookings made by any of these customers or linked to any of these launch leads, in the same order as `listBookings`. */
   listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;
+  /** The booking holding the evidence entry with this id: the one `listBookings` would reach first. */
+  findBookingByEvidenceId(evidenceId: string): Promise<Booking | undefined>;
   updateBooking(bookingId: string, updates: Partial<Booking>, expectedVersion?: number): Promise<Booking | undefined>;
   createRecurringServicePlan(plan: RecurringServicePlan): Promise<RecurringServicePlan>;
   listRecurringServicePlans(): Promise<RecurringServicePlan[]>;
@@ -281,7 +283,9 @@ export interface MarketplaceRepository {
   createPayment(payment: PaymentRecord): Promise<PaymentRecord>;
   findPaymentById(paymentId: string): Promise<PaymentRecord | undefined>;
   findPaymentByCheckoutSessionId(checkoutSessionId: string): Promise<PaymentRecord | undefined>;
+  findPaymentByProcessorPaymentIntentId(paymentIntentId: string): Promise<PaymentRecord | undefined>;
   listPayments(): Promise<PaymentRecord[]>;
+  /** Payments on these bookings, most recently updated first. */
   listPaymentsForBookingIds(bookingIds: string[]): Promise<PaymentRecord[]>;
   updatePayment(paymentId: string, updates: Partial<PaymentRecord>): Promise<PaymentRecord | undefined>;
   settleBookingFinancials(

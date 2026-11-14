@@ -216,6 +216,7 @@ model Booking {
   @@index([status, scheduledStartIso])
   @@index([recurringPlanId])
   @@index([launchLeadId])
+  @@index([serviceEvidence(ops: JsonbPathOps)], type: Gin)
   @@index([scheduledEndIso])
   @@map("bookings")
 }

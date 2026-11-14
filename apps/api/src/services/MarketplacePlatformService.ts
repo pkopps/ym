@@ -5777,10 +5777,7 @@ export class MarketplacePlatformService {
     accessToken: string | undefined,
     marketingUse: boolean
   ): Promise<ReadEvidencePhoto> {
-    const bookings = await this.repository.listBookings();
-    const booking = bookings.find((candidate) =>
-      candidate.serviceEvidence.some((evidence) => evidence.id === evidenceId)
-    );
+    const booking = await this.repository.findBookingByEvidenceId(evidenceId);
     const evidence = booking?.serviceEvidence.find((candidate) => candidate.id === evidenceId);
     if (!booking || !evidence?.imageObjectPathname || evidence.imageStorageProvider !== "vercel-blob-private") {
       throw new HttpError(404, "Photo not found");
@@ -7106,7 +7103,7 @@ export class MarketplacePlatformService {
     if (!updatedBooking) {
       throw new Error("Booking could not be completed");
     }
-    const capturedPayment = (await this.repository.listPayments()).find(
+    const capturedPayment = (await this.repository.listPaymentsForBookingIds([updatedBooking.id])).find(
       (payment) => payment.bookingId === updatedBooking.id && payment.status === "captured"
     );
     if (capturedPayment) {
@@ -7324,7 +7321,7 @@ export class MarketplacePlatformService {
     const categories = booking.services?.length ? booking.services.map(item => item.category) : [booking.category];
     const duration = (Date.parse(booking.scheduledEndIso) - Date.parse(booking.scheduledStartIso)) / 60000;
     const recovery = booking.recovery;
-    const providers = (await this.repository.listProviders()).filter(provider => !recovery.previousProviderIds.includes(provider.id) && provider.verificationStatus === "verified" && evaluateProviderCredentialReadiness(provider, provider.credentials ?? []).ready && categories.every(category => provider.categories.includes(category)) && this.geoService.distanceMiles(provider.address, booking.serviceAddress) <= provider.serviceRadiusMiles).sort((left, right) => right.rating - left.rating);
+    const providers = (await this.repository.listProvidersByVerificationStatus("verified")).filter(provider => !recovery.previousProviderIds.includes(provider.id) && provider.verificationStatus === "verified" && evaluateProviderCredentialReadiness(provider, provider.credentials ?? []).ready && categories.every(category => provider.categories.includes(category)) && this.geoService.distanceMiles(provider.address, booking.serviceAddress) <= provider.serviceRadiusMiles).sort((left, right) => right.rating - left.rating);
     for (const provider of providers) {
       if (!await this.recoveryPriceMatches(booking, provider.id)) continue;
       const slots = await this.getProviderAvailability({ providerId: provider.id, address: booking.serviceAddress, categories, estimatedDurationMinutes: duration });
@@ -11845,7 +11842,7 @@ export class MarketplacePlatformService {
       (booking) => booking.providerId === providerId && this.isPayoutRelevantBooking(booking)
     );
     const [payments, matches, customers, providerTransfers] = await Promise.all([
-      this.repository.listPayments(),
+      this.repository.listPaymentsForBookingIds(providerBookings.map((booking) => booking.id)),
       this.repository.listCrewMatchesForBookings(providerBookings.map((booking) => booking.id)),
       this.repository.listCustomers([...new Set(providerBookings.map((booking) => booking.customerId))]),
       this.repository.listProviderTransferRecords()
@@ -11947,13 +11944,12 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Crew member not found");
     }
 
-    const [crewMatches, payments] = await Promise.all([
-      this.repository.listCrewMatchesForCrewMember(crewMemberId),
-      this.repository.listPayments()
-    ]);
-    // Attendance and performance only look at bookings this crew member accepted.
-    const bookings = await this.repository.listBookingsByIds([
-      ...new Set(crewMatches.filter((match) => match.status === "accepted").map((match) => match.bookingId))
+    const crewMatches = await this.repository.listCrewMatchesForCrewMember(crewMemberId);
+    // Attendance and performance only look at bookings this crew member accepted, and the payments on them.
+    const acceptedBookingIds = [...new Set(crewMatches.filter((match) => match.status === "accepted").map((match) => match.bookingId))];
+    const [bookings, payments] = await Promise.all([
+      this.repository.listBookingsByIds(acceptedBookingIds),
+      this.repository.listPaymentsForBookingIds(acceptedBookingIds)
     ]);
 
     // YardMatch does not accrue, hold, or disburse crew wages. Crew members are
@@ -13089,7 +13085,7 @@ export class MarketplacePlatformService {
       if (booking.recovery?.state === "open") throw new HttpError(409, "Recover this visit before starting another payment");
       if (booking.status === "disputed") throw new HttpError(409, "Disputed bookings must be resolved by support before payment can continue");
       if (["cancelled", "refunded"].includes(booking.status)) throw new HttpError(400, "Cancelled or refunded bookings cannot be paid");
-      const payments = (await repository.listPayments()).filter((payment) => payment.bookingId === booking.id);
+      const payments = (await repository.listPaymentsForBookingIds([booking.id])).filter((payment) => payment.bookingId === booking.id);
       if (payments.some((payment) => payment.status === "captured" || payment.status === "refunded")) throw new HttpError(409, "This booking has already been paid.");
       if (payments.some((payment) => payment.status === "processing")) throw new HttpError(409, "Your payment is still processing. Please wait for confirmation before trying again.");
       const customer = await repository.findCustomerById(customerId);
@@ -13133,7 +13129,7 @@ export class MarketplacePlatformService {
     let payment = await this.repository.findPaymentByCheckoutSessionId(payload.checkoutSessionId);
     if (!payment) {
       const verified = await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId);
-      if (verified.paymentIntentId) payment = (await this.repository.listPayments()).find((candidate) => candidate.processorPaymentIntentId === verified.paymentIntentId);
+      if (verified.paymentIntentId) payment = await this.repository.findPaymentByProcessorPaymentIntentId(verified.paymentIntentId);
     }
     if (!payment) throw new HttpError(404, "Payment session not found");
     return this.repository.withLock(`payment:${payment.bookingId}`, (repository) => this.withRepository(repository).finalizeCheckoutSessionRecord(customerId, payload));
@@ -13148,9 +13144,7 @@ export class MarketplacePlatformService {
     if (!payment) {
       verifiedSession = await this.stripeCheckout.verifyCheckoutSession(payload.checkoutSessionId);
       if (verifiedSession.paymentIntentId) {
-        payment = (await this.repository.listPayments()).find(
-          (candidate) => candidate.processorPaymentIntentId === verifiedSession?.paymentIntentId
-        );
+        payment = await this.repository.findPaymentByProcessorPaymentIntentId(verifiedSession.paymentIntentId);
       }
     }
 
@@ -13344,9 +13338,7 @@ export class MarketplacePlatformService {
       if (payment) return payment;
     }
     if (event.paymentIntentId) {
-      return (await this.repository.listPayments()).find(
-        (payment) => payment.processorPaymentIntentId === event.paymentIntentId
-      );
+      return this.repository.findPaymentByProcessorPaymentIntentId(event.paymentIntentId);
     }
 
     return undefined;
@@ -14533,14 +14525,17 @@ export class MarketplacePlatformService {
   }
 
   public async listOpsSupportTickets(): Promise<SupportOpsTicket[]> {
-    const [tickets, payments, crewMembers] = await Promise.all([
+    const [tickets, crewMembers] = await Promise.all([
       this.repository.listSupportTickets(),
-      this.repository.listPayments(),
       this.repository.listCrewMembers()
     ]);
-    // Only the bookings tickets point at are shown, with the customers and providers on them. A ticket's requester
-    // is looked up too, to tell whether a customer, provider or crew member opened it.
-    const bookings = await this.repository.listBookingsByIds([...new Set(tickets.flatMap((ticket) => ticket.bookingId ? [ticket.bookingId] : []))]);
+    // Only the bookings tickets point at are shown, with their payments and the customers and providers on them.
+    // A ticket's requester is looked up too, to tell whether a customer, provider or crew member opened it.
+    const ticketBookingIds = [...new Set(tickets.flatMap((ticket) => ticket.bookingId ? [ticket.bookingId] : []))];
+    const [bookings, payments] = await Promise.all([
+      this.repository.listBookingsByIds(ticketBookingIds),
+      this.repository.listPaymentsForBookingIds(ticketBookingIds)
+    ]);
     const requesterIds = tickets.map((ticket) => ticket.requesterId);
     const [customers, providers] = await Promise.all([
       this.repository.listCustomers([...new Set([...bookings.map((booking) => booking.customerId), ...requesterIds])]),
@@ -14935,18 +14930,22 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "asOfIso must be a valid ISO timestamp");
     }
     const asOfIso = new Date(asOfMs).toISOString();
-    const [allTickets, payments, opsUsers] = await Promise.all([
+    const [allTickets, opsUsers] = await Promise.all([
       this.repository.listSupportTickets(),
-      this.repository.listPayments(),
       this.repository.listOpsUsers()
     ]);
     const tickets = allTickets.filter((ticket) => !payload.ticketId || ticket.id === payload.ticketId);
     if (payload.ticketId && tickets.length === 0) {
       throw new HttpError(404, "Support ticket not found");
     }
-    const bookings = await this.repository.listBookingsByIds([...new Set(tickets.flatMap((ticket) => ticket.bookingId ? [ticket.bookingId] : []))]);
+    const ticketBookingIds = [...new Set(tickets.flatMap((ticket) => ticket.bookingId ? [ticket.bookingId] : []))];
+    const [bookings, payments] = await Promise.all([
+      this.repository.listBookingsByIds(ticketBookingIds),
+      this.repository.listPaymentsForBookingIds(ticketBookingIds)
+    ]);
     const bookingById = new Map(bookings.map((booking) => [booking.id, booking]));
-    const paymentByBookingId = new Map(payments.map((payment) => [payment.bookingId, payment]));
+    // Payments arrive newest first; the newest payment on a booking is the one an escalation looks at.
+    const paymentByBookingId = new Map([...payments].reverse().map((payment) => [payment.bookingId, payment]));
     const recipients = opsUsers.map((opsUser) => ({
       recipientId: opsUser.id,
       recipientRole: "ops" as const
@@ -15386,7 +15385,7 @@ export class MarketplacePlatformService {
     resolutionAction: "approve-refund" | "deny-refund",
     resolutionNotes: string
   ): Promise<void> {
-    const payment = (await this.repository.listPayments())
+    const payment = (await this.repository.listPaymentsForBookingIds([booking.id]))
       .filter((candidate) => candidate.bookingId === booking.id)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
 
@@ -20481,7 +20480,7 @@ export class MarketplacePlatformService {
   }
 
   private async findLatestPaymentForBooking(bookingId: string): Promise<PaymentRecord | undefined> {
-    return (await this.repository.listPayments())
+    return (await this.repository.listPaymentsForBookingIds([bookingId]))
       .filter((candidate) => candidate.bookingId === bookingId)
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
   }
