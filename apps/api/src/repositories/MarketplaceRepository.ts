@@ -233,6 +233,11 @@ export interface MarketplaceRepository {
   /** Every booking in one of these statuses, in the same order as `listBookings`. */
   listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]>;
   countBookings(): Promise<number>;
+  /**
+   * Totals for bookings no payment was ever recorded on: the summed price of completed ones, and how many are
+   * disputed after completion.
+   */
+  summarizeBookingsWithoutPayments(): Promise<{ completedTotalCents: number; disputedAfterCompletionCount: number }>;
   /** Bookings made by any of these customers or linked to any of these launch leads, in the same order as `listBookings`. */
   listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]>;
   findBookingById(bookingId: string): Promise<Booking | undefined>;

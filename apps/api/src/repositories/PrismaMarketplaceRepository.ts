@@ -978,6 +978,16 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return bookings.map((booking) => this.mapBooking(booking));
   }
 
+  public async summarizeBookingsWithoutPayments(): Promise<{ completedTotalCents: number; disputedAfterCompletionCount: number }> {
+    const [row] = await this.prisma.$queryRaw<Array<{ completedTotalCents: bigint; disputedAfterCompletionCount: bigint }>>(Prisma.sql`
+      SELECT COALESCE(SUM("totalCents") FILTER (WHERE status = 'completed'), 0)::bigint AS "completedTotalCents",
+        COUNT(*) FILTER (WHERE status = 'disputed' AND "completedAt" IS NOT NULL)::bigint AS "disputedAfterCompletionCount"
+      FROM bookings booking
+      WHERE status IN ('completed', 'disputed')
+        AND NOT EXISTS (SELECT 1 FROM payment_records payment WHERE payment."bookingId" = booking.id)`);
+    return { completedTotalCents: Number(row?.completedTotalCents ?? 0), disputedAfterCompletionCount: Number(row?.disputedAfterCompletionCount ?? 0) };
+  }
+
   public async countBookings(): Promise<number> {
     return this.prisma.booking.count();
   }
