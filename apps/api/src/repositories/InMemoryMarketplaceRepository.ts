@@ -47,7 +47,8 @@ import {
   BookingPageQuery,
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
-  MarketplaceRepository
+  MarketplaceRepository,
+  UpcomingBookingsQuery
 } from "./MarketplaceRepository";
 
 import type { CustomerReferralRecord } from "./customerReferrals";
@@ -271,6 +272,11 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return [...this.providers];
   }
 
+  public async listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]> {
+    const requestedIds = new Set(providerIds);
+    return this.providers.filter((provider) => requestedIds.has(provider.id));
+  }
+
   public async listCustomers(customerIds?: string[]): Promise<CustomerProfile[]> {
     return this.customers.filter(customer => !customerIds || customerIds.includes(customer.id));
   }
@@ -409,6 +415,16 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     };
   }
 
+  public async listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]> {
+    const after = new Date(query.afterIso).getTime();
+    return this.bookings.filter(
+      (booking) =>
+        new Date(booking.scheduledStartIso).getTime() > after &&
+        query.statuses.includes(booking.status) &&
+        (!query.providerId || booking.providerId === query.providerId)
+    );
+  }
+
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
     const requestedIds = new Set(bookingIds);
     return this.bookings.filter((booking) => requestedIds.has(booking.id));
@@ -473,6 +489,12 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     const requestedIds = new Set(bookingIds);
     return this.crewMatches
       .filter((match) => (!crewMemberId || match.crewMemberId === crewMemberId) && requestedIds.has(match.bookingId))
+      .map((match) => ({ ...match }));
+  }
+
+  public async listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]> {
+    return this.crewMatches
+      .filter((match) => match.crewMemberId === crewMemberId)
       .map((match) => ({ ...match }));
   }
 

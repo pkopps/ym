@@ -1,18 +1,18 @@
 # Engineer Status
 
-## Current checkpoint: scale fixes step 0 (crew and GPS baseline)
+## Current checkpoint: scale fixes step 1 (scoped crew and GPS hot-path queries)
 
 - Updated: November 14, 2026 (UTC).
-- Branch and commit: `claude/scale-0-baseline`; see the PR for the commit.
-- Completed: `scripts/scale-smoke.mts` seeds 200 crew members, 500 upcoming bookings and 20,500 crew matches, and with `SCALE_CREW_WORKLOAD=1` adds GPS pings, arrival tracking, crew match reads and crew opportunity reads. Baseline recorded in `reports/scale-review/2026-11-14-crew-hot-path.md`.
-- In progress: step 1, scoping the hot-path queries.
-- Remaining: steps 1 to 4 of the scale plan (hot-path queries, location index, per-provider crew lock, remaining whole-table loads).
+- Branch and commit: `claude/scale-1-hot-path-queries`, stacked on `claude/scale-0-baseline`; see the PRs for the commits.
+- Completed: step 0 added the crew and GPS workload to `scripts/scale-smoke.mts` and recorded the baseline. Step 1 scopes `updateBookingRouteLocation`, `getBookingArrivalTracking`, `getCrewMatchesForCrew`, `listCrewOpportunities` and `refreshCrewMemberStatus` to the rows they use, through three new repository methods (`listCrewMatchesForCrewMember`, `listUpcomingBookings`, `listProvidersByIds`) in both repositories, with two indexes. Crew reconciliation first checks whether any upcoming booking in scope needs crew and returns if none does; otherwise it runs unchanged. Before and after numbers are in `reports/scale-review/2026-11-14-crew-hot-path.md`.
+- In progress: step 2, location columns and index.
+- Remaining: steps 2 to 4 (location index, per-provider crew lock, remaining whole-table loads). Reconciliation still runs on crew and provider reads; moving it to the writes that change staffing is proposed in the step 1 PR and not done.
 - Blockers: none.
-- Changed workflows: none. Test tooling only.
-- Validation: `npm run test:api` (420 passed, 16 skipped), `npm run test:api:postgres` (16 passed), `npm run test:scale` with `SCALE_MAX_P95_MS=5000` (passed with the crew workload off; with it on, zero errors but p95 up to 30 s, which is the baseline). Local runs used Node 22 because the default Homebrew Node does not start.
-- Known defects: the crew workload fails the CI latency gate, so it is opt-in until step 1 lands.
+- Changed workflows: none. Crew matching results are unchanged.
+- Validation: `npm run typecheck`; `npm run test:api` (420 passed, 19 skipped); `npm run test:api:postgres` (19 passed, including three new parity tests in `crew-hot-path.integration.test.ts`); `prisma migrate diff --exit-code` (no drift); `SCALE_MAX_P95_MS=5000 npm run test:scale` (passed, slowest p95 1.7 s). Local runs used Node 22 because the default Homebrew Node does not start.
+- Known defects: none found.
 - Screenshot paths: none; no user-facing change.
-- Recommended next task: step 1.
+- Recommended next task: step 2.
 
 ## Current checkpoint: provider landing page rebuild
 

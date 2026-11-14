@@ -4485,25 +4485,31 @@ export class MarketplacePlatformService {
 
     await this.reconcileCrewMatches();
 
-    const [matches, providers, bookings] = await Promise.all([
-      this.repository.listCrewMatches(),
-      this.repository.listProviders(),
-      this.repository.listBookings()
+    const ownMatches = await this.repository.listCrewMatchesForCrewMember(crewMemberId);
+    const bookingIds = [...new Set(ownMatches.map((match) => match.bookingId))];
+    const [providers, bookings, bookingMatches] = await Promise.all([
+      this.repository.listProvidersByIds([...new Set(ownMatches.map((match) => match.providerId))]),
+      this.repository.listBookingsByIds(bookingIds),
+      this.repository.listCrewMatchesForBookings(bookingIds)
     ]);
+    const providersById = new Map(providers.map((provider) => [provider.id, provider]));
+    const bookingsById = new Map(bookings.map((booking) => [booking.id, booking]));
+    const acceptedCountByBookingId = new Map<string, number>();
+    for (const candidate of bookingMatches) {
+      if (candidate.status === "accepted") {
+        acceptedCountByBookingId.set(candidate.bookingId, (acceptedCountByBookingId.get(candidate.bookingId) ?? 0) + 1);
+      }
+    }
 
-    const crewMatches = matches
-      .filter((match) => match.crewMemberId === crewMemberId)
+    const crewMatches = ownMatches
       .flatMap((match) => {
-        const provider = providers.find((item) => item.id === match.providerId);
-        const booking = bookings.find((item) => item.id === match.bookingId);
+        const provider = providersById.get(match.providerId);
+        const booking = bookingsById.get(match.bookingId);
         if (!provider || !booking) {
           return [];
         }
 
-        const acceptedMatchCount = matches.filter(
-          (candidate) => candidate.bookingId === booking.id && candidate.status === "accepted"
-        ).length;
-        return [this.buildCrewMatchSummary(match, provider, booking, acceptedMatchCount)];
+        return [this.buildCrewMatchSummary(match, provider, booking, acceptedCountByBookingId.get(booking.id) ?? 0)];
       })
       .sort((left, right) => left.scheduledStartIso.localeCompare(right.scheduledStartIso));
 
@@ -5351,11 +5357,11 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Booking not found");
     }
 
-    const [allMatches, provider] = await Promise.all([
-      this.repository.listCrewMatches(),
+    const [bookingMatches, provider] = await Promise.all([
+      this.repository.listCrewMatchesForBookings([booking.id]),
       this.repository.findProviderById(booking.providerId)
     ]);
-    const acceptedMatches = allMatches.filter(
+    const acceptedMatches = bookingMatches.filter(
       (match) => match.bookingId === booking.id && match.status === "accepted"
     );
 
@@ -6015,7 +6021,7 @@ export class MarketplacePlatformService {
     }
 
     const provider = await this.repository.findProviderById(booking.providerId);
-    const matches = await this.repository.listCrewMatches();
+    const matches = await this.repository.listCrewMatchesForBookings([booking.id]);
     const acceptedMatches = matches.filter((match) => match.bookingId === booking.id && match.status === "accepted");
     if (actor.role === "customer" && booking.customerId !== actor.userId) {
       throw new HttpError(403, "Customers can only track their own bookings");
@@ -6572,12 +6578,14 @@ export class MarketplacePlatformService {
   }
 
   public async listCrewOpportunities(): Promise<CrewOpportunity[]> {
-    const [providers, bookings] = await Promise.all([
-      this.repository.listProviders(),
-      this.repository.listBookings()
-    ]);
-
     const now = Date.now();
+    const bookings = await this.repository.listUpcomingBookings({
+      afterIso: new Date(now).toISOString(),
+      statuses: ["requested", "confirmed"]
+    });
+    const providers = await this.repository.listProvidersByIds([...new Set(bookings.map((booking) => booking.providerId))]);
+    const providersById = new Map(providers.map((provider) => [provider.id, provider]));
+
     return bookings
       .filter((booking) => {
         const start = new Date(booking.scheduledStartIso).getTime();
@@ -6587,7 +6595,7 @@ export class MarketplacePlatformService {
         );
       })
       .map((booking) => {
-        const provider = providers.find((item) => item.id === booking.providerId);
+        const provider = providersById.get(booking.providerId);
         if (!provider) {
           return undefined;
         }
@@ -18822,7 +18830,47 @@ export class MarketplacePlatformService {
     return this.repository.withLock("crew-staffing", repository => this.withRepository(repository).reconcileCrewMatchesRecord(providerId));
   }
 
+  /**
+   * True when at least one upcoming booking in reconcile's scope has fewer accepted crew than it needs.
+   * Reconcile skips every other booking, so when this is false the whole-table load below would do nothing.
+   */
+  private async hasUpcomingBookingNeedingCrew(providerId?: string): Promise<boolean> {
+    const upcoming = (
+      await this.repository.listUpcomingBookings({
+        afterIso: new Date().toISOString(),
+        statuses: ["requested", "confirmed", "in-progress"],
+        providerId
+      })
+    ).filter((booking) => booking.recovery?.state !== "open");
+    if (upcoming.length === 0) {
+      return false;
+    }
+
+    const [matches, customers] = await Promise.all([
+      this.repository.listCrewMatchesForBookings(upcoming.map((booking) => booking.id)),
+      this.repository.listCustomers([...new Set(upcoming.map((booking) => booking.customerId))])
+    ]);
+    const acceptedCountByBookingId = new Map<string, number>();
+    for (const match of matches) {
+      if (match.status === "accepted") {
+        acceptedCountByBookingId.set(match.bookingId, (acceptedCountByBookingId.get(match.bookingId) ?? 0) + 1);
+      }
+    }
+    const customersById = new Map(customers.map((customer) => [customer.id, customer]));
+
+    return upcoming.some((booking) => {
+      const property = customersById
+        .get(booking.customerId)
+        ?.properties.find((item) => item.id === booking.servicePropertyId);
+      return (acceptedCountByBookingId.get(booking.id) ?? 0) < this.estimateRequiredCrewMembers(booking, property);
+    });
+  }
+
   private async reconcileCrewMatchesRecord(providerId?: string): Promise<void> {
+    if (!(await this.hasUpcomingBookingNeedingCrew(providerId))) {
+      return;
+    }
+
     const [providers, crewMembers, bookings, matches, customers] = await Promise.all([
       this.repository.listProviders(),
       this.repository.listCrewMembers(),
@@ -18953,7 +19001,7 @@ export class MarketplacePlatformService {
       return;
     }
 
-    const matches = await this.repository.listCrewMatches();
+    const matches = await this.repository.listCrewMatchesForCrewMember(crewMemberId);
     const hasAcceptedFutureMatch = matches.some(
       (match) =>
         match.crewMemberId === crewMemberId &&
@@ -19139,12 +19187,13 @@ export class MarketplacePlatformService {
 
   private buildCrewDayLoadMap(allMatches: CrewMatchCandidate[], allBookings: Booking[]): Map<string, number> {
     const loadMap = new Map<string, number>();
+    const bookingsById = new Map(allBookings.map((item) => [item.id, item]));
     for (const match of allMatches) {
       if (match.status !== "accepted" && match.status !== "pending-provider-review") {
         continue;
       }
 
-      const booking = allBookings.find((item) => item.id === match.bookingId);
+      const booking = bookingsById.get(match.bookingId);
       if (!booking) {
         continue;
       }

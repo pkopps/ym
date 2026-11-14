@@ -19,7 +19,14 @@ const prefix = `scale-load-${crypto.randomUUID()}`;
 process.env.YARDMATCH_ENV = prefix;
 const prisma = new PrismaClient({ datasourceUrl: url.toString(), log: [{ emit: "event", level: "query" }] });
 const queryTimes: number[] = [];
-prisma.$on("query", event => queryTimes.push(event.duration));
+// The slowest statements are reported so a failed gate names the query to look at.
+let slowestQueries: Array<{ ms: number; sql: string }> = [];
+prisma.$on("query", event => {
+  queryTimes.push(event.duration);
+  if (slowestQueries.length < 3 || event.duration > slowestQueries[2].ms) {
+    slowestQueries = [...slowestQueries, { ms: event.duration, sql: event.query.replace(/\s+/g, " ").slice(0, 400) }].sort((a, b) => b.ms - a.ms).slice(0, 3);
+  }
+});
 const repository = new PrismaMarketplaceRepository(prisma), fixtures = new InMemoryMarketplaceRepository();
 const analytics = new ProductAnalytics(prisma), platform = new MarketplacePlatformService(repository, analytics);
 const [template] = await fixtures.listProviders();
@@ -78,15 +85,15 @@ try {
     destination: "scale@example.invalid", provider: "queued", status: "queued", title: "Scale", bodyPreview: "Scale", createdAt: new Date() })) });
   let sends = 0;
   (platform as unknown as { notificationDelivery: { dispatch: () => Promise<{provider: string; sentAt: string}> } }).notificationDelivery.dispatch = async () => { sends++; return { provider: "scale-stub", sentAt: new Date().toISOString() }; };
+  // Refresh planner statistics after the bulk load, as autovacuum does in a running database. Without this the
+  // plans for the first queries depend on whether autovacuum happened to reach these tables yet.
+  await prisma.$executeRawUnsafe(`ANALYZE user_accounts, provider_business_profiles, crew_member_profiles, bookings, crew_matches, availability_slots`);
   const password = await hashPassword("ScaleTest123!");
   await platform.searchProviders({ address, categories: ["lawn-mowing"] });
-  queryTimes.length = 0; delay.enable();
+  queryTimes.length = 0; slowestQueries = []; delay.enable();
   const start = performance.now(), latencies: Record<string, number[]> = {}, errors: string[] = [];
   const heapBefore = process.memoryUsage().heapUsed;
-  // The crew and GPS operations exceed the CI latency gate until the hot-path queries are scoped, so they are opt-in for now.
-  const crewWorkload = process.env.SCALE_CREW_WORKLOAD === "1";
-  const kinds = ["search", "clients", "password", "route-write", "analytics",
-    ...(crewWorkload ? ["gps-ping", "arrival-tracking", "crew-matches", "crew-opportunities"] : [])];
+  const kinds = ["search", "clients", "password", "route-write", "analytics", "gps-ping", "arrival-tracking", "crew-matches", "crew-opportunities"];
   const operations = Array.from({ length: kinds.length * 40 }, (_, index) => index);
   const notifications = (async () => { while (await repository.countDueNotificationDeliveries(new Date().toISOString())) await platform.retryDueNotificationDeliveriesForOps(); })();
   await mapConcurrent(operations, 12, async index => {
@@ -111,8 +118,8 @@ try {
   const stats = Object.fromEntries(Object.entries(latencies).map(([kind, values]) => [kind, {
     operations: values.length, p95Ms: Math.round(percentile(values, 0.95)), p99Ms: Math.round(percentile(values, 0.99)) }]));
   const result = { dataset: { providers: 601, bookings: 20500, crewMembers: 200, crewMatches: 20500, properties: 1000, analyticsEvents: 10000, notifications: 250 },
-    crewWorkload, concurrency: 12, databaseConnections: 8, operations: operations.length, elapsedMs: Math.round(performance.now() - start),
-    latency: stats, queries: { count: queryTimes.length, p95Ms: percentile(queryTimes, 0.95), p99Ms: percentile(queryTimes, 0.99) },
+    concurrency: 12, databaseConnections: 8, operations: operations.length, elapsedMs: Math.round(performance.now() - start),
+    latency: stats, queries: { count: queryTimes.length, p95Ms: percentile(queryTimes, 0.95), p99Ms: percentile(queryTimes, 0.99), slowest: slowestQueries },
     eventLoopP99Ms: Math.round(delay.percentile(99) / 1e6), heapGrowthMb: Math.round((process.memoryUsage().heapUsed - heapBefore) / 1048576),
     rssMb: Math.round(process.memoryUsage().rss / 1048576), delivered: sends, errors };
   console.log(JSON.stringify(result, null, 2));
