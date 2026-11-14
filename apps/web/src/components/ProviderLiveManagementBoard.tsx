@@ -331,10 +331,6 @@ export function ProviderLiveManagementBoard() {
   const calendarHealth = calendarOverview?.syncHealth ?? calendarImports?.syncHealth;
   const calendarBlocks = provider?.calendarConnection.externalBlocks ?? [];
   const externalBlockingEnabled = provider?.calendarConnection.externalEventsBlockingEnabled ?? false;
-  const totalAssignedCrew = useMemo(
-    () => jobs.reduce((sum, job) => sum + job.assignedCrewMembers, 0),
-    [jobs]
-  );
   const totalCrewGap = useMemo(() => jobs.reduce((sum, job) => sum + job.crewGap, 0), [jobs]);
   const visibleJobs = jobs;
   const priorityJob = useMemo(() => {
@@ -1010,7 +1006,6 @@ export function ProviderLiveManagementBoard() {
     return (
       <section className="card">
         <h2>{i18n.t("provider_live.login_required.title")}</h2>
-        <p>{i18n.t("provider_live.login_required.body")}</p>
         <div className="cta-row">
           <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("provider_live.login_required.cta")}
@@ -1149,7 +1144,6 @@ export function ProviderLiveManagementBoard() {
         <section className="provider-route-focus" aria-label={i18n.t("provider_live.today_path")}>
           <span className="eyebrow">{i18n.t("provider_live.today_path")}</span>
           <h2>{i18n.t("provider_live.no_jobs.title")}</h2>
-          <p>{i18n.t("provider_live.no_jobs.body")}</p>
         </section>
       )}
 
@@ -1163,7 +1157,6 @@ export function ProviderLiveManagementBoard() {
       <WorkspaceSection id="provider-setup" title={i18n.t("workspace.setup")} defaultOpen={provider?.verificationStatus !== "verified"}>
       {provider ? (
         <section className="card">
-          <span className="eyebrow">{i18n.t("provider_live.verification.eyebrow")}</span>
           <h2>
             {provider.verificationSummary?.headline ??
               (provider.verificationStatus === "verified"
@@ -1172,15 +1165,11 @@ export function ProviderLiveManagementBoard() {
                   ? i18n.t("provider_live.verification.rejected_title")
                   : i18n.t("provider_live.verification.pending_title"))}
           </h2>
-          <p>
-            {provider.verificationSummary?.summary ??
-              (provider.verificationStatus === "verified"
-                ? i18n.t("provider_live.verification.verified_body")
-                : provider.verificationStatus === "rejected"
-                  ? provider.verificationNotes ??
-                    i18n.t("provider_live.verification.rejected_body")
-                  : i18n.t("provider_live.verification.pending_body"))}
-          </p>
+          {provider.verificationSummary?.summary ?? (provider.verificationStatus === "rejected" ? provider.verificationNotes : undefined) ? (
+            <p>
+              {provider.verificationSummary?.summary ?? provider.verificationNotes}
+            </p>
+          ) : null}
           <div className="chip-row">
             <span>{i18n.t("provider_live.verification.status", { status: provider.verificationStatus.replaceAll("-", " ") })}</span>
             <span>
@@ -1225,9 +1214,7 @@ export function ProviderLiveManagementBoard() {
 
       {provider ? (
         <section className="card">
-          <span className="eyebrow">{i18n.t("provider_live.profile.eyebrow")}</span>
           <h2>{i18n.t("provider_live.profile.title")}</h2>
-          <p>{i18n.t("provider_live.profile.body")}</p>
           <div className="stack-md">
             <label className="form-field form-field--full">
               <span>{i18n.t("provider_live.profile.company_name")}</span>
@@ -1327,7 +1314,6 @@ export function ProviderLiveManagementBoard() {
               <section className="service-photo-panel">
                 <div>
                   <h3>{i18n.t("provider_live.customer_photos.title")}</h3>
-                  <p>{i18n.t("provider_live.customer_photos.body")}</p>
                 </div>
                 <div className="service-photo-strip">
                   {job.evidencePhotos
@@ -1868,9 +1854,7 @@ export function ProviderLiveManagementBoard() {
       ) : null}
       <WorkspaceSection id="provider-settings" title={i18n.t("workspace.settings")}>
       <section className="card">
-        <span className="eyebrow">{i18n.t("provider_live.assistant.eyebrow")}</span>
         <h2>{i18n.t("provider_live.assistant.title")}</h2>
-        <p>{i18n.t("provider_live.assistant.body")}</p>
         <details className="service-card-disclosure">
           <summary className="service-card-disclosure__summary">{i18n.t("provider_live.assistant.examples")}</summary>
           <div className="service-card-disclosure__body">
@@ -2010,7 +1994,6 @@ export function ProviderLiveManagementBoard() {
 
       <section className={`provider-capacity-alert ${totalCrewGap > 0 ? "provider-capacity-alert--warning" : ""}`}>
         <div>
-          <span className="eyebrow">{i18n.t("provider_live.staffing.eyebrow")}</span>
           <h2>
             {totalCrewGap > 0
               ? i18n.t("provider_live.staffing.gap_title", { count: totalCrewGap })
@@ -2269,23 +2252,8 @@ export function ProviderLiveManagementBoard() {
         </article>
       </section>
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{jobs.length}</h2>
-          <p>{i18n.t("provider_live.metrics.open_jobs")}</p>
-        </article>
-        <article className="card">
-          <h2>{totalAssignedCrew}</h2>
-          <p>{i18n.t("provider_live.metrics.crew_assigned")}</p>
-        </article>
-        <article className="card">
-          <h2>{totalCrewGap}</h2>
-          <p>{i18n.t("provider_live.metrics.open_crew_slots")}</p>
-        </article>
-      </section>
 
       <section className="card">
-        <span className="eyebrow">{i18n.t("provider_live.calendar.eyebrow")}</span>
         <h2>{i18n.t("provider_live.calendar.title")}</h2>
         <p>{i18n.t("provider_live.calendar.body")}</p>
         {calendarSubscription ? (
@@ -2621,7 +2589,6 @@ export function ProviderLiveManagementBoard() {
       <WorkspaceSection id="provider-retention" title={i18n.t("workspace.retention")}>
       {retentionProgram ? (
         <section className="card">
-          <span className="eyebrow">{i18n.t("provider_live.retention.eyebrow")}</span>
           <h2>{i18n.t("provider_live.retention.title")}</h2>
           <p>{retentionProgram.promise}</p>
           <div className="provider-route-summary" aria-label={i18n.t("provider_live.retention.summary_aria")}>

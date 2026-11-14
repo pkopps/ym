@@ -33,10 +33,6 @@ export function LaunchServiceLandingPage({
     variant === "town-service" ? "launch_service.title.town_service" : "launch_service.title.service",
     values
   );
-  const eyebrow = i18n.t(
-    variant === "town-service" ? "launch_service.eyebrow.town_service" : "launch_service.eyebrow.service",
-    values
-  );
   const summary =
     variant === "town-service"
       ? i18n.t(service.metadataDescriptionKey, values)
@@ -55,7 +51,6 @@ export function LaunchServiceLandingPage({
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{eyebrow}</span>
         <h1>{pageTitle}</h1>
         <p>{summary}</p>
         <div className="cta-row">
@@ -191,7 +186,6 @@ export function LaunchServiceLandingPage({
       <section className="stack-lg">
         <div className="section-header">
           <h2>{i18n.t("launch_service.faq.title")}</h2>
-          <p>{i18n.t("launch_service.faq.body")}</p>
         </div>
         <div className="grid-two">
           {(variant === "town-service" ? [

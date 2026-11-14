@@ -57,7 +57,7 @@ test("customer saves email and phone referrals, opens prepared invitations, and 
   await expect(page.locator(".referral-result a")).toHaveAttribute("href", /%2Fes%2Fcustomer/);
   await page.evaluate(() => { localStorage.removeItem("yardmatch-web-session"); window.dispatchEvent(new Event("yardmatch-web-session-change")); });
   await expect(page.getByText("jamie.neighbor@example.com", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Inicia sesión como cliente", { exact: false })).toBeVisible();
+  await expect(page.getByText("Inicia sesión para guardar recomendaciones", { exact: false })).toBeVisible();
 });
 
 test("referral form recovers from loading and saving failures without losing a draft", async ({ page, request }) => {

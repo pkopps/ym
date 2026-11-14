@@ -16,7 +16,6 @@ export default async function AccountSecurityPage() {
   return (
     <main className="container stack-lg">
       <section className="section-header">
-        <span className="eyebrow">{i18n.t("security.eyebrow")}</span>
         <h1>{i18n.t("security.title")}</h1>
         <p>{i18n.t("security.description")}</p>
       </section>

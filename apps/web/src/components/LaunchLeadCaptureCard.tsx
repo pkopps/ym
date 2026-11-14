@@ -87,13 +87,11 @@ export function LaunchLeadCaptureCard({
 
   return (
     <article className="card">
-      <span className="eyebrow">{i18n.t("launch_lead.eyebrow")}</span>
       <h2>{title ?? i18n.t("launch_lead.title")}</h2>
       <p>
         {description ??
           i18n.t("launch_lead.description")}
       </p>
-      <p>{i18n.t("launch_lead.default_contact")}</p>
       <div className="form-grid">
         <label className="form-field">
           <span>{i18n.t("launch_lead.name")}</span>

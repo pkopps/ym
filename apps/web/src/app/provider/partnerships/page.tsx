@@ -16,7 +16,6 @@ export default async function ProviderPartnershipsPage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{i18n.t("provider_partnerships.eyebrow")}</span>
         <h1>{i18n.t("provider_partnerships.hero.title")}</h1>
         <p>{i18n.t("provider_partnerships.hero.body")}</p>
       </section>

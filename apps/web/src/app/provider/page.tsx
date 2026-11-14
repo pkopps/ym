@@ -29,7 +29,6 @@ const growthPillars = [
 ] satisfies Array<{ titleKey: TranslationKey; bodyKey: TranslationKey }>;
 
 const operatingLeverKeys = [
-  "provider_landing.operating.lever.provider_app",
   "provider_landing.operating.lever.property_match",
   "provider_landing.operating.lever.calendar",
   "provider_landing.operating.lever.ranking",
@@ -52,27 +51,6 @@ const acquisitionChannels = [
   }
 ] satisfies Array<{ titleKey: TranslationKey; bodyKey: TranslationKey }>;
 
-const staffingValue = [
-  {
-    titleKey: "provider_landing.staffing.supply.title",
-    bodyKey: "provider_landing.staffing.supply.body"
-  },
-  {
-    titleKey: "provider_landing.staffing.scale.title",
-    bodyKey: "provider_landing.staffing.scale.body"
-  },
-  {
-    titleKey: "provider_landing.staffing.quality.title",
-    bodyKey: "provider_landing.staffing.quality.body"
-  }
-] satisfies Array<{ titleKey: TranslationKey; bodyKey: TranslationKey }>;
-
-const heroChipKeys = [
-  "provider_landing.hero.chip.routes",
-  "provider_landing.hero.chip.cleanup",
-  "provider_landing.hero.chip.launch"
-] satisfies TranslationKey[];
-
 export default async function ProviderPage() {
   const i18n = await getRequestI18n();
   const href = (path: string) => addLocalePrefix(path, i18n.locale);
@@ -82,7 +60,6 @@ export default async function ProviderPage() {
     <main>
       <section className="container hero provider-landing-hero">
         <div>
-          <span className="eyebrow">{i18n.t("provider_landing.hero.eyebrow")}</span>
           <h1>{i18n.t("provider_landing.hero.title")}</h1>
           <p>{i18n.t("provider_landing.hero.body")}</p>
           <div className="cta-row">
@@ -93,36 +70,12 @@ export default async function ProviderPage() {
               {i18n.t("provider_landing.hero.secondary_cta")}
             </a>
           </div>
-          <div className="chip-row" style={{ marginTop: "1.5rem" }}>
-            {heroChipKeys.map((key) => (
-              <span key={key}>{i18n.t(key)}</span>
-            ))}
-          </div>
         </div>
-        <aside className="panel panel--hero provider-growth-panel">
-          <div className="panel__accent" />
-          <span className="eyebrow">{i18n.t("provider_landing.panel.eyebrow")}</span>
-          <div className="provider-metric-stack">
-            <article className="stat-card">
-              <strong>{i18n.t("provider_landing.panel.demand.title")}</strong>
-              <p>{i18n.t("provider_landing.panel.demand.body")}</p>
-            </article>
-            <article className="stat-card">
-              <strong>{i18n.t("provider_landing.panel.schedule.title")}</strong>
-              <p>{i18n.t("provider_landing.panel.schedule.body")}</p>
-            </article>
-            <article className="stat-card">
-              <strong>{i18n.t("provider_landing.panel.crew.title")}</strong>
-              <p>{i18n.t("provider_landing.panel.crew.body")}</p>
-            </article>
-          </div>
-        </aside>
       </section>
 
       <section className="container stack-lg">
         <div className="section-header">
           <h2>{i18n.t("provider_landing.growth.title")}</h2>
-          <p>{i18n.t("provider_landing.growth.body")}</p>
         </div>
         <div className="grid-three">
           {growthPillars.map((pillar) => (
@@ -162,10 +115,8 @@ export default async function ProviderPage() {
       <section className="container stack-lg" id="provider-retention">
         <div className="section-header">
           <div>
-            <span className="eyebrow">{i18n.t("provider_landing.retention.eyebrow")}</span>
             <h2>{i18n.t("provider_landing.retention.title")}</h2>
           </div>
-          <p>{i18n.t("provider_landing.retention.body")}</p>
         </div>
         <div className="grid-three">
           <article className="card">
@@ -187,10 +138,8 @@ export default async function ProviderPage() {
       <section className="container stack-lg">
         <div className="provider-strip">
           <div>
-            <span className="eyebrow">{i18n.t("provider_landing.demand.eyebrow")}</span>
             <h2>{i18n.t("provider_landing.demand.title")}</h2>
           </div>
-          <p>{i18n.t("provider_landing.demand.body")}</p>
         </div>
         <div className="grid-three">
           {acquisitionChannels.map((channel) => (
@@ -205,7 +154,6 @@ export default async function ProviderPage() {
       <section className="container stack-lg">
         <div className="section-header">
           <h2>{i18n.t("provider_landing.operating.title")}</h2>
-          <p>{i18n.t("provider_landing.operating.body")}</p>
         </div>
         <div className="grid-two provider-proof-grid">
           <article className="card">
@@ -225,21 +173,6 @@ export default async function ProviderPage() {
               <p>{i18n.t("provider_landing.operating.app.body")}</p>
             </div>
           </article>
-        </div>
-      </section>
-
-      <section className="container stack-lg">
-        <div className="section-header">
-          <h2>{i18n.t("provider_landing.staffing.title")}</h2>
-          <p>{i18n.t("provider_landing.staffing.body")}</p>
-        </div>
-        <div className="grid-three">
-          {staffingValue.map((item) => (
-            <article className="card" key={item.titleKey}>
-              <h3>{i18n.t(item.titleKey)}</h3>
-              <p>{i18n.t(item.bodyKey)}</p>
-            </article>
-          ))}
         </div>
       </section>
 
@@ -266,9 +199,7 @@ export default async function ProviderPage() {
       <section className="container stack-lg">
         <div className="provider-final-cta panel">
           <div>
-            <span className="eyebrow">{i18n.t("provider_landing.final.eyebrow")}</span>
             <h2>{i18n.t("provider_landing.final.title")}</h2>
-            <p>{i18n.t("provider_landing.final.body")}</p>
           </div>
           <div className="cta-row">
             <a className="button" href={href("/auth/provider/create")}>

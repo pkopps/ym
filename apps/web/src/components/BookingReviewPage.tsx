@@ -83,7 +83,7 @@ export function BookingReviewPage() {
   const signupParams = new URLSearchParams({ returnTo, draft: draft.id });
   return <main className="container journey-page">
     <Link className="journey-back" href={draft.returnTo}>{i18n.t("booking_journey.back")}</Link>
-    <header><span className="eyebrow">{i18n.t("booking_journey.schedule.with", { provider: draft.provider.companyName })}</span><h1>{i18n.t("booking_journey.review.title")}</h1><p>{i18n.t("booking_journey.review.body")}</p></header>
+    <header><span className="eyebrow">{i18n.t("booking_journey.schedule.with", { provider: draft.provider.companyName })}</span><h1>{i18n.t("booking_journey.review.title")}</h1></header>
     <div className="journey-review-layout"><section className="card journey-review-card"><h2>{draft.provider.companyName}</h2>
       <dl className="journey-summary"><div><dt>{i18n.t("booking_journey.day")}</dt><dd>{openingLabel(i18n, draft.slot.startIso)}</dd></div><div><dt>{i18n.t("booking_journey.address.title")}</dt><dd>{draft.address.line1}{draft.address.line2 ? `, ${draft.address.line2}` : ""}<br />{draft.address.city}, {draft.address.state} {draft.address.postalCode}</dd></div></dl>
       <h3>{i18n.t("booking_journey.services")}</h3><ul className="journey-price-lines">{draft.quotes.map(quote => <li key={quote.category}><span>{i18n.t(serviceCategoryLabelKeys[quote.category])}</span><strong>{i18n.formatCurrency(quote.estimatedPriceCents, "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></li>)}</ul>

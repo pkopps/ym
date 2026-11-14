@@ -72,7 +72,7 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
     mimeType: "image/png",
     buffer: tinyPng
   });
-  await expect(page.getByText("Before-service photo saved. Work can now begin.")).toBeVisible();
+  await expect(page.getByText("Before photo saved. You can start work.")).toBeVisible();
   await routedAssignment.getByRole("button", { name: "Start work" }).click();
   await expect(page.getByText(/Work started/)).toBeVisible();
   await routedAssignment.getByLabel("After service photo").setInputFiles({
@@ -80,7 +80,7 @@ test("crew selects a fit, creates preferences, receives work, routes, and sees c
     mimeType: "image/png",
     buffer: tinyPng
   });
-  await expect(page.getByText("After-service photo saved.")).toBeVisible();
+  await expect(page.getByText("After photo saved.")).toBeVisible();
 
   await authenticatedPost(request, provider.token, "/api/bookings/complete", { bookingId: booking.id });
   await page.goto("/crew/schedule/history");

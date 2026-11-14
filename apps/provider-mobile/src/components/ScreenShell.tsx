@@ -8,7 +8,7 @@ export function ScreenShell({
   description,
   children
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description?: string;
   children: ReactNode;
@@ -26,7 +26,7 @@ export function ScreenShell({
       ]}
     >
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>{eyebrow}</Text>
+        {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
         <Text style={styles.title}>{title}</Text>
         {description ? <Text style={styles.description}>{description}</Text> : null}
       </View>

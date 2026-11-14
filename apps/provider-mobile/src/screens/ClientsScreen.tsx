@@ -247,9 +247,7 @@ export function ClientsScreen() {
   if (!overview && !errorMessage) {
     return (
       <ScreenShell
-        eyebrow={i18n.t("provider_mobile.clients.eyebrow")}
         title={i18n.t("provider_mobile.clients.title")}
-        description={i18n.t("provider_mobile.clients.description")}
       >
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction showAvatar />
@@ -259,9 +257,7 @@ export function ClientsScreen() {
 
   return (
     <ScreenShell
-      eyebrow={i18n.t("provider_mobile.clients.eyebrow")}
       title={i18n.t("provider_mobile.clients.title")}
-      description={i18n.t("provider_mobile.clients.description")}
     >
       {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}

@@ -10,21 +10,6 @@ export function generateMetadata(): Promise<Metadata> {
   });
 }
 
-const principles = [
-  {
-    titleKey: "about.principle.recommendation.title",
-    bodyKey: "about.principle.recommendation.body"
-  },
-  {
-    titleKey: "about.principle.local.title",
-    bodyKey: "about.principle.local.body"
-  },
-  {
-    titleKey: "about.principle.provider.title",
-    bodyKey: "about.principle.provider.body"
-  }
-] satisfies Array<{ titleKey: TranslationKey; bodyKey: TranslationKey }>;
-
 const audiences = [
   {
     titleKey: "about.audience.homeowners.title",
@@ -49,7 +34,6 @@ export default async function AboutPage() {
       <section className="container page-hero about-hero">
         <div className="grid-two about-hero__layout">
           <div className="about-hero__story">
-            <span className="eyebrow">{i18n.t("about.hero.eyebrow")}</span>
             <h1>{i18n.t("about.hero.title")}</h1>
             <p>{i18n.t("about.hero.body")}</p>
             <div className="cta-row">
@@ -66,13 +50,8 @@ export default async function AboutPage() {
           </div>
 
           <aside className="card about-hero__panel">
-            <span className="eyebrow">{i18n.t("about.belief.eyebrow")}</span>
             <h2>{i18n.t("about.belief.title")}</h2>
             <p>{i18n.t("about.belief.body")}</p>
-            <div className="about-hero__quote">
-              <strong>{i18n.t("about.belief.quote_label")}</strong>
-              <p>{i18n.t("about.belief.quote")}</p>
-            </div>
           </aside>
         </div>
       </section>
@@ -80,15 +59,14 @@ export default async function AboutPage() {
       <section className="container stack-lg">
         <div className="section-header">
           <h2>{i18n.t("about.why.title")}</h2>
-          <p>{i18n.t("about.why.body")}</p>
         </div>
         <div className="grid-two">
           <article className="card">
-            <span className="eyebrow">{i18n.t("about.not.eyebrow")}</span>
+            <strong>{i18n.t("about.not.eyebrow")}</strong>
             <p>{i18n.t("about.not.body")}</p>
           </article>
           <article className="card">
-            <span className="eyebrow">{i18n.t("about.are.eyebrow")}</span>
+            <strong>{i18n.t("about.are.eyebrow")}</strong>
             <p>{i18n.t("about.are.body")}</p>
           </article>
         </div>
@@ -96,23 +74,7 @@ export default async function AboutPage() {
 
       <section className="container stack-lg">
         <div className="section-header">
-          <h2>{i18n.t("about.growth.title")}</h2>
-          <p>{i18n.t("about.growth.body")}</p>
-        </div>
-        <div className="grid-three">
-          {principles.map((principle) => (
-            <article className="card about-principle" key={principle.titleKey}>
-              <strong>{i18n.t(principle.titleKey)}</strong>
-              <p>{i18n.t(principle.bodyKey)}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="container stack-lg">
-        <div className="section-header">
           <h2>{i18n.t("about.audiences.title")}</h2>
-          <p>{i18n.t("about.audiences.body")}</p>
         </div>
         <div className="grid-three">
           {audiences.map((audience) => (
@@ -126,9 +88,7 @@ export default async function AboutPage() {
 
       <section className="container stack-lg about-cta">
         <div className="card about-cta__card">
-          <span className="eyebrow">{i18n.t("about.cta.eyebrow")}</span>
           <h2>{i18n.t("about.cta.title")}</h2>
-          <p>{i18n.t("about.cta.body")}</p>
           <div className="cta-row">
             <a className="button" href={href("/customer")}>
               {i18n.t("about.cta.find_provider")}

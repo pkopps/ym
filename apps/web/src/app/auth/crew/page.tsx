@@ -15,7 +15,6 @@ export default async function CrewSignupPage() {
   return (
     <main className="container stack-lg">
       <section className="page-hero">
-        <span className="eyebrow">{i18n.t("auth_crew.eyebrow")}</span>
         <h1>{i18n.t("auth_crew.title")}</h1>
         <p>{i18n.t("auth_crew.body")}</p>
       </section>

@@ -38,7 +38,7 @@ test("real provider client endpoint isolates businesses and serves their booked 
   expect(denied.status()).toBe(403);
   await loginUi(page, "provider", provider.email);
   await page.getByRole("navigation").getByRole("link", { name: "Clients", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Your clients, on the map" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your clients" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "1 property", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Taylor Client Map/ }).click();
   await expect(page.getByRole("heading", { name: "Taylor Client Map" })).toBeVisible();
@@ -89,7 +89,7 @@ test("client map synchronizes search, service filters, dates, list selection, an
   await expect(page.getByRole("heading", { name: "Jamie Rivera" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await page.goto("/es/provider/clients");
-  await expect(page.getByRole("heading", { name: "Tus clientes, en el mapa" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Tus clientes" })).toBeVisible();
   await page.getByRole("button", { name: "Recurrente", exact: true }).click();
   await expect(page.locator(".client-map-pin")).toHaveCount(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
@@ -111,20 +111,20 @@ test("client map handles errors, empty clients, unavailable locations, shared pi
   });
   await page.route("https://tile.openstreetmap.org/**", (route) => route.abort());
   await page.goto("/provider/clients");
-  await expect(page.locator("main").getByRole("alert")).toContainText("Your clients could not be loaded");
+  await expect(page.locator("main").getByRole("alert")).toContainText("Couldn't load your clients");
   state = "empty";
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByRole("heading", { name: "Your client map starts with your first booking" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No clients yet" })).toBeVisible();
   state = "locations";
   await page.getByRole("button", { name: "Refresh clients" }).click();
-  await expect(page.getByText("1 property has no map location yet. Its address is in the list.")).toBeVisible();
+  await expect(page.getByText("1 property has no map location. See the list.")).toBeVisible();
   await expect(page.locator(".client-map-pin")).toHaveCount(3);
-  await expect(page.getByText("Map background unavailable. Pins and client details are still available.")).toBeVisible();
+  await expect(page.getByText("Map background unavailable. Pins still work.")).toBeVisible();
   await page.locator('.client-map-pin[title^="Jamie Rivera"]').click();
   await page.locator(".client-map-shared").getByRole("button", { name: /Alex Chen/ }).click();
   await expect(page.getByRole("heading", { name: "Alex Chen" })).toBeVisible();
   await page.evaluate(() => { localStorage.removeItem("yardmatch-web-session"); window.dispatchEvent(new Event("yardmatch-web-session-change")); });
-  await expect(page.getByRole("heading", { name: "Your client map is private" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to see your clients" })).toBeVisible();
   await expect(page.locator(".provider-client-row")).toHaveCount(0);
   await expect(page.locator(".client-map-pin")).toHaveCount(0);
 });
@@ -133,7 +133,7 @@ test("anonymous client map does not fetch client data", async ({ page }) => {
   let requested = false;
   page.on("request", (request) => { if (request.url().includes("/api/providers/clients")) requested = true; });
   await page.goto("/provider/clients");
-  await expect(page.getByRole("heading", { name: "Your client map is private" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in to see your clients" })).toBeVisible();
   expect(requested).toBe(false);
 });
 

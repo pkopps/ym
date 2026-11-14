@@ -201,7 +201,6 @@ export function ProviderPaymentsBoard() {
       <section className="card provider-payment-overview" data-testid="provider-connect-status">
         <div className="search-result-title">
           <div>
-            <span className="eyebrow">{i18n.t("provider_payments.connect.eyebrow")}</span>
             <h2>
               {connectStatus?.transferReady
                 ? i18n.t("provider_payments.connect.ready")
@@ -369,7 +368,6 @@ export function ProviderPaymentsBoard() {
         <article className="card provider-payment-card-stack">
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">{i18n.t("provider_payments.crew.eyebrow")}</span>
               <h2>{i18n.t("provider_payments.crew.title")}</h2>
             </div>
           </div>

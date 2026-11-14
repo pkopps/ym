@@ -30,7 +30,6 @@ export default async function HelpPage({searchParams}: {searchParams: Promise<Re
     <main className="container stack-lg">
       <section className="page-hero">
         <h1>{i18n.t("help.hero.title")}</h1>
-        <p>{i18n.t("help.hero.body")}</p>
       </section>
 
       <nav className="workspace-nav" aria-label={i18n.t("workspace.destinations")}>
@@ -54,7 +53,6 @@ export default async function HelpPage({searchParams}: {searchParams: Promise<Re
       <section className="card">
         <div className="page-hero" style={{ paddingBottom: "1.5rem" }}>
           <h2>{i18n.t("help.policies.title")}</h2>
-          <p>{i18n.t("help.policies.body")}</p>
         </div>
         <div className="grid-two">
           {helpPolicyPages.map((page) => {
