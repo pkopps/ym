@@ -211,14 +211,13 @@ export default function AuthCompletePage() {
               <div className="stack-sm">
                 {suggestions.map((suggestion) => (
                   <button
-                    className="list-panel"
+                    className="list-panel u-text-left u-w-full"
                     key={suggestion.id}
                     onClick={() => {
                       setAddress(suggestion.address);
                       setAddressQuery(suggestion.label);
                       setSuggestions([]);
                     }}
-                    style={{ textAlign: "left", width: "100%" }}
                     type="button"
                   >
                     <strong>{suggestion.label}</strong>

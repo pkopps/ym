@@ -153,13 +153,13 @@ export function LaunchLeadCaptureCard({
           />
         </label>
       </div>
-      <div className="cta-row" style={{ marginTop: "1rem" }}>
+      <div className="cta-row u-mt-4">
         <button data-analytics-action="send-coverage-inquiry" className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
           {isWorking ? i18n.t("chat.sending") : i18n.t("launch_lead.request_follow_up")}
         </button>
       </div>
-      {statusMessage ? <p style={{ marginTop: "1rem" }}>{statusMessage}</p> : null}
-      {errorMessage ? <p style={{ marginTop: "1rem" }}>{errorMessage}</p> : null}
+      {statusMessage ? <p className="u-mt-4">{statusMessage}</p> : null}
+      {errorMessage ? <p className="u-mt-4">{errorMessage}</p> : null}
     </article>
   );
 }

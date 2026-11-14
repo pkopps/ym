@@ -136,7 +136,7 @@ export function LaunchMarketplaceProofSection({
         <article className="card">
           <h3>{i18n.t("launch_proof.tight.title")}</h3>
           <p>{i18n.t("launch_proof.tight.body")}</p>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
+          <div className="cta-row u-mt-4">
             <Link className="button-secondary" href={addLocalePrefix("/provider-verification", i18n.locale)}>
               {i18n.t("launch_proof.tight.provider_verification_cta")}
             </Link>
@@ -148,11 +148,11 @@ export function LaunchMarketplaceProofSection({
         <article className="card">
           <h3>{i18n.t("launch_proof.current.title")}</h3>
           {highlightedProviders.length > 0 ? (
-            <div className="stack-lg" style={{ paddingBottom: 0 }}>
+            <div className="stack-lg u-pb-0">
               {highlightedProviders.map((provider) => (
                 <article className="list-panel" key={provider.id}>
-                  <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-                    <div className="cta-row" style={{ alignItems: "center" }}>
+                  <div className="cta-row u-justify-between u-items-center">
+                    <div className="cta-row u-items-center">
                       <span className="market-home__provider-avatar" aria-hidden="true">
                         {getProviderInitials(provider)}
                       </span>
@@ -182,13 +182,13 @@ export function LaunchMarketplaceProofSection({
                 </article>
               ))}
               {highlightedReviews.length > 0 ? (
-                <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                <div className="stack-lg u-pb-0">
                   <div>
                     <span className="eyebrow">{i18n.t("launch_proof.feedback.title")}</span>
                   </div>
                   {highlightedReviews.map((review) => (
                     <article className="list-panel" key={review.reviewId}>
-                      <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <div className="cta-row u-justify-between u-items-center">
                         <div>
                           <strong>{review.providerCompanyName}</strong>
                           <p>
@@ -206,14 +206,14 @@ export function LaunchMarketplaceProofSection({
                 </div>
               ) : null}
               {highlightedCoverageAreas.length > 0 ? (
-                <div className="stack-lg" style={{ paddingBottom: 0 }}>
+                <div className="stack-lg u-pb-0">
                   <div>
                     <span className="eyebrow">{i18n.t("launch_proof.coverage.title")}</span>
                     <p>{i18n.t("launch_proof.coverage.body")}</p>
                   </div>
                   {highlightedCoverageAreas.map((area) => (
                     <article className="list-panel" key={`${area.city}-${area.state}`}>
-                      <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                      <div className="cta-row u-justify-between u-items-center">
                         <strong>{formatCoverageAreaLabel(area)}</strong>
                         <span>{i18n.t("launch_proof.coverage.verified", { count: area.verifiedProviderCount })}</span>
                       </div>

@@ -1910,7 +1910,7 @@ export function ProviderLiveManagementBoard() {
           </button>
         </div>
         {assistantResult ? (
-          <div className="stack-md" style={{ paddingTop: "1rem" }}>
+          <div className="stack-md u-pt-4">
             <article className="list-panel">
               <strong>{assistantResult.previewLabel}</strong>
               <p>{assistantResult.previewMessage}</p>
@@ -2271,18 +2271,18 @@ export function ProviderLiveManagementBoard() {
                 </a>
               ))}
             </div>
-            <div className="stack-md" style={{ paddingTop: "1rem" }}>
+            <div className="stack-md u-pt-4">
               {calendarSubscription.instructions.map((instruction) => (
                 <p key={instruction}>{instruction}</p>
               ))}
-              <div className="stack-sm" style={{ paddingBottom: 0 }}>
+              <div className="stack-sm u-pb-0">
                 {calendarSubscription.actions.map((action) => (
                   <p key={`${action.platform}-helper`}>{action.label}: {action.helperText}</p>
                 ))}
               </div>
             </div>
             {calendarOverview ? (
-              <div className="stack-md" style={{ paddingTop: "1rem" }}>
+              <div className="stack-md u-pt-4">
                 {calendarHealth ? (
                   <article className="list-panel">
                     <strong>{i18n.t("provider_live.calendar.health", { status: formatCalendarHealthLabel(i18n, calendarHealth.status) })}</strong>
@@ -2302,7 +2302,7 @@ export function ProviderLiveManagementBoard() {
                         conflicts: calendarHealth.conflictingYardmatchJobCount
                       })}
                     </p>
-                    <div className="stack-sm" style={{ paddingBottom: 0 }}>
+                    <div className="stack-sm u-pb-0">
                       {calendarHealth.notes.map((note) => (
                         <p key={note}>{note}</p>
                       ))}
@@ -2320,7 +2320,7 @@ export function ProviderLiveManagementBoard() {
                     <div className="grid-two">
                       {dispatchDays.map((day) => (
                         <article className="card" key={day.dateIso}>
-                          <div className="chip-row" style={{ justifyContent: "space-between" }}>
+                          <div className="chip-row u-justify-between">
                             <span>{day.dayLabel}</span>
                             <span>{formatRouteStatusLabel(i18n, day.routeStatus)}</span>
                           </div>
@@ -2399,7 +2399,7 @@ export function ProviderLiveManagementBoard() {
             ) : null}
           </>
         ) : null}
-        <div className="stack-md" style={{ paddingTop: "1.25rem" }}>
+        <div className="stack-md u-pt-5">
           {(calendarHealth?.staleSubscriptionCount ?? 0) > 0 || (calendarHealth?.erroredSubscriptionCount ?? 0) > 0 ? (
             <div className="cta-row">
               <button

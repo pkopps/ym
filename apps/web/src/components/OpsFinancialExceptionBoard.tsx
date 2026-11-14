@@ -119,7 +119,7 @@ export function OpsFinancialExceptionBoard() {
         {i18n.t("ops_auto.ops_financial_exception_board.this_view_summarizes_customer_refund_reviews_payout_holds_l44l7j")} </p>
       {errorMessage ? <p>{errorMessage}</p> : null}
       {summary ? (
-        <div className="stack-lg" style={{ paddingBottom: 0 }}>
+        <div className="stack-lg u-pb-0">
           <div className="grid-three">
             <article className="card">
               <h2>{summary.refundReviewOpenCount}</h2>
@@ -153,7 +153,7 @@ export function OpsFinancialExceptionBoard() {
           <div className="grid-two">
             <article className="list-panel">
               <h3>{i18n.t("ops_auto.ops_financial_exception_board.payout_holds_i4ib3u")}</h3>
-              <div className="stack-md" style={{ paddingBottom: 0 }}>
+              <div className="stack-md u-pb-0">
                 {summary.payoutHolds.length > 0 ? (
                   summary.payoutHolds.map((item) => (
                     <PayoutHoldRow i18n={i18n} item={item} key={`${item.bookingId}:${item.paymentId ?? item.holdReason}`} />
@@ -167,7 +167,7 @@ export function OpsFinancialExceptionBoard() {
             <div className="stack-lg">
               <article className="list-panel">
                 <h3>{i18n.t("ops_auto.ops_financial_exception_board.open_refund_reviews_q5s1k9")}</h3>
-                <div className="stack-md" style={{ paddingBottom: 0 }}>
+                <div className="stack-md u-pb-0">
                   {summary.refundReviews.length > 0 ? (
                     summary.refundReviews.map((item) => <RefundReviewRow i18n={i18n} item={item} key={item.paymentId} />)
                   ) : (
@@ -178,7 +178,7 @@ export function OpsFinancialExceptionBoard() {
 
               <article className="list-panel">
                 <h3>{i18n.t("ops_auto.ops_financial_exception_board.active_field_exceptions_fasmzg")}</h3>
-                <div className="stack-md" style={{ paddingBottom: 0 }}>
+                <div className="stack-md u-pb-0">
                   {summary.activeExceptions.length > 0 ? (
                     summary.activeExceptions.map((item) => <ExceptionRow i18n={i18n} item={item} key={item.bookingId} />)
                   ) : (

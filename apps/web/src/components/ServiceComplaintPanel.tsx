@@ -48,10 +48,10 @@ export function ServiceComplaintPanel({ bookings, tickets, initialBookingId, onC
     } catch (error) { setError(error instanceof Error ? error.message : "Unable to save your update."); }
     finally { setBusy(false); }
   }
-  return <section className="card stack-lg" aria-labelledby="complaint-title" style={{ marginBottom: "1.5rem" }}>
+  return <section className="card stack-lg u-mb-5" aria-labelledby="complaint-title">
     <div><h2 id="complaint-title">{i18n.t("complaint.title")}</h2><p>{i18n.t("complaint.intro")}</p></div>
     {bookings.length ? <form onSubmit={event => void submit(event)} className="stack-lg">
-      <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <fieldset disabled={busy} className="u-border-0 u-p-0 u-m-0 u-min-w-0">
         <div className="form-grid">
           <label className="form-field"><span>{i18n.t("complaint.booking")}</span><select required value={selectedId} onChange={event => setBookingId(event.target.value)}>
             <option value="">{i18n.t("complaint.select_booking")}</option>{bookings.map(booking => <option key={booking.id} value={booking.id}>{booking.label}</option>)}
@@ -61,7 +61,7 @@ export function ServiceComplaintPanel({ bookings, tickets, initialBookingId, onC
           <label className="form-field"><span>{i18n.t("complaint.remedy")}</span><select value={remedy} onChange={event => setRemedy(event.target.value as ServiceComplaint["preferredRemedy"])}>{(["help-decide", "return-visit", "refund"] as const).map(value => <option key={value} value={value}>{i18n.t(`complaint.${value}`)}</option>)}</select></label>
           <label className="form-field form-field--full"><span>{i18n.t("complaint.description")}</span><textarea required minLength={10} maxLength={2000} rows={3} value={description} onChange={event => setDescription(event.target.value)} /></label>
         </div>
-        <div className="list-panel" style={{ marginTop: "1rem" }}>
+        <div className="list-panel u-mt-4">
           <label className="form-field"><span>{i18n.t("complaint.photos")}</span><input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={cannotPhotograph} onChange={async event => {
             const files = Array.from(event.target.files ?? []); setError("");
             if (files.length > 2) { setError(i18n.t("complaint.photo_error")); event.target.value = ""; return; }
@@ -71,13 +71,13 @@ export function ServiceComplaintPanel({ bookings, tickets, initialBookingId, onC
             finally { setBusy(false); }
           }} /></label>
           <p>{i18n.t("complaint.photo_hint")}</p>
-          {photos.length && !cannotPhotograph ? <div><p>{i18n.t("complaint.photo_count")}: {photos.length}</p><div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>{photos.map((photo, index) => <Image unoptimized width={120} height={90} key={index} src={photo} alt={`${i18n.t("complaint.photos")} ${index + 1}`} style={{ width: 120, height: 90, objectFit: "cover", borderRadius: 8 }} />)}</div><button className="button-secondary" type="button" onClick={() => setPhotos([])}>{i18n.t("complaint.remove")}</button></div> : null}
-          <label style={{ display: "flex", gap: "0.6rem", alignItems: "baseline" }}><input type="checkbox" checked={cannotPhotograph} onChange={event => setCannotPhotograph(event.target.checked)} />{i18n.t("complaint.no_photo")}</label>
+          {photos.length && !cannotPhotograph ? <div><p>{i18n.t("complaint.photo_count")}: {photos.length}</p><div className="u-flex u-gap-2 u-wrap">{photos.map((photo, index) => <Image unoptimized width={120} height={90} key={index} src={photo} alt={`${i18n.t("complaint.photos")} ${index + 1}`} className="complaint-photo-thumb" />)}</div><button className="button-secondary" type="button" onClick={() => setPhotos([])}>{i18n.t("complaint.remove")}</button></div> : null}
+          <label className="u-flex u-gap-2 u-items-baseline"><input type="checkbox" checked={cannotPhotograph} onChange={event => setCannotPhotograph(event.target.checked)} />{i18n.t("complaint.no_photo")}</label>
           {cannotPhotograph ? <label className="form-field"><span>{i18n.t("complaint.no_photo_reason")}</span><textarea required={needsPhoto} minLength={5} maxLength={500} value={noPhotoReason} onChange={event => setNoPhotoReason(event.target.value)} /></label> : null}
           <p>{i18n.t("complaint.privacy")}</p>
         </div>
-        <label style={{ display: "flex", gap: "0.6rem", alignItems: "baseline", marginTop: "1rem" }}><input type="checkbox" checked={aiConsent} onChange={event => setAiConsent(event.target.checked)} />{i18n.t("complaint.ai_consent")}</label>
-        <button className="button" style={{ marginTop: "1rem" }} disabled={!selectedId || (needsPhoto && !photos.length && !cannotPhotograph)} type="submit">{busy ? i18n.t("complaint.working") : i18n.t("complaint.submit")}</button>
+        <label className="u-flex u-gap-2 u-items-baseline u-mt-4"><input type="checkbox" checked={aiConsent} onChange={event => setAiConsent(event.target.checked)} />{i18n.t("complaint.ai_consent")}</label>
+        <button className="button u-mt-4" disabled={!selectedId || (needsPhoto && !photos.length && !cannotPhotograph)} type="submit">{busy ? i18n.t("complaint.working") : i18n.t("complaint.submit")}</button>
       </fieldset>
     </form> : <p>{i18n.t("complaint.no_bookings")}</p>}
     {message ? <p role="status">{message}</p> : null}{error ? <p role="alert">{error}</p> : null}

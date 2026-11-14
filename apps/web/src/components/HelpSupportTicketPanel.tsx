@@ -167,7 +167,7 @@ export function HelpSupportTicketPanel() {
       <article className="card">
         <h2>{i18n.t("support.open_ticket")}</h2>
         <p>{i18n.t("support.login_body")}</p>
-        <div className="cta-row" style={{ marginTop: "1rem" }}>
+        <div className="cta-row u-mt-4">
           <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("nav.log_in")}
           </a>
@@ -185,7 +185,7 @@ export function HelpSupportTicketPanel() {
     <article className="card">
       <h2>{i18n.t("support.open_ticket")}</h2>
       <p>{i18n.t("support.body")}</p>
-      <div className="cta-row" style={{ marginTop: "1rem" }}>
+      <div className="cta-row u-mt-4">
         <button
           className={showComposer ? "button-secondary" : "button"}
           onClick={() => setShowComposer((current) => !current)}
@@ -196,7 +196,7 @@ export function HelpSupportTicketPanel() {
       </div>
       {showComposer ? (
         <>
-          <div className="form-grid" style={{ marginTop: "1rem" }}>
+          <div className="form-grid u-mt-4">
             <label className="form-field">
               <span>{i18n.t("support.issue_type")}</span>
               <select onChange={(event) => setIssueType(event.target.value as SupportIssueType)} value={issueType}>
@@ -232,17 +232,17 @@ export function HelpSupportTicketPanel() {
               />
             </label>
           </div>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
+          <div className="cta-row u-mt-4">
             <button className="button" disabled={isWorking} onClick={() => void handleSubmit()} type="button">
               {isWorking ? i18n.t("support.submitting") : i18n.t("support.submit_ticket")}
             </button>
           </div>
         </>
       ) : null}
-      {statusMessage ? <p style={{ marginTop: "1rem" }}>{statusMessage}</p> : null}
-      {submitError ? <p style={{ marginTop: "1rem" }}>{submitError}</p> : null}
+      {statusMessage ? <p className="u-mt-4">{statusMessage}</p> : null}
+      {submitError ? <p className="u-mt-4">{submitError}</p> : null}
       {supportLoadError ? (
-        <div className="stack-lg" style={{ marginTop: "1rem", paddingBottom: 0 }}>
+        <div className="stack-lg u-mt-4 u-pb-0">
           <p>{supportLoadError}</p>
           <div className="cta-row">
             <button
@@ -257,8 +257,8 @@ export function HelpSupportTicketPanel() {
         </div>
       ) : null}
       {tickets.length > 0 ? (
-        <div className="stack-lg" style={{ marginTop: "1.5rem", paddingBottom: 0 }}>
-          <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+        <div className="stack-lg u-mt-5 u-pb-0">
+          <div className="cta-row u-justify-between u-items-center">
             <h3>{i18n.t("support.recent_tickets")}</h3>
             <button
               className="button-secondary"
@@ -271,7 +271,7 @@ export function HelpSupportTicketPanel() {
           {showRecentTickets ? (
             tickets.filter(ticket => !ticket.complaint).slice(0, 4).map((ticket) => (
               <article className="list-panel" key={ticket.id}>
-                <div className="cta-row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                <div className="cta-row u-justify-between u-items-center">
                   <h3>{ticket.subject}</h3>
                   <span>{i18n.formatDate(ticket.createdAt)}</span>
                 </div>

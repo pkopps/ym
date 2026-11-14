@@ -186,7 +186,7 @@ export function OpsReviewResponseBoard({ initialItems }: { initialItems: OpsRevi
       {items.length === 0 ? (
         <p>{i18n.t("ops_auto.ops_review_response_board.no_submitted_reviews_need_response_triage_yet_5ezies")}</p>
       ) : (
-        <div className="stack-lg" style={{ paddingBottom: 0 }}>
+        <div className="stack-lg u-pb-0">
           {items.map((item) => {
             const draft = getDraft(item);
             return (
