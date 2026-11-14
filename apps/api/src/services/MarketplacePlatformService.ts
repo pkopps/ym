@@ -16408,9 +16408,7 @@ export class MarketplacePlatformService {
   }
 
   public async buildCalendarFeedByToken(feedToken: string): Promise<string> {
-    const provider = (await this.repository.listProviders()).find(
-      (item) => item.calendarConnection.feedToken === feedToken
-    );
+    const provider = await this.repository.findProviderByCalendarFeedToken(feedToken);
 
     if (!provider) {
       throw new HttpError(404, "Calendar feed not found");

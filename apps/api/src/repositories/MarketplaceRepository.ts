@@ -262,6 +262,8 @@ export interface MarketplaceRepository {
     change: BookingAddressChangeRequest
   ): Promise<Booking | undefined>;
   findProviderById(providerId: string): Promise<ProviderProfile | undefined>;
+  /** The provider whose calendar feed token is `feedToken`: the one `listProviders` would reach first. */
+  findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined>;
   updateProvider(providerId: string, updates: Partial<ProviderProfile>): Promise<ProviderProfile | undefined>;
   createPayment(payment: PaymentRecord): Promise<PaymentRecord>;
   findPaymentById(paymentId: string): Promise<PaymentRecord | undefined>;

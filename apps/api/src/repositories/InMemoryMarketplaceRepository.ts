@@ -673,6 +673,10 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return booking;
   }
 
+  public async findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined> {
+    return this.providers.find((provider) => provider.calendarConnection.feedToken === feedToken);
+  }
+
   public async findProviderById(providerId: string): Promise<ProviderProfile | undefined> {
     return this.providers.find((provider) => provider.id === providerId);
   }
