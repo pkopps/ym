@@ -129,21 +129,24 @@ try {
   const password = await hashPassword("ScaleTest123!");
   await platform.searchProviders({ address, categories: ["lawn-mowing"] });
   queryTimes.length = 0; slowestQueries = []; delay.enable();
+  const screenKinds = ["public-overview", "calendar-feed", "provider-calendar", "provider-payouts", "crew-payouts", "staffing-overview",
+    "ops-verification-queue", "ops-payout-preview"], screenOperations = 20;
   const start = performance.now(), latencies: Record<string, number[]> = {}, errors: string[] = [];
   const heapBefore = process.memoryUsage().heapUsed;
   const kinds = ["search", "clients", "password", "route-write", "analytics", "gps-ping", "arrival-tracking", "crew-matches", "crew-opportunities",
     "plan-create", "next-visit", "reschedule",
-    // Screens that still load whole tables are slow enough to fail the default gate, so they run only in the large comparison.
-    ...(large ? ["public-overview", "calendar-feed", "provider-calendar", "provider-payouts", "crew-payouts", "staffing-overview",
-      "ops-verification-queue", "ops-payout-preview"] : [])];
-  const operations = Array.from({ length: kinds.length * size.perKind }, (_, index) => index);
+    // Screens that still load whole tables are slow enough to fail the default gate, so they run only in the large
+    // comparison, and fewer times each: on 200,000 bookings one of them can hold the process for minutes.
+    ...(large ? screenKinds : [])];
+  const operations = Array.from({ length: size.perKind }, (_, turn) => kinds.filter(kind => !screenKinds.includes(kind) || turn < screenOperations).map(kind => ({ kind, turn })))
+    .flat().map((operation, index) => ({ ...operation, index }));
   // Seeded matches a crew member holds: the fixture gives match i to crew member i % crew.
   const seededMatchCount = (crewIndex: number) => [size.history, upcomingCount].reduce((sum, rows) => sum + (crewIndex < rows ? Math.ceil((rows - crewIndex) / size.crew) : 0), 0);
   const isSeededCrewJob = (bookingId: string) => bookingId.startsWith(`${prefix}-booking-`) || bookingId.startsWith(`${prefix}-upcoming-`);
   const notifications = (async () => { while (await repository.countDueNotificationDeliveries(new Date().toISOString())) await platform.retryDueNotificationDeliveriesForOps(); })();
   notifications.catch(() => {}); // Awaited below; this only stops a failure during the run from ending the process first.
-  await mapConcurrent(operations, size.concurrency, async index => {
-    const kind = kinds[index % kinds.length], turn = Math.floor(index / kinds.length), began = performance.now();
+  await mapConcurrent(operations, size.concurrency, async ({ kind, turn, index }) => {
+    const began = performance.now();
     try {
       if (kind === "search") assert.equal((await platform.searchProviders({ address, categories: ["lawn-mowing"] })).providers.length, 3);
       if (kind === "clients") assert.equal((await platform.getProviderClients(providerId)).properties.length, 1000);
