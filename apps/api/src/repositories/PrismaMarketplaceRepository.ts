@@ -56,6 +56,7 @@ import {
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
   MarketplaceRepository,
+  CompletedBookingAreaSummary,
   UpcomingBookingsQuery
 } from "./MarketplaceRepository";
 
@@ -561,6 +562,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return providers.map((record: any) => this.mapProviderProfile(record.user, record));
   }
 
+  public async listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]> {
+    const providers = await this.prisma.providerBusinessProfile.findMany({
+      where: { verificationStatus: status },
+      include: { user: true, credentials: true, connectAccount: true }
+    });
+    return providers.map((record) => this.mapProviderProfile(record.user, record));
+  }
+
   public async listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]> {
     if (providerIds.length === 0) {
       return [];
@@ -900,6 +909,31 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]> {
     const bookings = await this.prisma.booking.findMany({
       where: { OR: [{ providerId: query.providerId }, { scheduledEndIso: { gt: new Date(query.endAfterIso) } }] },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async summarizeCompletedBookingsByArea(recentSinceIso: string): Promise<CompletedBookingAreaSummary[]> {
+    const rows = await this.prisma.$queryRaw<Array<Omit<CompletedBookingAreaSummary, "firstScheduledStartIso"> & { firstScheduledStartIso: Date }>>(Prisma.sql`
+      SELECT "providerId", "serviceAddress"->>'city' AS city, "serviceAddress"->>'state' AS state, category,
+        COUNT(*)::int AS "completedBookingCount",
+        (COUNT(*) FILTER (WHERE COALESCE("completedAt", "scheduledEndIso") >= ${utcTimestamp(new Date(recentSinceIso))}))::int AS "recentCompletedBookingCount",
+        MIN("scheduledStartIso") AS "firstScheduledStartIso"
+      FROM bookings
+      WHERE status = 'completed'
+      GROUP BY 1, 2, 3, 4
+      ORDER BY 7, 1, 2, 3, 4`);
+    return rows.map((row) => ({ ...row, firstScheduledStartIso: row.firstScheduledStartIso.toISOString() }));
+  }
+
+  public async listCompletedBookingsWithMarketingPhotos(): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        status: "completed",
+        completedAt: { not: null },
+        serviceEvidence: { array_contains: [{ marketingUseStatus: "granted" }] }
+      },
       orderBy: { scheduledStartIso: "asc" }
     });
     return bookings.map((booking) => this.mapBooking(booking));
@@ -1307,6 +1341,23 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       orderBy: { createdAt: "desc" }
     });
     return reviews.map((review: any) => this.mapProviderReview(review));
+  }
+
+  public async listLatestProviderReviews(providerIds: string[], limit: number): Promise<ProviderReview[]> {
+    if (providerIds.length === 0 || limit < 1) {
+      return [];
+    }
+    const where = { providerId: { in: providerIds } };
+    const newest = await this.prisma.providerReview.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    const last = newest[limit - 1];
+    if (!last) {
+      return newest.map((review) => this.mapProviderReview(review));
+    }
+    const withTies = await this.prisma.providerReview.findMany({
+      where: { ...where, createdAt: { gte: last.createdAt } },
+      orderBy: { createdAt: "desc" }
+    });
+    return withTies.map((review) => this.mapProviderReview(review));
   }
 
   public async findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined> {

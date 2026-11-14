@@ -5,7 +5,7 @@ import { StripeProviderBillingService, type ProviderBillingGateway } from "./Str
 import type { ConfirmBookingCompletionResponse, ProviderBillingStatusResponse, StartProviderCardSetupResponse } from "@yardmatch/contracts";
 import { defaultServiceStartingPrices, type UpdateZipServiceMinimumRequest, type ProviderServicePrice } from "@yardmatch/contracts";
 import { bookingMetrics, type ProviderBookingMetrics } from "../repositories/searchQueries";
-import type { ClaimedNotificationDelivery } from "../repositories/MarketplaceRepository";
+import type { ClaimedNotificationDelivery, CompletedBookingAreaSummary } from "../repositories/MarketplaceRepository";
 import { ServiceComplaintService } from "./ServiceComplaintService";
 import { CustomerReferralService } from "./CustomerReferralService";
 import { PartialRefundService, hasPendingPartialRefund } from "./PartialRefundService";
@@ -2072,11 +2072,13 @@ export class MarketplacePlatformService {
   }
 
   public async getPublicMarketplaceOverview(): Promise<PublicMarketplaceOverviewResponse> {
-    const [allProviders, bookings] = await Promise.all([
-      this.repository.listProviders(),
-      this.repository.listBookings()
+    const recentCoverageWindowMs = 90 * 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const [providers, completedByArea, marketingPhotoBookings] = await Promise.all([
+      this.repository.listProvidersByVerificationStatus("verified"),
+      this.repository.summarizeCompletedBookingsByArea(new Date(nowMs - recentCoverageWindowMs).toISOString()),
+      this.repository.listCompletedBookingsWithMarketingPhotos()
     ]);
-    const providers = allProviders.filter((provider) => provider.verificationStatus === "verified");
     const providerMap = new Map(providers.map((provider) => [provider.id, provider]));
     const mapFeaturedProvider = (provider: ProviderProfile) => ({
       id: provider.id,
@@ -2135,15 +2137,11 @@ export class MarketplacePlatformService {
       })
       .slice(0, 8)
       .map(mapFeaturedProvider);
-    const highlightedReviews = (
-      await Promise.all(
-        providers.map(async (provider) => {
-          const reviews = await this.repository.listProviderReviews(provider.id);
-          return reviews.map((review) => this.mapPublicHighlightedReview(provider, review));
-        })
-      )
-    )
-      .flat()
+    // Reviews created at the same instant keep the order of their providers, as when each provider's were loaded in turn.
+    const providerOrder = new Map(providers.map((provider, index) => [provider.id, index]));
+    const highlightedReviews = (await this.repository.listLatestProviderReviews(providers.map((provider) => provider.id), 6))
+      .sort((left, right) => providerOrder.get(left.providerId)! - providerOrder.get(right.providerId)!)
+      .map((review) => this.mapPublicHighlightedReview(providerMap.get(review.providerId)!, review))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .slice(0, 6);
 
@@ -2159,8 +2157,8 @@ export class MarketplacePlatformService {
     const activeCategoryCount = new Set(
       providers.flatMap((provider) => provider.categories)
     ).size;
-    const coverageAreas = this.buildPublicCoverageAreas(providers, bookings, providerMap);
-    const beforeAfterProjects = bookings
+    const coverageAreas = this.buildPublicCoverageAreas(providers, completedByArea, providerMap);
+    const beforeAfterProjects = marketingPhotoBookings
       .filter(
         (booking) =>
           booking.status === "completed" &&
@@ -2289,11 +2287,9 @@ export class MarketplacePlatformService {
 
   private buildPublicCoverageAreas(
     providers: ProviderProfile[],
-    bookings: Booking[],
+    completedByArea: CompletedBookingAreaSummary[],
     providerMap: Map<string, ProviderProfile>
   ): PublicMarketplaceCoverageArea[] {
-    const recentWindowMs = 90 * 24 * 60 * 60 * 1000;
-    const nowMs = Date.now();
     const areaMap = new Map<
       string,
       {
@@ -2306,7 +2302,7 @@ export class MarketplacePlatformService {
       }
     >();
 
-    const touchArea = (address: Address) => {
+    const touchArea = (address: Pick<Address, "city" | "state">) => {
       const city = this.toTitleCase(this.normalizeAddressText(address.city));
       const state = this.normalizeAddressText(address.state).toUpperCase();
       const key = `${city.toLowerCase()}|${state.toLowerCase()}`;
@@ -2333,21 +2329,17 @@ export class MarketplacePlatformService {
       provider.categories.forEach((category) => area.supportedCategories.add(category));
     }
 
-    for (const booking of bookings) {
-      const provider = providerMap.get(booking.providerId);
-      if (!provider || booking.status !== "completed") {
+    for (const group of completedByArea) {
+      const provider = providerMap.get(group.providerId);
+      if (!provider) {
         continue;
       }
 
-      const area = touchArea(booking.serviceAddress);
+      const area = touchArea(group);
       area.providerIds.add(provider.id);
-      area.completedBookingCount += 1;
-      area.supportedCategories.add(booking.category);
-
-      const completedAtMs = Date.parse(booking.completedAt ?? booking.scheduledEndIso);
-      if (Number.isFinite(completedAtMs) && nowMs - completedAtMs <= recentWindowMs) {
-        area.recentCompletedBookingCount += 1;
-      }
+      area.completedBookingCount += group.completedBookingCount;
+      area.supportedCategories.add(group.category);
+      area.recentCompletedBookingCount += group.recentCompletedBookingCount;
     }
 
     return [...areaMap.values()]

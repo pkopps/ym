@@ -141,6 +141,17 @@ export interface BookingPageQuery {
 
 export type ClaimedNotificationDelivery = NotificationDeliveryRecord & { leaseToken: string };
 
+export interface CompletedBookingAreaSummary {
+  providerId: string;
+  city: string;
+  state: string;
+  category: Booking["category"];
+  completedBookingCount: number;
+  /** Completed (or, with no completion time, scheduled to end) at or after the requested instant. */
+  recentCompletedBookingCount: number;
+  firstScheduledStartIso: string;
+}
+
 export interface MarketplaceRepository {
   listZipServiceMinimums(postalCode: string): Promise<ZipServiceMinimumRecord[]>;
   saveZipServiceMinimum(record: ZipServiceMinimumRecord): Promise<ZipServiceMinimumRecord>;
@@ -168,6 +179,8 @@ export interface MarketplaceRepository {
   createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
   listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]>;
+  /** Providers in one verification status, in the same order as `listProviders`. */
+  listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]>;
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
   listSearchSlots(providerIds: string[], minimumDurationMinutes?: number, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]>;
@@ -200,6 +213,13 @@ export interface MarketplaceRepository {
    * provider's bookings that end after `endAfterIso`. Same order as `listBookings`.
    */
   listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]>;
+  /**
+   * Completed bookings counted per provider, service city and state (as stored) and category. Rows are ordered by
+   * each group's earliest booking, the order `listBookings` would first reach them.
+   */
+  summarizeCompletedBookingsByArea(recentSinceIso: string): Promise<CompletedBookingAreaSummary[]>;
+  /** Completed bookings with at least one photo cleared for marketing use, in the same order as `listBookings`. */
+  listCompletedBookingsWithMarketingPhotos(): Promise<Booking[]>;
   /** One recurring plan's bookings, in the same order as `listBookings`. */
   listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]>;
   /** Bookings starting after `afterIso` in one of `statuses`, in the same order as `listBookings`. */
@@ -223,6 +243,11 @@ export interface MarketplaceRepository {
   findCrewMatchById(matchId: string): Promise<CrewMatchCandidate | undefined>;
   createProviderReview(review: ProviderReview): Promise<ProviderReview>;
   listProviderReviews(providerId: string): Promise<ProviderReview[]>;
+  /**
+   * The `limit` newest reviews across the given providers, newest first, plus any review created at the same
+   * instant as the last of them, so the caller can break that tie the way it always has.
+   */
+  listLatestProviderReviews(providerIds: string[], limit: number): Promise<ProviderReview[]>;
   findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined>;
   findProviderReviewByBookingId(bookingId: string): Promise<ProviderReview | undefined>;
   updateProviderReview(reviewId: string, updates: Partial<ProviderReview>): Promise<ProviderReview | undefined>;
