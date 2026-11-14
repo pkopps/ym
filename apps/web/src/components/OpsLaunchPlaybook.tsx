@@ -14,14 +14,14 @@ export function OpsLaunchPlaybook() {
       <p>
         {i18n.t("ops_auto.ops_launch_playbook.this_turns_the_launch_checklist_into_working_guidance_5do9jy")} </p>
 
-      <div className="stack-lg" style={{ paddingBottom: 0 }}>
+      <div className="stack-lg u-pb-0">
         {launchOpsPlaybookSections.map((section) => (
           <article className="list-panel" key={section.id}>
             <span className="eyebrow">{section.eyebrow}</span>
             <h3>{section.title}</h3>
             <p>{section.summary}</p>
 
-            <div className="stack-md" style={{ paddingBottom: 0 }}>
+            <div className="stack-md u-pb-0">
               {section.scenarios.map((scenario) => (
                 <article className="card" key={scenario.id}>
                   <h4>{scenario.title}</h4>

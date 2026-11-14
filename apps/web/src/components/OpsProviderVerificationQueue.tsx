@@ -110,7 +110,7 @@ export function OpsProviderVerificationQueue() {
         {i18n.t("ops_auto.ops_provider_verification_queue.approve_providers_when_their_business_profile_is_ready_22r3z9")} </p>
       {statusMessage ? <p>{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
-      <div className="stack-lg" style={{ paddingBottom: 0 }}>
+      <div className="stack-lg u-pb-0">
         {items.length > 0 ? (
           items.map((item) => {
             const { provider, openBookingCount, reviewCount } = item;

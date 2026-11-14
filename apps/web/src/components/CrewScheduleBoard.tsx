@@ -159,7 +159,7 @@ export function CrewScheduleBoard() {
                   <h2>{i18n.t("crew_schedule.board.scheduled_stop_count", { count: group.matches.length })}</h2>
                 </div>
               </div>
-              <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              <div className="stack-lg u-pb-0">
                 {group.matches.map((match) => (
                   <article className="list-panel" key={match.id}>
                     <div className="search-result-title">

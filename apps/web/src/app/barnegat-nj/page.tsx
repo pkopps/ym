@@ -141,7 +141,7 @@ export default async function BarnegatTownPage() {
         <article className="card">
           <h2>{i18n.t("launch_town.local_trust.title")}</h2>
           <p>{i18n.t("launch_town.local_trust.body")}</p>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
+          <div className="cta-row u-mt-4">
             <Link className="button-secondary" href={href("/provider-verification")}>
               {i18n.t("launch_town.local_trust.cta")}
             </Link>
@@ -150,7 +150,7 @@ export default async function BarnegatTownPage() {
         <article className="card">
           <h2>{i18n.t("launch_town.support.title")}</h2>
           <p>{i18n.t("launch_town.support.body")}</p>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
+          <div className="cta-row u-mt-4">
             <Link className="button-secondary" href={href("/help")}>
               {i18n.t("launch_town.support.cta")}
             </Link>

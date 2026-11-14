@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: web design-token consolidation
+
+- Updated: November 13, 2026 (UTC).
+- Branch and commit: `claude/web-design-tokens`; see the PR for the commit.
+- Completed: audited `apps/web/src/app/globals.css` and extended the existing `--ym-*` tokens in `packages/branding` (six tints and strong shades, a six-step type scale, a pill radius; mirrored in `tokens.ts`). Replaced raw values with tokens by script: 322 colours, 140 font sizes, 86 radii, 19 shadows, 383 spacing values. Distinct values went from 106 hex colours to 15, 60 font sizes to 19, 25 radii to 10, 19 shadows to 6. Form fields, cards and panels, text buttons, empty states and error text each have one look. 125 of 126 inline `style={{}}` uses became `.u-*` utility classes or small named classes. Token reference, mapping and everything that did not map are in `docs/DESIGN_TOKENS.md`.
+- In progress: none.
+- Remaining: fluid heading sizes (12 `clamp()` values), spacing values between scale steps (mostly 20px and 10px), decorative gradients and the loader illustration still use raw values. About ten blocks of unused CSS (`.site-footer*`, `.app-banner*`, `.store-badge`, hero carousel, tool illustration, mower strip, map viewport) were tokenised where simple but not deleted.
+- Blockers: none.
+- Changed workflows: none. No markup, copy or layout changes beyond swapping inline styles for classes. The home page markup is untouched; its CSS changed by token replacement only.
+- Validation: `npm run typecheck` passed. `npm run lint` passed for the repository (`eslint . --ignore-pattern '.claude/worktrees/**'`); the plain command also lints a stale local worktree copy under `.claude/worktrees/` and reports 126 errors from it. `npm run test:web:smoke`: 60 of 61 passed. `provider-pricing.spec.ts:4` fails (saved starting price reads 35.00, expected 48.25) and fails the same way on `main` without these changes. Local setup needed Node 22 (`/opt/homebrew/opt/node@22`), `npm run prisma:generate` and `npx next typegen apps/web` because the default Homebrew Node and generated files were stale.
+- Known defects: none found from this change. Home page pixel comparison: heights 1245 to 1244px (desktop) and 1450 to 1452px (mobile); differences are hairline colour, a few text sizes within 1.6px, and the location dialog radius.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/design-tokens/{before,after,diff}/` holds `home`, `login`, `booking-matches`, `booking-schedule`, `booking-property-details`, `booking-review`, `customer-dashboard`, `provider`, `provider-management`, each `-desktop.png` (1440x900) and `-mobile.png` (390x844), full page. Git-ignored, local evidence only. `capture.mjs` and `compare.mjs` in that folder reproduce them.
+- Recommended next task: delete the unused CSS blocks, then decide on one or two display sizes and a 20px spacing step.
+
 ## Current checkpoint: copy cut across non-ops screens
 
 - Updated: November 11, 2026 (UTC).
