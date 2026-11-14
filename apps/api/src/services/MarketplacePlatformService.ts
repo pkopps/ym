@@ -4342,7 +4342,9 @@ export class MarketplacePlatformService {
     const currentBooking = await this.repository.findBookingById(match.bookingId);
     if (!currentBooking || !["requested", "confirmed"].includes(currentBooking.status) || Date.parse(currentBooking.scheduledStartIso) <= Date.now()) throw new HttpError(409, "This opening is no longer available");
     if (payload.action === "accept") {
-      const [crew, matches, bookings] = await Promise.all([this.repository.findCrewMemberById(match.crewMemberId), this.repository.listCrewMatches(), this.repository.listBookings()]);
+      // Eligibility looks at the jobs this crew member has already accepted, with any provider.
+      const [crew, matches] = await Promise.all([this.repository.findCrewMemberById(match.crewMemberId), this.repository.listCrewMatchesForCrewMember(match.crewMemberId)]);
+      const bookings = await this.listAcceptedCrewJobBookings(matches);
       if (!crew || !this.isCrewMemberEligibleForBooking(crew, currentBooking, matches, bookings)) throw new HttpError(409, "This crew member is no longer eligible for this assignment");
     }
 
@@ -6682,11 +6684,12 @@ export class MarketplacePlatformService {
       throw new HttpError(400, "opportunityId is required");
     }
 
-    const [crewMember, booking, allBookings, allMatches] = await Promise.all([
+    // The opening's own matches decide capacity; the crew member's matches, with any provider, decide conflicts.
+    const [crewMember, booking, openingMatches, crewMatches] = await Promise.all([
       this.repository.findCrewMemberById(crewMemberId),
       this.repository.findBookingById(opportunityId),
-      this.repository.listBookings(),
-      this.repository.listCrewMatches()
+      this.repository.listCrewMatchesForBookings([opportunityId]),
+      this.repository.listCrewMatchesForCrewMember(crewMemberId)
     ]);
 
     if (!crewMember) {
@@ -6706,17 +6709,18 @@ export class MarketplacePlatformService {
       throw new HttpError(404, "Provider not found for this crew opportunity");
     }
 
-    const existingMatch = allMatches.find(
+    const existingMatch = crewMatches.find(
       (match) => match.bookingId === booking.id && match.crewMemberId === crewMember.id
     );
     if (existingMatch) {
       return existingMatch;
     }
 
-    await this.assertCrewOpeningHasCapacity(booking, allMatches);
+    await this.assertCrewOpeningHasCapacity(booking, openingMatches);
+    const acceptedJobBookings = await this.listAcceptedCrewJobBookings(crewMatches);
 
     const distanceMiles = Number(this.geoService.distanceMiles(crewMember.address, booking.serviceAddress).toFixed(1));
-    const acceptedBookedJobs = this.getAcceptedCrewBookings(crewMember.id, allMatches, allBookings);
+    const acceptedBookedJobs = this.getAcceptedCrewBookings(crewMember.id, crewMatches, acceptedJobBookings);
     const hasConflictingAcceptedJob = acceptedBookedJobs.some(
       (acceptedBooking) =>
         acceptedBooking.id !== booking.id &&
@@ -18745,14 +18749,29 @@ export class MarketplacePlatformService {
   ): Promise<ProviderStaffingJobSummary[]> {
     await this.reconcileCrewMatches(provider.id);
 
-    const [bookings, customers, matches, crewMembers] = await Promise.all([
-      this.repository.listBookings(),
-      this.repository.listCustomers(),
-      this.repository.listCrewMatches(),
+    const providerBookings = await this.repository.listScopedBookings({
+      providerId: provider.id,
+      statuses: ["requested", "confirmed", "in-progress", "disputed"]
+    });
+    const [customers, openingMatches, crewMembers] = await Promise.all([
+      this.repository.listCustomers([...new Set(providerBookings.map((booking) => booking.customerId))]),
+      this.repository.listCrewMatchesForBookings(providerBookings.map((booking) => booking.id)),
       this.repository.listCrewMembers()
     ]);
+    // A recommendation weighs each candidate's other jobs, with any provider: the jobs they have accepted or are
+    // waiting to hear back on. So load every match the candidates hold and the bookings behind those jobs.
+    const matches = await this.repository.listCrewMatchesForCrewMembers([...new Set(openingMatches.map((match) => match.crewMemberId))]);
+    const providerBookingIds = new Set(providerBookings.map((booking) => booking.id));
+    const otherJobBookings = await this.repository.listBookingsByIds([
+      ...new Set(
+        matches
+          .filter((match) => (match.status === "accepted" || match.status === "pending-provider-review") && !providerBookingIds.has(match.bookingId))
+          .map((match) => match.bookingId)
+      )
+    ]);
+    const bookings = [...providerBookings, ...otherJobBookings];
 
-    return bookings
+    return providerBookings
       .filter(
         (booking) =>
           booking.providerId === provider.id && booking.recovery?.state !== "open" &&
@@ -18886,7 +18905,7 @@ export class MarketplacePlatformService {
         return;
       }
       // Same provider order as the single pass this replaces.
-      providerIds = (await this.repository.listProviders()).map((provider) => provider.id).filter((id) => needingCrew.has(id));
+      providerIds = (await this.repository.listProvidersByIds([...needingCrew])).map((provider) => provider.id);
     }
 
     for (const id of providerIds) {
@@ -19271,6 +19290,13 @@ export class MarketplacePlatformService {
       label: score >= 60 ? "best-fit" : score >= 42 ? "good-fit" : "backup",
       reasons: reasons.slice(0, 3)
     };
+  }
+
+  /** The bookings behind the jobs in `crewMatches` that the crew member has accepted. */
+  private async listAcceptedCrewJobBookings(crewMatches: CrewMatchCandidate[]): Promise<Booking[]> {
+    return this.repository.listBookingsByIds([
+      ...new Set(crewMatches.filter((match) => match.status === "accepted").map((match) => match.bookingId))
+    ]);
   }
 
   private getAcceptedCrewBookings(

@@ -184,7 +184,7 @@ export interface MarketplaceRepository {
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;
   listSearchSlots(providerIds: string[], minimumDurationMinutes?: number, range?: { startIso: string; endIso: string }): Promise<AvailabilitySlot[]>;
-  listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }): Promise<Booking[]>;
+  listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; statuses?: string[]; excludeStatuses?: string[] }): Promise<Booking[]>;
   getRetentionEvidence(bookingIds: string[]): Promise<{ tickets: SupportTicket[]; reviews: ProviderReview[]; settlements: BookingFinancialSettlement[] }>;
   getProviderClientProperties(providerId: string, nowIso: string): Promise<ProviderClientProperty[]>;
   listCustomers(customerIds?: string[]): Promise<CustomerProfile[]>;
@@ -238,6 +238,8 @@ export interface MarketplaceRepository {
   listCrewMatches(): Promise<CrewMatchCandidate[]>;
   /** Matches for the given bookings, in the same order as `listCrewMatches`. */
   listCrewMatchesForBookings(bookingIds: string[], crewMemberId?: string): Promise<CrewMatchCandidate[]>;
+  /** Every match held by any of these crew members, with any provider, in the same order as `listCrewMatches`. */
+  listCrewMatchesForCrewMembers(crewMemberIds: string[]): Promise<CrewMatchCandidate[]>;
   /** One crew member's matches, in the same order as `listCrewMatches`. */
   listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]>;
   updateCrewMatch(matchId: string, updates: Partial<CrewMatchCandidate>): Promise<CrewMatchCandidate | undefined>;

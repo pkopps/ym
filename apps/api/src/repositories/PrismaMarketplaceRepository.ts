@@ -522,12 +522,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return rows.map(row => ({ ...row, startIso: row.startIso.toISOString(), endIso: row.endIso.toISOString() }));
   }
 
-  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }) {
+  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; statuses?: string[]; excludeStatuses?: string[] }) {
     if (!query.providerId && !query.customerId) throw new Error("Booking queries require an owner scope");
     const rows = await this.prisma.booking.findMany({ where: {
       providerId: query.providerId, customerId: query.customerId,
       ...(query.endAfter ? { scheduledEndIso: { gt: new Date(query.endAfter) } } : {}),
-      ...(query.excludeStatuses ? { status: { notIn: query.excludeStatuses } } : {})
+      ...(query.statuses || query.excludeStatuses ? { status: { ...(query.statuses ? { in: query.statuses } : {}), ...(query.excludeStatuses ? { notIn: query.excludeStatuses } : {}) } } : {})
     }, orderBy: [{ scheduledStartIso: "asc" }, { id: "asc" }] });
     return rows.map(row => this.mapBooking(row));
   }
@@ -1250,6 +1250,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       rows.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
     }
     return rows.map((match) => this.mapCrewMatch(match));
+  }
+
+  public async listCrewMatchesForCrewMembers(crewMemberIds: string[]): Promise<CrewMatchCandidate[]> {
+    if (crewMemberIds.length === 0) {
+      return [];
+    }
+    const matches = await this.prisma.crewMatch.findMany({
+      where: { crewMemberId: { in: crewMemberIds } },
+      orderBy: { createdAt: "desc" }
+    });
+    return matches.map((match) => this.mapCrewMatch(match));
   }
 
   public async listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]> {

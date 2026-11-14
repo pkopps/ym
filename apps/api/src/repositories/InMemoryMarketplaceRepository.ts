@@ -262,11 +262,11 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
       .sort((a, b) => a.startIso.localeCompare(b.startIso) || a.id.localeCompare(b.id)).slice(0, 3));
   }
 
-  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }) {
+  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; statuses?: string[]; excludeStatuses?: string[] }) {
     if (!query.providerId && !query.customerId) throw new Error("Booking queries require an owner scope");
     return this.bookings.filter(row => (!query.providerId || row.providerId === query.providerId) &&
       (!query.customerId || row.customerId === query.customerId) && (!query.endAfter || Date.parse(row.scheduledEndIso) > Date.parse(query.endAfter)) &&
-      !query.excludeStatuses?.includes(row.status)).map(row => ({ ...row }));
+      (!query.statuses || query.statuses.includes(row.status)) && !query.excludeStatuses?.includes(row.status)).map(row => ({ ...row }));
   }
 
   public async getRetentionEvidence(bookingIds: string[]) {
@@ -551,6 +551,11 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
     return this.crewMatches
       .filter((match) => (!crewMemberId || match.crewMemberId === crewMemberId) && requestedIds.has(match.bookingId))
       .map((match) => ({ ...match }));
+  }
+
+  public async listCrewMatchesForCrewMembers(crewMemberIds: string[]): Promise<CrewMatchCandidate[]> {
+    const requestedIds = new Set(crewMemberIds);
+    return this.crewMatches.filter((match) => requestedIds.has(match.crewMemberId)).map((match) => ({ ...match }));
   }
 
   public async listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]> {
