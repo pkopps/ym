@@ -179,7 +179,10 @@ export interface MarketplaceRepository {
   createOpsUser(opsUser: OpsProfile, passwordHash?: string): Promise<OpsProfile>;
   listProviders(): Promise<ProviderProfile[]>;
   listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]>;
-  /** Providers in one verification status, in the same order as `listProviders`. */
+  /**
+   * Providers in one verification status, oldest account first, then by id. `listProviders` promises no order
+   * (Postgres returns whatever the table scan yields), so this one is fixed instead of copied.
+   */
   listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]>;
   searchProvidersPage(query: ProviderSearchQuery): Promise<RepositoryPage<ProviderProfile>>;
   getProviderBookingMetrics(providerIds: string[], address: ProviderSearchQuery["address"]): Promise<ProviderBookingMetrics[]>;

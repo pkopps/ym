@@ -565,7 +565,8 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]> {
     const providers = await this.prisma.providerBusinessProfile.findMany({
       where: { verificationStatus: status },
-      include: { user: true, credentials: true, connectAccount: true }
+      include: { user: true, credentials: true, connectAccount: true },
+      orderBy: [{ user: { createdAt: "asc" } }, { userId: "asc" }]
     });
     return providers.map((record) => this.mapProviderProfile(record.user, record));
   }

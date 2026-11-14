@@ -284,7 +284,9 @@ export class InMemoryMarketplaceRepository implements MarketplaceRepository {
   }
 
   public async listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]> {
-    return this.providers.filter((provider) => provider.verificationStatus === status);
+    return this.providers
+      .filter((provider) => provider.verificationStatus === status)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id));
   }
 
   public async listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]> {
