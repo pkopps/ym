@@ -19,17 +19,27 @@ const large = process.env.SCALE_LARGE === "1";
 const size = large
   ? { providers: 1999, history: 200_000, crew: 500, perKind: 100, concurrency: 300, connections: 20, poolTimeoutSeconds: 0 }
   : { providers: 600, history: 20_000, crew: 200, perKind: 40, concurrency: 12, connections: 8, poolTimeoutSeconds: 10 };
-const nearProviders = 200, upcomingCount = 500;
+// SCALE_CONCURRENCY overrides how many operations are in flight. At 300 the large run mostly measures time spent
+// queued for a connection; a run at 12 shows what each operation costs on the large dataset by itself.
+if (process.env.SCALE_CONCURRENCY) size.concurrency = Number(process.env.SCALE_CONCURRENCY);
+// The recurring workload needs three nearby providers per turn, one for each kind of write.
+const nearProviders = Math.max(200, size.perKind * 3), upcomingCount = 500;
 url.searchParams.set("connection_limit", String(size.connections)); url.searchParams.set("pool_timeout", String(size.poolTimeoutSeconds));
 for (const key of ["GOOGLE_MAPS_API_KEY", "GOOGLE_ADDRESS_VALIDATION_API_KEY", "RESEND_API_KEY", "TWILIO_AUTH_TOKEN", "POSTHOG_API_KEY"]) delete process.env[key];
 const prefix = `scale-load-${crypto.randomUUID()}`;
 process.env.YARDMATCH_ENV = prefix;
 const prisma = new PrismaClient({ datasourceUrl: url.toString(), log: [{ emit: "event", level: "query" }] });
 const queryTimes: number[] = [];
+// SCALE_PROFILE=1 (with SCALE_CONCURRENCY=1, so statements can be attributed) prints, per kind of operation, how many
+// statements one operation runs and which statements take the time. SCALE_KINDS=a,b limits the run to those kinds.
+const profiling = process.env.SCALE_PROFILE === "1";
+const queryLog: Array<{ ms: number; sql: string }> = [];
+const profile: Record<string, { operations: number; totalMs: number; queryMs: number; statements: Map<string, { count: number; ms: number }> }> = {};
 // The slowest statements are reported so a failed gate names the query to look at.
 let slowestQueries: Array<{ ms: number; sql: string }> = [];
 prisma.$on("query", event => {
   queryTimes.push(event.duration);
+  if (profiling) queryLog.push({ ms: event.duration, sql: event.query.replace(/\s+/g, " ").trim() });
   if (slowestQueries.length < 3 || event.duration > slowestQueries[2].ms) {
     slowestQueries = [...slowestQueries, { ms: event.duration, sql: event.query.replace(/\s+/g, " ").slice(0, 400) }].sort((a, b) => b.ms - a.ms).slice(0, 3);
   }
@@ -83,7 +93,7 @@ try {
     return matchRow(`${prefix}-booking-${index}`, historyProviderId(index), index);
   }) });
   await prisma.crewMatch.createMany({ data: Array.from({ length: upcomingCount }, (_, index) => matchRow(`${prefix}-upcoming-${index}`, upcomingProviderId(index), index)) });
-  // Recurring workload. Operation i of each kind uses nearby provider i and its own customer, so the operations do
+  // Recurring workload. Operation i of each kind uses its own nearby provider and customer, so the operations do
   // not contend with each other: "plan-create" quotes and starts a weekly plan, "next-visit" completes the first
   // visit of a seeded plan (which generates the second), and "reschedule" moves a seeded plan visit by a week.
   const recurringKinds = ["plan", "visit", "move"] as const;
@@ -93,17 +103,19 @@ try {
   const recurringCustomerIds = recurringKinds.flatMap(kind => Array.from({ length: size.perKind }, (_, index) => recurringCustomerId(kind, index)));
   await prisma.userAccount.createMany({ data: recurringCustomerIds.map(id => ({ ...customerUser, id, email: `${id}@example.invalid` })) });
   await prisma.customerProfile.createMany({ data: recurringCustomerIds.map(userId => ({ ...customerProfile, userId })) });
-  await prisma.providerCredential.createMany({ data: providerIds.slice(0, size.perKind).flatMap(id => (template.credentials ?? []).map((credential, index) => ({
+  await prisma.providerCredential.createMany({ data: providerIds.slice(0, size.perKind * 3).flatMap(id => (template.credentials ?? []).map((credential, index) => ({
     id: `${id}-credential-${index}`, providerId: id, type: credential.type, status: credential.status, jurisdiction: credential.jurisdiction,
     referenceNumber: credential.referenceNumber, issuedAt: credential.issuedAt ? new Date(credential.issuedAt) : null,
     expiresAt: credential.expiresAt ? new Date(credential.expiresAt) : null, submittedAt: new Date(credential.submittedAt) }))) });
   const day = 86400_000, hour = 3600_000;
-  const seededVisit = (kind: "visit" | "move", index: number, startMs: number) => ({ id: `${prefix}-${kind}-${index}`, providerId: providerIds[index],
+  // Each kind writes to its own provider. Sharing one made the three writes of a turn queue on that provider's locks.
+  const recurringProviderId = (kind: typeof recurringKinds[number], index: number) => providerIds[recurringKinds.indexOf(kind) * size.perKind + index];
+  const seededVisit = (kind: "visit" | "move", index: number, startMs: number) => ({ id: `${prefix}-${kind}-${index}`, providerId: recurringProviderId(kind, index),
     customerId: recurringCustomerId(kind, index), serviceAddress: address, category: "lawn-mowing", requestedAt: new Date(now - day),
     scheduledStartIso: new Date(startMs), scheduledEndIso: new Date(startMs + hour), status: "confirmed", notes: "Disposable scale fixture",
     totalCents: 7500, recurringPlanId: `${prefix}-plan-${kind}-${index}`, recurringOccurrenceIndex: 1, interventions: [], addressChangeHistory: [],
     serviceEvidence: kind === "visit" ? [{ id: `${prefix}-evidence-${index}`, phase: "after", evidenceType: "photo", capturedAt: new Date(now).toISOString(),
-      capturedByRole: "provider", capturedByUserId: providerIds[index] }] : [] });
+      capturedByRole: "provider", capturedByUserId: recurringProviderId(kind, index) }] : [] });
   const visitStartMs = now + 3 * day, moveStartMs = now + 40 * day, planStartMs = now + 20 * day;
   const seededVisits = Array.from({ length: size.perKind }, (_, index) => [seededVisit("visit", index, visitStartMs), seededVisit("move", index, moveStartMs)]).flat();
   await prisma.recurringServicePlan.createMany({ data: seededVisits.map(visit => ({ id: visit.recurringPlanId, customerId: visit.customerId,
@@ -138,7 +150,8 @@ try {
     // Screens that still load whole tables are slow enough to fail the default gate, so they run only in the large
     // comparison, and fewer times each: on 200,000 bookings one of them can hold the process for minutes.
     ...(large ? screenKinds : [])];
-  const operations = Array.from({ length: size.perKind }, (_, turn) => kinds.filter(kind => !screenKinds.includes(kind) || turn < screenOperations).map(kind => ({ kind, turn })))
+  const onlyKinds = process.env.SCALE_KINDS?.split(",");
+  const operations = Array.from({ length: size.perKind }, (_, turn) => kinds.filter(kind => !onlyKinds || onlyKinds.includes(kind)).filter(kind => !screenKinds.includes(kind) || turn < screenOperations).map(kind => ({ kind, turn })))
     .flat().map((operation, index) => ({ ...operation, index }));
   // Seeded matches a crew member holds: the fixture gives match i to crew member i % crew.
   const seededMatchCount = (crewIndex: number) => [size.history, upcomingCount].reduce((sum, rows) => sum + (crewIndex < rows ? Math.ceil((rows - crewIndex) / size.crew) : 0), 0);
@@ -146,7 +159,7 @@ try {
   const notifications = (async () => { while (await repository.countDueNotificationDeliveries(new Date().toISOString())) await platform.retryDueNotificationDeliveriesForOps(); })();
   notifications.catch(() => {}); // Awaited below; this only stops a failure during the run from ending the process first.
   await mapConcurrent(operations, size.concurrency, async ({ kind, turn, index }) => {
-    const began = performance.now();
+    const began = performance.now(), firstStatement = queryLog.length;
     try {
       if (kind === "search") assert.equal((await platform.searchProviders({ address, categories: ["lawn-mowing"] })).providers.length, 3);
       if (kind === "clients") assert.equal((await platform.getProviderClients(providerId)).properties.length, 1000);
@@ -162,8 +175,8 @@ try {
       if (kind === "crew-opportunities") assert.equal((await platform.listCrewOpportunities()).filter(item => item.id.startsWith(`${prefix}-upcoming-`)).length, upcomingCount);
       if (kind === "plan-create") {
         const planCustomerId = recurringCustomerId("plan", turn);
-        const quote = await platform.createInstantQuote({ customerId: planCustomerId, address, category: "lawn-mowing", providerId: providerIds[turn] });
-        const created = await platform.createRecurringServicePlan(planCustomerId, { providerId: providerIds[turn], serviceAddress: address, category: "lawn-mowing",
+        const quote = await platform.createInstantQuote({ customerId: planCustomerId, address, category: "lawn-mowing", providerId: recurringProviderId("plan", turn) });
+        const created = await platform.createRecurringServicePlan(planCustomerId, { providerId: recurringProviderId("plan", turn), serviceAddress: address, category: "lawn-mowing",
           scheduledStartIso: new Date(planStartMs).toISOString(), scheduledEndIso: new Date(planStartMs + hour).toISOString(), notes: "Disposable scale fixture",
           totalCents: quote.estimatedPriceCents, quoteToken: quote.quoteToken, frequency: "weekly" });
         assert.equal(created.plan.upcomingBooking?.id, created.initialBooking.id);
@@ -177,12 +190,21 @@ try {
       if (kind === "staffing-overview") assert.ok((await platform.getProviderStaffingOverview(upcomingProviderId(turn))).jobs.length >= 1);
       if (kind === "ops-verification-queue") assert.ok(await platform.listProviderVerificationQueue());
       if (kind === "ops-payout-preview") assert.ok(await platform.getOpsPayoutPreview());
-      if (kind === "next-visit") assert.equal((await platform.completeBooking(providerIds[turn], { bookingId: `${prefix}-visit-${turn}` })).status, "completed");
+      if (kind === "next-visit") assert.equal((await platform.completeBooking(recurringProviderId("visit", turn), { bookingId: `${prefix}-visit-${turn}` })).status, "completed");
       if (kind === "reschedule") assert.equal((await platform.rescheduleBooking(recurringCustomerId("move", turn), { bookingId: `${prefix}-move-${turn}`,
         scheduledStartIso: new Date(moveStartMs + 7 * day).toISOString(), scheduledEndIso: new Date(moveStartMs + 7 * day + hour).toISOString() })).scheduledStartIso,
         new Date(moveStartMs + 7 * day).toISOString());
     } catch (error) { errors.push(`${kind}: ${error instanceof Error ? error.message : String(error)}`); }
     (latencies[kind] ??= []).push(performance.now() - began);
+    if (profiling) {
+      const entry = (profile[kind] ??= { operations: 0, totalMs: 0, queryMs: 0, statements: new Map() });
+      entry.operations++; entry.totalMs += performance.now() - began;
+      for (const statement of queryLog.slice(firstStatement)) {
+        const key = statement.sql.replace(/\$\d+/g, "?").replace(/(\?, ?)+\?/g, "?…").slice(0, 150);
+        const row = entry.statements.get(key) ?? { count: 0, ms: 0 };
+        row.count++; row.ms += statement.ms; entry.statements.set(key, row); entry.queryMs += statement.ms;
+      }
+    }
   });
   await notifications; await analytics.drain(); delay.disable();
   const stats = Object.fromEntries(Object.entries(latencies).map(([kind, values]) => [kind, {
@@ -197,6 +219,13 @@ try {
     eventLoopP99Ms: Math.round(delay.percentile(99) / 1e6), heapGrowthMb: Math.round((process.memoryUsage().heapUsed - heapBefore) / 1048576),
     rssMb: Math.round(process.memoryUsage().rss / 1048576), delivered: sends, errors };
   console.log(JSON.stringify(result, null, 2));
+  if (profiling) console.log(JSON.stringify(Object.fromEntries(Object.entries(profile).map(([kind, entry]) => [kind, {
+    msPerOperation: Math.round(entry.totalMs / entry.operations), queryMsPerOperation: Math.round(entry.queryMs / entry.operations),
+    statementsPerOperation: Math.round([...entry.statements.values()].reduce((sum, row) => sum + row.count, 0) / entry.operations),
+    slowest: [...entry.statements.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 5).map(([sql, row]) =>
+      `${(row.ms / entry.operations).toFixed(1)} ms, ${(row.count / entry.operations).toFixed(1)}x: ${sql}`),
+    mostRepeated: [...entry.statements.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 18).map(([sql, row]) =>
+      `${(row.count / entry.operations).toFixed(1)}x: ${sql}`) }])), null, 2));
   assert.equal(errors.length, 0);
   // The recurring workload queues its own notifications, so the seeded 250 are checked by id.
   assert.equal(await prisma.notificationDelivery.count({ where: { id: { startsWith: prefix }, status: "queued" } }), 0);

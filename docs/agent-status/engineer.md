@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: remaining whole-table loads and the 200,000-booking run
+
+- Updated: November 14, 2026 (UTC).
+- Branch and commit: merged to main as PRs #35 to #44; #45 (`claude/scale-16-observability`) and `claude/scale-17-load-script-concurrency` are open; see the PRs for the commits.
+- Completed: the scale smoke has a recurring workload and a larger dataset behind `SCALE_LARGE=1` (#35). Scoped queries replaced whole-table loads in the public overview (#36), calendar feed token lookup (#37), provider calendar and payout ledgers (#38), crew staffing review, claim and summaries (#39), ops verification, ticket, retention and follow-up reads (#40), ops payout preview, financial exceptions and launch leads (#41, #44), payment lookups in checkout, the Stripe webhook and job completion, evidence photos and recovery options (#43), and the ops observability overview (#45). The analytics report counts providers with bookings by grouping instead of `count(DISTINCT)`.
+- In progress: #45 and the load-script and analytics branch are waiting on CI and review.
+- Remaining: every payment is still loaded by the ops payout preview and financial exception summary; every provider by five ops screens. The three recurring writes take about 2 seconds on 200,000 bookings and have not been profiled. The analytics report drops its cache on failure.
+- Blockers: none.
+- Changed workflows: none for users. Three orderings that Postgres never guaranteed are now fixed: verified providers come back oldest account first (public overview ties, recovery options), and where a booking has several payments the newest is used (provider ledger, stale-ticket sweep).
+- Validation: each PR ran `npm run typecheck`, `npm run lint`, `npm run test:api` (428 passed), `npm run test:api:postgres` (25 to 31 passed as tests were added), `prisma migrate diff --exit-code` where the schema changed (three new indexes: `provider_reviews(createdAt)`, `bookings(launchLeadId)`, GIN on `bookings.serviceEvidence`), and `SCALE_MAX_P95_MS=5000 npm run test:scale`; exact counts are in each PR. The large run passed three times at 12 operations in flight with zero errors; numbers are in `reports/scale-review/2026-11-14-crew-hot-path.md`. Run on Node 22 because the default Homebrew Node 25 fails to start on this machine.
+- Known defects: CI on main failed once after #36 merged (provider order in a parity test); fixed by #42. #42 was merged while its web smoke and mobile export jobs were still running. #38's first CI run failed the scale gate because its test left queued notifications; fixed before merge.
+- Screenshot paths: none; no screen changed.
+- Recommended next task: profile the recurring writes (plan creation, next-visit generation, rescheduling) on the large dataset and cut their query count.
+
 ## Current checkpoint: crew reconciliation off the schedule read
 
 - Updated: November 14, 2026 (UTC).
