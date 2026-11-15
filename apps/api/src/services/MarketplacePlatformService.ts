@@ -23523,10 +23523,12 @@ export class MarketplacePlatformService {
   private async createNotification(
     payload: Omit<AppNotification, "id" | "isRead" | "createdAt">,
     forcedChannels: NotificationChannel[] = [],
-    id: string = crypto.randomUUID()
+    requestedId?: string
   ): Promise<AppNotification> {
+    const id = requestedId ?? crypto.randomUUID();
     return this.repository.withLock(`notification:${id}`, async repository => {
-      const existing = await repository.findNotificationById(id);
+      // Only a caller-chosen id can already exist; a fresh random one cannot.
+      const existing = requestedId ? await repository.findNotificationById(id) : undefined;
       if (existing) return existing;
       const notification = await repository.createNotification({ ...payload, id, isRead: false, createdAt: new Date().toISOString() });
       await this.withRepository(repository).queueNotificationDeliveries(notification, forcedChannels);
@@ -23579,29 +23581,26 @@ export class MarketplacePlatformService {
       return;
     }
 
-    await Promise.all(
-      channels.map(async (channel) => {
-        await this.repository.createNotificationDelivery({
-          id: crypto.randomUUID(),
-          notificationId: notification.id,
-          recipientId: notification.recipientId,
-          recipientRole: notification.recipientRole,
-          category: notification.category,
-          channel,
-          destination: this.getNotificationDestination(channel, destinationProfile),
-          provider: "queued",
-          status: "queued",
-          title: notification.title,
-          bodyPreview: notification.body.slice(0, 160),
-          createdAt: new Date().toISOString(),
-          attemptCount: 0,
-          lastAttemptAt: undefined,
-          nextRetryAt: undefined,
-          sentAt: undefined,
-          errorMessage: undefined
-        });
-
-      })
+    await this.repository.createNotificationDeliveries(
+      channels.map((channel) => ({
+        id: crypto.randomUUID(),
+        notificationId: notification.id,
+        recipientId: notification.recipientId,
+        recipientRole: notification.recipientRole,
+        category: notification.category,
+        channel,
+        destination: this.getNotificationDestination(channel, destinationProfile),
+        provider: "queued",
+        status: "queued",
+        title: notification.title,
+        bodyPreview: notification.body.slice(0, 160),
+        createdAt: new Date().toISOString(),
+        attemptCount: 0,
+        lastAttemptAt: undefined,
+        nextRetryAt: undefined,
+        sentAt: undefined,
+        errorMessage: undefined
+      }))
     );
   }
 
@@ -23631,56 +23630,11 @@ export class MarketplacePlatformService {
     phone: string;
     pushTokens: string[];
   } | undefined> {
-    const pushTokens = (
-      await this.repository.listActivePushDevicesByRecipient(identity.userId, identity.role)
-    ).map((device) => device.token);
-
-    if (identity.role === "customer") {
-      const customer = await this.repository.findCustomerById(identity.userId);
-      if (!customer) {
-        return undefined;
-      }
-      return {
-        email: customer.email,
-        phone: customer.phone,
-        pushTokens
-      };
-    }
-
-    if (identity.role === "provider") {
-      const provider = await this.repository.findProviderById(identity.userId);
-      if (!provider) {
-        return undefined;
-      }
-      return {
-        email: provider.email,
-        phone: provider.phone,
-        pushTokens
-      };
-    }
-
-    if (identity.role === "ops") {
-      const opsUser = await this.repository.findOpsUserById(identity.userId);
-      if (!opsUser) {
-        return undefined;
-      }
-      return {
-        email: opsUser.email,
-        phone: opsUser.phone,
-        pushTokens
-      };
-    }
-
-    const crewMember = await this.repository.findCrewMemberById(identity.userId);
-    if (!crewMember) {
-      return undefined;
-    }
-
-    return {
-      email: crewMember.email,
-      phone: crewMember.phone,
-      pushTokens
-    };
+    const [devices, contact] = await Promise.all([
+      this.repository.listActivePushDevicesByRecipient(identity.userId, identity.role),
+      this.repository.findNotificationContact(identity.userId, identity.role)
+    ]);
+    return contact ? { ...contact, pushTokens: devices.map((device) => device.token) } : undefined;
   }
 
   private getNotificationDestination(
