@@ -10,8 +10,10 @@
  */
 import { parseArgs } from "node:util";
 import { join } from "node:path";
+import { userInfo } from "node:os";
 import { PrismaClient } from "@prisma/client";
 import { mapConcurrent } from "../../apps/api/src/concurrency";
+import { assertLocalTestDatabase } from "../lib/local-database-guard.mts";
 import { ApiError } from "./client.mts";
 import { startLocalEnvironment, repoRoot } from "./environment.mts";
 import { closeDisputeWindows } from "./billing.mts";
@@ -43,6 +45,8 @@ const { values: args } = parseArgs({
   }
 });
 
+// Refuse a non-local database before anything is written.
+assertLocalTestDatabase(process.env.BOT_DATABASE_URL ?? `postgresql://${userInfo().username}@localhost:5432/yardmatch_bots_test`, "BOT_DATABASE_URL");
 const counts = { owners: Number(args.owners), providers: Number(args.providers), crew: Number(args.crew) };
 const seed = Number(args.seed), bookingsPerOwner = Number(args["bookings-per-owner"]), concurrency = Number(args.concurrency);
 const rng = new Rng(seed);
