@@ -1,0 +1,7 @@
+{
+  "persona": "forgot-password",
+  "seed": 21,
+  "webBaseUrl": "http://localhost:3012",
+  "apiBaseUrl": "http://127.0.0.1:4012",
+  "ownerId": "6039c3e4-7ea5-466e-a1c4-06f650570e5c"
+}

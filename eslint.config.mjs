@@ -17,6 +17,7 @@ export default defineConfig([
   globalIgnores([
     "**/node_modules/**",
     "**/.next/**",
+    "**/.next-*/**",
     "**/.expo/**",
     "**/dist/**",
     "**/build/**",

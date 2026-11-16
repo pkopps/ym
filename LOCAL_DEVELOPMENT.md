@@ -292,6 +292,12 @@ After the bots finish, the run fast-forwards finder-fee billing past the 72-hour
 
 It writes `reports/network-sim/<timestamp>-seed-<seed>/summary.md` with the densities side by side (search fill rate, dead zones by ZIP and why searches went unmatched, time to acceptance, utilization and how evenly jobs spread, miles per job and per route, crew fill rate and time, recovery rate), one JSON file and one SVG map per density. Crew is measured as a provider tool; the simulation does not change how crew is matched. The numbers come from invented supply and demand on the real matching rules; they do not predict the real market.
 
+### Explorer runs
+
+`npm run explorer -- --persona <name>` starts a local API (port 4012, database `yardmatch_explorer_test` or `EXPLORER_DATABASE_URL`, launch flags off) and the web app (port 3012, same flags), seeds the world that persona needs, writes `reports/explorer/runs/<persona>-<timestamp>/brief.md` (a goal, not steps), prints `READY`, and keeps both servers up until stopped. Personas: `first-time-owner`, `owner-two-properties`, `new-provider`, `provider-busy-day`, `crew-member`, `forgot-password`. Then use the web app in a browser as that persona (the `yardmatch-explorer` agent describes how) and write `reports/explorer/<persona>-<timestamp>.md`.
+
+`npm run explorer:tools -- capture --web <url> --api <url> --path <path> --out <dir> --name <step> [--email … --password …]` saves screenshots at 1440x900 and 390x844. A booking draft lives only in the tab that made it, so the review page can't be captured this way. `expire-reset --email …` expires the newest reset code in the explorer database; `check-session --api … --token-file …` reports whether a saved session still works.
+
 ## Public web booking journey
 
 The public homepage selects service and area without timing. Selecting a service opens a location prompt; browser permission is requested only after “Use my location.” Manual area entry remains available. Use the seeded Brooklyn/Jersey City providers for the full local journey; no fake third recommendation is inserted where only two qualified providers exist.

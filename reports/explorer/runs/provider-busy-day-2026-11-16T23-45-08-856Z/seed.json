@@ -1,0 +1,8 @@
+{
+  "persona": "provider-busy-day",
+  "seed": 21,
+  "webBaseUrl": "http://localhost:3012",
+  "apiBaseUrl": "http://127.0.0.1:4012",
+  "providerId": "69f128d3-3d4a-4e51-8518-7ddd918fb44e",
+  "bookings": 7
+}
