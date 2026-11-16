@@ -32,6 +32,7 @@ export interface ProviderBot {
   client: BotClient;
   rng: Rng;
   address: BotAddress;
+  serviceRadiusMiles: number;
   staffingMode: "auto-accept" | "review-first";
   acceptRate: number;
   publishedHours: number;
@@ -81,10 +82,11 @@ export async function signUpProvider(settings: BotSettings, ops: BotClient, rng:
   const client = new BotClient(settings.baseUrl, settings.recorder, "provider", `provider-${index}`);
   const address = addressIn(rng, zone ?? pickZone(rng, settings.zones), 2);
   const mail = email(settings, "provider", index);
+  const serviceRadiusMiles = rng.int(settings.radiusMiles[0], settings.radiusMiles[1]);
   const registered = await client.post<any>("/api/auth/register", {
     role: "provider", fullName: `Provider ${index}`, email: mail, password: BOT_PASSWORD, phone: `555-02${String(index).padStart(2, "0")}`,
     address, companyName: `Bot Lawn ${index}`, bio: "Insured local lawn and property care with careful arrivals and complete proof of work.",
-    yearsExperience: rng.int(1, 20), serviceRadiusMiles: rng.int(settings.radiusMiles[0], settings.radiusMiles[1]), categories: rng.pick(CATEGORY_SETS)
+    yearsExperience: rng.int(1, 20), serviceRadiusMiles, categories: rng.pick(CATEGORY_SETS)
   }, { action: "sign up" });
   client.token = registered.session.token;
   const id = registered.user.id as string;
@@ -99,7 +101,7 @@ export async function signUpProvider(settings: BotSettings, ops: BotClient, rng:
   const staffingMode = rng.chance(0.5) ? "auto-accept" : "review-first";
   const settingsBody = { serviceRadiusMiles: registered.user.serviceRadiusMiles, staffingMode, routeLeaderMode: rng.chance(0.4) ? "accepted-crew-fallback" : "provider-only" };
   await client.attempt(() => client.post("/api/providers/settings", settingsBody, { action: "update settings" }));
-  const bot: ProviderBot = { id, email: mail, client, rng, address, staffingMode, acceptRate: 0.75 + rng.next() * 0.2, publishedHours: 0 };
+  const bot: ProviderBot = { id, email: mail, client, rng, address, serviceRadiusMiles, staffingMode, acceptRate: 0.75 + rng.next() * 0.2, publishedHours: 0 };
   await publishAvailability(settings, bot);
   return bot;
 }

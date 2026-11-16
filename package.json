@@ -31,6 +31,7 @@
     "test:scale": "node --import tsx scripts/scale-smoke.mts",
     "bots": "node --import tsx scripts/bots/run.mts",
     "bots:check": "node --import tsx scripts/bots/check-invariants.mts",
+    "bots:simulate": "node --import tsx scripts/bots/simulate.mts",
     "test:api:postgres": "npm --workspace @yardmatch/api run test:postgres",
     "test:api:smoke": "node scripts/api-smoke.mjs",
     "test:web:smoke": "playwright test --config=playwright.config.ts",

@@ -1,0 +1,19 @@
+{
+  "densities": [
+    5,
+    15,
+    40
+  ],
+  "owners": 150,
+  "crewPerProvider": 2,
+  "radiusMiles": [
+    8,
+    20
+  ],
+  "requestsPerOwner": 2,
+  "ticks": 36,
+  "jobsPerDay": 5,
+  "seed": 3,
+  "concurrency": 24,
+  "market": "Barnegat, NJ"
+}
