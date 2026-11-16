@@ -1,0 +1,14 @@
+{
+  "searches": 360,
+  "emptySearches": 34,
+  "booked": 349,
+  "recurring": 72,
+  "bookFailures": 0,
+  "accepted": 317,
+  "declined": 74,
+  "completed": 325,
+  "cancelled": 26,
+  "rescheduled": 27,
+  "disputed": 56,
+  "races": 97
+}

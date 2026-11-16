@@ -35,3 +35,7 @@ reports/agent-checkpoints/*/latest/**
 # Claude Code personal overrides
 .claude/settings.local.json
 CLAUDE.local.md
+# Bot runs: keep each run's summary; the raw event, response and API logs stay local.
+/reports/bot-runs/*/*.jsonl
+/reports/bot-runs/*/api.log
+/reports/bot-runs/*/invariants.json

@@ -1,0 +1,13 @@
+{
+  "examined": 194,
+  "paid": 145,
+  "waived": 11,
+  "declined": 0,
+  "unknown": 0,
+  "charged": 145,
+  "statuses": {
+    "waived": 11,
+    "paid": 145,
+    "blocked-by-dispute": 38
+  }
+}

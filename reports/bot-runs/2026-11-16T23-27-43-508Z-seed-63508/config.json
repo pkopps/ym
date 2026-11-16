@@ -1,0 +1,11 @@
+{
+  "owners": 1,
+  "providers": 8,
+  "crew": 16,
+  "seed": 63508,
+  "bookingsPerOwner": 3,
+  "concurrency": 24,
+  "minDelayMs": 20,
+  "maxDelayMs": 400,
+  "rounds": 6
+}

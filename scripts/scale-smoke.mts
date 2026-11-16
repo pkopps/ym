@@ -8,11 +8,9 @@ import { MarketplacePlatformService } from "../apps/api/src/services/Marketplace
 import { ProductAnalytics } from "../apps/api/src/observability/ProductAnalytics";
 import { hashPassword, verifyPassword } from "../apps/api/src/auth";
 import { mapConcurrent } from "../apps/api/src/concurrency";
+import { assertLocalTestDatabase } from "./lib/local-database-guard.mts";
 
-const url = new URL(process.env.TEST_DATABASE_URL ?? "postgresql://missing/missing");
-if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || !/test|scale/i.test(url.pathname)) {
-  throw new Error("Use TEST_DATABASE_URL for a disposable local database whose name includes test or scale.");
-}
+const url = assertLocalTestDatabase(process.env.TEST_DATABASE_URL);
 // SCALE_LARGE=1 runs the larger dataset and concurrency. It is for local before and after comparisons, not for CI.
 // Its pool timeout is off (0), so an operation that cannot get a connection waits and the wait shows up as latency.
 const large = process.env.SCALE_LARGE === "1";
