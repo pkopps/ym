@@ -186,6 +186,8 @@ model Booking {
   lateNoticeSentAt                DateTime?
   lateEtaIso                      DateTime?
   lateReason                      String?
+  /// The customer is fine with the provider arriving earlier the same day.
+  earlyArrivalOk                  Boolean                     @default(false)
   recovery                        Json?
   scheduleUpdates                 Json                        @default("[]")
   scheduleVersion                 Int                         @default(0)
@@ -236,6 +238,8 @@ model RecurringServicePlan {
   status                  String
   anchorScheduledStartIso DateTime
   anchorScheduledEndIso   DateTime
+  /// Copied onto each visit the plan generates.
+  earlyArrivalOk          Boolean   @default(false)
   lastGeneratedBookingId  String?
   lastGeneratedAt         DateTime?
   lastSchedulingAttemptAt DateTime?

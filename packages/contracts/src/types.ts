@@ -965,6 +965,8 @@ export interface ProviderStaffingJobSummary {
   status: BookingStatus;
   scheduledStartIso: string;
   scheduledEndIso: string;
+  /** The customer is fine with the provider arriving earlier the same day. */
+  earlyArrivalOk?: boolean;
   assignedRouteLeaderCrewMemberId?: string;
   assignedRouteLeaderCrewMemberName?: string;
   requiresRouteLeaderAssignment: boolean;
@@ -1071,6 +1073,8 @@ export interface CrewMatchSummary {
   serviceAddress: Address;
   scheduledStartIso: string;
   scheduledEndIso: string;
+  /** The customer is fine with the provider arriving earlier the same day. */
+  earlyArrivalOk?: boolean;
   bookingStatus: BookingStatus;
   assignedRouteLeaderCrewMemberId?: string;
   isAssignedRouteLeader: boolean;
@@ -1222,6 +1226,21 @@ export function bookingScheduleStartIso(date: string, hour: number): string {
   return new Date(utc.getTime() + (hour - localHour) * 3600000).toISOString();
 }
 
+/**
+ * Earlier arrival times a provider can offer for a visit: every half hour from 7 a.m. Eastern on the visit's day (and
+ * at least 30 minutes from now) up to 30 minutes before the current start.
+ */
+export function earlierArrivalOptions(scheduledStartIso: string, now = Date.now()): string[] {
+  const start = Date.parse(scheduledStartIso);
+  const day = new Date(start).toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const sevenAm = Date.parse(bookingScheduleStartIso(day, 7));
+  const step = 30 * 60_000;
+  const first = Math.max(sevenAm, Math.ceil((now + step) / step) * step);
+  const options: string[] = [];
+  for (let at = first; at <= start - step; at += step) options.push(new Date(at).toISOString());
+  return options;
+}
+
 export function bookingScheduleWindowHour(iso: string): 7 | 12 | 16 {
   const hour = Number(new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", hour: "numeric", hourCycle: "h23" }));
   return hour < 12 ? 7 : hour < 16 ? 12 : 16;
@@ -1229,7 +1248,7 @@ export function bookingScheduleWindowHour(iso: string): 7 | 12 | 16 {
 
 export interface BookingScheduleUpdate {
   id: string;
-  kind: "running-late" | "weather" | "reschedule";
+  kind: "running-late" | "weather" | "reschedule" | "early-arrival";
   state: "active" | "accepted" | "declined" | "resolved";
   createdAt: string;
   updatedAt: string;
@@ -1307,6 +1326,8 @@ export interface Booking {
   lateNoticeSentAt?: string;
   lateEtaIso?: string;
   lateReason?: string;
+  /** The customer is fine with the provider arriving earlier the same day. */
+  earlyArrivalOk?: boolean;
   scheduleUpdates?: BookingScheduleUpdate[];
   scheduleVersion?: number;
   activeExceptionType?: BookingExceptionType;
@@ -1434,6 +1455,7 @@ export interface RecurringServicePlan {
   status: RecurringServicePlanStatus;
   anchorScheduledStartIso: string;
   anchorScheduledEndIso: string;
+  earlyArrivalOk?: boolean;
   lastGeneratedBookingId?: string;
   lastGeneratedAt?: string;
   lastSchedulingAttemptAt?: string;
@@ -3537,6 +3559,8 @@ export interface CreateBookingRequest {
   scheduledStartIso: string;
   scheduledEndIso: string;
   notes: string;
+  /** The customer is fine with the provider arriving earlier the same day. */
+  earlyArrivalOk?: boolean;
   totalCents: number;
   recommendationSessionId?: string;
   recommendedProviderId?: string;

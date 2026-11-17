@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { bookingScheduleStartIso, bookingScheduleWindowHour, type Booking, BookingScheduleUpdate, ProviderStaffingJobSummary, UpdateBookingScheduleRequest } from "@yardmatch/contracts";
+import { bookingScheduleStartIso, bookingScheduleWindowHour, earlierArrivalOptions, type Booking, BookingScheduleUpdate, ProviderStaffingJobSummary, UpdateBookingScheduleRequest } from "@yardmatch/contracts";
 import { useI18n } from "@yardmatch/i18n/react";
 import { addLocalePrefix } from "@yardmatch/i18n";
 import { createAuthenticatedWebApiClient } from "../lib/api";
@@ -22,14 +22,21 @@ export function BookingSchedulePanel({ booking, bookingId, provider = false, onU
   const [nextMinutes, setNextMinutes] = useState(60);
   const [date, setDate] = useState("");
   const [hour, setHour] = useState(12);
+  const [earlyStart, setEarlyStart] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const latest = booking.scheduleUpdates?.at(-1);
-  const active = latest && ["active", "declined"].includes(latest.state);
+  const early = latest?.kind === "early-arrival";
+  // An answered early-arrival offer needs nothing more; the visit's own window applies again.
+  const active = latest && (early ? latest.state === "active" : ["active", "declined"].includes(latest.state));
+  const timeOnly = (iso: string) => i18n.formatDate(iso, { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
+  const earlyOptions = earlierArrivalOptions(booking.scheduledStartIso);
   const actionable = ["confirmed", "in-progress"].includes(booking.status);
   const format = (iso: string) => i18n.formatDate(iso, { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" });
-  const heading = (update: BookingScheduleUpdate) => i18n.t(update.state === "accepted" ? "schedule.accepted" : update.state === "declined" ? "schedule.declined" : update.kind === "weather" ? "schedule.weather" : update.kind === "reschedule" ? "schedule.proposal" : "schedule.late");
+  const heading = (update: BookingScheduleUpdate) => i18n.t(update.kind === "early-arrival"
+    ? update.state === "accepted" ? "schedule.early_accepted" : update.state === "declined" ? "schedule.early_declined" : "schedule.early"
+    : update.state === "accepted" ? "schedule.accepted" : update.state === "declined" ? "schedule.declined" : update.kind === "weather" ? "schedule.weather" : update.kind === "reschedule" ? "schedule.proposal" : "schedule.late");
 
   async function run(action: () => Promise<unknown>) {
     setWorking(true); setError(""); setMessage("");
@@ -49,6 +56,12 @@ export function BookingSchedulePanel({ booking, bookingId, provider = false, onU
         payload.proposedStartIso = bookingScheduleStartIso(date, hour);
         payload.proposedEndIso = new Date(Date.parse(payload.proposedStartIso) + Date.parse(booking.scheduledEndIso) - Date.parse(booking.scheduledStartIso)).toISOString();
       }
+      if (kind === "early-arrival") {
+        payload.proposedStartIso = earlyStart || earlyOptions[0];
+        payload.proposedEndIso = new Date(Date.parse(payload.proposedStartIso) + Date.parse(booking.scheduledEndIso) - Date.parse(booking.scheduledStartIso)).toISOString();
+        // The customer's answer is due by the earlier time itself.
+        payload.nextUpdateByIso = payload.proposedStartIso;
+      }
       await createAuthenticatedWebApiClient().updateBookingSchedule(payload);
     });
   }
@@ -60,16 +73,22 @@ export function BookingSchedulePanel({ booking, bookingId, provider = false, onU
       <p>{latest.reason}</p>
       {latest.kind === "weather" && active ? <p>{i18n.t("schedule.weather_body")}</p> : null}
       {latest.expectedArrivalIso && active ? <p>{i18n.t("schedule.eta", { time: format(latest.expectedArrivalIso) })}</p> : null}
-      {latest.proposedStartIso ? <p><strong>{i18n.formatDate(latest.proposedStartIso, { timeZone: "America/New_York", month: "short", day: "numeric" })} · {i18n.t(bookingScheduleWindowHour(latest.proposedStartIso) === 7 ? "schedule.morning" : bookingScheduleWindowHour(latest.proposedStartIso) === 12 ? "schedule.afternoon" : "schedule.evening")}</strong></p> : null}
+      {latest.proposedStartIso && !early ? <p><strong>{i18n.formatDate(latest.proposedStartIso, { timeZone: "America/New_York", month: "short", day: "numeric" })} · {i18n.t(bookingScheduleWindowHour(latest.proposedStartIso) === 7 ? "schedule.morning" : bookingScheduleWindowHour(latest.proposedStartIso) === 12 ? "schedule.afternoon" : "schedule.evening")}</strong></p> : null}
+      {early && latest.proposedStartIso && latest.state === "active" ? <p>{i18n.t("schedule.early_body", { time: timeOnly(latest.proposedStartIso) })}</p> : null}
+      {early && latest.proposedStartIso && latest.state === "accepted" ? <p>{i18n.t("schedule.early_accepted_body", { time: timeOnly(latest.proposedStartIso) })}</p> : null}
+      {!provider && early && latest.proposedStartIso && latest.state === "active" ? <div className="cta-row">
+        <button className="button" type="button" disabled={working} onClick={() => void run(() => createAuthenticatedWebApiClient().respondBookingSchedule({ bookingId, updateId: latest.id, action: "accept" }))}>{i18n.t("schedule.early_accept", { time: timeOnly(latest.proposedStartIso) })}</button>
+        <button className="button-secondary" type="button" disabled={working} onClick={() => void run(() => createAuthenticatedWebApiClient().respondBookingSchedule({ bookingId, updateId: latest.id, action: "decline" }))}>{i18n.t("schedule.early_decline")}</button>
+      </div> : null}
       {latest.kind === "reschedule" && latest.state === "active" ? <p>{i18n.t(provider ? "schedule.provider_proposal_body" : "schedule.proposal_body")}</p> : null}
-      {latest.state === "declined" ? <p>{i18n.t("schedule.declined_body")}</p> : null}
-      {latest.state === "accepted" ? <p>{i18n.t("schedule.accepted_body")}</p> : null}
-      {active ? <p><strong>{i18n.t(Date.parse(latest.nextUpdateByIso) <= Date.now() ? "schedule.overdue" : "schedule.next_update", { time: format(latest.nextUpdateByIso) })}</strong></p> : null}
+      {latest.state === "declined" && !early ? <p>{i18n.t("schedule.declined_body")}</p> : null}
+      {latest.state === "accepted" && !early ? <p>{i18n.t("schedule.accepted_body")}</p> : null}
+      {active && !early ? <p><strong>{i18n.t(Date.parse(latest.nextUpdateByIso) <= Date.now() ? "schedule.overdue" : "schedule.next_update", { time: format(latest.nextUpdateByIso) })}</strong></p> : null}
       {!provider && latest.kind === "reschedule" && latest.state === "active" ? <div className="cta-row">
         <button className="button" type="button" disabled={working} onClick={() => void run(() => createAuthenticatedWebApiClient().respondBookingSchedule({ bookingId, updateId: latest.id, action: "accept" }))}>{i18n.t("schedule.accept")}</button>
         <button className="button-secondary" type="button" disabled={working} onClick={() => void run(() => createAuthenticatedWebApiClient().respondBookingSchedule({ bookingId, updateId: latest.id, action: "decline" }))}>{i18n.t("schedule.decline")}</button>
       </div> : null}
-      {!provider && active ? <a href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(bookingId)}&issueType=service-quality`, i18n.locale)}>{i18n.t("schedule.help")}</a> : null}
+      {!provider && active && !early ? <a href={addLocalePrefix(`/help?bookingId=${encodeURIComponent(bookingId)}&issueType=service-quality`, i18n.locale)}>{i18n.t("schedule.help")}</a> : null}
       <small>{i18n.t("schedule.updated", { time: format(latest.updatedAt) })}</small>
     </div> : null}
     {provider && actionable ? <details className="service-card-disclosure">
@@ -77,7 +96,14 @@ export function BookingSchedulePanel({ booking, bookingId, provider = false, onU
       <form className="service-card-disclosure__body" onSubmit={event => { event.preventDefault(); void sendUpdate(); }}>
         <label className="form-field">{i18n.t("schedule.type")}<select value={kind} onChange={event => setKind(event.target.value as BookingScheduleUpdate["kind"])}>
           <option value="running-late">{i18n.t("schedule.late")}</option><option value="weather">{i18n.t("schedule.weather")}</option><option value="reschedule">{i18n.t("schedule.proposal")}</option>
+          {booking.status === "confirmed" ? <option value="early-arrival">{i18n.t("schedule.early_option")}</option> : null}
         </select></label>
+        {kind === "early-arrival" ? <>
+          <p>{i18n.t("schedule.early_provider_body")}</p>
+          {earlyOptions.length ? <label className="form-field">{i18n.t("schedule.early_time")}<select value={earlyStart || earlyOptions[0]} onChange={event => setEarlyStart(event.target.value)}>
+            {earlyOptions.map(value => <option key={value} value={value}>{timeOnly(value)}</option>)}
+          </select></label> : <p role="status">{i18n.t("schedule.early_none")}</p>}
+        </> : null}
         {kind === "running-late" ? <label className="form-field">{i18n.t("schedule.arrival_in")}<select value={minutes} onChange={event => setMinutes(Number(event.target.value))}>{[15, 30, 60, 90, 120, 180].map(value => <option key={value} value={value}>{i18n.t("schedule.minutes", { count: value })}</option>)}</select></label> : null}
         {kind === "reschedule" ? <>
           <p>{i18n.t(provider ? "schedule.provider_proposal_body" : "schedule.proposal_body")}</p>
@@ -85,8 +111,8 @@ export function BookingSchedulePanel({ booking, bookingId, provider = false, onU
           <label className="form-field">{i18n.t("schedule.window")}<select value={hour} onChange={event => setHour(Number(event.target.value))}><option value={7}>{i18n.t("schedule.morning")}</option><option value={12}>{i18n.t("schedule.afternoon")}</option><option value={16}>{i18n.t("schedule.evening")}</option></select></label>
         </> : null}
         <label className="form-field">{i18n.t("schedule.reason")}<textarea required minLength={3} maxLength={500} value={reason} onChange={event => setReason(event.target.value)} /></label>
-        <label className="form-field">{i18n.t("schedule.follow_up")}<select value={nextMinutes} onChange={event => setNextMinutes(Number(event.target.value))}>{[30, 60, 120, 240].map(value => <option key={value} value={value}>{i18n.t("schedule.minutes", { count: value })}</option>)}</select></label>
-        <button className="button" disabled={working} type="submit">{i18n.t("schedule.notify")}</button>
+        {kind === "early-arrival" ? null : <label className="form-field">{i18n.t("schedule.follow_up")}<select value={nextMinutes} onChange={event => setNextMinutes(Number(event.target.value))}>{[30, 60, 120, 240].map(value => <option key={value} value={value}>{i18n.t("schedule.minutes", { count: value })}</option>)}</select></label>}
+        <button className="button" disabled={working || (kind === "early-arrival" && !earlyOptions.length)} type="submit">{i18n.t("schedule.notify")}</button>
       </form>
     </details> : null}
     {booking.scheduleUpdates && booking.scheduleUpdates.length > (latest?.state === "resolved" ? 0 : 1) ? <details><summary>{i18n.t("schedule.history")}</summary>{[...booking.scheduleUpdates].reverse().slice(latest?.state === "resolved" ? 0 : 1).map(update => <p key={update.id}><strong>{heading(update)}</strong> · {format(update.updatedAt)}<br />{update.reason}</p>)}</details> : null}

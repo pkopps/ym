@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: early arrival and missed-window notices
+
+- Updated: November 17, 2026 (UTC).
+- Branch and commit: `claude/early-arrival`; see the PR for the commit.
+- Completed: customers can opt in to earlier arrivals the same day (bookings and plans; migration `20261117020000_early_arrival_ok`). Providers can offer an earlier time from the web portal and the provider app; it applies at once for opted-in customers and is a one-tap yes or no for everyone else. Accepted crew who are free stay on the job. The follow-up sweep nudges the provider in a window's last hour and tells the customer plainly when a window ends with nothing started. Providers see an "Early arrival OK" badge. Also found and fixed separately (#55): a broken stylesheet from the #20 merge.
+- In progress: none.
+- Remaining: the scheduled sweep only runs when `OPS_AUTOMATION_ENABLED` is set for the operations workflow.
+- Blockers: none.
+- Changed workflows: provider "Update customer about timing" has a new "Earlier the same day" option; customers see an opt-in checkbox when booking.
+- Validation: `npm run typecheck`; `npm run lint` with `--ignore-pattern '.claude/**'`; `npm run i18n:validate`; `npm run test:api` (all passed); `npm run test:api:postgres` (35 passed); `prisma migrate diff --exit-code` (no drift); `npm run test:web:smoke` (all passed, including `early-arrival.spec.ts`); `npm run build:provider-mobile`; browser pass with launch flags off (opt-in saved, badge shown, offer applied for an opted-in visit).
+- Known defects: none found.
+- Screenshot paths: `reports/agent-checkpoints/engineer/latest/customer-early-arrival-offer-desktop.png`, `…-mobile.png`.
+- Recommended next task: re-run the explorer personas against main.
+
 ## Current checkpoint: booking terms and confirmations
 
 - Updated: November 17, 2026 (UTC).

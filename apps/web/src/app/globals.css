@@ -5812,3 +5812,8 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
 .page-error-state__reference {
   font-size: 0.875rem;
 }
+
+.early-arrival-opt-in { display: flex; align-items: flex-start; gap: var(--ym-space-3); margin: var(--ym-space-3) 0; cursor: pointer; }
+.early-arrival-opt-in input { width: 1.25rem; height: 1.25rem; margin-top: 0.15rem; flex: none; accent-color: var(--ym-color-primary-strong); }
+.early-arrival-opt-in span { display: grid; gap: 0.15rem; }
+.early-arrival-opt-in small { color: var(--ym-color-muted); font-size: var(--ym-text-sm); }

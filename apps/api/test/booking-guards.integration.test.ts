@@ -39,6 +39,10 @@ test(
       const first = await book(0, requestId);
       const again = await book(0, requestId);
       assert.equal(again.id, first.id);
+      // The early-arrival opt-in round-trips through Postgres (off by default).
+      assert.equal((await repository.findBookingById(first.id))!.earlyArrivalOk, undefined);
+      await repository.updateBooking(first.id, { earlyArrivalOk: true });
+      assert.equal((await repository.findBookingById(first.id))!.earlyArrivalOk, true);
       await assert.rejects(book(1), /no longer open with this provider/);
     } finally {
       await prisma.crewMatch.deleteMany({ where: { providerId: provider.id } });

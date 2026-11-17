@@ -57,3 +57,15 @@ Weather holds are provider-reported. Forecast ingestion, automatically detecting
 ## Provider-caused recovery and property review
 
 See [the critical-path acceptance matrix and rollout runbook](CRITICAL_PATH_ACCEPTANCE.md). Provider/ops credential review and owned availability controls are now available. Declined/withdrawn or overdue visits remain open for explicit customer recovery consent; replacements preserve the agreed price, release previous crew and require new provider confirmation. Property corrections require provider review for confirmed visits and are blocked once travel starts.
+
+## Early arrival
+
+Customers can tick "{provider} can come earlier the same day" when they book or start a plan (off by default; plans copy it to every visit). Providers can send an "Earlier the same day" update (web and provider app) with a time every half hour from 7 a.m. up to 30 minutes before the visit, never earlier than now.
+
+- If the customer opted in, the earlier time applies at once and the customer, provider and any kept crew are told when to expect them.
+- Otherwise the customer gets a one-tap "Yes, come at {time}" or "Keep my window". Nothing moves until they answer, and the offer lapses at the offered time.
+- Accepting keeps the price, keeps accepted crew who are free at the new time (others go back to provider review), and rechecks the provider's calendar.
+- An answered offer is not an overdue update.
+
+The schedule follow-up sweep also nudges the provider in the last hour of a window when nothing has started, and at the window's end tells the customer the visit hasn't started, that the booking is still open, and that they can get help or choose another provider.
+
