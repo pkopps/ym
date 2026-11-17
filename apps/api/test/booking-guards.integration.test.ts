@@ -20,6 +20,7 @@ test(
     const repository = new PrismaMarketplaceRepository(prisma);
     const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
     const prefix = `guard-it-${randomUUID()}`;
+    const startedAt = new Date();
     const { provider, customers } = await seedFinderFeeParties(repository, [3_000, 3_000], prefix);
     try {
       // Approve the provider the way ops would; the workflow helper's credential update does not reach Postgres.
@@ -41,7 +42,10 @@ test(
       await assert.rejects(book(1), /no longer open with this provider/);
     } finally {
       await prisma.crewMatch.deleteMany({ where: { providerId: provider.id } });
-      await prisma.appNotification.deleteMany({ where: { recipientId: { in: [provider.id, ...customers.map(row => row.id)] } } });
+      // Bookings notify the provider, the customer and ops, and queue deliveries. Integration tests run one at a time,
+      // so everything created since this test started is its own; leftovers would skew the notification worker test.
+      await prisma.notificationDelivery.deleteMany({ where: { createdAt: { gte: startedAt } } });
+      await prisma.appNotification.deleteMany({ where: { createdAt: { gte: startedAt } } });
       await prisma.booking.deleteMany({ where: { providerId: provider.id } });
       await prisma.customerProperty.deleteMany({ where: { customerId: { in: customers.map(row => row.id) } } });
       await prisma.customerProfile.deleteMany({ where: { userId: { in: customers.map(row => row.id) } } });
