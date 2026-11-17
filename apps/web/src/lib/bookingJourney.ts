@@ -23,6 +23,8 @@ export type BookingDraft = {
   returnTo: string;
   bookingId?: string;
   confirmationAttempted?: boolean;
+  /** The customer is fine with the provider arriving earlier the same day. */
+  earlyArrivalOk?: boolean;
 };
 
 export function journeyApi() {

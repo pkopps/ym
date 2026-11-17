@@ -223,7 +223,8 @@ function getRequestStepStatus(stepIndex: number, activeStepIndex: number): Reque
 
 function formatBookingStatusTitle(i18n: I18nInstance, booking: Booking) {
   const update = booking.scheduleUpdates?.at(-1);
-  if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather" : update.kind === "reschedule" ? "schedule.proposal" : "schedule.late");
+  if (update?.kind === "early-arrival" && update.state === "active") return i18n.t("schedule.early");
+  if (update && update.kind !== "early-arrival" && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather" : update.kind === "reschedule" ? "schedule.proposal" : "schedule.late");
   if (booking.onRouteConfirmedAt) {
     return i18n.t("customer_live.status.crew_on_way");
   }
@@ -259,7 +260,8 @@ function getBookingStateMessage(i18n: I18nInstance, booking: Booking, providerNa
   if (booking.recovery?.state === "open") return "Your visit needs your recovery choice. Select a replacement, cancel without a recovery fee, or get help.";
   if (payment?.status === "processing") return i18n.t("payments.processing.body");
   const update = booking.scheduleUpdates?.at(-1);
-  if (update && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather_body" : update.kind === "reschedule" ? "schedule.proposal_body" : "customer_live.state.late", { provider: providerName });
+  if (update?.kind === "early-arrival" && update.state === "active") return i18n.t("customer_live.state.early_offer", { provider: providerName });
+  if (update && update.kind !== "early-arrival" && ["active", "declined"].includes(update.state)) return i18n.t(update.kind === "weather" ? "schedule.weather_body" : update.kind === "reschedule" ? "schedule.proposal_body" : "customer_live.state.late", { provider: providerName });
   if (booking.onRouteConfirmedAt) {
     return i18n.t("customer_live.state.on_way", { provider: providerName });
   }
@@ -336,6 +338,8 @@ export function CustomerLiveDashboard() {
   const [quote, setQuote] = useState<InstantQuoteResponse | undefined>();
   const [providerResults, setProviderResults] = useState<SearchProvidersResponse | undefined>();
   const [loadingState, setLoadingState] = useState<"idle" | "loading">("idle");
+  // Off unless the customer says yes; it rides on the request or plan they send next.
+  const [earlyArrivalOk, setEarlyArrivalOk] = useState(false);
   const [providerSearchState, setProviderSearchState] = useState<"idle" | "loading" | "loaded">("idle");
   const [selectedCadence, setSelectedCadence] = useState<"one-time" | RecurringServiceFrequency>("one-time");
   const [showAlternativeProviders, setShowAlternativeProviders] = useState(false);
@@ -1069,6 +1073,7 @@ export function CustomerLiveDashboard() {
           notes: "",
           totalCents: providerQuote.estimatedPriceCents,
           quoteToken: providerQuote.quoteToken,
+          earlyArrivalOk,
           recommendationSessionId: providerResults?.recommendationSessionId,
           recommendedProviderId: providerResults?.recommendedProviderId,
           selectedProviderRank: rank,
@@ -1096,6 +1101,7 @@ export function CustomerLiveDashboard() {
           notes: "",
           totalCents: providerQuote.estimatedPriceCents,
           quoteToken: providerQuote.quoteToken,
+          earlyArrivalOk,
           frequency: selectedCadence,
           recommendationSessionId: providerResults?.recommendationSessionId,
           recommendedProviderId: providerResults?.recommendedProviderId,
@@ -2605,6 +2611,10 @@ export function CustomerLiveDashboard() {
                           </div>
                         </details>
                       ) : null}
+                      <label className="checkbox-field early-arrival-opt-in">
+                        <input type="checkbox" checked={earlyArrivalOk} onChange={event => setEarlyArrivalOk(event.target.checked)} />
+                        <span>{i18n.t("booking_terms.early_ok", { provider: recommendedProviderCard.provider.companyName })}<small>{i18n.t("booking_terms.early_ok_hint")}</small></span>
+                      </label>
                       <div className="cta-row">
                         <button
                           className="button"

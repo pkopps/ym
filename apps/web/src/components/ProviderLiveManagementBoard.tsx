@@ -1297,6 +1297,7 @@ export function ProviderLiveManagementBoard() {
                 <p>{i18n.t("provider_live.job.assigned_crew", { count: job.assignedCrewMembers })}</p>
                 <p>{i18n.t("provider_live.job.open_crew", { count: job.crewGap })}</p>
                 <p>{i18n.t("provider_live.job.status", { status: getProviderJobStatusLabel(i18n, job) })}</p>
+                {job.earlyArrivalOk ? <p><span className="result-badge">{i18n.t("provider_live.job.early_ok")}</span></p> : null}
                 {provider?.routeLeaderMode === "accepted-crew-fallback" ? (
                   <p>
                     {i18n.t("provider_live.job.route_leader", {

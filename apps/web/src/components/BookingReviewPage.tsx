@@ -63,7 +63,7 @@ export function BookingReviewPage() {
         requestId: draft.id, providerId: draft.provider.id, serviceAddress: draft.address, category: draft.categories[0],
         services: draft.quotes.map(quote => ({ category: quote.category, quoteToken: quote.quoteToken! })),
         scheduledStartIso: draft.slot.startIso, scheduledEndIso: draft.slot.endIso,
-        totalCents: draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), notes: "",
+        totalCents: draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), notes: "", earlyArrivalOk: draft.earlyArrivalOk === true,
         recommendationSessionId: draft.recommendationSessionId, recommendedProviderId: draft.recommendedProviderId, selectedProviderRank: draft.rank,
         viewedAlternativeProviders: draft.directory || draft.rank > 1, requestSource: "public-web-booking", recommendationSource: "public-web-listings", attribution: getLaunchAttributionContext()
       });
@@ -91,6 +91,9 @@ export function BookingReviewPage() {
       <button className="button-secondary" type="button" disabled={busy} onClick={() => setEditing(true)}>{i18n.t("booking_journey.review.edit")}</button>
     </section><section className="card journey-review-total"><div className="journey-total"><span>{i18n.t("booking_journey.review.total")}</span><strong>{i18n.formatCurrency(draft.quotes.reduce((sum, quote) => sum + quote.estimatedPriceCents, 0), "USD", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div><p>{i18n.t("booking_journey.book.no_charge")}</p>
       {notice ? <p role="status">{notice}</p> : null}{error ? <div role="alert" className="journey-error"><p>{error}</p><button className="button-secondary" type="button" disabled={busy || loading} onClick={() => void refresh(draft)}>{i18n.t("booking_journey.review.refresh")}</button></div> : null}
+      <label className="checkbox-field early-arrival-opt-in"><input type="checkbox" checked={draft.earlyArrivalOk === true} disabled={busy}
+        onChange={event => { const next = { ...draft, earlyArrivalOk: event.target.checked }; saveBookingDraft(next); setDraft(next); }} />
+        <span>{i18n.t("booking_terms.early_ok", { provider: draft.provider.companyName })}<small>{i18n.t("booking_terms.early_ok_hint")}</small></span></label>
       {session?.role === "customer" ? <button className="button" type="button" disabled={busy || loading || !ready} onClick={() => void confirm()}>{i18n.t(busy ? "booking_journey.review.confirming" : loading ? "booking_journey.book.checking" : "booking_journey.review.confirm")}</button>
         : <div className="journey-auth"><h3>{i18n.t("booking_journey.review.auth")}</h3><p>{i18n.t(session ? "booking_journey.review.wrong_role" : "booking_journey.review.auth_body")}</p><Link className="button" href={addLocalePrefix(`/login?returnTo=${encodeURIComponent(returnTo)}`, i18n.locale)}>{i18n.t("booking_journey.review.login")}</Link><Link className="button-secondary" href={addLocalePrefix(`/auth/customer?${signupParams}`, i18n.locale)}>{i18n.t("booking_journey.review.signup")}</Link></div>}
     </section></div>

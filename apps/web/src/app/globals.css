@@ -5527,26 +5527,6 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
   .journey-confirmation__actions { display: grid; }
 }
 
-.page-error-state {
-  min-height: 60vh;
-  display: grid;
-  place-items: center;
-  padding: var(--ym-space-6) var(--ym-space-4);
-}
-
-.page-error-state__card {
-  max-width: 34rem;
-  display: grid;
-  gap: var(--ym-space-4);
-}
-
-.page-error-state__card h1 {
-  margin: 0;
-}
-
-.page-error-state__card p {
-  margin: 0;
-
 .login-page {
   display: grid;
   gap: var(--ym-space-4);
@@ -5708,9 +5688,6 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
   line-height: 1.6;
 }
 
-.page-error-state__reference {
-  font-size: 0.875rem;
-
 .provider-landing__benefits {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5801,3 +5778,35 @@ body:has(.compact-header) .customer-request-spine__index { width: 1.5rem; height
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.page-error-state {
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+  padding: var(--ym-space-6) var(--ym-space-4);
+}
+
+.page-error-state__card {
+  max-width: 34rem;
+  display: grid;
+  gap: var(--ym-space-4);
+}
+
+.page-error-state__card h1 {
+  margin: 0;
+}
+
+.page-error-state__card p {
+  margin: 0;
+  color: var(--ym-color-ink-soft);
+  line-height: 1.6;
+}
+
+.page-error-state__reference {
+  font-size: 0.875rem;
+}
+
+.early-arrival-opt-in { display: flex; align-items: flex-start; gap: var(--ym-space-3); margin: var(--ym-space-3) 0; cursor: pointer; }
+.early-arrival-opt-in input { width: 1.25rem; height: 1.25rem; margin-top: 0.15rem; flex: none; accent-color: var(--ym-color-primary-strong); }
+.early-arrival-opt-in span { display: grid; gap: 0.15rem; }
+.early-arrival-opt-in small { color: var(--ym-color-muted); font-size: var(--ym-text-sm); }

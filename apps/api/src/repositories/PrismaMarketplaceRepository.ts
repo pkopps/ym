@@ -834,6 +834,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         lateNoticeSentAt: booking.lateNoticeSentAt ? new Date(booking.lateNoticeSentAt) : undefined,
         lateEtaIso: booking.lateEtaIso ? new Date(booking.lateEtaIso) : undefined,
         lateReason: booking.lateReason,
+        earlyArrivalOk: booking.earlyArrivalOk ?? false,
         recovery: booking.recovery ? asJson(booking.recovery) : Prisma.DbNull,
         scheduleUpdates: asJson(booking.scheduleUpdates ?? []),
         scheduleVersion: booking.scheduleVersion ?? 0,
@@ -1103,6 +1104,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
               : null
             : undefined,
         lateReason: "lateReason" in updates ? updates.lateReason ?? null : undefined,
+        earlyArrivalOk: "earlyArrivalOk" in updates ? updates.earlyArrivalOk ?? false : undefined,
         activeExceptionType:
           "activeExceptionType" in updates ? updates.activeExceptionType ?? null : undefined,
         activeExceptionReportedAt:
@@ -1183,6 +1185,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         status: plan.status,
         anchorScheduledStartIso: new Date(plan.anchorScheduledStartIso),
         anchorScheduledEndIso: new Date(plan.anchorScheduledEndIso),
+        earlyArrivalOk: plan.earlyArrivalOk ?? false,
         lastGeneratedBookingId: plan.lastGeneratedBookingId,
         lastGeneratedAt: plan.lastGeneratedAt ? new Date(plan.lastGeneratedAt) : undefined,
         lastSchedulingAttemptAt: plan.lastSchedulingAttemptAt
@@ -1240,6 +1243,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
         anchorScheduledEndIso: updates.anchorScheduledEndIso
           ? new Date(updates.anchorScheduledEndIso)
           : undefined,
+        earlyArrivalOk: "earlyArrivalOk" in updates ? updates.earlyArrivalOk ?? false : undefined,
         lastGeneratedBookingId:
           "lastGeneratedBookingId" in updates ? updates.lastGeneratedBookingId ?? null : undefined,
         lastGeneratedAt:
@@ -3603,6 +3607,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     lateNoticeSentAt: Date | null;
     lateEtaIso: Date | null;
     lateReason: string | null;
+    earlyArrivalOk?: boolean;
     recovery: unknown | null;
     scheduleUpdates: unknown;
     scheduleVersion: number;
@@ -3647,6 +3652,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       lateNoticeSentAt: record.lateNoticeSentAt?.toISOString(),
       lateEtaIso: record.lateEtaIso?.toISOString(),
       lateReason: record.lateReason ?? undefined,
+      earlyArrivalOk: record.earlyArrivalOk || undefined,
       recovery: record.recovery ? readJson<Booking["recovery"]>(record.recovery) : undefined,
       scheduleUpdates: readJson<Booking["scheduleUpdates"]>(record.scheduleUpdates),
       scheduleVersion: record.scheduleVersion,
@@ -3687,6 +3693,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     status: string;
     anchorScheduledStartIso: Date;
     anchorScheduledEndIso: Date;
+    earlyArrivalOk?: boolean;
     lastGeneratedBookingId: string | null;
     lastGeneratedAt: Date | null;
     lastSchedulingAttemptAt: Date | null;
@@ -3709,6 +3716,7 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       status: record.status as RecurringServicePlan["status"],
       anchorScheduledStartIso: record.anchorScheduledStartIso.toISOString(),
       anchorScheduledEndIso: record.anchorScheduledEndIso.toISOString(),
+      earlyArrivalOk: record.earlyArrivalOk || undefined,
       lastGeneratedBookingId: record.lastGeneratedBookingId ?? undefined,
       lastGeneratedAt: record.lastGeneratedAt?.toISOString(),
       lastSchedulingAttemptAt: record.lastSchedulingAttemptAt?.toISOString(),

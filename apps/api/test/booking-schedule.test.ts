@@ -126,6 +126,9 @@ test("unannounced missed windows escalate even without a provider delay notice",
   const { repository, platform, booking, actor } = await fixture();
   await repository.updateBooking(booking.id, { scheduledStartIso: "2026-07-10T16:00:00Z", scheduledEndIso: "2026-07-10T18:00:00Z" });
   const request = { sweepKeys: ["booking-schedule-follow-ups" as const] };
+  assert.equal((await platform.runDueOpsAutomation(actor, { ...request, asOfIso: "2026-07-10T18:59:00Z" })).sentNotificationCount, 0);
+  // In the window's last hour only the provider is nudged.
+  assert.equal((await platform.runDueOpsAutomation(actor, { ...request, asOfIso: "2026-07-10T19:00:00Z" })).sentNotificationCount, 1);
   assert.equal((await platform.runDueOpsAutomation(actor, { ...request, asOfIso: "2026-07-10T19:59:00Z" })).sentNotificationCount, 0);
   assert.equal((await platform.runDueOpsAutomation(actor, { ...request, asOfIso: "2026-07-10T20:00:00Z" })).sentNotificationCount, 3);
 });
