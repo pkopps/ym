@@ -1,4 +1,5 @@
-import type { ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import type { FinderFeeChargeRecord, ProviderBillingAccountRecord, ZipServiceMinimumRecord } from "@yardmatch/contracts";
+import { FinderFeeRelationshipConflictError, type FinderFeeChargeQuery } from "./finderFeeRecords";
 import type { NotificationHealthSnapshot } from "./notificationHealth";
 import type { CustomerReferralRecord } from "./customerReferrals";
 import { utcTimestamp } from "./sqlTime";
@@ -54,8 +55,86 @@ import {
   BookingPageQuery,
   CompleteProviderTransferInput,
   CompleteProviderTransferReversalInput,
-  MarketplaceRepository
+  MarketplaceRepository,
+  CompletedBookingAreaSummary,
+  OpsOverviewBookingSummary,
+  UpcomingBookingsQuery
 } from "./MarketplaceRepository";
+
+const optionalIso = (value: Date | null): string | undefined => value ? value.toISOString() : undefined;
+const optionalDate = (value: string | undefined): Date | null => value ? new Date(value) : null;
+
+function mapProviderBillingAccount(row: Prisma.ProviderBillingAccountGetPayload<object>): ProviderBillingAccountRecord {
+  return {
+    providerId: row.providerId,
+    stripeCustomerId: row.stripeCustomerId,
+    defaultPaymentMethodId: row.defaultPaymentMethodId ?? undefined,
+    cardBrand: row.cardBrand ?? undefined,
+    cardLast4: row.cardLast4 ?? undefined,
+    cardExpMonth: row.cardExpMonth ?? undefined,
+    cardExpYear: row.cardExpYear ?? undefined,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function mapFinderFeeCharge(row: Prisma.FinderFeeChargeGetPayload<object>): FinderFeeChargeRecord {
+  return {
+    id: row.id,
+    customerId: row.customerId,
+    providerId: row.providerId,
+    bookingId: row.bookingId,
+    policyVersion: row.policyVersion,
+    tier: row.tier as FinderFeeChargeRecord["tier"],
+    lawnSizeBandId: row.lawnSizeBandId ?? undefined,
+    listFeeCents: row.listFeeCents,
+    feeCents: row.feeCents,
+    waived: row.waived,
+    status: row.status as FinderFeeChargeRecord["status"],
+    completedAt: row.completedAt.toISOString(),
+    windowEndsAt: row.windowEndsAt.toISOString(),
+    customerConfirmedAt: optionalIso(row.customerConfirmedAt),
+    attemptCount: row.attemptCount,
+    nextAttemptAt: optionalIso(row.nextAttemptAt),
+    chargeLeaseExpiresAt: optionalIso(row.chargeLeaseExpiresAt),
+    lastAttemptAt: optionalIso(row.lastAttemptAt),
+    lastFailureReason: row.lastFailureReason ?? undefined,
+    stripePaymentIntentId: row.stripePaymentIntentId ?? undefined,
+    paidAt: optionalIso(row.paidAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString()
+  };
+}
+
+function finderFeeChargeData(record: FinderFeeChargeRecord) {
+  return {
+    id: record.id,
+    customerId: record.customerId,
+    providerId: record.providerId,
+    bookingId: record.bookingId,
+    policyVersion: record.policyVersion,
+    tier: record.tier,
+    lawnSizeBandId: record.lawnSizeBandId ?? null,
+    listFeeCents: record.listFeeCents,
+    feeCents: record.feeCents,
+    waived: record.waived,
+    // The unique column that allows a provider at most one waived relationship.
+    waivedProviderId: record.waived ? record.providerId : null,
+    status: record.status,
+    completedAt: new Date(record.completedAt),
+    windowEndsAt: new Date(record.windowEndsAt),
+    customerConfirmedAt: optionalDate(record.customerConfirmedAt),
+    attemptCount: record.attemptCount,
+    nextAttemptAt: optionalDate(record.nextAttemptAt),
+    chargeLeaseExpiresAt: optionalDate(record.chargeLeaseExpiresAt),
+    lastAttemptAt: optionalDate(record.lastAttemptAt),
+    lastFailureReason: record.lastFailureReason ?? null,
+    stripePaymentIntentId: record.stripePaymentIntentId ?? null,
+    paidAt: optionalDate(record.paidAt),
+    createdAt: new Date(record.createdAt),
+    updatedAt: new Date(record.updatedAt)
+  };
+}
 
 function asJson(value: unknown): any {
   return value as any;
@@ -104,6 +183,20 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.transaction(async (tx) => {
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text`;
       return work(new PrismaMarketplaceRepository(tx as PrismaClient, true));
+    });
+  }
+
+  public async tryWithLock<T>(
+    key: string,
+    work: (repository: MarketplaceRepository) => Promise<T>
+  ): Promise<{ acquired: true; value: T } | { acquired: false }> {
+    return this.transaction(async (tx) => {
+      const [row] = await tx.$queryRaw<Array<{ acquired: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) AS acquired`;
+      if (!row?.acquired) {
+        return { acquired: false as const };
+      }
+      return { acquired: true as const, value: await work(new PrismaMarketplaceRepository(tx as PrismaClient, true)) };
     });
   }
 
@@ -183,6 +276,73 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     const data = { ...record, history: asJson(record.history) };
     await this.prisma.zipServiceMinimum.upsert({ where: { postalCode_category: { postalCode: record.postalCode, category: record.category } }, create: data, update: data });
     return record;
+  }
+
+  public async findProviderBillingAccount(providerId: string): Promise<ProviderBillingAccountRecord | undefined> {
+    const row = await this.prisma.providerBillingAccount.findUnique({ where: { providerId } });
+    return row ? mapProviderBillingAccount(row) : undefined;
+  }
+  public async upsertProviderBillingAccount(account: ProviderBillingAccountRecord): Promise<ProviderBillingAccountRecord> {
+    const data = {
+      stripeCustomerId: account.stripeCustomerId,
+      defaultPaymentMethodId: account.defaultPaymentMethodId ?? null,
+      cardBrand: account.cardBrand ?? null,
+      cardLast4: account.cardLast4 ?? null,
+      cardExpMonth: account.cardExpMonth ?? null,
+      cardExpYear: account.cardExpYear ?? null,
+      updatedAt: new Date(account.updatedAt)
+    };
+    const row = await this.prisma.providerBillingAccount.upsert({
+      where: { providerId: account.providerId },
+      create: { ...data, providerId: account.providerId, createdAt: new Date(account.createdAt) },
+      update: data
+    });
+    return mapProviderBillingAccount(row);
+  }
+  public async findFinderFeeChargeById(chargeId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const row = await this.prisma.finderFeeCharge.findUnique({ where: { id: chargeId } });
+    return row ? mapFinderFeeCharge(row) : undefined;
+  }
+  public async findFinderFeeChargeByRelationship(customerId: string, providerId: string): Promise<FinderFeeChargeRecord | undefined> {
+    const row = await this.prisma.finderFeeCharge.findUnique({ where: { customerId_providerId: { customerId, providerId } } });
+    return row ? mapFinderFeeCharge(row) : undefined;
+  }
+  public async createFinderFeeCharge(record: FinderFeeChargeRecord): Promise<FinderFeeChargeRecord> {
+    try {
+      const row = await this.prisma.finderFeeCharge.create({ data: finderFeeChargeData(record) });
+      return mapFinderFeeCharge(row);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new FinderFeeRelationshipConflictError();
+      }
+      throw error;
+    }
+  }
+  public async updateFinderFeeCharge(chargeId: string, updates: Partial<FinderFeeChargeRecord>): Promise<FinderFeeChargeRecord | undefined> {
+    const existing = await this.prisma.finderFeeCharge.findUnique({ where: { id: chargeId } });
+    if (!existing) return undefined;
+    const merged = { ...mapFinderFeeCharge(existing), ...updates, id: chargeId };
+    const data: Partial<ReturnType<typeof finderFeeChargeData>> = finderFeeChargeData(merged);
+    delete data.id;
+    delete data.createdAt;
+    try {
+      return mapFinderFeeCharge(await this.prisma.finderFeeCharge.update({ where: { id: chargeId }, data }));
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new FinderFeeRelationshipConflictError();
+      }
+      throw error;
+    }
+  }
+  public async listFinderFeeCharges(query: FinderFeeChargeQuery): Promise<FinderFeeChargeRecord[]> {
+    const rows = await this.prisma.finderFeeCharge.findMany({
+      where: {
+        ...(query.providerId ? { providerId: query.providerId } : {}),
+        ...(query.statuses ? { status: { in: query.statuses } } : {})
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }]
+    });
+    return rows.map(mapFinderFeeCharge);
   }
 
   public async createProvider(
@@ -306,14 +466,15 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
   public async searchProvidersPage(query: ProviderSearchQuery) {
     if (!query.categories.length) return { items: [], hasMore: false };
     const bounds = searchBounds(query.address);
-    const longitude = Prisma.sql`(u.address->'point'->>'longitude')::double precision`;
+    // u.latitude and u.longitude are copied from u.address by a database trigger and indexed with u.role.
+    const longitude = Prisma.sql`u.longitude`;
     const longitudeCondition = bounds.west <= bounds.east
       ? Prisma.sql`${longitude} BETWEEN ${bounds.west} AND ${bounds.east}`
       : Prisma.sql`(${longitude} >= ${bounds.west} OR ${longitude} <= ${bounds.east})`;
     const ids = await this.prisma.$queryRaw<Array<{ userId: string }>>`
       SELECT p."userId" FROM provider_business_profiles p JOIN user_accounts u ON u.id = p."userId"
       WHERE p."verificationStatus" = 'verified' AND p.categories && ARRAY[${Prisma.join(query.categories)}]::text[]
-        AND (u.address->'point'->>'latitude')::double precision BETWEEN ${bounds.south} AND ${bounds.north}
+        AND u.role = 'provider' AND u.latitude BETWEEN ${bounds.south} AND ${bounds.north}
         AND ${longitudeCondition} ${query.cursorId ? Prisma.sql`AND p."userId" > ${query.cursorId}` : Prisma.empty}
       ORDER BY p."userId" LIMIT 101`;
     const pageIds = ids.slice(0, 100).map(row => row.userId);
@@ -362,12 +523,12 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return rows.map(row => ({ ...row, startIso: row.startIso.toISOString(), endIso: row.endIso.toISOString() }));
   }
 
-  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; excludeStatuses?: string[] }) {
+  public async listScopedBookings(query: { providerId?: string; customerId?: string; endAfter?: string; statuses?: string[]; excludeStatuses?: string[] }) {
     if (!query.providerId && !query.customerId) throw new Error("Booking queries require an owner scope");
     const rows = await this.prisma.booking.findMany({ where: {
       providerId: query.providerId, customerId: query.customerId,
       ...(query.endAfter ? { scheduledEndIso: { gt: new Date(query.endAfter) } } : {}),
-      ...(query.excludeStatuses ? { status: { notIn: query.excludeStatuses } } : {})
+      ...(query.statuses || query.excludeStatuses ? { status: { ...(query.statuses ? { in: query.statuses } : {}), ...(query.excludeStatuses ? { notIn: query.excludeStatuses } : {}) } } : {})
     }, orderBy: [{ scheduledStartIso: "asc" }, { id: "asc" }] });
     return rows.map(row => this.mapBooking(row));
   }
@@ -400,6 +561,26 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     });
 
     return providers.map((record: any) => this.mapProviderProfile(record.user, record));
+  }
+
+  public async listProvidersByVerificationStatus(status: ProviderProfile["verificationStatus"]): Promise<ProviderProfile[]> {
+    const providers = await this.prisma.providerBusinessProfile.findMany({
+      where: { verificationStatus: status },
+      include: { user: true, credentials: true, connectAccount: true },
+      orderBy: [{ user: { createdAt: "asc" } }, { userId: "asc" }]
+    });
+    return providers.map((record) => this.mapProviderProfile(record.user, record));
+  }
+
+  public async listProvidersByIds(providerIds: string[]): Promise<ProviderProfile[]> {
+    if (providerIds.length === 0) {
+      return [];
+    }
+    const providers = await this.prisma.providerBusinessProfile.findMany({
+      where: { userId: { in: providerIds } },
+      include: { user: true, credentials: true, connectAccount: true }
+    });
+    return providers.map((record) => this.mapProviderProfile(record.user, record));
   }
 
   public async listCustomers(customerIds?: string[]): Promise<CustomerProfile[]> {
@@ -715,14 +896,150 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     };
   }
 
+  public async listUpcomingBookings(query: UpcomingBookingsQuery): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        scheduledStartIso: { gt: new Date(query.afterIso) },
+        status: { in: query.statuses },
+        providerId: query.providerId
+      },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async listBookingsForCrewStaffing(query: { providerId: string; endAfterIso: string }): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { OR: [{ providerId: query.providerId }, { scheduledEndIso: { gt: new Date(query.endAfterIso) } }] },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async summarizeCompletedBookingsByArea(recentSinceIso: string): Promise<CompletedBookingAreaSummary[]> {
+    const rows = await this.prisma.$queryRaw<Array<Omit<CompletedBookingAreaSummary, "firstScheduledStartIso"> & { firstScheduledStartIso: Date }>>(Prisma.sql`
+      SELECT "providerId", "serviceAddress"->>'city' AS city, "serviceAddress"->>'state' AS state, category,
+        COUNT(*)::int AS "completedBookingCount",
+        (COUNT(*) FILTER (WHERE COALESCE("completedAt", "scheduledEndIso") >= ${utcTimestamp(new Date(recentSinceIso))}))::int AS "recentCompletedBookingCount",
+        MIN("scheduledStartIso") AS "firstScheduledStartIso"
+      FROM bookings
+      WHERE status = 'completed'
+      GROUP BY 1, 2, 3, 4
+      ORDER BY 7, 1, 2, 3, 4`);
+    return rows.map((row) => ({ ...row, firstScheduledStartIso: row.firstScheduledStartIso.toISOString() }));
+  }
+
+  public async listCompletedBookingsWithMarketingPhotos(): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        status: "completed",
+        completedAt: { not: null },
+        serviceEvidence: { array_contains: [{ marketingUseStatus: "granted" }] }
+      },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async listBookingsForRecurringPlan(recurringPlanId: string): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { recurringPlanId },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async listBookingsForProviders(providerIds: string[]): Promise<Booking[]> {
+    if (providerIds.length === 0) {
+      return [];
+    }
+    const bookings = await this.prisma.booking.findMany({
+      where: { providerId: { in: providerIds } },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async listBookingsByStatuses(statuses: Booking["status"][]): Promise<Booking[]> {
+    const bookings = await this.prisma.booking.findMany({
+      where: { status: { in: statuses } },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async listBookingsForCustomersOrLaunchLeads(query: { customerIds: string[]; launchLeadIds: string[] }): Promise<Booking[]> {
+    if (query.customerIds.length === 0 && query.launchLeadIds.length === 0) {
+      return [];
+    }
+    const bookings = await this.prisma.booking.findMany({
+      where: { OR: [{ customerId: { in: query.customerIds } }, { launchLeadId: { in: query.launchLeadIds } }] },
+      orderBy: { scheduledStartIso: "asc" }
+    });
+    return bookings.map((booking) => this.mapBooking(booking));
+  }
+
+  public async summarizeBookingsWithoutPayments(): Promise<{ completedTotalCents: number; disputedAfterCompletionCount: number }> {
+    const [row] = await this.prisma.$queryRaw<Array<{ completedTotalCents: bigint; disputedAfterCompletionCount: bigint }>>(Prisma.sql`
+      SELECT COALESCE(SUM("totalCents") FILTER (WHERE status = 'completed'), 0)::bigint AS "completedTotalCents",
+        COUNT(*) FILTER (WHERE status = 'disputed' AND "completedAt" IS NOT NULL)::bigint AS "disputedAfterCompletionCount"
+      FROM bookings booking
+      WHERE status IN ('completed', 'disputed')
+        AND NOT EXISTS (SELECT 1 FROM payment_records payment WHERE payment."bookingId" = booking.id)`);
+    return { completedTotalCents: Number(row?.completedTotalCents ?? 0), disputedAfterCompletionCount: Number(row?.disputedAfterCompletionCount ?? 0) };
+  }
+
+  public async countBookings(): Promise<number> {
+    return this.prisma.booking.count();
+  }
+
+  public async summarizeBookingsForOpsOverview(requestedSinceIso: string): Promise<OpsOverviewBookingSummary> {
+    const hasException = Prisma.sql`"activeExceptionType" IS NOT NULL AND "activeExceptionType" <> ''`;
+    const [[counts], pockets] = await Promise.all([
+      this.prisma.$queryRaw<Array<Omit<OpsOverviewBookingSummary, "pockets">>>(Prisma.sql`
+        SELECT COUNT(*)::int AS "totalBookings",
+          (COUNT(*) FILTER (WHERE status = 'requested'))::int AS "requestedBookings",
+          (COUNT(*) FILTER (WHERE "requestedAt" >= ${utcTimestamp(new Date(requestedSinceIso))}))::int AS "requestedSinceCount",
+          (COUNT(*) FILTER (WHERE ${hasException}))::int AS "activeExceptionCount",
+          (COUNT(*) FILTER (WHERE status = 'disputed' AND "completedAt" IS NOT NULL))::int AS "disputedAfterCompletionCount"
+        FROM bookings`),
+      this.prisma.$queryRaw<OpsOverviewBookingSummary["pockets"]>(Prisma.sql`
+        SELECT COALESCE("serviceAddress"->>'city', '') AS city, COALESCE("serviceAddress"->>'state', '') AS state,
+          COALESCE("serviceAddress"->>'postalCode', '') AS "postalCode", category,
+          (COUNT(*) FILTER (WHERE status IN ('completed', 'refunded')))::int AS "completedCount",
+          (COUNT(*) FILTER (WHERE status NOT IN ('completed', 'refunded', 'cancelled')))::int AS "activeCount",
+          (COUNT(*) FILTER (WHERE ${hasException}))::int AS "activeExceptionCount"
+        FROM bookings
+        GROUP BY 1, 2, 3, 4
+        ORDER BY MIN("scheduledStartIso"), 1, 2, 3, 4`)
+    ]);
+    return { ...counts, pockets: pockets.map((pocket) => ({ ...pocket })) };
+  }
+
   public async listBookingsByIds(bookingIds: string[]): Promise<Booking[]> {
     if (bookingIds.length === 0) {
       return [];
     }
-    const bookings = await this.prisma.booking.findMany({
-      where: { id: { in: bookingIds } }
+    // Large id lists are split so the query stays under the database's bind-parameter limit.
+    const chunkSize = 5000;
+    const chunks = Array.from({ length: Math.ceil(bookingIds.length / chunkSize) }, (_, index) =>
+      bookingIds.slice(index * chunkSize, (index + 1) * chunkSize));
+    const rows = (await Promise.all(chunks.map((ids) => this.prisma.booking.findMany({
+      where: { id: { in: ids } },
+      orderBy: { scheduledStartIso: "asc" }
+    })))).flat();
+    if (chunks.length > 1) {
+      rows.sort((left, right) => left.scheduledStartIso.getTime() - right.scheduledStartIso.getTime());
+    }
+    return rows.map((booking) => this.mapBooking(booking));
+  }
+
+  public async findBookingByEvidenceId(evidenceId: string): Promise<Booking | undefined> {
+    const booking = await this.prisma.booking.findFirst({
+      where: { serviceEvidence: { array_contains: [{ id: evidenceId }] } },
+      orderBy: { scheduledStartIso: "asc" }
     });
-    return bookings.map((booking) => this.mapBooking(booking));
+    return booking ? this.mapBooking(booking) : undefined;
   }
 
   public async findBookingById(bookingId: string): Promise<Booking | undefined> {
@@ -995,13 +1312,40 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     if (bookingIds.length === 0) {
       return [];
     }
-    const matches = await this.prisma.crewMatch.findMany({
+    // Large id lists are split so the query stays under the database's bind-parameter limit.
+    const chunkSize = 5000;
+    const chunks = Array.from({ length: Math.ceil(bookingIds.length / chunkSize) }, (_, index) =>
+      bookingIds.slice(index * chunkSize, (index + 1) * chunkSize));
+    const rows = (await Promise.all(chunks.map((ids) => this.prisma.crewMatch.findMany({
       where: {
         crewMemberId,
-        bookingId: { in: bookingIds }
-      }
+        bookingId: { in: ids }
+      },
+      orderBy: { createdAt: "desc" }
+    })))).flat();
+    if (chunks.length > 1) {
+      rows.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+    }
+    return rows.map((match) => this.mapCrewMatch(match));
+  }
+
+  public async listCrewMatchesForCrewMembers(crewMemberIds: string[]): Promise<CrewMatchCandidate[]> {
+    if (crewMemberIds.length === 0) {
+      return [];
+    }
+    const matches = await this.prisma.crewMatch.findMany({
+      where: { crewMemberId: { in: crewMemberIds } },
+      orderBy: { createdAt: "desc" }
     });
-    return matches.map((match: any) => this.mapCrewMatch(match));
+    return matches.map((match) => this.mapCrewMatch(match));
+  }
+
+  public async listCrewMatchesForCrewMember(crewMemberId: string): Promise<CrewMatchCandidate[]> {
+    const matches = await this.prisma.crewMatch.findMany({
+      where: { crewMemberId },
+      orderBy: { createdAt: "desc" }
+    });
+    return matches.map((match) => this.mapCrewMatch(match));
   }
 
   public async updateCrewMatch(
@@ -1093,6 +1437,23 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
       orderBy: { createdAt: "desc" }
     });
     return reviews.map((review: any) => this.mapProviderReview(review));
+  }
+
+  public async listLatestProviderReviews(providerIds: string[], limit: number): Promise<ProviderReview[]> {
+    if (providerIds.length === 0 || limit < 1) {
+      return [];
+    }
+    const where = { providerId: { in: providerIds } };
+    const newest = await this.prisma.providerReview.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
+    const last = newest[limit - 1];
+    if (!last) {
+      return newest.map((review) => this.mapProviderReview(review));
+    }
+    const withTies = await this.prisma.providerReview.findMany({
+      where: { ...where, createdAt: { gte: last.createdAt } },
+      orderBy: { createdAt: "desc" }
+    });
+    return withTies.map((review) => this.mapProviderReview(review));
   }
 
   public async findProviderReviewById(reviewId: string): Promise<ProviderReview | undefined> {
@@ -1248,6 +1609,14 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     });
   }
 
+  public async findProviderByCalendarFeedToken(feedToken: string): Promise<ProviderProfile | undefined> {
+    const provider = await this.prisma.providerBusinessProfile.findFirst({
+      where: { calendarConnection: { path: ["feedToken"], equals: feedToken } },
+      include: { user: true, credentials: true, connectAccount: true }
+    });
+    return provider ? this.mapProviderProfile(provider.user, provider) : undefined;
+  }
+
   public async findProviderById(providerId: string): Promise<ProviderProfile | undefined> {
     const provider = await this.prisma.providerBusinessProfile.findUnique({
       where: { userId: providerId },
@@ -1349,6 +1718,11 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return payment ? this.mapPaymentRecord(payment) : undefined;
   }
 
+  public async findPaymentByProcessorPaymentIntentId(paymentIntentId: string): Promise<PaymentRecord | undefined> {
+    const payment = await this.prisma.paymentRecord.findFirst({ where: { processorPaymentIntentId: paymentIntentId } });
+    return payment ? this.mapPaymentRecord(payment) : undefined;
+  }
+
   public async listPayments(): Promise<PaymentRecord[]> {
     const payments = await this.prisma.paymentRecord.findMany();
     return payments.map((payment) => this.mapPaymentRecord(payment));
@@ -1358,10 +1732,17 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     if (bookingIds.length === 0) {
       return [];
     }
-    const payments = await this.prisma.paymentRecord.findMany({
-      where: { bookingId: { in: bookingIds } },
+    // Large id lists are split so the query stays under the database's bind-parameter limit.
+    const chunkSize = 5000;
+    const chunks = Array.from({ length: Math.ceil(bookingIds.length / chunkSize) }, (_, index) =>
+      bookingIds.slice(index * chunkSize, (index + 1) * chunkSize));
+    const payments = (await Promise.all(chunks.map((ids) => this.prisma.paymentRecord.findMany({
+      where: { bookingId: { in: ids } },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }]
-    });
+    })))).flat();
+    if (chunks.length > 1) {
+      payments.sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime() || (left.id < right.id ? 1 : -1));
+    }
     return payments.map((payment: any) => this.mapPaymentRecord(payment));
   }
 
@@ -2371,31 +2752,51 @@ export class PrismaMarketplaceRepository implements MarketplaceRepository {
     return this.mapNotificationDelivery(row);
   }
 
+  private notificationDeliveryRow(delivery: NotificationDeliveryRecord) {
+    return {
+      id: delivery.id,
+      notificationId: delivery.notificationId,
+      recipientId: delivery.recipientId,
+      recipientRole: delivery.recipientRole,
+      category: delivery.category,
+      channel: delivery.channel,
+      destination: delivery.destination,
+      provider: delivery.provider,
+      status: delivery.status,
+      title: delivery.title,
+      bodyPreview: delivery.bodyPreview,
+      errorMessage: delivery.errorMessage,
+      attemptCount: delivery.attemptCount,
+      createdAt: new Date(delivery.createdAt),
+      lastAttemptAt: delivery.lastAttemptAt ? new Date(delivery.lastAttemptAt) : null,
+      nextRetryAt: delivery.nextRetryAt ? new Date(delivery.nextRetryAt) : null,
+      sentAt: delivery.sentAt ? new Date(delivery.sentAt) : null
+    };
+  }
+
   public async createNotificationDelivery(
     delivery: NotificationDeliveryRecord
   ): Promise<NotificationDeliveryRecord> {
-    await this.prisma.notificationDelivery.create({
-      data: {
-        id: delivery.id,
-        notificationId: delivery.notificationId,
-        recipientId: delivery.recipientId,
-        recipientRole: delivery.recipientRole,
-        category: delivery.category,
-        channel: delivery.channel,
-        destination: delivery.destination,
-        provider: delivery.provider,
-        status: delivery.status,
-        title: delivery.title,
-        bodyPreview: delivery.bodyPreview,
-        errorMessage: delivery.errorMessage,
-        attemptCount: delivery.attemptCount,
-        createdAt: new Date(delivery.createdAt),
-        lastAttemptAt: delivery.lastAttemptAt ? new Date(delivery.lastAttemptAt) : null,
-        nextRetryAt: delivery.nextRetryAt ? new Date(delivery.nextRetryAt) : null,
-        sentAt: delivery.sentAt ? new Date(delivery.sentAt) : null
-      }
-    });
+    await this.prisma.notificationDelivery.create({ data: this.notificationDeliveryRow(delivery) });
     return delivery;
+  }
+
+  public async createNotificationDeliveries(deliveries: NotificationDeliveryRecord[]): Promise<void> {
+    if (deliveries.length === 0) {
+      return;
+    }
+    await this.prisma.notificationDelivery.createMany({ data: deliveries.map((delivery) => this.notificationDeliveryRow(delivery)) });
+  }
+
+  public async findNotificationContact(userId: string, role: AuthIdentityRecord["role"]): Promise<{ email: string; phone: string } | undefined> {
+    // Mirrors the profile finders: customers, providers and crew need their profile row; ops users need the ops role.
+    const hasProfile = role === "customer" ? Prisma.sql`EXISTS (SELECT 1 FROM customer_profiles profile WHERE profile."userId" = account.id)`
+      : role === "provider" ? Prisma.sql`EXISTS (SELECT 1 FROM provider_business_profiles profile WHERE profile."userId" = account.id)`
+      : role === "ops" ? Prisma.sql`account.role = 'ops'`
+      : Prisma.sql`EXISTS (SELECT 1 FROM crew_member_profiles profile WHERE profile."userId" = account.id)`;
+    const [row] = await this.prisma.$queryRaw<Array<{ email: string; phone: string }>>(Prisma.sql`
+      SELECT account.email, account.phone FROM user_accounts account WHERE account.id = ${userId} AND ${hasProfile}`);
+    return row ? { email: row.email, phone: row.phone } : undefined;
   }
 
   public async listNotificationDeliveriesByRecipient(

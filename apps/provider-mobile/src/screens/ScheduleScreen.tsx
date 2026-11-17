@@ -76,27 +76,22 @@ const crewMatchStatusLabelKeys: Record<CrewMatchStatus, TranslationKey> = {
 
 const routeToolPresets: Array<{
   command: string;
-  detailKey: TranslationKey;
   labelKey: TranslationKey;
 }> = [
   {
     command: "What needs attention tomorrow?",
-    detailKey: "provider_mobile.schedule.assistant.preset.tomorrow.detail",
     labelKey: "provider_mobile.schedule.assistant.preset.tomorrow.label"
   },
   {
     command: "Do I need more crew tomorrow?",
-    detailKey: "provider_mobile.schedule.assistant.preset.crew_gaps.detail",
     labelKey: "provider_mobile.schedule.assistant.preset.crew_gaps.label"
   },
   {
     command: "Tell my afternoon customer I am 30 minutes late.",
-    detailKey: "provider_mobile.schedule.assistant.preset.send_delay.detail",
     labelKey: "provider_mobile.schedule.assistant.preset.send_delay.label"
   },
   {
     command: "Move my afternoon job to evening and notify the customer.",
-    detailKey: "provider_mobile.schedule.assistant.preset.move_later.detail",
     labelKey: "provider_mobile.schedule.assistant.preset.move_later.label"
   }
 ];
@@ -1025,9 +1020,7 @@ export function ScheduleScreen() {
   if (!overview && !calendarOverview && !errorMessage) {
     return (
       <ScreenShell
-        eyebrow={i18n.t("provider_mobile.schedule.eyebrow")}
         title={i18n.t("provider_mobile.schedule.title")}
-        description={i18n.t("provider_mobile.schedule.description")}
       >
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAvatar />
@@ -1038,9 +1031,7 @@ export function ScheduleScreen() {
 
   return (
     <ScreenShell
-      eyebrow={i18n.t("provider_mobile.schedule.eyebrow")}
       title={i18n.t("provider_mobile.schedule.title")}
-      description={i18n.t("provider_mobile.schedule.description")}
     >
       <View style={styles.modeRow}>
         <ModeButton active={viewMode === "calendar"} label={i18n.t("provider_mobile.schedule.view.calendar")} onPress={() => setViewMode("calendar")} />
@@ -1172,17 +1163,11 @@ export function ScheduleScreen() {
         </InfoCard>
       ) : (
         <InfoCard title={i18n.t("provider_mobile.schedule.today_path")} description={i18n.t("provider_mobile.schedule.empty.title")}>
-          <Text style={styles.metaLine}>{i18n.t("provider_mobile.schedule.empty.description")}</Text>
         </InfoCard>
       )}
 
       <InfoCard
         title={i18n.t("provider_mobile.schedule.assistant.title")}
-        description={
-          showAssistantTools
-            ? i18n.t("provider_mobile.schedule.assistant.review_description")
-            : i18n.t("provider_mobile.schedule.assistant.description")
-        }
       >
         <Pressable onPress={() => setShowAssistantTools((current) => !current)} style={styles.secondaryButton}>
           <Text style={styles.secondaryButtonLabel}>
@@ -1204,7 +1189,6 @@ export function ScheduleScreen() {
                     style={[styles.presetButton, isActive && styles.presetButtonActive]}
                   >
                     <Text style={[styles.presetLabel, isActive && styles.presetLabelActive]}>{i18n.t(preset.labelKey)}</Text>
-                    <Text style={[styles.presetDetail, isActive && styles.presetDetailActive]}>{i18n.t(preset.detailKey)}</Text>
                   </Pressable>
                 );
               })}
@@ -1553,7 +1537,6 @@ export function ScheduleScreen() {
                   ) ? (
                     <View style={styles.customerPhotoPanel}>
                       <Text style={styles.proofTitle}>{i18n.t("provider_mobile.schedule.customer_photos.title")}</Text>
-                      <Text style={styles.metaLine}>{i18n.t("provider_mobile.schedule.customer_photos.body")}</Text>
                       <View style={styles.photoRow}>
                         {job.evidencePhotos
                           .filter(
@@ -1734,9 +1717,6 @@ export function ScheduleScreen() {
                     {job.matches.length === 0 ? (
                       <View style={styles.windowCard}>
                         <Text style={styles.clientLabel}>{i18n.t("provider_mobile.schedule.crew.no_matches_title")}</Text>
-                        <Text style={styles.metaLine}>
-                          {i18n.t("provider_mobile.schedule.crew.no_matches_description")}
-                        </Text>
                       </View>
                     ) : (
                       job.matches.map((match) => (

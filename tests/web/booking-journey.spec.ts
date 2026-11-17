@@ -108,7 +108,7 @@ test("guest books multiple services through review and signup, receives one pers
   await confirm.evaluate((element: HTMLButtonElement) => { element.click(); element.click(); });
   await expect(page).toHaveURL(/customer\/booking\/confirmation\?bookingId=/);
   await expect(page.getByRole("heading", { name: "Your booking request is in" })).toBeVisible();
-  await expect(page.getByText(/You’ll receive an email/)).toBeVisible();
+  await expect(page.getByText(/We emailed your request details/)).toBeVisible();
   expect(creates).toBe(1);
   const bookingId = new URL(page.url()).searchParams.get("bookingId")!;
   const token = await page.evaluate(() => JSON.parse(localStorage.getItem("yardmatch-web-session")!).token as string);

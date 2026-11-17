@@ -1,17 +1,27 @@
 :root {
+  /* Text */
   --ym-color-ink: #14281d;
   --ym-color-ink-soft: #2d4736;
+  --ym-color-muted: #66756a;
+  /* Page background, tinted panels, raised surfaces */
   --ym-color-surface: #f7f5ef;
   --ym-color-surface-strong: #f0eadc;
   --ym-color-card: rgba(255, 255, 255, 0.88);
+  --ym-color-white: #ffffff;
+  --ym-color-border: rgba(20, 40, 29, 0.12);
+  /* Brand green: default, hover/strong text, selected outline, selected fill */
   --ym-color-primary: #2f7d4c;
   --ym-color-primary-strong: #205938;
+  --ym-color-primary-soft: #c5dbc9;
+  --ym-color-primary-tint: #eaf3ec;
+  /* Warning amber: accent, readable text, outline, fill */
   --ym-color-accent: #e29a45;
+  --ym-color-accent-strong: #8a581b;
   --ym-color-accent-soft: #f6d9b6;
-  --ym-color-border: rgba(20, 40, 29, 0.12);
-  --ym-color-danger: #b84d41;
+  --ym-color-accent-tint: #fbefe0;
   --ym-color-success: #23754f;
-  --ym-color-muted: #66756a;
+  --ym-color-danger: #b84d41;
+  --ym-color-danger-tint: #f6e4e1;
   --ym-gradient-hero: radial-gradient(circle at top left, rgba(226, 154, 69, 0.32), transparent 34%),
     linear-gradient(135deg, #f8f1dc 0%, #eef8f0 42%, #e4efe8 100%);
   --ym-shadow-card: 0 18px 50px rgba(32, 89, 56, 0.12);
@@ -19,6 +29,7 @@
   --ym-radius-sm: 14px;
   --ym-radius-md: 20px;
   --ym-radius-lg: 32px;
+  --ym-radius-pill: 999px;
   --ym-space-1: 0.25rem;
   --ym-space-2: 0.5rem;
   --ym-space-3: 0.75rem;
@@ -27,6 +38,12 @@
   --ym-space-6: 2rem;
   --ym-space-7: 3rem;
   --ym-space-8: 4rem;
+  --ym-text-xs: 0.75rem;
+  --ym-text-sm: 0.875rem;
+  --ym-text-md: 1rem;
+  --ym-text-lg: 1.25rem;
+  --ym-text-xl: 1.5rem;
+  --ym-text-2xl: 2rem;
   --ym-max-width: 1360px;
   --ym-font-display: "Instrument Serif", "Iowan Old Style", "Georgia", serif;
   --ym-font-body: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;

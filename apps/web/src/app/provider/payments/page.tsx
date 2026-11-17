@@ -24,9 +24,7 @@ export default async function ProviderPaymentsPage() {
       <section className="page-hero">
         <div className="search-result-title">
           <div>
-            <span className="eyebrow">{i18n.t("provider_payments.eyebrow")}</span>
             <h1>{i18n.t("provider_payments.hero.title")}</h1>
-            <p>{i18n.t("provider_payments.hero.body")}</p>
           </div>
 
         </div>

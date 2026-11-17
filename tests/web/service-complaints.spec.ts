@@ -17,7 +17,7 @@ test("customer complaint form submits evidence, supports human review, and prote
   expect(deniedAssessment.status()).toBe(403);
   const providerDenied = await request.post(`${apiBaseUrl}/api/support/complaints`, { headers: { Authorization: `Bearer ${provider.token}` }, data: { bookingId: booking.id } });
   expect(providerDenied.status()).toBe(403);
-  await page.goto("/login/customer");
+  await page.goto("/login");
   await page.getByLabel("Email").fill(customer.email); await page.getByLabel("Password").fill(testPassword);
   await page.getByRole("button", { name: "Log in", exact: true }).click();
   await expect(page).toHaveURL(/\/customer\/dashboard/);
@@ -40,7 +40,7 @@ test("customer complaint form submits evidence, supports human review, and prote
   await expect(panel.getByRole("status")).toHaveText("Your report is saved");
   await expect(panel.getByRole("heading", { name: "Your service reports" })).toBeVisible();
   await panel.getByRole("button", { name: "Ask a person to review" }).click();
-  await expect(panel.getByText("I would like a person to review this report and any resolution.", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Please have a person review this report.", { exact: true })).toBeVisible();
   await loginUi(page, "ops", opsEmail, opsPassword);
   await expect(page).toHaveURL(/ops/);
   await page.goto("/ops?view=support#ops-support");

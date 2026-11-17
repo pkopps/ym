@@ -77,24 +77,6 @@ export function CrewScheduleBoard() {
     })();
   }, [i18n, sessionReady, session?.role, session?.token]);
 
-  const plannedHours = useMemo(
-    () =>
-      acceptedMatches.reduce((total, match) => {
-        const durationHours =
-          (Date.parse(match.scheduledEndIso) - Date.parse(match.scheduledStartIso)) / (60 * 60 * 1000);
-        return total + Math.max(durationHours, 0);
-      }, 0),
-    [acceptedMatches]
-  );
-  const expectedEarnings = useMemo(
-    () =>
-      acceptedMatches.reduce((total, match) => {
-        const durationHours =
-          (Date.parse(match.scheduledEndIso) - Date.parse(match.scheduledStartIso)) / (60 * 60 * 1000);
-        return total + Math.max(durationHours, 0) * (match.hourlyRateCents / 100);
-      }, 0),
-    [acceptedMatches]
-  );
   const groupedMatches = useMemo(() => {
     const groups = new Map<string, CrewMatchSummary[]>();
     for (const match of acceptedMatches) {
@@ -121,9 +103,8 @@ export function CrewScheduleBoard() {
     return (
       <section className="card">
         <h2>{i18n.t("crew_schedule.board.login_required")}</h2>
-        <p>{i18n.t("crew_schedule.board.login_body")}</p>
         <div className="cta-row">
-          <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+          <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("crew_schedule.board.login_cta")}
           </a>
         </div>
@@ -140,24 +121,9 @@ export function CrewScheduleBoard() {
         </section>
       ) : null}
 
-      <section className="grid-three">
-        <article className="card">
-          <h2>{plannedHours.toFixed(1)}</h2>
-          <p>{i18n.t("crew_schedule.board.metric.planned_hours")}</p>
-        </article>
-        <article className="card">
-          <h2>{i18n.formatCurrency(Math.round(expectedEarnings * 100))}</h2>
-          <p>{i18n.t("crew_schedule.board.metric.expected_earnings")}</p>
-        </article>
-        <article className="card">
-          <h2>{acceptedMatches.length}</h2>
-          <p>{i18n.t("crew_schedule.board.metric.accepted_shifts")}</p>
-        </article>
-      </section>
 
       <section className="search-result-title">
         <div>
-          <span className="eyebrow">{i18n.t("crew_schedule.board.eyebrow")}</span>
           <h2>{i18n.t("crew_schedule.board.upcoming_work")}</h2>
         </div>
         <div className="view-toggle" role="tablist" aria-label={i18n.t("crew_schedule.board.view_aria")}>
@@ -193,7 +159,7 @@ export function CrewScheduleBoard() {
                   <h2>{i18n.t("crew_schedule.board.scheduled_stop_count", { count: group.matches.length })}</h2>
                 </div>
               </div>
-              <div className="stack-lg" style={{ paddingBottom: 0 }}>
+              <div className="stack-lg u-pb-0">
                 {group.matches.map((match) => (
                   <article className="list-panel" key={match.id}>
                     <div className="search-result-title">

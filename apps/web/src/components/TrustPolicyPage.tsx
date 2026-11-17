@@ -23,7 +23,7 @@ export function TrustPolicyPage({ page }: { page: TrustPolicyPageContent }) {
       <section>
         <article className="card">
           <h2>{i18n.t("trust_policy.page.related_title")}</h2>
-          <div className="stack-lg" style={{ paddingBottom: 0 }}>
+          <div className="stack-lg u-pb-0">
             {siblingPages.map((candidate) => (
               <Link className="list-panel" href={addLocalePrefix(candidate.href, i18n.locale)} key={candidate.id}>
                 <span className="eyebrow">{candidate.eyebrow}</span>
@@ -58,7 +58,7 @@ export function TrustPolicyPage({ page }: { page: TrustPolicyPageContent }) {
         <article className="card">
           <h2>{i18n.t("trust_policy.page.help_title")}</h2>
           <p>{i18n.t("trust_policy.page.help_body")}</p>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
+          <div className="cta-row u-mt-4">
             <Link className="button" href={addLocalePrefix("/help", i18n.locale)}>
               {i18n.t("trust_policy.page.help_cta")}
             </Link>
@@ -68,7 +68,7 @@ export function TrustPolicyPage({ page }: { page: TrustPolicyPageContent }) {
         <article className="card">
           <h2>{i18n.t("trust_policy.page.launch_title")}</h2>
           <p>{i18n.t("trust_policy.page.launch_body")}</p>
-          <div className="cta-row" style={{ marginTop: "1rem" }}>
+          <div className="cta-row u-mt-4">
             <Link className="button-secondary" href={addLocalePrefix("/barnegat-nj", i18n.locale)}>
               {i18n.t("trust_policy.page.launch_cta")}
             </Link>

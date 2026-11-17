@@ -393,9 +393,7 @@ export function DashboardScreen({
   if (!overview && !payoutLedger && !errorMessage) {
     return (
       <ScreenShell
-        eyebrow={i18n.t("provider_mobile.dashboard.eyebrow")}
         title={i18n.t("provider_mobile.dashboard.title")}
-        description={i18n.t("provider_mobile.dashboard.description")}
       >
         <SkeletonCard label={i18n.t("common.loading.content")} lines={4} showAction />
         <SkeletonCard label={i18n.t("common.loading.content")} lines={3} showAvatar />
@@ -406,9 +404,7 @@ export function DashboardScreen({
 
   return (
     <ScreenShell
-      eyebrow={i18n.t("provider_mobile.dashboard.eyebrow")}
       title={i18n.t("provider_mobile.dashboard.title")}
-      description={i18n.t("provider_mobile.dashboard.description")}
     >
       {statusMessage ? <InfoCard title={i18n.t("mobile.support.updated")} description={statusMessage} /> : null}
       {errorMessage ? <InfoCard title={i18n.t("common.state.needs_attention")} description={errorMessage} /> : null}
@@ -482,13 +478,7 @@ export function DashboardScreen({
           </View>
           <Text style={styles.alertText}>{overview.retentionProgram.eligibilityRule}</Text>
           <Text style={styles.alertText}>
-            {i18n.t("provider_mobile.dashboard.retention.fee_detail", {
-              finderFee: formatCurrency(i18n, overview.retentionProgram.finderFeeCents),
-              jobFee: i18n.formatCurrency(overview.retentionProgram.completedJobFeeCents, "USD", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            })}
+            {i18n.t("provider_mobile.dashboard.retention.fee_detail")}
           </Text>
           {overview.retentionProgram.relationships.slice(0, 3).map((relationship) => (
             <View key={relationship.customerId} style={styles.jobRow}>

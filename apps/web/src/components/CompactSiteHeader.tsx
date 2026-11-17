@@ -18,9 +18,9 @@ export function CompactSiteHeader() {
   const provider = path.startsWith("/provider") || path.includes("/provider/") || path.endsWith("/provider");
   const crew = path.startsWith("/crew") || path.endsWith("/crew");
   const role = session?.role;
-  const { payments } = useLaunchFeatureFlags();
+  const { payments, crewMarketplace } = useLaunchFeatureFlags();
   const links: NavItem[] = role === "provider" ? [
-    { href: "/provider/management", label: "ux.jobs" }, { href: "/provider/clients", label: "provider_clients.nav" }, ...(payments ? [{ href: "/provider/payments", label: "ux.payouts" } as NavItem] : []), { href: "/crew", label: "ux.crew" }, { href: "/help", label: "ux.help" }
+    { href: "/provider/management", label: "ux.jobs" }, { href: "/provider/clients", label: "provider_clients.nav" }, ...(payments ? [{ href: "/provider/payments", label: "ux.payouts" } as NavItem] : []), ...(crewMarketplace ? [{ href: "/crew", label: "ux.crew" } as NavItem] : []), { href: "/help", label: "ux.help" }
   ] : role === "crew-member" ? [
     { href: "/crew", label: "ux.jobs" }, { href: "/crew/schedule", label: "ux.schedule" }, { href: "/crew/schedule/history", label: "nav.user.past_visits" }, { href: "/help", label: "ux.help" }
   ] : role === "ops" ? [
@@ -32,7 +32,7 @@ export function CompactSiteHeader() {
   ] : [
     { href: "/customer", label: "ux.services" }, { href: "/provider", label: "ux.business" }, { href: "/crew", label: "ux.crew" }, { href: "/help", label: "ux.help" }
   ];
-  const login = provider ? "/login/provider" : crew ? "/login/crew" : "/login/customer";
+  const login = "/login";
   const signup = provider ? "/auth/provider/create" : crew ? "/auth/crew" : "/auth/customer";
   const local = (href: string) => addLocalePrefix(href, i18n.locale);
   return <header className="compact-header">

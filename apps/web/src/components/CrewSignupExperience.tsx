@@ -216,11 +216,6 @@ export function CrewSignupExperience() {
               {i18n.t(opportunityId ? "crew_signup.review.opening_selected" : "crew_signup.review.profile")}
             </span>
             <h2>{i18n.t(opportunityId ? "crew_signup.review.confirm_fit" : "crew_signup.review.create_profile")}</h2>
-            <p>
-              {opportunityId
-                ? i18n.t("crew_signup.review.carryover")
-                : i18n.t("crew_signup.review.recommend")}
-            </p>
           </div>
           <div className="crew-signup-review__grid">
             <div>

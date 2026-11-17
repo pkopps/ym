@@ -815,3 +815,131 @@ test("social signup completion links an existing account with the same email", a
   assert.ok(identity);
   assert.equal(identity?.email, "jordan@example.com");
 });
+
+function createSocialLoginHarness(identity: { subject: string; email: string }) {
+  const repository = new InMemoryMarketplaceRepository();
+  const platform = new MarketplacePlatformService(repository, new DataEngineeringLogger());
+  const controller = new AuthController(platform);
+  (controller as unknown as { socialAuth: unknown }).socialAuth = {
+    isConfigured: () => true,
+    getMissingConfiguration: () => [],
+    buildAuthorizationUrl: (_provider: string, state: string) =>
+      `https://identity.example/authorize?state=${encodeURIComponent(state)}`,
+    exchangeCode: async () => ({
+      provider: "google",
+      subject: identity.subject,
+      email: identity.email,
+      emailVerified: true,
+      fullName: "Social User"
+    })
+  };
+  const cookie = `ym-oauth-binding=${"a".repeat(64)}`;
+
+  async function request(path: string, query: Record<string, string>): Promise<URL> {
+    let location = "";
+    const response = {
+      setHeader() {},
+      hasHeader: () => true,
+      writeHead(_status: number, headers?: Record<string, string>) {
+        location = headers?.Location ?? "";
+      },
+      end() {}
+    };
+    await controller.handle(
+      { method: "GET", path, body: undefined, query: new URLSearchParams(query), headers: { cookie } },
+      response as never
+    );
+    return new URL(location);
+  }
+
+  async function register(role: "customer" | "provider", email: string) {
+    const response = createMockResponse();
+    await controller.handle(
+      {
+        method: "POST",
+        path: "/api/auth/register",
+        body: {
+          fullName: "Social User",
+          email,
+          password: "Password123!",
+          phone: "555-0200",
+          role,
+          ...(role === "provider" ? { companyName: "Social Lawn Co." } : { propertyLabel: "Primary home" }),
+          address: createAddress()
+        },
+        query: new URLSearchParams(),
+        headers: {}
+      },
+      response as never
+    );
+    assert.equal(response.getStatusCode(), 201);
+  }
+
+  /** Runs start then callback and returns the URL the browser is finally sent to. */
+  async function signIn(start: Record<string, string>): Promise<URL> {
+    const authorization = await request("/api/auth/google/start", start);
+    const state = authorization.searchParams.get("state");
+    assert.ok(state);
+    return request("/api/auth/google/callback", { state, code: "provider-code" });
+  }
+
+  return { platform, register, signIn };
+}
+
+test("social login without a role signs in with the role of the existing account", async () => {
+  const harness = createSocialLoginHarness({ subject: "google-provider-1", email: "owner@example.com" });
+  await harness.register("provider", "owner@example.com");
+
+  const first = await harness.signIn({ mode: "login" });
+  assert.equal(first.pathname, "/auth/complete");
+  assert.equal(first.searchParams.get("authStatus"), "success");
+  assert.equal(first.searchParams.get("role"), "provider");
+  assert.ok(first.searchParams.get("token"));
+
+  // The second sign-in resolves through the linked Google subject rather than the email.
+  const linked = await harness.platform.findAuthIdentityByProvider("google", "google-provider-1");
+  assert.equal(linked?.role, "provider");
+  const second = await harness.signIn({ mode: "login" });
+  assert.equal(second.searchParams.get("authStatus"), "success");
+  assert.equal(second.searchParams.get("role"), "provider");
+});
+
+test("social login without a role keeps a custom return address and reports unknown emails", async () => {
+  const harness = createSocialLoginHarness({ subject: "google-new-1", email: "nobody@example.com" });
+  const redirectUri = `${harness.platform.getAppBaseUrl()}/auth/complete?returnTo=%2Fprovider%2Fclients`;
+
+  const result = await harness.signIn({ mode: "login", redirectUri });
+  assert.equal(result.searchParams.get("authStatus"), "error");
+  assert.equal(result.searchParams.get("returnTo"), "/provider/clients");
+  assert.equal(result.searchParams.get("role"), null);
+  assert.match(result.searchParams.get("message") ?? "", /No YardMatch account exists/);
+});
+
+test("social login never signs in a staff account", async () => {
+  const harness = createSocialLoginHarness({ subject: "google-ops-1", email: "ops@example.com" });
+
+  const result = await harness.signIn({ mode: "login" });
+  assert.equal(result.searchParams.get("authStatus"), "error");
+  assert.equal(result.searchParams.get("token"), null);
+  assert.equal(await harness.platform.findAuthIdentityByProvider("google", "google-ops-1"), undefined);
+});
+
+test("social login that names a role still rejects an account with a different role", async () => {
+  const harness = createSocialLoginHarness({ subject: "google-provider-2", email: "owner2@example.com" });
+  await harness.register("provider", "owner2@example.com");
+
+  const mismatch = await harness.signIn({ mode: "login", role: "customer" });
+  assert.equal(mismatch.searchParams.get("authStatus"), "error");
+  assert.match(mismatch.searchParams.get("message") ?? "", /different YardMatch role/);
+
+  const match = await harness.signIn({ mode: "login", role: "provider" });
+  assert.equal(match.searchParams.get("authStatus"), "success");
+});
+
+test("social sign-up without a role still starts a customer account", async () => {
+  const harness = createSocialLoginHarness({ subject: "google-new-2", email: "new@example.com" });
+
+  const result = await harness.signIn({ mode: "signup" });
+  assert.equal(result.searchParams.get("authStatus"), "pending-signup");
+  assert.equal(result.searchParams.get("role"), "customer");
+});

@@ -211,10 +211,6 @@ export function CrewLiveDashboard() {
 
   const crewMember = matchesResponse?.crewMember;
   const matches = matchesResponse?.matches ?? [];
-  const acceptedMatches = useMemo(
-    () => matches.filter((match) => match.status === "accepted"),
-    [matches]
-  );
   const recommendedPublicOpportunities = useMemo(
     () =>
       publicOpportunities
@@ -462,7 +458,7 @@ export function CrewLiveDashboard() {
         <h1>{i18n.t("crew_live.team_access.title")}</h1>
         <p>{i18n.t("crew_live.team_access.body")}</p>
         <div className="cta-row">
-          <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+          <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
             {i18n.t("crew_live.crew_login")}
           </a>
         </div>
@@ -477,9 +473,7 @@ export function CrewLiveDashboard() {
         <section className="card crew-fit-panel">
           <div className="search-result-title">
             <div>
-              <span className="eyebrow">{i18n.t("crew_live.fit.eyebrow")}</span>
               <h2>{i18n.t("crew_live.fit.title")}</h2>
-              <p>{i18n.t("crew_live.fit.body")}</p>
             </div>
             <strong>{i18n.t("crew_live.fit.count", { count: recommendedPublicOpportunities.length })}</strong>
           </div>
@@ -687,7 +681,6 @@ export function CrewLiveDashboard() {
           </section>
         ) : (
           <section className="card">
-            <span className="eyebrow">{i18n.t("crew_live.openings.eyebrow")}</span>
             <h2>{i18n.t("crew_live.openings.empty.title")}</h2>
             <p>{i18n.t("crew_live.openings.empty.body")}</p>
             {errorMessage ? (
@@ -739,7 +732,7 @@ export function CrewLiveDashboard() {
               : i18n.t("crew_live.signup.body_default")}
           </p>
           <div className="cta-row">
-            <a className="button" href={addLocalePrefix("/login/crew", i18n.locale)}>
+            <a className="button" href={addLocalePrefix("/login", i18n.locale)}>
               {i18n.t("crew_live.crew_login")}
             </a>
             <a className="button-secondary" href={crewSignupHref}>
@@ -915,26 +908,11 @@ export function CrewLiveDashboard() {
         })}
       </section>
       <WorkspaceSection id="crew-preferences" title={i18n.t("workspace.settings")}>
-      <section className="grid-three">
-        <article className="card">
-          <h2>{matches.length}</h2>
-          <p>{i18n.t("crew_live.metric.matched_jobs")}</p>
-        </article>
-        <article className="card">
-          <h2>{acceptedMatches.length}</h2>
-          <p>{i18n.t("crew_live.metric.accepted_jobs")}</p>
-        </article>
-        <article className="card">
-          <h2>{crewMember?.cancellationCount ?? 0}</h2>
-          <p>{i18n.t("crew_live.metric.calloffs")}</p>
-        </article>
-      </section>
 
       <section className="card">
         <div className="search-result-title">
           <div>
             <h2>{crewMember?.fullName}</h2>
-            <p>{i18n.t("crew_live.profile_help")}</p>
           </div>
         </div>
         <div className="chip-row">

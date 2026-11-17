@@ -11,7 +11,8 @@ async function expectSocialAuthLinks({
 }: {
   expectedMode: "login" | "signup";
   expectedReturnTo: string;
-  expectedRole: "customer" | "provider" | "crew-member";
+  /** Login leaves the role out so the API uses the account's own role. */
+  expectedRole: "customer" | "provider" | "crew-member" | null;
   page: Page;
 }) {
   for (const provider of ["google", "apple"] as const) {
@@ -133,40 +134,46 @@ test.describe("YardMatch web smoke", () => {
     await page.goto("/barnegat-nj");
 
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Barnegat");
-    await expect(page.getByText(/No verified providers are currently listed for this area/i)).toBeVisible();
+    await expect(page.getByText(/No verified providers are listed for this area yet/i)).toBeVisible();
     await expect(page.getByText("GreenStride Lawn Co.")).toHaveCount(0);
     await expect(page.getByText("TerraCut Studio")).toHaveCount(0);
 
     await page.goto("/provider");
-    const pricingHeading = page.getByRole("heading", { name: "Clear pricing, before you sign up" });
+    const landingHeading = page.getByRole("heading", { level: 1, name: "Get lawn care customers near your routes." });
+    await expect(landingHeading).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(3);
+    const pricingHeading = page.getByRole("heading", { name: "Pricing", exact: true });
     await expect(pricingHeading).toBeVisible();
-    await expect(page.getByRole("heading", { name: "$30 once" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "$6.99 per completed job" })).toBeVisible();
-    await expect(page.getByText(/paid placement never changes recommendation order/i)).toBeVisible();
-    const retentionHeading = page.getByRole("heading", {
-      name: "Pay once for the introduction. We keep working on the relationship."
-    });
-    await expect(retentionHeading).toBeVisible();
-    await expect(page.getByText(/no second \$30 finder fee and no separate fee/i)).toBeVisible();
-    await expect(page.getByText(/review below 4 stars/i)).toBeVisible();
-    await retentionHeading.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-desktop.png` });
+    const prices = page.locator(".provider-landing__prices");
+    await expect(prices.getByText("$75", { exact: true })).toBeVisible();
+    await expect(prices.getByText("$110", { exact: true })).toBeVisible();
+    await expect(prices.getByText("$150", { exact: true })).toBeVisible();
+    await expect(prices.getByText("Your first customer")).toBeVisible();
+    await expect(prices.getByText("Per-job fee")).toBeVisible();
+    await expect(prices.getByText("$49/month")).toBeVisible();
+    await expect(prices.getByText("$99/month")).toBeVisible();
+    await expect(page.getByText(/\$30|\$6\.99/)).toHaveCount(0);
+    await expect(page.getByText(/plans never change who yardmatch recommends/i)).toBeVisible();
+    await expect(page.getByRole("link", { name: "Read the provider standards" })).toHaveAttribute(
+      "href",
+      "/provider-standards"
+    );
+    await expect(page.getByRole("link", { name: "Sign up your business" })).toHaveCount(3);
+    await expect(page.locator(".radius-settings")).toHaveCount(0);
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-desktop.png`, fullPage: true });
 
     await pricingHeading.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${engineerEvidenceRoot}/provider-pricing-desktop.png` });
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/provider");
-    await expect(page.getByRole("heading", { name: "Grow local routes without losing control of your calendar or margins." })).toBeVisible();
-    await retentionHeading.scrollIntoViewIfNeeded();
+    await expect(landingHeading).toBeVisible();
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 390);
-    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-retention-marketing-mobile.png` });
-
-    await page.getByRole("heading", { name: "Grow local routes without losing control of your calendar or margins." }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png` });
+    await page.screenshot({ path: `${engineerEvidenceRoot}/provider-landing-mobile.png`, fullPage: true });
 
     await page.goto("/auth/provider/create");
-    await expect(page.getByText(/\$30 once per new customer relationship/i)).toBeVisible();
+    await expect(page.getByText(/one-time finder fee per new customer/i)).toBeVisible();
+    await expect(page.getByText(/customers pay you directly/i)).toBeVisible();
   });
 
   test("ops login opens the authenticated operations workspace", async ({ page }) => {
@@ -216,12 +223,12 @@ test.describe("YardMatch web smoke", () => {
     });
 
     const loginReturnTo = "/customer/dashboard?flow=request&providerId=provider-seed";
-    await page.goto(`/login/customer?returnTo=${encodeURIComponent(loginReturnTo)}`);
+    await page.goto(`/login?returnTo=${encodeURIComponent(loginReturnTo)}`);
     await expect(page.getByRole("link", { name: "Continue with Apple" })).toBeVisible();
     await expectSocialAuthLinks({
       expectedMode: "login",
       expectedReturnTo: loginReturnTo,
-      expectedRole: "customer",
+      expectedRole: null,
       page
     });
 
@@ -230,10 +237,10 @@ test.describe("YardMatch web smoke", () => {
 
   test("protected dashboards show the expected login gates when signed out", async ({ page }) => {
     await page.goto("/customer/dashboard");
-    await expect(page.getByRole("heading", { name: "Log in to manage your account" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Log in to your account" })).toBeVisible();
 
     await page.goto("/provider/management");
-    await expect(page.getByRole("heading", { name: "Business owner login required" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Log in as a business owner" })).toBeVisible();
 
     await page.goto("/ops");
     await expect(page.getByRole("heading", { name: "Internal login required" })).toBeVisible();

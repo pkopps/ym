@@ -23,18 +23,8 @@ import { getProviderMobileTracker } from "../lib/tracking";
 
 function getModeCopy(i18n: I18nInstance, mode: AuthFlowMode) {
   return mode === "login"
-    ? {
-        eyebrow: i18n.t("mobile.auth.provider_login_eyebrow"),
-        title: i18n.t("mobile.auth.provider_login_title"),
-        description: i18n.t("mobile.auth.provider_login_description"),
-        submitLabel: i18n.t("mobile.auth.log_in")
-      }
-    : {
-        eyebrow: i18n.t("mobile.auth.provider_signup_eyebrow"),
-        title: i18n.t("mobile.auth.provider_signup_title"),
-        description: i18n.t("mobile.auth.provider_signup_description"),
-        submitLabel: i18n.t("auth_signup.create_account")
-      };
+    ? { title: i18n.t("mobile.auth.log_in"), submitLabel: i18n.t("mobile.auth.log_in") }
+    : { title: i18n.t("auth_signup.create_account"), submitLabel: i18n.t("auth_signup.create_account") };
 }
 
 const providerRedirectUri = "yardmatch-provider://auth/complete";
@@ -445,9 +435,7 @@ export function ProviderAuthScreen({
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>{authCopy.eyebrow}</Text>
-        <Text style={styles.title}>{authCopy.title}</Text>
-        <Text style={styles.description}>{authCopy.description}</Text>
+        <Text accessibilityRole="header" style={styles.title}>{authCopy.title}</Text>
       </View>
 
       <View style={styles.card}>
@@ -505,6 +493,10 @@ export function ProviderAuthScreen({
           <View style={styles.fieldStack}>
             <TextInput
               autoCapitalize="none"
+              autoComplete="email"
+              autoCorrect={false}
+              keyboardType="email-address"
+              textContentType="username"
               onChangeText={setEmail}
               placeholder={i18n.t("mobile.auth.placeholder.provider_email")}
               placeholderTextColor="#6e7d71"
@@ -513,6 +505,8 @@ export function ProviderAuthScreen({
             />
             {!isCompletingSocialSignup ? (
               <TextInput
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                textContentType={mode === "login" ? "password" : "newPassword"}
                 onChangeText={setPassword}
                 placeholder={i18n.t("auth_signup.field.password")}
                 placeholderTextColor="#6e7d71"
@@ -752,6 +746,9 @@ export function ProviderAuthScreen({
             ) : null}
             <View style={styles.fieldStack}>
               <TextInput
+                autoComplete="one-time-code"
+                keyboardType="number-pad"
+                textContentType="oneTimeCode"
                 onChangeText={setRecoveryCode}
                 placeholder={i18n.t("mobile.auth.reset_code")}
                 placeholderTextColor="#6e7d71"
@@ -759,6 +756,8 @@ export function ProviderAuthScreen({
                 value={recoveryCode}
               />
               <TextInput
+                autoComplete="new-password"
+                textContentType="newPassword"
                 onChangeText={setNewPassword}
                 placeholder={i18n.t("mobile.auth.new_password")}
                 placeholderTextColor="#6e7d71"
@@ -801,12 +800,6 @@ export function ProviderAuthScreen({
             </Pressable>
           </View>
         ) : null}
-
-        <Text style={styles.helper}>
-          {mode === "signup"
-            ? i18n.t("mobile.auth.provider_signup_helper")
-            : i18n.t("mobile.auth.provider_login_helper")}
-        </Text>
       </View>
     </ScrollView>
   );
@@ -823,22 +816,11 @@ const styles = StyleSheet.create({
   hero: {
     gap: BrandTokens.spacing.md
   },
-  eyebrow: {
-    color: BrandTokens.colors.primaryStrong,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textTransform: "uppercase"
-  },
   title: {
     color: BrandTokens.colors.ink,
     fontSize: 34,
     fontWeight: "700",
     lineHeight: 38
-  },
-  description: {
-    color: BrandTokens.colors.inkSoft,
-    fontSize: 16,
-    lineHeight: 24
   },
   card: {
     gap: BrandTokens.spacing.lg,

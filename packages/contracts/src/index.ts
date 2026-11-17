@@ -4,3 +4,4 @@ export * from "./types";
 export * from "./referrals";
 export * from "./pricing";
 export * from "./featureFlags";
+export * from "./finderFees";

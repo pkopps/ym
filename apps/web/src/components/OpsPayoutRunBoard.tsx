@@ -110,7 +110,7 @@ export function OpsPayoutRunBoard() {
       {statusMessage ? <p role="status">{statusMessage}</p> : null}
       {errorMessage ? <p>{errorMessage}</p> : null}
       {preview ? (
-        <div className="stack-lg" style={{ paddingBottom: 0 }}>
+        <div className="stack-lg u-pb-0">
           <div className="grid-three">
             <article className="card">
               <h2>{formatCurrency(preview.totalProviderReadyCents)}</h2>
