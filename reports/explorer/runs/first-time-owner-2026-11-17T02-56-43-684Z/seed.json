@@ -1,0 +1,7 @@
+{
+  "persona": "first-time-owner",
+  "seed": 21,
+  "webBaseUrl": "http://localhost:3012",
+  "apiBaseUrl": "http://127.0.0.1:4012",
+  "providers": 6
+}

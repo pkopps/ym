@@ -1,5 +1,19 @@
 # Engineer Status
 
+## Current checkpoint: explorer re-run against main
+
+- Updated: November 17, 2026 (UTC).
+- Branch and commit: `claude/explorer-rerun`; see the PR for the commit.
+- Completed: all six explorer personas re-ran against main at c22cc4b, locally with launch flags off. The ranked summary and comparison with the first run are in `reports/explorer/summary-2026-11-17.md`. Fixed since the first run: the dashboard date, the reset cooldown, early visit actions for crew, and the plan and cancel confirmations.
+- In progress: none.
+- Remaining: findings N1 to N30 in the summary. This PR reports findings only; nothing is fixed.
+- Blockers: none.
+- Changed workflows: none.
+- Validation: report-only change; no app code changed. Code checks confirmed N1 (`validatePasswordStrength` throws a plain `Error`, so it returns a 500), N2 (crew map links pass `line1` only) and N9 (no ZIP price minimums are seeded).
+- Known defects: see the summary. Top items: the reset password 500, crew map links, the one-tap late notice, home search ignoring a typed address, the crew "Today" tab, and the missing ZIP price minimums for launch ZIPs.
+- Screenshot paths: `reports/explorer/runs/*-2026-11-17T*/`.
+- Recommended next task: fix N1 to N5 (small, high-severity bugs) in one PR.
+
 ## Current checkpoint: early arrival and missed-window notices
 
 - Updated: November 17, 2026 (UTC).
