@@ -243,7 +243,10 @@ export async function workBooking(settings: BotSettings, provider: ProviderBot, 
 export async function probeTracking(settings: BotSettings, client: BotClient, bookingId: string, who: string, rule: "allowed" | "denied" | "no-live-point") {
   try {
     const tracking = await client.get<any>(`/api/bookings/tracking?bookingId=${bookingId}`, { action: `tracking: ${who}`, expect: rule === "denied" ? [403, 404] : [] });
-    const livePoint = tracking?.currentPoint;
+    // After the visit, tracking shows the property's own address; only a point elsewhere is someone's live position.
+    const destination = tracking?.destination?.point;
+    const atProperty = destination && tracking?.currentPoint && destination.latitude === tracking.currentPoint.latitude && destination.longitude === tracking.currentPoint.longitude;
+    const livePoint = atProperty ? undefined : tracking?.currentPoint;
     if (rule === "denied") {
       settings.recorder.finding({ kind: "probe", name: "live-location-access", message: `${who} could read live tracking for booking ${bookingId}`, rows: [{ bookingId, who, keys: Object.keys(tracking ?? {}) }] });
     } else if (rule === "no-live-point" && livePoint) {

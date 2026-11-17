@@ -178,8 +178,11 @@ try {
           if (cancelled.status === "fulfilled") recorder.event({ botId: owner.client.botId, action: "cancel", bookingId: booking.id, detail: { via: "race" } });
           if (accepted.status === "fulfilled" && cancelled.status === "fulfilled") {
             const after = await owner.client.attempt(() => owner.client.get<any>(`/api/bookings/detail?bookingId=${booking.id}`, { action: "read after race" }));
-            recorder.finding({ kind: "probe", name: "accept-cancel-race", message: `Provider accept and owner cancel both succeeded; the booking ended ${after?.status ?? "unreadable"}`,
-              rows: [{ bookingId: booking.id, finalStatus: after?.status }] });
+            // Both can succeed legitimately (confirm first, then cancel); the owner's successful cancel must stand.
+            if (after?.status !== "cancelled") {
+              recorder.finding({ kind: "probe", name: "accept-cancel-race", message: `Provider accept and owner cancel both succeeded; the booking ended ${after?.status ?? "unreadable"}`,
+                rows: [{ bookingId: booking.id, finalStatus: after?.status }] });
+            }
           }
           continue;
         }
